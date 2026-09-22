@@ -1,0 +1,12 @@
+# The allowlist for typos, run by ci.yml's lint job. Each entry says what it
+# is, so a real typo cannot hide behind a stale exception.
+[default]
+extend-ignore-re = [
+  # A deliberate misspelling on one line takes a trailing
+  # `# spellchecker: disable-line` (or `//`) comment rather than a
+  # project-wide allowance.
+  "(?Rm)^.*(#|//)\\s*spellchecker:\\s*disable-line$",
+]
+
+[default.extend-words]
+astroid = "astroid" # pylint's parser, a real package name

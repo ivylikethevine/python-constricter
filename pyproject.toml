@@ -158,9 +158,6 @@ indent-string = "    "
 # objects just to fit under 7 would add indirection, not clarity.
 max-attributes = 9
 
-[tool.typos.default.extend-words]
-astroid = "astroid"
-
 [tool.uv]
 cache-dir = "local/.uv-cache"
 required-version = ">=0.12.17"

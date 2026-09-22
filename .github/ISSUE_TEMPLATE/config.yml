@@ -1,5 +1,11 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Security vulnerability
+  - name: Report a vulnerability
     url: https://github.com/ivylikethevine/python-constricter/security/advisories/new
-    about: Report it privately (see SECURITY.md), not in an issue.
+    about: >-
+      Anything exploitable goes here privately, never in a public issue.
+  - name: Security policy
+    url: https://github.com/ivylikethevine/python-constricter/blob/main/SECURITY.md
+    about: >-
+      What's in scope, what's out of scope, and how reports are handled - worth reading before
+      deciding something is a bug.

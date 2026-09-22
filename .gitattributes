@@ -1,0 +1,10 @@
+# Every text file checks out LF on every platform. Without it, Git for Windows'
+# core.autocrlf=true hands a Windows checkout (CI's Windows test leg included)
+# CRLF files.
+* text=auto eol=lf
+
+# Images are never text: no line-ending conversion, no textual diff or merge.
+*.gif binary
+*.png binary
+*.jpg binary
+*.webp binary

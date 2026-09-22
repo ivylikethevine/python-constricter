@@ -3,7 +3,10 @@ name: Security
 on:
   push:
     branches: [main]
+  # Drafts run nothing (each job's `if`) until marked ready: ready_for_review
+  # isn't a default type, and converted_to_draft cancels the in-flight run.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   schedule:
     - cron: '0 6 * * 1'
 
@@ -16,6 +19,7 @@ concurrency:
 jobs:
   codeql:
     name: CodeQL (${{ matrix.language }})
+    if: github.event.pull_request.draft != true
     strategy:
       matrix:
         language: [python, actions]
@@ -43,6 +47,7 @@ jobs:
 
   workflows:
     name: Workflow audit
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -61,19 +66,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: $/.github/actions/setup
+      - uses: ./.github/actions/setup
       - run: zizmor --persona pedantic .github/
         env:
           GH_TOKEN: ${{ github.token }}
-      - uses: $/.github/actions/tool # kjanat's fork of actionlint, which reads `$/`
+      - uses: ./.github/actions/tool
         with:
-          url: https://github.com/kjanat/actionlint/releases/download/v1.17.0/actionlint_1.17.0_linux_amd64.tar.gz
-          sha256: 620abd485a12b6ab1125b844a876414e1d5bd2af8a3125b27f82b01d0d9d6e5a
+          url: https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          sha256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
           binary: actionlint
       - run: '"$RUNNER_TEMP/bin/actionlint"'
 
   dependencies:
     name: Dependency audit
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -91,13 +97,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: $/.github/actions/setup
+      - uses: ./.github/actions/setup
       - run: uv export --locked --no-emit-project --format requirements-txt --quiet -o local/audit.txt
       - run: pip-audit --strict --require-hashes --disable-pip -r local/audit.txt
 
   dependency-review:
     name: Dependency review
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -120,6 +126,7 @@ jobs:
 
   secrets:
     name: Secrets
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -135,7 +142,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0 # the whole history
-      - uses: $/.github/actions/tool
+      - uses: ./.github/actions/tool
         with:
           url: https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
           sha256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
@@ -157,7 +164,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: $/.github/actions/tool
+      - uses: ./.github/actions/tool
         with:
           url: https://github.com/lycheeverse/lychee/releases/download/lychee-v0.24.2/lychee-x86_64-unknown-linux-gnu.tar.gz
           sha256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a

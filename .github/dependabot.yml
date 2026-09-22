@@ -1,29 +1,49 @@
+# Moves the SHA-pinned `uses:` in the workflows and composite actions, the
+# Markdown tools' npm lock, and uv.lock, via one weekly pull request into dev.
+#
+# Every ecosystem feeds one multi-ecosystem group, so a Monday run opens (or
+# rebases) a single pull request. schedule, commit-message and target-branch
+# are group-only keys (GitHub rejects them on an entry in a group); `patterns`
+# is required per entry, and cooldown/ignore stay per ecosystem. Dependabot
+# security updates, if enabled in the repository settings, still open their
+# own pull requests.
 version: 2
-updates:
-  - package-ecosystem: github-actions
-    directory: /
+
+multi-ecosystem-groups:
+  all-dependencies:
     schedule:
       interval: weekly
+      day: monday
+    commit-message:
+      prefix: deps
+    # development happens on dev; main only moves by a release merge
+    target-branch: dev
+
+updates:
+  # the composite actions under .github/actions/ pin their own `uses:`
+  - package-ecosystem: github-actions
+    directories:
+      - "/"
+      - "/.github/actions/*"
+    multi-ecosystem-group: all-dependencies
+    patterns: ["*"]
+    # let a release age before its bump: a compromised release's window is its
+    # first days (zizmor: dependabot-cooldown)
     cooldown:
       default-days: 7
-    groups:
-      actions:
-        patterns: ["*"]
+
+  # .github/package.json -> package-lock.json (markdownlint-cli2, prettier)
   - package-ecosystem: npm
     directory: /.github
-    schedule:
-      interval: weekly
+    multi-ecosystem-group: all-dependencies
+    patterns: ["*"]
     cooldown:
       default-days: 7
-    groups:
-      markdown:
-        patterns: ["*"]
+
+  # pyproject.toml -> uv.lock
   - package-ecosystem: uv
     directory: /
-    schedule:
-      interval: weekly
+    multi-ecosystem-group: all-dependencies
+    patterns: ["*"]
     cooldown:
       default-days: 7
-    groups:
-      python:
-        patterns: ["*"]
