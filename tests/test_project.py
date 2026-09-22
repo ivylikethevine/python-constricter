@@ -51,6 +51,7 @@ def run() -> None:
     f = u.trow()
     g = length()
 """
+SERIAL: Final = "\n  require_serial: true\n"
 DEEP: Final = "    x: int = helper()\n    y = far()\n"
 FIXED: Final = """
 from pkg import helper
@@ -145,3 +146,21 @@ def test_calls_skip_what_they_cannot_resolve(tmp_path: Path) -> None:
         "b": project.Module("b", {}, {"f": ("a", "f")}),
     }
     assert not project.calls(project.Index(cycle, sorted(cycle)), Path("a.py"))
+
+
+def test_split_run_misses_what_the_serial_hook_fixes(tmp_path: Path) -> None:
+    """Split across processes (as pre-commit does by default), `main.py` can't see `pkg`'s types.
+
+    So the `constricter-fix` hook asks pre-commit for one process (`require_serial`).
+    """
+    _package(tmp_path)
+    main: Path = _write(tmp_path / "main.py", MAIN)
+    assert cli.main(["--fix", "-q", str(main)]) == cli.EXIT_FOUND
+    assert main.read_text(encoding="utf-8") != FIXED
+    assert cli.main(["--fix", "-q", str(main), str(tmp_path / "pkg")]) == cli.EXIT_FOUND
+    assert main.read_text(encoding="utf-8") == FIXED
+    hooks: list[str] = (
+        (Path(__file__).parents[1] / ".pre-commit-hooks.yaml").read_text(encoding="utf-8").split("- id: ")
+    )
+    fix: str = next(hook for hook in hooks if hook.startswith("constricter-fix\n"))
+    assert SERIAL in fix

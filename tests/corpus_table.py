@@ -4,18 +4,22 @@
     local/.venv/bin/python tests/corpus_table.py                          # 0.2.2, 0.2.3 and dev: print
     local/.venv/bin/python tests/corpus_table.py --versions 0.2.3,dev     # only these versions
     local/.venv/bin/python tests/corpus_table.py --versions dev --write   # record dev in docs/RUNS.md
+    local/.venv/bin/python tests/corpus_table.py --versions dev --label 0.2.4-rc.1 --write  # as that
 
-The corpora are this Python's standard library and the pinned `corpus` dependency group's
-packages (`uv sync --group dev --group corpus`). A version is a release from PyPI, installed with
-`uv` into `local/corpus-table/venvs/`, or `dev`, this checkout (recorded as `<__version__>+dev`).
+The corpora are this Python's standard library, the pinned `corpus` dependency group's packages
+(`uv sync --group dev --group corpus`), and the pure Python 2 sources tests/corpus_sources.py
+fetches. A version is a release from PyPI, installed with
+`uv` into `local/corpus-table/venvs/`, or `dev`, this checkout (recorded as `<__version__>+dev`, or
+`<label>+dev` with `--label`: a pseudo-version, like a release candidate, without bumping it).
 Each runs isolated (`python -I`, from `local/corpus-table/`), so neither this checkout nor its
 `pyproject.toml` leaks into a release's run.
 
 For each corpus and version: a check at every level (with `--all-scopes`), counted per code at
 `suffocate` and as errors and warnings at each level, by that version's own rules and defaults;
 then `--fix` and `--fix --unsafe-fixes` on copies, counting what each fixed, what no longer
-compiles, and what a second pass would still fix. `--write` adds a section per version to
-docs/RUNS.md, or replaces a release's section if it's there; `dev` is recorded under this
+compiles, and what a second pass would still fix. Each version's rows end in a total: each code's
+share of the offences, and what was fixed and guessed as a share of them. `--write` adds a section
+per version to docs/RUNS.md, or replaces a release's section if it's there; `dev` is recorded under this
 checkout's version, so record it right after bumping the version for a release (`--replace` to
 overwrite a section already there). Timings go to standard error, not
 the tables, so rerunning it on an unchanged tree changes nothing.
@@ -29,10 +33,11 @@ import shutil
 import subprocess  # runs each version under test
 import sys
 import sysconfig
+import textwrap
 import time
 import warnings
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from importlib import metadata
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
@@ -47,7 +52,17 @@ WORK: Final = _ROOT / "local" / "corpus-table"
 DEV: Final = "dev"
 VERSIONS: Final = ("0.2.2", "0.2.3", DEV)
 # The `corpus` dependency group's packages, by import name (their distribution names match).
-PACKAGES: Final = ("requests", "flask", "django", "sqlalchemy")
+PACKAGES: Final = (
+    "requests",
+    "flask",
+    "django",
+    "sqlalchemy",
+    "fastapi",
+    "pydantic",
+    "rich",
+    "sentry_sdk",
+)
+_SOURCES: Final = Path(__file__).with_name("corpus_sources.py")
 _EVERYWHERE: Final = ("--all-scopes", "--jobs=0")
 _FIXED: Final = re.compile(r"fixed (\d+)")
 _SECTION: Final = "## constricter "
@@ -56,6 +71,13 @@ _ERROR: Final = "error"
 _VERSIONS_FLAG: Final = "--versions"
 _WRITE_FLAG: Final = "--write"
 _REPLACE_FLAG: Final = "--replace"
+_LABEL_FLAG: Final = "--label"
+_PROSE_WIDTH: Final = 100  # .prettierrc.yaml's printWidth
+_LEVELS_NOTE: Final = (
+    "Errors / warnings at each level, by the version's own rules and defaults; what `--fix` fixed and "
+    "what `--unsafe-fixes` guessed on top (each also as a share of the offences at `suffocate`), files "
+    "a fix broke, and what a second pass would still fix:"
+)
 _RUNS_HEADER: Final = """# Corpus runs
 
 What each constricter version found and fixed on the corpus: this Python's standard library and
@@ -88,7 +110,7 @@ class Measured(NamedTuple):
 
 
 def corpora() -> list[Corpus]:
-    """Find the standard library and each installed `corpus` package.
+    """Find the standard library, each installed `corpus` package, and each fetched source.
 
     Returns:
       Them; a package that isn't installed is left out, with a note on standard error.
@@ -105,17 +127,30 @@ def corpora() -> list[Corpus]:
             _ = sys.stderr.write(f"{name} isn't installed: run `uv sync --group dev --group corpus`\n")
             continue
         found.append(Corpus(name, metadata.version(name), Path(cast("str", module_file)).parent))
+    described: str = subprocess.run(
+        [sys.executable, str(_SOURCES), "--describe"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    line: str
+    for line in described.splitlines():
+        source: str
+        version: str
+        root: str
+        source, version, root = line.split("\t")
+        found.append(Corpus(source, version, Path(root)))
     return found
 
 
-def label(version: str) -> str:
-    """Name a version as it's recorded: a release as itself, `dev` as `<__version__>+dev`.
+def label(version: str, name: str = __version__) -> str:
+    """Name a version as it's recorded: a release as itself, `dev` as `<name>+dev`.
 
     Returns:
-      The label.
+      The label; `name` is this checkout's version unless `--label` gives another.
 
     """
-    return f"{__version__}+{DEV}" if version == DEV else version
+    return f"{name}+{DEV}" if version == DEV else version
 
 
 def interpreter(version: str) -> str:
@@ -242,8 +277,8 @@ def _fixes(python: str, corpus: Corpus, version: str) -> tuple[int | None, int |
     return fixed, None if fixed is None or both is None else both - fixed, broken, left
 
 
-def measure(corpus: Corpus, version: str) -> Measured:
-    """Check and fix one corpus with one version.
+def measure(corpus: Corpus, version: str, name: str = __version__) -> Measured:
+    """Check and fix one corpus with one version (`dev` recorded under `name`).
 
     Returns:
       What it gave.
@@ -258,7 +293,7 @@ def measure(corpus: Corpus, version: str) -> Measured:
     fixes: tuple[int | None, int | None, int, int] = _fixes(python, corpus, version)
     seconds: float = time.perf_counter() - start
     _ = sys.stderr.write(f"{version} on {corpus.name}: {files} files in {seconds:.1f}s\n")
-    return Measured(corpus, label(version), files, codes, levels, *fixes)
+    return Measured(corpus, label(version, name), files, codes, levels, *fixes)
 
 
 def _table(rows: Sequence[Sequence[object]], right: int) -> list[str]:
@@ -287,8 +322,99 @@ def _number(count: int | None) -> str:
     return "crashed" if count is None else f"{count:,}"
 
 
+def _sum(counts: Iterable[int | None]) -> int | None:
+    """Add up a column.
+
+    Returns:
+      Its total, or `None` (crashed) if any row's is.
+
+    """
+    known: list[int | None] = list(counts)
+    return None if None in known else sum(count or 0 for count in known)
+
+
+def _share(count: int | None, whole: int) -> str:
+    """Write `count` with its percentage of `whole`.
+
+    Returns:
+      It, as `1,234 (5.6%)`; a crash, or a count of nothing, without one.
+
+    """
+    return _number(count) if count is None or not whole else f"{count:,} ({count / whole:.1%})"
+
+
+def _offences(m: Measured) -> int:
+    """Count a row's offences: everything `suffocate`, which reports every code, finds.
+
+    Returns:
+      Its errors and warnings there.
+
+    """
+    return sum(m.levels[Level.SUFFOCATE])
+
+
+def _code_rows(rows: Sequence[Measured], codes: Sequence[str]) -> list[list[str]]:
+    """Lay out one version's rows of offences per code, then their total.
+
+    Returns:
+      A row per corpus (its offences per code, and all of them), then a **Total** row with each
+      code's share of every offence.
+
+    """
+    found: list[list[str]] = [
+        [
+            m.corpus.name,
+            m.corpus.version,
+            m.version,
+            _number(m.files),
+            *(_number(m.codes[c]) for c in codes),
+            _number(m.codes.total()),
+        ]
+        for m in rows
+    ]
+    everything: int = sum(m.codes.total() for m in rows)
+    total: list[str] = [
+        "**Total**",
+        "",
+        rows[0].version,
+        _number(sum(m.files for m in rows)),
+        *(_share(sum(m.codes[c] for m in rows), everything) for c in codes),
+        _number(everything),
+    ]
+    return [*found, total]
+
+
+def _level_rows(rows: Sequence[Measured]) -> list[list[str]]:
+    """Lay out one version's rows of errors and warnings per level and `--fix`'s results, then their total.
+
+    Returns:
+      A row per corpus, then a **Total** row; what was fixed and guessed is also a share of the
+      offences `suffocate` finds.
+
+    """
+    levels: list[Level] = list(Level)
+
+    def row(name: str, m: Sequence[Measured]) -> list[str]:
+        offences: int = sum(_offences(one) for one in m)
+        return [
+            name,
+            m[0].version,
+            *(
+                f"{_number(sum(one.levels[level][0] for one in m))} / "
+                + _number(sum(one.levels[level][1] for one in m))
+                for level in levels
+            ),
+            _share(_sum(one.fixed for one in m), offences),
+            _share(_sum(one.guessed for one in m), offences),
+            _number(sum(one.broken for one in m)),
+            _number(sum(one.left for one in m)),
+        ]
+
+    return [*(row(m.corpus.name, [m]) for m in rows), row("**Total**", rows)]
+
+
 def tables(measured: Sequence[Measured]) -> str:
-    """Write the two tables as Markdown, a row per corpus and version.
+    """Write the two tables as Markdown, a row per corpus and a total per version.
 
     Returns:
       The offences per code at `suffocate` (every code a version reports), then each level's errors
@@ -296,59 +422,51 @@ def tables(measured: Sequence[Measured]) -> str:
 
     """
     codes: list[str] = sorted({code for m in measured for code in m.codes})
+    versions: list[list[Measured]] = [
+        [m for m in measured if m.version == version]
+        for version in dict.fromkeys(m.version for m in measured)
+    ]
     first: list[str] = _table(
         [
-            ["Corpus", "Version", "constricter", "Files", *(f"`{code}`" for code in codes)],
-            *(
-                [
-                    m.corpus.name,
-                    m.corpus.version,
-                    m.version,
-                    _number(m.files),
-                    *(_number(m.codes[c]) for c in codes),
-                ]
-                for m in measured
-            ),
+            ["Corpus", "Version", "constricter", "Files", *(f"`{code}`" for code in codes), "Total"],
+            *(row for rows in versions for row in _code_rows(rows, codes)),
         ],
         right=3,
     )
-    levels: list[Level] = list(Level)
     second: list[str] = _table(
         [
             [
                 "Corpus",
                 "constricter",
-                *(f"`{level.name.lower()}`" for level in levels),
+                *(f"`{level.name.lower()}`" for level in Level),
                 "Fixed",
                 "Guessed",
                 "Broken",
                 "Left",
             ],
-            *(
-                [
-                    m.corpus.name,
-                    m.version,
-                    *(f"{_number(m.levels[level][0])} / {_number(m.levels[level][1])}" for level in levels),
-                    _number(m.fixed),
-                    _number(m.guessed),
-                    m.broken,
-                    m.left,
-                ]
-                for m in measured
-            ),
+            *(row for rows in versions for row in _level_rows(rows)),
         ],
         right=2,
     )
     python: str = sys.version.split()[0]
+    # Filled to 100 columns, as Prettier fills a paragraph, so CI's `prettier --check` passes.
+    codes_note: str = textwrap.fill(
+        " ".join(
+            [
+                f"Offences per code at `suffocate`, with `all-scopes` (Python {python});",
+                "the total row gives each code's share of them:",
+            ],
+        ),
+        width=_PROSE_WIDTH,
+    )
+    levels_note: str = textwrap.fill(_LEVELS_NOTE, width=_PROSE_WIDTH)
     return "\n".join(
         [
-            f"Offences per code at `suffocate`, with `all-scopes` (Python {python}):",
+            codes_note,
             "",
             *first,
             "",
-            "Errors / warnings at each level, by the version's own rules and defaults; what `--fix`",
-            "fixed, what `--unsafe-fixes` guessed on top, files a fix broke, and what a second pass would",
-            "still fix:",
+            levels_note,
             "",
             *second,
         ],
@@ -398,7 +516,10 @@ def main(argv: Sequence[str]) -> int:
     versions: list[str] = list(VERSIONS)
     if _VERSIONS_FLAG in argv:
         versions = argv[argv.index(_VERSIONS_FLAG) + 1].split(",")
-    measured: list[Measured] = [measure(corpus, version) for version in versions for corpus in corpora()]
+    name: str = argv[argv.index(_LABEL_FLAG) + 1] if _LABEL_FLAG in argv else __version__
+    measured: list[Measured] = [
+        measure(corpus, version, name) for version in versions for corpus in corpora()
+    ]
     _ = sys.stdout.write(f"{tables(measured)}\n")
     if _WRITE_FLAG in argv:
         record(measured, replace=_REPLACE_FLAG in argv)

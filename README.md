@@ -194,50 +194,47 @@ select = ["LVA00"]
 ignore = ["LVA003"]
 ```
 
-`--fix` adds the annotation where the value decides it, for a plain `name = value` in a function or
-module body:
+`--fix` adds the annotation where the value decides it: a literal (`count = 0` becomes
+`count: int = 0`), a container whose elements agree, a constructor or a function that declares its
+return type (in another checked file too), a copy, subscript, attribute or method call of a local
+whose type is known, and values computed from those; a loop's target or an unpacking's names get a
+declaration on the line before. `--unsafe-fixes` adds guesses, and `--show-fixes` lists each fix and
+how its value decided it. The full list is in
+[docs/FIXES.md](https://github.com/ivylikethevine/python-constricter/blob/main/docs/FIXES.md).
 
-- a literal: `count = 0` becomes `count: int = 0`;
-- a container whose elements agree: `[1, 2]` gives `list[int]`, `{"a": (1, "b")}` gives
-  `dict[str, tuple[int, str]]`;
-- a call to a capitalised name (`path = Path(...)` gives `Path`), or to a plain function that
-  declares its return type (not a decorated, generic, async or redefined one, and not a return of
-  `None`, `Any` or one that uses a `TypeVar`), in the same module or, with the CLI, in another file
-  it's checking: `from pkg.util import f`, `import pkg.util as u` then `u.f()`, relative imports and
-  re-exports all work, as long as every name in the type already means the same thing in the file;
-- a local whose type is already known (annotated, a parameter, or fixed earlier in the same scope):
-  a plain copy (`y = x`), a subscript (`nums[0]`), an attribute or method call of a class defined in
-  the same module (`p.x`, `p.norm()`), a `str`/`bytes` method with a fixed return (`s.strip()`), or
-  a `list`/`set`/`dict` method that returns its own element type (`nums.pop()`, `d.get(k)` as
-  `V | None`);
-- a value computed from such: `a if c else b` when both sides agree; arithmetic on builtin scalars
-  (`n + 1`, `n / 2`, `"x" * n`, `"%s" % n`; never `**`, whose result can change type); a list, set
-  or dict comprehension whose elements are known; `sorted`, `list`, `set`, `frozenset` or `tuple` of
-  something whose elements are; and `await` of a call to one of the module's `async def`s.
+### Installing and running
 
-A loop's target (LVA002) and an unpacking's names (LVA001) are declared instead, on a line of their
-own before the statement: `for k, v in ages.items():` with `ages: dict[str, int]` gets `k: str` and
-`v: int` above it. The target's type comes from what's iterated: a `range`, `enumerate` and `zip` of
-known things, a `dict`'s `.keys()`/`.values()`/`.items()`, or any container whose type is known; an
-unpacking splits a tuple type (`a, b = pair`, `pair: tuple[int, str]`) over its names.
+```bash
+pip install python-constricter           # into the project's environment
+uvx --from python-constricter constricter # or run it without installing: uv's tool runner
+pipx run --spec python-constricter constricter  # or pipx's
+```
 
-With `--unsafe-fixes`, LVA008 and LVA010 are fixed too, by rewriting the annotation (`total: float`
-only ever given `int`s becomes `total: int`): a guess, since a declared type can be wider on
-purpose.
+Tools that run flake8 or pylint (VS Code's extensions, python-lsp-server, prospector, MegaLinter,
+Trunk) pick the plugin up once it's installed alongside them.
 
-It never touches class bodies (a dataclass would gain a field), and it leaves what it can't fix
-reported. The standard library and third-party packages are out of reach.
+Without `lint.external`, ruff flags `# noqa: LVA00x` (RUF102) and `--fix` deletes it.
 
-`--show-fixes` lists, after the report, each fix and how its value decided it (for `b = s.strip()`:
-`str`, from `str.strip`'s fixed return type), marking the guesses `--unsafe-fixes` would add;
-`--format=json` always carries the same as a `fix` object (`annotation`, `reason`, `unsafe`) on each
-result.
+The CLI defaults to `.`, checks `*.py` and `*.ipynb`, and skips hidden dirs, `__pycache__`, `venv`,
+`site-packages`, `build`, `dist` and `node_modules` by directory name; `--exclude` adds more
+directory names (or globs) to skip the same way, on top of matching whole paths and file names. Exit
+codes: `0` no errors, `1` errors, `2` an unreadable or unparsable file, a `--fix` its encoding can't
+hold, or a bad `pyproject.toml`. A module is read in its PEP 263 declaration's encoding.
 
-The type hierarchy LVA008–LVA010 compare through is the numeric tower (`bool` < `int` < `float` <
-`complex`) plus the classes a module defines, under the bases they name.
-`[tool.constricter.narrower]` (or the plugins' `narrower` option, as `B=A, int=`) replaces what
-those say for each type it names, and vouches for the types it names: an imported type the rules
-would never compare otherwise is compared.
+pre-commit, after ruff's hooks (or `constricter-fix`, which runs `--fix` first):
+
+```yaml
+- repo: https://github.com/ivylikethevine/python-constricter
+  rev: v0.2.3
+  hooks:
+    - id: constricter
+```
+
+pre-commit.ci, tox, nox, Bazel, Pants and the GitHub Action (PR annotations, a summary table and a
+SARIF log) are in
+[docs/INTEGRATIONS.md](https://github.com/ivylikethevine/python-constricter/blob/main/docs/INTEGRATIONS.md);
+settings for VS Code, Zed and Neovim are in
+[docs/editors/](https://github.com/ivylikethevine/python-constricter/blob/main/docs/editors/README.md).
 
 ### Baselines
 
@@ -304,7 +301,11 @@ unsaved buffers through a command need (none-ls, nvim-lint, flycheck, ALE, efm-l
 ### SARIF (code scanning)
 
 `--format=sarif` writes SARIF 2.1.0, with each result's level (`error` or `warning`) set by
-`--level`. In GitHub Actions, upload it to code scanning (the job needs `security-events: write`):
+`--level`. Each rule has its help text and a link to [Rules](#rules), and each certain fix is a
+SARIF fix (columns count characters: `columnKind` is `unicodeCodePoints`). In GitHub Actions, upload
+it to code scanning (the job needs `security-events: write`; the
+[GitHub Action](https://github.com/ivylikethevine/python-constricter/blob/main/docs/INTEGRATIONS.md#github-actions)'s
+`sarif-file` output does the same):
 
 ```yaml
 - run: constricter --format=sarif src > constricter.sarif
@@ -318,434 +319,16 @@ unsaved buffers through a command need (none-ls, nvim-lint, flycheck, ALE, efm-l
 SonarQube and SonarCloud import it with `sonar.sarifReportPaths=constricter.sarif`; any other tool
 that reads SARIF 2.1.0 takes the same file.
 
-Tools that run flake8 or pylint (VS Code's extensions, python-lsp-server, prospector, MegaLinter,
-Trunk) pick the plugin up once it's installed alongside them.
-
-Without `lint.external`, ruff flags `# noqa: LVA00x` (RUF102) and `--fix` deletes it.
-
-The CLI defaults to `.`, checks `*.py` and `*.ipynb`, and skips hidden dirs, `__pycache__`, `venv`,
-`site-packages`, `build`, `dist` and `node_modules` by directory name; `--exclude` adds more
-directory names (or globs) to skip the same way, on top of matching whole paths and file names. Exit
-codes: `0` no errors, `1` errors, `2` an unreadable or unparsable file, or a bad `pyproject.toml`.
-
-```bash
-pip install python-constricter           # into the project's environment
-uvx --from python-constricter constricter # or run it without installing: uv's tool runner
-pipx run --spec python-constricter constricter  # or pipx's
-```
-
-Editors: VS Code, Zed and Neovim settings are in [`docs/editors/`](docs/editors/README.md).
-
-pre-commit, after ruff's hooks (or `constricter-fix`, which runs `--fix` first):
-
-```yaml
-- repo: https://github.com/ivylikethevine/python-constricter
-  rev: v0.2.3
-  hooks:
-    - id: constricter
-```
-
-tox and nox, with it in the environment's dependencies:
-
-```ini
-# tox.ini
-[testenv:types]
-deps = python-constricter
-commands = constricter --level=constrict src
-```
-
-```python
-# noxfile.py
-@nox.session
-def types(session: nox.Session) -> None:
-    session.install("python-constricter")
-    session.run("constricter", "--level=constrict", "src")
-```
-
-Bazel, through [rules_lint](https://github.com/aspect-build/rules_lint)'s flake8 aspect, with the
-plugin in the flake8 binary's dependencies (`tools/lint/BUILD.bazel`, then `linters.bzl` as
-rules_lint's own docs have it):
-
-```starlark
-load("@rules_python//python/entry_points:py_console_script_binary.bzl", "py_console_script_binary")
-
-py_console_script_binary(
-    name = "flake8",
-    pkg = "@pip//flake8:pkg",
-    deps = ["@pip//python_constricter"],  # the plugin, from your requirements
-)
-```
-
-Pants, whose flake8 installs from a resolve with the plugin locked in it (`pants.toml`; both
-`flake8` and `python-constricter` in that resolve's requirements):
-
-```toml
-[python.resolves]
-flake8 = "3rdparty/python/flake8.lock"
-
-[flake8]
-install_from_resolve = "flake8"
-requirements = ["flake8", "python-constricter"]
-```
-
-GitHub Actions, as PR annotations (it installs from the action's own tag, not PyPI):
-
-```yaml
-- uses: ivylikethevine/python-constricter@v0.2.3
-  with:
-    args: --format=github src tests # the default is `--format=github` on `.`
-    python-version: "3.13" # 3.11 or later
-```
-
 ## Development
 
-With [uv](https://docs.astral.sh/uv/) installed (CI pins 0.12.17):
-
-```bash
-export UV_PROJECT_ENVIRONMENT=local/.venv
-uv venv --prompt constricter local/.venv # the prompt name; uv sync reuses this venv
-uv sync --locked --no-install-project --no-build # the dev group: hash-checked wheels from uv.lock
-uv pip install --python local/.venv --no-deps --no-build-isolation -e .
-```
-
-Checks (as CI runs them): `ruff check .` (every rule, preview included), `ruff format --check .`,
-`basedpyright` (all), `mypy` (strict), `pylint constricter tests` (every extension),
-`flake8 constricter tests`, `typos`, `validate-pyproject pyproject.toml`, `uv lock --check`,
-`constricter --level=suffocate --all-scopes constricter tests`,
-`constricter --coverage --all-scopes --fail-under=100 constricter tests`, `pytest --cov` (100%
-branch coverage). Everything generated goes in `local/`. Python is indented with 4 spaces.
-
-After editing a dependency group, run `uv lock` (CI fails until you do). Dependabot updates
-`uv.lock`, the npm lock and the actions weekly.
-
-Fuzzing (`tests/test_fuzz.py`) runs with the tests: hypothesmith generates valid Python, which must
-never crash the checker and must stay valid after `--fix`. For a large real codebase, run
-`local/.venv/bin/python tests/corpus.py [PATH]` by hand: it checks PATH (default: this Python's
-standard library, about 730 files in a few seconds) at `suffocate` and prints the time, the offences
-per code, and any crash. `local/.venv/bin/python tests/corpus_fix.py [PATH]` runs
-`--fix --unsafe-fixes` on a copy of it (in `local/corpus-fix/`) and checks every file still compiles
-and a second pass has nothing left to fix. CI's Corpus job runs both against the standard library
-and, from the pinned `corpus` dependency group (`requests`, `flask`, `django`, `sqlalchemy` — a tiny
-HTTP client, two web frameworks and an ORM), the same way.
-
-`tests/corpus_table.py` measures every corpus with released constricter versions and this checkout
-(each isolated in its own environment), at every level, checked and fixed, and records a section per
-version in [`docs/RUNS.md`](docs/RUNS.md): offences per code, errors and warnings at each level,
-fixes, guesses, and anything a fix broke. It needs the `corpus` group
-(`uv sync --group dev --group corpus`) and `uv`; see its docstring for the options.
-
-CI also runs the tests on PyPy 3.11 and free-threaded Python 3.14, which install only the `test`
-dependency group: every dev tool doesn't have wheels for them, and the tests don't need them all.
-
-Markdown (markdownlint-cli2 and prettier, locked in `.github/package-lock.json`):
-
-```bash
-npm ci --prefix .github
-git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/markdownlint-cli2
-git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/prettier --check
-```
-
-To apply the rulesets in `.github/rulesets/` (repo admin):
-
-```bash
-gh api repos/ivylikethevine/python-constricter/rulesets --method POST --input .github/rulesets/main.json
-gh api repos/ivylikethevine/python-constricter/rulesets --method POST --input .github/rulesets/tags.json
-```
-
-To publish, add a trusted publisher on PyPI (repository `ivylikethevine/python-constricter`,
-workflow `release.yml`, environment `pypi`) and a `pypi` environment in the repo settings, then push
-a `v*` tag.
+Setting up, the checks CI runs, the corpus runs and the rules this project's own linters leave off
+are in
+[docs/CONTRIBUTING.md](https://github.com/ivylikethevine/python-constricter/blob/main/docs/CONTRIBUTING.md).
 
 ## Roadmap
 
-Done:
-
-- **ci.yml** runs on pushes and PRs: the checks above and the pre-commit hook (Lint), Markdown
-  (Docs), pytest on Linux, macOS and Windows × Python 3.11–3.14 (Test), and the sdist and wheel,
-  `twine check` and a wheel smoke test (Build).
-- **security.yml** runs on pushes, PRs and weekly: CodeQL (Python and Actions), zizmor (pedantic),
-  actionlint, pip-audit on the lock, and dependency review on PRs.
-- **scorecard.yml** runs OpenSSF Scorecard on `main` and weekly.
-- **release.yml** runs on `v*` tags: CI, then **build.yml** (a reusable workflow) builds the dists,
-  checks the tag matches the version, and attests their provenance (SLSA v1 Build Level 3, as the
-  build and attestation run in a reusable workflow), then PyPI (trusted publishing), then a GitHub
-  release with the dists and the attestation bundle. Verify a download with
-  `gh attestation verify FILE --repo ivylikethevine/python-constricter --signer-workflow ivylikethevine/python-constricter/.github/workflows/build.yml`.
-- **Pinning:** actions by SHA, Python dependencies by hash (`uv.lock`), npm by lockfile, actionlint
-  and uv by version. Dependabot updates all but the last two; `uv lock --check` fails CI on drift.
-- **harden-runner** blocks all but the observed hosts in every Linux job that has run.
-- **Rulesets:** `.github/rulesets/` requires every check on `main` and protects `v*` tags.
-- **Settings** from `[tool.constricter]` in `pyproject.toml`.
-- **Python 2 code:** type comments count automatically in modules that import Python 2 `__future__`
-  features.
-- **All scopes:** `all-scopes` checks module and class bodies (`LVA004`).
-- **Suffocate:** `constricter/` and `tests/` pass at `--level=suffocate --all-scopes` in CI.
-- **More checks:** gitleaks over the whole history (Security), lychee on the Markdown links (offline
-  in Docs, external ones weekly), validate-pyproject and check-wheel-contents.
-- **SARIF docs**, and `--explain`, `--select` / `--ignore`, `--diff` and `--statistics`.
-- **Scorecard** blocks all but the hosts it was seen to use.
-- **Project files:** a `constricter-fix` pre-commit hook, a changelog (`docs/`, release notes
-  grouped by `.github/release.yml`), badges, issue and PR templates, CODEOWNERS, and contributing
-  and security policies in `docs/`.
-- **Per-path levels**, **`--jobs`** for parallel checking, and a **GitHub Action** (`action.yml`)
-  that CI runs on the project itself.
-- **LVA005, LVA006 and `--fix`.**
-- **`--coverage`** (and `--fail-under`) for annotation coverage, with test- and annotation-coverage
-  badges this project's CI keeps true.
-- **Baselines**, a **smarter `--fix`** (containers, same-module return types), **notebooks**, and
-  JSON with comments and trailing commas wherever constricter reads JSON.
-- **Fuzzing**, a **corpus run** (`tests/corpus.py`), an **adoption guide**, **`--fix` for
-  notebooks**, and **SLSA Build Level 3 provenance** (GitHub's artifact attestations, from a
-  reusable build workflow) on each release.
-- **Python 3.11+**, the oldest version still maintained after 3.10's end of life in October 2026.
-  Older Pythons aren't planned: 3.10 would add a runtime dependency (`tomli`) for a month, and
-  3.6–3.9 would mean dropping `match` from the checker and keeping a second CI setup with older
-  tools. Code written for any Python 3 version can still be checked.
-- **harden-runner** blocks all but the observed hosts in every Linux job that has run, the Linux
-  Test jobs and Scorecard included.
-- **Stdin**, **`gitlab`, `junit` and `rdjson` output**, **safe and `--unsafe-fixes`**, **per-file
-  ignores**, **`--exit-zero`** and **`--output-file`**, **tox and nox** snippets, **PyPy 3.11 and
-  free-threaded 3.14** in CI, and a **`--fix` corpus run** (`tests/corpus_fix.py`).
-- **Cross-module `--fix`** in the CLI (the flake8 and pylint plugins see one file at a time).
-- **CI's Corpus job** runs `tests/corpus.py` and `tests/corpus_fix.py` against the runner's Python
-  standard library on every push and PR.
-- **`project.Index`** sorts modules by name so `calls` finds a module/submodule import by prefix
-  (`bisect`) instead of scanning every indexed module.
-- **Enum bases and factory calls resolve by import origin** (`annotations.factories`,
-  `checker._is_enum`'s `imported_from` check), so an aliased or re-exported `Enum`/`NamedTuple`/...
-  is still recognised; the bare-name lists remain a fallback for one imported some other way.
-- **A general path-exclusion mechanism**: `--exclude` globs also match a directory name during a
-  directory walk, folding the built-in skip list (`__pycache__`, `node_modules`, hidden dirs, ...)
-  into the same mechanism instead of a separate hardcoded check.
-- **`_FileRun` split** into `_CheckRun`, `_BaselineRun` and `_CoverageRun` (one per mode-group,
-  instead of one struct with fields only some modes populate), and `_check_path` and
-  `_baseline_path` share a `_read_checked` read-and-report-errors wrapper.
-- **LVA007: duplicate/redundant typing.** A name annotated again with the type it already has, in
-  the same straight-line block; a warning at every level, an error at `suffocate`.
-- **`--fix` infers more**: `not x` (always a real `bool`, unlike a comparison, which sqlalchemy's
-  own corpus data proves isn't safe to assume — it overloads `<`/`==` to build query expressions); a
-  table of builtins with a fixed, un-overloadable return type (`len`→`int`,
-  `isinstance`/`hasattr`/`callable`/`issubclass`→`bool`, `str`/`repr`/`chr`→`str`, `int`/`float`
-  →themselves, ...); and copying an already-known local's type for a plain `x = y` (from its own
-  annotation, an earlier fix in the same scope, or an annotated parameter) — a guessed source's type
-  copies too, marked just as guessed, so a chain of copies still converges in one `--fix` pass
-  instead of needing a second. Verified on the eighteen-codebase corpus below: fixed rose from
-  12,104 to 13,608 of the same 94,523 found (12.8% → 14.4%), no crashes, nothing left to fix on a
-  second pass anywhere, and `requests`' own test suite (not just its compile check) passed
-  identically — 617 passed, 15 skipped, 1 xfailed — before and after `--fix --unsafe-fixes` on its
-  source.
-- **`--fix` infers subscripts and attributes** of an already-typed local: `container[key]` (its
-  element type from a `list`, `dict` or homogeneous `tuple[T, ...]`; the same `list`/`str`/`bytes`
-  type back for a slice; nothing for a fixed-length heterogeneous tuple, since the element varies
-  with the index) and `obj.attr` (a class-level annotated attribute of a class defined in the same
-  module — not one only assigned in `__init__`, which would need dataflow across methods to see).
-  Both build on `_Scope.types`, so a guessed source's uncertainty carries through automatically, the
-  same as a plain copy. Re-verified on the corpus: no crashes, still converges in one `--fix` pass,
-  `requests`' test suite still passes identically, and fixed rose further (e.g. standard library
-  4,431 → 4,450, mypy 1,939 → 1,996, django 2,408 → 2,414, sqlalchemy 830 → 848, pydantic 434 →
-  447).
-- **A permanent, pinned corpus.** By hand (`tests/corpus.py`/`corpus_fix.py`,
-  `--unsafe-fixes --all-scopes`), against eighteen real packages, to choose it — OpenCV's Python
-  bindings (the original idea) turned out to be a poor fit, since they're mostly thin C bindings,
-  not hand-annotated Python:
-
-  | Codebase         | Version | Files | Left un-typed |      Fixed | LVA006 @5 | LVA007 |
-  | ---------------- | ------- | ----: | ------------: | ---------: | --------: | -----: |
-  | standard library | 3.11.16 |   732 |        24,173 |      3,828 |         0 |      0 |
-  | mypy             | 2.3.1   |   195 |         9,853 |      1,777 |         0 |      0 |
-  | pylint           | 4.0.8   |   178 |         3,609 |        486 |         0 |      0 |
-  | libcst           | 1.9.0   |   297 |         3,407 |      1,042 |       201 |      0 |
-  | uiautomator2     | 3.7.0   |    32 |           888 |         86 |         0 |      0 |
-  | requests         | 2.34.2  |    19 |           372 |         45 |         0 |      0 |
-  | flask            | 3.1.3   |    24 |           410 |         29 |         0 |      0 |
-  | click            | 8.5.0   |    17 |           567 |         86 |         0 |      0 |
-  | praw             | 8.0.3   |    89 |           602 |        114 |         0 |      0 |
-  | boto3            | 1.43.99 |    39 |           483 |         93 |         0 |      0 |
-  | django           | 6.1.1   |   907 |        15,648 |      2,248 |         0 |      0 |
-  | pydantic         | 2.13.5  |   105 |         2,998 |        367 |         0 |      0 |
-  | attrs            | 26.1.0  |    13 |           336 |         60 |         0 |      0 |
-  | aiohttp          | 3.14.3  |    55 |         1,590 |        217 |         0 |      0 |
-  | paramiko         | 5.0.0   |    41 |         1,272 |        241 |         0 |      0 |
-  | scrapy           | 2.19.0  |   179 |         1,814 |        389 |         1 |      0 |
-  | sqlalchemy       | 2.0.54  |   257 |        12,556 |        643 |         7 |      0 |
-  | rich             | 15.0.0  |   100 |         1,841 |        353 |         0 |      0 |
-  | **Total**        |         |       |    **82,419** | **12,104** |           |        |
-
-  No crashes on any of them, and `--unsafe-fixes` left nothing broken or nothing unfixed on a second
-  pass, on any of them; `--nesting`'s default then (5) never fires on fourteen of the eighteen, and
-  LVA007 found nothing on any of them, at any nesting — strong evidence it isn't noisy
-  (`--nesting`'s default is still worth revisiting some day: `libcst`, deeply nested CST types, is
-  by far the most affected, `sqlalchemy` and `scrapy` are the only other two to hit it at all at the
-  default, and 3 already reported 124 times on sqlalchemy, 45 on mypy). Chose four to run
-  permanently in CI (see the Corpus job): **`requests`** (tiny, so a fast check; extremely stable
-  and widely known; the canonical "makes external API calls" library; unlike the dev tools,
-  representative of typical, lightly-typed real-world code), **`flask`** and **`django`** (two web
-  frameworks, more decorator/class-heavy than `requests`; `django` pinned to the 5.2 LTS, since 6.x
-  needs Python 3.12+) and **`sqlalchemy`** (an ORM, and the corpus most likely to exercise
-  `LVA006`). Each runs as its own Corpus (`package`) matrix job, from a new `corpus` dependency
-  group.
-
-  Also validated `requests` specifically: cloned `v2.34.2` (its source checkout, with its own test
-  suite, not just the installed wheel), ran `--fix --unsafe-fixes --all-scopes` on `src/requests/`,
-  and ran its own test suite before and after. Identical both times: 617 passed, 15 skipped, 1
-  xfailed — the inferred types changed nothing about its runtime behaviour. One found a real, if
-  inert, mistake in the "guessed" heuristic: `internetSettings = winreg.OpenKey(...)` (Windows-only,
-  guarded by `sys.platform == "win32"`, so untested by this run) got annotated
-  `internetSettings: winreg.OpenKey = ...` — `winreg.OpenKey` is a _function_, not a class, but its
-  PascalCase name (a Windows API convention, not Python's) fools the capitalised-name "constructs a
-  class" heuristic (`annotations._constructs`).
-
-- **`--fix` infers `self.attr` and `str`/`bytes` method calls.** `classes` (used for `obj.attr`) now
-  also collects `self.x: T = ...` from anywhere in a method's body, not just class-level
-  annotations; a method whose first parameter is literally named `self` has it typed as its class
-  (`_owners`, by the method's `id()`, not by name — a same-named method on an unrelated class isn't
-  confused with it), so `self.attr` resolves the same way `obj.attr` already did. Separately, a
-  fixed table of `str`/`bytes` methods whose return type doesn't depend on their arguments (`strip`,
-  `split`, `startswith`, `encode`, `decode`, ...) makes `some_str.strip()` on an already-typed local
-  as certain as a builtin function call — not a guess, unlike an arbitrary method call, which stays
-  guessed. Re-verified on the corpus: no crashes, still converges in one `--fix` pass on all six
-  re-checked (standard library, mypy, `requests`, `flask`, `django`, `sqlalchemy`), and fixed rose
-  further still (e.g. mypy 1,996 → 2,074, sqlalchemy 848 → 1,039, `requests` 52 → 57).
-
-- **`--fix` infers method calls** on an already-typed local, as certain fixes: a method of a class
-  defined in the same module (`method_returns`, the same rules as a module function's: plain, not
-  decorated or redefined, not `None`, vague or a `TypeVar`, and never on a generic class; a bare
-  `Self` return is the class itself), and `list`/`set`/`dict` methods whose return is the receiver's
-  own element type (`copy`, `pop`, `setdefault`, `get` as `V | None`, `popitem`; any other argument
-  shape, like `pop(key, default)` or a keyword, decides nothing). `BinOp` (`a + b`) stays skipped:
-  it needs both operands' types and proof the operator isn't overloaded, for little gain.
-  Re-verified with `tests/corpus_fix.py` on Python 3.14's standard library and the four pinned
-  corpus packages: no crashes, nothing stops compiling, still converges in one pass, and fixed rose
-  on four of the five (standard library 23,575 → 23,645, sqlalchemy 1,039 → 1,123, flask 35 → 44,
-  `requests` 57 → 66; django unchanged at 2,324).
-
-- **Release jobs block egress**: the build, PyPI and GitHub release jobs run harden-runner in
-  `block` with the hosts the v0.2.2 and v0.2.3 release runs used.
-- **On PyPI**: `pip install python-constricter` is the documented install, with PyPI version and
-  Python version badges (the classifiers now name 3.11–3.14, CPython and PyPy).
-
-- **LVA009: a value that doesn't fit the annotation**, over the name's whole lifetime in the scope
-  (see [Rules](#rules)): a warning, an error from `constrict`, pylint's `C9109`
-  (`mismatched-value-type`). Built on the value-flow engine (`constricter.rules.flow`); across
-  Python 3.14's standard library and the four corpus packages it finds 10, each a real mismatch.
-
-- **LVA008: an annotation that could narrow**, and **LVA010: a union member no value uses** (see
-  [Rules](#rules)): reported from `constrict`, errors at `suffocate`; pylint's `C9108`
-  (`narrowable-annotation`) and `C9110` (`unused-union-member`). Claimed only for a function's own
-  names with every value known: measured on instadroid's app (47 files), their first two findings
-  were module-level settings rebound elsewhere (a documented `None` default, a
-  `globals().update(...)`), which is why module and class variables are left out; on the corpus, as
-  expected of code this full of imported types, they find nothing.
-
-- **`--show-fixes`**: each `--fix` annotation with how its value decided it (a literal, a copy of a
-  local, a function's declared return type, a guessed constructor, ...), after the report; JSON
-  output carries the same `fix` object on every result.
-- **A user-defined type hierarchy** for LVA008–LVA010: `[tool.constricter.narrower]` (and the
-  plugins' `narrower` option), overriding the defaults and the module's classes per type, and making
-  the types it names comparable.
-- **LVA011: a fixed-length tuple longer than `max-length`** (4 by default, measured: across the
-  corpus, variable annotations list 2 types 140 times, 3 and 4 about 20 times each, and 5 or more 3
-  times). Reported from `strict`, an error at `suffocate`; pylint's `C9111`.
-- **Reorganised**: a flat `constricter/` (no `src/`) in `rules/`, `fix/`, `cli/` and `plugins/`,
-  with no module over 750 lines; `docs/` holds the changelog and contributing and security policies.
-
-- **Editor setup, install notes, `--format=full` and corpus runs**: settings for VS Code, Zed and
-  Neovim in `docs/editors/`; `uvx`/`pipx`, Bazel and Pants notes; `--format=full`, each offence with
-  its source line and a caret under the name; and `tests/corpus_table.py`, recording each version's
-  results on the corpus in `docs/RUNS.md`.
-
-- **`--fix` does more**: declarations before a loop (LVA002) or an unpacking; computed values
-  (conditionals, arithmetic on builtin scalars, comprehensions, `sorted`/`list`/`set`/`tuple` of
-  known elements, `await`); and, with `--unsafe-fixes`, LVA008's and LVA010's narrowed annotation.
-  On the corpus, with nothing broken and still one pass: the standard library 23,645 → 28,393 fixed,
-  django 2,324 → 2,648, sqlalchemy 1,123 → 1,409, flask 44 → 67, `requests` 66 → 79.
-
-Next, by scope (smallest first) and, within each, by value. Each item says what it is, why, how, and
-when it's done.
-
-### Small: a day or less
-
-1. **pre-commit fixes.** `require_serial: true` on the `constricter-fix` hook: pre-commit splits a
-   large file list across processes, so each one's cross-module `--fix` sees only part of the
-   project. Plus a pre-commit.ci snippet in the README (the hooks are pure Python, so they run there
-   as they are). Done when a split run fixes what a single run does.
-2. **SARIF `helpUri` and `fixes`.** Each rule links to its README section, and each certain fix is a
-   SARIF `fix` (the insertion, declaration or rewrite `Fix` records), so code scanning can show and
-   apply it. Done when `tests/test_cli.py`'s SARIF test checks both and the output validates against
-   the SARIF 2.1.0 schema.
-3. **GitHub Action improvements.** A `version` input that installs that release from PyPI (with uv)
-   instead of building the action's own checkout; a per-code summary table on the run page
-   (`$GITHUB_STEP_SUMMARY`); and a `sarif-file` output, documented with `upload-sarif`. Done when
-   CI's Action job uses each.
-4. **Investigate non-UTF-8 source.** A file with a PEP 263 coding declaration
-   (`# -*- coding: latin-1 -*-`) is a valid Python module, but the CLI reads every file as UTF-8, so
-   one is an unreadable file today (exit 2), and 0.2.2's `--fix` crashed on the standard library's
-   `test/encoded_modules/` (docs/RUNS.md). Find out how common such files are (the corpus has a
-   few), then decode by the declaration (`tokenize.detect_encoding`) for checking, and decide what
-   `--fix` should write back: the same encoding, or refuse. Done when the encoded modules check and
-   fix like any other.
-
-### Medium: a few days
-
-1. **Finer fix levels.** Give each inference mechanism a stable id alongside its reason (`literal`,
-   `copy`, `subscript`, `attribute`, `method`, `builtin`, `call`, `constructor`, `container`, ...),
-   print it in `--show-fixes`, and let a project choose which apply: `fix-select` and `fix-ignore`,
-   plus `unsafe-fix-select` to promote a guess it trusts (like ruff's `extend-safe-fixes`). Replaces
-   the single certain/guess split without breaking it: the defaults match today's.
-2. **An optional `Final` rule (LVA012).** A local bound once and never rebound (one binding in its
-   value-flow lifetime, not a loop target or augmented) could be `Final`. Off unless selected, an
-   error only at `suffocate`: most locals are bound once, so measure it on the corpus before
-   choosing anything more. Neither ruff nor pylint has one.
-
-### Large: a week or more
-
-1. **A language server** (`constricter server`, in an optional `lsp` extra with pygls): diagnostics
-   as a file changes, certain fixes as quick fixes and guesses as a separate action, settings from
-   `pyproject.toml`. The only way into Helix and Zed, and how JetBrains (LSP4IJ) and Neovim's
-   built-in client would use it; then a VS Code extension from Microsoft's python-tools template,
-   bundling it. Wants the result cache (Medium 2) first.
-2. **Type-checker-backed inference**, opt-in (`--infer-with=ty|basedpyright`): start that checker's
-   language server, ask for the inlay hints over each file, and turn a hint on an unannotated first
-   binding into a fix, always a guess (`--unsafe-fixes`), since a hint can be too wide, a `Literal`,
-   or name something the file doesn't import. The largest potential gain in fix rate; shares the
-   client side of the language-server plumbing.
-
-### Ongoing
-
-- **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+ (last checked 2026-09-22:
-  6.2.0 still has only a CPython 3.10 one).
-- **Revisit the [disabled rules](#disabled-rules)** as tools change (last checked 2026-09-22:
-  COM812, one-line DOC201/DOC402 and `max-args` came back on; the rest can't go yet).
-
-### Waiting on a step outside this repository
-
-1. **The GitHub Action on the Marketplace.** It already works from any tag, and `action.yml` has the
-   name, description and branding a listing needs: tick "Publish this Action to the GitHub
-   Marketplace" when publishing a release.
-2. **Trunk and MegaLinter plugin definitions**, submitted upstream. MegaLinter's is
-   `mega-linter-plugin-constricter/constricter.megalinter-descriptor.yml` (usable now through
-   `PLUGINS`); what's left is a pull request adding it to `.automation/plugins.yml` in
-   oxsecurity/megalinter. Trunk's is drafted in `upstream/trunk/linters/constricter/`, for a pull
-   request to trunk-io/plugins with the snapshot its test harness generates.
-3. **A conda-forge recipe**, submitted to conda-forge/staged-recipes: drafted in
-   `upstream/conda-forge/recipes/python-constricter/`. It builds and passes its tests with
-   rattler-build against flit-core 4.0.2, still conda-forge's newest (2026-09-22), while
-   `pyproject.toml` asks for `flit_core>=4.1`: either the recipe's host pin or that floor has to
-   give until conda-forge has 4.1.
-
-## Disabled rules
-
-Everything else is on. Some of these may be revisited.
-
-| Tool               | Rule                                                                               | Why                                                                                                                   |
-| ------------------ | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| ruff               | `incorrect-blank-line-before-class`, `multi-line-summary-second-line` (D203/D213)  | Each contradicts a rule that stays on (D211/D212); one of each pair has to go.                                        |
-| ruff (`tests/`)    | `assert` (S101)                                                                    | pytest works through `assert`.                                                                                        |
-| mypy, basedpyright | astroid's untyped calls and missing stubs                                          | astroid (pylint's parser) ships no type information.                                                                  |
-| typos              | the word `astroid`                                                                 | A real package name.                                                                                                  |
-| harden-runner      | `egress-policy: audit` on macOS and Windows, and in the weekly external-link check | harden-runner supports only audit on GitHub's macOS and Windows runners; external links can go anywhere.              |
-| reuse              | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)            | No recent release ships a wheel for Python 3.11+, so installing it builds from source with an unpinned `poetry-core`. |
-| zizmor             | `self-repository` (`.github/zizmor.yml`)                                           | Scorecard reads the `$/` form it wants as an unpinned third-party action, so local actions stay `./`.                 |
+What's done and what's next, by scope:
+[docs/ROADMAP.md](https://github.com/ivylikethevine/python-constricter/blob/main/docs/ROADMAP.md).
 
 ## AI usage
 

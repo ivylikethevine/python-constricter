@@ -3,9 +3,11 @@
 
 import contextlib
 import difflib
+import io
 import itertools
 import json
 import sys
+import tokenize
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field, replace
@@ -34,14 +36,30 @@ EXIT_ERROR: Final = 2
 _ALL: Final = 100  # percent
 
 
+def _encoding(path: Path, data: bytes) -> str:
+    """Find the encoding of `path`, whose bytes are `data`: a notebook's is UTF-8 (it's JSON).
+
+    Returns:
+      A module's, as Python finds it: a PEP 263 declaration (`# -*- coding: latin-1 -*-`), a BOM
+      (`utf-8-sig`), or UTF-8. Raises `SyntaxError` for an unknown or contradictory one.
+
+    """
+    return (
+        "utf-8" if path.suffix == notebook.SUFFIX else tokenize.detect_encoding(io.BytesIO(data).readline)[0]
+    )
+
+
 def _read(path: Path) -> str:
-    """Read `path`; `-` is standard input.
+    """Read `path`, in its encoding; `-` is standard input.
 
     Returns:
       Its text.
 
     """
-    return sys.stdin.read() if path == STDIN else path.read_bytes().decode("utf-8")
+    if path == STDIN:
+        return sys.stdin.read()
+    data: bytes = path.read_bytes()
+    return data.decode(_encoding(path, data))
 
 
 def _source(raw: str, name: Path) -> tuple[str, list[notebook.Line]]:
@@ -134,7 +152,10 @@ def _diff(raw: str, name: Path, offences: Sequence[Offence]) -> str:
 
 
 def fix_file(path: Path, offences: Sequence[Offence]) -> int:
-    """Add each fixable offence's annotation to `path` (a notebook's, in its cells).
+    """Add each fixable offence's annotation to `path` (a notebook's, in its cells), in its encoding.
+
+    Raises `UnicodeEncodeError`, leaving the file as it was, when an annotation can't be written in
+    the file's encoding (a PEP 263 declaration's).
 
     Returns:
       How many offences were fixed.
@@ -143,7 +164,9 @@ def fix_file(path: Path, offences: Sequence[Offence]) -> int:
     count: int
     if not (count := sum(1 for o in offences if o.fix)):
         return 0
-    _ = path.write_bytes(_fixed(_read(path), path, offences).text.encode())
+    data: bytes = path.read_bytes()
+    encoding: str = _encoding(path, data)
+    _ = path.write_bytes(_fixed(data.decode(encoding), path, offences).text.encode(encoding))
     return count
 
 
@@ -225,6 +248,25 @@ def _read_checked(
     return raw, offences, ""
 
 
+def _results(raw: str, name: Path, offences: Sequence[Offence], options: Options) -> list[Result]:
+    """Turn the offences in `raw`, the text of `name`, into the results to report.
+
+    Returns:
+      Each one the options don't filter out, with its source line and its fix as a text edit.
+
+    """
+    shown: dict[tuple[int | None, int], str] = _shown_lines(raw, name)
+    # A notebook's cells have no file lines for an edit to point at.
+    text: list[str] = [] if name.suffix == notebook.SUFFIX else lines(raw)
+    return [
+        r._replace(
+            source=shown.get((r.offence.cell, r.offence.line), ""),
+            replacement=fixes.replacement(text, r.offence) if text else None,
+        )
+        for r in options.filter.results(name, offences)
+    ]
+
+
 def _check_path(path: Path, calls: Mapping[str, str], options: Options) -> _CheckRun:
     """Check (and fix, or diff) one file, given the imported functions' return types.
 
@@ -241,11 +283,7 @@ def _check_path(path: Path, calls: Mapping[str, str], options: Options) -> _Chec
         return _CheckRun(error=error)
     baselined: int
     offences, baselined = options.filter.unbaselined(name, offences)
-    shown: dict[tuple[int | None, int], str] = _shown_lines(raw, name)
-    results: list[Result] = [
-        r._replace(source=shown.get((r.offence.cell, r.offence.line), ""))
-        for r in options.filter.results(name, offences)
-    ]
+    results: list[Result] = _results(raw, name, offences, options)
     unsafe: bool = options.unsafe_fixes
     fixing: list[Offence] = [r.offence for r in results if r.offence.fix and (unsafe or not r.offence.unsafe)]
     if options.mode is Mode.DIFF:
@@ -255,7 +293,11 @@ def _check_path(path: Path, calls: Mapping[str, str], options: Options) -> _Chec
     left: list[Result] = [r for r in results if r.offence not in fixing]
     if path == STDIN:  # the fixed source goes to stdout
         return _CheckRun(left, baselined, len(fixing), _fixed(raw, name, fixing).text)
-    return _CheckRun(left, baselined, fix_file(path, fixing))
+    try:
+        return _CheckRun(left, baselined, fix_file(path, fixing))
+    except UnicodeEncodeError as failure:  # the file is left as it was, its offences unfixed
+        message: str = f"an annotation can't be written in its encoding, {failure.encoding}; left as it was"
+        return _CheckRun(results, baselined, error=f"{name}: error: {message}")
 
 
 def _baseline_path(path: Path, calls: Mapping[str, str], options: Options) -> _BaselineRun:
@@ -336,7 +378,7 @@ def _report(options: Options, runs: Sequence[_FileRun], files: int) -> int:
         if options.mode is Mode.FIX:
             parts.append(f"fixed {sum(run.fixed for run in checked)}")
             guesses: int
-            if guesses := sum(r.offence.fix is not None for r in results):
+            if guesses := sum(r.offence.unsafe for r in results):
                 parts.append(f"{guesses} more with --unsafe-fixes")
         if options.filter.baseline_file is not None:
             parts.append(f"{sum(run.baselined for run in checked)} baselined")

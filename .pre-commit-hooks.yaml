@@ -10,3 +10,5 @@
   entry: constricter --fix --quiet
   language: python
   types_or: [python, jupyter]
+  # One process for every file: split across several, each one's cross-module --fix sees only part.
+  require_serial: true

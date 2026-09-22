@@ -6,6 +6,17 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A module is read in its PEP 263 declaration's encoding (`# -*- coding: latin-1 -*-`) or its BOM's,
+  not always UTF-8, and `--fix` writes it back in the same one (or leaves it, exit 2, when an
+  annotation can't be written in it).
+- SARIF: each rule has its help text and a `helpUri`, each certain fix is a SARIF `fix`, and columns
+  count characters (`columnKind: unicodeCodePoints`), not UTF-8 bytes.
+- rdjson: a loop target's or an unpacking's suggestion declares it on a line before the statement
+  (it was `for x: T in ...`).
+- The GitHub Action: a `version` input (a PyPI release, installed with uv), a per-code summary table
+  on the run page (`summary`), and a `sarif-file` output for `upload-sarif`.
+- The `constricter-fix` pre-commit hook runs as one process (`require_serial`), so its cross-module
+  `--fix` sees every file; a pre-commit.ci snippet in the README.
 - `--fix` declares a loop's target (LVA002) or an unpacking's names (`name: T` before the
   statement), infers conditionals, arithmetic on builtin scalars, comprehensions, `sorted`/`list`/
   `set`/`frozenset`/`tuple` of known elements and `await` of the module's `async def`s, and, with

@@ -3,22 +3,69 @@
 
 import contextlib
 from collections.abc import Sequence
+from typing import NamedTuple
 
 from constricter.offences import Edit, Fix, Offence
 
 
-def apply(lines: Sequence[str], offences: Sequence[Offence]) -> list[str]:
-    """Return `lines` with each fixable offence's edit made.
+class Replacement(NamedTuple):
+    """One fix as a text edit on `line` (from 1): after `prefix`, `deleted` becomes `text`.
+
+    A declaration inserts a whole line before its statement's: `prefix` and `deleted` are empty.
+    """
+
+    line: int
+    prefix: str  # the line's text before the edit
+    deleted: str
+    text: str
+
+    @property
+    def columns(self) -> tuple[int, int]:
+        """Where the edit starts and ends, in characters from 0."""
+        return len(self.prefix), len(self.prefix) + len(self.deleted)
+
+    @property
+    def byte_columns(self) -> tuple[int, int]:
+        """Where the edit starts and ends, in UTF-8 bytes from 0."""
+        start: int = len(self.prefix.encode())
+        return start, start + len(self.deleted.encode())
+
+
+def replacement(lines: Sequence[str], offence: Offence) -> Replacement | None:
+    """Turn `offence`'s edit into a text edit on `lines` (indexed from 1 by its line).
 
     An `Edit.ANNOTATE` adds `: T` after the name; an `Edit.REPLACE` writes over the annotation
     between its span's columns on the offence's line; an `Edit.DECLARE` inserts `name: T` on a line
-    of its own before the statement its span names, at that statement's indentation. They're made
-    from the last to the first, so no edit moves one still to be made (and two declarations before
-    one statement keep their order).
+    of its own before the statement its span names, at that statement's indentation.
 
-    An edit whose columns don't land on UTF-8 character boundaries in its line (rare: `ast`'s
-    column and a re-encoded line's bytes can disagree for some non-ASCII source) is left unmade,
-    rather than splitting a multi-byte character and corrupting the line.
+    Returns:
+      The edit; none without a fix, or when its columns don't land on UTF-8 character boundaries in
+      its line (rare: `ast`'s column and a re-encoded line's bytes can disagree for some non-ASCII
+      source), rather than splitting a multi-byte character and corrupting the line.
+
+    """
+    fix: Fix | None
+    if (fix := offence.edit) is None:
+        return None
+    with contextlib.suppress(UnicodeDecodeError, IndexError):
+        if fix.edit is Edit.DECLARE:
+            statement: str = lines[fix.span[0] - 1]
+            indent: str = statement[: len(statement) - len(statement.lstrip())]
+            ending: str = statement.removeprefix(statement.rstrip("\r\n")) or "\n"
+            return Replacement(fix.span[0], "", "", f"{indent}{offence.name}: {fix.annotation}{ending}")
+        raw: bytes = lines[offence.line - 1].encode()
+        start: int = fix.span[0] if fix.edit is Edit.REPLACE else offence.col + len(offence.name.encode())
+        end: int = fix.span[1] if fix.edit is Edit.REPLACE else start
+        written: str = fix.annotation if fix.edit is Edit.REPLACE else f": {fix.annotation}"
+        return Replacement(offence.line, raw[:start].decode(), raw[start:end].decode(), written)
+    return None
+
+
+def apply(lines: Sequence[str], offences: Sequence[Offence]) -> list[str]:
+    """Return `lines` with each fixable offence's edit made (see `replacement`).
+
+    They're made from the last to the first, so no edit moves one still to be made (and two
+    declarations before one statement keep their order); one `replacement` can't make is left unmade.
 
     Returns:
       New lines; `lines` is left as it was. An offence's `line` indexes `lines` from 1.
@@ -26,20 +73,15 @@ def apply(lines: Sequence[str], offences: Sequence[Offence]) -> list[str]:
     """
     text: list[str] = list(lines)
     o: Offence
+    edit: Replacement | None
     for o in sorted((o for o in offences if o.edit), key=_position, reverse=True):
-        fix: Fix = o.edit or Fix("")
-        with contextlib.suppress(UnicodeDecodeError, IndexError):
-            if fix.edit is Edit.DECLARE:
-                statement: str = text[fix.span[0] - 1]
-                indent: str = statement[: len(statement) - len(statement.lstrip())]
-                ending: str = statement.removeprefix(statement.rstrip("\r\n")) or "\n"
-                text.insert(fix.span[0] - 1, f"{indent}{o.name}: {fix.annotation}{ending}")
-                continue
-            raw: bytes = text[o.line - 1].encode()
-            start: int = fix.span[0] if fix.edit is Edit.REPLACE else o.col + len(o.name.encode())
-            end: int = fix.span[1] if fix.edit is Edit.REPLACE else start
-            written: str = fix.annotation if fix.edit is Edit.REPLACE else f": {fix.annotation}"
-            text[o.line - 1] = raw[:start].decode() + written + raw[end:].decode()
+        if (edit := replacement(text, o)) is None:
+            continue
+        if o.edit and o.edit.edit is Edit.DECLARE:
+            text.insert(edit.line - 1, edit.text)  # a declaration: a line of its own
+            continue
+        end: int = edit.columns[1]
+        text[edit.line - 1] = edit.prefix + edit.text + text[edit.line - 1][end:]
     return text
 
 
