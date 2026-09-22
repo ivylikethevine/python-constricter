@@ -1,6 +1,5 @@
 # Everything generated locally (the dev venv, tool caches, coverage data, build output) lives under local/.
 local/
 
-# Written next to the sources by Python and by setuptools' editable install.
+# Written next to the sources by Python.
 __pycache__/
-*.egg-info/

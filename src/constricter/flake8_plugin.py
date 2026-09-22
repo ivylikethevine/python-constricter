@@ -1,13 +1,14 @@
-"""The rule as a flake8 plugin, registered under the `LVA` prefix by the package's
-`flake8.extension` entry point. flake8 handles `# noqa`, `--select` and `--per-file-ignores`."""
+"""The rule as a flake8 plugin (`LVA` prefix)."""
 
 import ast
 from collections.abc import Iterator
+from typing import final
 
 from constricter import __version__
 from constricter.checker import CODE, check_tree
 
 
+@final
 class ConstricterChecker:
     name: str = "constricter"
     version: str = __version__
@@ -16,5 +17,6 @@ class ConstricterChecker:
         self.tree: ast.Module = tree
 
     def run(self) -> Iterator[tuple[int, int, str, type["ConstricterChecker"]]]:
+        """Yield flake8's `(line, col, message, type)` per offence."""
         for o in check_tree(self.tree):
             yield o.line, o.col, f"{CODE} {o.message}", type(self)

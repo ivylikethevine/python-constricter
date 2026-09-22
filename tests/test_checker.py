@@ -45,6 +45,9 @@ async def coroutine(items: list[str], *args: str, **kwargs: str) -> str:
         raise TypeError
     except* TypeError as eg:
         pass
+    _ = print()
+    with open(os.devnull):
+        pass
     joined: str = ",".join(x for x in items)
     n: int
     more: list[int]

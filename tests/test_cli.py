@@ -24,7 +24,7 @@ def clean() -> None:
 
 def _write(path: Path, source: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(textwrap.dedent(source))
+    _ = path.write_text(textwrap.dedent(source))
     return path
 
 
@@ -52,18 +52,19 @@ def test_clean_files_exit_0_and_quiet_drops_the_summary(
 
 def test_directories_skip_hidden_and_tool_dirs_and_honour_exclude(tmp_path: Path) -> None:
     for name in ("a.py", "pkg/b.py", "pkg/fixtures/c.py", ".venv/d.py", "pkg/__pycache__/e.py", "venv/f.py"):
-        _write(tmp_path / name, CLEAN)
-    _write(tmp_path / "notes.txt", "")
+        _ = _write(tmp_path / name, CLEAN)
+    _ = _write(tmp_path / "notes.txt", "")
     found: list[Path] = list(cli.python_files([tmp_path], ["*/fixtures/*"]))
     assert found == [tmp_path / "a.py", tmp_path / "pkg" / "b.py"]
     # A file named explicitly is checked even where a directory walk would skip it.
     assert list(cli.python_files([tmp_path / ".venv" / "d.py"])) == [tmp_path / ".venv" / "d.py"]
+    assert list(cli.python_files([tmp_path / "a.py"], ["a.py"])) == []
 
 
 def test_defaults_to_the_current_directory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _write(tmp_path / "clean.py", CLEAN)
+    _ = _write(tmp_path / "clean.py", CLEAN)
     monkeypatch.chdir(tmp_path)
     assert cli.main([]) == 0
     assert capsys.readouterr().out == "Found 0 unannotated local(s) in 1 file(s).\n"
@@ -86,6 +87,6 @@ def test_runs_as_a_module(
     monkeypatch.setattr(sys, "argv", ["constricter", str(_write(tmp_path / "clean.py", CLEAN))])
     exit_info: pytest.ExceptionInfo[SystemExit]
     with pytest.raises(SystemExit) as exit_info:
-        runpy.run_module("constricter", run_name="__main__")
+        _ = runpy.run_module("constricter", run_name="__main__")
     assert exit_info.value.code == 0
     assert capsys.readouterr().out.startswith("Found 0")

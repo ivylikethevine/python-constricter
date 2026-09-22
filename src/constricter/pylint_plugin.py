@@ -1,36 +1,29 @@
-"""The rule as a pylint plugin: `--load-plugins=constricter.pylint_plugin`, reported as
-C9101 `unannotated-local-variable`. pylint handles `# pylint: disable=unannotated-local-variable`.
-
-It reads the module's source and runs the same `ast` check the CLI and flake8 use, rather than
-walking astroid's tree, so all three report exactly the same lines."""
+"""The rule as a pylint plugin: C9101 `unannotated-local-variable`."""
 
 import ast
-from typing import IO
+from typing import IO, final, override
 
 from astroid import nodes
 from pylint.checkers import BaseRawFileChecker
 from pylint.lint import PyLinter
+from pylint.typing import MessageDefinitionTuple
 
 from constricter.checker import MESSAGE, check_tree
 
 SYMBOL = "unannotated-local-variable"
 
 
+@final
 class ConstricterChecker(BaseRawFileChecker):
-    name = "constricter"
-    msgs = {  # noqa: RUF012 (pylint's own class-attribute convention)
-        "C9101": (
-            MESSAGE.replace("{name!r}", "%r"),
-            SYMBOL,
-            "Every local variable is annotated where it's first bound (`name: T = ...`), or "
-            "declared first (`name: T`). Loop targets, `except ... as`, match captures and "
-            "imports are exempt.",
-        )
+    name: str = "constricter"
+    msgs: dict[str, MessageDefinitionTuple] = {  # noqa: RUF012 (typed as BaseChecker declares it)
+        "C9101": (MESSAGE.replace("{name!r}", "%r"), SYMBOL, "Annotate each local where it's first bound."),
     }
 
+    @override
     def process_module(self, node: nodes.Module) -> None:
         opened: IO[bytes] | None = node.stream()
-        if opened is None:  # a module astroid built without a file behind it
+        if opened is None:  # no file behind the module
             return
         stream: IO[bytes]
         with opened as stream:
@@ -40,4 +33,5 @@ class ConstricterChecker(BaseRawFileChecker):
 
 
 def register(linter: PyLinter) -> None:
+    """Register the checker (pylint's plugin hook)."""
     linter.register_checker(ConstricterChecker(linter))

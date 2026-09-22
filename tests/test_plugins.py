@@ -27,7 +27,7 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
 
 def _write(tmp_path: Path) -> Path:
     path: Path = tmp_path / "broken.py"
-    path.write_text(textwrap.dedent(SOURCE))
+    _ = path.write_text(textwrap.dedent(SOURCE))
     return path
 
 
@@ -75,7 +75,7 @@ def test_flake8_checker_in_process() -> None:
 
 def test_pylint_checker_in_process(tmp_path: Path) -> None:
     reporter: CollectingReporter = CollectingReporter()
-    Run(
+    _ = Run(
         [
             "--load-plugins=constricter.pylint_plugin",
             "--disable=all",

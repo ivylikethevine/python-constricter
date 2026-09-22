@@ -19,7 +19,21 @@ classifiers = [
 [project.optional-dependencies]
 flake8 = ["flake8>=7"]
 pylint = ["pylint>=3"]
-dev = ["pytest", "pytest-cov", "flake8>=7", "pylint>=3", "ruff", "basedpyright"]
+# Locked with hashes in requirements-dev.txt (see README, Development).
+dev = [
+    "basedpyright",
+    "build",
+    "flake8>=7",
+    "flit_core>=4.1,<5",
+    "pip-audit",
+    "pre-commit",
+    "pylint>=3",
+    "pytest",
+    "pytest-cov",
+    "ruff",
+    "twine",
+    "zizmor",
+]
 
 [project.scripts]
 constricter = "constricter.cli:main"
@@ -28,11 +42,11 @@ constricter = "constricter.cli:main"
 LVA = "constricter.flake8_plugin:ConstricterChecker"
 
 [build-system]
-requires = ["setuptools>=77"]
-build-backend = "setuptools.build_meta"
+requires = ["flit_core>=4.1,<5"]
+build-backend = "flit_core.buildapi"
 
-[tool.setuptools.package-data]
-constricter = ["py.typed"]
+[tool.flit.module]
+name = "constricter"
 
 [tool.ruff]
 line-length = 110
@@ -40,20 +54,29 @@ target-version = "py312"
 cache-dir = "local/.ruff_cache"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "B", "UP", "SIM", "ANN", "RUF"]
-# The package's own rule: ruff doesn't know LVA001, so it mustn't flag or strip `# noqa: LVA001`.
+select = ["ALL"]
+# D1: docstrings stay optional. CPY001: no headers. COM812, D203, D213: conflict with the formatter/D211/D212.
+ignore = ["D1", "CPY001", "COM812", "D203", "D213"]
 external = ["LVA"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S603", "PLR2004", "INP001"]
+"src/constricter/cli.py" = ["T201"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = ["--strict-markers", "--strict-config"]
+filterwarnings = ["error"]
+xfail_strict = true
 cache_dir = "local/.pytest_cache"
 
 [tool.coverage.run]
 data_file = "local/.coverage"
 source = ["constricter"]
+branch = true
 
 [tool.coverage.report]
-fail_under = 95
+fail_under = 100
 exclude_also = ["if __name__ == .__main__.:", "except PackageNotFoundError:"]
 
 [tool.basedpyright]
@@ -62,7 +85,7 @@ include = ["src", "tests"]
 venvPath = "local"
 venv = ".venv"
 pythonVersion = "3.12"
-typeCheckingMode = "strict"
+typeCheckingMode = "all"
 reportPrivateUsage = false
 reportUnusedFunction = false
 # astroid (pylint's AST) ships no type information; only the pylint plugin imports it.
