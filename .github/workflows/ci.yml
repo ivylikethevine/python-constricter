@@ -38,7 +38,7 @@ jobs:
       - run: pylint src tests
       - run: flake8 --max-line-length=110 src tests
       - run: typos
-      - run: constricter --format=github src tests
+      - run: constricter --level=suffocate --format=github src tests
       - run: pre-commit try-repo . constricter --all-files
 
   test:

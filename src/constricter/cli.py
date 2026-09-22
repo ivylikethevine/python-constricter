@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import cast
 
 from constricter import __version__
-from constricter.checker import CODE, Offence, check_source
+from constricter.checker import LEVELS, MESSAGES, Level, Offence, check_source
 
 _Result = tuple[Path, Offence]
 
@@ -38,13 +38,13 @@ _NOQA: re.Pattern[str] = re.compile(
 )
 
 
-def _suppressed(line: str) -> bool:
-    """Return whether `line` has a `# noqa` covering this rule."""
+def _suppressed(line: str, code: str) -> bool:
+    """Return whether `line` has a `# noqa` covering `code`."""
     match_: re.Match[str] | None
     if (match_ := _NOQA.search(line)) is None:
         return False
     codes: str | None = match_.group("codes")
-    return codes is None or CODE in re.split(r"[,\s]+", codes.upper())
+    return codes is None or code in re.split(r"[,\s]+", codes.upper())
 
 
 def _excluded(path: Path, patterns: Sequence[str]) -> bool:
@@ -54,6 +54,8 @@ def _excluded(path: Path, patterns: Sequence[str]) -> bool:
 
 def python_files(paths: Sequence[Path], exclude: Sequence[str] = ()) -> Iterator[Path]:
     """Yield each file given and each `*.py` under each directory given."""
+    path: Path
+    found: Path
     for path in paths:
         if not path.is_dir():
             if not _excluded(path, exclude):
@@ -74,7 +76,7 @@ def check_file(path: Path, *, type_comments: bool = False) -> list[Offence]:
     return [
         o
         for o in check_source(source, str(path), type_comments=type_comments)
-        if not (o.line <= len(lines) and _suppressed(lines[o.line - 1]))
+        if not (o.line <= len(lines) and _suppressed(lines[o.line - 1], o.code))
     ]
 
 
@@ -83,7 +85,11 @@ def _github_escape(text: str, *, prop: bool = False) -> str:
     return text.replace(":", "%3A").replace(",", "%2C") if prop else text
 
 
-def _sarif(results: Sequence[_Result]) -> dict[str, object]:
+def _severity(offence: Offence, level: Level) -> str:
+    return "error" if offence.is_error(level) else "warning"
+
+
+def _sarif(results: Sequence[_Result], level: Level) -> dict[str, object]:
     return {
         "version": "2.1.0",
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
@@ -95,18 +101,15 @@ def _sarif(results: Sequence[_Result]) -> dict[str, object]:
                         "version": __version__,
                         "informationUri": "https://github.com/ivylikethevine/python-constricter",
                         "rules": [
-                            {
-                                "id": CODE,
-                                "shortDescription": {
-                                    "text": "Local variable not annotated where first bound"
-                                },
-                            }
+                            {"id": code, "shortDescription": {"text": message.format(name="`name`")}}
+                            for code, message in MESSAGES.items()
                         ],
                     }
                 },
                 "results": [
                     {
-                        "ruleId": CODE,
+                        "ruleId": o.code,
+                        "level": _severity(o, level),
                         "message": {"text": o.message},
                         "locations": [
                             {
@@ -124,32 +127,40 @@ def _sarif(results: Sequence[_Result]) -> dict[str, object]:
     }
 
 
-def _render(fmt: Format, results: Sequence[_Result]) -> Iterator[str]:
+def _render(fmt: Format, results: Sequence[_Result], level: Level) -> Iterator[str]:
     """Yield the output lines for `results` in format `fmt`."""
+    path: Path
+    o: Offence
     if fmt is Format.JSON:
         yield json.dumps(
             [
-                {"path": str(path), "line": o.line, "column": o.col + 1, "code": CODE, "message": o.message}
+                {
+                    "path": str(path),
+                    "line": o.line,
+                    "column": o.col + 1,
+                    "code": o.code,
+                    "severity": _severity(o, level),
+                    "message": o.message,
+                }
                 for path, o in results
             ],
             indent=2,
         )
     elif fmt is Format.SARIF:
-        yield json.dumps(_sarif(results), indent=2)
+        yield json.dumps(_sarif(results, level), indent=2)
     elif fmt is Format.GITHUB:
         for path, o in results:
             location: str = f"file={_github_escape(str(path), prop=True)},line={o.line},col={o.col + 1}"
-            yield f"::error {location},title={CODE}::{_github_escape(o.message)}"
+            yield f"::{_severity(o, level)} {location},title={o.code}::{_github_escape(o.message)}"
     else:
         for path, o in results:
-            yield f"{path}:{o.line}:{o.col + 1}: {CODE} {o.message}"
+            yield f"{path}:{o.line}:{o.col + 1}: {_severity(o, level)}: {o.code} {o.message}"
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    """Run the command; return its exit status."""
+def _parser() -> argparse.ArgumentParser:
     parser: argparse.ArgumentParser = argparse.ArgumentParser(
         prog="constricter",
-        description="Report local variables that aren't annotated where they're first bound.",
+        description="Report local variables that aren't typed where they're first bound.",
     )
     _ = parser.add_argument("paths", nargs="*", type=Path, help="files and directories (default: .)")
     _ = parser.add_argument(
@@ -158,6 +169,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=[],
         metavar="GLOB",
         help="skip paths matching this glob (repeatable), e.g. 'tests/fixtures/*'",
+    )
+    _ = parser.add_argument(
+        "--level",
+        choices=LEVELS,
+        default="strict",
+        help="which codes are errors rather than warnings (default: strict)",
     )
     _ = parser.add_argument(
         "--format",
@@ -171,16 +188,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     _ = parser.add_argument("--quiet", "-q", action="store_true", help="don't print the text summary line")
     _ = parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    args: argparse.Namespace = parser.parse_args(argv)
-    paths: list[Path] = cast("list[Path]", args.paths) or [Path()]
-    exclude: list[str] = cast("list[str]", args.exclude)
-    fmt: Format = cast("Format", args.format)
-    type_comments: bool = cast("bool", args.type_comments)
-    quiet: bool = cast("bool", args.quiet)
+    return parser
 
+
+def _check_all(
+    paths: Sequence[Path], exclude: Sequence[str], *, type_comments: bool
+) -> tuple[list[_Result], int, bool]:
+    """Check every file: the results, how many files, and whether any couldn't be checked."""
     results: list[_Result] = []
     files: int = 0
     failed: bool = False
+    path: Path
     for path in python_files(paths, exclude):
         files += 1
         try:
@@ -188,8 +206,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         except (OSError, UnicodeDecodeError, SyntaxError) as error:
             _ = sys.stderr.write(f"{path}: error: {error}\n")
             failed = True
-    for line in _render(fmt, results):
+    return results, files, failed
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the command; return its exit status."""
+    args: argparse.Namespace = _parser().parse_args(argv)
+    paths: list[Path] = cast("list[Path]", args.paths) or [Path()]
+    exclude: list[str] = cast("list[str]", args.exclude)
+    level: Level = LEVELS[cast("str", args.level)]
+    fmt: Format = cast("Format", args.format)
+    type_comments: bool = cast("bool", args.type_comments)
+    quiet: bool = cast("bool", args.quiet)
+
+    results: list[_Result]
+    files: int
+    failed: bool
+    results, files, failed = _check_all(paths, exclude, type_comments=type_comments)
+    line: str
+    for line in _render(fmt, results, level):
         _ = sys.stdout.write(f"{line}\n")
+    errors: int = sum(o.is_error(level) for _, o in results)
     if fmt is Format.TEXT and not quiet:
-        _ = sys.stdout.write(f"Found {len(results)} unannotated local(s) in {files} file(s).\n")
-    return EXIT_ERROR if failed else EXIT_FOUND if results else EXIT_CLEAN
+        warnings: int = len(results) - errors
+        _ = sys.stdout.write(f"Found {errors} error(s) and {warnings} warning(s) in {files} file(s).\n")
+    return EXIT_ERROR if failed else EXIT_FOUND if errors else EXIT_CLEAN

@@ -1,7 +1,7 @@
 [project]
 name = "python-constricter"
 dynamic = ["version"]
-description = "Lint rule: every local variable is annotated where it's first bound. A flake8 plugin, a pylint plugin and a standalone CLI."
+description = "Lint rules: every local variable is typed where it's first bound. A flake8 plugin, a pylint plugin and a standalone CLI."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE.md"]
@@ -73,8 +73,8 @@ external = ["LVA"]
 notice-rgx = "SPDX-License-Identifier: MIT"
 
 [tool.ruff.lint.per-file-ignores]
-# pytest's assert; test names say what docstrings would.
-"tests/*" = ["assert", "D1"]
+# pytest's assert.
+"tests/*" = ["assert"]
 
 [tool.mypy]
 files = ["src", "tests"]
@@ -131,10 +131,6 @@ load-plugins = [
 
 [tool.pylint.format]
 max-line-length = 110
-
-[tool.pylint.basic]
-# As ruff's D1 per-file ignore: private names and tests need no docstring.
-no-docstring-rgx = "^(_|test_)"
 
 [tool.typos.default.extend-words]
 astroid = "astroid"

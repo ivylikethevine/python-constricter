@@ -1,6 +1,6 @@
 - id: constricter
   name: constricter
-  description: Every local variable is annotated where it's first bound.
+  description: Every local variable is typed where it's first bound.
   entry: constricter --quiet
   language: python
   types: [python]
