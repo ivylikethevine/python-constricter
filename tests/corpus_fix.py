@@ -73,16 +73,16 @@ def main(argv: Sequence[str]) -> int:
     summary: str = _run(["--fix", *FIX, str(COPY)])[1].splitlines()[-1]
     seconds: float = time.perf_counter() - start
     broken: list[Path] = [path for path in valid if not _compiles(path)]
-    status: int
     diff: str
-    status, diff = _run(["--diff", *FIX, str(COPY)])
+    diff = _run(["--diff", *FIX, str(COPY)])[1]
+    left: int = diff.count(chr(10) + "+++ ")
     _ = sys.stdout.write(f"{root}: {len(valid)} valid files fixed in {seconds:.1f}s. {summary}\n")
     _ = sys.stdout.write(f"  no longer compile: {len(broken)}\n")
     path: Path
     for path in broken[:10]:
         _ = sys.stdout.write(f"    {path}\n")
-    _ = sys.stdout.write(f"  left to fix on a second pass: {diff.count(chr(10) + '+++ ')}\n")
-    return 1 if broken or status != cli.EXIT_CLEAN else 0
+    _ = sys.stdout.write(f"  left to fix on a second pass: {left}\n")
+    return 1 if broken or left else 0
 
 
 if __name__ == "__main__":

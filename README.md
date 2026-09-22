@@ -445,19 +445,93 @@ Next:
 2. Revisit the [disabled rules](#disabled-rules) as tools change (last checked 2026-09-22: COM812,
    one-line DOC201/DOC402 and `max-args` came back on; the rest can't go yet).
 3. **A second, more complex corpus** as a permanent, pinned CI target: OpenCV's Python bindings
-   turned out to be a poor fit (they're mostly thin C bindings, not hand-annotated Python). By hand,
-   against already-installed packages (mypy 2.3.1, pylint 4.0.8, libcst 1.9.0; ~130k, ~40k and ~40k
-   lines) and `uiautomator2` 3.7.0 (Android UI automation over adb/HTTP: real external API calls,
-   ~8k lines, and much less already typed than the others — a more typical real-world codebase): no
-   crashes, and `--unsafe-fixes` left nothing broken or unfixed on a second pass, on all four.
-   `--nesting`'s default (5) never reported LVA006 on the standard library, mypy, pylint or
-   `uiautomator2`, and only 1 time on mypy at `--nesting=4`; libcst (deeply nested CST types) hit it
-   201 times at the default. LVA007 found nothing on any of the four, at any nesting. `uiautomator2`
-   is the best candidate seen so far (small, fast to check, genuinely different in character from
-   the others) — still needs vendoring or a reproducible checkout to become a permanent CI target,
-   and a decision on `--nesting`'s default: keep it at 5 (safe, rarely fires) or tighten it (3
-   already reported 45 times on mypy, 2 on the standard library) to make the rule useful more often.
-4. **LVA008: a type that could narrow.** A warning at `constrict`, an error at `suffocate`: a
+   turned out to be a poor fit (they're mostly thin C bindings, not hand-annotated Python). By hand
+   (`tests/corpus.py`/`corpus_fix.py`, `--unsafe-fixes --all-scopes`), against eighteen real
+   packages:
+
+   | Codebase         | Version | Files | Left un-typed |      Fixed | LVA006 @5 | LVA007 |
+   | ---------------- | ------- | ----: | ------------: | ---------: | --------: | -----: |
+   | standard library | 3.11.16 |   732 |        24,173 |      3,828 |         0 |      0 |
+   | mypy             | 2.3.1   |   195 |         9,853 |      1,777 |         0 |      0 |
+   | pylint           | 4.0.8   |   178 |         3,609 |        486 |         0 |      0 |
+   | libcst           | 1.9.0   |   297 |         3,407 |      1,042 |       201 |      0 |
+   | uiautomator2     | 3.7.0   |    32 |           888 |         86 |         0 |      0 |
+   | requests         | 2.34.2  |    19 |           372 |         45 |         0 |      0 |
+   | flask            | 3.1.3   |    24 |           410 |         29 |         0 |      0 |
+   | click            | 8.5.0   |    17 |           567 |         86 |         0 |      0 |
+   | praw             | 8.0.3   |    89 |           602 |        114 |         0 |      0 |
+   | boto3            | 1.43.99 |    39 |           483 |         93 |         0 |      0 |
+   | django           | 6.1.1   |   907 |        15,648 |      2,248 |         0 |      0 |
+   | pydantic         | 2.13.5  |   105 |         2,998 |        367 |         0 |      0 |
+   | attrs            | 26.1.0  |    13 |           336 |         60 |         0 |      0 |
+   | aiohttp          | 3.14.3  |    55 |         1,590 |        217 |         0 |      0 |
+   | paramiko         | 5.0.0   |    41 |         1,272 |        241 |         0 |      0 |
+   | scrapy           | 2.19.0  |   179 |         1,814 |        389 |         1 |      0 |
+   | sqlalchemy       | 2.0.54  |   257 |        12,556 |        643 |         7 |      0 |
+   | rich             | 15.0.0  |   100 |         1,841 |        353 |         0 |      0 |
+   | **Total**        |         |       |    **82,419** | **12,104** |           |        |
+
+   No crashes on any of them, and `--unsafe-fixes` left nothing broken or nothing unfixed on a
+   second pass, on any of them. Overall auto-fix rate: 12,104 of 94,523 found (12.8%) — `--fix` only
+   adds an annotation it can infer unambiguously, so most real-world `LVA001`/`LVA002` (unpacking,
+   `for` targets, non-trivial expressions) still need a human; see the next item for ways to raise
+   that. `--nesting`'s default (5) never fires on fourteen of the eighteen; `libcst` (deeply nested
+   CST types) is by far the most affected, `sqlalchemy` and `scrapy` are the only other two to hit
+   it at all at the default. LVA007 found nothing on any of the eighteen, at any nesting — strong
+   evidence it isn't noisy. **`requests`** is the strongest permanent-CI candidate: tiny (19 files,
+   so a fast check), extremely stable and widely known, Apache-2 licensed, the canonical "makes
+   external API calls" library, and (unlike the dev tools) representative of typical, lightly-typed
+   real-world code; `click` or `flask` are reasonable alternatives with more decorator/framework
+   patterns. Still needs vendoring or a reproducible pinned checkout to become a permanent CI
+   target, and a decision on `--nesting`'s default: keep it at 5 (safe, rarely fires) or tighten it
+   (3 already reported 124 times on sqlalchemy, 45 on mypy) to make the rule useful more often.
+
+   Validated `requests` specifically: cloned `v2.34.2` (its source checkout, with its own test
+   suite, not just the installed wheel), ran `--fix --unsafe-fixes --all-scopes` on `src/requests/`,
+   and ran its own test suite before and after. Identical both times: 617 passed, 15 skipped, 1
+   xfailed — the inferred types changed nothing about its runtime behaviour. One found a real, if
+   inert, mistake in the "guessed" heuristic: `internetSettings = winreg.OpenKey(...)`
+   (Windows-only, guarded by `sys.platform == "win32"`, so untested by this run) got annotated
+   `internetSettings: winreg.OpenKey = ...` — `winreg.OpenKey` is a _function_, not a class, but its
+   PascalCase name (a Windows API convention, not Python's) fools the capitalised-name "constructs a
+   class" heuristic (`annotations._constructs`). Worth keeping in mind for whichever package becomes
+   the permanent corpus: run its own test suite before/after `--fix`, not just check that it still
+   compiles.
+
+4. **Raise `--fix`'s auto-fix rate.** Only 12.8% of found offences are auto-fixed today (see the
+   corpus table above); `annotations.inferred` only handles literals, uniform containers, and calls
+   to a same/cross-module function or a constructed class. A breakdown of what a sample of ~34,500
+   unfixed `LVA001`s across the standard library, sqlalchemy and django actually assign, ranked by
+   how much each would add if handled:
+   - **41% are calls** (14,174): 68% are a method call on some other object (`x = obj.method()`,
+     needs the receiver's type, see below); of the rest, the most common bare-name callees are
+     `getattr`, `len`, `set`, `list`, `int`, `dict`, `str`, `cast`, `sorted`, `max`, `type`, `next`,
+     `tuple`, `min`. A small table of well-known builtins with a fixed, un-overloadable return type
+     (`len`→`int`, `isinstance`/`hasattr`/`callable`/`issubclass`→`bool`, `str`/`repr`→`str`, ...)
+     is a safe, cheap win; container builtins (`list`, `dict`, `set`, `tuple`) need their argument's
+     element type, same machinery as the container literals already handled.
+   - **20% are unpacking, `:=` or `with ... as`** (6,994): structurally can't get one inferred type
+     from a single expression the way a plain `=` can; out of scope for `inferred` as designed.
+   - **11% are attribute access** (3,707), **6% are subscripts** (2,205): both need to know the
+     receiver's own type first (`obj.attr`, `container[key]`). The same missing piece as the
+     method-call majority above: `inferred` has no notion of "the type this local already has,
+     declared earlier in this scope." Adding one (a `declared: Mapping[str, str]` alongside `calls`,
+     built from `_Scope`'s own annotated bindings, threaded the way `calls`/`factories` already are)
+     would unlock attribute access, subscripts and method calls together — the single biggest lever
+     here, but real design work: parsing a container type's element out of its own annotation text,
+     deciding how far to trust a mutated/reassigned local, scope correctly.
+   - **5% are `BinOp`** (1,680, `a + b`) and **~2% `Name`** (608, `x = y`): `Name` is a trivial case
+     of the same "known local type" lookup above (copy `y`'s declared type). `BinOp` would need
+     operand types plus knowing the operator isn't overloaded to something else — riskier, lower
+     value, skip.
+   - **Two free, unambiguous, always-safe wins**, unrelated to the above: `not x` always yields a
+     real `bool` (not overloadable, unlike comparisons) — `_scalar`'s `UnaryOp` case only handles
+     `USub`/`UAdd` today, not `Not`. And an `ast.Compare` (`a < b`, `a == b`, ...) — **not** safe
+     unconditionally: sqlalchemy's own corpus data is direct proof, since it overloads comparison
+     operators to build query expressions instead of returning `bool`. Comparisons would need to be
+     a guessed (`--unsafe-fixes`) fix, like class construction already is, not a safe one.
+
+5. **LVA008: a type that could narrow.** A warning at `constrict`, an error at `suffocate`: a
    declared type that every value assigned to the name (across its lifetime, not just its first
    binding) is consistent with a strictly narrower one, e.g. a `str` only ever assigned `"0"` or
    `"1"` (could be `bool`), or a `float` only ever incremented, never divided (could be `int`).
@@ -465,6 +539,16 @@ Next:
    binding, which is a different (and much bigger) kind of check than `LVA001`–`LVA007`; wants its
    own design pass (what counts as "consistent with" a type, how far to follow calls and mutation,
    false-positive risk on a codebase this analysis can't fully see) before it's worth building.
+6. **LVA009: a reassignment that changes the type.** An error: `count: int = 0` later reassigned
+   `count = "done"` in the same scope. A real, common bug class (mypy already treats this as a type
+   error by default), but needs the same value-flow machinery as `LVA008` (infer every
+   reassignment's type with `annotations.inferred`, not just the first binding's), plus real
+   subtyping awareness to avoid noise `LVA008` doesn't have to worry about: a declared `X | None`
+   later assigned a plain `X` is normal Optional narrowing, not a bug, so the check needs to know
+   that's consistent rather than comparing annotation text like `LVA007` does; a name reused for
+   genuinely unrelated purposes (a sentinel, a generic helper handling more than one type by design)
+   is a real, if rarer, source of false positives to design around. Depends on `LVA008`'s design
+   work (same value-flow pass could likely serve both checks).
 
 After the first release (these need it on PyPI, or a published tag):
 

@@ -15,6 +15,6 @@ def test_apply_adds_each_fixable_offences_annotation() -> None:
 def test_apply_skips_a_fix_that_would_split_a_multi_byte_character() -> None:
     """A `col` landing inside a multi-byte character (rare) is left unfixed, not corrupted."""
     lines: list[str] = ["café = 1\n"]
-    # "café".encode() is b"caf\xc3\xa9": `é` is 2 bytes, so col=3 lands between them.
+    # `é`.encode() is 2 bytes (\xc3\xa9), and col=3 lands between them, not before or after both.
     offences: list[Offence] = [Offence(1, 3, "x", fix="int")]
     assert fixes.apply(lines, offences) == lines
