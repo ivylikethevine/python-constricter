@@ -1,0 +1,27 @@
+name: Tool
+description: Download a release archive, check its sha256, and install one binary from it as $RUNNER_TEMP/bin/<name>.
+inputs:
+  url:
+    description: The archive's URL (a .tar.gz).
+    required: true
+  sha256:
+    description: The archive's sha256; bump it with the URL.
+    required: true
+  binary:
+    description: The binary's path inside the archive.
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        URL: ${{ inputs.url }}
+        SHA256: ${{ inputs.sha256 }}
+        BINARY: ${{ inputs.binary }}
+      run: |
+        archive="$RUNNER_TEMP/${URL##*/}"
+        curl -sSfLo "$archive" "$URL"
+        echo "$SHA256  $archive" | sha256sum -c -
+        mkdir -p "$RUNNER_TEMP/tools" "$RUNNER_TEMP/bin"
+        tar xzf "$archive" -C "$RUNNER_TEMP/tools" "$BINARY"
+        install -m 755 "$RUNNER_TEMP/tools/$BINARY" "$RUNNER_TEMP/bin/"
