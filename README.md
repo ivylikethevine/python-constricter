@@ -62,18 +62,21 @@ def total(items: list[int]) -> int:
 
 Checked per function body, including methods and nested functions; with `all-scopes`, module and
 class bodies too. Statements are read in source order, and only a name's first binding counts
-(`LVA009` aside, which reads every one).
+(`LVA008`–`LVA010` aside, which read every one).
 
-| Code     | Reports                                                                         | Fix                                            |
-| -------- | ------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `LVA001` | `=`, unpacking, `:=` or `with ... as` in a function without annotation          | `name: T = ...`, or `name: T` first            |
-| `LVA002` | an untyped `for` target or `match` capture                                      | `name: T` first (or a type comment)            |
-| `LVA003` | a `for` target typed only by `# type: T`                                        | `name: T` first                                |
-| `LVA004` | with `all-scopes`: the same as `LVA001`, in a module or class body              | `name: T = ...` (`ClassVar[T]` in a dataclass) |
-| `LVA005` | an annotation with `Any`, `object` or a generic without its parameters          | name the real type                             |
-| `LVA006` | an annotation nested `nesting` deep (3 by default)                              | a `type` alias for a part of it                |
-| `LVA007` | a name annotated again with the type it already has, in the same block          | drop the second annotation                     |
-| `LVA009` | a value, anywhere in the name's lifetime, whose type doesn't fit its annotation | fix the value, or widen the annotation         |
+| Code     | Reports                                                                                   | Fix                                            |
+| -------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `LVA001` | `=`, unpacking, `:=` or `with ... as` in a function without annotation                    | `name: T = ...`, or `name: T` first            |
+| `LVA002` | an untyped `for` target or `match` capture                                                | `name: T` first (or a type comment)            |
+| `LVA003` | a `for` target typed only by `# type: T`                                                  | `name: T` first                                |
+| `LVA004` | with `all-scopes`: the same as `LVA001`, in a module or class body                        | `name: T = ...` (`ClassVar[T]` in a dataclass) |
+| `LVA005` | an annotation with `Any`, `object` or a generic without its parameters                    | name the real type                             |
+| `LVA006` | an annotation nested `nesting` deep (3 by default)                                        | a `type` alias for a part of it                |
+| `LVA007` | a name annotated again with the type it already has, in the same block                    | drop the second annotation                     |
+| `LVA008` | with every value the name ever holds known: an annotation that could narrow to them       | narrow it (`total: int`)                       |
+| `LVA009` | a value, anywhere in the name's lifetime, whose type doesn't fit its annotation           | fix the value, or widen the annotation         |
+| `LVA010` | with every value known: a union member no value is                                        | drop the member                                |
+| `LVA011` | an annotation listing a fixed-length tuple of more than `max-length` types (4 by default) | name the fields (a `NamedTuple`, a dataclass)  |
 
 Exempt: comprehensions, `except ... as`, imports, `def`/`class`, `type` aliases, parameters,
 `global`/`nonlocal`, and `_`; in module and class bodies, dunder names (`__all__`, `__slots__`) and
@@ -96,34 +99,42 @@ by the container alone (`flags: tuple[str, ...] = ("-q",)` fits), a copy of a un
 skipped (an `is None` check may have narrowed it), and so is a name annotated only under
 `if TYPE_CHECKING:`. It has no `--fix`.
 
+`LVA008` and `LVA010` also need every binding's value known (one unknown call, loop target or
+unpacking and the name could hold anything), and are only claimed for a function's own names: a
+module or class variable is state other code rebinds out of sight (`mod.X = ...`, `self.x = ...`,
+`monkeypatch`), and a `nonlocal` write from a nested function counts as unknown too. Neither has a
+`--fix`: `--fix` adds annotations, it doesn't rewrite them.
+
 ## Levels
 
 Each level makes one more code an error. The rest are warnings: the CLI prints them (as `::warning`
 or SARIF `warning` in those formats) but exits 0; flake8 and pylint report errors only.
 
-| Level             | Errors                                 | Warnings                                        |
-| ----------------- | -------------------------------------- | ----------------------------------------------- |
-| `relaxed` / `0`   | none                                   | `LVA001`–`LVA004`, `LVA007`, `LVA009`           |
-| `strict` / `1`    | `LVA001`, `LVA004` (the default)       | `LVA002`, `LVA003`, `LVA005`–`LVA007`, `LVA009` |
-| `constrict` / `2` | `LVA001`, `LVA004`, `LVA002`, `LVA009` | `LVA003`, `LVA005`–`LVA007`                     |
-| `suffocate` / `3` | all                                    | none                                            |
+| Level             | Errors                                 | Warnings                                                  |
+| ----------------- | -------------------------------------- | --------------------------------------------------------- |
+| `relaxed` / `0`   | none                                   | `LVA001`–`LVA004`, `LVA007`, `LVA009`                     |
+| `strict` / `1`    | `LVA001`, `LVA004` (the default)       | `LVA002`, `LVA003`, `LVA005`–`LVA007`, `LVA009`, `LVA011` |
+| `constrict` / `2` | `LVA001`, `LVA004`, `LVA002`, `LVA009` | `LVA003`, `LVA005`–`LVA008`, `LVA010`, `LVA011`           |
+| `suffocate` / `3` | all                                    | none                                                      |
 
-`LVA005` and `LVA006` aren't reported at `relaxed`.
+`LVA005`, `LVA006` and `LVA011` aren't reported at `relaxed`; `LVA008` and `LVA010` only from
+`constrict`.
 
 Python 3.11+, no runtime dependencies.
 
 ## Use
 
-| Tool   | Setup                                                 | Reports                                  | Suppress                                         |
-| ------ | ----------------------------------------------------- | ---------------------------------------- | ------------------------------------------------ |
-| CLI    | `constricter [PATH...] [--level L] [--format F] [-q]` | `LVA001`–`LVA007`, `LVA009`              | `# noqa: LVA001`                                 |
-| flake8 | install it (on by default)                            | `LVA001`–`LVA007`, `LVA009`              | `# noqa: LVA001`                                 |
-| pylint | `load-plugins = ["constricter.pylint_plugin"]`        | `C9101`–`C9107`, `C9109` (symbols below) | `# noqa: LVA001` or `# pylint: disable=<symbol>` |
-| ruff   | run the CLI after ruff; set `lint.external = ["LVA"]` | `LVA001`–`LVA007`, `LVA009`              | `# noqa: LVA001`                                 |
+| Tool   | Setup                                                 | Reports                         | Suppress                                         |
+| ------ | ----------------------------------------------------- | ------------------------------- | ------------------------------------------------ |
+| CLI    | `constricter [PATH...] [--level L] [--format F] [-q]` | `LVA001`–`LVA011`               | `# noqa: LVA001`                                 |
+| flake8 | install it (on by default)                            | `LVA001`–`LVA011`               | `# noqa: LVA001`                                 |
+| pylint | `load-plugins = ["constricter.plugins.pylint"]`       | `C9101`–`C9111` (symbols below) | `# noqa: LVA001` or `# pylint: disable=<symbol>` |
+| ruff   | run the CLI after ruff; set `lint.external = ["LVA"]` | `LVA001`–`LVA011`               | `# noqa: LVA001`                                 |
 
 pylint symbols: `unannotated-local-variable`, `untyped-for-or-match-variable`,
 `comment-typed-for-variable`, `unannotated-module-or-class-variable`, `vague-annotation`,
-`deeply-nested-annotation`, `redundant-annotation`, `mismatched-value-type`.
+`deeply-nested-annotation`, `redundant-annotation`, `narrowable-annotation`,
+`mismatched-value-type`, `unused-union-member`, `long-tuple-annotation`.
 
 Options:
 
@@ -133,7 +144,10 @@ Options:
 | type comments    | `--type-comments`                                           | `type-comments`      | `--constricter-type-comments`   | `constricter-type-comments = yes` |
 | all scopes       | `--all-scopes`                                              | `all-scopes`         | `--constricter-all-scopes`      | `constricter-all-scopes = yes`    |
 | nesting          | `--nesting N`                                               | `nesting`            | `--constricter-nesting`         | `constricter-nesting`             |
+| max length       | `--max-length N` (LVA011)                                   | `max-length`         | `--constricter-max-length`      | `constricter-max-length`          |
+| type hierarchy   | -                                                           | `narrower` (a table) | `--constricter-narrower`        | `constricter-narrower`            |
 | fix              | `--fix` (`--unsafe-fixes` for guesses), `--diff` to preview | -                    | -                               | -                                 |
+| show fixes       | `--show-fixes` (each fix and how it was decided, text)      | -                    | -                               | -                                 |
 | select           | `--select CODES` (codes or prefixes)                        | `select`             | flake8's own `select`           | pylint's own `enable`             |
 | ignore           | `--ignore CODES`                                            | `ignore`             | flake8's own `extend-ignore`    | pylint's own `disable`            |
 | exclude          | `--exclude GLOB` (repeatable)                               | `exclude`            | flake8's own `exclude`          | pylint's own `ignore-paths`       |
@@ -160,6 +174,7 @@ exclude = ["tests/fixtures/*"]
 type-comments = false
 all-scopes = true
 nesting = 3
+max-length = 4
 jobs = 0
 baseline = "constricter-baseline.json" # the default; relative to this pyproject.toml
 
@@ -170,6 +185,11 @@ baseline = "constricter-baseline.json" # the default; relative to this pyproject
 # Codes (or prefixes) to drop for files matching a glob.
 [tool.constricter.per-file-ignores]
 "tests/fixtures/*" = ["LVA005", "LVA006"]
+
+# Your own type hierarchy for LVA008–LVA010: each type, and the types it's narrower than.
+[tool.constricter.narrower]
+UserId = ["str"]  # an imported NewType the rules then compare
+int = []          # an `int` no longer fits `float`
 select = ["LVA00"]
 ignore = ["LVA003"]
 ```
@@ -193,6 +213,17 @@ module body:
 
 It never touches class bodies (a dataclass would gain a field) or unpacking, and it leaves what it
 can't fix reported. The standard library and third-party packages are out of reach.
+
+`--show-fixes` lists, after the report, each fix and how its value decided it (for `b = s.strip()`:
+`str`, from `str.strip`'s fixed return type), marking the guesses `--unsafe-fixes` would add;
+`--format=json` always carries the same as a `fix` object (`annotation`, `reason`, `unsafe`) on each
+result.
+
+The type hierarchy LVA008–LVA010 compare through is the numeric tower (`bool` < `int` < `float` <
+`complex`) plus the classes a module defines, under the bases they name.
+`[tool.constricter.narrower]` (or the plugins' `narrower` option, as `B=A, int=`) replaces what
+those say for each type it names, and vouches for the types it names: an imported type the rules
+would never compare otherwise is compared.
 
 ### Baselines
 
@@ -334,11 +365,11 @@ uv pip install --python local/.venv --no-deps --no-build-isolation -e .
 ```
 
 Checks (as CI runs them): `ruff check .` (every rule, preview included), `ruff format --check .`,
-`basedpyright` (all), `mypy` (strict), `pylint src tests` (every extension), `flake8 src tests`,
-`typos`, `validate-pyproject pyproject.toml`, `uv lock --check`,
-`constricter --level=suffocate --all-scopes src tests`,
-`constricter --coverage --all-scopes --fail-under=100 src tests`, `pytest --cov` (100% branch
-coverage). Everything generated goes in `local/`. Python is indented with 4 spaces.
+`basedpyright` (all), `mypy` (strict), `pylint constricter tests` (every extension),
+`flake8 constricter tests`, `typos`, `validate-pyproject pyproject.toml`, `uv lock --check`,
+`constricter --level=suffocate --all-scopes constricter tests`,
+`constricter --coverage --all-scopes --fail-under=100 constricter tests`, `pytest --cov` (100%
+branch coverage). Everything generated goes in `local/`. Python is indented with 4 spaces.
 
 After editing a dependency group, run `uv lock` (CI fails until you do). Dependabot updates
 `uv.lock`, the npm lock and the actions weekly.
@@ -398,13 +429,14 @@ Done:
 - **Python 2 code:** type comments count automatically in modules that import Python 2 `__future__`
   features.
 - **All scopes:** `all-scopes` checks module and class bodies (`LVA004`).
-- **Suffocate:** `src/` and `tests/` pass at `--level=suffocate --all-scopes` in CI.
+- **Suffocate:** `constricter/` and `tests/` pass at `--level=suffocate --all-scopes` in CI.
 - **More checks:** gitleaks over the whole history (Security), lychee on the Markdown links (offline
   in Docs, external ones weekly), validate-pyproject and check-wheel-contents.
 - **SARIF docs**, and `--explain`, `--select` / `--ignore`, `--diff` and `--statistics`.
 - **Scorecard** blocks all but the hosts it was seen to use.
-- **Project files:** a `constricter-fix` pre-commit hook, a CHANGELOG (release notes grouped by
-  `.github/release.yml`), badges, issue and PR templates, CODEOWNERS and CONTRIBUTING.
+- **Project files:** a `constricter-fix` pre-commit hook, a changelog (`docs/`, release notes
+  grouped by `.github/release.yml`), badges, issue and PR templates, CODEOWNERS, and contributing
+  and security policies in `docs/`.
 - **Per-path levels**, **`--jobs`** for parallel checking, and a **GitHub Action** (`action.yml`)
   that CI runs on the project itself.
 - **LVA005, LVA006 and `--fix`.**
@@ -544,8 +576,28 @@ Done:
 
 - **LVA009: a value that doesn't fit the annotation**, over the name's whole lifetime in the scope
   (see [Rules](#rules)): a warning, an error from `constrict`, pylint's `C9109`
-  (`mismatched-value-type`). Built on the value-flow engine (`constricter.flow`); across Python
-  3.14's standard library and the four corpus packages it finds 10, each a real mismatch.
+  (`mismatched-value-type`). Built on the value-flow engine (`constricter.rules.flow`); across
+  Python 3.14's standard library and the four corpus packages it finds 10, each a real mismatch.
+
+- **LVA008: an annotation that could narrow**, and **LVA010: a union member no value uses** (see
+  [Rules](#rules)): reported from `constrict`, errors at `suffocate`; pylint's `C9108`
+  (`narrowable-annotation`) and `C9110` (`unused-union-member`). Claimed only for a function's own
+  names with every value known: measured on instadroid's app (47 files), their first two findings
+  were module-level settings rebound elsewhere (a documented `None` default, a
+  `globals().update(...)`), which is why module and class variables are left out; on the corpus, as
+  expected of code this full of imported types, they find nothing.
+
+- **`--show-fixes`**: each `--fix` annotation with how its value decided it (a literal, a copy of a
+  local, a function's declared return type, a guessed constructor, ...), after the report; JSON
+  output carries the same `fix` object on every result.
+- **A user-defined type hierarchy** for LVA008–LVA010: `[tool.constricter.narrower]` (and the
+  plugins' `narrower` option), overriding the defaults and the module's classes per type, and making
+  the types it names comparable.
+- **LVA011: a fixed-length tuple longer than `max-length`** (4 by default, measured: across the
+  corpus, variable annotations list 2 types 140 times, 3 and 4 about 20 times each, and 5 or more 3
+  times). Reported from `strict`, an error at `suffocate`; pylint's `C9111`.
+- **Reorganised**: a flat `constricter/` (no `src/`) in `rules/`, `fix/`, `cli/` and `plugins/`,
+  with no module over 750 lines; `docs/` holds the changelog and contributing and security policies.
 
 Next:
 
@@ -553,45 +605,50 @@ Next:
    CPython 3.10 one).
 2. Revisit the [disabled rules](#disabled-rules) as tools change (last checked 2026-09-22: COM812,
    one-line DOC201/DOC402 and `max-args` came back on; the rest can't go yet).
-3. **LVA008: a type that could narrow.** A warning at `constrict`, an error at `suffocate`: a
-   declared type every value bound to the name (across its lifetime, not just its first binding)
-   fits a strictly narrower one of, e.g. a `float` only ever given `int`s (`+= 1` included). **The
-   value-flow engine is built** (`constricter.flow`, run by `checker.value_flow`, not yet reported):
-   it records every binding of each name in a scope with its value's type when `--fix` infers it
-   with certainty, and compares them with the declared type through a `Hierarchy` (the numeric
-   tower, `bool` < `int` < `float` < `complex`, plus the module's own classes under their bases).
-   Left to decide before it reports: codes and levels, `# noqa` and `# type: ignore` handling, and
-   the message. Semantic narrowing (a `str` only ever `"0"` or `"1"` could be a `bool`) is out of
-   its reach: it compares types, not values.
-4. **LVA010: a declared union member no value uses.** A warning: `x: int | str = 0` where no value
-   is ever a `str`. Also built on the engine, with LVA008: both claim only when every binding's
-   value is known and no other scope writes the name (`global`, `nonlocal`), and never in a class
-   body, since instances rebind its attributes. On the corpus they find nothing, as expected of
-   codebases this full of imported types; worth measuring on smaller, self-contained ones before
-   choosing their levels. `LVA009` shares their engine and is reported (see Done).
-5. **Show how each fix was inferred.** `annotations.inferred` now decides a fix through one of
-   several mechanisms (a literal, a container of literals, a same/cross-module function's declared
-   return type, a fixed-return builtin, a class it constructs, a copy of an already-typed local, a
-   subscript or an attribute of one), but `Offence.fix` keeps only the resulting annotation text,
-   not which one produced it. Surfacing that (`--diff`, or a verbose/explain mode) would help trust
-   and debug a fix, especially a guessed one. Needs every inference helper (`_scalar`, `_container`,
-   `_called`, `_subscripted`, the copy and attribute checks in `inferred` itself) to report a reason
-   alongside the type, not just the type — a real (if mechanical) change through most of
-   `annotations.py`'s inference path, not a one-line addition.
-6. **A user-defined type hierarchy.** A project's own say in which types are narrower than which,
-   for LVA008–LVA010: `B` narrower than `A` means a name declared `A` that only ever holds what `B`
-   can is narrowable, and a `B` value fits an `A` annotation. Its entries take precedence over the
-   built-in defaults, per type, so a project can drop or change one (say, `int` not counting as
-   narrower than `float`) as well as add its own (including imported classes, which the engine
-   otherwise never compares). `flow.Hierarchy` already takes each type's wider types as a plain
-   mapping; what's left is the setting (`[tool.constricter.narrower]`, say, with the same keys on
-   the CLI and plugins) and merging it over `DEFAULT_PARENTS`.
-7. **A maximum length for fixed-length annotations.** A warning or an error, by level: with a
-   maximum of 3, `tuple[str, str, str]` is fine and `tuple[str, str, str, str]` isn't, since a
-   fixed-length tuple that long reads better as a `NamedTuple` or dataclass. Applies to the
-   annotations that list one type per element (`tuple[...]` and `Tuple[...]`, not `tuple[T, ...]`);
-   `list` and the other containers take a single element type, so they have no length to limit. A
-   setting like `nesting`'s (`max-length`), with a default to pick by measuring the corpus.
+3. **A regeneratable corpus table.** One script that runs `tests/corpus.py` and
+   `tests/corpus_fix.py` over every corpus package at each level, and writes the table above (with
+   more columns: per-code counts at each level, fixed and guessed, time) as Markdown, so it's
+   regenerated rather than hand-edited, and a PR's effect on it is one rerun.
+4. **Finer fix levels than `--fix` and `--unsafe-fixes`.** Name each inference mechanism (the
+   reasons `--show-fixes` prints already do), and let a project choose which to apply
+   (`--fix-select`/`fix-ignore`, like ruff's `extend-safe-fixes`/`extend-unsafe-fixes`), instead of
+   the one certain/guess split.
+5. **Example editor settings**, for VS Code and Zed, to enable the plugin in a Python project: VS
+   Code's flake8 and pylint extensions (flake8's needs `"flake8.importStrategy": "fromEnvironment"`
+   to load plugins) and Zed's ruff/pyright setup plus a task running the CLI.
+6. **`--fix` for LVA002 loop targets and more certain expressions**: `x: T` before a loop over a
+   `range`, a typed `list`/`set`/`dict` or its `.items()`, `enumerate`; comprehensions,
+   `a if c else b`, and `int + int`-style arithmetic on builtin scalars only. LVA002 is the
+   second-largest code on the standard library.
+7. **A result cache and parallel profiling**: cache per file on its content, config and version
+   (like `.ruff_cache`), and find why `-j0` uses only about half of 16 cores on the standard
+   library.
+8. **Distribution odds and ends**: nvim-lint and none-ls definitions, `require_serial` on the
+   `constricter-fix` hook (its cross-module `--fix` needs every file), Bazel `rules_lint` and Pants
+   snippets, `uvx`/`pipx` install notes, SARIF `helpUri` and `fixes`.
+9. **A language server** (an optional extra) with `--fix` as quick fixes: the way into Helix and
+   Zed, and the base for a VS Code extension.
+10. **A docs site**: a page per rule (what SARIF's `helpUri` and `--explain` link to), and a "why
+    not a type checker?" page, since type checkers decline to require local annotations.
+11. **More `--fix` inference**: `sorted()`, `list()`, `set()` and `tuple()` of a container whose
+    type is known; `await` of an async function defined in the same module; and unpacking from a
+    tuple whose type is known (`a, b = pair` with `pair: tuple[int, str]`, declaring each name
+    before the statement).
+12. **Type-checker-backed inference**, opt-in (`--infer-with=ty|basedpyright`): read the variable
+    types those checkers already show as inlay hints (their language servers return them as text
+    edits), and apply them only as `--unsafe-fixes`, since an inferred type can be too wide or a
+    literal. The largest potential gain in fix rate; shares plumbing with a language server.
+13. **Fixes for LVA008 and LVA010**: the narrowed annotation, or the union without its unused
+    member, offered as suggestions in rdjson and SARIF output and applied as rewrites under
+    `--unsafe-fixes`. The value-flow engine already knows the answer.
+14. **An optional `Final` rule**: a local bound once and never rebound could be `Final`. Off by
+    default, reported at `suffocate`; neither ruff nor pylint has one. Measure its noise on the
+    corpus first.
+15. **GitHub Action improvements**: a `version` input that installs that release from PyPI (with uv,
+    faster than building the action's own checkout), a summary table on the run page
+    (`$GITHUB_STEP_SUMMARY`), and an optional SARIF upload to code scanning.
+16. **Richer text output**: the offending source line with a caret under the name, as ruff's `full`
+    output does, with today's one-line format kept as the concise default.
 
 After the first release (it's on PyPI now), each waiting on a step outside this repository:
 
@@ -622,3 +679,13 @@ Everything else is on. Some of these may be revisited.
 | harden-runner      | `egress-policy: audit` on macOS and Windows, and in the weekly external-link check | harden-runner supports only audit on GitHub's macOS and Windows runners; external links can go anywhere.              |
 | reuse              | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)            | No recent release ships a wheel for Python 3.11+, so installing it builds from source with an unpinned `poetry-core`. |
 | zizmor             | `self-repository` (`.github/zizmor.yml`)                                           | Scorecard reads the `$/` form it wants as an unpinned third-party action, so local actions stay `./`.                 |
+
+## AI usage
+
+Heavily inspired by
+[Dictionarry/Profilarr's AI Transparency Statement](https://v2.dictionarry.dev/ai-transparency).
+
+I have used generative AI to write large parts of this code. All of the code here is my
+_responsibility_ regardless: AI is a tool, not an owner of a project. I have personally understood,
+reviewed, and approved all of the AI-generated code in this repository, and **mainline releases**
+carry the same accountability to me as anything I write and publish myself.

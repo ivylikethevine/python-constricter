@@ -1,15 +1,16 @@
 # SPDX-License-Identifier: MIT
 """Value flow: every type a name is bound to over its lifetime in a scope, against its declared type.
 
-The groundwork for three planned rules (README, Roadmap), not yet reported: a declared type every
-value fits a strictly narrower one of (LVA008), a value that doesn't fit the declared type at all
-(LVA009), and a declared union member no value ever uses (LVA010).
+Three rules come of it (`check_tree` reports them): a declared type every value fits a strictly
+narrower one of (LVA008), a value that doesn't fit the declared type at all (LVA009), and a declared
+union member no value ever uses (LVA010).
 
 It's flow-insensitive: the order and branches bindings happen in don't matter, only the set of
 values a name is ever bound to. A binding whose value `--fix` can't infer with certainty is
 *unknown*, and one unknown binding (or a write from a nested function) stops the narrowing claims
 (LVA008, LVA010), since the name may hold something else; it never stops LVA009, which only needs
-the one value it reports.
+the one value it reports. The checker also stops them for every name in a module or class body,
+which other code can rebind out of sight.
 
 Types are compared through a `Hierarchy` of which named types are narrower than which: `bool` is
 narrower than `int`, `int` than `float` and `float` than `complex` (the numeric tower), and a class
@@ -25,6 +26,8 @@ from typing import Final, TypeAlias
 
 # Each named type's directly wider types.
 Parents: TypeAlias = Mapping[str, frozenset[str]]
+# One project-declared type and the types it's narrower than (`Checks.narrower`, `parse_narrower`).
+Narrower: TypeAlias = tuple[str, tuple[str, ...]]
 DEFAULT_PARENTS: Final[Parents] = {
     "bool": frozenset({"int"}),
     "int": frozenset({"float"}),
@@ -60,7 +63,7 @@ _CLOSED_GENERICS: Final = frozenset({"dict", "frozenset", "list", "set", "tuple"
 
 
 class Kind(StrEnum):
-    """What a `Finding` says, by the planned rule that would report it."""
+    """What a `Finding` says, as the code that reports it."""
 
     NARROWABLE = "LVA008"  # every value fits a strictly narrower type than the declared one
     CONFLICT = "LVA009"  # a value doesn't fit the declared type
@@ -118,13 +121,18 @@ class Hierarchy:
         self.classes: frozenset[str] = frozenset(classes)
 
     @classmethod
-    def for_module(cls, tree: ast.Module) -> "Hierarchy":
+    def for_module(cls, tree: ast.Module, narrower: Parents | None = None) -> "Hierarchy":
         """Build the default hierarchy, plus each class the module defines under the bases it names.
+
+        A project's own `narrower` entries (each type's wider types) replace whatever the defaults
+        or the module say for that type (`int = []` stops `int` fitting `float`); every type they
+        name counts as `closed`, since the project vouches for its ancestry.
 
         Returns:
           The hierarchy.
 
         """
+        own: Parents = narrower or {}
         parents: dict[str, frozenset[str]] = dict(DEFAULT_PARENTS)
         defined: dict[str, list[ast.expr]] = {}
         node: ast.AST
@@ -134,7 +142,9 @@ class Hierarchy:
                 defined[node.name] = node.bases
                 if bases := frozenset(b.id for b in node.bases if isinstance(b, ast.Name)):
                     parents[node.name] = bases
-        return cls(parents, (name for name in defined if _visible(name, defined, frozenset())))
+        parents.update(own)
+        vouched: frozenset[str] = frozenset(own).union(*own.values())
+        return cls(parents, vouched | {name for name in defined if _visible(name, defined, frozenset())})
 
     def wider(self, atom: str) -> frozenset[str]:
         """Find every type `atom` is narrower than, directly or not.
@@ -200,6 +210,25 @@ class Hierarchy:
         """
         pool: frozenset[str] = frozenset(atoms)
         return frozenset(a for a in pool if not any(self.fits(a, b) and not self.fits(b, a) for b in pool))
+
+
+def parse_narrower(text: str) -> tuple[Narrower, ...]:
+    """Read a type hierarchy as the plugins' option takes it: `B=A, C=A, C=D, int=`.
+
+    Each `narrower=wider` entry adds a wider type; `narrower=` alone says it has none.
+
+    Returns:
+      Each narrower type and its wider types, in the order first named.
+
+    """
+    parents: dict[str, list[str]] = {}
+    entry: str
+    narrower: str
+    wider: str
+    for entry in text.replace(",", " ").split():
+        narrower, _, wider = entry.partition("=")
+        parents.setdefault(narrower, []).extend([wider] if wider else [])
+    return tuple((name, tuple(wider)) for name, wider in parents.items())
 
 
 def _container(atom: str) -> str:

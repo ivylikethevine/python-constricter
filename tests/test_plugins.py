@@ -15,9 +15,9 @@ from pylint.lint import PyLinter, Run
 from pylint.reporters import CollectingReporter
 from pylint.reporters.text import TextReporter
 
-from constricter.checker import NESTING, Level
-from constricter.flake8_plugin import ConstricterChecker
-from constricter.pylint_plugin import ConstricterChecker as PylintChecker
+from constricter.offences import MAX_LENGTH, NESTING, Level
+from constricter.plugins.flake8 import ConstricterChecker
+from constricter.plugins.pylint import ConstricterChecker as PylintChecker
 
 SOURCE: Final = """
 def broken(items: list[int]) -> None:
@@ -56,6 +56,8 @@ def _flake8_fixture(
     monkeypatch.setattr(ConstricterChecker, "type_comments", False)
     monkeypatch.setattr(ConstricterChecker, "all_scopes", False)
     monkeypatch.setattr(ConstricterChecker, "nesting", NESTING)
+    monkeypatch.setattr(ConstricterChecker, "narrower", ())
+    monkeypatch.setattr(ConstricterChecker, "max_length", MAX_LENGTH)
 
     def _run(*args: str) -> list[str]:
         application: Application = Application()
@@ -111,7 +113,7 @@ def _pylint(path: Path, *args: str) -> list[str]:
     output: StringIO = StringIO()
     _ = Run(
         [
-            "--load-plugins=constricter.pylint_plugin",
+            "--load-plugins=constricter.plugins.pylint",
             "--disable=all",
             "--enable=constricter",
             "--msg-template={line}:{column}: {msg_id} {symbol} {msg}",
@@ -187,3 +189,46 @@ def test_a_mismatched_value_at_constrict(tmp_path: Path, flake8: Callable[..., l
     message: str = "'x' is bound to `str` here, which doesn't fit its annotation"
     assert flake8("--constricter-level=constrict", str(path)) == [f"{path}:3:3: LVA009 {message}"]
     assert _pylint(path, "--constricter-level=constrict") == [f"3:2: C9109 mismatched-value-type {message}"]
+
+
+def test_narrowing_codes_at_suffocate(tmp_path: Path, flake8: Callable[..., list[str]]) -> None:
+    """At `suffocate`, both plugins report LVA008 / C9108 and LVA010 / C9110."""
+    path: Path = tmp_path / "narrowable.py"
+    source: str = "def f() -> None:\n  total: float = 0\n  label: int | str = 3\n"
+    _ = path.write_text(source, encoding="utf-8", newline="\n")
+    narrowable: str = "'total' only ever holds `int`; its annotation could narrow to that"
+    unused: str = "'label''s annotation allows `str`, which no value it's bound to ever is"
+    assert flake8("--constricter-level=suffocate", str(path)) == [
+        f"{path}:2:3: LVA008 {narrowable}",
+        f"{path}:3:3: LVA010 {unused}",
+    ]
+    assert _pylint(path, "--constricter-level=suffocate") == [
+        f"2:2: C9108 narrowable-annotation {narrowable}",
+        f"3:2: C9110 unused-union-member {unused}",
+    ]
+
+
+def test_both_plugins_take_a_type_hierarchy(tmp_path: Path, flake8: Callable[..., list[str]]) -> None:
+    """`constricter-narrower` (`int=`: an `int` no longer fits `float`) reaches both plugins."""
+    path: Path = tmp_path / "hierarchy.py"
+    _ = path.write_text("def f() -> None:\n  total: float = 0\n", encoding="utf-8", newline="\n")
+    message: str = "'total' is bound to `int` here, which doesn't fit its annotation"
+    assert flake8("--constricter-level=constrict", "--constricter-narrower=int=", str(path)) == [
+        f"{path}:2:3: LVA009 {message}",
+    ]
+    assert _pylint(path, "--constricter-level=constrict", "--constricter-narrower=int=") == [
+        f"2:2: C9109 mismatched-value-type {message}",
+    ]
+
+
+def test_both_plugins_take_a_max_length(tmp_path: Path, flake8: Callable[..., list[str]]) -> None:
+    """`constricter-max-length` reaches both plugins (LVA011 / C9111, errors at `suffocate`)."""
+    path: Path = tmp_path / "long.py"
+    _ = path.write_text("def f() -> None:\n  a: tuple[int, int, int] = t()\n", encoding="utf-8", newline="\n")
+    message: str = "the annotation of 'a' lists a tuple of 3 elements; name them (a NamedTuple)"
+    assert flake8("--constricter-level=suffocate", "--constricter-max-length=2", str(path)) == [
+        f"{path}:2:6: LVA011 {message}",
+    ]
+    assert _pylint(path, "--constricter-level=suffocate", "--constricter-max-length=2") == [
+        f"2:5: C9111 long-tuple-annotation {message}",
+    ]

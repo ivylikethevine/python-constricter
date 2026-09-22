@@ -3,15 +3,18 @@
 
 from typing import Final
 
-from constricter.checker import (
+from constricter.offences import (
     COMMENT_TYPED_TARGET,
+    LONG_TUPLE,
     MESSAGES,
     MISMATCHED_TYPE,
+    NARROWABLE_TYPE,
     NESTED_TYPE,
     REDUNDANT_TYPE,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
     UNTYPED_TARGET,
+    UNUSED_UNION_MEMBER,
     VAGUE_TYPE,
     Level,
     Offence,
@@ -56,6 +59,22 @@ _WHY: Final = {
         "value whose type is certain is checked, against types whose every subclass is known\n"
         "(builtins, and classes the module defines on such bases), so an imported class never is."
     ),
+    NARROWABLE_TYPE: (
+        "An annotation wider than anything the name ever holds hides what the code really does:\n"
+        "`total: float = 0` only ever given `int`s is an `int`. Narrow it, or widen the values if the\n"
+        "annotation is the intent. Claimed only for a function's own names, when every value the name\n"
+        "is bound to has a certain type and no other scope writes it (`nonlocal`): a module or class\n"
+        "variable is state other code rebinds out of sight (`mod.X = ...`, `self.x = ...`)."
+    ),
+    UNUSED_UNION_MEMBER: (
+        "A union member no value ever is (`label: int | str = 3`, never a `str`) is dead weight every\n"
+        "reader has to consider. Drop it. Claimed under the same conditions as LVA008."
+    ),
+    LONG_TUPLE: (
+        "A fixed-length tuple listing more than `max-length` types (4 by default) leaves every reader\n"
+        "counting positions: what's `row[3]`? Name the fields instead, with a `NamedTuple` or a\n"
+        "dataclass. `tuple[int, ...]` (any length) isn't a list of positions, so it's never counted."
+    ),
 }
 
 
@@ -72,5 +91,5 @@ def explain(code: str) -> str:
         for level in Level
         if offence.is_reported(level)
     ]
-    message: str = MESSAGES[code].format(name="`name`", detail="`T`")
+    message: str = MESSAGES[code].format(name="`name`", detail="T")
     return f"{code}: {message}\n\n{_WHY[code]}\n\n{', '.join(levels)}\n"

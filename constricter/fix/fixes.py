@@ -4,7 +4,7 @@
 import contextlib
 from collections.abc import Sequence
 
-from constricter.checker import Offence
+from constricter.offences import Offence
 
 
 def apply(lines: Sequence[str], offences: Sequence[Offence]) -> list[str]:

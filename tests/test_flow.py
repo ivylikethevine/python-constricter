@@ -6,8 +6,9 @@ import textwrap
 
 import pytest
 
-from constricter.checker import Checks, value_flow
-from constricter.flow import DEFAULT_PARENTS, Finding, Hierarchy, Kind, augmented, members
+from constricter.offences import Checks
+from constricter.rules.checker import value_flow
+from constricter.rules.flow import DEFAULT_PARENTS, Finding, Hierarchy, Kind, augmented, members
 
 
 def _found(source: str) -> list[tuple[str, Kind, str]]:
@@ -208,10 +209,15 @@ def test_a_module_class_narrows_through_a_function_returning_it() -> None:
 
 
 def test_module_and_class_bodies_are_checked_with_all_scopes() -> None:
-    """Value flow follows the same scopes as the rules: module and class bodies with `all-scopes`."""
-    source: str = "LIMIT: float = 3\n"
+    """With `all-scopes`, a module body's values are checked (LVA009), but never narrowed.
+
+    Its names are state other modules can rebind out of sight (`mod.LIMIT = 2.5`, `monkeypatch`).
+    """
+    source: str = "LIMIT: float = 3\nNAME: str = 3\n"
     assert value_flow(source) == []
-    assert [f.detail for f in value_flow(source, checks=Checks(all_scopes=True))] == ["int"]
+    assert [(f.name, f.kind) for f in value_flow(source, checks=Checks(all_scopes=True))] == [
+        ("NAME", Kind.CONFLICT),
+    ]
 
 
 def test_a_builtin_containers_element_types_decide_nothing() -> None:

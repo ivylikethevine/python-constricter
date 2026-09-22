@@ -7,8 +7,9 @@ from typing import Final, TypeAlias, cast
 
 import pytest
 
-from constricter import cli, notebook
-from constricter.checker import Offence
+from constricter import notebook
+from constricter.cli import command as cli
+from constricter.offences import Offence
 
 _Json: TypeAlias = "str | int | list[_Json] | dict[str, _Json] | None"
 _Cell: TypeAlias = dict[str, str | list[str]]

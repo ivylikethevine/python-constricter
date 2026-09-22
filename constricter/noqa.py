@@ -5,7 +5,7 @@ import io
 import re
 from collections.abc import Sequence
 
-from constricter.checker import Offence
+from constricter.offences import Offence
 
 _NOQA: re.Pattern[str] = re.compile(
     r"#\s*noqa(?::\s*(?P<codes>[A-Z]+[0-9]+(?:[,\s]+[A-Z]+[0-9]+)*))?",

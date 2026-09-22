@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias
 
 from constricter import __version__
-from constricter.checker import MESSAGES, Level, Offence
+from constricter.offences import MESSAGES, Level, Offence
 
 _URL: Final = "https://github.com/ivylikethevine/python-constricter"
 _Json: TypeAlias = "str | int | bool | list[_Json] | dict[str, _Json]"
@@ -68,7 +68,7 @@ def _where(result: Result) -> dict[str, _Json]:
 
 def _sarif(results: Sequence[Result]) -> dict[str, _Json]:
     rules: list[_Json] = [
-        {"id": code, "shortDescription": {"text": message.format(name="`name`", detail="`T`")}}
+        {"id": code, "shortDescription": {"text": message.format(name="`name`", detail="T")}}
         for code, message in MESSAGES.items()
     ]
     findings: list[_Json] = [
@@ -112,6 +112,9 @@ def _json(results: Sequence[Result]) -> Iterator[str]:
                 "severity": r.severity,
                 "message": r.offence.message,
                 "cell": r.offence.cell,
+                "fix": None
+                if r.offence.fix is None
+                else {"annotation": r.offence.fix, "reason": r.offence.reason, "unsafe": r.offence.unsafe},
             }
             for r in results
         ],
@@ -238,6 +241,23 @@ def render(fmt: Format, results: Sequence[Result]) -> Iterator[str]:
 
     """
     return _RENDERERS[fmt](results)
+
+
+def fix_reasons(results: Sequence[Result]) -> Iterator[str]:
+    """List the annotation each fixable result would get, and how its value decided it.
+
+    Yields:
+      A line each: where, the name, the annotation and its reason; a guess says it needs
+      `--unsafe-fixes`.
+
+    """
+    r: Result
+    for r in results:
+        if r.offence.fix is not None:
+            cell: str = "" if r.offence.cell is None else f"cell {r.offence.cell}:"
+            where: str = f"{r.path}:{cell}{r.offence.line}:{r.offence.col + 1}"
+            guess: str = " (a guess: --unsafe-fixes)" if r.offence.unsafe else ""
+            yield f"{where}: fix {r.offence.name!r}: `{r.offence.fix}`, from {r.offence.reason}{guess}"
 
 
 def statistics(results: Sequence[Result]) -> Iterator[str]:

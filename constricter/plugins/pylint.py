@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""The rules as a pylint plugin (C9101-C9107, C9109); reports the codes the level makes errors."""
+"""The rules as a pylint plugin (C9101-C9111); reports the codes the level makes errors."""
 
 from typing import IO, TYPE_CHECKING, NamedTuple, cast, final
 
@@ -8,25 +8,30 @@ from pylint.checkers import BaseRawFileChecker
 from pylint.lint import PyLinter
 from pylint.typing import Options
 
-from constricter.checker import (
+from constricter.jsonc import as_text
+from constricter.noqa import lines, unsuppressed
+from constricter.offences import (
     COMMENT_TYPED_TARGET,
     LEVELS,
+    LONG_TUPLE,
+    MAX_LENGTH,
     MESSAGES,
     MISMATCHED_TYPE,
+    NARROWABLE_TYPE,
     NESTED_TYPE,
     NESTING,
     REDUNDANT_TYPE,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
     UNTYPED_TARGET,
+    UNUSED_UNION_MEMBER,
     VAGUE_TYPE,
     Checks,
     Level,
     Offence,
-    check_source,
 )
-from constricter.jsonc import as_text
-from constricter.noqa import lines, unsuppressed
+from constricter.rules.checker import check_source
+from constricter.rules.flow import parse_narrower
 
 if TYPE_CHECKING:
     from typing_extensions import override  # `typing.override` is 3.12+
@@ -57,7 +62,10 @@ SYMBOLS: dict[str, Message] = {
     VAGUE_TYPE: Message("C9105", "vague-annotation"),
     NESTED_TYPE: Message("C9106", "deeply-nested-annotation"),
     REDUNDANT_TYPE: Message("C9107", "redundant-annotation"),
+    NARROWABLE_TYPE: Message("C9108", "narrowable-annotation"),
     MISMATCHED_TYPE: Message("C9109", "mismatched-value-type"),
+    UNUSED_UNION_MEMBER: Message("C9110", "unused-union-member"),
+    LONG_TUPLE: Message("C9111", "long-tuple-annotation"),
 }
 
 
@@ -94,6 +102,24 @@ class ConstricterChecker(BaseRawFileChecker):
                 "help": "Report an annotation nested this deep.",
             },
         ),
+        (
+            "constricter-max-length",
+            {
+                "default": MAX_LENGTH,
+                "type": "int",
+                "metavar": "<n>",
+                "help": "Report a fixed-length tuple annotation listing more than this many types.",
+            },
+        ),
+        (
+            "constricter-narrower",
+            {
+                "default": "",
+                "type": "string",
+                "metavar": "<B=A, ...>",
+                "help": "Your own type hierarchy (LVA008-LVA010): B=A, B narrower than A.",
+            },
+        ),
     )
 
     def __init__(self, linter: PyLinter) -> None:
@@ -122,6 +148,8 @@ class ConstricterChecker(BaseRawFileChecker):
             type_comments=cast("bool", self.linter.config.constricter_type_comments),
             all_scopes=cast("bool", self.linter.config.constricter_all_scopes),
             nesting=cast("int", self.linter.config.constricter_nesting),
+            max_length=cast("int", self.linter.config.constricter_max_length),
+            narrower=parse_narrower(cast("str", self.linter.config.constricter_narrower)),
         )
         text: str = as_text(source)
         offences: list[Offence] = check_source(text, node.file or "<unknown>", checks)
@@ -129,7 +157,7 @@ class ConstricterChecker(BaseRawFileChecker):
         for o in unsuppressed(offences, lines(text)):  # suppression comments, as the CLI reads them
             if o.is_error(level):
                 # A message names the variable, then (LVA009's) its `detail`, as `msgs` spells them.
-                args: tuple[str, ...] = (o.name, f"`{o.detail}`") if o.detail else (o.name,)
+                args: tuple[str, ...] = (o.name, o.detail) if o.detail else (o.name,)
                 self.add_message(SYMBOLS[o.code].symbol, line=o.line, col_offset=o.col, args=args)
 
 

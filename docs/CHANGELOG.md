@@ -6,6 +6,18 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- **Breaking**: the pylint plugin is `constricter.plugins.pylint` (was `constricter.pylint_plugin`),
+  and the package is reorganised (`constricter.rules`, `constricter.fix`, `constricter.cli`,
+  `constricter.plugins`); the `constricter` package's own exports are unchanged.
+- **LVA011**: an annotation listing a fixed-length tuple of more than `max-length` types (4 by
+  default; `--max-length`, `max-length`, and the plugins' `constricter-max-length`). Reported from
+  `strict`, an error at `suffocate`; pylint's `C9111`.
+- `[tool.constricter.narrower]` (the plugins' `constricter-narrower`): your own type hierarchy for
+  LVA008–LVA010, over the built-in one.
+- `--show-fixes` lists each fix and how its value decided it; `--format=json` gains a `fix` object.
+- **LVA008** (an annotation every value fits a narrower type of, `total: float` only ever given
+  `int`s) and **LVA010** (a union member no value ever is): for a function's own names, reported
+  from `constrict`, errors at `suffocate`; pylint's `C9108` and `C9110`.
 - **LVA009**: a value, anywhere in a name's lifetime in the scope, whose type doesn't fit its
   annotation (`count: int = 0`, then `count = "done"`). A warning, an error from `constrict`;
   pylint's `C9109` (`mismatched-value-type`).

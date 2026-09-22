@@ -16,7 +16,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.annotations import returns
+from constricter.rules.annotations import returns
 
 _BUILTINS: Final = frozenset(dir(builtins))
 _PACKAGE: Final = "__init__"

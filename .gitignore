@@ -6,3 +6,5 @@ __pycache__/
 
 # npm installs of the pinned CI Markdown tools (.github/package.json)
 .github/node_modules/
+
+.hypothesis

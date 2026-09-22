@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MIT
 """Applying `--fix`'s annotations to source lines (constricter.fixes)."""
 
-from constricter import fixes
-from constricter.checker import Offence
+from constricter.fix import fixes
+from constricter.offences import Offence
 
 
 def test_apply_adds_each_fixable_offences_annotation() -> None:

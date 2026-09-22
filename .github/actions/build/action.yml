@@ -10,4 +10,4 @@ runs:
         check-wheel-contents dist/*.whl
         python -m venv "$RUNNER_TEMP/smoke"
         "$RUNNER_TEMP/smoke/bin/pip" install --no-deps --no-index dist/*.whl
-        "$RUNNER_TEMP/smoke/bin/constricter" src
+        "$RUNNER_TEMP/smoke/bin/constricter" constricter

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Final, TypeAlias, cast
 
 from constricter import jsonc
-from constricter.checker import Offence
+from constricter.offences import Offence
 
 VERSION: Final = 1
 Entries: TypeAlias = dict[str, dict[str, int]]  # file -> "CODE name" -> count

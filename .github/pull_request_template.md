@@ -12,7 +12,7 @@ ____________.
 <!-- One or two sentences a user reads on the release page: what they see
      differently after upgrading, present tense, no file names. Write `none`
      when nothing a user sees changes (tests, CI, doc wording). It becomes
-     this change's CHANGELOG.md entry. -->
+     this change's docs/CHANGELOG.md entry. -->
 
 none
 
@@ -25,10 +25,10 @@ Link any relevant issues or discussions here.
 If one of these cannot be completed, give a justification.
 
 - [ ] The checks in
-      [CONTRIBUTING.md](https://github.com/ivylikethevine/python-constricter/blob/main/CONTRIBUTING.md)
+      [CONTRIBUTING.md](https://github.com/ivylikethevine/python-constricter/blob/main/docs/CONTRIBUTING.md)
       pass locally
 - [ ] New behaviour has tests; coverage stays at 100%
-- [ ] Affected docs are updated (README, and CHANGELOG for user-facing changes)
+- [ ] Affected docs are updated (README, and docs/CHANGELOG.md for user-facing changes)
 
 ## AI disclosure
 

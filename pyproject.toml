@@ -65,10 +65,10 @@ dev = [
 ]
 
 [project.scripts]
-constricter = "constricter.cli:main"
+constricter = "constricter.cli.command:main"
 
 [project.entry-points."flake8.extension"]
-LVA = "constricter.flake8_plugin:ConstricterChecker"
+LVA = "constricter.plugins.flake8:ConstricterChecker"
 
 [build-system]
 requires = ["flit_core>=4.1,<5"]
@@ -110,7 +110,7 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 "tests/*" = ["assert"]
 
 [tool.mypy]
-files = ["src", "tests"]
+files = ["constricter", "tests"]
 python_version = "3.11"
 cache_dir = "local/.mypy_cache"
 strict = true
@@ -136,7 +136,7 @@ enable_error_code = [
 [tool.pylint.main]
 py-version = "3.11"
 load-plugins = [
-    "constricter.pylint_plugin",
+    "constricter.plugins.pylint",
     "pylint.extensions.bad_builtin",
     "pylint.extensions.broad_try_clause",
     "pylint.extensions.code_style",
@@ -192,7 +192,7 @@ branch = true
 fail_under = 100
 
 [tool.basedpyright]
-include = ["src", "tests"]
+include = ["constricter", "tests"]
 # The dev venv (see README, Development).
 venvPath = "local"
 venv = ".venv"

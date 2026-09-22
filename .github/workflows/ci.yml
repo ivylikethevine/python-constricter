@@ -45,13 +45,13 @@ jobs:
       - run: ruff format --check .
       - run: basedpyright
       - run: mypy
-      - run: pylint src tests
-      - run: flake8 src tests
+      - run: pylint constricter tests
+      - run: flake8 constricter tests
       - run: typos
       - run: validate-pyproject pyproject.toml
       - run: uv lock --check
-      - run: constricter --level=suffocate --all-scopes --format=github src tests
-      - run: constricter --coverage --all-scopes --fail-under=100 src tests
+      - run: constricter --level=suffocate --all-scopes --format=github constricter tests
+      - run: constricter --coverage --all-scopes --fail-under=100 constricter tests
       - run: pre-commit try-repo . constricter --all-files
 
   docs:
@@ -108,7 +108,7 @@ jobs:
       # The repository's own action, run on its own code.
       - uses: ./
         with:
-          args: --level=suffocate --all-scopes --format=github src tests
+          args: --level=suffocate --all-scopes --format=github constricter tests
 
   corpus:
     name: Corpus (${{ matrix.package }})

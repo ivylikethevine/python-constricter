@@ -11,7 +11,8 @@ from typing import Final, TypeAlias, cast
 
 import pytest
 
-from constricter import cli, config
+from constricter.cli import command as cli
+from constricter.cli import config, paths
 
 BROKEN: Final = """
 def broken(items: list[int]) -> None:
@@ -97,11 +98,11 @@ def test_directories_skip_hidden_and_tool_dirs_and_honour_exclude(tmp_path: Path
     for name in ("a.py", "pkg/b.py", "pkg/fixtures/c.py", ".venv/d.py", "pkg/__pycache__/e.py", "venv/f.py"):
         _ = _write(tmp_path / name, CLEAN)
     _ = _write(tmp_path / "notes.txt", "")
-    found: list[Path] = list(cli.python_files([tmp_path], ["*/fixtures/*"]))
+    found: list[Path] = list(paths.python_files([tmp_path], ["*/fixtures/*"]))
     assert found == [tmp_path / "a.py", tmp_path / "pkg" / "b.py"]
     # A file named explicitly is checked even where a directory walk would skip it.
-    assert list(cli.python_files([tmp_path / ".venv" / "d.py"])) == [tmp_path / ".venv" / "d.py"]
-    assert not list(cli.python_files([tmp_path / "a.py"], ["a.py"]))
+    assert list(paths.python_files([tmp_path / ".venv" / "d.py"])) == [tmp_path / ".venv" / "d.py"]
+    assert not list(paths.python_files([tmp_path / "a.py"], ["a.py"]))
 
 
 def test_exclude_also_skips_a_directory_by_name(tmp_path: Path) -> None:
@@ -109,7 +110,7 @@ def test_exclude_also_skips_a_directory_by_name(tmp_path: Path) -> None:
     name: str
     for name in ("a.py", "pkg/b.py", "pkg/generated/c.py"):
         _ = _write(tmp_path / name, CLEAN)
-    found: list[Path] = list(cli.python_files([tmp_path], ["generated"]))
+    found: list[Path] = list(paths.python_files([tmp_path], ["generated"]))
     assert found == [tmp_path / "a.py", tmp_path / "pkg" / "b.py"]
 
 
@@ -172,6 +173,7 @@ def test_json_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
         "severity": "error",
         "message": PLAIN,
         "cell": None,
+        "fix": {"annotation": "int", "reason": "a literal", "unsafe": False},
     }
     assert [(r["code"], r["severity"]) for r in results] == [
         ("LVA001", "error"),
@@ -284,6 +286,8 @@ def test_no_table_or_no_pyproject_sets_nothing(tmp_path: Path) -> None:
         '[tool.constricter.per-path-levels]\n"t/*" = "tight"\n',
         "[tool.constricter]\nper-file-ignores = 1\n",
         '[tool.constricter.per-file-ignores]\n"t/*" = ["XYZ"]\n',
+        "[tool.constricter]\nnarrower = 1\n",
+        '[tool.constricter.narrower]\nUserId = "str"\n',
         "[tool]\nconstricter = 1\n",
         "not toml [",
     ],

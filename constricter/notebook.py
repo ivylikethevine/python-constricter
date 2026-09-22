@@ -6,8 +6,9 @@ import re
 from collections.abc import Sequence
 from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter import fixes, jsonc
-from constricter.checker import Offence
+from constricter import jsonc
+from constricter.fix import fixes
+from constricter.offences import Offence
 
 SUFFIX: Final = ".ipynb"
 _Json: TypeAlias = "str | int | float | bool | list[_Json] | dict[str, _Json] | None"

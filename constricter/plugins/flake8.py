@@ -7,7 +7,9 @@ from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING, ClassVar, Final, cast, final
 
 from constricter import __version__
-from constricter.checker import LEVELS, NESTING, Checks, Level, Offence, check_source, check_tree
+from constricter.offences import LEVELS, MAX_LENGTH, NESTING, Checks, Level, Offence
+from constricter.rules.checker import check_source, check_tree
+from constricter.rules.flow import Narrower, parse_narrower
 
 if TYPE_CHECKING:
     from flake8.options.manager import OptionManager
@@ -25,6 +27,8 @@ class ConstricterChecker:
     type_comments: ClassVar[bool] = False
     all_scopes: ClassVar[bool] = False
     nesting: ClassVar[int] = NESTING
+    max_length: ClassVar[int] = MAX_LENGTH
+    narrower: ClassVar[tuple[Narrower, ...]] = ()
 
     def __init__(self, tree: ast.Module, lines: Sequence[str]) -> None:
         """Take the file flake8 parsed, and its lines."""
@@ -60,6 +64,19 @@ class ConstricterChecker:
             parse_from_config=True,
             help=f"report an annotation nested this deep (LVA006; default: {NESTING})",
         )
+        parser.add_option(
+            "--constricter-max-length",
+            type=int,
+            default=MAX_LENGTH,
+            parse_from_config=True,
+            help=f"report a fixed-length tuple annotation listing more types (LVA011; default: {MAX_LENGTH})",
+        )
+        parser.add_option(
+            "--constricter-narrower",
+            default="",
+            parse_from_config=True,
+            help="your own type hierarchy for LVA008-LVA010, as `B=A, C=A, int=` (B is narrower than A)",
+        )
 
     @classmethod
     def parse_options(cls, options: argparse.Namespace) -> None:
@@ -68,6 +85,8 @@ class ConstricterChecker:
         cls.type_comments = cast("bool", options.constricter_type_comments)
         cls.all_scopes = cast("bool", options.constricter_all_scopes)
         cls.nesting = cast("int", options.constricter_nesting)
+        cls.max_length = cast("int", options.constricter_max_length)
+        cls.narrower = parse_narrower(cast("str", options.constricter_narrower))
 
     def run(self) -> Iterator[tuple[int, int, str, type["ConstricterChecker"]]]:
         """Check the file.
@@ -78,7 +97,13 @@ class ConstricterChecker:
         """
         source: str = "".join(self.lines)
         # flake8's tree has no `# type:` comments; reparse only when the file might have one.
-        checks: Checks = Checks(self.type_comments, self.all_scopes, self.nesting)
+        checks: Checks = Checks(
+            type_comments=self.type_comments,
+            all_scopes=self.all_scopes,
+            nesting=self.nesting,
+            max_length=self.max_length,
+            narrower=self.narrower,
+        )
         offences: list[Offence] = (
             check_source(source, checks=checks)
             if _TYPE_COMMENT in source

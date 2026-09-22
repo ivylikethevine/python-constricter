@@ -22,7 +22,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Final
 
-from constricter import cli
+from constricter.cli import command as cli
+from constricter.cli import paths
 
 COPY: Final = Path("local/corpus-fix")
 FIX: Final = ["--unsafe-fixes", "--all-scopes", "--jobs=0"]
@@ -63,7 +64,7 @@ def main(argv: Sequence[str]) -> int:
     shutil.rmtree(COPY, ignore_errors=True)
     valid: list[Path] = []
     source: Path
-    for source in cli.python_files([root]):
+    for source in paths.python_files([root]):
         copy: Path = COPY / source.relative_to(root)
         copy.parent.mkdir(parents=True, exist_ok=True)
         _ = shutil.copyfile(source, copy)

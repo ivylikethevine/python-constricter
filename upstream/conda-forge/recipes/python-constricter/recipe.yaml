@@ -33,7 +33,7 @@ tests:
   - python:
       imports:
         - constricter
-        - constricter.flake8_plugin
+        - constricter.plugins.flake8
       pip_check: true
       python_version: ${{ python_min }}.*
   - requirements:

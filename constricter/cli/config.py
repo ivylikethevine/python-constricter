@@ -7,8 +7,8 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, TypeAlias
 
-from constricter.checker import LEVELS, MESSAGES
 from constricter.jsonc import is_int
+from constricter.offences import LEVELS, MESSAGES
 
 if TYPE_CHECKING:
     from datetime import date, datetime, time
@@ -133,6 +133,19 @@ def _ignores(value: _Toml) -> dict[str, list[str]] | None:
     return None if None in ignores.values() else {glob: list(codes or []) for glob, codes in ignores.items()}
 
 
+def _narrower(value: _Toml) -> dict[str, list[str]] | None:
+    """Read a type hierarchy: each type, and the list of types it's narrower than.
+
+    Returns:
+      It, or `None` if `value` isn't a table of string lists.
+
+    """
+    if not isinstance(value, dict):
+        return None
+    wider: dict[str, list[str] | None] = {name: _strings(types) for name, types in value.items()}
+    return None if None in wider.values() else {name: list(types or []) for name, types in wider.items()}
+
+
 def _baseline(value: _Toml, root: Path) -> str | None:
     """Read a baseline path, relative to `root` (the pyproject.toml that names it).
 
@@ -147,6 +160,7 @@ def _baseline(value: _Toml, root: Path) -> str | None:
 _READERS: dict[str, Callable[[_Toml], Default | None]] = {
     "level": _level,
     "nesting": partial(_whole, minimum=1),
+    "max-length": partial(_whole, minimum=1),
     "jobs": partial(_whole, minimum=0),
     "exclude": _strings,
     "select": _codes,
@@ -155,6 +169,7 @@ _READERS: dict[str, Callable[[_Toml], Default | None]] = {
     "all-scopes": _flag,
     "per-path-levels": _levels,
     "per-file-ignores": _ignores,
+    "narrower": _narrower,
 }
 
 
