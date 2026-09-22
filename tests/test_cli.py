@@ -29,6 +29,7 @@ PLAIN: Final = "local variable 'plain' is not annotated where it's first bound"
 FOURTH: Final = "local variable 'fourth' is not annotated where it's first bound"
 LOOP: Final = "for/match variable 'loop' is untyped; declare it before the statement"
 _Json: TypeAlias = "str | int | float | bool | list[_Json] | dict[str, _Json] | None"
+_JsonObject: TypeAlias = dict[str, _Json]
 _Sarif: TypeAlias = dict[str, list[dict[str, list[dict[str, _Json]]]]]
 CLEAN: Final = """
 def clean() -> None:
@@ -727,8 +728,8 @@ def test_rdjson_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> No
     """`--format=rdjson` is reviewdog's JSON; a certain fix is a suggestion at the name's end."""
     demo: Path = _write(tmp_path / "demo.py", DEMO)
     assert cli.main(["--format=rdjson", str(demo)]) == cli.EXIT_FOUND
-    report: dict[str, list[dict[str, _Json]]] = cast(
-        "dict[str, list[dict[str, _Json]]]",
+    report: dict[str, list[_JsonObject]] = cast(
+        "dict[str, list[_JsonObject]]",
         json.loads(capsys.readouterr().out),
     )
     first: dict[str, _Json] = report["diagnostics"][0]

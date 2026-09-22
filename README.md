@@ -72,7 +72,7 @@ class bodies too. Statements are read in source order, and only a name's first b
 | `LVA003` | a `for` target typed only by `# type: T`                               | `name: T` first                                |
 | `LVA004` | with `all-scopes`: the same as `LVA001`, in a module or class body     | `name: T = ...` (`ClassVar[T]` in a dataclass) |
 | `LVA005` | an annotation with `Any`, `object` or a generic without its parameters | name the real type                             |
-| `LVA006` | an annotation nested `nesting` deep (5 by default)                     | a `type` alias for a part of it                |
+| `LVA006` | an annotation nested `nesting` deep (3 by default)                     | a `type` alias for a part of it                |
 | `LVA007` | a name annotated again with the type it already has, in the same block | drop the second annotation                     |
 
 Exempt: comprehensions, `except ... as`, imports, `def`/`class`, `type` aliases, parameters,
@@ -151,7 +151,7 @@ level = "constrict" # or 2
 exclude = ["tests/fixtures/*"]
 type-comments = false
 all-scopes = true
-nesting = 5
+nesting = 3
 jobs = 0
 baseline = "constricter-baseline.json" # the default; relative to this pyproject.toml
 
@@ -356,20 +356,6 @@ git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/markdownlint-cli2
 git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/prettier --check
 ```
 
-### Disabled rules
-
-Everything else is on. Some of these may be revisited.
-
-| Tool               | Rule                                                                                                                             | Why                                                                                                                                        |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| ruff               | `incorrect-blank-line-before-class`, `multi-line-summary-second-line` (D203/D213)                                                | Each contradicts a rule that stays on (D211/D212); one of each pair has to go.                                                             |
-| ruff (`tests/`)    | `assert` (S101)                                                                                                                  | pytest works through `assert`.                                                                                                             |
-| mypy, basedpyright | astroid's untyped calls and missing stubs                                                                                        | astroid (pylint's parser) ships no type information.                                                                                       |
-| typos              | the word `astroid`                                                                                                               | A real package name.                                                                                                                       |
-| harden-runner      | `egress-policy: audit` on macOS and Windows, in the release jobs (release.yml, build.yml), and in the weekly external-link check | harden-runner supports only audit on GitHub's macOS and Windows runners; the release jobs haven't run yet; external links can go anywhere. |
-| reuse              | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)                                                          | No recent release ships a wheel for Python 3.11+, so installing it builds from source with an unpinned `poetry-core`.                      |
-| zizmor             | `self-repository` (`.github/zizmor.yml`)                                                                                         | Scorecard reads the `$/` form it wants as an unpinned third-party action, so local actions stay `./`.                                      |
-
 To apply the rulesets in `.github/rulesets/` (repo admin):
 
 ```bash
@@ -496,7 +482,7 @@ Done:
   | **Total**        |         |       |    **82,419** | **12,104** |           |        |
 
   No crashes on any of them, and `--unsafe-fixes` left nothing broken or nothing unfixed on a second
-  pass, on any of them; `--nesting`'s default (5) never fires on fourteen of the eighteen, and
+  pass, on any of them; `--nesting`'s default then (5) never fires on fourteen of the eighteen, and
   LVA007 found nothing on any of them, at any nesting — strong evidence it isn't noisy
   (`--nesting`'s default is still worth revisiting some day: `libcst`, deeply nested CST types, is
   by far the most affected, `sqlalchemy` and `scrapy` are the only other two to hit it at all at the
@@ -555,29 +541,29 @@ Next:
 2. Revisit the [disabled rules](#disabled-rules) as tools change (last checked 2026-09-22: COM812,
    one-line DOC201/DOC402 and `max-args` came back on; the rest can't go yet).
 3. **LVA008: a type that could narrow.** A warning at `constrict`, an error at `suffocate`: a
-   declared type that every value assigned to the name (across its lifetime, not just its first
-   binding) is consistent with a strictly narrower one, e.g. a `str` only ever assigned `"0"` or
-   `"1"` (could be `bool`), or a `float` only ever incremented, never divided (could be `int`).
-   Needs whole-variable value-flow analysis across every reassignment in a scope, not just a first
-   binding, which is a different (and much bigger) kind of check than `LVA001`–`LVA007`; wants its
-   own design pass (what counts as "consistent with" a type, how far to follow calls and mutation,
-   false-positive risk on a codebase this analysis can't fully see) before it's worth building.
-4. **LVA009: a reassignment that changes the type.** An error: `count: int = 0` later reassigned
-   `count = "done"` in the same scope. A real, common bug class (mypy already treats this as a type
-   error by default), but needs the same value-flow machinery as `LVA008` (infer every
-   reassignment's type with `annotations.inferred`, not just the first binding's), plus real
-   subtyping awareness to avoid noise `LVA008` doesn't have to worry about: a declared `X | None`
-   later assigned a plain `X` is normal Optional narrowing, not a bug, so the check needs to know
-   that's consistent rather than comparing annotation text like `LVA007` does; a name reused for
-   genuinely unrelated purposes (a sentinel, a generic helper handling more than one type by design)
-   is a real, if rarer, source of false positives to design around. Depends on `LVA008`'s design
-   work (same value-flow pass could likely serve both checks).
-5. **LVA010: a declared union only one branch ever uses.** A warning: `x: int | str = 0` where every
-   value ever assigned across `x`'s lifetime is consistent with only `int`, never `str` — the union
-   is wider than the code actually exercises, and could narrow to `int`. The complement of `LVA008`
-   (inferring a narrower type from values with no declared type to compare against) and `LVA009` (a
-   reassignment that breaks a declared type, not just widens what's already declared as a union);
-   shares the same value-flow machinery and design questions as both.
+   declared type every value bound to the name (across its lifetime, not just its first binding)
+   fits a strictly narrower one of, e.g. a `float` only ever given `int`s (`+= 1` included). **The
+   value-flow engine is built** (`constricter.flow`, run by `checker.value_flow`, not yet reported):
+   it records every binding of each name in a scope with its value's type when `--fix` infers it
+   with certainty, and compares them with the declared type through a `Hierarchy` (the numeric
+   tower, `bool` < `int` < `float` < `complex`, plus the module's own classes under their bases).
+   Left to decide before it reports: codes and levels, `# noqa` and `# type: ignore` handling, and
+   the message. Semantic narrowing (a `str` only ever `"0"` or `"1"` could be a `bool`) is out of
+   its reach: it compares types, not values.
+4. **LVA009: a value that doesn't fit the declared type.** An error: `count: int = 0` later
+   reassigned `count = "done"`. Built on the same engine, and the precise one of the three: across
+   Python 3.14's standard library and the four corpus packages it finds 10, every one a real
+   mismatch (most deliberately wrong test fixtures; one already carries `# type: ignore`). What
+   keeps it quiet elsewhere: it only compares types whose whole ancestry is visible (builtins, and
+   module classes whose bases are too), compares builtin containers by the container alone (a
+   display's element types follow its context), treats a copy of a union-typed name as unknown (an
+   `is None` guard before it can't be seen), and skips names annotated under `if TYPE_CHECKING:`.
+5. **LVA010: a declared union member no value uses.** A warning: `x: int | str = 0` where no value
+   is ever a `str`. Also built on the engine, with LVA008: both claim only when every binding's
+   value is known and no other scope writes the name (`global`, `nonlocal`), and never in a class
+   body, since instances rebind its attributes. On the corpus they find nothing, as expected of
+   codebases this full of imported types; worth measuring on smaller, self-contained ones before
+   choosing their levels.
 6. **Show how each fix was inferred.** `annotations.inferred` now decides a fix through one of
    several mechanisms (a literal, a container of literals, a same/cross-module function's declared
    return type, a fixed-return builtin, a class it constructs, a copy of an already-typed local, a
@@ -587,6 +573,21 @@ Next:
    `_called`, `_subscripted`, the copy and attribute checks in `inferred` itself) to report a reason
    alongside the type, not just the type — a real (if mechanical) change through most of
    `annotations.py`'s inference path, not a one-line addition.
+
+7. **A user-defined type hierarchy.** A project's own say in which types are narrower than which,
+   for LVA008–LVA010: `B` narrower than `A` means a name declared `A` that only ever holds what `B`
+   can is narrowable, and a `B` value fits an `A` annotation. Its entries take precedence over the
+   built-in defaults, per type, so a project can drop or change one (say, `int` not counting as
+   narrower than `float`) as well as add its own (including imported classes, which the engine
+   otherwise never compares). `flow.Hierarchy` already takes each type's wider types as a plain
+   mapping; what's left is the setting (`[tool.constricter.narrower]`, say, with the same keys on
+   the CLI and plugins) and merging it over `DEFAULT_PARENTS`.
+8. **A maximum length for fixed-length annotations.** A warning or an error, by level: with a
+   maximum of 3, `tuple[str, str, str]` is fine and `tuple[str, str, str, str]` isn't, since a
+   fixed-length tuple that long reads better as a `NamedTuple` or dataclass. Applies to the
+   annotations that list one type per element (`tuple[...]` and `Tuple[...]`, not `tuple[T, ...]`);
+   `list` and the other containers take a single element type, so they have no length to limit. A
+   setting like `nesting`'s (`max-length`), with a default to pick by measuring the corpus.
 
 After the first release (it's on PyPI now), each waiting on a step outside this repository:
 
@@ -603,3 +604,17 @@ After the first release (it's on PyPI now), each waiting on a step outside this 
    rattler-build against flit-core 4.0.2, conda-forge's newest; `pyproject.toml` asks for
    `flit_core>=4.1`, so either the recipe's host pin or that floor has to give until conda-forge has
    4.1.
+
+## Disabled rules
+
+Everything else is on. Some of these may be revisited.
+
+| Tool               | Rule                                                                               | Why                                                                                                                   |
+| ------------------ | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| ruff               | `incorrect-blank-line-before-class`, `multi-line-summary-second-line` (D203/D213)  | Each contradicts a rule that stays on (D211/D212); one of each pair has to go.                                        |
+| ruff (`tests/`)    | `assert` (S101)                                                                    | pytest works through `assert`.                                                                                        |
+| mypy, basedpyright | astroid's untyped calls and missing stubs                                          | astroid (pylint's parser) ships no type information.                                                                  |
+| typos              | the word `astroid`                                                                 | A real package name.                                                                                                  |
+| harden-runner      | `egress-policy: audit` on macOS and Windows, and in the weekly external-link check | harden-runner supports only audit on GitHub's macOS and Windows runners; external links can go anywhere.              |
+| reuse              | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)            | No recent release ships a wheel for Python 3.11+, so installing it builds from source with an unpinned `poetry-core`. |
+| zizmor             | `self-repository` (`.github/zizmor.yml`)                                           | Scorecard reads the `$/` form it wants as an unpinned third-party action, so local actions stay `./`.                 |

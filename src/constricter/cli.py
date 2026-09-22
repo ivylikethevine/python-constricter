@@ -128,11 +128,18 @@ def check_text(
     )
 
 
+# One changed part of a fixed file (the file, or a notebook's cell): its label, old and new lines.
+_Change: TypeAlias = tuple[str, list[str], list[str]]
+# One JSON value a coverage report holds, and one file's row of them.
+_Scalar: TypeAlias = str | int | float
+_Row: TypeAlias = dict[str, _Scalar]
+
+
 class Fixed(NamedTuple):
     """`raw`, fixed: its new text, and each changed part (the file, or a notebook's cell)."""
 
     text: str
-    changes: list[tuple[str, list[str], list[str]]]  # each part's label and old and new lines
+    changes: list[_Change]  # each part's label and old and new lines
 
 
 def _fixed(raw: str, name: Path, offences: Sequence[Offence]) -> Fixed:
@@ -778,7 +785,7 @@ def _coverage(options: _Options, paths: Sequence[Path], runs: Sequence[_FileRun]
     ]
     total: Coverage = Coverage(sum(c.typed for _, c in counted), sum(c.total for _, c in counted))
     if options.output.fmt is Format.JSON:
-        report: dict[str, str | int | float | list[dict[str, str | int | float]]] = {
+        report: dict[str, _Scalar | list[_Row]] = {
             "typed": total.typed,
             "total": total.total,
             "percent": round(total.percent, 1),

@@ -6,6 +6,7 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `nesting` (LVA006) defaults to 3, not 5: `dict[str, list[int]]` is fine, one level deeper isn't.
 - `--fix` infers method calls on an already-typed local: a method of a class defined in the same
   module (its declared return type; a bare `Self` return is the class itself), and
   `list`/`set`/`dict` methods whose return is the receiver's own element type (`pop`, `setdefault`,

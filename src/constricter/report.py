@@ -218,7 +218,8 @@ def _rdjson(results: Sequence[Result]) -> Iterator[str]:
     yield json.dumps({"source": {"name": "constricter", "url": _URL}, "diagnostics": diagnostics}, indent=2)
 
 
-_RENDERERS: dict[Format, Callable[[Sequence[Result]], Iterator[str]]] = {
+_Renderer: TypeAlias = Callable[[Sequence[Result]], Iterator[str]]
+_RENDERERS: dict[Format, _Renderer] = {
     Format.TEXT: _text,
     Format.JSON: _json,
     Format.GITHUB: _github,

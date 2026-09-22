@@ -40,7 +40,7 @@ _WHY: Final = {
         "about the value. Name the real type: `list[str]`, a `TypedDict`, a union."
     ),
     NESTED_TYPE: (
-        "An annotation nested `nesting` deep (5 by default) is hard to read and to change. Name a part\n"
+        "An annotation nested `nesting` deep (3 by default) is hard to read and to change. Name a part\n"
         "of it with an alias (`Row: TypeAlias = tuple[int, set[str]]`, then `dict[str, list[Row]]`)."
     ),
     REDUNDANT_TYPE: (

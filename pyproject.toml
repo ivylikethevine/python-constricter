@@ -77,6 +77,10 @@ build-backend = "flit_core.buildapi"
 [tool.flit.module]
 name = "constricter"
 
+[tool.constricter]
+# Drafts for other projects (Trunk, conda-forge); Trunk's `basic.in.py` is untyped on purpose.
+exclude = ["upstream"]
+
 [tool.ruff]
 line-length = 110
 indent-width = 4
