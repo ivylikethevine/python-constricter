@@ -41,7 +41,8 @@ def test_every_format_names_the_cell(tmp_path: Path, capsys: pytest.CaptureFixtu
   results: list[dict[str, _Json]] = cast("list[dict[str, _Json]]", json.loads(capsys.readouterr().out))
   assert [(r["cell"], r["line"], r["column"]) for r in results] == [(4, 2, 3)]
   _ = cli.main(["--format=github", str(path)])
-  assert capsys.readouterr().out == f"::error file={path},title=LVA001::cell 4, line 2: {MESSAGE}\n"
+  escaped: str = str(path).replace("%", "%25").replace(":", "%3A").replace(",", "%2C")
+  assert capsys.readouterr().out == f"::error file={escaped},title=LVA001::cell 4, line 2: {MESSAGE}\n"
   _ = cli.main(["--format=sarif", str(path)])
   sarif: _Sarif = cast("_Sarif", json.loads(capsys.readouterr().out))
   assert sarif["runs"][0]["results"][0]["locations"] == [
