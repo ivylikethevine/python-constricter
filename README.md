@@ -669,16 +669,14 @@ when it's done.
    large file list across processes, so each one's cross-module `--fix` sees only part of the
    project. Plus a pre-commit.ci snippet in the README (the hooks are pure Python, so they run there
    as they are). Done when a split run fixes what a single run does.
-
-2. **SARIF `helpUri` and `fixes`.** Each rule links to its README section (a docs-site page later,
-   Medium 4), and each certain fix is a SARIF `fix` (the insertion, declaration or rewrite `Fix`
-   records), so code scanning can show and apply it. Done when `tests/test_cli.py`'s SARIF test
-   checks both and the output validates against the SARIF 2.1.0 schema.
+2. **SARIF `helpUri` and `fixes`.** Each rule links to its README section, and each certain fix is a
+   SARIF `fix` (the insertion, declaration or rewrite `Fix` records), so code scanning can show and
+   apply it. Done when `tests/test_cli.py`'s SARIF test checks both and the output validates against
+   the SARIF 2.1.0 schema.
 3. **GitHub Action improvements.** A `version` input that installs that release from PyPI (with uv)
    instead of building the action's own checkout; a per-code summary table on the run page
    (`$GITHUB_STEP_SUMMARY`); and a `sarif-file` output, documented with `upload-sarif`. Done when
    CI's Action job uses each.
-
 4. **Investigate non-UTF-8 source.** A file with a PEP 263 coding declaration
    (`# -*- coding: latin-1 -*-`) is a valid Python module, but the CLI reads every file as UTF-8, so
    one is an unreadable file today (exit 2), and 0.2.2's `--fix` crashed on the standard library's
@@ -694,21 +692,10 @@ when it's done.
    print it in `--show-fixes`, and let a project choose which apply: `fix-select` and `fix-ignore`,
    plus `unsafe-fix-select` to promote a guess it trusts (like ruff's `extend-safe-fixes`). Replaces
    the single certain/guess split without breaking it: the defaults match today's.
-
-2. **A result cache.** One entry per file, keyed on its content, the settings, the version and the
-   cross-module return types it saw (`project.calls`), in `.constricter_cache/`, so a pre-commit or
-   editor rerun only rechecks what changed; `--no-cache` to skip it. Measured 2026-09-22 on Python
-   3.14's standard library with its tests: about 35 s with `-j1` and 8.8 s with `-j0` on 16 cores,
-   at 58% CPU, so profile the parallel run too (the cross-module index is built serially before the
-   pool starts).
-3. **An optional `Final` rule (LVA012).** A local bound once and never rebound (one binding in its
+2. **An optional `Final` rule (LVA012).** A local bound once and never rebound (one binding in its
    value-flow lifetime, not a loop target or augmented) could be `Final`. Off unless selected, an
    error only at `suffocate`: most locals are bound once, so measure it on the corpus before
    choosing anything more. Neither ruff nor pylint has one.
-4. **A docs site.** A page per rule generated from what `--explain` prints (one source for both),
-   which SARIF's `helpUri` then links to; a "why not a type checker?" page (they decline to require
-   local annotations: pyright discussion #7894) with an FAQ on running both; and the adoption guide
-   and corpus results moved out of this README.
 
 ### Large: a week or more
 
