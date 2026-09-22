@@ -6,6 +6,10 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` infers method calls on an already-typed local: a method of a class defined in the same
+  module (its declared return type; a bare `Self` return is the class itself), and
+  `list`/`set`/`dict` methods whose return is the receiver's own element type (`pop`, `setdefault`,
+  `get` as `V | None`, `popitem`, `copy`). Both are certain fixes, not `--unsafe-fixes` guesses.
 - `--fix` infers more: `not x` (always `bool`), calls to builtins with a fixed return type (`len`,
   `isinstance`, `str`, ...), a plain `x = y` copying `y`'s already-known type (its annotation, an
   earlier fix, or an annotated parameter), a subscript of an already-typed local (`container[key]`,

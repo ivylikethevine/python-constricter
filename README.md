@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/ivylikethevine/python-constricter/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ivylikethevine/python-constricter/actions/workflows/ci.yml)
 [![Security](https://github.com/ivylikethevine/python-constricter/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/ivylikethevine/python-constricter/actions/workflows/security.yml)
+[![PyPI](https://img.shields.io/pypi/v/python-constricter)](https://pypi.org/project/python-constricter/)
+[![Python](https://img.shields.io/pypi/pyversions/python-constricter)](https://pypi.org/project/python-constricter/)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ivylikethevine/python-constricter/badge)](https://scorecard.dev/viewer/?uri=github.com/ivylikethevine/python-constricter)
 [![Test coverage: 100%](https://img.shields.io/badge/test_coverage-100%25-brightgreen)](pyproject.toml)
 [![Annotations: 100%](https://img.shields.io/badge/annotations-100%25-brightgreen)](#annotation-coverage)
@@ -174,7 +176,12 @@ module body:
   declares its return type (not a decorated, generic, async or redefined one, and not a return of
   `None`, `Any` or one that uses a `TypeVar`), in the same module or, with the CLI, in another file
   it's checking: `from pkg.util import f`, `import pkg.util as u` then `u.f()`, relative imports and
-  re-exports all work, as long as every name in the type already means the same thing in the file.
+  re-exports all work, as long as every name in the type already means the same thing in the file;
+- a local whose type is already known (annotated, a parameter, or fixed earlier in the same scope):
+  a plain copy (`y = x`), a subscript (`nums[0]`), an attribute or method call of a class defined in
+  the same module (`p.x`, `p.norm()`), a `str`/`bytes` method with a fixed return (`s.strip()`), or
+  a `list`/`set`/`dict` method that returns its own element type (`nums.pop()`, `d.get(k)` as
+  `V | None`).
 
 It never touches class bodies (a dataclass would gain a field) or unpacking, and it leaves what it
 can't fix reported. The standard library and third-party packages are out of reach.
@@ -269,15 +276,14 @@ directory names (or globs) to skip the same way, on top of matching whole paths 
 codes: `0` no errors, `1` errors, `2` an unreadable or unparsable file, or a bad `pyproject.toml`.
 
 ```bash
-pip install python-constricter # once the first release is out; until then:
-pip install "python-constricter @ git+https://github.com/ivylikethevine/python-constricter@v0.2.0"
+pip install python-constricter
 ```
 
 pre-commit, after ruff's hooks (or `constricter-fix`, which runs `--fix` first):
 
 ```yaml
 - repo: https://github.com/ivylikethevine/python-constricter
-  rev: v0.2.0
+  rev: v0.2.3
   hooks:
     - id: constricter
 ```
@@ -302,7 +308,7 @@ def types(session: nox.Session) -> None:
 GitHub Actions, as PR annotations (it installs from the action's own tag, not PyPI):
 
 ```yaml
-- uses: ivylikethevine/python-constricter@v0.2.0
+- uses: ivylikethevine/python-constricter@v0.2.3
   with:
     args: --format=github src tests # the default is `--format=github` on `.`
     python-version: "3.13" # 3.11 or later
@@ -525,22 +531,30 @@ Done:
   re-checked (standard library, mypy, `requests`, `flask`, `django`, `sqlalchemy`), and fixed rose
   further still (e.g. mypy 1,996 → 2,074, sqlalchemy 848 → 1,039, `requests` 52 → 57).
 
+- **`--fix` infers method calls** on an already-typed local, as certain fixes: a method of a class
+  defined in the same module (`method_returns`, the same rules as a module function's: plain, not
+  decorated or redefined, not `None`, vague or a `TypeVar`, and never on a generic class; a bare
+  `Self` return is the class itself), and `list`/`set`/`dict` methods whose return is the receiver's
+  own element type (`copy`, `pop`, `setdefault`, `get` as `V | None`, `popitem`; any other argument
+  shape, like `pop(key, default)` or a keyword, decides nothing). `BinOp` (`a + b`) stays skipped:
+  it needs both operands' types and proof the operator isn't overloaded, for little gain.
+  Re-verified with `tests/corpus_fix.py` on Python 3.14's standard library and the four pinned
+  corpus packages: no crashes, nothing stops compiling, still converges in one pass, and fixed rose
+  on four of the five (standard library 23,575 → 23,645, sqlalchemy 1,039 → 1,123, flask 35 → 44,
+  `requests` 57 → 66; django unchanged at 2,324).
+
+- **Release jobs block egress**: the build, PyPI and GitHub release jobs run harden-runner in
+  `block` with the hosts the v0.2.2 and v0.2.3 release runs used.
+- **On PyPI**: `pip install python-constricter` is the documented install, with PyPI version and
+  Python version badges (the classifiers now name 3.11–3.14, CPython and PyPy).
+
 Next:
 
 1. **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+ (6.2.0 still has only a
    CPython 3.10 one).
 2. Revisit the [disabled rules](#disabled-rules) as tools change (last checked 2026-09-22: COM812,
    one-line DOC201/DOC402 and `max-args` came back on; the rest can't go yet).
-3. **Raise `--fix`'s auto-fix rate further.** Attributes, subscripts, `self.attr` and `str`/`bytes`
-   method calls are done (see Done, above); what's left: a method call on an arbitrary class's
-   instance (`x = obj.method()`, unlike `str`/`bytes` isn't resolvable without following the
-   method's own return annotation, the same as `classes` already does for a field, extended to
-   methods) and `list`/`dict` methods whose return is the receiver's own element type (`list.pop`,
-   `dict.pop`, ...), which need the same element-type parsing `_subscripted` already does, just
-   reached from a method call instead of a subscript. `BinOp` (`a + b`, ~5% of the original sample)
-   would need operand types plus knowing the operator isn't overloaded to something else — riskier,
-   lower value, likely skip.
-4. **LVA008: a type that could narrow.** A warning at `constrict`, an error at `suffocate`: a
+3. **LVA008: a type that could narrow.** A warning at `constrict`, an error at `suffocate`: a
    declared type that every value assigned to the name (across its lifetime, not just its first
    binding) is consistent with a strictly narrower one, e.g. a `str` only ever assigned `"0"` or
    `"1"` (could be `bool`), or a `float` only ever incremented, never divided (could be `int`).
@@ -548,7 +562,7 @@ Next:
    binding, which is a different (and much bigger) kind of check than `LVA001`–`LVA007`; wants its
    own design pass (what counts as "consistent with" a type, how far to follow calls and mutation,
    false-positive risk on a codebase this analysis can't fully see) before it's worth building.
-5. **LVA009: a reassignment that changes the type.** An error: `count: int = 0` later reassigned
+4. **LVA009: a reassignment that changes the type.** An error: `count: int = 0` later reassigned
    `count = "done"` in the same scope. A real, common bug class (mypy already treats this as a type
    error by default), but needs the same value-flow machinery as `LVA008` (infer every
    reassignment's type with `annotations.inferred`, not just the first binding's), plus real
@@ -558,13 +572,13 @@ Next:
    genuinely unrelated purposes (a sentinel, a generic helper handling more than one type by design)
    is a real, if rarer, source of false positives to design around. Depends on `LVA008`'s design
    work (same value-flow pass could likely serve both checks).
-6. **LVA010: a declared union only one branch ever uses.** A warning: `x: int | str = 0` where every
+5. **LVA010: a declared union only one branch ever uses.** A warning: `x: int | str = 0` where every
    value ever assigned across `x`'s lifetime is consistent with only `int`, never `str` — the union
    is wider than the code actually exercises, and could narrow to `int`. The complement of `LVA008`
    (inferring a narrower type from values with no declared type to compare against) and `LVA009` (a
    reassignment that breaks a declared type, not just widens what's already declared as a union);
    shares the same value-flow machinery and design questions as both.
-7. **Show how each fix was inferred.** `annotations.inferred` now decides a fix through one of
+6. **Show how each fix was inferred.** `annotations.inferred` now decides a fix through one of
    several mechanisms (a literal, a container of literals, a same/cross-module function's declared
    return type, a fixed-return builtin, a class it constructs, a copy of an already-typed local, a
    subscript or an attribute of one), but `Offence.fix` keeps only the resulting annotation text,
@@ -574,12 +588,18 @@ Next:
    alongside the type, not just the type — a real (if mechanical) change through most of
    `annotations.py`'s inference path, not a one-line addition.
 
-After the first release (these need it on PyPI, or a published tag):
+After the first release (it's on PyPI now), each waiting on a step outside this repository:
 
-1. **Switch the release jobs to `block`** with the hosts the first release run shows (PyPI upload,
-   Sigstore, GitHub releases).
-2. **A PyPI badge**, and `pip install python-constricter` as the documented install.
-3. **The GitHub Action on the Marketplace**, so `uses: ivylikethevine/python-constricter@v1` is
-   listed (it already works from any tag).
-4. **Trunk and MegaLinter plugin definitions**, submitted upstream.
-5. **A conda-forge recipe.**
+1. **The GitHub Action on the Marketplace**, so it's listed (it already works from any tag, and
+   `action.yml` has the name, description and branding the listing needs): tick "Publish this Action
+   to the GitHub Marketplace" when publishing a release.
+2. **Trunk and MegaLinter plugin definitions**, submitted upstream. MegaLinter's is
+   `mega-linter-plugin-constricter/constricter.megalinter-descriptor.yml` (usable now through
+   `PLUGINS`); what's left is a pull request adding it to `.automation/plugins.yml` in
+   oxsecurity/megalinter. Trunk's is drafted in `upstream/trunk/linters/constricter/`, for a pull
+   request to trunk-io/plugins with the snapshot its test harness generates.
+3. **A conda-forge recipe**, submitted to conda-forge/staged-recipes: drafted in
+   `upstream/conda-forge/recipes/python-constricter/`. It builds and passes its tests with
+   rattler-build against flit-core 4.0.2, conda-forge's newest; `pyproject.toml` asks for
+   `flit_core>=4.1`, so either the recipe's host pin or that floor has to give until conda-forge has
+   4.1.

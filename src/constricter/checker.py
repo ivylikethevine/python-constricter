@@ -9,6 +9,7 @@ from enum import IntEnum
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.annotations import (
+    Known,
     classes,
     depth,
     factories,
@@ -16,6 +17,7 @@ from constricter.annotations import (
     imported_from,
     inferred,
     is_vague,
+    method_returns,
     node_name,
     returns,
 )
@@ -97,9 +99,7 @@ class _Settings:
     all_scopes: bool
     nesting: int
     lines: Sequence[str]
-    calls: dict[str, str]  # each module function's return type, for `--fix`
-    factories: frozenset[str]  # names imported that build a class or special form, for `--fix`
-    classes: dict[str, dict[str, str]]  # each class's annotated attributes, for `--fix`
+    known: Known  # what the module declares that `--fix` infers types from
     owners: dict[int, str]  # each method's class, by `id()`, to type its `self`, for `--fix`
 
 
@@ -200,9 +200,7 @@ def _settings(
         checks.all_scopes,
         checks.nesting,
         lines,
-        calls,
-        factories(tree),
-        classes(tree),
+        Known(calls, factories(tree), classes(tree), method_returns(tree)),
         _owners(tree),
     )
 
@@ -775,15 +773,8 @@ def _bind(scope: _Scope, stmt: ast.stmt) -> None:
     cases: list[ast.match_case]
     match stmt:
         case ast.Assign(targets=[ast.Name(id=name) as single], value=value, type_comment=comment):
-            calls: dict[str, str] = scope.settings.calls
-            fix: str | None = inferred(
-                value,
-                calls,
-                scope.settings.factories,
-                scope.types,
-                scope.settings.classes,
-            )
-            unsafe: bool = guessed(value, calls, frozenset(scope.guesses), scope.types)
+            fix: str | None = inferred(value, scope.settings.known, scope.types)
+            unsafe: bool = guessed(value, scope.settings.known, frozenset(scope.guesses), scope.types)
             scope.bind(name, _at(single), scope.unannotated(comment), fix, unsafe=unsafe)
             if fix is not None and name not in scope.types:
                 scope.types[name] = fix

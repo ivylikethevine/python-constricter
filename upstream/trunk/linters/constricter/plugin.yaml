@@ -1,0 +1,31 @@
+version: 0.1
+tools:
+  definitions:
+    - name: constricter
+      runtime: python
+      package: python-constricter
+      shims: [constricter]
+      known_good_version: 0.2.3
+lint:
+  definitions:
+    - name: constricter
+      files: [python, jupyter]
+      description: Reports local variables that aren't typed where they're first bound
+      commands:
+        - name: lint
+          run: constricter --format=sarif --exit-zero --output-file ${tmpfile} ${target}
+          output: sarif
+          read_output_from: tmp_file
+          batch: true
+          success_codes: [0]
+          cache_results: true
+      tools: [constricter]
+      affects_cache:
+        # `[tool.constricter]` holds its settings
+        - pyproject.toml
+      suggest_if: never
+      issue_url_format: https://github.com/ivylikethevine/python-constricter#rules
+      known_good_version: 0.2.3
+      version_command:
+        parse_regex: ${semver}
+        run: constricter --version

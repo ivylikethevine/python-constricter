@@ -754,7 +754,7 @@ def test_a_copy_of_a_guessed_fix_is_guessed_too() -> None:
         ("text: str", "text[0]", "str"),
         ("text: str", "text[1:3]", "str"),
         ("data: bytes", "data[0:1]", "bytes"),
-        ("items: set[int]", "items.pop()", None),  # a `set` isn't subscriptable
+        ("items: set[int]", "items[0]", None),  # a `set` isn't subscriptable
         ("nums: list[int]", "nums[i]", "int"),  # a non-literal index still gets the element type
     ],
 )

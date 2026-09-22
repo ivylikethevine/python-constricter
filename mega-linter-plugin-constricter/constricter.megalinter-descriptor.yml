@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: MIT
+# A MegaLinter plugin (https://megalinter.io/latest/plugins/): add its raw URL to `PLUGINS` in
+# .mega-linter.yml. `[tool.constricter]` in pyproject.toml applies as it does for the CLI.
+descriptor_id: CONSTRICTER
+descriptor_type: language
+descriptor_flavors:
+  - all_flavors
+file_extensions:
+  - ".py"
+  - ".ipynb"
+linters:
+  - linter_name: constricter
+    name: CONSTRICTER
+    linter_text: Reports local variables that aren't typed where they're first bound.
+    linter_url: https://pypi.org/project/python-constricter/
+    linter_repo: https://github.com/ivylikethevine/python-constricter
+    linter_spdx_license: MIT
+    linter_rules_url: https://github.com/ivylikethevine/python-constricter#rules
+    linter_rules_configuration_url: https://github.com/ivylikethevine/python-constricter#use
+    linter_rules_inline_disable_url: https://github.com/ivylikethevine/python-constricter#use
+    cli_lint_mode: list_of_files
+    supported_cli_lint_modes:
+      - file
+      - list_of_files
+      - project
+    cli_lint_fix_arg_name: --fix
+    cli_lint_errors_count: regex_count
+    cli_lint_errors_regex: ":[0-9]+:[0-9]+: error: LVA[0-9]+"
+    cli_help_arg_name: --help
+    cli_version_arg_name: --version
+    can_output_sarif: true
+    cli_sarif_args:
+      - --format=sarif
+      - --output-file
+      - "{{SARIF_OUTPUT_FILE}}"
+    examples:
+      - constricter myfile.py
+      - constricter --level=constrict src
+    install:
+      dockerfile:
+        - RUN pip install --no-cache-dir python-constricter==0.2.3

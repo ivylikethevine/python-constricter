@@ -4,6 +4,7 @@
 import ast
 import re
 from collections.abc import Iterator, Mapping, Sequence
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import TYPE_CHECKING, Final, cast
 
@@ -187,17 +188,102 @@ _BYTES_METHODS: Final = {
     "zfill": "bytes",
 }
 _METHOD_RETURNS: Final = {"str": _STR_METHODS, "bytes": _BYTES_METHODS}
+# A method returning `Self` returns its receiver's own class.
+_SELF: Final = "Self"
 
 
-def _method_return(receiver: str, method: str) -> str | None:
-    """Look up `method`'s return type on a receiver whose own type is `receiver`, as text.
+@dataclass(frozen=True)
+class Known:
+    """What a module declares that `--fix` can infer a value's type from.
+
+    `calls`: its functions' return types (`returns`, plus other modules', see `project.calls`).
+    `factories`: names that build a class or special form rather than an instance of it (see
+    `factories`), so a call to one is never guessed to construct one. `classes` and `methods`: each
+    class's annotated attributes (see `classes`) and methods' return types (see `method_returns`).
+    """
+
+    calls: Mapping[str, str]
+    factories: frozenset[str]
+    classes: Mapping[str, Mapping[str, str]]
+    methods: Mapping[str, Mapping[str, str]]
+
+
+def _method_return(
+    receiver: str,
+    call: ast.Call,
+    method: str,
+    known_methods: Mapping[str, Mapping[str, str]],
+) -> str | None:
+    """Look up the type of `call`, a `method` call on a receiver whose own type is `receiver`, as text.
+
+    A fixed-return `str`/`bytes` method (`_METHOD_RETURNS`), a method of a class defined in the
+    module (`known_methods`, see `method_returns`), or a `list`/`set`/`dict` method whose return is the
+    receiver's own element type (`_element_method`).
 
     Returns:
-      The annotation as source text, or `None` if `receiver` isn't `str`/`bytes`, or `method` isn't
-      one of `_METHOD_RETURNS`'.
+      The annotation as source text, or `None` if none of those decides one.
 
     """
-    return _METHOD_RETURNS.get(receiver, {}).get(method)
+    return (
+        _METHOD_RETURNS.get(receiver, {}).get(method)
+        or known_methods.get(receiver, {}).get(method)
+        or _element_method(receiver, call, method)
+    )
+
+
+def _element_method(receiver: str, call: ast.Call, method: str) -> str | None:
+    """Infer a `list`, `set` or `dict` method call's type from the receiver's own type parameters.
+
+    `copy()` is the receiver's type; `pop()` a `list`'s or `set`'s element (with an optional index
+    for a `list`); `pop(key)`, `setdefault(key, value)` and `get(key)` a `dict`'s value (`get` as
+    `V | None`); `popitem()` its `tuple[K, V]`. A call with any other arguments (`pop(key, default)`,
+    a keyword) can return something else, so it decides nothing.
+
+    Returns:
+      The annotation as source text, or `None` if the call doesn't decide one.
+
+    """
+    # `receiver` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
+    root: ast.expr = ast.parse(receiver, mode="eval").body
+    call_shape: tuple[str, int | None] = (method, None if call.keywords else len(call.args))
+    element: ast.expr
+    key: ast.expr
+    match root:
+        case ast.Subscript(value=ast.Name(id="list" | "List" | "set" | "Set" | "dict" | "Dict")) if (
+            call_shape == ("copy", 0)
+        ):
+            return receiver
+        case ast.Subscript(value=ast.Name(id="list" | "List"), slice=element) if call_shape in {
+            ("pop", 0),
+            ("pop", 1),
+        }:
+            return ast.unparse(element)
+        case ast.Subscript(value=ast.Name(id="set" | "Set"), slice=element) if call_shape == ("pop", 0):
+            return ast.unparse(element)
+        case ast.Subscript(value=ast.Name(id="dict" | "Dict"), slice=ast.Tuple(elts=[key, element])):
+            return _dict_method(call_shape, key, element)
+        case _:
+            return None
+
+
+def _dict_method(call_shape: tuple[str, int | None], key: ast.expr, value: ast.expr) -> str | None:
+    """Infer a `dict[key, value]` method call's type, by its name and positional argument count.
+
+    Returns:
+      The annotation as source text, or `None` if the call doesn't decide one.
+
+    """
+    match call_shape:
+        case ("pop", 1) | ("setdefault", 2):
+            return ast.unparse(value)
+        case ("get", 1) if not any(
+            isinstance(node, ast.Constant) and isinstance(node.value, str) for node in ast.walk(value)
+        ):  # a string (forward-reference) value type can't take `| None` where it's evaluated
+            return f"{ast.unparse(value)} | None"
+        case ("popitem", 0):
+            return f"tuple[{ast.unparse(key)}, {ast.unparse(value)}]"
+        case _:
+            return None
 
 
 def imported_from(tree: ast.Module, modules: frozenset[str]) -> frozenset[str]:
@@ -373,9 +459,59 @@ def returns(tree: ast.Module) -> dict[str, str]:
       Each such function's name, and its return annotation as source text.
 
     """
-    type_vars: set[str] = set()
-    counts: dict[str, int] = {}
-    found: dict[str, str] = {}
+    return _declared_returns(tree.body, _type_vars(tree))
+
+
+def method_returns(tree: ast.Module) -> dict[str, dict[str, str]]:
+    """Map each non-generic class defined in the module to its methods' declared return types.
+
+    For `--fix` to type `obj.method()` on a local already typed as that class. A method counts under
+    the same rules as `returns`' functions: a plain `def` directly in the class body, not decorated
+    (so no `staticmethod`, `classmethod` or `property`) or redefined, whose return isn't `None`,
+    vague, or a `TypeVar`. A generic class (`class C[T]`, or any subscripted base like `Generic[T]`)
+    is skipped whole: its methods' returns depend on how it's parameterised. A bare `Self` return is
+    the class itself; one that only mentions `Self` (`list[Self]`) is skipped.
+
+    Returns:
+      Each class's name, mapped to its methods' names and return annotation text.
+
+    """
+    type_vars: frozenset[str] = _type_vars(tree)
+    found: dict[str, dict[str, str]] = {}
+    node: ast.AST
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.ClassDef)
+            and not cast("object", getattr(node, "type_params", ()))  # Python 3.12+'s `class C[T]`
+            and not any(isinstance(base, ast.Subscript) for base in node.bases)
+        ):
+            found[node.name] = {
+                name: node.name if _is_self(annotation) else annotation
+                for name, annotation in _declared_returns(node.body, type_vars).items()
+                if _is_self(annotation) or _SELF not in _words(annotation)
+            }
+    return found
+
+
+def _is_self(annotation: str) -> bool:
+    """Check whether an annotation is exactly `Self` (bare, or `typing.Self` and the like).
+
+    Returns:
+      Whether it is.
+
+    """
+    # `annotation` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
+    return node_name(ast.parse(annotation, mode="eval").body) == _SELF
+
+
+def _type_vars(tree: ast.Module) -> frozenset[str]:
+    """Find the module-level names bound to a `TypeVar`, `ParamSpec` or `TypeVarTuple`.
+
+    Returns:
+      Those names.
+
+    """
+    names: set[str] = set()
     stmt: ast.stmt
     name: str
     func: ast.expr
@@ -384,7 +520,25 @@ def returns(tree: ast.Module) -> dict[str, str]:
             case ast.Assign(targets=[ast.Name(id=name)], value=ast.Call(func=func)) if (
                 node_name(func) in _TYPE_VARS
             ):
-                type_vars.add(name)
+                names.add(name)
+            case _:
+                pass
+    return frozenset(names)
+
+
+def _declared_returns(body: Sequence[ast.stmt], type_vars: frozenset[str]) -> dict[str, str]:
+    """Find the plain functions defined directly in `body` whose calls `--fix` can annotate.
+
+    Returns:
+      Each such function's name, and its return annotation as source text.
+
+    """
+    counts: dict[str, int] = {}
+    found: dict[str, str] = {}
+    stmt: ast.stmt
+    name: str
+    for stmt in body:
+        match stmt:
             case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name):
                 counts[name] = counts.get(name, 0) + 1
                 if isinstance(stmt, ast.FunctionDef) and _plain(stmt):
@@ -418,21 +572,14 @@ def _words(annotation: str) -> list[str]:
     return [word for word in re.split(r"\W+", annotation) if word]
 
 
-def inferred(
-    value: ast.expr,
-    calls: Mapping[str, str],
-    known_factories: frozenset[str],
-    declared: Mapping[str, str],
-    known_classes: Mapping[str, Mapping[str, str]],
-) -> str | None:
-    """Return the annotation `value` makes unambiguous, given the module's function `calls`.
+def inferred(value: ast.expr, known: Known, declared: Mapping[str, str]) -> str | None:
+    """Return the annotation `value` makes unambiguous, given what the module declares (`known`).
 
     A literal's type (containers too, when their elements agree), a call to a module function that
     declares its return type, a class it constructs, or (`declared`) another local this scope
-    already gave a type: a plain copy, a subscript of a known container, or (`known_classes`, see
-    `classes`) an attribute of a class defined in this module. `known_factories` (see `factories`)
-    are calls that build a class or special form rather than an instance of it, so they're never
-    guessed to construct one.
+    already gave a type: a plain copy, a subscript of a known container, an attribute of a class
+    defined in this module, or a method call on it (a `str`/`bytes` or `list`/`set`/`dict` method,
+    or a method of a class defined in this module; see `_method_return`).
 
     Returns:
       The annotation as source text, or `None` if the value doesn't decide one.
@@ -452,7 +599,7 @@ def inferred(
         isinstance(value, ast.Attribute)
         and isinstance(value.value, ast.Name)
         and value.value.id in declared
-        and (found := known_classes.get(declared[value.value.id], {}).get(value.attr)) is not None
+        and (found := known.classes.get(declared[value.value.id], {}).get(value.attr)) is not None
     ):
         return found
     if (
@@ -460,13 +607,12 @@ def inferred(
         and isinstance(value.func, ast.Attribute)
         and isinstance(value.func.value, ast.Name)
         and value.func.value.id in declared
-        and (found := _method_return(declared[value.func.value.id], value.func.attr)) is not None
+        and (found := _method_return(declared[value.func.value.id], value, value.func.attr, known.methods))
+        is not None
     ):
         return found
     return (
-        _scalar(value)
-        or _container(value, calls, known_factories, declared, known_classes)
-        or _called(value, calls, known_factories)
+        _scalar(value) or _container(value, known, declared) or _called(value, known.calls, known.factories)
     )
 
 
@@ -488,51 +634,35 @@ def _scalar(value: ast.expr) -> str | None:
             return None
 
 
-def _container(
-    value: ast.expr,
-    calls: Mapping[str, str],
-    known_factories: frozenset[str],
-    declared: Mapping[str, str],
-    known_classes: Mapping[str, Mapping[str, str]],
-) -> str | None:
+def _container(value: ast.expr, known: Known, declared: Mapping[str, str]) -> str | None:
     elements: list[ast.expr]
     keys: list[ast.expr | None]
     values: list[ast.expr]
     parts: list[str | None]
     match value:
         case ast.List(elts=elements) | ast.Set(elts=elements) if elements:
-            element: str | None = _uniform(elements, calls, known_factories, declared, known_classes)
+            element: str | None = _uniform(elements, known, declared)
             return f"{'list' if isinstance(value, ast.List) else 'set'}[{element}]" if element else None
         case ast.Tuple(elts=elements) if elements:
-            parts = [
-                inferred(element, calls, known_factories, declared, known_classes) for element in elements
-            ]
+            parts = [inferred(element, known, declared) for element in elements]
             return None if None in parts else f"tuple[{', '.join(str(part) for part in parts)}]"
         case ast.Dict(keys=keys, values=values) if keys and None not in keys:
             present: list[ast.expr] = [k for k in keys if k is not None]
-            key: str | None = _uniform(present, calls, known_factories, declared, known_classes)
-            item: str | None = _uniform(values, calls, known_factories, declared, known_classes)
+            key: str | None = _uniform(present, known, declared)
+            item: str | None = _uniform(values, known, declared)
             return f"dict[{key}, {item}]" if key and item else None
         case _:
             return None
 
 
-def _uniform(
-    elements: Sequence[ast.expr],
-    calls: Mapping[str, str],
-    known_factories: frozenset[str],
-    declared: Mapping[str, str],
-    known_classes: Mapping[str, Mapping[str, str]],
-) -> str | None:
+def _uniform(elements: Sequence[ast.expr], known: Known, declared: Mapping[str, str]) -> str | None:
     """Find the one type every element has.
 
     Returns:
       That type, or `None` if they differ or any is unknown.
 
     """
-    types: set[str | None] = {
-        inferred(element, calls, known_factories, declared, known_classes) for element in elements
-    }
+    types: set[str | None] = {inferred(element, known, declared) for element in elements}
     return next(iter(types)) if len(types) == 1 else None
 
 
@@ -592,7 +722,7 @@ def _called(value: ast.expr, calls: Mapping[str, str], known_factories: frozense
 
 def guessed(
     value: ast.expr,
-    calls: Mapping[str, str],
+    known: Known,
     guesses: frozenset[str],
     declared: Mapping[str, str],
 ) -> bool:
@@ -600,7 +730,7 @@ def guessed(
 
     A capitalised call may construct a generic class (`Box(1)` is really `Box[int]`) or be a factory
     function; literals, calls to a module function, a fixed-return builtin (`len`, `isinstance`,
-    ...) or a fixed-return `str`/`bytes` method (`_method_return`) on an already-typed local, and
+    ...) or a method `_method_return` resolves on an already-typed local, and
     another local this scope already typed, are certain. Copying a local `inferred` itself only
     guessed (`guesses`) is no more certain than the guess it copies.
 
@@ -609,12 +739,12 @@ def guessed(
       it copies such a guess.
 
     """
-    return any(_is_guess(node, calls, guesses, declared) for node in ast.walk(value))
+    return any(_is_guess(node, known, guesses, declared) for node in ast.walk(value))
 
 
 def _is_guess(
     node: ast.AST,
-    calls: Mapping[str, str],
+    known: Known,
     guesses: frozenset[str],
     declared: Mapping[str, str],
 ) -> bool:
@@ -622,15 +752,17 @@ def _is_guess(
     func: ast.expr
     receiver: str
     method: str
+    call: ast.Call
     match node:
         case ast.Call(func=ast.Name(id=name)) if name in _BUILTIN_RETURNS:
             return False
-        case ast.Call(func=ast.Attribute(value=ast.Name(id=receiver), attr=method)) if (
-            receiver in declared and _method_return(declared[receiver], method) is not None
+        case ast.Call(func=ast.Attribute(value=ast.Name(id=receiver), attr=method)) as call if (
+            receiver in declared
+            and _method_return(declared[receiver], call, method, known.methods) is not None
         ):
             return False
         case ast.Call(func=func):
-            return ast.unparse(func) not in calls
+            return ast.unparse(func) not in known.calls
         case ast.Name(id=name):
             return name in guesses
         case _:
