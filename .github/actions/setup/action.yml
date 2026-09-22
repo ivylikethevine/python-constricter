@@ -21,7 +21,7 @@ runs:
         UV_PYTHON: ${{ steps.python.outputs.python-path }}
         UV_PYTHON_DOWNLOADS: never
       run: |
-        uv sync --locked --no-install-project
+        uv sync --locked --no-install-project --no-build # wheels only: nothing built from unpinned sources
         uv pip install --python local/.venv --no-deps --no-build-isolation -e .
         bin=local/.venv/bin
         [ -d "$bin" ] || bin=local/.venv/Scripts

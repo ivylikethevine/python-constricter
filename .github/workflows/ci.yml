@@ -44,6 +44,7 @@ jobs:
       - run: pylint src tests
       - run: flake8 src tests
       - run: typos
+      - run: validate-pyproject pyproject.toml
       - run: uv lock --check
       - run: constricter --level=suffocate --all-scopes --format=github src tests
       - run: pre-commit try-repo . constricter --all-files
@@ -60,6 +61,7 @@ jobs:
           egress-policy: block
           allowed-endpoints: >
             github.com:443
+            release-assets.githubusercontent.com:443
             registry.npmjs.org:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -71,6 +73,35 @@ jobs:
       - run: npm ci --prefix .github
       - run: git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/markdownlint-cli2
       - run: git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/prettier --check
+      - uses: $/.github/actions/tool
+        with:
+          url: https://github.com/lycheeverse/lychee/releases/download/lychee-v0.24.2/lychee-x86_64-unknown-linux-gnu.tar.gz
+          sha256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
+          binary: lychee-x86_64-unknown-linux-gnu/lychee
+      # Relative links and #fragments only; the weekly Security run checks external links.
+      - run: git ls-files -z '*.md' | xargs -0 "$RUNNER_TEMP/bin/lychee" --offline --include-fragments --no-progress
+
+  action:
+    name: Action
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            pypi.org:443
+            files.pythonhosted.org:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The repository's own action, run on its own code.
+      - uses: ./ # zizmor: ignore[self-repository] actionlint rejects a bare `$/` (no path)
+        with:
+          args: --level=suffocate --all-scopes --format=github src tests
 
   test:
     name: Test (${{ matrix.os }}, ${{ matrix.python }})
@@ -111,7 +142,7 @@ jobs:
 
   build:
     name: Build
-    needs: [lint, docs, test]
+    needs: [lint, docs, test, action]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -131,6 +162,7 @@ jobs:
       - uses: $/.github/actions/setup
       - run: python -m build --no-isolation --outdir dist
       - run: twine check --strict dist/*
+      - run: check-wheel-contents dist/*.whl
       - name: Smoke-test the wheel
         run: |
           python -m venv "$RUNNER_TEMP/smoke"

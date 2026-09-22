@@ -5,4 +5,5 @@ import sys
 
 from constricter.cli import main
 
-sys.exit(main())
+if __name__ == "__main__":  # not when `--jobs` workers import it
+  sys.exit(main())

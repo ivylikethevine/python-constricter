@@ -10,7 +10,7 @@ from typing import Final, TypeAlias, cast
 
 import pytest
 
-from constricter import cli
+from constricter import cli, config
 
 BROKEN: Final = """
 def broken(items: list[int]) -> None:
@@ -37,7 +37,7 @@ def clean() -> None:
 
 def _write(path: Path, source: str) -> Path:
   path.parent.mkdir(parents=True, exist_ok=True)
-  _ = path.write_text(textwrap.dedent(source), encoding="utf-8")
+  _ = path.write_text(textwrap.dedent(source), encoding="utf-8", newline="\n")
   return path
 
 
@@ -150,6 +150,7 @@ def test_json_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
     "code": "LVA001",
     "severity": "error",
     "message": PLAIN,
+    "cell": None,
   }
   assert [(r["code"], r["severity"]) for r in results] == [
     ("LVA001", "error"),
@@ -196,7 +197,7 @@ def test_sarif_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Non
 
 
 def _pyproject(directory: Path, text: str) -> None:
-  _ = (directory / "pyproject.toml").write_text(text, encoding="utf-8")
+  _ = (directory / "pyproject.toml").write_text(text, encoding="utf-8", newline="\n")
 
 
 def test_pyproject_sets_the_defaults(
@@ -232,14 +233,14 @@ all-scopes = true
 def test_pyproject_level_can_be_a_number(tmp_path: Path) -> None:
   """`level` takes a number too."""
   _pyproject(tmp_path, "[tool.constricter]\nlevel = 3\n")
-  assert cli.config_defaults(tmp_path) == {"level": "3"}
+  assert config.config_defaults(tmp_path) == {"level": "3"}
 
 
 def test_no_table_or_no_pyproject_sets_nothing(tmp_path: Path) -> None:
   """A `pyproject.toml` without the table, or none at all, sets no defaults."""
   _pyproject(tmp_path, '[project]\nname = "x"\n')
-  assert not cli.config_defaults(tmp_path)
-  assert not cli.config_defaults(Path(tmp_path.anchor))
+  assert not config.config_defaults(tmp_path)
+  assert not config.config_defaults(Path(tmp_path.anchor))
 
 
 @pytest.mark.parametrize(
@@ -253,6 +254,11 @@ def test_no_table_or_no_pyproject_sets_nothing(tmp_path: Path) -> None:
     "[tool.constricter]\ncolour = 1\n",
     "[tool.constricter]\nnesting = 0\n",
     "[tool.constricter]\nnesting = true\n",
+    '[tool.constricter]\nselect = "LVA001"\n',
+    '[tool.constricter]\nselect = ["XYZ"]\n',
+    "[tool.constricter]\njobs = -1\n",
+    "[tool.constricter]\nper-path-levels = 1\n",
+    '[tool.constricter.per-path-levels]\n"t/*" = "tight"\n',
     "[tool]\nconstricter = 1\n",
     "not toml [",
   ],
@@ -273,7 +279,7 @@ def test_a_bad_pyproject_exits_2(
 def test_fix_adds_the_annotations_values_decide(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
   """`--fix` annotates what it can in place, keeps line endings, and reports the rest."""
   source: bytes = (
-    b"def f() -> None:\r\n  a = 1; b = 'x'\r\n  c = [1]\r\n  d = 2  # noqa: LVA001\r\n  e = Path()\r\n"
+    b"def f() -> None:\r\n  a = 1; b = 'x'\r\n  c = []\r\n  d = 2  # noqa: LVA001\r\n  e = Path()\r\n"
   )
   path: Path = tmp_path / "fixable.py"
   _ = path.write_bytes(source)
@@ -281,7 +287,7 @@ def test_fix_adds_the_annotations_values_decide(tmp_path: Path, capsys: pytest.C
   fixed: bytes = (
     b"def f() -> None:\r\n"
     b"  a: int = 1; b: str = 'x'\r\n"
-    b"  c = [1]\r\n"
+    b"  c = []\r\n"
     b"  d = 2  # noqa: LVA001\r\n"
     b"  e: Path = Path()\r\n"
   )
@@ -317,4 +323,215 @@ def test_a_bad_nesting_exits_2(nesting: str, capsys: pytest.CaptureFixture[str])
 def test_pyproject_nesting(tmp_path: Path) -> None:
   """`nesting` in `[tool.constricter]` takes a whole number of at least 1."""
   _pyproject(tmp_path, "[tool.constricter]\nnesting = 3\n")
-  assert cli.config_defaults(tmp_path) == {"nesting": 3}
+  assert config.config_defaults(tmp_path) == {"nesting": 3}
+
+
+ALL_BASELINED: Final = "Found 0 error(s) and 0 warning(s) in 1 file(s); 3 baselined.\n"
+DEMO: Final = "def f(items: list[int]) -> None:\n  a = 1\n  b = []\n  for c in items:\n    pass\n"
+
+
+@pytest.mark.parametrize("code", ["LVA001", "LVA002", "LVA003", "LVA004", "LVA005", "LVA006"])
+def test_explain_prints_each_code(code: str, capsys: pytest.CaptureFixture[str]) -> None:
+  """`--explain` prints a code's message, rationale and levels, then exits 0."""
+  exit_info: pytest.ExceptionInfo[SystemExit]
+  with pytest.raises(SystemExit) as exit_info:
+    _ = cli.main(["--explain", code])
+  assert exit_info.value.code == cli.EXIT_CLEAN
+  out: str = capsys.readouterr().out
+  assert out.startswith(f"{code}: ")
+  assert out.rstrip().endswith("suffocate: error")
+
+
+def test_statistics_counts_each_code(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+  """`--statistics` prints a count per code instead of each offence."""
+  path: Path = _write(tmp_path / "demo.py", DEMO)
+  assert cli.main(["--statistics", str(path)]) == cli.EXIT_FOUND
+  assert capsys.readouterr().out.splitlines() == [
+    "    2  LVA001  error",
+    "    1  LVA002  warning",
+    "Found 2 error(s) and 1 warning(s) in 1 file(s).",
+  ]
+
+
+def test_select_and_ignore(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+  """`--select` keeps only matching codes or prefixes; `--ignore` drops them."""
+  path: Path = _write(tmp_path / "demo.py", DEMO)
+  assert cli.main(["-q", "--select", "lva002", str(path)]) == cli.EXIT_CLEAN
+  assert [line.split(": ")[2][:6] for line in capsys.readouterr().out.splitlines()] == ["LVA002"]
+  assert cli.main(["-q", "--select", "LVA00", "--ignore", "LVA001,LVA002", str(path)]) == cli.EXIT_CLEAN
+  assert not capsys.readouterr().out
+
+
+def test_pyproject_select_and_ignore(tmp_path: Path) -> None:
+  """`select` and `ignore` in `[tool.constricter]` take lists of codes."""
+  _pyproject(tmp_path, '[tool.constricter]\nselect = ["LVA001"]\nignore = ["LVA002"]\n')
+  assert config.config_defaults(tmp_path) == {"select": ["LVA001"], "ignore": ["LVA002"]}
+
+
+def test_a_select_matching_no_code_exits_2(capsys: pytest.CaptureFixture[str]) -> None:
+  """A code or prefix that matches no code is an error."""
+  exit_info: pytest.ExceptionInfo[SystemExit]
+  with pytest.raises(SystemExit) as exit_info:
+    _ = cli.main(["--select", "LVA001,XYZ"])
+  assert exit_info.value.code == cli.EXIT_ERROR
+  assert capsys.readouterr().err.endswith("no code starts with XYZ\n")
+
+
+def test_diff_prints_the_fixes_and_changes_nothing(
+  tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+  """`--diff` prints what `--fix` would change, exits 1 if anything would, and writes nothing."""
+  path: Path = _write(tmp_path / "demo.py", DEMO)
+  assert cli.main(["--diff", str(path)]) == cli.EXIT_FOUND
+  assert capsys.readouterr().out == (
+    f"--- {path}\n+++ {path}\n@@ -1,5 +1,5 @@\n def f(items: list[int]) -> None:\n-  a = 1\n+  a: int = 1\n"
+    "   b = []\n   for c in items:\n     pass\n"
+  )
+  assert path.read_text(encoding="utf-8") == DEMO
+  clean: Path = _write(tmp_path / "clean.py", CLEAN)
+  assert cli.main(["--diff", str(clean)]) == cli.EXIT_CLEAN
+  assert not capsys.readouterr().out
+  bad: Path = _write(tmp_path / "bad.py", "def (:\n")
+  assert cli.main(["--diff", str(bad)]) == cli.EXIT_ERROR
+
+
+def test_fix_and_diff_cant_be_combined(capsys: pytest.CaptureFixture[str]) -> None:
+  """`--fix --diff` is an error."""
+  exit_info: pytest.ExceptionInfo[SystemExit]
+  with pytest.raises(SystemExit) as exit_info:
+    _ = cli.main(["--fix", "--diff"])
+  assert exit_info.value.code == cli.EXIT_ERROR
+  assert capsys.readouterr().err.endswith("--fix, --diff and --write-baseline can't be combined\n")
+
+
+def test_per_path_levels(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+  """`per-path-levels` sets the level for files matching a glob; the first match wins."""
+  _pyproject(tmp_path, '[tool.constricter.per-path-levels]\n"tests/*" = "relaxed"\n"*.py" = 2\n')
+  _ = _write(tmp_path / "tests" / "demo.py", DEMO)
+  _ = _write(tmp_path / "src" / "demo.py", DEMO)
+  monkeypatch.chdir(tmp_path)
+  assert cli.main(["--statistics", "tests"]) == cli.EXIT_CLEAN
+  assert capsys.readouterr().out.splitlines()[:2] == ["    2  LVA001  warning", "    1  LVA002  warning"]
+  assert cli.main(["--statistics", "src"]) == cli.EXIT_FOUND
+  assert capsys.readouterr().out.splitlines()[:2] == ["    2  LVA001  error", "    1  LVA002  error"]
+
+
+@pytest.mark.parametrize("jobs", ["2", "0"])
+def test_jobs_check_files_in_parallel_in_order(
+  tmp_path: Path, capsys: pytest.CaptureFixture[str], jobs: str
+) -> None:
+  """`--jobs` checks files in parallel, and reports them in the same order as one at a time."""
+  name: str
+  for name in ("a.py", "b.py", "c.py"):
+    _ = _write(tmp_path / name, DEMO)
+  _ = _write(tmp_path / "bad.py", "def (:\n")
+  assert cli.main(["--jobs=1", str(tmp_path)]) == cli.EXIT_ERROR
+  serial: tuple[str, str] = capsys.readouterr()
+  assert cli.main([f"--jobs={jobs}", str(tmp_path)]) == cli.EXIT_ERROR
+  assert capsys.readouterr() == serial
+
+
+def test_pyproject_jobs_and_per_path_levels(tmp_path: Path) -> None:
+  """`jobs` takes 0 and up; `per-path-levels` maps globs to levels."""
+  _pyproject(tmp_path, '[tool.constricter]\njobs = 0\n[tool.constricter.per-path-levels]\n"t/*" = "Strict"\n')
+  assert config.config_defaults(tmp_path) == {"jobs": 0, "per_path_levels": {"t/*": "strict"}}
+
+
+def test_importing_the_main_module_doesnt_run_the_command() -> None:
+  """`--jobs` workers import `constricter.__main__`; that mustn't run the command again."""
+  assert runpy.run_module("constricter", run_name="__mp_main__")["main"] is cli.main
+
+
+def test_baseline_reports_only_new_offences(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+  """`--write-baseline` records every offence; `--baseline` then reports only ones beyond it."""
+  path: Path = _write(tmp_path / "src" / "demo.py", DEMO)
+  file: Path = tmp_path / "baseline.json"
+  assert cli.main(["--baseline", str(file), "--write-baseline", str(path)]) == cli.EXIT_CLEAN
+  assert capsys.readouterr().out == f"Wrote 3 offence(s) to {file}.\n"
+  assert json.loads(file.read_text(encoding="utf-8")) == {
+    "version": 1,
+    "offences": {"src/demo.py": {"LVA001 a": 1, "LVA001 b": 1, "LVA002 c": 1}},
+  }
+  assert cli.main(["--baseline", str(file), str(path)]) == cli.EXIT_CLEAN
+  assert capsys.readouterr().out == ALL_BASELINED
+  # Lines moving doesn't matter; a new offence, even of a baselined name, does.
+  _ = path.write_text("\n\n" + DEMO + "  a = 2\n  e = 3\n", encoding="utf-8", newline="\n")
+  monkeypatch.chdir(tmp_path / "src")  # paths are relative to the baseline, not the directory
+  assert cli.main(["-q", "--baseline", str(file), "demo.py"]) == cli.EXIT_FOUND
+  assert [line.split(": ")[2] for line in capsys.readouterr().out.splitlines()] == [
+    "LVA001 local variable 'e' is not annotated where it's first bound"
+  ]
+
+
+def test_baseline_from_pyproject_is_relative_to_it(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+  """`baseline` in `[tool.constricter]` is a path relative to that pyproject.toml."""
+  _pyproject(tmp_path, '[tool.constricter]\nbaseline = "ci/baseline.json"\n')
+  (tmp_path / "ci").mkdir()
+  _ = _write(tmp_path / "pkg" / "demo.py", DEMO)
+  monkeypatch.chdir(tmp_path / "pkg")
+  assert cli.main(["--write-baseline", "."]) == cli.EXIT_CLEAN
+  assert (tmp_path / "ci" / "baseline.json").is_file()
+  _ = capsys.readouterr()
+  assert cli.main(["-q", "."]) == cli.EXIT_CLEAN
+
+
+@pytest.mark.parametrize(
+  ("args", "error"),
+  [
+    (["--write-baseline", "--fix", "--baseline=x.json"], "can't be combined"),
+    (["--baseline=missing.json"], "can't read the baseline"),
+    (["--baseline=bad.json"], "not a constricter baseline"),
+    (["--baseline=counts.json"], "not a constricter baseline"),
+  ],
+)
+def test_baseline_errors_exit_2(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  capsys: pytest.CaptureFixture[str],
+  args: list[str],
+  error: str,
+) -> None:
+  """A missing or malformed baseline, or `--write-baseline` without a file, exits 2."""
+  _ = (tmp_path / "bad.json").write_text('{"version": 2, "offences": {}}', encoding="utf-8")
+  _ = (tmp_path / "counts.json").write_text(
+    '{"version": 1, "offences": {"a.py": {"LVA001 x": true}}}', encoding="utf-8"
+  )
+  monkeypatch.chdir(tmp_path)
+  exit_info: pytest.ExceptionInfo[SystemExit]
+  with pytest.raises(SystemExit) as exit_info:
+    _ = cli.main(args)
+  assert exit_info.value.code == cli.EXIT_ERROR
+  assert error in capsys.readouterr().err
+
+
+def test_the_default_baseline_file(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+  """Without `--baseline`, `constricter-baseline.json` next to pyproject.toml is written and used."""
+  _pyproject(tmp_path, '[project]\nname = "x"\n')
+  _ = _write(tmp_path / "pkg" / "demo.py", DEMO)
+  monkeypatch.chdir(tmp_path / "pkg")
+  assert cli.main(["-q", "."]) == cli.EXIT_FOUND  # no baseline yet: everything is reported
+  assert cli.main(["--write-baseline", "."]) == cli.EXIT_CLEAN
+  assert (tmp_path / "constricter-baseline.json").is_file()
+  _ = capsys.readouterr()
+  assert cli.main(["."]) == cli.EXIT_CLEAN
+  assert capsys.readouterr().out.endswith("; 3 baselined.\n")
+
+
+def test_a_baseline_can_have_comments(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+  """A hand-edited baseline may have comments and trailing commas (JSONC)."""
+  path: Path = _write(tmp_path / "demo.py", DEMO)
+  file: Path = tmp_path / "baseline.json"
+  _ = file.write_text(
+    '{\n  "version": 1, // hand-edited\n  "offences": {"demo.py": {"LVA001 a": 1, "LVA001 b": 1,},},\n}\n',
+    encoding="utf-8",
+  )
+  assert cli.main(["-q", "--baseline", str(file), str(path)]) == cli.EXIT_CLEAN
+  assert [line.split(": ")[2][:6] for line in capsys.readouterr().out.splitlines()] == ["LVA002"]

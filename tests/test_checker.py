@@ -497,7 +497,17 @@ def test_vague_and_nested_are_reported_from_strict() -> None:
     ("Counter()", None),
     ("path()", None),
     ("None", None),
-    ("[1]", None),
+    ("[1]", "list[int]"),
+    ("[]", None),
+    ("[1, 'a']", None),
+    ("[[1], [2]]", "list[list[int]]"),
+    ("{1, 2}", "set[int]"),
+    ("(1, 'a', b'')", "tuple[int, str, bytes]"),
+    ("(1, *[])", None),
+    ("{'a': 1}", "dict[str, int]"),
+    ("{'a': 1, 'b': 'c'}", None),
+    ("{**{}}", None),
+    ("{}", None),
   ],
 )
 def test_fixes_are_offered_only_where_the_value_decides_the_type(value: str, fix: str | None) -> None:
@@ -539,3 +549,49 @@ def test_fixes_are_offered_only_for_a_single_plain_name() -> None:
 def test_a_type_alias_statement_binds_its_name() -> None:
   """`type X = ...` binds `X` with no annotation needed."""
   assert not _codes("def f() -> None:\n  type Alias = list[int]\n  Alias = 1\n")
+
+
+def test_fixes_use_same_module_return_types() -> None:
+  """A call to a plain module function offers its declared return type; unsafe ones don't."""
+  source: str = textwrap.dedent(
+    """
+    from typing import Any, TypeVar
+    T = TypeVar("T")
+
+
+    def count() -> int: ...
+    def rows() -> list[tuple[int, str]]: ...
+    def nothing() -> None: ...
+    def vague() -> Any: ...
+    def same(value: T) -> T: ...
+    def untyped(): ...
+    async def later() -> int: ...
+    @cache
+    def cached() -> int: ...
+    def twice() -> int: ...
+    def twice() -> str: ...
+
+
+    def f() -> None:
+      a = count()
+      b = [rows(), rows()]
+      c = nothing()
+      d = vague()
+      e = same(1)
+      g = untyped()
+      h = later()
+      i = cached()
+      j = twice()
+    """
+  )
+  assert [(o.name, o.fix) for o in check_source(source)] == [
+    ("a", "int"),
+    ("b", "list[list[tuple[int, str]]]"),
+    ("c", None),
+    ("d", None),
+    ("e", None),
+    ("g", None),
+    ("h", None),
+    ("i", None),
+    ("j", None),
+  ]

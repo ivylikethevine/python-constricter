@@ -1,0 +1,13 @@
+# Groups for the release notes `gh release create --generate-notes` writes (release.yml's last job).
+changelog:
+  exclude:
+    authors: [dependabot]
+  categories:
+    - title: Rules
+      labels: [rules]
+    - title: Fixes
+      labels: [bug]
+    - title: CI and tooling
+      labels: [ci, dependencies]
+    - title: Other changes
+      labels: ["*"]

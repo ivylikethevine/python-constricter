@@ -1,0 +1,25 @@
+name: Bug
+description: A wrong report, a missed one, or a crash.
+labels: [bug]
+body:
+  - type: textarea
+    id: source
+    attributes:
+      label: Code
+      description: The smallest Python that shows it.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versions
+      description: "`constricter --version`, `python --version`, and flake8 or pylint if used."
+    validations:
+      required: true

@@ -37,7 +37,7 @@ COMMENTED: Final = "for variable 'commented' is typed only by a type comment; de
 
 def _write(tmp_path: Path) -> Path:
   path: Path = tmp_path / "broken.py"
-  _ = path.write_text(textwrap.dedent(SOURCE), encoding="utf-8")
+  _ = path.write_text(textwrap.dedent(SOURCE), encoding="utf-8", newline="\n")
   return path
 
 
@@ -147,7 +147,7 @@ def test_pylint_checker_skips_a_module_without_source() -> None:
 def test_all_scopes_option(tmp_path: Path, flake8: Callable[..., list[str]]) -> None:
   """`all-scopes` makes both plugins report LVA004 / C9104 for module variables."""
   path: Path = tmp_path / "module.py"
-  _ = path.write_text("LIMIT = 1\n", encoding="utf-8")
+  _ = path.write_text("LIMIT = 1\n", encoding="utf-8", newline="\n")
   member: str = "module or class variable 'LIMIT' is not annotated where it's first bound"
   assert not flake8(str(path))
   assert flake8("--constricter-all-scopes", str(path)) == [f"{path}:1:1: LVA004 {member}"]
@@ -159,7 +159,7 @@ def test_all_scopes_option(tmp_path: Path, flake8: Callable[..., list[str]]) -> 
 def test_vague_and_nested_annotations_at_suffocate(tmp_path: Path, flake8: Callable[..., list[str]]) -> None:
   """At `suffocate`, both plugins report LVA005 / C9105 and, at the set nesting, LVA006 / C9106."""
   path: Path = tmp_path / "annotated.py"
-  _ = path.write_text("def f() -> None:\n  x: list[list[Any]] = []\n", encoding="utf-8")
+  _ = path.write_text("def f() -> None:\n  x: list[list[Any]] = []\n", encoding="utf-8", newline="\n")
   vague: str = "the annotation of 'x' is vague: Any, object, or a generic without its parameters"
   nested: str = "the annotation of 'x' nests too deeply; name a part of it with a `type` alias"
   assert flake8("--constricter-level=suffocate", "--constricter-nesting=2", str(path)) == [

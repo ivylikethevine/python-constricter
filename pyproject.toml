@@ -25,6 +25,7 @@ pylint = ["pylint>=3"]
 dev = [
     "basedpyright",
     "build",
+    "check-wheel-contents",
     "flake8>=7",
     "flit_core>=4.1,<5",
     "mypy",
@@ -36,6 +37,7 @@ dev = [
     "ruff",
     "twine",
     "typos",
+    "validate-pyproject",
     "zizmor",
 ]
 
@@ -62,9 +64,6 @@ cache-dir = "local/.ruff_cache"
 select = ["ALL"]
 preview = true
 ignore = [
-    # Docstrings stay one line: no Returns/Yields sections.
-    "docstring-missing-returns",
-    "docstring-missing-yields",
     # Conflict with the formatter or with the D211/D212 conventions.
     "missing-trailing-comma",
     "incorrect-blank-line-before-class",
@@ -76,8 +75,14 @@ ignore = [
 ]
 external = ["LVA"]
 
+[tool.ruff.lint.pydoclint]
+# A one-line docstring needs no Returns/Yields section; a longer one does.
+ignore-one-line-docstrings = true
+
 [tool.ruff.lint.flake8-copyright]
+# REUSE-IgnoreStart
 notice-rgx = "SPDX-License-Identifier: MIT"
+# REUSE-IgnoreEnd
 
 [tool.ruff.lint.per-file-ignores]
 # pytest's assert.
