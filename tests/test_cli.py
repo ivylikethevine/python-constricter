@@ -253,6 +253,7 @@ def test_no_table_or_no_pyproject_sets_nothing(tmp_path: Path) -> None:
     "[tool.constricter]\ncolour = 1\n",
     "[tool.constricter]\nnesting = 0\n",
     "[tool.constricter]\nnesting = true\n",
+    '[tool.constricter]\nselect = "LVA001"\n',
     "[tool]\nconstricter = 1\n",
     "not toml [",
   ],
@@ -318,3 +319,80 @@ def test_pyproject_nesting(tmp_path: Path) -> None:
   """`nesting` in `[tool.constricter]` takes a whole number of at least 1."""
   _pyproject(tmp_path, "[tool.constricter]\nnesting = 3\n")
   assert cli.config_defaults(tmp_path) == {"nesting": 3}
+
+
+DEMO: Final = "def f(items: list[int]) -> None:\n  a = 1\n  b = [1]\n  for c in items:\n    pass\n"
+
+
+@pytest.mark.parametrize("code", ["LVA001", "LVA002", "LVA003", "LVA004", "LVA005", "LVA006"])
+def test_explain_prints_each_code(code: str, capsys: pytest.CaptureFixture[str]) -> None:
+  """`--explain` prints a code's message, rationale and levels, then exits 0."""
+  exit_info: pytest.ExceptionInfo[SystemExit]
+  with pytest.raises(SystemExit) as exit_info:
+    _ = cli.main(["--explain", code])
+  assert exit_info.value.code == cli.EXIT_CLEAN
+  out: str = capsys.readouterr().out
+  assert out.startswith(f"{code}: ")
+  assert out.rstrip().endswith("suffocate: error")
+
+
+def test_statistics_counts_each_code(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+  """`--statistics` prints a count per code instead of each offence."""
+  path: Path = _write(tmp_path / "demo.py", DEMO)
+  assert cli.main(["--statistics", str(path)]) == cli.EXIT_FOUND
+  assert capsys.readouterr().out.splitlines() == [
+    "    2  LVA001  error",
+    "    1  LVA002  warning",
+    "Found 2 error(s) and 1 warning(s) in 1 file(s).",
+  ]
+
+
+def test_select_and_ignore(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+  """`--select` keeps only matching codes or prefixes; `--ignore` drops them."""
+  path: Path = _write(tmp_path / "demo.py", DEMO)
+  assert cli.main(["-q", "--select", "lva002", str(path)]) == cli.EXIT_CLEAN
+  assert [line.split(": ")[2][:6] for line in capsys.readouterr().out.splitlines()] == ["LVA002"]
+  assert cli.main(["-q", "--select", "LVA00", "--ignore", "LVA001,LVA002", str(path)]) == cli.EXIT_CLEAN
+  assert not capsys.readouterr().out
+
+
+def test_pyproject_select_and_ignore(tmp_path: Path) -> None:
+  """`select` and `ignore` in `[tool.constricter]` take lists of codes."""
+  _pyproject(tmp_path, '[tool.constricter]\nselect = ["LVA001"]\nignore = ["LVA002"]\n')
+  assert cli.config_defaults(tmp_path) == {"select": ["LVA001"], "ignore": ["LVA002"]}
+
+
+def test_a_select_matching_no_code_exits_2(capsys: pytest.CaptureFixture[str]) -> None:
+  """A code or prefix that matches no code is an error."""
+  exit_info: pytest.ExceptionInfo[SystemExit]
+  with pytest.raises(SystemExit) as exit_info:
+    _ = cli.main(["--select", "LVA001,XYZ"])
+  assert exit_info.value.code == cli.EXIT_ERROR
+  assert capsys.readouterr().err.endswith("no code starts with XYZ\n")
+
+
+def test_diff_prints_the_fixes_and_changes_nothing(
+  tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+  """`--diff` prints what `--fix` would change, exits 1 if anything would, and writes nothing."""
+  path: Path = _write(tmp_path / "demo.py", DEMO)
+  assert cli.main(["--diff", str(path)]) == cli.EXIT_FOUND
+  assert capsys.readouterr().out == (
+    f"--- {path}\n+++ {path}\n@@ -1,5 +1,5 @@\n def f(items: list[int]) -> None:\n-  a = 1\n+  a: int = 1\n"
+    "   b = [1]\n   for c in items:\n     pass\n"
+  )
+  assert path.read_text(encoding="utf-8") == DEMO
+  clean: Path = _write(tmp_path / "clean.py", CLEAN)
+  assert cli.main(["--diff", str(clean)]) == cli.EXIT_CLEAN
+  assert not capsys.readouterr().out
+  bad: Path = _write(tmp_path / "bad.py", "def (:\n")
+  assert cli.main(["--diff", str(bad)]) == cli.EXIT_ERROR
+
+
+def test_fix_and_diff_cant_be_combined(capsys: pytest.CaptureFixture[str]) -> None:
+  """`--fix --diff` is an error."""
+  exit_info: pytest.ExceptionInfo[SystemExit]
+  with pytest.raises(SystemExit) as exit_info:
+    _ = cli.main(["--fix", "--diff"])
+  assert exit_info.value.code == cli.EXIT_ERROR
+  assert capsys.readouterr().err.endswith("--fix and --diff can't be combined\n")

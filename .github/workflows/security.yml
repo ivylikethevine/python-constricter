@@ -65,15 +65,12 @@ jobs:
       - run: zizmor --persona pedantic .github/
         env:
           GH_TOKEN: ${{ github.token }}
-      - name: actionlint (kjanat's fork; bump URL and SHA256 together)
-        env:
-          URL: https://github.com/kjanat/actionlint/releases/download/v1.17.0/actionlint_1.17.0_linux_amd64.tar.gz
-          SHA256: 620abd485a12b6ab1125b844a876414e1d5bd2af8a3125b27f82b01d0d9d6e5a
-        run: |
-          curl -sSfLo "$RUNNER_TEMP/actionlint.tgz" "$URL"
-          echo "$SHA256  $RUNNER_TEMP/actionlint.tgz" | sha256sum -c -
-          tar xzf "$RUNNER_TEMP/actionlint.tgz" -C "$RUNNER_TEMP" actionlint
-          "$RUNNER_TEMP/actionlint"
+      - uses: $/.github/actions/tool # kjanat's fork of actionlint, which reads `$/`
+        with:
+          url: https://github.com/kjanat/actionlint/releases/download/v1.17.0/actionlint_1.17.0_linux_amd64.tar.gz
+          sha256: 620abd485a12b6ab1125b844a876414e1d5bd2af8a3125b27f82b01d0d9d6e5a
+          binary: actionlint
+      - run: '"$RUNNER_TEMP/bin/actionlint"'
 
   dependencies:
     name: Dependency audit
@@ -120,3 +117,51 @@ jobs:
       - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: low
+
+  secrets:
+    name: Secrets
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            release-assets.githubusercontent.com:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # the whole history
+      - uses: $/.github/actions/tool
+        with:
+          url: https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          sha256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          binary: gitleaks
+      - run: '"$RUNNER_TEMP/bin/gitleaks" git --redact --no-banner --exit-code 1 .'
+
+  links:
+    name: External links
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      # Audit, not block: the hosts are whatever the docs link to.
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/tool
+        with:
+          url: https://github.com/lycheeverse/lychee/releases/download/lychee-v0.24.2/lychee-x86_64-unknown-linux-gnu.tar.gz
+          sha256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
+          binary: lychee-x86_64-unknown-linux-gnu/lychee
+      - run: git ls-files -z '*.md' | xargs -0 "$RUNNER_TEMP/bin/lychee" --no-progress
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

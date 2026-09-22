@@ -1,4 +1,4 @@
-# constricter
+# `python-constricter`
 
 > I want **all** of my python code typed.
 
@@ -109,9 +109,14 @@ Options:
 | type comments | `--type-comments`                             | `type-comments`      | `--constricter-type-comments` | `constricter-type-comments = yes` |
 | all scopes    | `--all-scopes`                                | `all-scopes`         | `--constricter-all-scopes`    | `constricter-all-scopes = yes`    |
 | nesting       | `--nesting N`                                 | `nesting`            | `--constricter-nesting`       | `constricter-nesting`             |
-| fix           | `--fix`                                       | -                    | -                             | -                                 |
+| fix           | `--fix`, or `--diff` to preview               | -                    | -                             | -                                 |
+| select        | `--select CODES` (codes or prefixes)          | `select`             | flake8's own `select`         | pylint's own `enable`             |
+| ignore        | `--ignore CODES`                              | `ignore`             | flake8's own `extend-ignore`  | pylint's own `disable`            |
 | exclude       | `--exclude GLOB` (repeatable)                 | `exclude`            | flake8's own `exclude`        | pylint's own `ignore-paths`       |
 | format        | `--format`: `text`, `json`, `github`, `sarif` | -                    | -                             | -                                 |
+| statistics    | `--statistics` (counts per code, text format) | -                    | -                             | -                                 |
+
+`constricter --explain LVA002` prints a code's rationale, its fix, and the levels that report it.
 
 The CLI reads `[tool.constricter]` from the nearest `pyproject.toml` above the current directory;
 its flags override it, and `--exclude` adds to it. An unknown key or a bad value exits 2.
@@ -123,12 +128,31 @@ exclude = ["tests/fixtures/*"]
 type-comments = false
 all-scopes = true
 nesting = 5
+select = ["LVA00"]
+ignore = ["LVA003"]
 ```
 
 `--fix` adds the annotation where the value decides it — a literal (`count = 0` becomes
 `count: int = 0`) or a call to a capitalised name (`path = Path(...)`) — for a plain `name = value`
 in a function or module body. It never touches class bodies (a dataclass would gain a field) or
 unpacking, and it leaves what it can't fix reported.
+
+### SARIF (code scanning)
+
+`--format=sarif` writes SARIF 2.1.0, with each result's level (`error` or `warning`) set by
+`--level`. In GitHub Actions, upload it to code scanning (the job needs `security-events: write`):
+
+```yaml
+- run: constricter --format=sarif src > constricter.sarif
+- if: ${{ !cancelled() }} # upload the findings even when the step above failed on them
+  uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
+  with:
+    sarif_file: constricter.sarif
+    category: constricter
+```
+
+SonarQube and SonarCloud import it with `sonar.sarifReportPaths=constricter.sarif`; any other tool
+that reads SARIF 2.1.0 takes the same file.
 
 Tools that run flake8 or pylint (VS Code's extensions, python-lsp-server, prospector, MegaLinter,
 Trunk) pick the plugin up once it's installed alongside them.
@@ -165,8 +189,9 @@ uv pip install --python local/.venv --no-deps --no-build-isolation -e .
 
 Checks (as CI runs them): `ruff check .` (every rule, preview included), `ruff format --check .`,
 `basedpyright` (all), `mypy` (strict), `pylint src tests` (every extension), `flake8 src tests`,
-`typos`, `uv lock --check`, `constricter --level=suffocate --all-scopes src tests`, `pytest --cov`
-(100% branch coverage). Everything generated goes in `local/`. Python is indented with 2 spaces.
+`typos`, `reuse lint`, `validate-pyproject pyproject.toml`, `uv lock --check`,
+`constricter --level=suffocate --all-scopes src tests`, `pytest --cov` (100% branch coverage).
+Everything generated goes in `local/`. Python is indented with 2 spaces.
 
 After editing the `dev` group, run `uv lock` (CI fails until you do). Dependabot updates `uv.lock`,
 the npm lock and the actions weekly.
@@ -183,17 +208,17 @@ git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/prettier --check
 
 Everything else is on. Some of these may be revisited.
 
-| Tool               | Rule                                                                               | Why                                                                                                               |
-| ------------------ | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| ruff               | `docstring-missing-returns`, `docstring-missing-yields` (DOC201/DOC402)            | They require Returns/Yields sections; docstrings here stay one line.                                              |
-| ruff               | `missing-trailing-comma` (COM812)                                                  | Conflicts with `ruff format`; ruff says to disable it.                                                            |
-| ruff               | `incorrect-blank-line-before-class`, `multi-line-summary-second-line` (D203/D213)  | Each contradicts a rule that stays on (D211/D212); one of each pair has to go.                                    |
-| ruff               | `indentation-with-invalid-multiple` and `-comment` (E111/E114)                     | They assume 4-space indents; ruff says to disable them at any other width. flake8's E111/E114 check the 2 spaces. |
-| ruff (`tests/`)    | `assert` (S101)                                                                    | pytest works through `assert`.                                                                                    |
-| mypy, basedpyright | astroid's untyped calls and missing stubs                                          | astroid (pylint's parser) ships no type information.                                                              |
-| typos              | the word `astroid`                                                                 | A real package name.                                                                                              |
-| harden-runner      | `egress-policy: audit` on macOS and Windows, and in the release and Scorecard jobs | macOS and Windows reach unpredictable OS hosts; the others haven't run yet, so their hosts aren't known.          |
-| vulture            | not run                                                                            | Its only findings were flake8/pylint hook names, which it can't see being called.                                 |
+| Tool               | Rule                                                                                                                  | Why                                                                                                                             |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| ruff               | `docstring-missing-returns`, `docstring-missing-yields` (DOC201/DOC402)                                               | They require Returns/Yields sections; docstrings here stay one line.                                                            |
+| ruff               | `missing-trailing-comma` (COM812)                                                                                     | Conflicts with `ruff format`; ruff says to disable it.                                                                          |
+| ruff               | `incorrect-blank-line-before-class`, `multi-line-summary-second-line` (D203/D213)                                     | Each contradicts a rule that stays on (D211/D212); one of each pair has to go.                                                  |
+| ruff               | `indentation-with-invalid-multiple` and `-comment` (E111/E114)                                                        | They assume 4-space indents; ruff says to disable them at any other width. flake8's E111/E114 check the 2 spaces.               |
+| ruff (`tests/`)    | `assert` (S101)                                                                                                       | pytest works through `assert`.                                                                                                  |
+| mypy, basedpyright | astroid's untyped calls and missing stubs                                                                             | astroid (pylint's parser) ships no type information.                                                                            |
+| typos              | the word `astroid`                                                                                                    | A real package name.                                                                                                            |
+| harden-runner      | `egress-policy: audit` on macOS and Windows, in the release and Scorecard jobs, and in the weekly external-link check | macOS and Windows reach unpredictable OS hosts; the release and Scorecard jobs haven't run yet; external links can go anywhere. |
+| vulture            | not run                                                                                                               | Its only findings were flake8/pylint hook names, which it can't see being called.                                               |
 
 To apply the rulesets in `.github/rulesets/` (repo admin):
 
@@ -229,6 +254,9 @@ Done:
   features.
 - **All scopes:** `all-scopes` checks module and class bodies (`LVA004`).
 - **Suffocate:** `src/` and `tests/` pass at `--level=suffocate --all-scopes` in CI.
+- **More checks:** gitleaks over the whole history (Security), lychee on the Markdown links (offline
+  in Docs, external ones weekly), `reuse lint`, validate-pyproject and check-wheel-contents.
+- **SARIF docs**, and `--explain`, `--select` / `--ignore`, `--diff` and `--statistics`.
 - **LVA005, LVA006 and `--fix`.**
 - **Python 3.11+**, the oldest version still maintained after 3.10's end of life in October 2026.
   Older Pythons aren't planned: 3.10 would add a runtime dependency (`tomli`) for a month, and
@@ -240,42 +268,33 @@ Done:
 Next, smallest first:
 
 1. Switch the release jobs and Scorecard to `block` once they've run and their hosts are known.
-2. **gitleaks:** scan the history for committed secrets (as the sibling repos do).
-3. **lychee:** check the Markdown files' links, offline in CI and weekly for external ones.
-4. **`reuse lint`:** check every file's licence header (the SPDX headers are already there).
-5. **validate-pyproject and check-wheel-contents:** catch packaging mistakes before a release.
-6. **A `constricter-fix` pre-commit hook**, running `--fix`.
-7. **SARIF upload docs:** examples for GitHub code scanning, SonarQube and Codacy.
-8. **CHANGELOG**, with generated release notes.
-9. **Badges:** CI, PyPI, Scorecard and licence.
-10. **Issue and PR templates, and CODEOWNERS.**
-11. **CONTRIBUTING**, kept short.
-12. **`--explain LVA00x`:** print a rule's rationale and examples, as `ruff rule` does.
-13. **`--select` / `--ignore`:** choose codes without changing the level.
-14. **`--diff`:** preview what `--fix` would change.
-15. **`--statistics`:** counts per code, to track progress on a large codebase.
-16. **Per-path levels** in `[tool.constricter]`, e.g. `strict` for `tests/` and `suffocate`
-    elsewhere.
-17. **Parallel checking** for large repositories.
-18. **A GitHub Action** (`uses: ivylikethevine/python-constricter@v1`) that runs `--format=github`
-    for PR annotations.
-19. **Fuzzing:** hypothesis with hypothesmith generates valid Python; the checker must never crash
+2. **A `constricter-fix` pre-commit hook**, running `--fix`.
+3. **CHANGELOG**, with generated release notes.
+4. **Badges:** CI, PyPI, Scorecard and licence.
+5. **Issue and PR templates, and CODEOWNERS.**
+6. **CONTRIBUTING**, kept short.
+7. **Per-path levels** in `[tool.constricter]`, e.g. `strict` for `tests/` and `suffocate`
+   elsewhere.
+8. **Parallel checking** for large repositories.
+9. **A GitHub Action** (`uses: ivylikethevine/python-constricter@v1`) that runs `--format=github`
+   for PR annotations.
+10. **Fuzzing:** hypothesis with hypothesmith generates valid Python; the checker must never crash
     on it.
-20. **A weekly run over a large real codebase** (CPython's standard library) to catch crashes and
+11. **A weekly run over a large real codebase** (CPython's standard library) to catch crashes and
     slowdowns.
-21. **Mutation testing (mutmut)**, weekly, to check the tests catch bugs rather than just cover
+12. **Mutation testing (mutmut)**, weekly, to check the tests catch bugs rather than just cover
     lines. It's slow, so not on every push.
-22. **An adoption guide** for existing codebases: start at `relaxed`, baseline, then raise the
+13. **An adoption guide** for existing codebases: start at `relaxed`, baseline, then raise the
     level.
-23. **`# lva-ignore: LVA00x`:** a suppression that, unlike `# noqa` (which every front end honours),
+14. **`# lva-ignore: LVA00x`:** a suppression that, unlike `# noqa` (which every front end honours),
     still reports the offence as a warning at `suffocate`.
-24. **Trunk and MegaLinter plugin definitions**, submitted upstream once it's on PyPI.
-25. **A conda-forge recipe**, once it's on PyPI.
-26. **A baseline file (`--baseline`):** record existing offences so a large codebase can adopt the
+15. **Trunk and MegaLinter plugin definitions**, submitted upstream once it's on PyPI.
+16. **A conda-forge recipe**, once it's on PyPI.
+17. **A baseline file (`--baseline`):** record existing offences so a large codebase can adopt the
     tool and fail only on new ones.
-27. **A smarter `--fix`:** uniform list and dict literals (`[1, 2]` becomes `list[int]`), and calls
+18. **A smarter `--fix`:** uniform list and dict literals (`[1, 2]` becomes `list[int]`), and calls
     to same-module functions that declare their return type.
-28. **Jupyter notebooks:** check `.ipynb` code cells, as ruff does.
-29. **SLSA level-3 provenance** (slsa-github-generator), a stronger guarantee than today's
+19. **Jupyter notebooks:** check `.ipynb` code cells, as ruff does.
+20. **SLSA level-3 provenance** (slsa-github-generator), a stronger guarantee than today's
     attestation.
-30. Revisit the [disabled rules](#disabled-rules).
+21. Revisit the [disabled rules](#disabled-rules).

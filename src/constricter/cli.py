@@ -2,18 +2,21 @@
 """The `constricter` command (see README)."""
 
 import argparse
+import difflib
 import json
 import sys
 import tomllib
+from collections import Counter
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
-from enum import StrEnum
+from dataclasses import dataclass, field
+from enum import Enum, StrEnum
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
 from constricter import __version__
 from constricter.checker import LEVELS, MESSAGES, NESTING, Level, Offence, check_source
+from constricter.explain import explain
 from constricter.noqa import lines, unsuppressed
 
 if TYPE_CHECKING:
@@ -75,19 +78,30 @@ def check_file(
   return unsuppressed(offences, lines(source))
 
 
-def fix_file(path: Path, offences: Sequence[Offence]) -> int:
-  """Add each fixable offence's annotation to `path`; return how many were fixed."""
-  fixes: list[Offence]
-  if not (fixes := sorted((o for o in offences if o.fix), key=lambda o: (o.line, o.col), reverse=True)):
-    return 0
-  text: list[str] = lines(path.read_bytes().decode("utf-8"))
+def _fixed(source: str, offences: Sequence[Offence]) -> list[str]:
+  """Return `source`'s lines with each fixable offence's annotation added."""
+  text: list[str] = lines(source)
   o: Offence
-  for o in fixes:
+  for o in sorted((o for o in offences if o.fix), key=lambda o: (o.line, o.col), reverse=True):
     raw: bytes = text[o.line - 1].encode()
     end: int = o.col + len(o.name.encode())  # `col` counts bytes, as `ast` does
     text[o.line - 1] = (raw[:end] + f": {o.fix}".encode() + raw[end:]).decode()
-  _ = path.write_bytes("".join(text).encode())
-  return len(fixes)
+  return text
+
+
+def fix_file(path: Path, offences: Sequence[Offence]) -> int:
+  """Add each fixable offence's annotation to `path`; return how many were fixed."""
+  count: int
+  if not (count := sum(1 for o in offences if o.fix)):
+    return 0
+  _ = path.write_bytes("".join(_fixed(path.read_bytes().decode("utf-8"), offences)).encode())
+  return count
+
+
+def diff_file(path: Path, offences: Sequence[Offence]) -> str:
+  """Return the unified diff `fix_file` would make to `path` (empty if none)."""
+  source: str = path.read_bytes().decode("utf-8")
+  return "".join(difflib.unified_diff(lines(source), _fixed(source, offences), str(path), str(path)))
 
 
 def _github_escape(text: str, *, prop: bool = False) -> str:
@@ -180,6 +194,21 @@ def _positive(text: str) -> int:
   return int(text)
 
 
+def _codes(text: str) -> list[str]:
+  """Read a comma-separated list of codes or code prefixes (`LVA001,LVA00`).
+
+  Raises:
+    argparse.ArgumentTypeError: One matches no code.
+
+  """
+  codes: list[str] = [code.strip().upper() for code in text.split(",") if code.strip()]
+  unknown: list[str]
+  if unknown := [code for code in codes if not any(known.startswith(code) for known in MESSAGES)]:
+    message: str = f"no code starts with {', '.join(unknown)}"
+    raise argparse.ArgumentTypeError(message)
+  return codes
+
+
 def _parser() -> argparse.ArgumentParser:
   parser: argparse.ArgumentParser = argparse.ArgumentParser(
     prog="constricter",
@@ -220,8 +249,25 @@ def _parser() -> argparse.ArgumentParser:
     help=f"report an annotation nested N deep (LVA006; default: {NESTING})",
   )
   _ = parser.add_argument(
+    "--select",
+    type=_codes,
+    default=[],
+    metavar="CODES",
+    help="report only these codes or prefixes (LVA001,LVA00)",
+  )
+  _ = parser.add_argument(
+    "--ignore", type=_codes, default=[], metavar="CODES", help="don't report these codes or prefixes"
+  )
+  _ = parser.add_argument(
     "--fix", action="store_true", help="add the annotations a value makes unambiguous, in place"
   )
+  _ = parser.add_argument(
+    "--diff", action="store_true", help="print what --fix would change, and change nothing"
+  )
+  _ = parser.add_argument(
+    "--statistics", action="store_true", help="print counts per code instead of each offence (text)"
+  )
+  _ = parser.add_argument("--explain", choices=list(MESSAGES), metavar="CODE", help="explain a code and exit")
   _ = parser.add_argument("--quiet", "-q", action="store_true", help="don't print the text summary line")
   _ = parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
   return parser
@@ -283,14 +329,22 @@ def config_defaults(start: Path) -> dict[str, _Default]:
         defaults["level"] = str(value).lower()
       case "nesting", int() if not isinstance(value, bool) and value >= 1:
         defaults["nesting"] = value
-      case "exclude", list() if all(isinstance(glob, str) for glob in value):
-        defaults["exclude"] = [str(glob) for glob in value]
+      case (("exclude" | "select" | "ignore"), list()) if all(isinstance(item, str) for item in value):
+        defaults[key] = [str(item) for item in value]
       case (("type-comments" | "all-scopes"), bool()):
         defaults[key.replace("-", "_")] = value
       case _:
         message: str = f"{path}: [tool.constricter] has an invalid {key} = {value!r}"
         raise ValueError(message)
   return defaults
+
+
+class _Mode(Enum):
+  """What to do with what's found."""
+
+  CHECK = "check"
+  FIX = "fix"
+  DIFF = "diff"
 
 
 @dataclass(frozen=True)
@@ -303,91 +357,153 @@ class _Checks:
 
 
 @dataclass(frozen=True)
+class _Filter:
+  """Which offences are reported, and as what."""
+
+  level: Level
+  select: list[str]
+  ignore: list[str]
+
+  def reports(self, offence: Offence) -> bool:
+    """Whether `offence` is reported at all."""
+    return (
+      offence.is_reported(self.level)
+      and (not self.select or offence.code.startswith(tuple(self.select)))
+      and not offence.code.startswith(tuple(self.ignore))
+    )
+
+
+@dataclass(frozen=True)
+class _Output:
+  """How the report looks."""
+
+  fmt: Format
+  statistics: bool
+  quiet: bool
+
+
+@dataclass(frozen=True)
 class _Options:
   """The command's parsed options."""
 
   paths: list[Path]
   exclude: list[str]
-  level: Level
-  fmt: Format
   checks: _Checks
-  fix: bool
-  quiet: bool
+  filter: _Filter
+  output: _Output
+  mode: _Mode
 
   @classmethod
   def parse(cls, argv: Sequence[str] | None) -> "_Options":
-    """Parse `argv` over the defaults `pyproject.toml` sets."""
+    """Parse `argv` over the defaults `pyproject.toml` sets; `--explain` prints and exits."""
     parser: argparse.ArgumentParser = _parser()
     try:
       parser.set_defaults(**config_defaults(Path.cwd()))
     except ValueError as error:
       parser.error(str(error))
     args: argparse.Namespace = parser.parse_args(argv)
+    code: str | None
+    if (code := cast("str | None", args.explain)) is not None:
+      _ = sys.stdout.write(explain(code))
+      parser.exit()
+    fix: bool = cast("bool", args.fix)
+    diff: bool = cast("bool", args.diff)
+    if fix and diff:
+      parser.error("--fix and --diff can't be combined")
     return cls(
       paths=cast("list[Path]", args.paths) or [Path()],
       exclude=cast("list[str]", args.exclude),
-      level=LEVELS[cast("str", args.level)],
-      fmt=cast("Format", args.format),
       checks=_Checks(
         type_comments=cast("bool", args.type_comments),
         all_scopes=cast("bool", args.all_scopes),
         nesting=cast("int", args.nesting),
       ),
-      fix=cast("bool", args.fix),
-      quiet=cast("bool", args.quiet),
+      filter=_Filter(
+        level=LEVELS[cast("str", args.level)],
+        select=[c.upper() for c in cast("list[str]", args.select)],
+        ignore=[c.upper() for c in cast("list[str]", args.ignore)],
+      ),
+      output=_Output(
+        fmt=cast("Format", args.format),
+        statistics=cast("bool", args.statistics),
+        quiet=cast("bool", args.quiet),
+      ),
+      mode=_Mode.FIX if fix else _Mode.DIFF if diff else _Mode.CHECK,
     )
 
 
-def _check_one(path: Path, options: _Options) -> tuple[list[Offence], int]:
-  """Check (and fix) one file: the offences left, and how many were fixed."""
+@dataclass
+class _Run:
+  """What checking every file found."""
+
+  results: list[_Result] = field(default_factory=list["_Result"])
+  files: int = 0
+  fixed: int = 0
+  diffs: list[str] = field(default_factory=list[str])
+  failed: bool = False
+
+
+def _check_one(path: Path, options: _Options, run: _Run) -> None:
+  """Check (and fix, or diff) one file into `run`."""
   checks: _Checks = options.checks
   offences: list[Offence] = [
     o
     for o in check_file(
       path, type_comments=checks.type_comments, all_scopes=checks.all_scopes, nesting=checks.nesting
     )
-    if o.is_reported(options.level)
+    if options.filter.reports(o)
   ]
-  if not options.fix:
-    return offences, 0
-  return [o for o in offences if not o.fix], fix_file(path, offences)
+  diff: str
+  if options.mode is _Mode.DIFF:
+    run.diffs += [diff] if (diff := diff_file(path, offences)) else []
+    return
+  if options.mode is _Mode.FIX:
+    run.fixed += fix_file(path, offences)
+    offences = [o for o in offences if not o.fix]
+  run.results += [(path, o) for o in offences]
 
 
-def _check_all(options: _Options) -> tuple[list[_Result], int, int, bool]:
-  """Check (and fix) every file: the results left, the files, the fixes, and whether any failed."""
-  results: list[_Result] = []
-  files: int = 0
-  fixed: int = 0
-  failed: bool = False
+def _check_all(options: _Options) -> _Run:
+  """Check every file; a file that can't be read or parsed is reported on stderr."""
+  run: _Run = _Run()
   path: Path
-  offences: list[Offence]
-  count: int
   for path in python_files(options.paths, options.exclude):
-    files += 1
+    run.files += 1
     try:
-      offences, count = _check_one(path, options)
+      _check_one(path, options, run)
     except (OSError, UnicodeDecodeError, SyntaxError) as error:
       _ = sys.stderr.write(f"{path}: error: {error}\n")
-      failed = True
-    else:
-      results += [(path, o) for o in offences]
-      fixed += count
-  return results, files, fixed, failed
+      run.failed = True
+  return run
+
+
+def _statistics(results: Sequence[_Result], level: Level) -> Iterator[str]:
+  """Yield one line per code: how many, the code, and its severity at `level`."""
+  code: str
+  count: int
+  for code, count in Counter(o.code for _, o in results).most_common():
+    yield f"{count:>5}  {code}  {_severity(Offence(1, 0, '', code), level)}"
 
 
 def main(argv: Sequence[str] | None = None) -> int:
   """Run the command; return its exit status."""
   options: _Options = _Options.parse(argv)
-  results: list[_Result]
-  files: int
-  fixed: int
-  failed: bool
-  results, files, fixed, failed = _check_all(options)
+  run: _Run = _check_all(options)
+  if options.mode is _Mode.DIFF:
+    _ = sys.stdout.write("".join(run.diffs))
+    return EXIT_ERROR if run.failed else EXIT_FOUND if run.diffs else EXIT_CLEAN
+  level: Level = options.filter.level
+  output: _Output = options.output
+  text: bool = output.fmt is Format.TEXT
   line: str
-  for line in _render(options.fmt, results, options.level):
+  for line in (
+    _statistics(run.results, level) if text and output.statistics else _render(output.fmt, run.results, level)
+  ):
     _ = sys.stdout.write(f"{line}\n")
-  errors: int = sum(o.is_error(options.level) for _, o in results)
-  if options.fmt is Format.TEXT and not options.quiet:
-    summary: str = f"Found {errors} error(s) and {len(results) - errors} warning(s) in {files} file(s)"
-    _ = sys.stdout.write(f"{summary}; fixed {fixed}.\n" if options.fix else f"{summary}.\n")
-  return EXIT_ERROR if failed else EXIT_FOUND if errors else EXIT_CLEAN
+  errors: int = sum(o.is_error(level) for _, o in run.results)
+  if text and not output.quiet:
+    summary: str = (
+      f"Found {errors} error(s) and {len(run.results) - errors} warning(s) in {run.files} file(s)"
+    )
+    _ = sys.stdout.write(f"{summary}; fixed {run.fixed}.\n" if options.mode is _Mode.FIX else f"{summary}.\n")
+  return EXIT_ERROR if run.failed else EXIT_FOUND if errors else EXIT_CLEAN
