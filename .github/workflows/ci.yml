@@ -3,7 +3,10 @@ name: CI
 on:
   push:
     branches: [main]
+  # Drafts run nothing (each job's `if`) until marked ready: ready_for_review
+  # isn't a default type, and converted_to_draft cancels the in-flight run.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_call:
 
 permissions: {}
@@ -19,6 +22,7 @@ defaults:
 jobs:
   lint:
     name: Lint
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -52,6 +56,7 @@ jobs:
 
   docs:
     name: Docs
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -84,6 +89,7 @@ jobs:
 
   action:
     name: Action
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -106,6 +112,7 @@ jobs:
 
   corpus:
     name: Corpus (${{ matrix.package }})
+    if: github.event.pull_request.draft != true
     strategy:
       fail-fast: false
       matrix:
@@ -154,6 +161,7 @@ jobs:
 
   test:
     name: Test (${{ matrix.os }}, ${{ matrix.python }})
+    if: github.event.pull_request.draft != true
     strategy:
       fail-fast: false
       matrix:

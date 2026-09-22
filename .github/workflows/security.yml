@@ -3,7 +3,10 @@ name: Security
 on:
   push:
     branches: [main]
+  # Drafts run nothing (each job's `if`) until marked ready: ready_for_review
+  # isn't a default type, and converted_to_draft cancels the in-flight run.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   schedule:
     - cron: '0 6 * * 1'
 
@@ -16,6 +19,7 @@ concurrency:
 jobs:
   codeql:
     name: CodeQL (${{ matrix.language }})
+    if: github.event.pull_request.draft != true
     strategy:
       matrix:
         language: [python, actions]
@@ -43,6 +47,7 @@ jobs:
 
   workflows:
     name: Workflow audit
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -74,6 +79,7 @@ jobs:
 
   dependencies:
     name: Dependency audit
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -97,7 +103,7 @@ jobs:
 
   dependency-review:
     name: Dependency review
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -120,6 +126,7 @@ jobs:
 
   secrets:
     name: Secrets
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
