@@ -7,7 +7,8 @@ from typing import Final
 
 import pytest
 
-from constricter import cli, project
+from constricter.cli import command as cli
+from constricter.fix import project
 
 UTIL: Final = """
 from pkg.types import Row

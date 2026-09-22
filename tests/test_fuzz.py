@@ -8,9 +8,10 @@ import hypothesmith
 from hypothesis import HealthCheck, given, reject, settings
 from hypothesis import strategies as st
 
-from constricter import fixes
-from constricter.checker import Checks, Offence, check_source
+from constricter.fix import fixes
 from constricter.noqa import lines
+from constricter.offences import Checks, Offence
+from constricter.rules.checker import check_source
 
 # Generating from the grammar is slow and discards what doesn't compile; that's expected.
 FUZZ: settings = settings(

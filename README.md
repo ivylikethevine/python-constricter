@@ -1,13 +1,20 @@
 # python-con`strict`er
 
+> EXPERIMENTAL UNTIL v1.0.0
+
+**I want all of my python code typed.**
+
 [![CI](https://github.com/ivylikethevine/python-constricter/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ivylikethevine/python-constricter/actions/workflows/ci.yml)
 [![Security](https://github.com/ivylikethevine/python-constricter/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/ivylikethevine/python-constricter/actions/workflows/security.yml)
+[![PyPI](https://img.shields.io/pypi/v/python-constricter)](https://pypi.org/project/python-constricter/)
+[![Python](https://img.shields.io/pypi/pyversions/python-constricter)](https://pypi.org/project/python-constricter/)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ivylikethevine/python-constricter/badge)](https://scorecard.dev/viewer/?uri=github.com/ivylikethevine/python-constricter)
 [![Test coverage: 100%](https://img.shields.io/badge/test_coverage-100%25-brightgreen)](pyproject.toml)
 [![Annotations: 100%](https://img.shields.io/badge/annotations-100%25-brightgreen)](#annotation-coverage)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE.md)
 
-> I want **all** of my python code typed.
+Lint rules: every local variable is typed where it's first bound. Ships as a flake8 plugin, a pylint
+plugin and a standalone command (for ruff, which loads no plugins).
 
 ```text
             /^\/^\
@@ -29,14 +36,7 @@
                 ~--______-~                ~-___-~
 ```
 
-[snake](https://www.asciiart.eu/art/595284d82d1f8d6d)
-
-<https://pypi.org/project/python-constricter/>
-
 ---
-
-Lint rules: every local variable is typed where it's first bound. Ships as a flake8 plugin, a pylint
-plugin and a standalone command (for ruff, which loads no plugins).
 
 ```python
 def total(items: list[int]) -> int:
@@ -61,17 +61,22 @@ def total(items: list[int]) -> int:
 ## Rules
 
 Checked per function body, including methods and nested functions; with `all-scopes`, module and
-class bodies too. Statements are read in source order, and only a name's first binding counts.
+class bodies too. Statements are read in source order, and only a name's first binding counts
+(`LVA008`–`LVA010` aside, which read every one).
 
-| Code     | Reports                                                                | Fix                                            |
-| -------- | ---------------------------------------------------------------------- | ---------------------------------------------- |
-| `LVA001` | `=`, unpacking, `:=` or `with ... as` in a function without annotation | `name: T = ...`, or `name: T` first            |
-| `LVA002` | an untyped `for` target or `match` capture                             | `name: T` first (or a type comment)            |
-| `LVA003` | a `for` target typed only by `# type: T`                               | `name: T` first                                |
-| `LVA004` | with `all-scopes`: the same as `LVA001`, in a module or class body     | `name: T = ...` (`ClassVar[T]` in a dataclass) |
-| `LVA005` | an annotation with `Any`, `object` or a generic without its parameters | name the real type                             |
-| `LVA006` | an annotation nested `nesting` deep (5 by default)                     | a `type` alias for a part of it                |
-| `LVA007` | a name annotated again with the type it already has, in the same block | drop the second annotation                     |
+| Code     | Reports                                                                                   | Fix                                            |
+| -------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `LVA001` | `=`, unpacking, `:=` or `with ... as` in a function without annotation                    | `name: T = ...`, or `name: T` first            |
+| `LVA002` | an untyped `for` target or `match` capture                                                | `name: T` first (or a type comment)            |
+| `LVA003` | a `for` target typed only by `# type: T`                                                  | `name: T` first                                |
+| `LVA004` | with `all-scopes`: the same as `LVA001`, in a module or class body                        | `name: T = ...` (`ClassVar[T]` in a dataclass) |
+| `LVA005` | an annotation with `Any`, `object` or a generic without its parameters                    | name the real type                             |
+| `LVA006` | an annotation nested `nesting` deep (3 by default)                                        | a `type` alias for a part of it                |
+| `LVA007` | a name annotated again with the type it already has, in the same block                    | drop the second annotation                     |
+| `LVA008` | with every value the name ever holds known: an annotation that could narrow to them       | narrow it (`total: int`)                       |
+| `LVA009` | a value, anywhere in the name's lifetime, whose type doesn't fit its annotation           | fix the value, or widen the annotation         |
+| `LVA010` | with every value known: a union member no value is                                        | drop the member                                |
+| `LVA011` | an annotation listing a fixed-length tuple of more than `max-length` types (4 by default) | name the fields (a `NamedTuple`, a dataclass)  |
 
 Exempt: comprehensions, `except ... as`, imports, `def`/`class`, `type` aliases, parameters,
 `global`/`nonlocal`, and `_`; in module and class bodies, dunder names (`__all__`, `__slots__`) and
@@ -86,19 +91,34 @@ or `nested_scopes` from `__future__`.
 `LVA007` compares a block on its own: an `if`'s body and its `orelse`, a `try`'s body and its
 `except`s, and the like, are different blocks, since they don't both run in the same pass.
 
+`LVA009` checks every binding of an annotated name (or parameter) in the scope, wherever and in
+whatever order they run, but only one whose value's type `--fix` would infer with certainty, and
+only against types whose every subclass is known: builtins, and classes the module defines on such
+bases. An imported class, a protocol or an alias is never compared, builtin containers are compared
+by the container alone (`flags: tuple[str, ...] = ("-q",)` fits), a copy of a union-typed name is
+skipped (an `is None` check may have narrowed it), and so is a name annotated only under
+`if TYPE_CHECKING:`. It has no `--fix`.
+
+`LVA008` and `LVA010` also need every binding's value known (one unknown call, loop target or
+unpacking and the name could hold anything), and are only claimed for a function's own names: a
+module or class variable is state other code rebinds out of sight (`mod.X = ...`, `self.x = ...`,
+`monkeypatch`), and a `nonlocal` write from a nested function counts as unknown too. Neither has a
+`--fix`: `--fix` adds annotations, it doesn't rewrite them.
+
 ## Levels
 
 Each level makes one more code an error. The rest are warnings: the CLI prints them (as `::warning`
 or SARIF `warning` in those formats) but exits 0; flake8 and pylint report errors only.
 
-| Level             | Errors                           | Warnings                              |
-| ----------------- | -------------------------------- | ------------------------------------- |
-| `relaxed` / `0`   | none                             | `LVA001`–`LVA004`, `LVA007`           |
-| `strict` / `1`    | `LVA001`, `LVA004` (the default) | `LVA002`, `LVA003`, `LVA005`–`LVA007` |
-| `constrict` / `2` | `LVA001`, `LVA004`, `LVA002`     | `LVA003`, `LVA005`–`LVA007`           |
-| `suffocate` / `3` | all                              | none                                  |
+| Level             | Errors                                 | Warnings                                                  |
+| ----------------- | -------------------------------------- | --------------------------------------------------------- |
+| `relaxed` / `0`   | none                                   | `LVA001`–`LVA004`, `LVA007`, `LVA009`                     |
+| `strict` / `1`    | `LVA001`, `LVA004` (the default)       | `LVA002`, `LVA003`, `LVA005`–`LVA007`, `LVA009`, `LVA011` |
+| `constrict` / `2` | `LVA001`, `LVA004`, `LVA002`, `LVA009` | `LVA003`, `LVA005`–`LVA008`, `LVA010`, `LVA011`           |
+| `suffocate` / `3` | all                                    | none                                                      |
 
-`LVA005` and `LVA006` aren't reported at `relaxed`.
+`LVA005`, `LVA006` and `LVA011` aren't reported at `relaxed`; `LVA008` and `LVA010` only from
+`constrict`.
 
 Python 3.11+, no runtime dependencies.
 
@@ -106,37 +126,41 @@ Python 3.11+, no runtime dependencies.
 
 | Tool   | Setup                                                 | Reports                         | Suppress                                         |
 | ------ | ----------------------------------------------------- | ------------------------------- | ------------------------------------------------ |
-| CLI    | `constricter [PATH...] [--level L] [--format F] [-q]` | `LVA001`–`LVA007`               | `# noqa: LVA001`                                 |
-| flake8 | install it (on by default)                            | `LVA001`–`LVA007`               | `# noqa: LVA001`                                 |
-| pylint | `load-plugins = ["constricter.pylint_plugin"]`        | `C9101`–`C9107` (symbols below) | `# noqa: LVA001` or `# pylint: disable=<symbol>` |
-| ruff   | run the CLI after ruff; set `lint.external = ["LVA"]` | `LVA001`–`LVA007`               | `# noqa: LVA001`                                 |
+| CLI    | `constricter [PATH...] [--level L] [--format F] [-q]` | `LVA001`–`LVA011`               | `# noqa: LVA001`                                 |
+| flake8 | install it (on by default)                            | `LVA001`–`LVA011`               | `# noqa: LVA001`                                 |
+| pylint | `load-plugins = ["constricter.plugins.pylint"]`       | `C9101`–`C9111` (symbols below) | `# noqa: LVA001` or `# pylint: disable=<symbol>` |
+| ruff   | run the CLI after ruff; set `lint.external = ["LVA"]` | `LVA001`–`LVA011`               | `# noqa: LVA001`                                 |
 
 pylint symbols: `unannotated-local-variable`, `untyped-for-or-match-variable`,
 `comment-typed-for-variable`, `unannotated-module-or-class-variable`, `vague-annotation`,
-`deeply-nested-annotation`, `redundant-annotation`.
+`deeply-nested-annotation`, `redundant-annotation`, `narrowable-annotation`,
+`mismatched-value-type`, `unused-union-member`, `long-tuple-annotation`.
 
 Options:
 
-| Option           | CLI                                                         | `[tool.constricter]` | flake8 (CLI or config)          | pylint                            |
-| ---------------- | ----------------------------------------------------------- | -------------------- | ------------------------------- | --------------------------------- |
-| level            | `--level`                                                   | `level`              | `--constricter-level`           | `constricter-level`               |
-| type comments    | `--type-comments`                                           | `type-comments`      | `--constricter-type-comments`   | `constricter-type-comments = yes` |
-| all scopes       | `--all-scopes`                                              | `all-scopes`         | `--constricter-all-scopes`      | `constricter-all-scopes = yes`    |
-| nesting          | `--nesting N`                                               | `nesting`            | `--constricter-nesting`         | `constricter-nesting`             |
-| fix              | `--fix` (`--unsafe-fixes` for guesses), `--diff` to preview | -                    | -                               | -                                 |
-| select           | `--select CODES` (codes or prefixes)                        | `select`             | flake8's own `select`           | pylint's own `enable`             |
-| ignore           | `--ignore CODES`                                            | `ignore`             | flake8's own `extend-ignore`    | pylint's own `disable`            |
-| exclude          | `--exclude GLOB` (repeatable)                               | `exclude`            | flake8's own `exclude`          | pylint's own `ignore-paths`       |
-| format           | `--format`: `text`, `json`, `github`, `sarif`               | -                    | -                               | -                                 |
-| statistics       | `--statistics` (counts per code, text format)               | -                    | -                               | -                                 |
-| jobs             | `--jobs N` (`-j`; 0: one per CPU)                           | `jobs`               | flake8's own `--jobs`           | pylint's own `--jobs`             |
-| baseline         | `--baseline FILE`; `--write-baseline` records it            | `baseline`           | -                               | -                                 |
-| coverage         | `--coverage`, `--fail-under PCT`                            | -                    | -                               | -                                 |
-| per-path levels  | -                                                           | `per-path-levels`    | -                               | -                                 |
-| per-file ignores | -                                                           | `per-file-ignores`   | flake8's own `per-file-ignores` | -                                 |
-| stdin            | `-` as the path, `--stdin-filename PATH`                    | -                    | flake8's own `-`                | -                                 |
-| exit status      | `--exit-zero`                                               | -                    | flake8's own `--exit-zero`      | pylint's own `--exit-zero`        |
-| output file      | `--output-file FILE`                                        | -                    | flake8's own `--output-file`    | pylint's own `--output`           |
+| Option           | CLI                                                                                              | `[tool.constricter]` | flake8 (CLI or config)          | pylint                            |
+| ---------------- | ------------------------------------------------------------------------------------------------ | -------------------- | ------------------------------- | --------------------------------- |
+| level            | `--level`                                                                                        | `level`              | `--constricter-level`           | `constricter-level`               |
+| type comments    | `--type-comments`                                                                                | `type-comments`      | `--constricter-type-comments`   | `constricter-type-comments = yes` |
+| all scopes       | `--all-scopes`                                                                                   | `all-scopes`         | `--constricter-all-scopes`      | `constricter-all-scopes = yes`    |
+| nesting          | `--nesting N`                                                                                    | `nesting`            | `--constricter-nesting`         | `constricter-nesting`             |
+| max length       | `--max-length N` (LVA011)                                                                        | `max-length`         | `--constricter-max-length`      | `constricter-max-length`          |
+| type hierarchy   | -                                                                                                | `narrower` (a table) | `--constricter-narrower`        | `constricter-narrower`            |
+| fix              | `--fix` (`--unsafe-fixes` for guesses), `--diff` to preview                                      | -                    | -                               | -                                 |
+| show fixes       | `--show-fixes` (each fix and how it was decided, text)                                           | -                    | -                               | -                                 |
+| select           | `--select CODES` (codes or prefixes)                                                             | `select`             | flake8's own `select`           | pylint's own `enable`             |
+| ignore           | `--ignore CODES`                                                                                 | `ignore`             | flake8's own `extend-ignore`    | pylint's own `disable`            |
+| exclude          | `--exclude GLOB` (repeatable)                                                                    | `exclude`            | flake8's own `exclude`          | pylint's own `ignore-paths`       |
+| format           | `--format`: `text`, `full` (with source), `json`, `github`, `sarif`, `gitlab`, `junit`, `rdjson` | -                    | -                               | -                                 |
+| statistics       | `--statistics` (counts per code, text format)                                                    | -                    | -                               | -                                 |
+| jobs             | `--jobs N` (`-j`; 0: one per CPU)                                                                | `jobs`               | flake8's own `--jobs`           | pylint's own `--jobs`             |
+| baseline         | `--baseline FILE`; `--write-baseline` records it                                                 | `baseline`           | -                               | -                                 |
+| coverage         | `--coverage`, `--fail-under PCT`                                                                 | -                    | -                               | -                                 |
+| per-path levels  | -                                                                                                | `per-path-levels`    | -                               | -                                 |
+| per-file ignores | -                                                                                                | `per-file-ignores`   | flake8's own `per-file-ignores` | -                                 |
+| stdin            | `-` as the path, `--stdin-filename PATH`                                                         | -                    | flake8's own `-`                | -                                 |
+| exit status      | `--exit-zero`                                                                                    | -                    | flake8's own `--exit-zero`      | pylint's own `--exit-zero`        |
+| output file      | `--output-file FILE`                                                                             | -                    | flake8's own `--output-file`    | pylint's own `--output`           |
 
 `constricter --explain LVA002` prints a code's rationale, its fix, and the levels that report it.
 
@@ -149,7 +173,8 @@ level = "constrict" # or 2
 exclude = ["tests/fixtures/*"]
 type-comments = false
 all-scopes = true
-nesting = 5
+nesting = 3
+max-length = 4
 jobs = 0
 baseline = "constricter-baseline.json" # the default; relative to this pyproject.toml
 
@@ -160,6 +185,11 @@ baseline = "constricter-baseline.json" # the default; relative to this pyproject
 # Codes (or prefixes) to drop for files matching a glob.
 [tool.constricter.per-file-ignores]
 "tests/fixtures/*" = ["LVA005", "LVA006"]
+
+# Your own type hierarchy for LVA008–LVA010: each type, and the types it's narrower than.
+[tool.constricter.narrower]
+UserId = ["str"]  # an imported NewType the rules then compare
+int = []          # an `int` no longer fits `float`
 select = ["LVA00"]
 ignore = ["LVA003"]
 ```
@@ -174,10 +204,40 @@ module body:
   declares its return type (not a decorated, generic, async or redefined one, and not a return of
   `None`, `Any` or one that uses a `TypeVar`), in the same module or, with the CLI, in another file
   it's checking: `from pkg.util import f`, `import pkg.util as u` then `u.f()`, relative imports and
-  re-exports all work, as long as every name in the type already means the same thing in the file.
+  re-exports all work, as long as every name in the type already means the same thing in the file;
+- a local whose type is already known (annotated, a parameter, or fixed earlier in the same scope):
+  a plain copy (`y = x`), a subscript (`nums[0]`), an attribute or method call of a class defined in
+  the same module (`p.x`, `p.norm()`), a `str`/`bytes` method with a fixed return (`s.strip()`), or
+  a `list`/`set`/`dict` method that returns its own element type (`nums.pop()`, `d.get(k)` as
+  `V | None`);
+- a value computed from such: `a if c else b` when both sides agree; arithmetic on builtin scalars
+  (`n + 1`, `n / 2`, `"x" * n`, `"%s" % n`; never `**`, whose result can change type); a list, set
+  or dict comprehension whose elements are known; `sorted`, `list`, `set`, `frozenset` or `tuple` of
+  something whose elements are; and `await` of a call to one of the module's `async def`s.
 
-It never touches class bodies (a dataclass would gain a field) or unpacking, and it leaves what it
-can't fix reported. The standard library and third-party packages are out of reach.
+A loop's target (LVA002) and an unpacking's names (LVA001) are declared instead, on a line of their
+own before the statement: `for k, v in ages.items():` with `ages: dict[str, int]` gets `k: str` and
+`v: int` above it. The target's type comes from what's iterated: a `range`, `enumerate` and `zip` of
+known things, a `dict`'s `.keys()`/`.values()`/`.items()`, or any container whose type is known; an
+unpacking splits a tuple type (`a, b = pair`, `pair: tuple[int, str]`) over its names.
+
+With `--unsafe-fixes`, LVA008 and LVA010 are fixed too, by rewriting the annotation (`total: float`
+only ever given `int`s becomes `total: int`): a guess, since a declared type can be wider on
+purpose.
+
+It never touches class bodies (a dataclass would gain a field), and it leaves what it can't fix
+reported. The standard library and third-party packages are out of reach.
+
+`--show-fixes` lists, after the report, each fix and how its value decided it (for `b = s.strip()`:
+`str`, from `str.strip`'s fixed return type), marking the guesses `--unsafe-fixes` would add;
+`--format=json` always carries the same as a `fix` object (`annotation`, `reason`, `unsafe`) on each
+result.
+
+The type hierarchy LVA008–LVA010 compare through is the numeric tower (`bool` < `int` < `float` <
+`complex`) plus the classes a module defines, under the bases they name.
+`[tool.constricter.narrower]` (or the plugins' `narrower` option, as `B=A, int=`) replaces what
+those say for each type it names, and vouches for the types it names: an imported type the rules
+would never compare otherwise is compared.
 
 ### Baselines
 
@@ -269,15 +329,18 @@ directory names (or globs) to skip the same way, on top of matching whole paths 
 codes: `0` no errors, `1` errors, `2` an unreadable or unparsable file, or a bad `pyproject.toml`.
 
 ```bash
-pip install python-constricter # once the first release is out; until then:
-pip install "python-constricter @ git+https://github.com/ivylikethevine/python-constricter@v0.2.0"
+pip install python-constricter           # into the project's environment
+uvx --from python-constricter constricter # or run it without installing: uv's tool runner
+pipx run --spec python-constricter constricter  # or pipx's
 ```
+
+Editors: VS Code, Zed and Neovim settings are in [`docs/editors/`](docs/editors/README.md).
 
 pre-commit, after ruff's hooks (or `constricter-fix`, which runs `--fix` first):
 
 ```yaml
 - repo: https://github.com/ivylikethevine/python-constricter
-  rev: v0.2.0
+  rev: v0.2.3
   hooks:
     - id: constricter
 ```
@@ -299,10 +362,36 @@ def types(session: nox.Session) -> None:
     session.run("constricter", "--level=constrict", "src")
 ```
 
+Bazel, through [rules_lint](https://github.com/aspect-build/rules_lint)'s flake8 aspect, with the
+plugin in the flake8 binary's dependencies (`tools/lint/BUILD.bazel`, then `linters.bzl` as
+rules_lint's own docs have it):
+
+```starlark
+load("@rules_python//python/entry_points:py_console_script_binary.bzl", "py_console_script_binary")
+
+py_console_script_binary(
+    name = "flake8",
+    pkg = "@pip//flake8:pkg",
+    deps = ["@pip//python_constricter"],  # the plugin, from your requirements
+)
+```
+
+Pants, whose flake8 installs from a resolve with the plugin locked in it (`pants.toml`; both
+`flake8` and `python-constricter` in that resolve's requirements):
+
+```toml
+[python.resolves]
+flake8 = "3rdparty/python/flake8.lock"
+
+[flake8]
+install_from_resolve = "flake8"
+requirements = ["flake8", "python-constricter"]
+```
+
 GitHub Actions, as PR annotations (it installs from the action's own tag, not PyPI):
 
 ```yaml
-- uses: ivylikethevine/python-constricter@v0.2.0
+- uses: ivylikethevine/python-constricter@v0.2.3
   with:
     args: --format=github src tests # the default is `--format=github` on `.`
     python-version: "3.13" # 3.11 or later
@@ -320,11 +409,11 @@ uv pip install --python local/.venv --no-deps --no-build-isolation -e .
 ```
 
 Checks (as CI runs them): `ruff check .` (every rule, preview included), `ruff format --check .`,
-`basedpyright` (all), `mypy` (strict), `pylint src tests` (every extension), `flake8 src tests`,
-`typos`, `validate-pyproject pyproject.toml`, `uv lock --check`,
-`constricter --level=suffocate --all-scopes src tests`,
-`constricter --coverage --all-scopes --fail-under=100 src tests`, `pytest --cov` (100% branch
-coverage). Everything generated goes in `local/`. Python is indented with 4 spaces.
+`basedpyright` (all), `mypy` (strict), `pylint constricter tests` (every extension),
+`flake8 constricter tests`, `typos`, `validate-pyproject pyproject.toml`, `uv lock --check`,
+`constricter --level=suffocate --all-scopes constricter tests`,
+`constricter --coverage --all-scopes --fail-under=100 constricter tests`, `pytest --cov` (100%
+branch coverage). Everything generated goes in `local/`. Python is indented with 4 spaces.
 
 After editing a dependency group, run `uv lock` (CI fails until you do). Dependabot updates
 `uv.lock`, the npm lock and the actions weekly.
@@ -339,6 +428,12 @@ and a second pass has nothing left to fix. CI's Corpus job runs both against the
 and, from the pinned `corpus` dependency group (`requests`, `flask`, `django`, `sqlalchemy` — a tiny
 HTTP client, two web frameworks and an ORM), the same way.
 
+`tests/corpus_table.py` measures every corpus with released constricter versions and this checkout
+(each isolated in its own environment), at every level, checked and fixed, and records a section per
+version in [`docs/RUNS.md`](docs/RUNS.md): offences per code, errors and warnings at each level,
+fixes, guesses, and anything a fix broke. It needs the `corpus` group
+(`uv sync --group dev --group corpus`) and `uv`; see its docstring for the options.
+
 CI also runs the tests on PyPy 3.11 and free-threaded Python 3.14, which install only the `test`
 dependency group: every dev tool doesn't have wheels for them, and the tests don't need them all.
 
@@ -349,20 +444,6 @@ npm ci --prefix .github
 git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/markdownlint-cli2
 git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/prettier --check
 ```
-
-### Disabled rules
-
-Everything else is on. Some of these may be revisited.
-
-| Tool               | Rule                                                                                                                             | Why                                                                                                                                        |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| ruff               | `incorrect-blank-line-before-class`, `multi-line-summary-second-line` (D203/D213)                                                | Each contradicts a rule that stays on (D211/D212); one of each pair has to go.                                                             |
-| ruff (`tests/`)    | `assert` (S101)                                                                                                                  | pytest works through `assert`.                                                                                                             |
-| mypy, basedpyright | astroid's untyped calls and missing stubs                                                                                        | astroid (pylint's parser) ships no type information.                                                                                       |
-| typos              | the word `astroid`                                                                                                               | A real package name.                                                                                                                       |
-| harden-runner      | `egress-policy: audit` on macOS and Windows, in the release jobs (release.yml, build.yml), and in the weekly external-link check | harden-runner supports only audit on GitHub's macOS and Windows runners; the release jobs haven't run yet; external links can go anywhere. |
-| reuse              | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)                                                          | No recent release ships a wheel for Python 3.11+, so installing it builds from source with an unpinned `poetry-core`.                      |
-| zizmor             | `self-repository` (`.github/zizmor.yml`)                                                                                         | Scorecard reads the `$/` form it wants as an unpinned third-party action, so local actions stay `./`.                                      |
 
 To apply the rulesets in `.github/rulesets/` (repo admin):
 
@@ -398,13 +479,14 @@ Done:
 - **Python 2 code:** type comments count automatically in modules that import Python 2 `__future__`
   features.
 - **All scopes:** `all-scopes` checks module and class bodies (`LVA004`).
-- **Suffocate:** `src/` and `tests/` pass at `--level=suffocate --all-scopes` in CI.
+- **Suffocate:** `constricter/` and `tests/` pass at `--level=suffocate --all-scopes` in CI.
 - **More checks:** gitleaks over the whole history (Security), lychee on the Markdown links (offline
   in Docs, external ones weekly), validate-pyproject and check-wheel-contents.
 - **SARIF docs**, and `--explain`, `--select` / `--ignore`, `--diff` and `--statistics`.
 - **Scorecard** blocks all but the hosts it was seen to use.
-- **Project files:** a `constricter-fix` pre-commit hook, a CHANGELOG (release notes grouped by
-  `.github/release.yml`), badges, issue and PR templates, CODEOWNERS and CONTRIBUTING.
+- **Project files:** a `constricter-fix` pre-commit hook, a changelog (`docs/`, release notes
+  grouped by `.github/release.yml`), badges, issue and PR templates, CODEOWNERS, and contributing
+  and security policies in `docs/`.
 - **Per-path levels**, **`--jobs`** for parallel checking, and a **GitHub Action** (`action.yml`)
   that CI runs on the project itself.
 - **LVA005, LVA006 and `--fix`.**
@@ -490,7 +572,7 @@ Done:
   | **Total**        |         |       |    **82,419** | **12,104** |           |        |
 
   No crashes on any of them, and `--unsafe-fixes` left nothing broken or nothing unfixed on a second
-  pass, on any of them; `--nesting`'s default (5) never fires on fourteen of the eighteen, and
+  pass, on any of them; `--nesting`'s default then (5) never fires on fourteen of the eighteen, and
   LVA007 found nothing on any of them, at any nesting — strong evidence it isn't noisy
   (`--nesting`'s default is still worth revisiting some day: `libcst`, deeply nested CST types, is
   by far the most affected, `sqlalchemy` and `scrapy` are the only other two to hit it at all at the
@@ -525,61 +607,165 @@ Done:
   re-checked (standard library, mypy, `requests`, `flask`, `django`, `sqlalchemy`), and fixed rose
   further still (e.g. mypy 1,996 → 2,074, sqlalchemy 848 → 1,039, `requests` 52 → 57).
 
-Next:
+- **`--fix` infers method calls** on an already-typed local, as certain fixes: a method of a class
+  defined in the same module (`method_returns`, the same rules as a module function's: plain, not
+  decorated or redefined, not `None`, vague or a `TypeVar`, and never on a generic class; a bare
+  `Self` return is the class itself), and `list`/`set`/`dict` methods whose return is the receiver's
+  own element type (`copy`, `pop`, `setdefault`, `get` as `V | None`, `popitem`; any other argument
+  shape, like `pop(key, default)` or a keyword, decides nothing). `BinOp` (`a + b`) stays skipped:
+  it needs both operands' types and proof the operator isn't overloaded, for little gain.
+  Re-verified with `tests/corpus_fix.py` on Python 3.14's standard library and the four pinned
+  corpus packages: no crashes, nothing stops compiling, still converges in one pass, and fixed rose
+  on four of the five (standard library 23,575 → 23,645, sqlalchemy 1,039 → 1,123, flask 35 → 44,
+  `requests` 57 → 66; django unchanged at 2,324).
 
-1. **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+ (6.2.0 still has only a
-   CPython 3.10 one).
-2. Revisit the [disabled rules](#disabled-rules) as tools change (last checked 2026-09-22: COM812,
-   one-line DOC201/DOC402 and `max-args` came back on; the rest can't go yet).
-3. **Raise `--fix`'s auto-fix rate further.** Attributes, subscripts, `self.attr` and `str`/`bytes`
-   method calls are done (see Done, above); what's left: a method call on an arbitrary class's
-   instance (`x = obj.method()`, unlike `str`/`bytes` isn't resolvable without following the
-   method's own return annotation, the same as `classes` already does for a field, extended to
-   methods) and `list`/`dict` methods whose return is the receiver's own element type (`list.pop`,
-   `dict.pop`, ...), which need the same element-type parsing `_subscripted` already does, just
-   reached from a method call instead of a subscript. `BinOp` (`a + b`, ~5% of the original sample)
-   would need operand types plus knowing the operator isn't overloaded to something else — riskier,
-   lower value, likely skip.
-4. **LVA008: a type that could narrow.** A warning at `constrict`, an error at `suffocate`: a
-   declared type that every value assigned to the name (across its lifetime, not just its first
-   binding) is consistent with a strictly narrower one, e.g. a `str` only ever assigned `"0"` or
-   `"1"` (could be `bool`), or a `float` only ever incremented, never divided (could be `int`).
-   Needs whole-variable value-flow analysis across every reassignment in a scope, not just a first
-   binding, which is a different (and much bigger) kind of check than `LVA001`–`LVA007`; wants its
-   own design pass (what counts as "consistent with" a type, how far to follow calls and mutation,
-   false-positive risk on a codebase this analysis can't fully see) before it's worth building.
-5. **LVA009: a reassignment that changes the type.** An error: `count: int = 0` later reassigned
-   `count = "done"` in the same scope. A real, common bug class (mypy already treats this as a type
-   error by default), but needs the same value-flow machinery as `LVA008` (infer every
-   reassignment's type with `annotations.inferred`, not just the first binding's), plus real
-   subtyping awareness to avoid noise `LVA008` doesn't have to worry about: a declared `X | None`
-   later assigned a plain `X` is normal Optional narrowing, not a bug, so the check needs to know
-   that's consistent rather than comparing annotation text like `LVA007` does; a name reused for
-   genuinely unrelated purposes (a sentinel, a generic helper handling more than one type by design)
-   is a real, if rarer, source of false positives to design around. Depends on `LVA008`'s design
-   work (same value-flow pass could likely serve both checks).
-6. **LVA010: a declared union only one branch ever uses.** A warning: `x: int | str = 0` where every
-   value ever assigned across `x`'s lifetime is consistent with only `int`, never `str` — the union
-   is wider than the code actually exercises, and could narrow to `int`. The complement of `LVA008`
-   (inferring a narrower type from values with no declared type to compare against) and `LVA009` (a
-   reassignment that breaks a declared type, not just widens what's already declared as a union);
-   shares the same value-flow machinery and design questions as both.
-7. **Show how each fix was inferred.** `annotations.inferred` now decides a fix through one of
-   several mechanisms (a literal, a container of literals, a same/cross-module function's declared
-   return type, a fixed-return builtin, a class it constructs, a copy of an already-typed local, a
-   subscript or an attribute of one), but `Offence.fix` keeps only the resulting annotation text,
-   not which one produced it. Surfacing that (`--diff`, or a verbose/explain mode) would help trust
-   and debug a fix, especially a guessed one. Needs every inference helper (`_scalar`, `_container`,
-   `_called`, `_subscripted`, the copy and attribute checks in `inferred` itself) to report a reason
-   alongside the type, not just the type — a real (if mechanical) change through most of
-   `annotations.py`'s inference path, not a one-line addition.
+- **Release jobs block egress**: the build, PyPI and GitHub release jobs run harden-runner in
+  `block` with the hosts the v0.2.2 and v0.2.3 release runs used.
+- **On PyPI**: `pip install python-constricter` is the documented install, with PyPI version and
+  Python version badges (the classifiers now name 3.11–3.14, CPython and PyPy).
 
-After the first release (these need it on PyPI, or a published tag):
+- **LVA009: a value that doesn't fit the annotation**, over the name's whole lifetime in the scope
+  (see [Rules](#rules)): a warning, an error from `constrict`, pylint's `C9109`
+  (`mismatched-value-type`). Built on the value-flow engine (`constricter.rules.flow`); across
+  Python 3.14's standard library and the four corpus packages it finds 10, each a real mismatch.
 
-1. **Switch the release jobs to `block`** with the hosts the first release run shows (PyPI upload,
-   Sigstore, GitHub releases).
-2. **A PyPI badge**, and `pip install python-constricter` as the documented install.
-3. **The GitHub Action on the Marketplace**, so `uses: ivylikethevine/python-constricter@v1` is
-   listed (it already works from any tag).
-4. **Trunk and MegaLinter plugin definitions**, submitted upstream.
-5. **A conda-forge recipe.**
+- **LVA008: an annotation that could narrow**, and **LVA010: a union member no value uses** (see
+  [Rules](#rules)): reported from `constrict`, errors at `suffocate`; pylint's `C9108`
+  (`narrowable-annotation`) and `C9110` (`unused-union-member`). Claimed only for a function's own
+  names with every value known: measured on instadroid's app (47 files), their first two findings
+  were module-level settings rebound elsewhere (a documented `None` default, a
+  `globals().update(...)`), which is why module and class variables are left out; on the corpus, as
+  expected of code this full of imported types, they find nothing.
+
+- **`--show-fixes`**: each `--fix` annotation with how its value decided it (a literal, a copy of a
+  local, a function's declared return type, a guessed constructor, ...), after the report; JSON
+  output carries the same `fix` object on every result.
+- **A user-defined type hierarchy** for LVA008–LVA010: `[tool.constricter.narrower]` (and the
+  plugins' `narrower` option), overriding the defaults and the module's classes per type, and making
+  the types it names comparable.
+- **LVA011: a fixed-length tuple longer than `max-length`** (4 by default, measured: across the
+  corpus, variable annotations list 2 types 140 times, 3 and 4 about 20 times each, and 5 or more 3
+  times). Reported from `strict`, an error at `suffocate`; pylint's `C9111`.
+- **Reorganised**: a flat `constricter/` (no `src/`) in `rules/`, `fix/`, `cli/` and `plugins/`,
+  with no module over 750 lines; `docs/` holds the changelog and contributing and security policies.
+
+- **Editor setup, install notes, `--format=full` and corpus runs**: settings for VS Code, Zed and
+  Neovim in `docs/editors/`; `uvx`/`pipx`, Bazel and Pants notes; `--format=full`, each offence with
+  its source line and a caret under the name; and `tests/corpus_table.py`, recording each version's
+  results on the corpus in `docs/RUNS.md`.
+
+- **`--fix` does more**: declarations before a loop (LVA002) or an unpacking; computed values
+  (conditionals, arithmetic on builtin scalars, comprehensions, `sorted`/`list`/`set`/`tuple` of
+  known elements, `await`); and, with `--unsafe-fixes`, LVA008's and LVA010's narrowed annotation.
+  On the corpus, with nothing broken and still one pass: the standard library 23,645 → 28,393 fixed,
+  django 2,324 → 2,648, sqlalchemy 1,123 → 1,409, flask 44 → 67, `requests` 66 → 79.
+
+Next, by scope (smallest first) and, within each, by value. Each item says what it is, why, how, and
+when it's done.
+
+### Small: a day or less
+
+1. **pre-commit fixes.** `require_serial: true` on the `constricter-fix` hook: pre-commit splits a
+   large file list across processes, so each one's cross-module `--fix` sees only part of the
+   project. Plus a pre-commit.ci snippet in the README (the hooks are pure Python, so they run there
+   as they are). Done when a split run fixes what a single run does.
+
+2. **SARIF `helpUri` and `fixes`.** Each rule links to its README section (a docs-site page later,
+   Medium 4), and each certain fix is a SARIF `fix` (the insertion, declaration or rewrite `Fix`
+   records), so code scanning can show and apply it. Done when `tests/test_cli.py`'s SARIF test
+   checks both and the output validates against the SARIF 2.1.0 schema.
+3. **GitHub Action improvements.** A `version` input that installs that release from PyPI (with uv)
+   instead of building the action's own checkout; a per-code summary table on the run page
+   (`$GITHUB_STEP_SUMMARY`); and a `sarif-file` output, documented with `upload-sarif`. Done when
+   CI's Action job uses each.
+
+4. **Investigate non-UTF-8 source.** A file with a PEP 263 coding declaration
+   (`# -*- coding: latin-1 -*-`) is a valid Python module, but the CLI reads every file as UTF-8, so
+   one is an unreadable file today (exit 2), and 0.2.2's `--fix` crashed on the standard library's
+   `test/encoded_modules/` (docs/RUNS.md). Find out how common such files are (the corpus has a
+   few), then decode by the declaration (`tokenize.detect_encoding`) for checking, and decide what
+   `--fix` should write back: the same encoding, or refuse. Done when the encoded modules check and
+   fix like any other.
+
+### Medium: a few days
+
+1. **Finer fix levels.** Give each inference mechanism a stable id alongside its reason (`literal`,
+   `copy`, `subscript`, `attribute`, `method`, `builtin`, `call`, `constructor`, `container`, ...),
+   print it in `--show-fixes`, and let a project choose which apply: `fix-select` and `fix-ignore`,
+   plus `unsafe-fix-select` to promote a guess it trusts (like ruff's `extend-safe-fixes`). Replaces
+   the single certain/guess split without breaking it: the defaults match today's.
+
+2. **A result cache.** One entry per file, keyed on its content, the settings, the version and the
+   cross-module return types it saw (`project.calls`), in `.constricter_cache/`, so a pre-commit or
+   editor rerun only rechecks what changed; `--no-cache` to skip it. Measured 2026-09-22 on Python
+   3.14's standard library with its tests: about 35 s with `-j1` and 8.8 s with `-j0` on 16 cores,
+   at 58% CPU, so profile the parallel run too (the cross-module index is built serially before the
+   pool starts).
+3. **An optional `Final` rule (LVA012).** A local bound once and never rebound (one binding in its
+   value-flow lifetime, not a loop target or augmented) could be `Final`. Off unless selected, an
+   error only at `suffocate`: most locals are bound once, so measure it on the corpus before
+   choosing anything more. Neither ruff nor pylint has one.
+4. **A docs site.** A page per rule generated from what `--explain` prints (one source for both),
+   which SARIF's `helpUri` then links to; a "why not a type checker?" page (they decline to require
+   local annotations: pyright discussion #7894) with an FAQ on running both; and the adoption guide
+   and corpus results moved out of this README.
+
+### Large: a week or more
+
+1. **A language server** (`constricter server`, in an optional `lsp` extra with pygls): diagnostics
+   as a file changes, certain fixes as quick fixes and guesses as a separate action, settings from
+   `pyproject.toml`. The only way into Helix and Zed, and how JetBrains (LSP4IJ) and Neovim's
+   built-in client would use it; then a VS Code extension from Microsoft's python-tools template,
+   bundling it. Wants the result cache (Medium 2) first.
+2. **Type-checker-backed inference**, opt-in (`--infer-with=ty|basedpyright`): start that checker's
+   language server, ask for the inlay hints over each file, and turn a hint on an unannotated first
+   binding into a fix, always a guess (`--unsafe-fixes`), since a hint can be too wide, a `Literal`,
+   or name something the file doesn't import. The largest potential gain in fix rate; shares the
+   client side of the language-server plumbing.
+
+### Ongoing
+
+- **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+ (last checked 2026-09-22:
+  6.2.0 still has only a CPython 3.10 one).
+- **Revisit the [disabled rules](#disabled-rules)** as tools change (last checked 2026-09-22:
+  COM812, one-line DOC201/DOC402 and `max-args` came back on; the rest can't go yet).
+
+### Waiting on a step outside this repository
+
+1. **The GitHub Action on the Marketplace.** It already works from any tag, and `action.yml` has the
+   name, description and branding a listing needs: tick "Publish this Action to the GitHub
+   Marketplace" when publishing a release.
+2. **Trunk and MegaLinter plugin definitions**, submitted upstream. MegaLinter's is
+   `mega-linter-plugin-constricter/constricter.megalinter-descriptor.yml` (usable now through
+   `PLUGINS`); what's left is a pull request adding it to `.automation/plugins.yml` in
+   oxsecurity/megalinter. Trunk's is drafted in `upstream/trunk/linters/constricter/`, for a pull
+   request to trunk-io/plugins with the snapshot its test harness generates.
+3. **A conda-forge recipe**, submitted to conda-forge/staged-recipes: drafted in
+   `upstream/conda-forge/recipes/python-constricter/`. It builds and passes its tests with
+   rattler-build against flit-core 4.0.2, still conda-forge's newest (2026-09-22), while
+   `pyproject.toml` asks for `flit_core>=4.1`: either the recipe's host pin or that floor has to
+   give until conda-forge has 4.1.
+
+## Disabled rules
+
+Everything else is on. Some of these may be revisited.
+
+| Tool               | Rule                                                                               | Why                                                                                                                   |
+| ------------------ | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| ruff               | `incorrect-blank-line-before-class`, `multi-line-summary-second-line` (D203/D213)  | Each contradicts a rule that stays on (D211/D212); one of each pair has to go.                                        |
+| ruff (`tests/`)    | `assert` (S101)                                                                    | pytest works through `assert`.                                                                                        |
+| mypy, basedpyright | astroid's untyped calls and missing stubs                                          | astroid (pylint's parser) ships no type information.                                                                  |
+| typos              | the word `astroid`                                                                 | A real package name.                                                                                                  |
+| harden-runner      | `egress-policy: audit` on macOS and Windows, and in the weekly external-link check | harden-runner supports only audit on GitHub's macOS and Windows runners; external links can go anywhere.              |
+| reuse              | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)            | No recent release ships a wheel for Python 3.11+, so installing it builds from source with an unpinned `poetry-core`. |
+| zizmor             | `self-repository` (`.github/zizmor.yml`)                                           | Scorecard reads the `$/` form it wants as an unpinned third-party action, so local actions stay `./`.                 |
+
+## AI usage
+
+Heavily inspired by
+[Dictionarry/Profilarr's AI Transparency Statement](https://v2.dictionarry.dev/ai-transparency).
+
+I have used generative AI to write large parts of this code. All of the code here is my
+_responsibility_ regardless: AI is a tool, not an owner of a project. I have personally understood,
+reviewed, and approved all of the AI-generated code in this repository, and **mainline releases**
+carry the same accountability to me as anything I write and publish myself.

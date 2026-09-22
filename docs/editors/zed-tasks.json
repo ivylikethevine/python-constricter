@@ -1,0 +1,26 @@
+[
+  {
+    "label": "constricter: this file",
+    "command": "constricter",
+    "args": ["--format=full", "$ZED_FILE"],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false
+  },
+  {
+    "label": "constricter: project",
+    "command": "constricter",
+    "args": ["."],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false
+  },
+  {
+    "label": "constricter: fix this file",
+    "command": "constricter",
+    "args": ["--fix", "$ZED_FILE"],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false
+  }
+]

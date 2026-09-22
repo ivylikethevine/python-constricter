@@ -12,6 +12,13 @@ classifiers = [
     "Framework :: Flake8",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
     "Topic :: Software Development :: Quality Assurance",
     "Typing :: Typed",
 ]
@@ -58,10 +65,10 @@ dev = [
 ]
 
 [project.scripts]
-constricter = "constricter.cli:main"
+constricter = "constricter.cli.command:main"
 
 [project.entry-points."flake8.extension"]
-LVA = "constricter.flake8_plugin:ConstricterChecker"
+LVA = "constricter.plugins.flake8:ConstricterChecker"
 
 [build-system]
 requires = ["flit_core>=4.1,<5"]
@@ -70,11 +77,18 @@ build-backend = "flit_core.buildapi"
 [tool.flit.module]
 name = "constricter"
 
+[tool.constricter]
+# Drafts for other projects (Trunk, conda-forge); Trunk's `basic.in.py` is untyped on purpose. The
+# directory name skips it in a walk; the path glob, where a file's named (pre-commit names each).
+exclude = ["upstream", "upstream/*"]
+
 [tool.ruff]
 line-length = 110
 indent-width = 4
 target-version = "py311"
 cache-dir = "local/.ruff_cache"
+# Drafts for other projects (Trunk, conda-forge), in their own formats; `basic.in.py` is untyped on purpose.
+extend-exclude = ["upstream"]
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -94,9 +108,11 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 [tool.ruff.lint.per-file-ignores]
 # pytest's assert.
 "tests/*" = ["assert"]
+# The corpus table runs each constricter version under test as a subprocess.
+"tests/corpus_table.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 
 [tool.mypy]
-files = ["src", "tests"]
+files = ["constricter", "tests"]
 python_version = "3.11"
 cache_dir = "local/.mypy_cache"
 strict = true
@@ -122,7 +138,7 @@ enable_error_code = [
 [tool.pylint.main]
 py-version = "3.11"
 load-plugins = [
-    "constricter.pylint_plugin",
+    "constricter.plugins.pylint",
     "pylint.extensions.bad_builtin",
     "pylint.extensions.broad_try_clause",
     "pylint.extensions.code_style",
@@ -178,7 +194,7 @@ branch = true
 fail_under = 100
 
 [tool.basedpyright]
-include = ["src", "tests"]
+include = ["constricter", "tests"]
 # The dev venv (see README, Development).
 venvPath = "local"
 venv = ".venv"

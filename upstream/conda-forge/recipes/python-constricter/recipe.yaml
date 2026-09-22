@@ -1,0 +1,59 @@
+context:
+  version: "0.2.3"
+  python_min: "3.11"
+
+package:
+  name: python-constricter
+  version: ${{ version }}
+
+source:
+  url: https://pypi.org/packages/source/p/python-constricter/python_constricter-${{ version }}.tar.gz
+  sha256: 218d533c8f9c05a5532bfe0e02a555b1b1f70009daf69e0a215aeb0e61907588
+
+build:
+  number: 0
+  noarch: python
+  script: ${{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
+  python:
+    entry_points:
+      - constricter = constricter.cli:main
+
+requirements:
+  host:
+    - python ${{ python_min }}.*
+    - flit-core >=4.1,<5
+    - pip
+  run:
+    - python >=${{ python_min }}
+  run_constraints:
+    - flake8 >=7
+    - pylint >=3
+
+tests:
+  - python:
+      imports:
+        - constricter
+        - constricter.plugins.flake8
+      pip_check: true
+      python_version: ${{ python_min }}.*
+  - requirements:
+      run:
+        - python ${{ python_min }}.*
+    script:
+      - constricter --version
+      - constricter --help
+
+about:
+  homepage: https://github.com/ivylikethevine/python-constricter
+  summary: "Lint rules: every local variable is typed where it's first bound."
+  description: |
+    A flake8 plugin, a pylint plugin and a standalone CLI (for ruff, which loads no plugins) that
+    report local variables that aren't annotated where they're first bound, with `--fix` for the
+    ones a value decides.
+  license: MIT
+  license_file: LICENSE.md
+  repository: https://github.com/ivylikethevine/python-constricter
+
+extra:
+  recipe-maintainers:
+    - ivylikethevine

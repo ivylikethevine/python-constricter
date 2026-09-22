@@ -22,7 +22,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Final, TypeAlias, cast
 
-from constricter import cli
+from constricter.cli import command as cli
+from constricter.cli import paths
 
 _Json: TypeAlias = "str | int | list[_Json] | dict[str, _Json] | None"
 _UNPARSABLE: Final = ": error: "  # how the command reports a file it can't read or parse
@@ -36,7 +37,7 @@ def main(argv: Sequence[str]) -> int:
 
     """
     root: Path = Path(argv[0]) if argv else Path(sysconfig.get_paths()["stdlib"])
-    files: int = sum(1 for _ in cli.python_files([root]))
+    files: int = sum(1 for _ in paths.python_files([root]))
     out: io.StringIO = io.StringIO()
     err: io.StringIO = io.StringIO()
     start: float = time.perf_counter()

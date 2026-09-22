@@ -11,7 +11,8 @@ from typing import Final, TypeAlias, cast
 
 import pytest
 
-from constricter import cli, config
+from constricter.cli import command as cli
+from constricter.cli import config, paths
 
 BROKEN: Final = """
 def broken(items: list[int]) -> None:
@@ -29,6 +30,7 @@ PLAIN: Final = "local variable 'plain' is not annotated where it's first bound"
 FOURTH: Final = "local variable 'fourth' is not annotated where it's first bound"
 LOOP: Final = "for/match variable 'loop' is untyped; declare it before the statement"
 _Json: TypeAlias = "str | int | float | bool | list[_Json] | dict[str, _Json] | None"
+_JsonObject: TypeAlias = dict[str, _Json]
 _Sarif: TypeAlias = dict[str, list[dict[str, list[dict[str, _Json]]]]]
 CLEAN: Final = """
 def clean() -> None:
@@ -96,11 +98,11 @@ def test_directories_skip_hidden_and_tool_dirs_and_honour_exclude(tmp_path: Path
     for name in ("a.py", "pkg/b.py", "pkg/fixtures/c.py", ".venv/d.py", "pkg/__pycache__/e.py", "venv/f.py"):
         _ = _write(tmp_path / name, CLEAN)
     _ = _write(tmp_path / "notes.txt", "")
-    found: list[Path] = list(cli.python_files([tmp_path], ["*/fixtures/*"]))
+    found: list[Path] = list(paths.python_files([tmp_path], ["*/fixtures/*"]))
     assert found == [tmp_path / "a.py", tmp_path / "pkg" / "b.py"]
     # A file named explicitly is checked even where a directory walk would skip it.
-    assert list(cli.python_files([tmp_path / ".venv" / "d.py"])) == [tmp_path / ".venv" / "d.py"]
-    assert not list(cli.python_files([tmp_path / "a.py"], ["a.py"]))
+    assert list(paths.python_files([tmp_path / ".venv" / "d.py"])) == [tmp_path / ".venv" / "d.py"]
+    assert not list(paths.python_files([tmp_path / "a.py"], ["a.py"]))
 
 
 def test_exclude_also_skips_a_directory_by_name(tmp_path: Path) -> None:
@@ -108,7 +110,7 @@ def test_exclude_also_skips_a_directory_by_name(tmp_path: Path) -> None:
     name: str
     for name in ("a.py", "pkg/b.py", "pkg/generated/c.py"):
         _ = _write(tmp_path / name, CLEAN)
-    found: list[Path] = list(cli.python_files([tmp_path], ["generated"]))
+    found: list[Path] = list(paths.python_files([tmp_path], ["generated"]))
     assert found == [tmp_path / "a.py", tmp_path / "pkg" / "b.py"]
 
 
@@ -171,6 +173,7 @@ def test_json_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
         "severity": "error",
         "message": PLAIN,
         "cell": None,
+        "fix": {"annotation": "int", "reason": "a literal", "unsafe": False},
     }
     assert [(r["code"], r["severity"]) for r in results] == [
         ("LVA001", "error"),
@@ -283,6 +286,8 @@ def test_no_table_or_no_pyproject_sets_nothing(tmp_path: Path) -> None:
         '[tool.constricter.per-path-levels]\n"t/*" = "tight"\n',
         "[tool.constricter]\nper-file-ignores = 1\n",
         '[tool.constricter.per-file-ignores]\n"t/*" = ["XYZ"]\n',
+        "[tool.constricter]\nnarrower = 1\n",
+        '[tool.constricter.narrower]\nUserId = "str"\n',
         "[tool]\nconstricter = 1\n",
         "not toml [",
     ],
@@ -414,9 +419,9 @@ def test_diff_prints_the_fixes_and_changes_nothing(
     path: Path = _write(tmp_path / "demo.py", DEMO)
     assert cli.main(["--diff", str(path)]) == cli.EXIT_FOUND
     assert capsys.readouterr().out == (
-        f"--- {path}\n+++ {path}\n@@ -1,5 +1,5 @@\n"
+        f"--- {path}\n+++ {path}\n@@ -1,5 +1,6 @@\n"
         " def f(items: list[int]) -> None:\n-  a = 1\n+  a: int = 1\n"
-        "   b = []\n   for c in items:\n     pass\n"
+        "   b = []\n+  c: int\n   for c in items:\n     pass\n"
     )
     assert path.read_text(encoding="utf-8") == DEMO
     clean: Path = _write(tmp_path / "clean.py", CLEAN)
@@ -649,7 +654,10 @@ def test_stdin_fix_prints_the_fixed_source(
     """`--fix` on standard input prints the fixed source instead of a report; `--diff` diffs it."""
     _stdin(monkeypatch, DEMO)
     assert cli.main(["--fix", "-"]) == cli.EXIT_FOUND  # `b = []` is left, an error
-    assert capsys.readouterr().out == DEMO.replace("  a = 1", "  a: int = 1")
+    assert capsys.readouterr().out == DEMO.replace("  a = 1", "  a: int = 1").replace(
+        "  for c",
+        "  c: int\n  for c",
+    )
     _stdin(monkeypatch, DEMO)
     assert cli.main(["--diff", "--stdin-filename", "app.py", "-"]) == cli.EXIT_FOUND
     assert capsys.readouterr().out.startswith("--- app.py\n+++ app.py\n")
@@ -727,8 +735,8 @@ def test_rdjson_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> No
     """`--format=rdjson` is reviewdog's JSON; a certain fix is a suggestion at the name's end."""
     demo: Path = _write(tmp_path / "demo.py", DEMO)
     assert cli.main(["--format=rdjson", str(demo)]) == cli.EXIT_FOUND
-    report: dict[str, list[dict[str, _Json]]] = cast(
-        "dict[str, list[dict[str, _Json]]]",
+    report: dict[str, list[_JsonObject]] = cast(
+        "dict[str, list[_JsonObject]]",
         json.loads(capsys.readouterr().out),
     )
     first: dict[str, _Json] = report["diagnostics"][0]
