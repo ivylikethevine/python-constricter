@@ -3,11 +3,10 @@
 
 import ast
 import re
-from collections import deque
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Final
+from typing import Final, TypeAlias, cast
 
 from constricter.annotations import depth, inferred, is_vague
 
@@ -27,11 +26,13 @@ MESSAGES: dict[str, str] = {
 }
 NESTING: Final = 5  # LVA006's default depth
 
-type _FunctionDef = ast.FunctionDef | ast.AsyncFunctionDef
+_FunctionDef: TypeAlias = ast.FunctionDef | ast.AsyncFunctionDef
 _FUNCTION_DEFS: tuple[type[ast.FunctionDef], type[ast.AsyncFunctionDef]] = (
   ast.FunctionDef,
   ast.AsyncFunctionDef,
 )
+# The node class of `type X = ...` statements, by name: Python 3.11's `ast` has no `TypeAlias`.
+_TYPE_ALIAS: Final = "TypeAlias"
 _FUTURE: Final = "__future__"
 # `from __future__` features only code that also runs on Python 2 imports: its type comments count.
 _PYTHON2_FUTURES: frozenset[str] = frozenset(
@@ -146,9 +147,7 @@ def check_tree(
   settings: _Settings = _Settings(type_comments or _python2_compatible(tree), all_scopes, nesting, lines)
   functions: list[_FunctionDef] = []
   _collect_functions(tree.body, functions)
-  offences: list[Offence] = []
-  while functions:
-    offences += _check_function(functions.pop(), functions, settings)
+  offences: list[Offence] = _check_functions(functions, settings)
   if all_scopes:
     offences += _check_bodies(tree, settings)
   return sorted(offences)
@@ -323,23 +322,32 @@ class _Scope:
 
   def walrus(self, node: ast.AST) -> None:
     """Bind `:=` targets in an expression, comprehensions included, lambdas excluded."""
-    pending: deque[ast.AST] = deque([node])
+    in_lambda: set[int] = {
+      id(inner) for outer in ast.walk(node) if isinstance(outer, ast.Lambda) for inner in ast.walk(outer)
+    }
     current: ast.AST
-    while pending:
-      current = pending.popleft()
-      if isinstance(current, ast.Lambda):
-        continue
-      if isinstance(current, ast.NamedExpr):
+    for current in ast.walk(node):
+      if isinstance(current, ast.NamedExpr) and id(current) not in in_lambda:
         self.bind(current.target.id, _at(current.target), self.unannotated_code)
-      pending.extend(ast.iter_child_nodes(current))
 
   def unannotated(self, type_comment: str | None) -> str | None:
     """Return the code for an `=` or `with` binding: `None` if a counted type comment types it."""
     return None if type_comment is not None and self.settings.type_comments else self.unannotated_code
 
 
+def _check_functions(functions: list[_FunctionDef], settings: _Settings) -> list[Offence]:
+  """Return the offences in `functions` and in every function defined inside them."""
+  offences: list[Offence] = []
+  func: _FunctionDef
+  for func in functions:
+    nested: list[_FunctionDef] = []
+    offences += _check_function(func, nested, settings)
+    offences += _check_functions(nested, settings)
+  return offences
+
+
 def _check_function(func: _FunctionDef, functions: list[_FunctionDef], settings: _Settings) -> list[Offence]:
-  """Return one function's offences; nested functions are queued onto `functions`."""
+  """Return one function's offences; functions defined in it are collected into `functions`."""
   args: ast.arguments = func.args
   params: set[str] = {a.arg for a in (*args.posonlyargs, *args.args, *args.kwonlyargs)}
   params.update(extra.arg for extra in (args.vararg, args.kwarg) if extra is not None)
@@ -384,8 +392,9 @@ def _declare(scope: _Scope, stmt: ast.stmt) -> None:
     case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation):
       scope.declared.add(name)
       scope.annotation(name, annotation)
-    case ast.TypeAlias(name=ast.Name(id=name)):
-      scope.declared.add(name)
+    case _ if type(stmt).__name__ == _TYPE_ALIAS:
+      alias: ast.expr = cast("ast.expr", next(ast.iter_child_nodes(stmt)))  # its first field, the name
+      scope.declared.update(name.id for name in _names(alias))
     case ast.Try(handlers=handlers) | ast.TryStar(handlers=handlers):
       scope.declared.update(handler.name for handler in handlers if handler.name)
     case _:

@@ -4,7 +4,9 @@
   "enforcement": "active",
   "conditions": {
     "ref_name": {
-      "include": ["~DEFAULT_BRANCH"],
+      "include": [
+        "~DEFAULT_BRANCH"
+      ],
       "exclude": []
     }
   },
@@ -37,6 +39,9 @@
             "context": "Docs"
           },
           {
+            "context": "Test (ubuntu-latest, 3.11)"
+          },
+          {
             "context": "Test (ubuntu-latest, 3.12)"
           },
           {
@@ -46,6 +51,9 @@
             "context": "Test (ubuntu-latest, 3.14)"
           },
           {
+            "context": "Test (macos-latest, 3.11)"
+          },
+          {
             "context": "Test (macos-latest, 3.12)"
           },
           {
@@ -53,6 +61,9 @@
           },
           {
             "context": "Test (macos-latest, 3.14)"
+          },
+          {
+            "context": "Test (windows-latest, 3.11)"
           },
           {
             "context": "Test (windows-latest, 3.12)"

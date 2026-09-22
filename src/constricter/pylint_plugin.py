@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
-"""The rules as a pylint plugin (C9101-C9103); reports the codes the level makes errors."""
+"""The rules as a pylint plugin (C9101-C9106); reports the codes the level makes errors."""
 
-from typing import IO, NamedTuple, cast, final, override
+from typing import IO, TYPE_CHECKING, NamedTuple, cast, final
 
 from astroid import nodes
 from pylint.checkers import BaseRawFileChecker
@@ -22,6 +22,15 @@ from constricter.checker import (
   Offence,
   check_source,
 )
+from constricter.noqa import lines, unsuppressed
+
+if TYPE_CHECKING:
+  from typing_extensions import override  # `typing.override` is 3.12+
+else:
+
+  def override(func: object) -> object:
+    """Mark an override (for type checkers only)."""
+    return func
 
 
 class Message(NamedTuple):
@@ -81,6 +90,7 @@ class ConstricterChecker(BaseRawFileChecker):
 
   @override
   def process_module(self, node: nodes.Module) -> None:
+    """Report the module's error-level offences."""
     opened: IO[bytes] | None
     if (opened := node.stream()) is None:  # no file behind the module
       return
@@ -91,10 +101,12 @@ class ConstricterChecker(BaseRawFileChecker):
     type_comments: bool = cast("bool", self.linter.config.constricter_type_comments)
     all_scopes: bool = cast("bool", self.linter.config.constricter_all_scopes)
     nesting: int = cast("int", self.linter.config.constricter_nesting)
+    text: str = source.decode("utf-8")
+    offences: list[Offence] = check_source(
+      text, node.file or "<unknown>", type_comments=type_comments, all_scopes=all_scopes, nesting=nesting
+    )
     o: Offence
-    for o in check_source(
-      source, node.file or "<unknown>", type_comments=type_comments, all_scopes=all_scopes, nesting=nesting
-    ):
+    for o in unsuppressed(offences, lines(text)):  # suppression comments, as the CLI reads them
       if o.is_error(level):
         self.add_message(SYMBOLS[o.code].symbol, line=o.line, col_offset=o.col, args=(o.name,))
 

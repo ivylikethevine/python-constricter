@@ -6,7 +6,7 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE.md"]
 authors = [{ name = "Ivy Duggan" }]
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 dependencies = []
 classifiers = [
     "Framework :: Flake8",
@@ -55,7 +55,7 @@ name = "constricter"
 [tool.ruff]
 line-length = 110
 indent-width = 2
-target-version = "py312"
+target-version = "py311"
 cache-dir = "local/.ruff_cache"
 
 [tool.ruff.lint]
@@ -85,7 +85,7 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 
 [tool.mypy]
 files = ["src", "tests"]
-python_version = "3.12"
+python_version = "3.11"
 cache_dir = "local/.mypy_cache"
 strict = true
 warn_unreachable = true
@@ -108,7 +108,7 @@ enable_error_code = [
 ]
 
 [tool.pylint.main]
-py-version = "3.12"
+py-version = "3.11"
 load-plugins = [
     "constricter.pylint_plugin",
     "pylint.extensions.bad_builtin",
@@ -134,6 +134,7 @@ load-plugins = [
     "pylint.extensions.redefined_variable_type",
     "pylint.extensions.set_membership",
     "pylint.extensions.typing",
+    "pylint.extensions.while_used",
 ]
 
 [tool.pylint.format]
@@ -167,7 +168,7 @@ include = ["src", "tests"]
 # The dev venv (see README, Development).
 venvPath = "local"
 venv = ".venv"
-pythonVersion = "3.12"
+pythonVersion = "3.11"
 typeCheckingMode = "all"
 # astroid (pylint's AST) ships no annotations.
 allowedUntypedLibraries = ["astroid"]

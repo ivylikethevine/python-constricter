@@ -2,29 +2,28 @@
 """The `constricter` command (see README)."""
 
 import argparse
-import io
 import json
-import re
 import sys
 import tomllib
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, time
 from enum import StrEnum
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
 from constricter import __version__
 from constricter.checker import LEVELS, MESSAGES, NESTING, Level, Offence, check_source
+from constricter.noqa import lines, unsuppressed
 
 if TYPE_CHECKING:
+  from datetime import date, datetime, time
   from io import BufferedReader
 
 
-type _Result = tuple[Path, Offence]
-type _Toml = str | int | float | bool | datetime | date | time | list[_Toml] | dict[str, _Toml]
-type _Default = str | int | bool | list[str]
+_Result: TypeAlias = tuple[Path, Offence]
+_Toml: TypeAlias = "str | int | float | bool | datetime | date | time | list[_Toml] | dict[str, _Toml]"
+_Default: TypeAlias = str | int | bool | list[str]
 
 _SKIPPED_DIRS: frozenset[str] = frozenset(
   {"__pycache__", "node_modules", "venv", "site-packages", "build", "dist"}
@@ -41,20 +40,6 @@ class Format(StrEnum):
   JSON = "json"
   GITHUB = "github"
   SARIF = "sarif"
-
-
-_NOQA: re.Pattern[str] = re.compile(
-  r"#\s*noqa(?::\s*(?P<codes>[A-Z]+[0-9]+(?:[,\s]+[A-Z]+[0-9]+)*))?", re.IGNORECASE
-)
-
-
-def _suppressed(line: str, code: str) -> bool:
-  """Return whether `line` has a `# noqa` covering `code`."""
-  match_: re.Match[str] | None
-  if (match_ := _NOQA.search(line)) is None:
-    return False
-  codes: str | None = match_.group("codes")
-  return codes is None or code in re.split(r"[,\s]+", codes.upper())
 
 
 def _excluded(path: Path, patterns: Sequence[str]) -> bool:
@@ -79,24 +64,15 @@ def python_files(paths: Sequence[Path], exclude: Sequence[str] = ()) -> Iterator
         yield found
 
 
-def _lines(text: str) -> list[str]:
-  """Split `text` into lines as Python does (LF, CRLF or CR), keeping each line's ending."""
-  return io.StringIO(text, newline="").readlines()
-
-
 def check_file(
   path: Path, *, type_comments: bool = False, all_scopes: bool = False, nesting: int = NESTING
 ) -> list[Offence]:
   """Return the offences in `path` that no `# noqa` suppresses."""
   source: str = path.read_bytes().decode("utf-8")
-  lines: list[str] = _lines(source)
-  return [
-    o
-    for o in check_source(
-      source, str(path), type_comments=type_comments, all_scopes=all_scopes, nesting=nesting
-    )
-    if not (o.line <= len(lines) and _suppressed(lines[o.line - 1], o.code))
-  ]
+  offences: list[Offence] = check_source(
+    source, str(path), type_comments=type_comments, all_scopes=all_scopes, nesting=nesting
+  )
+  return unsuppressed(offences, lines(source))
 
 
 def fix_file(path: Path, offences: Sequence[Offence]) -> int:
@@ -104,13 +80,13 @@ def fix_file(path: Path, offences: Sequence[Offence]) -> int:
   fixes: list[Offence]
   if not (fixes := sorted((o for o in offences if o.fix), key=lambda o: (o.line, o.col), reverse=True)):
     return 0
-  lines: list[str] = _lines(path.read_bytes().decode("utf-8"))
+  text: list[str] = lines(path.read_bytes().decode("utf-8"))
   o: Offence
   for o in fixes:
-    raw: bytes = lines[o.line - 1].encode()
+    raw: bytes = text[o.line - 1].encode()
     end: int = o.col + len(o.name.encode())  # `col` counts bytes, as `ast` does
-    lines[o.line - 1] = (raw[:end] + f": {o.fix}".encode() + raw[end:]).decode()
-  _ = path.write_bytes("".join(lines).encode())
+    text[o.line - 1] = (raw[:end] + f": {o.fix}".encode() + raw[end:]).decode()
+  _ = path.write_bytes("".join(text).encode())
   return len(fixes)
 
 

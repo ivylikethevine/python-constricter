@@ -6,7 +6,7 @@ import runpy
 import sys
 import textwrap
 from pathlib import Path
-from typing import Final, cast
+from typing import Final, TypeAlias, cast
 
 import pytest
 
@@ -27,8 +27,8 @@ ONE_CLEAN_FILE: Final = "Found 0 error(s) and 0 warning(s) in 1 file(s).\n"
 PLAIN: Final = "local variable 'plain' is not annotated where it's first bound"
 FOURTH: Final = "local variable 'fourth' is not annotated where it's first bound"
 LOOP: Final = "for/match variable 'loop' is untyped; declare it before the statement"
-type _Json = str | int | float | bool | list[_Json] | dict[str, _Json] | None
-type _Sarif = dict[str, list[dict[str, list[dict[str, _Json]]]]]
+_Json: TypeAlias = "str | int | float | bool | list[_Json] | dict[str, _Json] | None"
+_Sarif: TypeAlias = dict[str, list[dict[str, list[dict[str, _Json]]]]]
 CLEAN: Final = """
 def clean() -> None:
     fine: int = 1

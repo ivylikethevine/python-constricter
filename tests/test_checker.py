@@ -2,6 +2,7 @@
 """The rules themselves (constricter.checker): what they report and what they exempt."""
 
 import ast
+import sys
 import textwrap
 from pathlib import Path
 from typing import Final
@@ -82,7 +83,6 @@ async def coroutine(items: list[str], *args: str, **kwargs: str) -> str:
         pass
     m: re.Match[str] | None
     assert (m := re.match("x", joined)) or True
-    type Alias = list[int]
     square: Callable[[int], int] = lambda v: (w := v * v)
     total: int = 0
     total += 1
@@ -533,3 +533,9 @@ def test_fixes_are_offered_only_for_a_single_plain_name() -> None:
     ("e", None),
     ("size", None),
   ]
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="`type` statements are Python 3.12+")
+def test_a_type_alias_statement_binds_its_name() -> None:
+  """`type X = ...` binds `X` with no annotation needed."""
+  assert not _codes("def f() -> None:\n  type Alias = list[int]\n  Alias = 1\n")

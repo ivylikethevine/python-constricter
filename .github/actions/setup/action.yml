@@ -3,7 +3,7 @@ description: Python and the dev environment locked in uv.lock, in local/.venv an
 inputs:
   python-version:
     description: The Python version.
-    default: "3.12"
+    default: "3.11"
 runs:
   using: composite
   steps:

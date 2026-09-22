@@ -5,13 +5,11 @@ default: true
 MD049:
   style: underscore
 
-# Prose is hand-wrapped; tables and code can't wrap.
+# Prose wraps at 100 (prettier does it); tables and code can't wrap.
 MD013:
-  line_length: 9999
+  line_length: 100
   tables: false
-  stern: false
   code_blocks: false
-  heading_line_length: 9999
 
 # Only the `# H1` is a title, never front matter.
 MD025:

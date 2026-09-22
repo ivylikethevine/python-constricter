@@ -118,11 +118,10 @@ def _pylint(path: Path, *args: str) -> list[str]:
 
 
 def test_pylint_reports_errors_only_and_honours_disable(tmp_path: Path) -> None:
-  """The pylint plugin reports the level's errors (C9101 at strict), minus disabled lines."""
+  """The pylint plugin reports the level's errors (C9101 at strict), minus disabled and `# noqa` lines."""
   prefix: str = "C9101 unannotated-local-variable"
   assert _pylint(_write(tmp_path)) == [
     f"3:4: {prefix} {MESSAGE.format('plain')}",
-    f"4:4: {prefix} {MESSAGE.format('other')}",
     f"6:4: {prefix} {MESSAGE.format('typed')}",
   ]
 
@@ -132,7 +131,6 @@ def test_pylint_options(tmp_path: Path) -> None:
   lines: list[str] = _pylint(_write(tmp_path), "--constricter-level=3", "--constricter-type-comments=y")
   assert lines == [
     f"3:4: C9101 unannotated-local-variable {MESSAGE.format('plain')}",
-    f"4:4: C9101 unannotated-local-variable {MESSAGE.format('other')}",
     f"7:8: C9102 untyped-for-or-match-variable {LOOP}",
     f"9:8: C9103 comment-typed-for-variable {COMMENTED}",
   ]

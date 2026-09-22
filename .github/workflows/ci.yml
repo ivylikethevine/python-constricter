@@ -61,7 +61,6 @@ jobs:
           egress-policy: block
           allowed-endpoints: >
             github.com:443
-            release-assets.githubusercontent.com:443
             registry.npmjs.org:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -80,7 +79,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python: ['3.12', '3.13', '3.14']
+        python: ['3.11', '3.12', '3.13', '3.14']
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     permissions:
@@ -96,7 +95,6 @@ jobs:
             release-assets.githubusercontent.com:443
             raw.githubusercontent.com:443
             releases.astral.sh:443
-            pypi.org:443
             files.pythonhosted.org:443
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         if: runner.os != 'Linux'
@@ -108,7 +106,10 @@ jobs:
       - uses: $/.github/actions/setup
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pytest --cov
+      # Coverage on 3.12+: 3.11 can't reach the branch for `type X = ...` statements.
+      - run: python -m pytest ${COVERAGE:+"$COVERAGE"}
+        env:
+          COVERAGE: ${{ matrix.python != '3.11' && '--cov' || '' }}
 
   build:
     name: Build
@@ -124,7 +125,6 @@ jobs:
           allowed-endpoints: >
             github.com:443
             release-assets.githubusercontent.com:443
-            pypi.org:443
             files.pythonhosted.org:443
             raw.githubusercontent.com:443
             releases.astral.sh:443
