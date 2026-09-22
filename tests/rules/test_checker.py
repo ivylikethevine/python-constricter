@@ -257,8 +257,9 @@ def test_scopes(source: str, expected: list[Offence]) -> None:
 
 def test_its_own_source_follows_the_rule() -> None:
     """The package and its tests pass every code, module and class bodies included."""
-    package: Path = Path(__file__).resolve().parents[1] / "constricter"
-    sources: list[Path] = sorted(package.rglob("*.py")) + sorted(Path(__file__).parent.glob("*.py"))
+    root: Path = Path(__file__).resolve().parents[2]
+    package: Path = root / "constricter"
+    sources: list[Path] = sorted(package.rglob("*.py")) + sorted((root / "tests").rglob("*.py"))
     assert package / "rules" / "checker.py" in sources
     offences: list[str] = [
         f"{p}:{o.line}: {o.code} {o.name}"

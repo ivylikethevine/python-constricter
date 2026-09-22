@@ -65,6 +65,13 @@ _TYPE_VARS: Final = frozenset({"TypeVar", "ParamSpec", "TypeVarTuple"})
 _FACTORY_MODULES: Final = frozenset({"enum", "typing", "typing_extensions"})
 # A method returning `Self` returns its receiver's own class.
 _SELF: Final = "Self"
+# Decorators that make a method an attribute of its instances, or callable on its class.
+_PROPERTIES: Final = frozenset({"property", "cached_property"})
+_CLASS_SIDE: Final = frozenset({"classmethod", "staticmethod"})
+_ACCESSORS: Final = frozenset({"setter", "deleter"})  # `@name.setter`: the same property, not a redefinition
+_CLASS_VAR: Final = "ClassVar"
+_CAST: Final = "cast"
+_UNDECORATED: Final[frozenset[str]] = frozenset()  # no decorators: a plain method
 
 
 def imported_from(tree: ast.Module, modules: frozenset[str]) -> frozenset[str]:
@@ -101,23 +108,113 @@ def factories(tree: ast.Module) -> frozenset[str]:
     return imported_from(tree, _FACTORY_MODULES)
 
 
-def classes(tree: ast.Module) -> dict[str, dict[str, str]]:
-    """Map each class defined in the module to its annotated attributes.
+def casts(tree: ast.Module) -> frozenset[str]:
+    """Find how this module can name `typing.cast`: `cast` (or its alias), `typing.cast`, `t.cast`.
 
-    A class-body annotation (`class C: x: int`) and a `self.x: int = ...` annotated assignment
-    anywhere in one of its methods both count; a name that names more than one class in the module
-    (however unlikely) gets the last one's attributes.
+    Returns:
+      Each spelling of a call to it, as `ast.unparse` writes the callee.
+
+    """
+    names: set[str] = set()
+    stmt: ast.stmt
+    module: str
+    for stmt in tree.body:
+        match stmt:
+            case ast.ImportFrom(module=str() as module, level=0) if module in _FACTORY_MODULES - {"enum"}:
+                names.update(alias.asname or alias.name for alias in stmt.names if alias.name == _CAST)
+            case ast.Import():
+                names.update(
+                    f"{alias.asname or alias.name}.{_CAST}"
+                    for alias in stmt.names
+                    if alias.name in _FACTORY_MODULES - {"enum"}
+                )
+            case _:
+                pass
+    return frozenset(names)
+
+
+def classes(tree: ast.Module) -> dict[str, dict[str, str]]:
+    """Map each class defined in the module to its instances' annotated attributes.
+
+    A class-body annotation (`class C: x: int`), a `self.x: int = ...` annotated assignment anywhere
+    in one of its methods, and a `@property`'s declared return (as `method_returns` reads a method's)
+    all count; a name that names more than one class in the module (however unlikely) gets the last
+    one's attributes.
 
     Returns:
       Each class's name, mapped to its attributes' names and annotation text.
 
     """
+    properties: dict[str, dict[str, str]] = _class_returns(tree, _PROPERTIES)
     found: dict[str, dict[str, str]] = {}
     node: ast.AST
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
-            found[node.name] = _attributes(node)
+            found[node.name] = {**properties.get(node.name, {}), **_attributes(node)}
     return found
+
+
+def class_attributes(tree: ast.Module) -> dict[str, dict[str, str]]:
+    """Map each non-generic class defined in the module to the attributes its class itself has.
+
+    A class-body annotation with a value (`limit: int = 3`), or a `ClassVar[T]` (as `T`): what `cls.x`
+    reads in a classmethod. A bare annotation (`x: int`) only declares an instance attribute (a
+    dataclass field), so it doesn't count.
+
+    Returns:
+      Each class's name, mapped to its class attributes' names and annotation text.
+
+    """
+    type_vars: frozenset[str] = _type_vars(tree)
+    found: dict[str, dict[str, str]] = {}
+    node: ast.AST
+    stmt: ast.stmt
+    name: str
+    annotation: ast.expr
+    value: ast.expr | None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and not _generic(node):
+            attrs: dict[str, str] = {}
+            for stmt in node.body:
+                match stmt:
+                    case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation, value=value):
+                        text: str | None = _class_var(annotation)
+                        if text is None and value is not None:
+                            text = ast.unparse(annotation)
+                        if text and not type_vars & set(_words(text)):
+                            attrs[name] = text
+                    case _:
+                        pass
+            found[node.name] = attrs
+    return found
+
+
+def _class_var(annotation: ast.expr) -> str | None:
+    """Unwrap `ClassVar[T]`.
+
+    Returns:
+      `T` as text, or `None` if `annotation` isn't a parameterised `ClassVar`.
+
+    """
+    outer: ast.expr
+    inner: ast.expr
+    match annotation:
+        case ast.Subscript(value=outer, slice=inner) if node_name(outer) == _CLASS_VAR:
+            return ast.unparse(inner)
+        case _:
+            return None
+
+
+def class_methods(tree: ast.Module) -> dict[str, dict[str, str]]:
+    """Map each non-generic class defined in the module to its classmethods' and staticmethods' returns.
+
+    What `cls.method()` gives in a classmethod, under `method_returns`' rules.
+
+    Returns:
+      Each class's name, mapped to those methods' names and return annotation text.
+
+    """
+    return _class_returns(tree, _CLASS_SIDE)
 
 
 def _attributes(node: ast.ClassDef) -> dict[str, str]:
@@ -292,21 +389,41 @@ def method_returns(tree: ast.Module) -> dict[str, dict[str, str]]:
       Each class's name, mapped to its methods' names and return annotation text.
 
     """
+    return _class_returns(tree, _UNDECORATED)
+
+
+def _class_returns(tree: ast.Module, decorators: frozenset[str]) -> dict[str, dict[str, str]]:
+    """Map each non-generic class to the declared returns of its methods decorated by one of `decorators`.
+
+    None of them (an empty set) means plain methods; see `method_returns` for the rules.
+
+    Returns:
+      Each class's name, mapped to those methods' names and return annotation text.
+
+    """
     type_vars: frozenset[str] = _type_vars(tree)
     found: dict[str, dict[str, str]] = {}
     node: ast.AST
     for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.ClassDef)
-            and not cast("object", getattr(node, "type_params", ()))  # Python 3.12+'s `class C[T]`
-            and not any(isinstance(base, ast.Subscript) for base in node.bases)
-        ):
+        if isinstance(node, ast.ClassDef) and not _generic(node):
             found[node.name] = {
                 name: node.name if _is_self(annotation) else annotation
-                for name, annotation in _declared_returns(node.body, type_vars).items()
+                for name, annotation in _declared_returns(node.body, type_vars, decorators=decorators).items()
                 if _is_self(annotation) or _SELF not in _words(annotation)
             }
     return found
+
+
+def _generic(node: ast.ClassDef) -> bool:
+    """Check whether a class is generic: `class C[T]`, or any subscripted base like `Generic[T]`.
+
+    Returns:
+      Whether it is: its members' types then depend on how it's parameterised.
+
+    """
+    return bool(cast("object", getattr(node, "type_params", ()))) or any(  # Python 3.12+'s `class C[T]`
+        isinstance(base, ast.Subscript) for base in node.bases
+    )
 
 
 def _is_self(annotation: str) -> bool:
@@ -359,8 +476,12 @@ def _declared_returns(
     type_vars: frozenset[str],
     *,
     awaited: bool = False,
+    decorators: frozenset[str] = _UNDECORATED,
 ) -> dict[str, str]:
     """Find the plain functions (`async` ones if `awaited`) directly in `body` `--fix` can annotate.
+
+    Plain means undecorated, or with `decorators`, decorated by exactly one of them. A property's
+    `@name.setter` or `@name.deleter` is the same property, not a redefinition.
 
     Returns:
       Each such function's name, and its return annotation as source text.
@@ -372,9 +493,9 @@ def _declared_returns(
     name: str
     for stmt in body:
         match stmt:
-            case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name):
+            case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) if not _accessor(stmt):
                 counts[name] = counts.get(name, 0) + 1
-                if isinstance(stmt, ast.AsyncFunctionDef) == awaited and _plain(stmt):
+                if isinstance(stmt, ast.AsyncFunctionDef) == awaited and _plain(stmt, decorators):
                     found[name] = ast.unparse(cast("ast.expr", stmt.returns))
             case _:
                 pass
@@ -385,15 +506,33 @@ def _declared_returns(
     }
 
 
-def _plain(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Check that `func` declares a return type its calls always have.
+def _accessor(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Check whether `func` is a property's setter or deleter (`@name.setter`).
 
     Returns:
-      Whether it does: not `None`, and not vague.
+      Whether it is.
+
+    """
+    return any(
+        isinstance(decorator, ast.Attribute) and decorator.attr in _ACCESSORS
+        for decorator in func.decorator_list
+    )
+
+
+def _plain(func: ast.FunctionDef | ast.AsyncFunctionDef, decorators: frozenset[str] = _UNDECORATED) -> bool:
+    """Check that `func` declares a return type its calls always have, decorated as `decorators` asks.
+
+    Returns:
+      Whether it does: undecorated (or, with `decorators`, decorated by exactly one of them), not
+      `None`, and not vague.
 
     """
     return (
-        not func.decorator_list
+        (
+            [node_name(decorator) for decorator in func.decorator_list] in ([name] for name in decorators)
+            if decorators
+            else not func.decorator_list
+        )
         and not cast("object", getattr(func, "type_params", ()))  # Python 3.12+'s `def f[T]()`
         and func.returns is not None
         and not (isinstance(func.returns, ast.Constant) and func.returns.value is None)

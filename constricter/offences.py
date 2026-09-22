@@ -52,9 +52,12 @@ FIX_KINDS: dict[str, str] = {
     "comprehension": "a list, set or dict comprehension's elements",
     "builder": "`sorted`, `list`, `set`, `frozenset` or `tuple` of known elements",
     "await": "`await` of the module's `async def`",
+    "cast": "`typing.cast(T, x)`: its `T`",
     "loop": "what a loop (or `sorted`, `list`, ...) iterates over",
     "unpack": "an unpacking, split over its names",
     "narrow": "LVA008's or LVA010's narrower annotation (a guess)",
+    "comment": "LVA003: the loop's own `# type:` comment, as a declaration",
+    "redundant": "LVA007: the repeated annotation, dropped",
 }
 CONSTRUCTOR: Final = "constructor"
 NARROW: Final = "narrow"
@@ -114,6 +117,8 @@ class Fix(NamedTuple):
     edit: Edit = Edit.ANNOTATE
     span: tuple[int, int] = (0, 0)  # see `Edit`; columns count UTF-8 bytes, as `ast`'s do
     kinds: frozenset[str] = frozenset()  # every `FIX_KINDS` mechanism that decided it
+    # With `Edit.DECLARE`: the columns to delete on the statement's line too (the type comment it replaces).
+    drop: tuple[int, int] | None = None
 
 
 class FixPolicy(NamedTuple):

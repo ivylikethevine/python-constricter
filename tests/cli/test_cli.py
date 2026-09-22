@@ -38,7 +38,7 @@ _JsonObject: TypeAlias = dict[str, _Json]
 _Sarif: TypeAlias = dict[str, list[dict[str, list[dict[str, _Json]]]]]
 # SARIF 2.1.0's JSON schema, from SchemaStore at a pinned commit, fetched once into `local/` (not
 # distributed here) and checked against its SHA-256.
-SARIF_SCHEMA: Final = Path(__file__).resolve().parents[1] / "local" / "sarif-2.1.0.json"
+SARIF_SCHEMA: Final = Path(__file__).resolve().parents[2] / "local" / "sarif-2.1.0.json"
 SARIF_SCHEMA_URL: Final = (
     "https://raw.githubusercontent.com/SchemaStore/schemastore/"
     "2aded6096789c43a722556cf5019464ee747e495/src/schemas/json/sarif-2.1.0.json"

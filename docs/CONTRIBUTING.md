@@ -8,9 +8,10 @@ every one must pass, coverage stays at 100%, and the project's own code passes
 behaviour, and note user-facing changes in [CHANGELOG.md](CHANGELOG.md).
 
 When bumping the version for a release, record it in [RUNS.md](RUNS.md): run
-`tests/corpus_table.py --versions dev --write` (with the `corpus` group installed), which appends
-this checkout's results under the new version, and commit it with the bump. Between releases,
-`--label 0.2.4-rc.1` records a checkpoint under a pseudo-version instead, without bumping it.
+`tests/corpus/corpus_table.py --versions dev --write` (with the `corpus` group installed), which
+appends this checkout's results under the new version, and commit it with the bump. Between
+releases, `--label 0.2.4-rc.1` records a checkpoint under a pseudo-version instead, without bumping
+it.
 
 ## Development
 
@@ -35,21 +36,23 @@ After editing a dependency group, run `uv lock` (CI fails until you do). Dependa
 
 Fuzzing (`tests/test_fuzz.py`) runs with the tests: hypothesmith generates valid Python, which must
 never crash the checker and must stay valid after `--fix`. For a large real codebase, run
-`local/.venv/bin/python tests/corpus.py [PATH]` by hand: it checks PATH (default: this Python's
-standard library, about 730 files in a few seconds) at `suffocate` and prints the time, the offences
-per code, and any crash. `local/.venv/bin/python tests/corpus_fix.py [PATH]` runs
+`local/.venv/bin/python tests/corpus/corpus.py [PATH]` by hand: it checks PATH (default: this
+Python's standard library, about 730 files in a few seconds) at `suffocate` and prints the time, the
+offences per code, and any crash. `local/.venv/bin/python tests/corpus/corpus_fix.py [PATH]` runs
 `--fix --unsafe-fixes` on a copy of it (in `local/corpus-fix/`) and checks every file still compiles
 and a second pass has nothing left to fix. CI's Corpus job runs both against the standard library
 and, from the pinned `corpus` dependency group (`requests`, `flask`, `django`, `sqlalchemy`,
-`fastapi`, `pydantic`, `rich`, `sentry_sdk` — a tiny HTTP client, two web frameworks, an ORM, an
-annotation-driven API framework, a runtime-validation library, a terminal renderer and Python
-2/3-era code with `# type:` comments), the same way, and against pure Python 2 (Twisted 12.3.0), a
-hash-pinned sdist `tests/corpus_sources.py` fetches, since it can't be installed on Python 3.
+`fastapi`, `pydantic`, `rich`, `pandas`, `sentry_sdk` — a tiny HTTP client, two web frameworks, an
+ORM, an annotation-driven API framework, a runtime-validation library, a terminal renderer, a data
+library and Python 2/3-era code with `# type:` comments), the same way, and against pure Python 2
+(Twisted 12.3.0) and pip 20.3.4 (2/3-era code whose `# type:` comments sit in modules with Python 2
+`__future__` imports), hash-pinned sdists `tests/corpus/corpus_sources.py` fetches, since neither
+installs as a dependency.
 
-`tests/corpus_table.py` measures every corpus with released constricter versions and this checkout
-(each isolated in its own environment), at every level, checked and fixed, and records a section per
-version in [`docs/RUNS.md`](RUNS.md): offences per code, errors and warnings at each level, fixes,
-guesses, and anything a fix broke. It needs the `corpus` group
+`tests/corpus/corpus_table.py` measures every corpus with released constricter versions and this
+checkout (each isolated in its own environment), at every level, checked and fixed, and records a
+section per version in [`docs/RUNS.md`](RUNS.md): offences per code, errors and warnings at each
+level, fixes, guesses, and anything a fix broke. It needs the `corpus` group
 (`uv sync --group dev --group corpus`) and `uv`; see its docstring for the options.
 
 CI also runs the tests on PyPy 3.11 and free-threaded Python 3.14, which install only the `test`

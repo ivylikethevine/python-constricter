@@ -13,10 +13,13 @@ in a function or module body:
   it's checking: `from pkg.util import f`, `import pkg.util as u` then `u.f()`, relative imports and
   re-exports all work, as long as every name in the type already means the same thing in the file;
 - a local whose type is already known (annotated, a parameter, or fixed earlier in the same scope):
-  a plain copy (`y = x`), a subscript (`nums[0]`), an attribute or method call of a class defined in
-  the same module (`p.x`, `p.norm()`), a `str`/`bytes` method with a fixed return (`s.strip()`), or
-  a `list`/`set`/`dict` method that returns its own element type (`nums.pop()`, `d.get(k)` as
-  `V | None`);
+  a plain copy (`y = x`), a subscript (`nums[0]`), an attribute (an annotated one, or a `@property`
+  declaring its return) or method call of a class defined in the same module (`p.x`, `p.norm()`), a
+  `str`/`bytes` method with a fixed return (`s.strip()`), or a `list`/`set`/`dict` method that
+  returns its own element type (`nums.pop()`, `d.get(k)` as `V | None`); in a classmethod, `cls` is
+  `type[C]`, whose class attributes (`limit: int = 3`, `ClassVar[T]`) and classmethods' and
+  staticmethods' declared returns type `cls.x` and `cls.m()`;
+- `typing.cast(T, x)`, however `cast` is imported: `T`;
 - a value computed from such: `a if c else b` when both sides agree; arithmetic on builtin scalars
   (`n + 1`, `n / 2`, `"x" * n`, `"%s" % n`; never `**`, whose result can change type); a list, set
   or dict comprehension whose elements are known; `sorted`, `list`, `set`, `frozenset` or `tuple` of
@@ -27,6 +30,11 @@ own before the statement: `for k, v in ages.items():` with `ages: dict[str, int]
 `v: int` above it. The target's type comes from what's iterated: a `range`, `enumerate` and `zip` of
 known things, a `dict`'s `.keys()`/`.values()`/`.items()`, or any container whose type is known; an
 unpacking splits a tuple type (`a, b = pair`, `pair: tuple[int, str]`) over its names.
+
+A loop whose target is typed only by `# type: T` (LVA003) gets `name: T` declared before it and the
+comment dropped (a type checker would see the name declared twice), when its header is on one line.
+A name annotated again with the type it already has (LVA007) loses the repeat: `x: int = 2` becomes
+`x = 2` (not a bare `x: int`, and never in a class body).
 
 With `--unsafe-fixes`, LVA008 and LVA010 are fixed too, by rewriting the annotation (`total: float`
 only ever given `int`s becomes `total: int`): a guess, since a declared type can be wider on
@@ -71,6 +79,9 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `loop`          | what a loop (or `sorted`, `list`, ...) iterates over                                |
 | `unpack`        | an unpacking, split over its names                                                  |
 | `narrow`        | LVA008's or LVA010's narrower annotation (a guess)                                  |
+| `cast`          | `typing.cast(T, x)`: its `T`                                                        |
+| `comment`       | LVA003: the loop's own `# type:` comment, as a declaration                          |
+| `redundant`     | LVA007: the repeated annotation, dropped                                            |
 
 A project chooses which apply, in `[tool.constricter]` or on the command line:
 

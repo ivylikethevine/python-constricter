@@ -39,12 +39,12 @@ class Result(NamedTuple):
     offence: Offence
     level: Level
     source: str = ""  # the offending line, for `--format=full`
-    replacement: Replacement | None = None  # its fix as a text edit, for SARIF and rdjson
+    replacements: tuple[Replacement, ...] = ()  # its fix as text edits, for SARIF and rdjson
 
     @property
-    def suggestion(self) -> Replacement | None:
-        """Its fix as a text edit, if it's certain (not a guess)."""
-        return None if self.offence.unsafe else self.replacement
+    def suggestions(self) -> tuple[Replacement, ...]:
+        """Its fix as text edits, if it's certain (not a guess)."""
+        return () if self.offence.unsafe else self.replacements
 
     @property
     def severity(self) -> str:
@@ -99,24 +99,43 @@ def _sarif_result(result: Result) -> dict[str, _Json]:
         "message": {"text": result.message},
         "locations": [{"physicalLocation": _where(result)}],
     }
-    edit: Replacement | None
-    if (edit := result.suggestion) is not None:
-        start: int
-        end: int
-        start, end = edit.columns
-        region: dict[str, _Json] = {
-            "startLine": edit.line,
-            "startColumn": start + 1,
-            "endLine": edit.line,
-            "endColumn": end + 1,
-        }
+    edits: tuple[Replacement, ...]
+    if edits := result.suggestions:
         change: dict[str, _Json] = {
             "artifactLocation": {"uri": result.path.as_posix()},
-            "replacements": [{"deletedRegion": region, "insertedContent": {"text": edit.text}}],
+            "replacements": [
+                {"deletedRegion": _region(edit), "insertedContent": {"text": edit.text}} for edit in edits
+            ],
         }
-        description: str = f"Annotate {result.offence.name!r} as `{result.offence.fix}`"
-        found["fixes"] = [{"description": {"text": description}, "artifactChanges": [change]}]
+        found["fixes"] = [{"description": {"text": _described(result.offence)}, "artifactChanges": [change]}]
     return found
+
+
+def _region(edit: Replacement) -> dict[str, _Json]:
+    """Place a text edit for SARIF, in characters.
+
+    Returns:
+      Its region.
+
+    """
+    start: int
+    end: int
+    start, end = edit.columns
+    return {"startLine": edit.line, "startColumn": start + 1, "endLine": edit.line, "endColumn": end + 1}
+
+
+def _described(offence: Offence) -> str:
+    """Say what an offence's fix does.
+
+    Returns:
+      A sentence: an annotation added, or a repeated one dropped (its annotation is empty).
+
+    """
+    return (
+        f"Annotate {offence.name!r} as `{offence.fix}`"
+        if offence.fix
+        else f"Drop {offence.name!r}'s annotation"
+    )
 
 
 def _sarif(results: Sequence[Result]) -> dict[str, _Json]:
@@ -296,16 +315,25 @@ def _rdjson(results: Sequence[Result]) -> Iterator[str]:
             "severity": r.severity.upper(),
             "code": {"value": o.code},
         }
-        edit: Replacement | None
-        if (edit := r.suggestion) is not None:
-            columns: tuple[int, int] = edit.byte_columns
-            where: dict[str, _Json] = {
-                "start": {"line": edit.line, "column": columns[0] + 1},
-                "end": {"line": edit.line, "column": columns[1] + 1},
-            }
-            diagnostic["suggestions"] = [{"range": where, "text": edit.text}]
+        edits: tuple[Replacement, ...]
+        if edits := r.suggestions:
+            diagnostic["suggestions"] = [{"range": _byte_range(edit), "text": edit.text} for edit in edits]
         diagnostics.append(diagnostic)
     yield json.dumps({"source": {"name": "constricter", "url": _URL}, "diagnostics": diagnostics}, indent=2)
+
+
+def _byte_range(edit: Replacement) -> dict[str, _Json]:
+    """Place a text edit for rdjson, whose columns count UTF-8 bytes.
+
+    Returns:
+      Its range.
+
+    """
+    columns: tuple[int, int] = edit.byte_columns
+    return {
+        "start": {"line": edit.line, "column": columns[0] + 1},
+        "end": {"line": edit.line, "column": columns[1] + 1},
+    }
 
 
 _Renderer: TypeAlias = Callable[[Sequence[Result]], Iterator[str]]
@@ -346,7 +374,8 @@ def fix_reasons(results: Sequence[Result]) -> Iterator[str]:
             where: str = f"{r.path}:{cell}{r.offence.line}:{r.offence.col + 1}"
             guess: str = " (a guess: --unsafe-fixes)" if r.offence.unsafe else ""
             kinds: str = ", ".join(sorted(r.offence.edit.kinds if r.offence.edit else ()))
-            decided: str = f"`{r.offence.fix}`, from {r.offence.reason} [{kinds}]"
+            written: str = f"`{r.offence.fix}`" if r.offence.fix else "drop its annotation"
+            decided: str = f"{written}, from {r.offence.reason} [{kinds}]"
             yield f"{where}: fix {r.offence.name!r}: {decided}{guess}"
 
 

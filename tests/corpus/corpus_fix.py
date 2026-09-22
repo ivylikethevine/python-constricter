@@ -4,7 +4,7 @@
 CI's Corpus job runs this against its Python's standard library; run it by hand against a larger
 one:
 
-  local/.venv/bin/python tests/corpus_fix.py [PATH]   # default: this Python's standard library
+  local/.venv/bin/python tests/corpus/corpus_fix.py [PATH]   # default: this Python's standard library
 
 It copies PATH's Python files to local/corpus-fix/, runs `--fix --unsafe-fixes --all-scopes` on the
 copy, then compiles every file that compiled before and checks a second `--diff` has nothing left

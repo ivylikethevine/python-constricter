@@ -6,6 +6,13 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types a `@property`'s declared return (`obj.prop`), `cls` in a classmethod (`type[C]`:
+  `cls.x` from class attributes, `cls.m()` from classmethods and staticmethods), and
+  `typing.cast(T, x)` as `T` (fix kind `cast`).
+- `--fix` for LVA003 (the loop's `# type:` comment becomes a declaration before it, fix kind
+  `comment`) and LVA007 (the repeated annotation is dropped, fix kind `redundant`).
+- SARIF and rdjson carry every edit of a fix (LVA003's has two); `Result.replacements` replaces
+  `Result.replacement`.
 - `annotation_coverage` accepts `bytes` as `check_source` does (it crashed on a `match` with a
   `**rest` capture), and `value_flow` places a `**rest` capture at its name, as `check_source` does.
 - **LVA012** (opt-in): a local bound once, by a plain assignment outside any loop, and never rebound

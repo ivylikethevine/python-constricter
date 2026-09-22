@@ -160,7 +160,7 @@ def test_split_run_misses_what_the_serial_hook_fixes(tmp_path: Path) -> None:
     assert cli.main(["--fix", "-q", str(main), str(tmp_path / "pkg")]) == cli.EXIT_FOUND
     assert main.read_text(encoding="utf-8") == FIXED
     hooks: list[str] = (
-        (Path(__file__).parents[1] / ".pre-commit-hooks.yaml").read_text(encoding="utf-8").split("- id: ")
+        (Path(__file__).parents[2] / ".pre-commit-hooks.yaml").read_text(encoding="utf-8").split("- id: ")
     )
     fix: str = next(hook for hook in hooks if hook.startswith("constricter-fix\n"))
     assert SERIAL in fix

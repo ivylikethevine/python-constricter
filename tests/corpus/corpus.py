@@ -4,7 +4,7 @@
 CI's Corpus job runs this against its Python's standard library; run it by hand against a larger
 one:
 
-  local/.venv/bin/python tests/corpus.py [PATH]   # default: this Python's standard library
+  local/.venv/bin/python tests/corpus/corpus.py [PATH]   # default: this Python's standard library
 
 It runs constricter at `suffocate` with `--all-scopes` over every CPU, then prints how long that
 took, how many files it read, the offences per code, and the files Python itself can't parse. A

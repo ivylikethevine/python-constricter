@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Final, NamedTuple
 
 from constricter.fix.returns import BUILTIN_RETURNS, METHOD_RETURNS, method_return
 from constricter.offences import CONSTRUCTOR
-from constricter.rules.annotations import GENERICS, node_name
+from constricter.rules.annotations import GENERICS, is_vague, node_name
 
 if TYPE_CHECKING:
     from types import EllipsisType
@@ -56,6 +56,9 @@ class Known:
     `factories`), so a call to one is never guessed to construct one. `classes` and `methods`: each
     class's annotated attributes (see `classes`) and methods' return types (see `method_returns`).
     `awaits`: what awaiting a call to each of its `async def`s gives (see `awaited_returns`).
+    `class_attributes` and `class_methods`: what `cls.x` and `cls.method()` give in a classmethod,
+    where `cls` is `type[C]` (see `class_attributes`, `class_methods`). `casts`: how the module spells
+    `typing.cast` (see `casts`).
     """
 
     calls: Mapping[str, str]
@@ -63,6 +66,9 @@ class Known:
     classes: Mapping[str, Mapping[str, str]]
     methods: Mapping[str, Mapping[str, str]]
     awaits: Mapping[str, str] = field(default_factory=dict[str, str])
+    class_attributes: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
+    class_methods: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
+    casts: frozenset[str] = frozenset()
 
 
 class Inference(NamedTuple):
@@ -138,11 +144,11 @@ def _from_local(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
                 frozenset({"subscript"}),
             )
         case ast.Attribute(value=ast.Name(id=name), attr=attr) if name in declared and (
-            found := known.classes.get(declared[name], {}).get(attr)
+            found := _attribute(declared[name], attr, known)
         ):
             return Inference(found, f"the annotation of `{declared[name]}.{attr}`", frozenset({"attribute"}))
         case ast.Call(func=ast.Attribute(value=ast.Name(id=name), attr=attr)) if name in declared and (
-            found := method_return(declared[name], value, attr, known.methods)
+            found := _method(declared[name], value, attr, known)
         ):
             return Inference(
                 found,
@@ -151,6 +157,49 @@ def _from_local(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
             )
         case _:
             return None
+
+
+def _class_of(receiver: str) -> str | None:
+    """Read the class a `type[C]` names (what `cls` is in a classmethod of `C`).
+
+    Returns:
+      `C`, or `None` if `receiver` isn't a `type[...]` of a plain name.
+
+    """
+    # `receiver` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
+    root: ast.expr = ast.parse(receiver, mode="eval").body
+    name: str
+    match root:
+        case ast.Subscript(value=ast.Name(id="type"), slice=ast.Name(id=name)):
+            return name
+        case _:
+            return None
+
+
+def _attribute(receiver: str, attr: str, known: Known) -> str | None:
+    """Look up `attr` on a value typed `receiver`: an instance's attribute or property, or a class's own.
+
+    Returns:
+      Its annotation as text, or `None` if it isn't known.
+
+    """
+    owner: str | None
+    if (owner := _class_of(receiver)) is not None:
+        return known.class_attributes.get(owner, {}).get(attr)
+    return known.classes.get(receiver, {}).get(attr)
+
+
+def _method(receiver: str, call: ast.Call, method: str, known: Known) -> str | None:
+    """Look up a `method` call's type on a value typed `receiver` (a `type[C]`: its class-side methods).
+
+    Returns:
+      Its annotation as text, or `None` if it isn't known (see `method_return`).
+
+    """
+    owner: str | None
+    if (owner := _class_of(receiver)) is not None:
+        return known.class_methods.get(owner, {}).get(method)
+    return method_return(receiver, call, method, known.methods)
 
 
 def _method_reason(receiver: str, method: str, known_methods: Mapping[str, Mapping[str, str]]) -> str:
@@ -196,7 +245,38 @@ def _from_value(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
     return (
         _container(value, known, declared)
         or _computed(value, known, declared)
+        or _cast(value, known.casts)
         or _called(value, known.calls, known.factories)
+    )
+
+
+def _cast(value: ast.expr, spellings: frozenset[str]) -> Inference | None:
+    """Infer `typing.cast(T, x)`: `T` as written, or a string's contents.
+
+    Returns:
+      The inference, or `None` if `value` isn't such a call, or `T` is vague or not an expression.
+
+    """
+    func: ast.expr
+    target: ast.expr
+    match value:
+        case ast.Call(func=func, args=[target, _], keywords=[]) if ast.unparse(func) in spellings:
+            pass
+        case _:
+            return None
+    text: str = (
+        target.value.strip()
+        if isinstance(target, ast.Constant) and isinstance(target.value, str)
+        else ast.unparse(target)
+    )
+    try:
+        parsed: ast.expr = ast.parse(text, mode="eval").body
+    except SyntaxError:
+        return None
+    return (
+        None
+        if is_vague(parsed)
+        else Inference(ast.unparse(parsed), "`cast`'s target type", frozenset({"cast"}))
     )
 
 
@@ -549,10 +629,12 @@ def _is_guess(
             or name in known.awaits
         ):
             return False
+        case ast.Call(func=func) if ast.unparse(func) in known.casts:
+            return False
         case ast.Call(func=ast.Attribute(value=ast.Name(id=receiver) as owner, attr=method)) as call if (
             receiver in declared
             and (
-                method_return(declared[receiver], call, method, known.methods) is not None
+                _method(declared[receiver], call, method, known) is not None
                 or (method in _DICT_VIEWS and _view(owner, method, known, declared) is not None)
             )
         ):

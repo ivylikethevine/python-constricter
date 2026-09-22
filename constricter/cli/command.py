@@ -163,7 +163,7 @@ def fix_file(path: Path, offences: Sequence[Offence]) -> int:
 
     """
     count: int
-    if not (count := sum(1 for o in offences if o.fix)):
+    if not (count := sum(1 for o in offences if o.edit is not None)):
         return 0
     data: bytes = path.read_bytes()
     encoding: str = _encoding(path, data)
@@ -262,7 +262,7 @@ def _results(raw: str, name: Path, offences: Sequence[Offence], options: Options
     return [
         r._replace(
             source=shown.get((r.offence.cell, r.offence.line), ""),
-            replacement=fixes.replacement(text, r.offence) if text else None,
+            replacements=fixes.replacements(text, r.offence) if text else (),
         )
         for r in options.filter.results(name, offences)
     ]
@@ -286,7 +286,9 @@ def _check_path(path: Path, calls: Mapping[str, str], options: Options) -> _Chec
     offences, baselined = options.filter.unbaselined(name, offences)
     results: list[Result] = _results(raw, name, offences, options)
     unsafe: bool = options.unsafe_fixes
-    fixing: list[Offence] = [r.offence for r in results if r.offence.fix and (unsafe or not r.offence.unsafe)]
+    fixing: list[Offence] = [
+        r.offence for r in results if r.offence.edit is not None and (unsafe or not r.offence.unsafe)
+    ]
     if options.mode is Mode.DIFF:
         return _CheckRun(text=_diff(raw, name, fixing))
     if options.mode is not Mode.FIX:

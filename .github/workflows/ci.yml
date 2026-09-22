@@ -129,7 +129,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [stdlib, requests, flask, django, sqlalchemy, fastapi, pydantic, rich, sentry_sdk, twisted]
+        package: [stdlib, requests, flask, django, sqlalchemy, fastapi, pydantic, rich, pandas, sentry_sdk, twisted, pip]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -153,9 +153,10 @@ jobs:
           group: corpus
       # Against the runner's standard library, or one pinned real package (`pyproject.toml`'s
       # `corpus` group: a tiny HTTP client, two web frameworks, an ORM, an annotation-driven API
-      # framework, a runtime-validation library, a terminal renderer, Python 2/3-era code), or pure
-      # Python 2 (Twisted 12.3.0, a hash-pinned sdist tests/corpus_sources.py fetches, since it
-      # can't be installed on Python 3): no crashes or slowdowns
+      # framework, a runtime-validation library, a terminal renderer, a data library, Python 2/3-era
+      # code), or pure
+      # Python 2 (Twisted 12.3.0) and pip 20.3.4's 2/3-era type comments, hash-pinned sdists
+      # tests/corpus/corpus_sources.py fetches (neither installs as a dependency): no crashes or slowdowns
       # (corpus.py), and `--fix` doesn't break any file or leave anything for a second pass
       # (corpus_fix.py).
       - name: Find the package's path
@@ -165,15 +166,15 @@ jobs:
         run: |
           if [ "$PACKAGE" = stdlib ]; then
             echo "path=" >> "$GITHUB_OUTPUT"
-          elif [ "$PACKAGE" = twisted ]; then
-            echo "path=$(python tests/corpus_sources.py twisted)" >> "$GITHUB_OUTPUT"
+          elif [ "$PACKAGE" = twisted ] || [ "$PACKAGE" = pip ]; then
+            echo "path=$(python tests/corpus/corpus_sources.py "$PACKAGE")" >> "$GITHUB_OUTPUT"
           else
             echo "path=$(python -c "import $PACKAGE, os; print(os.path.dirname($PACKAGE.__file__))")" >> "$GITHUB_OUTPUT"
           fi
-      - run: python tests/corpus.py ${TARGET_PATH:+"$TARGET_PATH"}
+      - run: python tests/corpus/corpus.py ${TARGET_PATH:+"$TARGET_PATH"}
         env:
           TARGET_PATH: ${{ steps.target.outputs.path }}
-      - run: python tests/corpus_fix.py ${TARGET_PATH:+"$TARGET_PATH"}
+      - run: python tests/corpus/corpus_fix.py ${TARGET_PATH:+"$TARGET_PATH"}
         env:
           TARGET_PATH: ${{ steps.target.outputs.path }}
 

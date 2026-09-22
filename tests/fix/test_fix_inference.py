@@ -72,7 +72,7 @@ def test_fixes_are_offered_only_for_a_single_plain_name() -> None:
     )
     assert [(o.name, o.fix) for o in check_source(source, checks=Checks(all_scopes=True))] == [
         ("LIMIT", "int"),
-        ("a", "int"),  # declared before the statement: see tests/test_declarations.py
+        ("a", "int"),  # declared before the statement: see tests/fix/test_declarations.py
         ("b", "int"),
         ("c", None),
         ("d", None),
