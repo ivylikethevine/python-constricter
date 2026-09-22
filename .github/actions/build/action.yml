@@ -1,0 +1,13 @@
+name: Build
+description: Build the sdist and wheel into dist/, check them, and smoke-test the wheel (after ./setup).
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        python -m build --no-isolation --outdir dist
+        twine check --strict dist/*
+        check-wheel-contents dist/*.whl
+        python -m venv "$RUNNER_TEMP/smoke"
+        "$RUNNER_TEMP/smoke/bin/pip" install --no-deps --no-index dist/*.whl
+        "$RUNNER_TEMP/smoke/bin/constricter" src

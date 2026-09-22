@@ -10,8 +10,10 @@ from constricter.checker import (
   UNANNOTATED_MEMBER,
   UNTYPED_TARGET,
   VAGUE_TYPE,
+  Coverage,
   Level,
   Offence,
+  annotation_coverage,
   check_source,
   check_tree,
 )
@@ -26,9 +28,11 @@ __all__ = [
   "UNANNOTATED_MEMBER",
   "UNTYPED_TARGET",
   "VAGUE_TYPE",
+  "Coverage",
   "Level",
   "Offence",
   "__version__",
+  "annotation_coverage",
   "check_source",
   "check_tree",
 ]

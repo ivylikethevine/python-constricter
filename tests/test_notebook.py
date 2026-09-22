@@ -81,3 +81,10 @@ def test_a_bad_notebook_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[st
   _ = path.write_text(text, encoding="utf-8")
   assert cli.main([str(path)]) == cli.EXIT_ERROR
   assert capsys.readouterr().err.startswith(f"{path}: error: ")
+
+
+def test_coverage_counts_a_notebooks_cells(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+  """`--coverage` counts a notebook's code cells: `count` untyped, `quiet` too (`# noqa` doesn't type it)."""
+  path: Path = _notebook(tmp_path)
+  assert cli.main(["--coverage", str(path)]) == cli.EXIT_CLEAN
+  assert capsys.readouterr().out.startswith(f"{path}: 0/2 typed (0.0%)\n")

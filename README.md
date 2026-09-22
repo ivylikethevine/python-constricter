@@ -3,6 +3,8 @@
 [![CI](https://github.com/ivylikethevine/python-constricter/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ivylikethevine/python-constricter/actions/workflows/ci.yml)
 [![Security](https://github.com/ivylikethevine/python-constricter/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/ivylikethevine/python-constricter/actions/workflows/security.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ivylikethevine/python-constricter/badge)](https://scorecard.dev/viewer/?uri=github.com/ivylikethevine/python-constricter)
+[![Test coverage: 100%](https://img.shields.io/badge/test_coverage-100%25-brightgreen)](pyproject.toml)
+[![Annotations: 100%](https://img.shields.io/badge/annotations-100%25-brightgreen)](#annotation-coverage)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE.md)
 
 > I want **all** of my python code typed.
@@ -122,6 +124,7 @@ Options:
 | statistics      | `--statistics` (counts per code, text format)    | -                    | -                             | -                                 |
 | jobs            | `--jobs N` (`-j`; 0: one per CPU)                | `jobs`               | flake8's own `--jobs`         | pylint's own `--jobs`             |
 | baseline        | `--baseline FILE`; `--write-baseline` records it | `baseline`           | -                             | -                                 |
+| coverage        | `--coverage`, `--fail-under PCT`                 | -                    | -                             | -                                 |
 | per-path levels | -                                                | `per-path-levels`    | -                             | -                                 |
 
 `constricter --explain LVA002` prints a code's rationale, its fix, and the levels that report it.
@@ -174,6 +177,17 @@ code moving around; another offence for a name it covers is still reported. Path
 to it. It's JSON, and like every JSON file constricter reads it may have `//` and `/* */` comments
 and trailing commas. `--baseline FILE` or `baseline` in `[tool.constricter]` names another file; the
 default one is used only if it exists.
+
+### Annotation coverage
+
+`constricter --coverage src` prints the share of first bindings that are typed, per file and in
+total; the bindings are the ones the rules cover (with `--all-scopes`, module and class bodies too),
+and `# noqa` doesn't make one typed. `--fail-under PCT` (which implies `--coverage`) exits 1 below
+PCT, so CI can hold a codebase to a share. With `--format=json` it prints
+`{"typed", "total", "percent", "files"}`, which a badge can read: publish that JSON somewhere (a
+gist, a release asset) and point
+[shields.io's dynamic JSON badge](https://shields.io/badges/dynamic-json-badge) at it with the query
+`$.percent`. This project keeps its own share at 100% in CI, so its badge is static.
 
 ### Notebooks
 
@@ -255,8 +269,9 @@ uv pip install --python local/.venv --no-deps --no-build-isolation -e .
 Checks (as CI runs them): `ruff check .` (every rule, preview included), `ruff format --check .`,
 `basedpyright` (all), `mypy` (strict), `pylint src tests` (every extension), `flake8 src tests`,
 `typos`, `validate-pyproject pyproject.toml`, `uv lock --check`,
-`constricter --level=suffocate --all-scopes src tests`, `pytest --cov` (100% branch coverage).
-Everything generated goes in `local/`. Python is indented with 2 spaces.
+`constricter --level=suffocate --all-scopes src tests`,
+`constricter --coverage --all-scopes --fail-under=100 src tests`, `pytest --cov` (100% branch
+coverage). Everything generated goes in `local/`. Python is indented with 2 spaces.
 
 After editing the `dev` group, run `uv lock` (CI fails until you do). Dependabot updates `uv.lock`,
 the npm lock and the actions weekly.
@@ -279,20 +294,19 @@ git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/prettier --check
 
 Everything else is on. Some of these may be revisited.
 
-| Tool                                         | Rule                                                                                                                                 | Why                                                                                                                             |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| ruff                                         | `docstring-missing-returns` and `-yields` (DOC201/DOC402) for one-line docstrings only (`lint.pydoclint.ignore-one-line-docstrings`) | A one-line summary ("Return the …") already says what comes back; a longer docstring gets a `Returns:` or `Yields:` section.    |
-| ruff                                         | `missing-trailing-comma` (COM812)                                                                                                    | Conflicts with `ruff format`; ruff says to disable it.                                                                          |
-| ruff                                         | `incorrect-blank-line-before-class`, `multi-line-summary-second-line` (D203/D213)                                                    | Each contradicts a rule that stays on (D211/D212); one of each pair has to go.                                                  |
-| ruff                                         | `indentation-with-invalid-multiple` and `-comment` (E111/E114)                                                                       | They assume 4-space indents; ruff says to disable them at any other width. flake8's E111/E114 check the 2 spaces.               |
-| ruff (`tests/`)                              | `assert` (S101)                                                                                                                      | pytest works through `assert`.                                                                                                  |
-| mypy, basedpyright                           | astroid's untyped calls and missing stubs                                                                                            | astroid (pylint's parser) ships no type information.                                                                            |
-| typos                                        | the word `astroid`                                                                                                                   | A real package name.                                                                                                            |
-| harden-runner                                | `egress-policy: audit` on macOS and Windows, in the release and Scorecard jobs, and in the weekly external-link check                | macOS and Windows reach unpredictable OS hosts; the release and Scorecard jobs haven't run yet; external links can go anywhere. |
-| reuse                                        | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)                                                              | No recent release ships a wheel for Python 3.11+, so installing it builds from source with an unpinned `poetry-core`.           |
-| zizmor                                       | `self-repository` on the CI job that runs the repository's root action                                                               | zizmor wants `$/`, and actionlint rejects a bare `$/` (it has no path), so that one line uses `./`.                             |
-| zizmor, and the sibling repos' SHA-pin check | `unpinned-uses` on release.yml's SLSA job                                                                                            | SLSA's generator must be referenced by its version tag, not a SHA: it verifies its own ref to produce level-3 provenance.       |
-| vulture                                      | not run                                                                                                                              | Its only findings were flake8/pylint hook names, which it can't see being called.                                               |
+| Tool               | Rule                                                                                                                                 | Why                                                                                                                             |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| ruff               | `docstring-missing-returns` and `-yields` (DOC201/DOC402) for one-line docstrings only (`lint.pydoclint.ignore-one-line-docstrings`) | A one-line summary ("Return the …") already says what comes back; a longer docstring gets a `Returns:` or `Yields:` section.    |
+| ruff               | `missing-trailing-comma` (COM812)                                                                                                    | Conflicts with `ruff format`; ruff says to disable it.                                                                          |
+| ruff               | `incorrect-blank-line-before-class`, `multi-line-summary-second-line` (D203/D213)                                                    | Each contradicts a rule that stays on (D211/D212); one of each pair has to go.                                                  |
+| ruff               | `indentation-with-invalid-multiple` and `-comment` (E111/E114)                                                                       | They assume 4-space indents; ruff says to disable them at any other width. flake8's E111/E114 check the 2 spaces.               |
+| ruff (`tests/`)    | `assert` (S101)                                                                                                                      | pytest works through `assert`.                                                                                                  |
+| mypy, basedpyright | astroid's untyped calls and missing stubs                                                                                            | astroid (pylint's parser) ships no type information.                                                                            |
+| typos              | the word `astroid`                                                                                                                   | A real package name.                                                                                                            |
+| harden-runner      | `egress-policy: audit` on macOS and Windows, in the release and Scorecard jobs, and in the weekly external-link check                | macOS and Windows reach unpredictable OS hosts; the release and Scorecard jobs haven't run yet; external links can go anywhere. |
+| reuse              | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)                                                              | No recent release ships a wheel for Python 3.11+, so installing it builds from source with an unpinned `poetry-core`.           |
+| zizmor             | `self-repository` on the CI job that runs the repository's root action                                                               | zizmor wants `$/`, and actionlint rejects a bare `$/` (it has no path), so that one line uses `./`.                             |
+| vulture            | not run                                                                                                                              | Its only findings were flake8/pylint hook names, which it can't see being called.                                               |
 
 To apply the rulesets in `.github/rulesets/` (repo admin):
 
@@ -317,8 +331,11 @@ Done:
   pip-audit on the lock, and dependency review on PRs.
 - **scorecard.yml** runs OpenSSF Scorecard on `main` and weekly. Its pin check misreads the `$/`
   references as unpinned actions, so it flags them.
-- **release.yml** runs on `v*` tags: CI, a check that the tag matches the version, build provenance,
-  PyPI (trusted publishing), then a GitHub release with the dists and the provenance bundle.
+- **release.yml** runs on `v*` tags: CI, then **build.yml** (a reusable workflow) builds the dists,
+  checks the tag matches the version, and attests their provenance (SLSA v1 Build Level 3, as the
+  build and attestation run in a reusable workflow), then PyPI (trusted publishing), then a GitHub
+  release with the dists and the attestation bundle. Verify a download with
+  `gh attestation verify FILE --repo ivylikethevine/python-constricter --signer-workflow ivylikethevine/python-constricter/.github/workflows/build.yml`.
 - **Pinning:** actions by SHA, Python dependencies by hash (`uv.lock`), npm by lockfile, actionlint
   and uv by version. Dependabot updates all but the last two; `uv lock --check` fails CI on drift.
 - **harden-runner** blocks all but the observed hosts in every Linux job that has run.
@@ -337,11 +354,13 @@ Done:
 - **Per-path levels**, **`--jobs`** for parallel checking, and a **GitHub Action** (`action.yml`)
   that CI runs on the project itself.
 - **LVA005, LVA006 and `--fix`.**
+- **`--coverage`** (and `--fail-under`) for annotation coverage, with test- and annotation-coverage
+  badges this project's CI keeps true.
 - **Baselines**, a **smarter `--fix`** (containers, same-module return types), **notebooks**, and
   JSON with comments and trailing commas wherever constricter reads JSON.
 - **Fuzzing**, a manual **corpus run** (`tests/corpus.py`), an **adoption guide**, **`--fix` for
-  notebooks**, and **SLSA level-3 provenance** (slsa-github-generator) on each release, alongside
-  the GitHub attestation.
+  notebooks**, and **SLSA Build Level 3 provenance** (GitHub's artifact attestations, from a
+  reusable build workflow) on each release.
 - **Python 3.11+**, the oldest version still maintained after 3.10's end of life in October 2026.
   Older Pythons aren't planned: 3.10 would add a runtime dependency (`tomli`) for a month, and
   3.6–3.9 would mean dropping `match` from the checker and keeping a second CI setup with older
@@ -351,11 +370,8 @@ Done:
 
 Next, smallest first:
 
-1. **A test coverage badge** (coverage is enforced at 100% already; the badge shows it).
-2. **An annotation-coverage report**: a `--coverage` option that prints the share of bindings that
-   are typed (overall and per file), for users' own badges, and shown for this project.
-3. **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+.
-4. Revisit the [disabled rules](#disabled-rules).
+1. **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+.
+2. Revisit the [disabled rules](#disabled-rules).
 
 After the first release (these need it on PyPI, or a published tag):
 

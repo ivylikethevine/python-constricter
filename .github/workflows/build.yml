@@ -1,0 +1,44 @@
+name: Build
+
+# The release's build: a reusable workflow, so its attestation meets SLSA v1 Build Level 3. Verify
+# with `gh attestation verify <file> --repo ivylikethevine/python-constricter
+# --signer-workflow ivylikethevine/python-constricter/.github/workflows/build.yml`.
+on:
+  workflow_call:
+
+permissions: {}
+
+jobs:
+  build:
+    name: Build and attest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # sign the attestation
+      attestations: write # store the attestation
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup
+      - uses: $/.github/actions/build
+      - name: Tag matches the package version
+        run: test -f "dist/python_constricter-${GITHUB_REF_NAME#v}.tar.gz"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        id: attest
+        with:
+          subject-path: dist/*
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: attestation
+          path: ${{ steps.attest.outputs.bundle-path }}
+          if-no-files-found: error
