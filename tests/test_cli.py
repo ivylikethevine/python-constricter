@@ -103,6 +103,15 @@ def test_directories_skip_hidden_and_tool_dirs_and_honour_exclude(tmp_path: Path
     assert not list(cli.python_files([tmp_path / "a.py"], ["a.py"]))
 
 
+def test_exclude_also_skips_a_directory_by_name(tmp_path: Path) -> None:
+    """`--exclude` prunes a directory walk by directory name too, like the built-in skip list."""
+    name: str
+    for name in ("a.py", "pkg/b.py", "pkg/generated/c.py"):
+        _ = _write(tmp_path / name, CLEAN)
+    found: list[Path] = list(cli.python_files([tmp_path], ["generated"]))
+    assert found == [tmp_path / "a.py", tmp_path / "pkg" / "b.py"]
+
+
 def test_defaults_to_the_current_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

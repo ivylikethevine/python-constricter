@@ -8,7 +8,16 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter.annotations import depth, guessed, inferred, is_vague, node_name, returns
+from constricter.annotations import (
+    depth,
+    factories,
+    guessed,
+    imported_from,
+    inferred,
+    is_vague,
+    node_name,
+    returns,
+)
 from constricter.jsonc import as_text
 
 UNANNOTATED: Final = "LVA001"
@@ -17,6 +26,7 @@ COMMENT_TYPED_TARGET: Final = "LVA003"
 UNANNOTATED_MEMBER: Final = "LVA004"
 VAGUE_TYPE: Final = "LVA005"
 NESTED_TYPE: Final = "LVA006"
+REDUNDANT_TYPE: Final = "LVA007"
 MESSAGES: dict[str, str] = {
     UNANNOTATED: "local variable {name} is not annotated where it's first bound",
     UNTYPED_TARGET: "for/match variable {name} is untyped; declare it before the statement",
@@ -24,6 +34,7 @@ MESSAGES: dict[str, str] = {
     UNANNOTATED_MEMBER: "module or class variable {name} is not annotated where it's first bound",
     VAGUE_TYPE: "the annotation of {name} is vague: Any, object, or a generic without its parameters",
     NESTED_TYPE: "the annotation of {name} nests too deeply; name a part of it with a `type` alias",
+    REDUNDANT_TYPE: "{name} is annotated again with the type it already has, in the same block",
 }
 NESTING: Final = 5  # LVA006's default depth
 
@@ -47,6 +58,8 @@ _PYTHON2_FUTURES: frozenset[str] = frozenset(
         "unicode_literals",
     },
 )
+# Enum members mustn't be annotated: a base imported from here is one, however it's aliased.
+_ENUM_MODULES: Final = frozenset({"enum"})
 
 
 class Level(IntEnum):
@@ -67,6 +80,7 @@ _ERROR_FROM: dict[str, Level] = {
     UNANNOTATED_MEMBER: Level.STRICT,
     VAGUE_TYPE: Level.SUFFOCATE,
     NESTED_TYPE: Level.SUFFOCATE,
+    REDUNDANT_TYPE: Level.SUFFOCATE,
 }
 # Codes reported only from a level up (the rest are reported at every level).
 _REPORTED_FROM: dict[str, Level] = {VAGUE_TYPE: Level.STRICT, NESTED_TYPE: Level.STRICT}
@@ -81,6 +95,7 @@ class _Settings:
     nesting: int
     lines: Sequence[str]
     calls: dict[str, str]  # each module function's return type, for `--fix`
+    factories: frozenset[str]  # names imported that build a class or special form, for `--fix`
 
 
 @dataclass(frozen=True, order=True)
@@ -181,6 +196,7 @@ def _settings(
         checks.nesting,
         lines,
         calls,
+        factories(tree),
     )
 
 
@@ -202,7 +218,7 @@ def check_tree(
 
     """
     settings: _Settings = _settings(tree, checks, lines, {**(calls or {}), **returns(tree)})
-    return sorted(o for scope in _scopes(tree, settings) for o in scope.reported())
+    return sorted([*(o for scope in _scopes(tree, settings) for o in scope.reported()), *_redundant(tree)])
 
 
 class Coverage(NamedTuple):
@@ -251,6 +267,99 @@ def _scopes(tree: ast.Module, settings: _Settings) -> list["_Scope"]:
     return scopes
 
 
+def _redundant(tree: ast.Module) -> list[Offence]:
+    """Find a name annotated again with the type it already has, in the same straight-line block.
+
+    Every block (a function, module or class body; an `if`'s body and its `orelse`; ...) is checked
+    on its own: two branches that never run in the same pass typing a name the same way isn't
+    redundant, so they're not compared against each other.
+
+    Returns:
+      One offence (LVA007) per redundant re-annotation.
+
+    """
+    offences: list[Offence] = []
+    node: ast.AST
+    block: list[ast.stmt]
+    for node in ast.walk(tree):
+        for block in _blocks(node):
+            offences += _redundant_in(block)
+    return offences
+
+
+def _blocks(node: ast.AST) -> Iterator[list[ast.stmt]]:
+    """Find the straight-line blocks of statements directly in `node`.
+
+    Yields:
+      Each one (an `if`'s body and its `orelse` separately, and likewise for the other compound
+      statements with more than one: they run in different passes, if at all).
+
+    """
+    body: list[ast.stmt]
+    orelse: list[ast.stmt]
+    handlers: list[ast.ExceptHandler]
+    finalbody: list[ast.stmt]
+    handler: ast.ExceptHandler
+    cases: list[ast.match_case]
+    case: ast.match_case
+    match node:
+        case (
+            ast.Module(body=body)
+            | ast.FunctionDef(body=body)
+            | ast.AsyncFunctionDef(body=body)
+            | ast.ClassDef(body=body)
+            | ast.With(body=body)
+            | ast.AsyncWith(body=body)
+        ):
+            yield body
+        case (
+            ast.If(body=body, orelse=orelse)
+            | ast.For(body=body, orelse=orelse)
+            | ast.AsyncFor(body=body, orelse=orelse)
+            | ast.While(body=body, orelse=orelse)
+        ):
+            yield body
+            yield orelse  # empty when there's no `else`, which is harmless: nothing to find in it
+        case (
+            ast.Try(body=body, handlers=handlers, orelse=orelse, finalbody=finalbody)
+            | ast.TryStar(body=body, handlers=handlers, orelse=orelse, finalbody=finalbody)
+        ):
+            yield body
+            for handler in handlers:
+                yield handler.body
+            yield orelse
+            yield finalbody
+        case ast.Match(cases=cases):
+            for case in cases:
+                yield case.body
+        case _:
+            pass
+
+
+def _redundant_in(block: list[ast.stmt]) -> list[Offence]:
+    """Find a name in `block` annotated the same way twice.
+
+    Returns:
+      One offence per repeat, at the later statement.
+
+    """
+    offences: list[Offence] = []
+    seen: dict[str, str] = {}
+    stmt: ast.stmt
+    name: str
+    annotation: ast.expr
+    for stmt in block:
+        match stmt:
+            case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation):
+                text: str = ast.unparse(annotation)
+                if seen.get(name) == text:
+                    offences.append(Offence(*_at(stmt), name, REDUNDANT_TYPE))
+                seen[name] = text
+            case _:
+                pass
+    return offences
+
+
 def _python2_compatible(tree: ast.Module) -> bool:
     """Check for a `from __future__` import only Python 2 needs.
 
@@ -273,8 +382,11 @@ def _body_scopes(tree: ast.Module, settings: _Settings) -> list["_Scope"]:
       Their scopes, but for an enum's.
 
     """
+    imported: frozenset[str] = imported_from(tree, _ENUM_MODULES)
     classes: list[list[ast.stmt]] = [
-        node.body for node in ast.walk(tree) if isinstance(node, ast.ClassDef) and not _is_enum(node)
+        node.body
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef) and not _is_enum(node, imported)
     ]
     scopes: list[_Scope] = []
     body: list[ast.stmt]
@@ -288,14 +400,17 @@ def _body_scopes(tree: ast.Module, settings: _Settings) -> list["_Scope"]:
     return scopes
 
 
-def _is_enum(node: ast.ClassDef) -> bool:
+def _is_enum(node: ast.ClassDef, imported: frozenset[str]) -> bool:
     """Check whether a base is an enum: enum members mustn't be annotated.
 
     Returns:
-      Whether its name ends in `Enum` or `Flag`.
+      Whether a base is imported from `enum` (`imported`, however it's aliased), or else its name
+      ends in `Enum` or `Flag` (for one imported some other way).
 
     """
-    return any(node_name(base).endswith(("Enum", "Flag")) for base in node.bases)
+    return any(
+        node_name(base) in imported or node_name(base).endswith(("Enum", "Flag")) for base in node.bases
+    )
 
 
 def _collect_functions(body: list[ast.stmt], into: list[_FunctionDef]) -> None:
@@ -394,7 +509,7 @@ def _captures(pattern: ast.pattern, lines: Sequence[str]) -> Iterator[tuple[str,
                 pass
 
 
-def _at(node: ast.expr | ast.pattern) -> tuple[int, int]:
+def _at(node: ast.expr | ast.pattern | ast.stmt) -> tuple[int, int]:
     return node.lineno, node.col_offset
 
 
@@ -412,14 +527,13 @@ def _rest_at(node: ast.MatchMapping, name: str, lines: Sequence[str]) -> tuple[i
     number: int
     encoded: bytes
     start: int
-    found: re.Match[bytes] | None
+    found: re.Match[bytes]
     for number in range(node.lineno, min(node.end_lineno or node.lineno, len(lines)) + 1):
         encoded = lines[number - 1].encode()
         start = node.col_offset if number == node.lineno else 0
-        while found := _REST.search(encoded, start):
+        for found in _REST.finditer(encoded, start):
             if found.group(1) == target:
                 return number, found.start(1)
-            start = found.end()
     return _at(node)
 
 
@@ -615,7 +729,7 @@ def _bind(scope: _Scope, stmt: ast.stmt) -> None:
                 name,
                 _at(single),
                 scope.unannotated(comment),
-                inferred(value, calls),
+                inferred(value, calls, scope.settings.factories),
                 unsafe=guessed(value, calls),
             )
         case ast.Assign(targets=targets, type_comment=comment):

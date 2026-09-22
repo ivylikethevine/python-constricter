@@ -6,6 +6,18 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- **LVA007**: a name annotated again with the type it already has, in the same straight-line block
+  (an `if`'s two arms, a `try`'s body and its `except`s, ... are compared separately, not against
+  each other). A warning at every level, an error at `suffocate`.
+- `--exclude` globs also match a directory name during a directory walk (like the built-in skip list
+  for `__pycache__`, `venv`, hidden directories, ...), not just a whole path or file name.
+- Enum bases and factory calls (`Enum`, `NamedTuple`, `TypeVar`, ...) are recognised by where
+  they're imported from, in addition to their bare name, so an aliased or re-exported one is still
+  found.
+- `project.calls` finds a module/submodule import by name lookup instead of scanning every indexed
+  module (`project.index` now returns a `project.Index`, not a plain `dict`).
+- `tests/corpus.py` and `tests/corpus_fix.py` (checking and `--fix`-ing a large real codebase) run
+  in CI's new Corpus job, against the runner's Python standard library.
 - First release, 0.2.0: `LVA001`–`LVA006`, the `relaxed` to `suffocate` levels, a flake8 plugin, a
   pylint plugin and the `constricter` command (with `--fix`, `--diff`, `--explain`, `--select`,
   `--ignore`, `--statistics` and text, JSON, GitHub and SARIF output), configured from

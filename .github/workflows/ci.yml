@@ -104,6 +104,31 @@ jobs:
         with:
           args: --level=suffocate --all-scopes --format=github src tests
 
+  corpus:
+    name: Corpus
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            pypi.org:443
+            files.pythonhosted.org:443
+            raw.githubusercontent.com:443
+            releases.astral.sh:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup
+      # Against this runner's standard library: no crashes or slowdowns (corpus.py), and `--fix`
+      # doesn't break any file or leave anything for a second pass (corpus_fix.py).
+      - run: python tests/corpus.py
+      - run: python tests/corpus_fix.py
+
   test:
     name: Test (${{ matrix.os }}, ${{ matrix.python }})
     strategy:
@@ -153,7 +178,7 @@ jobs:
 
   build:
     name: Build
-    needs: [lint, docs, test, action]
+    needs: [lint, docs, test, action, corpus]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

@@ -117,9 +117,9 @@ def test_index_reads_names_and_skips_what_it_cannot(tmp_path: Path) -> None:
     )
     broken: Path = _write(tmp_path / "broken.py", "def (\n")
     sheet: Path = _write(tmp_path / "sheet.ipynb", "{}")
-    modules: dict[str, project.Module] = project.index([source, broken, sheet, tmp_path / "gone.py"])
-    assert list(modules) == ["mod"]
-    assert modules["mod"].names == {
+    index: project.Index = project.index([source, broken, sheet, tmp_path / "gone.py"])
+    assert list(index.modules) == ["mod"]
+    assert index.modules["mod"].names == {
         "os": ("os", None),
         "j": ("json", None),
         "x": ("mod", "x"),
@@ -135,12 +135,12 @@ def test_calls_skip_what_they_cannot_resolve(tmp_path: Path) -> None:
         tmp_path / "loop.py",
         "from loop import f\nfrom other import g\ndef h() -> int:\n    return 1\n",
     )
-    modules: dict[str, project.Module] = project.index([loop])
-    assert not project.calls(modules, loop)
-    assert not project.calls(modules, tmp_path / "sheet.ipynb")
-    assert not project.calls(modules, tmp_path / "unknown.py")
+    index: project.Index = project.index([loop])
+    assert not project.calls(index, loop)
+    assert not project.calls(index, tmp_path / "sheet.ipynb")
+    assert not project.calls(index, tmp_path / "unknown.py")
     cycle: dict[str, project.Module] = {
         "a": project.Module("a", {}, {"f": ("b", "f")}),
         "b": project.Module("b", {}, {"f": ("a", "f")}),
     }
-    assert not project.calls(cycle, Path("a.py"))
+    assert not project.calls(project.Index(cycle, sorted(cycle)), Path("a.py"))

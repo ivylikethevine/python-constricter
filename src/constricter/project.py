@@ -9,6 +9,7 @@ otherwise the fix would name something undefined, or something else.
 """
 
 import ast
+import bisect
 import builtins
 import itertools
 from collections.abc import Iterator, Mapping, Sequence
@@ -31,6 +32,13 @@ class Module(NamedTuple):
     name: str
     returns: dict[str, str]
     names: dict[str, Origin]
+
+
+class Index(NamedTuple):
+    """Every checked file's module, and their names sorted for a module/submodule lookup."""
+
+    modules: dict[str, Module]
+    names: list[str]  # modules, sorted by name
 
 
 def module_name(path: Path) -> str:
@@ -116,7 +124,7 @@ def _bound(stmt: ast.stmt) -> Iterator[str]:
             pass
 
 
-def index(paths: Sequence[Path]) -> dict[str, Module]:
+def index(paths: Sequence[Path]) -> Index:
     """Read each `.py` file in `paths` (one that can't be read or parsed is left out).
 
     Returns:
@@ -134,7 +142,7 @@ def index(paths: Sequence[Path]) -> dict[str, Module]:
             continue
         name: str = module_name(path)
         modules[name] = Module(name, returns(tree), _names(tree, name, is_package=path.stem == _PACKAGE))
-    return modules
+    return Index(modules, sorted(modules))
 
 
 def _origin(module: Module, name: str) -> Origin | None:
@@ -173,15 +181,33 @@ def _function(modules: Mapping[str, Module], origin: Origin, hops: int = _HOPS) 
     return _function(modules, onward, hops - 1) if onward and onward[0] != module.name else None
 
 
-def calls(modules: Mapping[str, Module], path: Path) -> dict[str, str]:
+def _submodules(catalog: Index, prefix: str) -> Iterator[Module]:
+    """Find the module named `prefix`, and every module dotted under it (`pkg.util` under `pkg`).
+
+    A module's identifier characters all sort after `.`, so the names in `[prefix, prefix + "/")` are
+    exactly `prefix` itself and those starting with `prefix + "."` (`/` is the character after `.`).
+
+    Yields:
+      Each such module, by name.
+
+    """
+    start: int = bisect.bisect_left(catalog.names, prefix)
+    stop: int = bisect.bisect_left(catalog.names, f"{prefix}/")
+    name: str
+    for name in catalog.names[start:stop]:
+        yield catalog.modules[name]
+
+
+def calls(catalog: Index, path: Path) -> dict[str, str]:
     """Return, for the file at `path`, the return type of each function it imports whose type it can name.
 
     Returns:
       Each call's name as written (`helper`, `u.helper`, `pkg.util.helper`), mapped to its type; nothing
-      for a file `modules` doesn't have (a notebook, standard input).
+      for a file `catalog` doesn't have (a notebook, standard input).
 
     """
     name: str = module_name(path)
+    modules: dict[str, Module] = catalog.modules
     target: Module | None
     if path.suffix != _SUFFIX or (target := modules.get(name)) is None:
         return {}
@@ -193,12 +219,11 @@ def calls(modules: Mapping[str, Module], path: Path) -> dict[str, str]:
             _add(found, modules, target, local, origin)
         elif origin[1] is None:  # a module: `u.f()`, or `pkg.util.f()` after `import pkg.util`
             other: Module
-            for other in modules.values():
-                if other.name == origin[0] or other.name.startswith(f"{origin[0]}."):
-                    prefix: str = local + other.name.removeprefix(origin[0])
-                    function: str
-                    for function in other.returns:
-                        _add(found, modules, target, f"{prefix}.{function}", (other.name, function))
+            for other in _submodules(catalog, origin[0]):
+                prefix: str = local + other.name.removeprefix(origin[0])
+                function: str
+                for function in other.returns:
+                    _add(found, modules, target, f"{prefix}.{function}", (other.name, function))
     return found
 
 

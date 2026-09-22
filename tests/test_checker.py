@@ -13,6 +13,7 @@ from constricter import (
     COMMENT_TYPED_TARGET,
     LEVELS,
     NESTED_TYPE,
+    REDUNDANT_TYPE,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
     UNTYPED_TARGET,
@@ -318,9 +319,11 @@ def test_for_and_match_variables() -> None:
 
 def test_messages() -> None:
     """Each code's message names the variable and the fix."""
-    assert [Offence(1, 0, "x", code).message for code in (UNTYPED_TARGET, COMMENT_TYPED_TARGET)] == [
+    codes: tuple[str, ...] = (UNTYPED_TARGET, COMMENT_TYPED_TARGET, REDUNDANT_TYPE)
+    assert [Offence(1, 0, "x", code).message for code in codes] == [
         "for/match variable 'x' is untyped; declare it before the statement",
         "for variable 'x' is typed only by a type comment; declare it before the loop",
+        "'x' is annotated again with the type it already has, in the same block",
     ]
 
 
@@ -330,12 +333,21 @@ def test_messages() -> None:
         (Level.RELAXED, set[str]()),
         (Level.STRICT, {UNANNOTATED, UNANNOTATED_MEMBER}),
         (Level.CONSTRICT, {UNANNOTATED, UNANNOTATED_MEMBER, UNTYPED_TARGET}),
-        (Level.SUFFOCATE, {UNANNOTATED, UNANNOTATED_MEMBER, UNTYPED_TARGET, COMMENT_TYPED_TARGET}),
+        (
+            Level.SUFFOCATE,
+            {UNANNOTATED, UNANNOTATED_MEMBER, UNTYPED_TARGET, COMMENT_TYPED_TARGET, REDUNDANT_TYPE},
+        ),
     ],
 )
 def test_levels(level: Level, errors: set[str]) -> None:
     """Each level makes one more code an error; the rest are warnings."""
-    codes: tuple[str, ...] = (UNANNOTATED, UNANNOTATED_MEMBER, UNTYPED_TARGET, COMMENT_TYPED_TARGET)
+    codes: tuple[str, ...] = (
+        UNANNOTATED,
+        UNANNOTATED_MEMBER,
+        UNTYPED_TARGET,
+        COMMENT_TYPED_TARGET,
+        REDUNDANT_TYPE,
+    )
     assert {code for code in codes if Offence(1, 0, "x", code).is_error(level)} == errors
 
 
@@ -482,6 +494,85 @@ def test_vague_and_nested_are_reported_from_strict() -> None:
         assert [offence.is_reported(level) for level in Level] == [False, True, True, True]
         assert [offence.is_error(level) for level in Level] == [False, False, False, True]
     assert Offence(1, 0, "x").is_reported(Level.RELAXED)
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        pytest.param(
+            """
+            def f() -> None:
+                x: int = 1
+                x: int = 2
+            """,
+            [Offence(4, 4, "x", REDUNDANT_TYPE)],
+            id="same-annotation-repeated-in-the-same-block",
+        ),
+        pytest.param(
+            """
+            def f() -> None:
+                x: int = 1
+                y: int = 2
+                x: int = 3
+            """,
+            [Offence(5, 4, "x", REDUNDANT_TYPE)],
+            id="still-redundant-across-an-unrelated-binding",
+        ),
+        pytest.param(
+            """
+            def f() -> None:
+                x: int = 1
+                x: str = "a"
+            """,
+            [],
+            id="a-different-annotation-is-not-redundant",
+        ),
+        pytest.param(
+            """
+            def f(flag: bool) -> None:
+                if flag:
+                    x: int = 1
+                else:
+                    x: int = 2
+            """,
+            [],
+            id="branches-that-never-run-together-are-not-compared",
+        ),
+        pytest.param(
+            """
+            def f() -> None:
+                try:
+                    x: int = 1
+                except ValueError:
+                    x: int = 2
+                finally:
+                    x: int = 3
+            """,
+            [],
+            id="try-body-except-and-finally-are-separate-blocks",
+        ),
+        pytest.param(
+            """
+            def f() -> None:
+                for _ in range(2):
+                    x: int = 1
+                    x: int = 2
+            """,
+            [Offence(5, 8, "x", REDUNDANT_TYPE)],
+            id="a-loop-body-is-one-block",
+        ),
+    ],
+)
+def test_redundant_typing(source: str, expected: list[Offence]) -> None:
+    """LVA007: a name annotated again with the type it already has, in the same block."""
+    assert _check(source) == expected
+
+
+def test_redundant_typing_is_reported_from_relaxed_and_errors_at_suffocate() -> None:
+    """LVA007 warns at every level and only errors at `suffocate`, like LVA003."""
+    offence: Offence = Offence(1, 0, "x", REDUNDANT_TYPE)
+    assert [offence.is_reported(level) for level in Level] == [True, True, True, True]
+    assert [offence.is_error(level) for level in Level] == [False, False, False, True]
 
 
 @pytest.mark.parametrize(

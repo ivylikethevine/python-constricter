@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""The rules as a pylint plugin (C9101-C9106); reports the codes the level makes errors."""
+"""The rules as a pylint plugin (C9101-C9107); reports the codes the level makes errors."""
 
 from typing import IO, TYPE_CHECKING, NamedTuple, cast, final
 
@@ -14,6 +14,7 @@ from constricter.checker import (
     MESSAGES,
     NESTED_TYPE,
     NESTING,
+    REDUNDANT_TYPE,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
     UNTYPED_TARGET,
@@ -54,6 +55,7 @@ SYMBOLS: dict[str, Message] = {
     UNANNOTATED_MEMBER: Message("C9104", "unannotated-module-or-class-variable"),
     VAGUE_TYPE: Message("C9105", "vague-annotation"),
     NESTED_TYPE: Message("C9106", "deeply-nested-annotation"),
+    REDUNDANT_TYPE: Message("C9107", "redundant-annotation"),
 }
 
 

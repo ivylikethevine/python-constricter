@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: MIT
-"""Check a large real codebase for crashes and slowdowns. Run by hand; it isn't a test CI runs.
+"""Check a large real codebase for crashes and slowdowns.
+
+CI's Corpus job runs this against its Python's standard library; run it by hand against a larger
+one:
 
   local/.venv/bin/python tests/corpus.py [PATH]   # default: this Python's standard library
 

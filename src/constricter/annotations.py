@@ -76,6 +76,42 @@ _FACTORIES: Final = frozenset(
 )
 _NUMBERS: Final = (int, float, complex)
 _TYPE_VARS: Final = frozenset({"TypeVar", "ParamSpec", "TypeVarTuple"})
+# Modules `_FACTORIES`' names are imported from (so an aliased or re-exported import is still found).
+_FACTORY_MODULES: Final = frozenset({"enum", "typing", "typing_extensions"})
+
+
+def imported_from(tree: ast.Module, modules: frozenset[str]) -> frozenset[str]:
+    """Find the top-level names this module imports (`from module import name`) from one of `modules`.
+
+    Only absolute imports are resolved; a relative one (`from . import x`) names no module here.
+
+    Returns:
+      Those names, as they're bound here (their alias, if importing gave them one).
+
+    """
+    names: set[str] = set()
+    stmt: ast.stmt
+    module: str
+    for stmt in tree.body:
+        match stmt:
+            case ast.ImportFrom(module=str() as module, level=0) if module in modules:
+                names.update(alias.asname or alias.name for alias in stmt.names)
+            case _:
+                pass
+    return frozenset(names)
+
+
+def factories(tree: ast.Module) -> frozenset[str]:
+    """Find names this module imports that are known to build a class or special form.
+
+    Not an instance of what they're named (`Enum`, `NamedTuple`, `TypeVar`, ... from `enum`,
+    `typing` or `typing_extensions`), however they're aliased.
+
+    Returns:
+      Those names, as they're bound here.
+
+    """
+    return imported_from(tree, _FACTORY_MODULES)
 
 
 @lru_cache(maxsize=256)
@@ -206,17 +242,21 @@ def _words(annotation: str) -> list[str]:
     return [word for word in re.split(r"\W+", annotation) if word]
 
 
-def inferred(value: ast.expr, calls: Mapping[str, str]) -> str | None:
+def inferred(value: ast.expr, calls: Mapping[str, str], known_factories: frozenset[str]) -> str | None:
     """Return the annotation `value` makes unambiguous, given the module's function `calls`.
 
     A literal's type (containers too, when their elements agree), a call to a module function that
-    declares its return type, or a class it constructs.
+    declares its return type, or a class it constructs. `known_factories` (see `factories`) are
+    calls that build a class or special form rather than an instance of it, so they're never guessed
+    to construct one.
 
     Returns:
       The annotation as source text, or `None` if the value doesn't decide one.
 
     """
-    return _scalar(value) or _container(value, calls) or _called(value, calls)
+    return (
+        _scalar(value) or _container(value, calls, known_factories) or _called(value, calls, known_factories)
+    )
 
 
 def _scalar(value: ast.expr) -> str | None:
@@ -235,43 +275,50 @@ def _scalar(value: ast.expr) -> str | None:
             return None
 
 
-def _container(value: ast.expr, calls: Mapping[str, str]) -> str | None:
+def _container(value: ast.expr, calls: Mapping[str, str], known_factories: frozenset[str]) -> str | None:
     elements: list[ast.expr]
     keys: list[ast.expr | None]
     values: list[ast.expr]
     parts: list[str | None]
     match value:
         case ast.List(elts=elements) | ast.Set(elts=elements) if elements:
-            element: str | None = _uniform(elements, calls)
+            element: str | None = _uniform(elements, calls, known_factories)
             return f"{'list' if isinstance(value, ast.List) else 'set'}[{element}]" if element else None
         case ast.Tuple(elts=elements) if elements:
-            parts = [inferred(element, calls) for element in elements]
+            parts = [inferred(element, calls, known_factories) for element in elements]
             return None if None in parts else f"tuple[{', '.join(str(part) for part in parts)}]"
         case ast.Dict(keys=keys, values=values) if keys and None not in keys:
-            key: str | None = _uniform([k for k in keys if k is not None], calls)
-            item: str | None = _uniform(values, calls)
+            key: str | None = _uniform([k for k in keys if k is not None], calls, known_factories)
+            item: str | None = _uniform(values, calls, known_factories)
             return f"dict[{key}, {item}]" if key and item else None
         case _:
             return None
 
 
-def _uniform(elements: Sequence[ast.expr], calls: Mapping[str, str]) -> str | None:
+def _uniform(
+    elements: Sequence[ast.expr],
+    calls: Mapping[str, str],
+    known_factories: frozenset[str],
+) -> str | None:
     """Find the one type every element has.
 
     Returns:
       That type, or `None` if they differ or any is unknown.
 
     """
-    types: set[str | None] = {inferred(element, calls) for element in elements}
+    types: set[str | None] = {inferred(element, calls, known_factories) for element in elements}
     return next(iter(types)) if len(types) == 1 else None
 
 
-def _called(value: ast.expr, calls: Mapping[str, str]) -> str | None:
+def _called(value: ast.expr, calls: Mapping[str, str], known_factories: frozenset[str]) -> str | None:
     func: ast.expr
     match value:
         case ast.Call(func=ast.Name() | ast.Attribute() as func) if ast.unparse(func) in calls:
             return calls[ast.unparse(func)]
-        case ast.Call(func=ast.Name() | ast.Attribute() as func) if _constructs(node_name(func)):
+        case ast.Call(func=ast.Name() | ast.Attribute() as func) if _constructs(
+            node_name(func),
+            known_factories,
+        ):
             return ast.unparse(func)
         case _:
             return None
@@ -290,11 +337,17 @@ def guessed(value: ast.expr, calls: Mapping[str, str]) -> bool:
     return any(isinstance(node, ast.Call) and ast.unparse(node.func) not in calls for node in ast.walk(value))
 
 
-def _constructs(name: str) -> bool:
+def _constructs(name: str, known_factories: frozenset[str]) -> bool:
     """Check whether a call to `name` constructs a class, by its capitalised name.
 
     Returns:
-      Whether it does, and is worth annotating.
+      Whether it does, and is worth annotating: `name` isn't a known factory, by import
+      (`known_factories`) or by its bare name (`_FACTORIES`, for one imported some other way).
 
     """
-    return name[:1].isupper() and name not in _FACTORIES and name not in _GENERICS
+    return (
+        name[:1].isupper()
+        and name not in known_factories
+        and name not in _FACTORIES
+        and name not in _GENERICS
+    )

@@ -69,27 +69,32 @@ class bodies too. Statements are read in source order, and only a name's first b
 | `LVA004` | with `all-scopes`: the same as `LVA001`, in a module or class body     | `name: T = ...` (`ClassVar[T]` in a dataclass) |
 | `LVA005` | an annotation with `Any`, `object` or a generic without its parameters | name the real type                             |
 | `LVA006` | an annotation nested `nesting` deep (5 by default)                     | a `type` alias for a part of it                |
+| `LVA007` | a name annotated again with the type it already has, in the same block | drop the second annotation                     |
 
 Exempt: comprehensions, `except ... as`, imports, `def`/`class`, `type` aliases, parameters,
 `global`/`nonlocal`, and `_`; in module and class bodies, dunder names (`__all__`, `__slots__`) and
-enum members (a class whose base's name ends in `Enum` or `Flag`).
+enum members (a base imported from `enum`, however it's aliased, or else whose name ends in `Enum`
+or `Flag`).
 
 A `# type:` comment (`x = 1  # type: int`, `with f() as x:  # type: T`) counts as an annotation with
 `type-comments`, or automatically in a module written to run on Python 2: one that imports
 `print_function`, `unicode_literals`, `absolute_import`, `division`, `with_statement`, `generators`
 or `nested_scopes` from `__future__`.
 
+`LVA007` compares a block on its own: an `if`'s body and its `orelse`, a `try`'s body and its
+`except`s, and the like, are different blocks, since they don't both run in the same pass.
+
 ## Levels
 
 Each level makes one more code an error. The rest are warnings: the CLI prints them (as `::warning`
 or SARIF `warning` in those formats) but exits 0; flake8 and pylint report errors only.
 
-| Level             | Errors                           | Warnings                               |
-| ----------------- | -------------------------------- | -------------------------------------- |
-| `relaxed` / `0`   | none                             | `LVA001`–`LVA004`                      |
-| `strict` / `1`    | `LVA001`, `LVA004` (the default) | `LVA002`, `LVA003`, `LVA005`, `LVA006` |
-| `constrict` / `2` | `LVA001`, `LVA004`, `LVA002`     | `LVA003`, `LVA005`, `LVA006`           |
-| `suffocate` / `3` | all                              | none                                   |
+| Level             | Errors                           | Warnings                              |
+| ----------------- | -------------------------------- | ------------------------------------- |
+| `relaxed` / `0`   | none                             | `LVA001`–`LVA004`, `LVA007`           |
+| `strict` / `1`    | `LVA001`, `LVA004` (the default) | `LVA002`, `LVA003`, `LVA005`–`LVA007` |
+| `constrict` / `2` | `LVA001`, `LVA004`, `LVA002`     | `LVA003`, `LVA005`–`LVA007`           |
+| `suffocate` / `3` | all                              | none                                  |
 
 `LVA005` and `LVA006` aren't reported at `relaxed`.
 
@@ -99,14 +104,14 @@ Python 3.11+, no runtime dependencies.
 
 | Tool   | Setup                                                 | Reports                         | Suppress                                         |
 | ------ | ----------------------------------------------------- | ------------------------------- | ------------------------------------------------ |
-| CLI    | `constricter [PATH...] [--level L] [--format F] [-q]` | `LVA001`–`LVA006`               | `# noqa: LVA001`                                 |
-| flake8 | install it (on by default)                            | `LVA001`–`LVA006`               | `# noqa: LVA001`                                 |
-| pylint | `load-plugins = ["constricter.pylint_plugin"]`        | `C9101`–`C9106` (symbols below) | `# noqa: LVA001` or `# pylint: disable=<symbol>` |
-| ruff   | run the CLI after ruff; set `lint.external = ["LVA"]` | `LVA001`–`LVA006`               | `# noqa: LVA001`                                 |
+| CLI    | `constricter [PATH...] [--level L] [--format F] [-q]` | `LVA001`–`LVA007`               | `# noqa: LVA001`                                 |
+| flake8 | install it (on by default)                            | `LVA001`–`LVA007`               | `# noqa: LVA001`                                 |
+| pylint | `load-plugins = ["constricter.pylint_plugin"]`        | `C9101`–`C9107` (symbols below) | `# noqa: LVA001` or `# pylint: disable=<symbol>` |
+| ruff   | run the CLI after ruff; set `lint.external = ["LVA"]` | `LVA001`–`LVA007`               | `# noqa: LVA001`                                 |
 
 pylint symbols: `unannotated-local-variable`, `untyped-for-or-match-variable`,
 `comment-typed-for-variable`, `unannotated-module-or-class-variable`, `vague-annotation`,
-`deeply-nested-annotation`.
+`deeply-nested-annotation`, `redundant-annotation`.
 
 Options:
 
@@ -257,8 +262,9 @@ Trunk) pick the plugin up once it's installed alongside them.
 Without `lint.external`, ruff flags `# noqa: LVA00x` (RUF102) and `--fix` deletes it.
 
 The CLI defaults to `.`, checks `*.py` and `*.ipynb`, and skips hidden dirs, `__pycache__`, `venv`,
-`site-packages`, `build`, `dist` and `node_modules`. Exit codes: `0` no errors, `1` errors, `2` an
-unreadable or unparsable file, or a bad `pyproject.toml`.
+`site-packages`, `build`, `dist` and `node_modules` by directory name; `--exclude` adds more
+directory names (or globs) to skip the same way, on top of matching whole paths and file names. Exit
+codes: `0` no errors, `1` errors, `2` an unreadable or unparsable file, or a bad `pyproject.toml`.
 
 ```bash
 pip install python-constricter # once the first release is out; until then:
@@ -403,7 +409,7 @@ Done:
   badges this project's CI keeps true.
 - **Baselines**, a **smarter `--fix`** (containers, same-module return types), **notebooks**, and
   JSON with comments and trailing commas wherever constricter reads JSON.
-- **Fuzzing**, a manual **corpus run** (`tests/corpus.py`), an **adoption guide**, **`--fix` for
+- **Fuzzing**, a **corpus run** (`tests/corpus.py`), an **adoption guide**, **`--fix` for
   notebooks**, and **SLSA Build Level 3 provenance** (GitHub's artifact attestations, from a
   reusable build workflow) on each release.
 - **Python 3.11+**, the oldest version still maintained after 3.10's end of life in October 2026.
@@ -414,8 +420,23 @@ Done:
   Test jobs and Scorecard included.
 - **Stdin**, **`gitlab`, `junit` and `rdjson` output**, **safe and `--unsafe-fixes`**, **per-file
   ignores**, **`--exit-zero`** and **`--output-file`**, **tox and nox** snippets, **PyPy 3.11 and
-  free-threaded 3.14** in CI, and a manual **`--fix` corpus run** (`tests/corpus_fix.py`).
+  free-threaded 3.14** in CI, and a **`--fix` corpus run** (`tests/corpus_fix.py`).
 - **Cross-module `--fix`** in the CLI (the flake8 and pylint plugins see one file at a time).
+- **CI's Corpus job** runs `tests/corpus.py` and `tests/corpus_fix.py` against the runner's Python
+  standard library on every push and PR.
+- **`project.Index`** sorts modules by name so `calls` finds a module/submodule import by prefix
+  (`bisect`) instead of scanning every indexed module.
+- **Enum bases and factory calls resolve by import origin** (`annotations.factories`,
+  `checker._is_enum`'s `imported_from` check), so an aliased or re-exported `Enum`/`NamedTuple`/...
+  is still recognised; the bare-name lists remain a fallback for one imported some other way.
+- **A general path-exclusion mechanism**: `--exclude` globs also match a directory name during a
+  directory walk, folding the built-in skip list (`__pycache__`, `node_modules`, hidden dirs, ...)
+  into the same mechanism instead of a separate hardcoded check.
+- **`_FileRun` split** into `_CheckRun`, `_BaselineRun` and `_CoverageRun` (one per mode-group,
+  instead of one struct with fields only some modes populate), and `_check_path` and
+  `_baseline_path` share a `_read_checked` read-and-report-errors wrapper.
+- **LVA007: duplicate/redundant typing.** A name annotated again with the type it already has, in
+  the same straight-line block; a warning at every level, an error at `suffocate`.
 
 Next:
 
@@ -423,18 +444,16 @@ Next:
    CPython 3.10 one).
 2. Revisit the [disabled rules](#disabled-rules) as tools change (last checked 2026-09-22: COM812,
    one-line DOC201/DOC402 and `max-args` came back on; the rest can't go yet).
-3. **Index `project.calls`'s modules** by name (a sorted list or trie for prefix lookup) instead of
-   scanning every indexed module for each whole-module import; needs a signature change, so update
-   its tests too.
-4. **Resolve enum bases and factory calls by import origin** (`Enum`/`Flag`/`NamedTuple`/... in
-   `annotations._FACTORIES`, and `checker._is_enum`'s base-name suffix check) instead of by name, so
-   a re-exported or aliased base or factory isn't missed or misclassified.
-5. **A general path-exclusion mechanism** in `cli.py` that folds `_SKIPPED_DIRS`
-   (`__pycache__`, `node_modules`, ...) into `--exclude`, once glob patterns can match a path segment
-   rather than the whole relative path.
-6. **Split `_FileRun`** into a result type per mode (check/fix/diff/write-baseline/coverage) instead
-   of one struct with fields only some modes populate, and share `_check_path` and `_cover_path`'s
-   read-and-report-errors wrapper.
+3. **A second, more complex corpus** as a permanent, pinned CI target: OpenCV's Python bindings
+   turned out to be a poor fit (they're mostly thin C bindings, not hand-annotated Python), so this
+   still needs a real candidate settled on and vendored or checked out reproducibly. By hand,
+   against already-installed packages (mypy 2.3.1, pylint 4.0.8, libcst 1.9.0; ~130k, ~40k and ~40k
+   lines) as stand-ins: no crashes, and `--unsafe-fixes` left nothing broken or unfixed on a second
+   pass, on all three. `--nesting`'s default (5) never reported LVA006 on the standard library, mypy
+   or pylint, and only 1 time on mypy at `--nesting=4`; libcst (deeply nested CST types) hit it 201
+   times at the default. LVA007 found nothing on any of the four, at any nesting. Worth a decision:
+   keep `--nesting`'s default at 5 (safe, rarely fires) or tighten it (3 already reported 45 times
+   on mypy, 2 on the standard library) to make the rule useful more often.
 
 After the first release (these need it on PyPI, or a published tag):
 
