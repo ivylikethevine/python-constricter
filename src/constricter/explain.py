@@ -7,6 +7,7 @@ from constricter.checker import (
     COMMENT_TYPED_TARGET,
     MESSAGES,
     NESTED_TYPE,
+    REDUNDANT_TYPE,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
     UNTYPED_TARGET,
@@ -41,6 +42,12 @@ _WHY: Final = {
     NESTED_TYPE: (
         "An annotation nested `nesting` deep (5 by default) is hard to read and to change. Name a part\n"
         "of it with an alias (`Row: TypeAlias = tuple[int, set[str]]`, then `dict[str, list[Row]]`)."
+    ),
+    REDUNDANT_TYPE: (
+        "A name annotated the same way twice in one straight-line block says nothing a type checker\n"
+        "doesn't already know from the first one. Drop the second annotation (`x = 2`, not `x: int = 2`);\n"
+        "branches that never run together (an `if`'s two arms, a `try`'s body and its `except`) aren't\n"
+        "compared, since typing the same name the same way in each is normal, not redundant."
     ),
 }
 

@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: MIT
 """Run `--fix` over a copy of a large real codebase, and check the fixed code is still valid.
 
+CI's Corpus job runs this against its Python's standard library; run it by hand against a larger
+one:
+
   local/.venv/bin/python tests/corpus_fix.py [PATH]   # default: this Python's standard library
 
 It copies PATH's Python files to local/corpus-fix/, runs `--fix --unsafe-fixes --all-scopes` on the
 copy, then compiles every file that compiled before and checks a second `--diff` has nothing left
-to change. It prints what broke, if anything, and exits 1 then. Run by hand; CI doesn't.
+to change. It prints what broke, if anything, and exits 1 then.
 """
 
 import contextlib
@@ -70,16 +73,16 @@ def main(argv: Sequence[str]) -> int:
     summary: str = _run(["--fix", *FIX, str(COPY)])[1].splitlines()[-1]
     seconds: float = time.perf_counter() - start
     broken: list[Path] = [path for path in valid if not _compiles(path)]
-    status: int
     diff: str
-    status, diff = _run(["--diff", *FIX, str(COPY)])
+    diff = _run(["--diff", *FIX, str(COPY)])[1]
+    left: int = diff.count(chr(10) + "+++ ")
     _ = sys.stdout.write(f"{root}: {len(valid)} valid files fixed in {seconds:.1f}s. {summary}\n")
     _ = sys.stdout.write(f"  no longer compile: {len(broken)}\n")
     path: Path
     for path in broken[:10]:
         _ = sys.stdout.write(f"    {path}\n")
-    _ = sys.stdout.write(f"  left to fix on a second pass: {diff.count(chr(10) + '+++ ')}\n")
-    return 1 if broken or status != cli.EXIT_CLEAN else 0
+    _ = sys.stdout.write(f"  left to fix on a second pass: {left}\n")
+    return 1 if broken or left else 0
 
 
 if __name__ == "__main__":

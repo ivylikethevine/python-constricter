@@ -7,7 +7,8 @@ from typing import Final, TypeAlias, cast
 
 import pytest
 
-from constricter import cli
+from constricter import cli, notebook
+from constricter.checker import Offence
 
 _Json: TypeAlias = "str | int | list[_Json] | dict[str, _Json] | None"
 _Cell: TypeAlias = dict[str, str | list[str]]
@@ -77,6 +78,36 @@ def test_fix_and_diff_edit_the_cells(tmp_path: Path, capsys: pytest.CaptureFixtu
         {**CELLS[3], "source": ["def f() -> None:\n", "  count: int = 0\n", "  quiet = 1  # noqa: LVA001\n"]},
     ]
     assert path.read_text(encoding="utf-8") == _nbformat(fixed)
+
+
+def test_fix_applies_every_offence_in_a_cell(tmp_path: Path) -> None:
+    """`--fix` applies every fixable offence in a cell, not just its first."""
+    cells: list[_Cell] = [
+        {"cell_type": "code", "source": ["def f() -> None:\n", "  a = 0\n", "  b = 1\n"]},
+    ]
+    path: Path = tmp_path / "two.ipynb"
+    _ = path.write_text(_nbformat(cells), encoding="utf-8", newline="\n")
+    assert cli.main(["-q", "--fix", str(path)]) == cli.EXIT_CLEAN
+    fixed: list[_Cell] = [
+        {**cells[0], "source": ["def f() -> None:\n", "  a: int = 0\n", "  b: int = 1\n"]},
+    ]
+    assert path.read_text(encoding="utf-8") == _nbformat(fixed)
+
+
+def test_fix_ignores_an_offence_without_a_fix_or_a_cell() -> None:
+    """`notebook.fix` skips an offence that has no fix or no cell, not just the ones that do."""
+    cells: list[_Cell] = [{"cell_type": "code", "source": ["a = 0\n"]}]
+    raw: str = _nbformat(cells)
+    offences: list[Offence] = [
+        Offence(1, 0, "unfixable", fix=None, cell=1),
+        Offence(1, 0, "cellless", fix="int", cell=None),
+        Offence(1, 0, "a", fix="int", cell=1),
+    ]
+    text: str
+    changed: list[notebook.Cell]
+    text, changed = notebook.fix(raw, offences)
+    assert [c.number for c in changed] == [1]
+    assert cast("_Cell", json.loads(text)["cells"][0])["source"] == ["a: int = 0\n"]
 
 
 @pytest.mark.parametrize("text", ['{"cells": 1}', "[]", "{not json"])

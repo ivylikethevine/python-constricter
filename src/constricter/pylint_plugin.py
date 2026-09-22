@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""The rules as a pylint plugin (C9101-C9106); reports the codes the level makes errors."""
+"""The rules as a pylint plugin (C9101-C9107); reports the codes the level makes errors."""
 
 from typing import IO, TYPE_CHECKING, NamedTuple, cast, final
 
@@ -14,6 +14,7 @@ from constricter.checker import (
     MESSAGES,
     NESTED_TYPE,
     NESTING,
+    REDUNDANT_TYPE,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
     UNTYPED_TARGET,
@@ -23,6 +24,7 @@ from constricter.checker import (
     Offence,
     check_source,
 )
+from constricter.jsonc import as_text
 from constricter.noqa import lines, unsuppressed
 
 if TYPE_CHECKING:
@@ -53,6 +55,7 @@ SYMBOLS: dict[str, Message] = {
     UNANNOTATED_MEMBER: Message("C9104", "unannotated-module-or-class-variable"),
     VAGUE_TYPE: Message("C9105", "vague-annotation"),
     NESTED_TYPE: Message("C9106", "deeply-nested-annotation"),
+    REDUNDANT_TYPE: Message("C9107", "redundant-annotation"),
 }
 
 
@@ -114,7 +117,7 @@ class ConstricterChecker(BaseRawFileChecker):
             all_scopes=cast("bool", self.linter.config.constricter_all_scopes),
             nesting=cast("int", self.linter.config.constricter_nesting),
         )
-        text: str = source.decode("utf-8")
+        text: str = as_text(source)
         offences: list[Offence] = check_source(text, node.file or "<unknown>", checks)
         o: Offence
         for o in unsuppressed(offences, lines(text)):  # suppression comments, as the CLI reads them

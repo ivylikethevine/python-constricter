@@ -8,7 +8,18 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter.annotations import depth, guessed, inferred, is_vague, returns
+from constricter.annotations import (
+    classes,
+    depth,
+    factories,
+    guessed,
+    imported_from,
+    inferred,
+    is_vague,
+    node_name,
+    returns,
+)
+from constricter.jsonc import as_text
 
 UNANNOTATED: Final = "LVA001"
 UNTYPED_TARGET: Final = "LVA002"
@@ -16,6 +27,7 @@ COMMENT_TYPED_TARGET: Final = "LVA003"
 UNANNOTATED_MEMBER: Final = "LVA004"
 VAGUE_TYPE: Final = "LVA005"
 NESTED_TYPE: Final = "LVA006"
+REDUNDANT_TYPE: Final = "LVA007"
 MESSAGES: dict[str, str] = {
     UNANNOTATED: "local variable {name} is not annotated where it's first bound",
     UNTYPED_TARGET: "for/match variable {name} is untyped; declare it before the statement",
@@ -23,6 +35,7 @@ MESSAGES: dict[str, str] = {
     UNANNOTATED_MEMBER: "module or class variable {name} is not annotated where it's first bound",
     VAGUE_TYPE: "the annotation of {name} is vague: Any, object, or a generic without its parameters",
     NESTED_TYPE: "the annotation of {name} nests too deeply; name a part of it with a `type` alias",
+    REDUNDANT_TYPE: "{name} is annotated again with the type it already has, in the same block",
 }
 NESTING: Final = 5  # LVA006's default depth
 
@@ -46,6 +59,10 @@ _PYTHON2_FUTURES: frozenset[str] = frozenset(
         "unicode_literals",
     },
 )
+# Enum members mustn't be annotated: a base imported from here is one, however it's aliased.
+_ENUM_MODULES: Final = frozenset({"enum"})
+# The conventional name of an instance method's first parameter: typed as its class, for `--fix`.
+_SELF: Final = "self"
 
 
 class Level(IntEnum):
@@ -66,6 +83,7 @@ _ERROR_FROM: dict[str, Level] = {
     UNANNOTATED_MEMBER: Level.STRICT,
     VAGUE_TYPE: Level.SUFFOCATE,
     NESTED_TYPE: Level.SUFFOCATE,
+    REDUNDANT_TYPE: Level.SUFFOCATE,
 }
 # Codes reported only from a level up (the rest are reported at every level).
 _REPORTED_FROM: dict[str, Level] = {VAGUE_TYPE: Level.STRICT, NESTED_TYPE: Level.STRICT}
@@ -80,6 +98,9 @@ class _Settings:
     nesting: int
     lines: Sequence[str]
     calls: dict[str, str]  # each module function's return type, for `--fix`
+    factories: frozenset[str]  # names imported that build a class or special form, for `--fix`
+    classes: dict[str, dict[str, str]]  # each class's annotated attributes, for `--fix`
+    owners: dict[int, str]  # each method's class, by `id()`, to type its `self`, for `--fix`
 
 
 @dataclass(frozen=True, order=True)
@@ -152,8 +173,7 @@ def check_source(
 
     """
     tree: ast.Module = _parse(source, filename)
-    text: str = source.decode("utf-8") if isinstance(source, bytes) else source
-    return check_tree(tree, checks, lines=text.splitlines(), calls=calls)
+    return check_tree(tree, checks, lines=as_text(source).splitlines(), calls=calls)
 
 
 def _parse(source: str | bytes, filename: str) -> ast.Module:
@@ -167,6 +187,24 @@ def _parse(source: str | bytes, filename: str) -> ast.Module:
         return ast.parse(source, filename, type_comments=True)
     except SyntaxError:  # a misplaced `# type:` comment, or a real error raised again here
         return ast.parse(source, filename)
+
+
+def _settings(
+    tree: ast.Module,
+    checks: Checks,
+    lines: Sequence[str],
+    calls: dict[str, str],
+) -> _Settings:
+    return _Settings(
+        checks.type_comments or _python2_compatible(tree),
+        checks.all_scopes,
+        checks.nesting,
+        lines,
+        calls,
+        factories(tree),
+        classes(tree),
+        _owners(tree),
+    )
 
 
 def check_tree(
@@ -186,14 +224,8 @@ def check_tree(
       Every offence, in source order.
 
     """
-    settings: _Settings = _Settings(
-        checks.type_comments or _python2_compatible(tree),
-        checks.all_scopes,
-        checks.nesting,
-        lines,
-        {**(calls or {}), **returns(tree)},
-    )
-    return sorted(o for scope in _scopes(tree, settings) for o in scope.reported())
+    settings: _Settings = _settings(tree, checks, lines, {**(calls or {}), **returns(tree)})
+    return sorted([*(o for scope in _scopes(tree, settings) for o in scope.reported()), *_redundant(tree)])
 
 
 class Coverage(NamedTuple):
@@ -220,13 +252,7 @@ def annotation_coverage(source: str, checks: Checks = DEFAULT_CHECKS) -> Coverag
 
     """
     tree: ast.Module = _parse(source, "<unknown>")
-    settings: _Settings = _Settings(
-        checks.type_comments or _python2_compatible(tree),
-        checks.all_scopes,
-        checks.nesting,
-        source.splitlines(),
-        {},
-    )
+    settings: _Settings = _settings(tree, checks, source.splitlines(), {})
     scopes: list[_Scope] = _scopes(tree, settings)
     total: int = sum(len(scope.bound()) for scope in scopes)
     untyped: int = sum(o.code in _UNTYPED for scope in scopes for o in scope.reported())
@@ -246,6 +272,99 @@ def _scopes(tree: ast.Module, settings: _Settings) -> list["_Scope"]:
     if settings.all_scopes:
         scopes += _body_scopes(tree, settings)
     return scopes
+
+
+def _redundant(tree: ast.Module) -> list[Offence]:
+    """Find a name annotated again with the type it already has, in the same straight-line block.
+
+    Every block (a function, module or class body; an `if`'s body and its `orelse`; ...) is checked
+    on its own: two branches that never run in the same pass typing a name the same way isn't
+    redundant, so they're not compared against each other.
+
+    Returns:
+      One offence (LVA007) per redundant re-annotation.
+
+    """
+    offences: list[Offence] = []
+    node: ast.AST
+    block: list[ast.stmt]
+    for node in ast.walk(tree):
+        for block in _blocks(node):
+            offences += _redundant_in(block)
+    return offences
+
+
+def _blocks(node: ast.AST) -> Iterator[list[ast.stmt]]:
+    """Find the straight-line blocks of statements directly in `node`.
+
+    Yields:
+      Each one (an `if`'s body and its `orelse` separately, and likewise for the other compound
+      statements with more than one: they run in different passes, if at all).
+
+    """
+    body: list[ast.stmt]
+    orelse: list[ast.stmt]
+    handlers: list[ast.ExceptHandler]
+    finalbody: list[ast.stmt]
+    handler: ast.ExceptHandler
+    cases: list[ast.match_case]
+    case: ast.match_case
+    match node:
+        case (
+            ast.Module(body=body)
+            | ast.FunctionDef(body=body)
+            | ast.AsyncFunctionDef(body=body)
+            | ast.ClassDef(body=body)
+            | ast.With(body=body)
+            | ast.AsyncWith(body=body)
+        ):
+            yield body
+        case (
+            ast.If(body=body, orelse=orelse)
+            | ast.For(body=body, orelse=orelse)
+            | ast.AsyncFor(body=body, orelse=orelse)
+            | ast.While(body=body, orelse=orelse)
+        ):
+            yield body
+            yield orelse  # empty when there's no `else`, which is harmless: nothing to find in it
+        case (
+            ast.Try(body=body, handlers=handlers, orelse=orelse, finalbody=finalbody)
+            | ast.TryStar(body=body, handlers=handlers, orelse=orelse, finalbody=finalbody)
+        ):
+            yield body
+            for handler in handlers:
+                yield handler.body
+            yield orelse
+            yield finalbody
+        case ast.Match(cases=cases):
+            for case in cases:
+                yield case.body
+        case _:
+            pass
+
+
+def _redundant_in(block: list[ast.stmt]) -> list[Offence]:
+    """Find a name in `block` annotated the same way twice.
+
+    Returns:
+      One offence per repeat, at the later statement.
+
+    """
+    offences: list[Offence] = []
+    seen: dict[str, str] = {}
+    stmt: ast.stmt
+    name: str
+    annotation: ast.expr
+    for stmt in block:
+        match stmt:
+            case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation):
+                text: str = ast.unparse(annotation)
+                if seen.get(name) == text:
+                    offences.append(Offence(*_at(stmt), name, REDUNDANT_TYPE))
+                seen[name] = text
+            case _:
+                pass
+    return offences
 
 
 def _python2_compatible(tree: ast.Module) -> bool:
@@ -270,12 +389,15 @@ def _body_scopes(tree: ast.Module, settings: _Settings) -> list["_Scope"]:
       Their scopes, but for an enum's.
 
     """
-    classes: list[list[ast.stmt]] = [
-        node.body for node in ast.walk(tree) if isinstance(node, ast.ClassDef) and not _is_enum(node)
+    imported: frozenset[str] = imported_from(tree, _ENUM_MODULES)
+    class_bodies: list[list[ast.stmt]] = [
+        node.body
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef) and not _is_enum(node, imported)
     ]
     scopes: list[_Scope] = []
     body: list[ast.stmt]
-    for body in (tree.body, *classes):
+    for body in (tree.body, *class_bodies):
         # A class body is never fixed: annotating a dataclass's variable makes it a field.
         scope: _Scope = _Scope({"_"}, [], settings, unannotated=UNANNOTATED_MEMBER, fixable=body is tree.body)
         stmt: ast.stmt
@@ -285,22 +407,17 @@ def _body_scopes(tree: ast.Module, settings: _Settings) -> list["_Scope"]:
     return scopes
 
 
-def _is_enum(node: ast.ClassDef) -> bool:
+def _is_enum(node: ast.ClassDef, imported: frozenset[str]) -> bool:
     """Check whether a base is an enum: enum members mustn't be annotated.
 
     Returns:
-      Whether its name ends in `Enum` or `Flag`.
+      Whether a base is imported from `enum` (`imported`, however it's aliased), or else its name
+      ends in `Enum` or `Flag` (for one imported some other way).
 
     """
-    base: ast.expr
-    name: str
-    for base in node.bases:
-        match base:
-            case ast.Name(id=name) | ast.Attribute(attr=name) if name.endswith(("Enum", "Flag")):
-                return True
-            case _:
-                pass
-    return False
+    return any(
+        node_name(base) in imported or node_name(base).endswith(("Enum", "Flag")) for base in node.bases
+    )
 
 
 def _collect_functions(body: list[ast.stmt], into: list[_FunctionDef]) -> None:
@@ -313,6 +430,40 @@ def _collect_functions(body: list[ast.stmt], into: list[_FunctionDef]) -> None:
             _collect_functions(stmt.body, into)
         else:
             _collect_functions(_child_statements(stmt), into)
+
+
+def _owners(tree: ast.Module) -> dict[int, str]:
+    """Map each direct method of a class to that class's name, by the method's `id`.
+
+    For `--fix` to type a method's `self`. A method is a function directly in a class's body,
+    however deep through `if`/`try`/..., but not through a nested class's or function's own body.
+
+    Returns:
+      Each such function, by `id()`, mapped to its class's name.
+
+    """
+    found: dict[int, str] = {}
+    node: ast.AST
+    methods: list[_FunctionDef]
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            methods = []
+            _direct_methods(node.body, methods)
+            found.update((id(method), node.name) for method in methods)
+    return found
+
+
+def _direct_methods(body: list[ast.stmt], into: list[_FunctionDef]) -> None:
+    """Collect the functions directly in a class's body, through compound statements.
+
+    A nested class's own methods aren't included.
+    """
+    stmt: ast.stmt
+    for stmt in body:
+        if isinstance(stmt, _FUNCTION_DEFS):
+            into.append(stmt)
+        elif not isinstance(stmt, ast.ClassDef):
+            _direct_methods(_child_statements(stmt), into)
 
 
 def _child_statements(stmt: ast.stmt) -> list[ast.stmt]:
@@ -399,8 +550,11 @@ def _captures(pattern: ast.pattern, lines: Sequence[str]) -> Iterator[tuple[str,
                 pass
 
 
-def _at(node: ast.expr | ast.pattern) -> tuple[int, int]:
+def _at(node: ast.expr | ast.pattern | ast.stmt) -> tuple[int, int]:
     return node.lineno, node.col_offset
+
+
+_REST: Final = re.compile(rb"\*\*\s*(\w+)\b")
 
 
 def _rest_at(node: ast.MatchMapping, name: str, lines: Sequence[str]) -> tuple[int, int]:
@@ -410,12 +564,17 @@ def _rest_at(node: ast.MatchMapping, name: str, lines: Sequence[str]) -> tuple[i
       Its position (as `ast` gives it, a byte column), or else the pattern's start.
 
     """
-    rest: re.Pattern[bytes] = re.compile(rb"\*\*\s*(" + re.escape(name.encode()) + rb")\b")
+    target: bytes = name.encode()
     number: int
-    found: re.Match[bytes] | None
+    encoded: bytes
+    start: int
+    found: re.Match[bytes]
     for number in range(node.lineno, min(node.end_lineno or node.lineno, len(lines)) + 1):
-        if found := rest.search(lines[number - 1].encode(), node.col_offset if number == node.lineno else 0):
-            return number, found.start(1)
+        encoded = lines[number - 1].encode()
+        start = node.col_offset if number == node.lineno else 0
+        for found in _REST.finditer(encoded, start):
+            if found.group(1) == target:
+                return number, found.start(1)
     return _at(node)
 
 
@@ -438,6 +597,8 @@ class _Scope:
         self.fixable: bool = fixable
         self.offences: list[Offence] = []
         self.first: list[str] = []  # each first binding the rules cover, typed or not
+        self.types: dict[str, str] = {}  # each name's known type, for inferring `x = y`'s
+        self.guesses: set[str] = set()  # `types` entries from an unsafe fix: copying one is too
 
     def bind(
         self,
@@ -457,9 +618,7 @@ class _Scope:
 
     def declare(self, name: str) -> None:
         """Bind `name` by an annotation (`name: T`, `name: T = ...`): a typed first binding."""
-        if name not in self.declared:
-            self.declared.add(name)
-            self.first.append(name)
+        self.bind(name, (0, 0), None)  # position is unused: `code` is `None`, so nothing is reported
 
     def _covered(self, name: str) -> bool:
         """Check whether the rules cover `name` here.
@@ -544,10 +703,17 @@ def _function_scope(func: _FunctionDef, functions: list[_FunctionDef], settings:
 
     """
     args: ast.arguments = func.args
-    params: set[str] = {a.arg for a in (*args.posonlyargs, *args.args, *args.kwonlyargs)}
+    named: tuple[ast.arg, ...] = (*args.posonlyargs, *args.args, *args.kwonlyargs)
+    params: set[str] = {a.arg for a in named}
     params.update(extra.arg for extra in (args.vararg, args.kwarg) if extra is not None)
     # `_` is a discard.
     scope: _Scope = _Scope(params | {"_"}, functions, settings)
+    # A copy of a plain, annotated parameter (`*args`/`**kwargs` aren't the type they're annotated
+    # with) can be typed the same way, the moment it's assigned.
+    scope.types.update((arg.arg, ast.unparse(arg.annotation)) for arg in named if arg.annotation is not None)
+    owner: str | None = settings.owners.get(id(func))
+    if owner is not None and named and named[0].arg == _SELF:
+        _ = scope.types.setdefault(_SELF, owner)
     stmt: ast.stmt
     for stmt in func.body:
         _visit(scope, stmt)
@@ -587,6 +753,7 @@ def _declare(scope: _Scope, stmt: ast.stmt) -> None:
         case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation):
             scope.declare(name)
             scope.annotation(name, annotation)
+            _ = scope.types.setdefault(name, ast.unparse(annotation))
         case _ if type(stmt).__name__ == _TYPE_ALIAS:
             alias: ast.expr = cast("ast.expr", next(ast.iter_child_nodes(stmt)))  # its first field, the name
             scope.declared.update(name.id for name in _names(alias))
@@ -609,13 +776,19 @@ def _bind(scope: _Scope, stmt: ast.stmt) -> None:
     match stmt:
         case ast.Assign(targets=[ast.Name(id=name) as single], value=value, type_comment=comment):
             calls: dict[str, str] = scope.settings.calls
-            scope.bind(
-                name,
-                _at(single),
-                scope.unannotated(comment),
-                inferred(value, calls),
-                unsafe=guessed(value, calls),
+            fix: str | None = inferred(
+                value,
+                calls,
+                scope.settings.factories,
+                scope.types,
+                scope.settings.classes,
             )
+            unsafe: bool = guessed(value, calls, frozenset(scope.guesses), scope.types)
+            scope.bind(name, _at(single), scope.unannotated(comment), fix, unsafe=unsafe)
+            if fix is not None and name not in scope.types:
+                scope.types[name] = fix
+                if unsafe:
+                    scope.guesses.add(name)
         case ast.Assign(targets=targets, type_comment=comment):
             _bind_targets(scope, targets, scope.unannotated(comment))
         case ast.With(items=items, type_comment=comment) | ast.AsyncWith(items=items, type_comment=comment):

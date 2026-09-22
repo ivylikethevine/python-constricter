@@ -58,7 +58,7 @@ def read(baseline: Path) -> Entries:
             path: str
             counts: _Json
             for path, counts in files.items():
-                if not isinstance(counts, dict) or not all(_is_count(n) for n in counts.values()):
+                if not isinstance(counts, dict) or not all(jsonc.is_int(n) for n in counts.values()):
                     break
                 entries[path] = {entry: n for entry, n in counts.items() if isinstance(n, int)}
             else:
@@ -67,10 +67,6 @@ def read(baseline: Path) -> Entries:
             pass
     message = f"{baseline}: not a constricter baseline (version {VERSION})"
     raise ValueError(message)
-
-
-def _is_count(value: _Json) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def write(baseline: Path, found: Mapping[str, Sequence[Offence]]) -> int:
