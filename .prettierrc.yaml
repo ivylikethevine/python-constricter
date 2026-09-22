@@ -1,4 +1,12 @@
-# Markdown formatting, agreeing with .markdownlint.yaml and .editorconfig.
+# Prettier formats Markdown; this pins its defaults so a hand run
+# (`.github/node_modules/.bin/prettier --write <files>`, after
+# `npm ci --prefix .github`) produces the same bytes and agrees with
+# .markdownlint.yaml and .editorconfig:
+#   - proseWrap always / printWidth 100: prose is rewrapped at MD013's 100
+#   - tabWidth 2 / spaces / lf: .editorconfig's values, restated so prettier
+#     needs no editorconfig lookup
+#   - emphasis is not configurable: prettier writes `_italic_` and `**bold**`,
+#     which is exactly what MD049 (underscore) and MD050 (asterisk) require
 proseWrap: always
 printWidth: 100
 tabWidth: 2

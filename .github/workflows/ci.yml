@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: $/.github/actions/setup
+      - uses: ./.github/actions/setup
       - run: ruff check --output-format=github .
       - run: ruff format --check .
       - run: basedpyright
@@ -74,7 +74,7 @@ jobs:
       - run: npm ci --prefix .github
       - run: git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/markdownlint-cli2
       - run: git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/prettier --check
-      - uses: $/.github/actions/tool
+      - uses: ./.github/actions/tool
         with:
           url: https://github.com/lycheeverse/lychee/releases/download/lychee-v0.24.2/lychee-x86_64-unknown-linux-gnu.tar.gz
           sha256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
@@ -100,7 +100,7 @@ jobs:
         with:
           persist-credentials: false
       # The repository's own action, run on its own code.
-      - uses: ./ # zizmor: ignore[self-repository] actionlint rejects a bare `$/` (no path)
+      - uses: ./
         with:
           args: --level=suffocate --all-scopes --format=github src tests
 
@@ -127,7 +127,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: $/.github/actions/setup
+      - uses: ./.github/actions/setup
         with:
           python-version: "3.12" # the `corpus` group's django needs 3.12+
           group: corpus
@@ -189,7 +189,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: $/.github/actions/setup
+      - uses: ./.github/actions/setup
         with:
           python-version: ${{ matrix.python }}
           group: ${{ matrix.group }}
@@ -218,8 +218,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: $/.github/actions/setup
-      - uses: $/.github/actions/build
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/build
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ci-dist # release.yml's build uploads `dist`

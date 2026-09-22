@@ -1,16 +1,23 @@
-# markdownlint-cli2's rules for every tracked .md (as in the sibling repos).
+# markdownlint rules for every tracked .md; CI runs markdownlint-cli2 with them.
+# Source - https://stackoverflow.com/a/74551354 (Gabriel M. Silva, retrieved
+# 2026-08-14, CC BY-SA 4.0)
 default: true
 
-# Name the emphasis style rather than infer it per file; prettier writes `_x_`.
+# MD049 "consistent" would infer the emphasis style per file; naming it makes
+# the answer the same everywhere. Underscore is what the docs already use;
+# **bold** is MD050's business and stays asterisks.
 MD049:
   style: underscore
 
-# Prose wraps at 100 (prettier does it); tables and code can't wrap.
+# MD013/line-length: prose wraps at 100 (prettier's proseWrap does it), and
+# tables and code can't wrap.
 MD013:
   line_length: 100
   tables: false
   code_blocks: false
 
-# Only the `# H1` is a title, never front matter.
+# MD025/single-h1: only the `# H1` counts as a page's title, never a front
+# matter `title:`. No page here carries front matter, so this only keeps one
+# that slips in from counting as a second H1.
 MD025:
   front_matter_title: ""

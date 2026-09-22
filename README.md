@@ -359,7 +359,7 @@ Everything else is on. Some of these may be revisited.
 | typos              | the word `astroid`                                                                                                               | A real package name.                                                                                                                       |
 | harden-runner      | `egress-policy: audit` on macOS and Windows, in the release jobs (release.yml, build.yml), and in the weekly external-link check | harden-runner supports only audit on GitHub's macOS and Windows runners; the release jobs haven't run yet; external links can go anywhere. |
 | reuse              | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)                                                          | No recent release ships a wheel for Python 3.11+, so installing it builds from source with an unpinned `poetry-core`.                      |
-| zizmor             | `self-repository` on the CI job that runs the repository's root action                                                           | zizmor wants `$/`, and actionlint rejects a bare `$/` (it has no path), so that one line uses `./`.                                        |
+| zizmor             | `self-repository` (`.github/zizmor.yml`)                                                                                         | Scorecard reads the `$/` form it wants as an unpinned third-party action, so local actions stay `./`.                                      |
 
 To apply the rulesets in `.github/rulesets/` (repo admin):
 
@@ -380,10 +380,8 @@ Done:
   (Docs), pytest on Linux, macOS and Windows × Python 3.11–3.14 (Test), and the sdist and wheel,
   `twine check` and a wheel smoke test (Build).
 - **security.yml** runs on pushes, PRs and weekly: CodeQL (Python and Actions), zizmor (pedantic),
-  actionlint (kjanat's fork, which reads the `$/` self-repository syntax the workflows use),
-  pip-audit on the lock, and dependency review on PRs.
-- **scorecard.yml** runs OpenSSF Scorecard on `main` and weekly. Its pin check misreads the `$/`
-  references as unpinned actions, so it flags them.
+  actionlint, pip-audit on the lock, and dependency review on PRs.
+- **scorecard.yml** runs OpenSSF Scorecard on `main` and weekly.
 - **release.yml** runs on `v*` tags: CI, then **build.yml** (a reusable workflow) builds the dists,
   checks the tag matches the version, and attests their provenance (SLSA v1 Build Level 3, as the
   build and attestation run in a reusable workflow), then PyPI (trusted publishing), then a GitHub

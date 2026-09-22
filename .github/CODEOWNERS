@@ -1,2 +1,2 @@
-# Everything: the maintainer reviews every change.
+# One maintainer; only takes effect where branch protection requires review.
 * @ivylikethevine
