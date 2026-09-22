@@ -9,6 +9,7 @@ from enum import IntEnum
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.annotations import (
+    classes,
     depth,
     factories,
     guessed,
@@ -96,6 +97,7 @@ class _Settings:
     lines: Sequence[str]
     calls: dict[str, str]  # each module function's return type, for `--fix`
     factories: frozenset[str]  # names imported that build a class or special form, for `--fix`
+    classes: dict[str, dict[str, str]]  # each class's annotated attributes, for `--fix`
 
 
 @dataclass(frozen=True, order=True)
@@ -197,6 +199,7 @@ def _settings(
         lines,
         calls,
         factories(tree),
+        classes(tree),
     )
 
 
@@ -383,14 +386,14 @@ def _body_scopes(tree: ast.Module, settings: _Settings) -> list["_Scope"]:
 
     """
     imported: frozenset[str] = imported_from(tree, _ENUM_MODULES)
-    classes: list[list[ast.stmt]] = [
+    class_bodies: list[list[ast.stmt]] = [
         node.body
         for node in ast.walk(tree)
         if isinstance(node, ast.ClassDef) and not _is_enum(node, imported)
     ]
     scopes: list[_Scope] = []
     body: list[ast.stmt]
-    for body in (tree.body, *classes):
+    for body in (tree.body, *class_bodies):
         # A class body is never fixed: annotating a dataclass's variable makes it a field.
         scope: _Scope = _Scope({"_"}, [], settings, unannotated=UNANNOTATED_MEMBER, fixable=body is tree.body)
         stmt: ast.stmt
@@ -732,7 +735,13 @@ def _bind(scope: _Scope, stmt: ast.stmt) -> None:
     match stmt:
         case ast.Assign(targets=[ast.Name(id=name) as single], value=value, type_comment=comment):
             calls: dict[str, str] = scope.settings.calls
-            fix: str | None = inferred(value, calls, scope.settings.factories, scope.types)
+            fix: str | None = inferred(
+                value,
+                calls,
+                scope.settings.factories,
+                scope.types,
+                scope.settings.classes,
+            )
             unsafe: bool = guessed(value, calls, frozenset(scope.guesses))
             scope.bind(name, _at(single), scope.unannotated(comment), fix, unsafe=unsafe)
             if fix is not None and name not in scope.types:

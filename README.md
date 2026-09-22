@@ -449,6 +449,16 @@ Done:
   second pass anywhere, and `requests`' own test suite (not just its compile check) passed
   identically — 617 passed, 15 skipped, 1 xfailed — before and after `--fix --unsafe-fixes` on its
   source.
+- **`--fix` infers subscripts and attributes** of an already-typed local: `container[key]` (its
+  element type from a `list`, `dict` or homogeneous `tuple[T, ...]`; the same `list`/`str`/`bytes`
+  type back for a slice; nothing for a fixed-length heterogeneous tuple, since the element varies
+  with the index) and `obj.attr` (a class-level annotated attribute of a class defined in the same
+  module — not one only assigned in `__init__`, which would need dataflow across methods to see).
+  Both build on `_Scope.types`, so a guessed source's uncertainty carries through automatically, the
+  same as a plain copy. Re-verified on the corpus: no crashes, still converges in one `--fix` pass,
+  `requests`' test suite still passes identically, and fixed rose further (e.g. standard library
+  4,431 → 4,450, mypy 1,939 → 1,996, django 2,408 → 2,414, sqlalchemy 830 → 848, pydantic 434 →
+  447).
 
 Next:
 
@@ -510,17 +520,17 @@ Next:
    the permanent corpus: run its own test suite before/after `--fix`, not just check that it still
    compiles.
 
-4. **Raise `--fix`'s auto-fix rate further.** The easy, safe wins are done (see Done, above); what's
-   left needs the bigger lever: `attribute access` (`x = obj.attr`) and `subscripts`
-   (`x = container[key]`) still can't be inferred, nor can a method call on an already-typed local
-   (`x = some_str.strip()`) — together the largest remaining category in the original breakdown (a
-   sample of ~34,500 unfixed `LVA001`s across the standard library, sqlalchemy and django: 68% of
-   "calls" were a method call on some other object). `_Scope.types` (a local's known type, added for
-   the copying already done) already has the piece these need, but using it here means parsing a
-   container type's element out of its own annotation text (`list[int]` → `int` for `container[0]`)
-   and deciding how far to trust a mutated or reassigned local; real design work, not a mechanical
-   extension. `BinOp` (`a + b`, ~5% of the sample) would need operand types plus knowing the
-   operator isn't overloaded to something else — riskier, lower value, likely skip.
+4. **Raise `--fix`'s auto-fix rate further.** Attributes and subscripts are done (see Done, above);
+   what's left: a **method call on an already-typed local** (`x = some_str.strip()`) — most of the
+   "68% of calls are a method call on some other object" finding from the original breakdown still
+   isn't covered, since it needs the receiver's type _and_ knowing which of its methods have a fixed
+   return type (builtin `str`/`bytes`/`list`/`dict` methods mostly, unlike an arbitrary class's,
+   which isn't resolvable without the same field-following `classes` already does, extended to
+   methods). `self.attr` inside a method (an attribute only ever assigned in `__init__`, not
+   class-level annotated) is the other `obj.attr` case `classes` doesn't cover yet, and needs
+   knowing which class a method belongs to — `_Scope` doesn't track that today. `BinOp` (`a + b`,
+   ~5% of the sample) would need operand types plus knowing the operator isn't overloaded to
+   something else — riskier, lower value, likely skip.
 5. **LVA008: a type that could narrow.** A warning at `constrict`, an error at `suffocate`: a
    declared type that every value assigned to the name (across its lifetime, not just its first
    binding) is consistent with a strictly narrower one, e.g. a `str` only ever assigned `"0"` or
@@ -539,6 +549,12 @@ Next:
    genuinely unrelated purposes (a sentinel, a generic helper handling more than one type by design)
    is a real, if rarer, source of false positives to design around. Depends on `LVA008`'s design
    work (same value-flow pass could likely serve both checks).
+7. **LVA010: a declared union only one branch ever uses.** A warning: `x: int | str = 0` where every
+   value ever assigned across `x`'s lifetime is consistent with only `int`, never `str` — the union
+   is wider than the code actually exercises, and could narrow to `int`. The complement of `LVA008`
+   (inferring a narrower type from values with no declared type to compare against) and `LVA009` (a
+   reassignment that breaks a declared type, not just widens what's already declared as a union);
+   shares the same value-flow machinery and design questions as both.
 
 After the first release (these need it on PyPI, or a published tag):
 

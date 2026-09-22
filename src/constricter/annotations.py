@@ -134,6 +134,39 @@ def factories(tree: ast.Module) -> frozenset[str]:
     return imported_from(tree, _FACTORY_MODULES)
 
 
+def classes(tree: ast.Module) -> dict[str, dict[str, str]]:
+    """Map each class defined in the module to its class-level annotated attributes.
+
+    Only a class-body annotation counts (`class C: x: int`); one only assigned in `__init__` or
+    elsewhere needs dataflow across methods to see, which is out of scope here. A name that names
+    more than one class in the module (however unlikely) gets the last one's attributes.
+
+    Returns:
+      Each class's name, mapped to its attributes' names and annotation text.
+
+    """
+    found: dict[str, dict[str, str]] = {}
+    node: ast.AST
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            found[node.name] = _attributes(node)
+    return found
+
+
+def _attributes(node: ast.ClassDef) -> dict[str, str]:
+    attrs: dict[str, str] = {}
+    stmt: ast.stmt
+    name: str
+    annotation: ast.expr
+    for stmt in node.body:
+        match stmt:
+            case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation):
+                attrs[name] = ast.unparse(annotation)
+            case _:
+                pass
+    return attrs
+
+
 @lru_cache(maxsize=256)
 def _parsed(annotation: ast.expr) -> ast.expr:
     """Unwrap a string annotation.
@@ -267,13 +300,16 @@ def inferred(
     calls: Mapping[str, str],
     known_factories: frozenset[str],
     declared: Mapping[str, str],
+    known_classes: Mapping[str, Mapping[str, str]],
 ) -> str | None:
     """Return the annotation `value` makes unambiguous, given the module's function `calls`.
 
     A literal's type (containers too, when their elements agree), a call to a module function that
     declares its return type, a class it constructs, or (`declared`) another local this scope
-    already gave a type. `known_factories` (see `factories`) are calls that build a class or special
-    form rather than an instance of it, so they're never guessed to construct one.
+    already gave a type: a plain copy, a subscript of a known container, or (`known_classes`, see
+    `classes`) an attribute of a class defined in this module. `known_factories` (see `factories`)
+    are calls that build a class or special form rather than an instance of it, so they're never
+    guessed to construct one.
 
     Returns:
       The annotation as source text, or `None` if the value doesn't decide one.
@@ -281,9 +317,24 @@ def inferred(
     """
     if isinstance(value, ast.Name) and value.id in declared:
         return declared[value.id]
+    found: str | None
+    if (
+        isinstance(value, ast.Subscript)
+        and isinstance(value.value, ast.Name)
+        and value.value.id in declared
+        and (found := _subscripted(declared[value.value.id], value)) is not None
+    ):
+        return found
+    if (
+        isinstance(value, ast.Attribute)
+        and isinstance(value.value, ast.Name)
+        and value.value.id in declared
+        and (found := known_classes.get(declared[value.value.id], {}).get(value.attr)) is not None
+    ):
+        return found
     return (
         _scalar(value)
-        or _container(value, calls, known_factories, declared)
+        or _container(value, calls, known_factories, declared, known_classes)
         or _called(value, calls, known_factories)
     )
 
@@ -311,6 +362,7 @@ def _container(
     calls: Mapping[str, str],
     known_factories: frozenset[str],
     declared: Mapping[str, str],
+    known_classes: Mapping[str, Mapping[str, str]],
 ) -> str | None:
     elements: list[ast.expr]
     keys: list[ast.expr | None]
@@ -318,14 +370,17 @@ def _container(
     parts: list[str | None]
     match value:
         case ast.List(elts=elements) | ast.Set(elts=elements) if elements:
-            element: str | None = _uniform(elements, calls, known_factories, declared)
+            element: str | None = _uniform(elements, calls, known_factories, declared, known_classes)
             return f"{'list' if isinstance(value, ast.List) else 'set'}[{element}]" if element else None
         case ast.Tuple(elts=elements) if elements:
-            parts = [inferred(element, calls, known_factories, declared) for element in elements]
+            parts = [
+                inferred(element, calls, known_factories, declared, known_classes) for element in elements
+            ]
             return None if None in parts else f"tuple[{', '.join(str(part) for part in parts)}]"
         case ast.Dict(keys=keys, values=values) if keys and None not in keys:
-            key: str | None = _uniform([k for k in keys if k is not None], calls, known_factories, declared)
-            item: str | None = _uniform(values, calls, known_factories, declared)
+            present: list[ast.expr] = [k for k in keys if k is not None]
+            key: str | None = _uniform(present, calls, known_factories, declared, known_classes)
+            item: str | None = _uniform(values, calls, known_factories, declared, known_classes)
             return f"dict[{key}, {item}]" if key and item else None
         case _:
             return None
@@ -336,6 +391,7 @@ def _uniform(
     calls: Mapping[str, str],
     known_factories: frozenset[str],
     declared: Mapping[str, str],
+    known_classes: Mapping[str, Mapping[str, str]],
 ) -> str | None:
     """Find the one type every element has.
 
@@ -343,8 +399,47 @@ def _uniform(
       That type, or `None` if they differ or any is unknown.
 
     """
-    types: set[str | None] = {inferred(element, calls, known_factories, declared) for element in elements}
+    types: set[str | None] = {
+        inferred(element, calls, known_factories, declared, known_classes) for element in elements
+    }
     return next(iter(types)) if len(types) == 1 else None
+
+
+def _subscripted(container: str, node: ast.Subscript) -> str | None:
+    """Infer `container[...]`'s type, given `container`'s own type as text.
+
+    A slice (`x[1:2]`) of a `list`, `str` or `bytes` is the same type as `container` itself; a plain
+    index into one is its element type, as is any index into a `dict` (its value type) or a
+    homogeneous `tuple[T, ...]`. A fixed-length `tuple[T1, T2]`'s element only varies with the index,
+    which isn't worth resolving.
+
+    Returns:
+      The annotation as source text, or `None` if the subscript doesn't decide one.
+
+    """
+    # `container` is always `ast.unparse`'s own output (an annotation, or an earlier `inferred`),
+    # never user text, so it's always valid Python to parse back.
+    root: ast.expr = ast.parse(container, mode="eval").body
+    sliced: bool = isinstance(node.slice, ast.Slice)
+    element: ast.expr
+    last: ast.expr
+    match root:
+        case ast.Name(id="str" | "bytes"):
+            return container
+        case ast.Subscript(value=ast.Name(id="list" | "List"), slice=element):
+            return container if sliced else ast.unparse(element)
+        case ast.Subscript(
+            value=ast.Name(id="dict" | "Dict"),
+            slice=ast.Tuple(elts=[_, element]),
+        ) if not sliced:
+            return ast.unparse(element)
+        case ast.Subscript(
+            value=ast.Name(id="tuple" | "Tuple"),
+            slice=ast.Tuple(elts=[element, last]),
+        ) if not sliced and isinstance(last, ast.Constant) and last.value is Ellipsis:
+            return ast.unparse(element)
+        case _:
+            return None
 
 
 def _called(value: ast.expr, calls: Mapping[str, str], known_factories: frozenset[str]) -> str | None:

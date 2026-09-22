@@ -743,6 +743,77 @@ def test_a_copy_of_a_guessed_fix_is_guessed_too() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("param", "subscript", "fix"),
+    [
+        ("nums: list[int]", "nums[0]", "int"),
+        ("nums: list[int]", "nums[1:2]", "list[int]"),
+        ("pairs: dict[str, int]", "pairs['x']", "int"),
+        ("row: tuple[int, ...]", "row[0]", "int"),
+        ("row: tuple[int, str]", "row[0]", None),  # which element varies with the index
+        ("text: str", "text[0]", "str"),
+        ("text: str", "text[1:3]", "str"),
+        ("data: bytes", "data[0:1]", "bytes"),
+        ("items: set[int]", "items.pop()", None),  # a `set` isn't subscriptable
+        ("nums: list[int]", "nums[i]", "int"),  # a non-literal index still gets the element type
+    ],
+)
+def test_fixes_infer_a_typed_locals_subscript(param: str, subscript: str, fix: str | None) -> None:
+    """A subscript of an already-typed local offers its element type, a slice its own type."""
+    source: str = f"def f({param}, i: int) -> None:\n  x = {subscript}\n"
+    assert [(o.name, o.fix) for o in check_source(source)] == [("x", fix)]
+
+
+def test_a_subscript_of_a_guessed_fix_is_not_offered() -> None:
+    """A subscript of an unsafely-fixed local (`Box` isn't a known container) offers nothing."""
+    source: str = "def f() -> None:\n  a = Box([1])\n  b = a[0]\n"
+    assert [(o.name, o.fix) for o in check_source(source)] == [("a", "Box"), ("b", None)]
+
+
+def test_fixes_infer_a_typed_locals_attribute() -> None:
+    """A class-level annotated attribute of a locally-constructed instance offers its type."""
+    source: str = textwrap.dedent(
+        """
+    class Point:
+      x: int
+      y: int
+      label = "origin"  # not class-level annotated: not offered
+
+    def f() -> None:
+      p = Point()
+      a = p.x
+      b = p.y
+      c = p.z
+      d = p.label
+    """,
+    )
+    assert [(o.name, o.fix) for o in check_source(source)] == [
+        ("p", "Point"),
+        ("a", "int"),
+        ("b", "int"),
+        ("c", None),
+        ("d", None),
+    ]
+
+
+def test_an_attribute_of_a_guessed_fix_is_guessed_too() -> None:
+    """A class attribute of an unsafely-fixed local is no more certain than its source."""
+    source: str = textwrap.dedent(
+        """
+    class Point:
+      x: int
+
+    def f() -> None:
+      p = Point()
+      a = p.x
+    """,
+    )
+    assert [(o.name, o.fix, o.unsafe) for o in check_source(source)] == [
+        ("p", "Point", True),
+        ("a", "int", True),
+    ]
+
+
 def test_annotation_coverage_counts_first_bindings() -> None:
     """Coverage counts the first bindings the rules cover; typed ones, type comments included."""
     source: str = textwrap.dedent(
