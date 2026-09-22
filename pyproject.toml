@@ -81,6 +81,9 @@ ignore = [
 ]
 external = ["LVA"]
 
+[tool.ruff.lint.pylint]
+max-args = 6  # the checker's entry points take the source plus five keyword-only options
+
 [tool.ruff.lint.pydoclint]
 # A one-line docstring needs no Returns/Yields section; a longer one does.
 ignore-one-line-docstrings = true
@@ -147,6 +150,9 @@ load-plugins = [
     "pylint.extensions.typing",
     "pylint.extensions.while_used",
 ]
+
+[tool.pylint.design]
+max-args = 6  # as ruff's lint.pylint.max-args
 
 [tool.pylint.format]
 max-line-length = 110

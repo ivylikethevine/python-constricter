@@ -3,7 +3,7 @@
 
 import ast
 import re
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Final, NamedTuple, TypeAlias, cast
@@ -118,11 +118,13 @@ def check_source(
   type_comments: bool = False,
   all_scopes: bool = False,
   nesting: int = NESTING,
+  calls: Mapping[str, str] | None = None,
 ) -> list[Offence]:
   """Return the offences in `source`, sorted. Raises `SyntaxError`.
 
   With `type_comments`, `x = 1  # type: int` counts as annotated; with `all_scopes`, module and
-  class bodies are checked too (LVA004); an annotation nested `nesting` deep is LVA006.
+  class bodies are checked too (LVA004); an annotation nested `nesting` deep is LVA006. `calls` adds
+  return types of functions other modules define, for `--fix` (see `project.calls`).
 
   Returns:
     Every offence; `# noqa` comments are the caller's to apply.
@@ -131,7 +133,12 @@ def check_source(
   tree: ast.Module = _parse(source, filename)
   text: str = source.decode("utf-8") if isinstance(source, bytes) else source
   return check_tree(
-    tree, type_comments=type_comments, all_scopes=all_scopes, nesting=nesting, lines=text.splitlines()
+    tree,
+    type_comments=type_comments,
+    all_scopes=all_scopes,
+    nesting=nesting,
+    lines=text.splitlines(),
+    calls=calls,
   )
 
 
@@ -150,6 +157,7 @@ def check_tree(
   all_scopes: bool = False,
   nesting: int = NESTING,
   lines: Sequence[str] = (),
+  calls: Mapping[str, str] | None = None,
 ) -> list[Offence]:
   """Return the offences in a parsed module, sorted.
 
@@ -162,7 +170,7 @@ def check_tree(
 
   """
   settings: _Settings = _Settings(
-    type_comments or _python2_compatible(tree), all_scopes, nesting, lines, returns(tree)
+    type_comments or _python2_compatible(tree), all_scopes, nesting, lines, {**(calls or {}), **returns(tree)}
   )
   return sorted(o for scope in _scopes(tree, settings) for o in scope.reported())
 

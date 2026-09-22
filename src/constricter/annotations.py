@@ -229,11 +229,10 @@ def _uniform(elements: Sequence[ast.expr], calls: Mapping[str, str]) -> str | No
 
 
 def _called(value: ast.expr, calls: Mapping[str, str]) -> str | None:
-  name: str
   func: ast.expr
   match value:
-    case ast.Call(func=ast.Name(id=name)) if name in calls:
-      return calls[name]
+    case ast.Call(func=ast.Name() | ast.Attribute() as func) if ast.unparse(func) in calls:
+      return calls[ast.unparse(func)]
     case ast.Call(func=ast.Name() | ast.Attribute() as func) if _constructs(_name(func)):
       return ast.unparse(func)
     case _:
@@ -250,10 +249,7 @@ def guessed(value: ast.expr, calls: Mapping[str, str]) -> bool:
     Whether any call in `value` is to something other than such a module function.
 
   """
-  return any(
-    isinstance(node, ast.Call) and not (isinstance(node.func, ast.Name) and node.func.id in calls)
-    for node in ast.walk(value)
-  )
+  return any(isinstance(node, ast.Call) and ast.unparse(node.func) not in calls for node in ast.walk(value))
 
 
 def _constructs(name: str) -> bool:

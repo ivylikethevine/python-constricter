@@ -4,10 +4,11 @@
 import argparse
 import contextlib
 import difflib
+import itertools
 import json
 import os
 import sys
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field, replace
 from enum import Enum
@@ -16,7 +17,7 @@ from functools import partial
 from pathlib import Path
 from typing import Final, TextIO, cast
 
-from constricter import __version__, baseline, fixes, notebook
+from constricter import __version__, baseline, fixes, notebook, project
 from constricter.checker import (
   LEVELS,
   MESSAGES,
@@ -77,7 +78,13 @@ def _source(raw: str, name: Path) -> tuple[str, list[notebook.Line]]:
 
 
 def check_text(
-  raw: str, name: Path, *, type_comments: bool = False, all_scopes: bool = False, nesting: int = NESTING
+  raw: str,
+  name: Path,
+  *,
+  type_comments: bool = False,
+  all_scopes: bool = False,
+  nesting: int = NESTING,
+  calls: Mapping[str, str] | None = None,
 ) -> list[Offence]:
   """Return the offences in `raw`, the text of `name`, that no `# noqa` suppresses.
 
@@ -92,7 +99,9 @@ def check_text(
   where: list[notebook.Line]
   source, where = _source(raw, name)
   offences: list[Offence] = unsuppressed(
-    check_source(source, str(name), type_comments=type_comments, all_scopes=all_scopes, nesting=nesting),
+    check_source(
+      source, str(name), type_comments=type_comments, all_scopes=all_scopes, nesting=nesting, calls=calls
+    ),
     lines(source),
   )
   return (
@@ -502,7 +511,7 @@ class _FileRun:
   coverage: Coverage | None = None
 
 
-def _checked(path: Path, name: Path, checks: _Checks) -> tuple[str, list[Offence]]:
+def _checked(path: Path, name: Path, checks: _Checks, calls: Mapping[str, str]) -> tuple[str, list[Offence]]:
   """Read `path` and check it as `name`; raises what reading or parsing it does.
 
   Returns:
@@ -511,18 +520,28 @@ def _checked(path: Path, name: Path, checks: _Checks) -> tuple[str, list[Offence
   """
   raw: str = _read(path)
   return raw, check_text(
-    raw, name, type_comments=checks.type_comments, all_scopes=checks.all_scopes, nesting=checks.nesting
+    raw,
+    name,
+    type_comments=checks.type_comments,
+    all_scopes=checks.all_scopes,
+    nesting=checks.nesting,
+    calls=calls,
   )
 
 
-def _check_path(path: Path, options: _Options) -> _FileRun:
-  """Check (and fix, or diff) one file; a file that can't be read or parsed is an error."""
+def _check_path(path: Path, calls: Mapping[str, str], options: _Options) -> _FileRun:
+  """Check (and fix, or diff) one file, given the imported functions' return types.
+
+  Returns:
+    What it found; a file that can't be read or parsed is an error.
+
+  """
   checks: _Checks = options.checks
   name: Path = options.input.name(path)
   raw: str
   offences: list[Offence]
   try:
-    raw, offences = _checked(path, name, checks)
+    raw, offences = _checked(path, name, checks, calls)
   except (OSError, ValueError, SyntaxError) as error:  # UnicodeDecodeError is a ValueError
     return _FileRun(error=f"{name}: error: {error}")
   if options.mode is _Mode.WRITE_BASELINE:
@@ -542,7 +561,7 @@ def _check_path(path: Path, options: _Options) -> _FileRun:
   return _FileRun(left, fix_file(path, fixing), baselined=baselined)
 
 
-def _cover_path(path: Path, options: _Options) -> _FileRun:
+def _cover_path(path: Path, _calls: Mapping[str, str], options: _Options) -> _FileRun:
   """Count one file's typed first bindings; a file that can't be read or parsed is an error."""
   name: Path = options.input.name(path)
   try:
@@ -560,15 +579,18 @@ def _cover_path(path: Path, options: _Options) -> _FileRun:
 def _check_all(options: _Options) -> tuple[list[Path], list[_FileRun]]:
   """Check every file (`--jobs` at a time), in order; return the names and what each found."""
   paths: list[Path] = list(python_files(options.input.paths, options.input.exclude))
-  check: Callable[[Path], _FileRun] = partial(
+  check: Callable[[Path, Mapping[str, str]], _FileRun] = partial(
     _cover_path if options.mode is _Mode.COVERAGE else _check_path, options=options
   )
   names: list[Path] = [options.input.name(path) for path in paths]
+  # The functions each file imports from the others, for --fix (and its hints).
+  modules: dict[str, project.Module] = {} if options.mode is _Mode.COVERAGE else project.index(paths)
+  calls: list[dict[str, str]] = [project.calls(modules, path) for path in paths]
   if options.jobs == 1 or len(paths) <= 1:
-    return names, [check(path) for path in paths]
+    return names, list(itertools.starmap(check, zip(paths, calls, strict=True)))
   pool: ProcessPoolExecutor
   with ProcessPoolExecutor(max_workers=options.jobs) as pool:
-    return names, list(pool.map(check, paths))
+    return names, list(pool.map(check, paths, calls))
 
 
 def _report(options: _Options, runs: Sequence[_FileRun], files: int) -> int:

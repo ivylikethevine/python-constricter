@@ -163,12 +163,14 @@ module body:
 - a literal: `count = 0` becomes `count: int = 0`;
 - a container whose elements agree: `[1, 2]` gives `list[int]`, `{"a": (1, "b")}` gives
   `dict[str, tuple[int, str]]`;
-- a call to a capitalised name (`path = Path(...)` gives `Path`), or to a plain function in the same
-  module that declares its return type (not a decorated, generic, async or redefined one, and not a
-  return of `None`, `Any` or one that uses a `TypeVar`).
+- a call to a capitalised name (`path = Path(...)` gives `Path`), or to a plain function that
+  declares its return type (not a decorated, generic, async or redefined one, and not a return of
+  `None`, `Any` or one that uses a `TypeVar`), in the same module or, with the CLI, in another file
+  it's checking: `from pkg.util import f`, `import pkg.util as u` then `u.f()`, relative imports and
+  re-exports all work, as long as every name in the type already means the same thing in the file.
 
-It never touches class bodies (a dataclass would gain a field), unpacking or notebooks, and it
-leaves what it can't fix reported.
+It never touches class bodies (a dataclass would gain a field) or unpacking, and it leaves what it
+can't fix reported. The standard library and third-party packages are out of reach.
 
 ### Baselines
 
@@ -347,6 +349,7 @@ Everything else is on. Some of these may be revisited.
 | ruff               | `missing-trailing-comma` (COM812)                                                                                                    | Conflicts with `ruff format`; ruff says to disable it.                                                                                                                                                                                                                                                          |
 | ruff               | `incorrect-blank-line-before-class`, `multi-line-summary-second-line` (D203/D213)                                                    | Each contradicts a rule that stays on (D211/D212); one of each pair has to go.                                                                                                                                                                                                                                  |
 | ruff               | `indentation-with-invalid-multiple` and `-comment` (E111/E114)                                                                       | They assume 4-space indents; ruff says to disable them at any other width. flake8's E111/E114 check the 2 spaces.                                                                                                                                                                                               |
+| ruff, pylint       | `max-args` raised from 5 to 6 (PLR0913/R0913)                                                                                        | `check_source`, `check_tree` and `check_text` take the source plus five keyword-only options (`calls` is the sixth).                                                                                                                                                                                            |
 | ruff (`tests/`)    | `assert` (S101)                                                                                                                      | pytest works through `assert`.                                                                                                                                                                                                                                                                                  |
 | mypy, basedpyright | astroid's untyped calls and missing stubs                                                                                            | astroid (pylint's parser) ships no type information.                                                                                                                                                                                                                                                            |
 | typos              | the word `astroid`                                                                                                                   | A real package name.                                                                                                                                                                                                                                                                                            |
@@ -417,19 +420,13 @@ Done:
 - **Stdin**, **`gitlab`, `junit` and `rdjson` output**, **safe and `--unsafe-fixes`**, **per-file
   ignores**, **`--exit-zero`** and **`--output-file`**, **tox and nox** snippets, **PyPy 3.11 and
   free-threaded 3.14** in CI, and a manual **`--fix` corpus run** (`tests/corpus_fix.py`).
+- **Cross-module `--fix`** in the CLI (the flake8 and pylint plugins see one file at a time).
 
 Next:
 
-1. **Cross-module `--fix`:** annotate `x = helper()` where `helper` is imported from another file
-   being checked and declares its return type. The CLI builds a project-wide index of top-level
-   functions' return types first (resolving `from pkg.mod import f`, `import pkg.mod as m` then
-   `m.f()`, and relative imports), and fixes only when every name in the return type is already
-   available in the file (otherwise the fix would reference an undefined name). The flake8 and
-   pylint plugins, which see one file at a time, don't get it; the standard library and third-party
-   packages (stubs, or a type checker) are out of scope.
-2. **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+ (6.2.0 still has only a
+1. **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+ (6.2.0 still has only a
    CPython 3.10 one).
-3. Revisit the [disabled rules](#disabled-rules) as tools change (last checked with 0.2.0: none can
+2. Revisit the [disabled rules](#disabled-rules) as tools change (last checked with 0.2.0: none can
    go yet).
 
 After the first release (these need it on PyPI, or a published tag):

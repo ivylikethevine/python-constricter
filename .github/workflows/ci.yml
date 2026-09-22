@@ -120,7 +120,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      # Linux only: macOS and Windows reach OS hosts no allowlist can predict.
+      # Linux only: macOS and Windows reach OS hosts no allowlist can predict. pypi.org: setup-python
+      # upgrades pip when it downloads an interpreter the runner image lacks (3.14t).
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         if: runner.os == 'Linux'
         with:
@@ -132,6 +133,7 @@ jobs:
             files.pythonhosted.org:443
             downloads.python.org:443
             release-assets.githubusercontent.com:443
+            pypi.org:443
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         if: runner.os != 'Linux'
         with:
