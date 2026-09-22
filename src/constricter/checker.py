@@ -8,7 +8,8 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter.annotations import depth, guessed, inferred, is_vague, returns
+from constricter.annotations import depth, guessed, inferred, is_vague, node_name, returns
+from constricter.jsonc import as_text
 
 UNANNOTATED: Final = "LVA001"
 UNTYPED_TARGET: Final = "LVA002"
@@ -152,8 +153,7 @@ def check_source(
 
     """
     tree: ast.Module = _parse(source, filename)
-    text: str = source.decode("utf-8") if isinstance(source, bytes) else source
-    return check_tree(tree, checks, lines=text.splitlines(), calls=calls)
+    return check_tree(tree, checks, lines=as_text(source).splitlines(), calls=calls)
 
 
 def _parse(source: str | bytes, filename: str) -> ast.Module:
@@ -167,6 +167,21 @@ def _parse(source: str | bytes, filename: str) -> ast.Module:
         return ast.parse(source, filename, type_comments=True)
     except SyntaxError:  # a misplaced `# type:` comment, or a real error raised again here
         return ast.parse(source, filename)
+
+
+def _settings(
+    tree: ast.Module,
+    checks: Checks,
+    lines: Sequence[str],
+    calls: dict[str, str],
+) -> _Settings:
+    return _Settings(
+        checks.type_comments or _python2_compatible(tree),
+        checks.all_scopes,
+        checks.nesting,
+        lines,
+        calls,
+    )
 
 
 def check_tree(
@@ -186,13 +201,7 @@ def check_tree(
       Every offence, in source order.
 
     """
-    settings: _Settings = _Settings(
-        checks.type_comments or _python2_compatible(tree),
-        checks.all_scopes,
-        checks.nesting,
-        lines,
-        {**(calls or {}), **returns(tree)},
-    )
+    settings: _Settings = _settings(tree, checks, lines, {**(calls or {}), **returns(tree)})
     return sorted(o for scope in _scopes(tree, settings) for o in scope.reported())
 
 
@@ -220,13 +229,7 @@ def annotation_coverage(source: str, checks: Checks = DEFAULT_CHECKS) -> Coverag
 
     """
     tree: ast.Module = _parse(source, "<unknown>")
-    settings: _Settings = _Settings(
-        checks.type_comments or _python2_compatible(tree),
-        checks.all_scopes,
-        checks.nesting,
-        source.splitlines(),
-        {},
-    )
+    settings: _Settings = _settings(tree, checks, source.splitlines(), {})
     scopes: list[_Scope] = _scopes(tree, settings)
     total: int = sum(len(scope.bound()) for scope in scopes)
     untyped: int = sum(o.code in _UNTYPED for scope in scopes for o in scope.reported())
@@ -292,15 +295,7 @@ def _is_enum(node: ast.ClassDef) -> bool:
       Whether its name ends in `Enum` or `Flag`.
 
     """
-    base: ast.expr
-    name: str
-    for base in node.bases:
-        match base:
-            case ast.Name(id=name) | ast.Attribute(attr=name) if name.endswith(("Enum", "Flag")):
-                return True
-            case _:
-                pass
-    return False
+    return any(node_name(base).endswith(("Enum", "Flag")) for base in node.bases)
 
 
 def _collect_functions(body: list[ast.stmt], into: list[_FunctionDef]) -> None:
@@ -403,6 +398,9 @@ def _at(node: ast.expr | ast.pattern) -> tuple[int, int]:
     return node.lineno, node.col_offset
 
 
+_REST: Final = re.compile(rb"\*\*\s*(\w+)\b")
+
+
 def _rest_at(node: ast.MatchMapping, name: str, lines: Sequence[str]) -> tuple[int, int]:
     """Find `**name` in a mapping pattern's source.
 
@@ -410,12 +408,18 @@ def _rest_at(node: ast.MatchMapping, name: str, lines: Sequence[str]) -> tuple[i
       Its position (as `ast` gives it, a byte column), or else the pattern's start.
 
     """
-    rest: re.Pattern[bytes] = re.compile(rb"\*\*\s*(" + re.escape(name.encode()) + rb")\b")
+    target: bytes = name.encode()
     number: int
+    encoded: bytes
+    start: int
     found: re.Match[bytes] | None
     for number in range(node.lineno, min(node.end_lineno or node.lineno, len(lines)) + 1):
-        if found := rest.search(lines[number - 1].encode(), node.col_offset if number == node.lineno else 0):
-            return number, found.start(1)
+        encoded = lines[number - 1].encode()
+        start = node.col_offset if number == node.lineno else 0
+        while found := _REST.search(encoded, start):
+            if found.group(1) == target:
+                return number, found.start(1)
+            start = found.end()
     return _at(node)
 
 
@@ -457,9 +461,7 @@ class _Scope:
 
     def declare(self, name: str) -> None:
         """Bind `name` by an annotation (`name: T`, `name: T = ...`): a typed first binding."""
-        if name not in self.declared:
-            self.declared.add(name)
-            self.first.append(name)
+        self.bind(name, (0, 0), None)  # position is unused: `code` is `None`, so nothing is reported
 
     def _covered(self, name: str) -> bool:
         """Check whether the rules cover `name` here.

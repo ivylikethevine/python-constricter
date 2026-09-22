@@ -23,6 +23,7 @@ from constricter.checker import (
     Offence,
     check_source,
 )
+from constricter.jsonc import as_text
 from constricter.noqa import lines, unsuppressed
 
 if TYPE_CHECKING:
@@ -114,7 +115,7 @@ class ConstricterChecker(BaseRawFileChecker):
             all_scopes=cast("bool", self.linter.config.constricter_all_scopes),
             nesting=cast("int", self.linter.config.constricter_nesting),
         )
-        text: str = source.decode("utf-8")
+        text: str = as_text(source)
         offences: list[Offence] = check_source(text, node.file or "<unknown>", checks)
         o: Offence
         for o in unsuppressed(offences, lines(text)):  # suppression comments, as the CLI reads them

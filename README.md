@@ -423,6 +423,18 @@ Next:
    CPython 3.10 one).
 2. Revisit the [disabled rules](#disabled-rules) as tools change (last checked 2026-09-22: COM812,
    one-line DOC201/DOC402 and `max-args` came back on; the rest can't go yet).
+3. **Index `project.calls`'s modules** by name (a sorted list or trie for prefix lookup) instead of
+   scanning every indexed module for each whole-module import; needs a signature change, so update
+   its tests too.
+4. **Resolve enum bases and factory calls by import origin** (`Enum`/`Flag`/`NamedTuple`/... in
+   `annotations._FACTORIES`, and `checker._is_enum`'s base-name suffix check) instead of by name, so
+   a re-exported or aliased base or factory isn't missed or misclassified.
+5. **A general path-exclusion mechanism** in `cli.py` that folds `_SKIPPED_DIRS`
+   (`__pycache__`, `node_modules`, ...) into `--exclude`, once glob patterns can match a path segment
+   rather than the whole relative path.
+6. **Split `_FileRun`** into a result type per mode (check/fix/diff/write-baseline/coverage) instead
+   of one struct with fields only some modes populate, and share `_check_path` and `_cover_path`'s
+   read-and-report-errors wrapper.
 
 After the first release (these need it on PyPI, or a published tag):
 

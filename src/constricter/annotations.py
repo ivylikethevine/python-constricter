@@ -4,6 +4,7 @@
 import ast
 import re
 from collections.abc import Mapping, Sequence
+from functools import lru_cache
 from typing import TYPE_CHECKING, Final, cast
 
 if TYPE_CHECKING:
@@ -77,8 +78,11 @@ _NUMBERS: Final = (int, float, complex)
 _TYPE_VARS: Final = frozenset({"TypeVar", "ParamSpec", "TypeVarTuple"})
 
 
+@lru_cache(maxsize=256)
 def _parsed(annotation: ast.expr) -> ast.expr:
     """Unwrap a string annotation.
+
+    `is_vague` and `depth` both call this on the same annotation; cached so it's parsed once.
 
     Returns:
       Its parsed expression, or the annotation itself if it isn't a string.
@@ -92,7 +96,13 @@ def _parsed(annotation: ast.expr) -> ast.expr:
     return annotation
 
 
-def _name(node: ast.AST) -> str:
+def node_name(node: ast.AST) -> str:
+    """Read a `Name`'s or `Attribute`'s simple name.
+
+    Returns:
+      It, or `""` if `node` is neither.
+
+    """
     name: str
     match node:
         case ast.Name(id=name) | ast.Attribute(attr=name):
@@ -112,7 +122,7 @@ def is_vague(annotation: ast.expr) -> bool:
     subscripted: set[int] = {id(node.value) for node in ast.walk(root) if isinstance(node, ast.Subscript)}
     node: ast.AST
     for node in ast.walk(root):
-        name: str = _name(node)
+        name: str = node_name(node)
         if name in _VAGUE or (name in _GENERICS and id(node) not in subscripted):
             return True
     return False
@@ -160,7 +170,7 @@ def returns(tree: ast.Module) -> dict[str, str]:
     for stmt in tree.body:
         match stmt:
             case ast.Assign(targets=[ast.Name(id=name)], value=ast.Call(func=func)) if (
-                _name(func) in _TYPE_VARS
+                node_name(func) in _TYPE_VARS
             ):
                 type_vars.add(name)
             case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name):
@@ -261,7 +271,7 @@ def _called(value: ast.expr, calls: Mapping[str, str]) -> str | None:
     match value:
         case ast.Call(func=ast.Name() | ast.Attribute() as func) if ast.unparse(func) in calls:
             return calls[ast.unparse(func)]
-        case ast.Call(func=ast.Name() | ast.Attribute() as func) if _constructs(_name(func)):
+        case ast.Call(func=ast.Name() | ast.Attribute() as func) if _constructs(node_name(func)):
             return ast.unparse(func)
         case _:
             return None

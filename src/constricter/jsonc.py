@@ -7,7 +7,7 @@ is still the original file's. What constricter writes stays plain JSON.
 
 import json
 import re
-from typing import cast
+from typing import TypeGuard, cast
 
 # A string (left alone), or a comment.
 _COMMENT: re.Pattern[str] = re.compile(r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/', re.DOTALL)
@@ -20,6 +20,26 @@ def _blank(match: re.Match[str]) -> str:
     return text if text.startswith('"') else re.sub(r"[^\n]", " ", text)
 
 
+def as_text(value: str | bytes) -> str:
+    """Decode `value` if it's bytes.
+
+    Returns:
+      It, as text.
+
+    """
+    return value.decode("utf-8") if isinstance(value, bytes) else value
+
+
+def is_int(value: object) -> TypeGuard[int]:
+    """Check whether `value` is a plain whole number, not a `bool` (a `bool` is an `int` in Python).
+
+    Returns:
+      Whether it is.
+
+    """
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def loads(text: str | bytes) -> object:
     """Parse JSON that may have comments and trailing commas.
 
@@ -27,5 +47,4 @@ def loads(text: str | bytes) -> object:
       The value. Raises `ValueError` as `json.loads` does.
 
     """
-    source: str = text.decode("utf-8") if isinstance(text, bytes) else text
-    return cast("object", json.loads(_TRAILING.sub(_blank, _COMMENT.sub(_blank, source))))
+    return cast("object", json.loads(_TRAILING.sub(_blank, _COMMENT.sub(_blank, as_text(text)))))

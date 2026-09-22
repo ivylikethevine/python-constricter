@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, TypeAlias
 
 from constricter.checker import LEVELS, MESSAGES
+from constricter.jsonc import is_int
 
 if TYPE_CHECKING:
     from datetime import date, datetime, time
@@ -94,11 +95,11 @@ def _level(value: _Toml) -> str | None:
 
     """
     text: str = str(value).lower()
-    return text if isinstance(value, str | int) and not isinstance(value, bool) and text in LEVELS else None
+    return text if (isinstance(value, str) or is_int(value)) and text in LEVELS else None
 
 
 def _whole(value: _Toml, minimum: int) -> int | None:
-    return value if isinstance(value, int) and not isinstance(value, bool) and value >= minimum else None
+    return value if is_int(value) and value >= minimum else None
 
 
 def _strings(value: _Toml) -> list[str] | None:
@@ -125,14 +126,21 @@ def _levels(value: _Toml) -> dict[str, str] | None:
     return None if None in levels.values() else {glob: str(level) for glob, level in levels.items()}
 
 
-_BASELINE: Final = "baseline"
-
-
 def _ignores(value: _Toml) -> dict[str, list[str]] | None:
     if not isinstance(value, dict):
         return None
     ignores: dict[str, list[str] | None] = {glob: _codes(codes) for glob, codes in value.items()}
     return None if None in ignores.values() else {glob: list(codes or []) for glob, codes in ignores.items()}
+
+
+def _baseline(value: _Toml, root: Path) -> str | None:
+    """Read a baseline path, relative to `root` (the pyproject.toml that names it).
+
+    Returns:
+      The resolved path, or `None` if `value` isn't a non-empty string.
+
+    """
+    return str(root / value) if isinstance(value, str) and value else None
 
 
 # Each key's reader: its option default, or `None` for a wrong value.
@@ -147,7 +155,6 @@ _READERS: dict[str, Callable[[_Toml], Default | None]] = {
     "all-scopes": _flag,
     "per-path-levels": _levels,
     "per-file-ignores": _ignores,
-    _BASELINE: lambda value: value if isinstance(value, str) and value else None,
 }
 
 
@@ -164,14 +171,17 @@ def config_defaults(start: Path) -> dict[str, Default]:
     path: Path | None
     if (path := _pyproject(start)) is None:
         return {}
+    readers: dict[str, Callable[[_Toml], Default | None]] = {
+        **_READERS,
+        "baseline": partial(_baseline, root=path.parent),
+    }
     defaults: dict[str, Default] = {}
     key: str
     value: _Toml
     for key, value in _table(path).items():
         default: Default | None
-        if key not in _READERS or (default := _READERS[key](value)) is None:
+        if key not in readers or (default := readers[key](value)) is None:
             message: str = f"{path}: [tool.constricter] has an invalid {key} = {value!r}"
             raise ValueError(message)
-        # A baseline path is relative to the pyproject.toml that names it.
-        defaults[key.replace("-", "_")] = str(path.parent / str(default)) if key == _BASELINE else default
+        defaults[key.replace("-", "_")] = default
     return defaults

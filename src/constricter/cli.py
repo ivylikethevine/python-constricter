@@ -15,7 +15,7 @@ from enum import Enum
 from fnmatch import fnmatch
 from functools import partial
 from pathlib import Path
-from typing import Final, TextIO, cast
+from typing import Final, NamedTuple, TextIO, cast
 
 from constricter import __version__, baseline, fixes, notebook, project
 from constricter.checker import (
@@ -44,8 +44,8 @@ EXIT_ERROR: Final = 2
 _ALL: Final = 100  # percent
 
 
-def _excluded(path: Path, patterns: Sequence[str]) -> bool:
-    text: str = path.as_posix()
+def _excluded(path: Path, patterns: Sequence[str], text: str | None = None) -> bool:
+    text = path.as_posix() if text is None else text
     return any(fnmatch(text, p) or fnmatch(path.name, p) for p in patterns)
 
 
@@ -124,32 +124,34 @@ def check_text(
     )
 
 
-def _fixed(
-    raw: str,
-    name: Path,
-    offences: Sequence[Offence],
-) -> tuple[str, list[tuple[str, list[str], list[str]]]]:
+class Fixed(NamedTuple):
+    """`raw`, fixed: its new text, and each changed part (the file, or a notebook's cell)."""
+
+    text: str
+    changes: list[tuple[str, list[str], list[str]]]  # each part's label and old and new lines
+
+
+def _fixed(raw: str, name: Path, offences: Sequence[Offence]) -> Fixed:
     """Add each fixable offence's annotation to `raw`, the text of `name`.
 
     Returns:
-      The new text, and each changed part (the file, or a notebook's cell): its label and old and
-      new lines.
+      The new text, and each changed part.
 
     """
     if name.suffix == notebook.SUFFIX:
         text: str
         cells: list[notebook.Cell]
         text, cells = notebook.fix(raw, offences)
-        return text, [(f"{name}:cell {c.number}", c.old, c.new) for c in cells]
+        return Fixed(text, [(f"{name}:cell {c.number}", c.old, c.new) for c in cells])
     old: list[str] = lines(raw)
     new: list[str] = fixes.apply(old, offences)
-    return "".join(new), [(str(name), old, new)] if new != old else []
+    return Fixed("".join(new), [(str(name), old, new)] if new != old else [])
 
 
 def _diff(raw: str, name: Path, offences: Sequence[Offence]) -> str:
     return "".join(
         "".join(difflib.unified_diff(old, new, label, label))
-        for label, old, new in _fixed(raw, name, offences)[1]
+        for label, old, new in _fixed(raw, name, offences).changes
     )
 
 
@@ -163,7 +165,7 @@ def fix_file(path: Path, offences: Sequence[Offence]) -> int:
     count: int
     if not (count := sum(1 for o in offences if o.fix)):
         return 0
-    _ = path.write_bytes(_fixed(_read(path), path, offences)[0].encode())
+    _ = path.write_bytes(_fixed(_read(path), path, offences).text.encode())
     return count
 
 
@@ -427,10 +429,11 @@ class _Filter:
           The level of the first `per-path-levels` glob it matches, else `--level`'s.
 
         """
+        text: str = path.as_posix()
         glob: str
         level: str
         for glob, level in self.per_path.items():
-            if _excluded(path, [glob]):
+            if _excluded(path, [glob], text):
                 return LEVELS[level]
         return self.level
 
@@ -442,12 +445,13 @@ class _Filter:
 
         """
         level: Level = self.level_for(path)
+        text: str = path.as_posix()
         ignored: tuple[str, ...] = (
             *self.ignore,
             *(
                 code
                 for glob, codes in self.per_file_ignores.items()
-                if _excluded(path, [glob])
+                if _excluded(path, [glob], text)
                 for code in codes
             ),
         )
@@ -633,7 +637,7 @@ def _check_path(path: Path, calls: Mapping[str, str], options: _Options) -> _Fil
         return _FileRun(results, baselined=baselined)
     left: list[Result] = [r for r in results if r.offence not in fixing]
     if path == STDIN:  # the fixed source goes to stdout
-        return _FileRun(left, len(fixing), _fixed(raw, name, fixing)[0], baselined=baselined)
+        return _FileRun(left, len(fixing), _fixed(raw, name, fixing).text, baselined=baselined)
     return _FileRun(left, fix_file(path, fixing), baselined=baselined)
 
 
