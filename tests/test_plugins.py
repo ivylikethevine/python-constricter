@@ -1,14 +1,18 @@
+# SPDX-License-Identifier: MIT
 """The flake8 and pylint plugins, run through the real tools as a project would run them."""
 
 import ast
-import subprocess
-import sys
 import textwrap
+from collections.abc import Callable
+from io import StringIO
 from pathlib import Path
 
+import pytest
 from astroid import nodes
+from flake8.main.application import Application
 from pylint.lint import PyLinter, Run
 from pylint.reporters import CollectingReporter
+from pylint.reporters.text import TextReporter
 
 from constricter.flake8_plugin import ConstricterChecker
 from constricter.pylint_plugin import ConstricterChecker as PylintChecker
@@ -18,81 +22,95 @@ def broken() -> None:
     plain = 1
     other = 2  # noqa: LVA001
     third = 3  # pylint: disable=unannotated-local-variable
+    typed = 4  # type: int
 """
-
-
-def _run(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run([sys.executable, "-m", *args], capture_output=True, text=True, check=False)
+MESSAGE = "local variable {!r} is not annotated where it's first bound"
 
 
 def _write(tmp_path: Path) -> Path:
     path: Path = tmp_path / "broken.py"
-    path.write_text(textwrap.dedent(SOURCE))
+    _ = path.write_text(textwrap.dedent(SOURCE), encoding="utf-8")
     return path
 
 
-def test_flake8_reports_lva001_and_honours_noqa(tmp_path: Path) -> None:
+@pytest.fixture(name="flake8")
+def _flake8_fixture(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> Callable[..., list[str]]:
+    """Run flake8 in-process; its output lines. Undoes `parse_options`, which sets class state."""
+    monkeypatch.setattr(ConstricterChecker, "type_comments", False)
+
+    def _run(*args: str) -> list[str]:
+        application: Application = Application()
+        application.run(["--select=LVA", *args])
+        return capsys.readouterr().out.splitlines()
+
+    return _run
+
+
+def test_flake8_reports_lva001_and_honours_noqa(tmp_path: Path, flake8: Callable[..., list[str]]) -> None:
     path: Path = _write(tmp_path)
-    result: subprocess.CompletedProcess[str] = _run("flake8", "--select=LVA", str(path))
-    assert result.returncode == 1, result.stderr
-    assert result.stdout.splitlines() == [
-        f"{path}:3:5: LVA001 local variable 'plain' is not annotated where it's first bound",
-        f"{path}:5:5: LVA001 local variable 'third' is not annotated where it's first bound",
+    assert flake8(str(path)) == [
+        f"{path}:3:5: LVA001 {MESSAGE.format('plain')}",
+        f"{path}:5:5: LVA001 {MESSAGE.format('third')}",
+        f"{path}:6:5: LVA001 {MESSAGE.format('typed')}",
     ]
 
 
-def test_flake8_lists_the_plugin() -> None:
-    assert "constricter" in _run("flake8", "--version").stdout
-
-
-def test_pylint_reports_c9101_and_honours_disable(tmp_path: Path) -> None:
+def test_flake8_type_comments_option(tmp_path: Path, flake8: Callable[..., list[str]]) -> None:
     path: Path = _write(tmp_path)
-    result: subprocess.CompletedProcess[str] = _run(
-        "pylint",
-        "--load-plugins=constricter.pylint_plugin",
-        "--disable=all",
-        "--enable=unannotated-local-variable",
-        "--msg-template={line}:{column}: {msg_id} {symbol} {msg}",
-        "--score=n",
-        str(path),
-    )
-    assert result.returncode != 0, result.stderr
-    lines: list[str] = [line for line in result.stdout.splitlines() if not line.startswith("*")]
-    message: str = (
-        "C9101 unannotated-local-variable local variable {!r} is not annotated where it's first bound"
-    )
-    assert lines == [f"3:4: {message.format('plain')}", f"4:4: {message.format('other')}"]
+    lines: list[str] = flake8("--constricter-type-comments", str(path))
+    assert [line.split(": ", 1)[0] for line in lines] == [f"{path}:3:5", f"{path}:5:5"]
+
+
+def test_flake8_lists_the_plugin(
+    flake8: Callable[..., list[str]], capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit):
+        _ = flake8("--version")
+    assert ConstricterChecker.name in capsys.readouterr().out
 
 
 def test_flake8_checker_in_process() -> None:
-    checker: ConstricterChecker = ConstricterChecker(ast.parse(textwrap.dedent(SOURCE)))
-    assert [(line, col, message.split()[0]) for line, col, message, _ in checker.run()] == [
-        (3, 4, "LVA001"),
-        (4, 4, "LVA001"),
-        (5, 4, "LVA001"),
-    ]
+    source: str = textwrap.dedent(SOURCE)
+    checker: ConstricterChecker = ConstricterChecker(ast.parse(source), source.splitlines(keepends=True))
+    assert [(line, col) for line, col, _, _ in checker.run()] == [(3, 4), (4, 4), (5, 4), (6, 4)]
 
 
-def test_pylint_checker_in_process(tmp_path: Path) -> None:
-    reporter: CollectingReporter = CollectingReporter()
-    Run(
+def _pylint(path: Path, *args: str) -> list[str]:
+    output: StringIO = StringIO()
+    _ = Run(
         [
             "--load-plugins=constricter.pylint_plugin",
             "--disable=all",
             "--enable=unannotated-local-variable",
-            str(_write(tmp_path)),
+            "--msg-template={line}:{column}: {msg_id} {symbol} {msg}",
+            "--score=n",
+            *args,
+            str(path),
         ],
-        reporter=reporter,
+        reporter=TextReporter(output),
         exit=False,
     )
-    assert [(m.line, m.symbol) for m in reporter.messages] == [
-        (3, "unannotated-local-variable"),
-        (4, "unannotated-local-variable"),
+    return [line for line in output.getvalue().splitlines() if not line.startswith("*")]
+
+
+def test_pylint_reports_c9101_and_honours_disable(tmp_path: Path) -> None:
+    prefix: str = "C9101 unannotated-local-variable"
+    assert _pylint(_write(tmp_path)) == [
+        f"3:4: {prefix} {MESSAGE.format('plain')}",
+        f"4:4: {prefix} {MESSAGE.format('other')}",
+        f"6:4: {prefix} {MESSAGE.format('typed')}",
     ]
+
+
+def test_pylint_type_comments_option(tmp_path: Path) -> None:
+    lines: list[str] = _pylint(_write(tmp_path), "--constricter-type-comments=y")
+    assert [line.split(": ", 1)[0] for line in lines] == ["3:4", "4:4"]
 
 
 def test_pylint_checker_skips_a_module_without_source() -> None:
     reporter: CollectingReporter = CollectingReporter()
     linter: PyLinter = PyLinter(reporter=reporter)
     PylintChecker(linter).process_module(nodes.Module("in_memory", file=None))
-    assert reporter.messages == []
+    assert not reporter.messages
