@@ -10,7 +10,7 @@ from typing import Final, TypeAlias, cast
 
 import pytest
 
-from constricter import cli
+from constricter import cli, config
 
 BROKEN: Final = """
 def broken(items: list[int]) -> None:
@@ -232,14 +232,14 @@ all-scopes = true
 def test_pyproject_level_can_be_a_number(tmp_path: Path) -> None:
   """`level` takes a number too."""
   _pyproject(tmp_path, "[tool.constricter]\nlevel = 3\n")
-  assert cli.config_defaults(tmp_path) == {"level": "3"}
+  assert config.config_defaults(tmp_path) == {"level": "3"}
 
 
 def test_no_table_or_no_pyproject_sets_nothing(tmp_path: Path) -> None:
   """A `pyproject.toml` without the table, or none at all, sets no defaults."""
   _pyproject(tmp_path, '[project]\nname = "x"\n')
-  assert not cli.config_defaults(tmp_path)
-  assert not cli.config_defaults(Path(tmp_path.anchor))
+  assert not config.config_defaults(tmp_path)
+  assert not config.config_defaults(Path(tmp_path.anchor))
 
 
 @pytest.mark.parametrize(
@@ -254,6 +254,10 @@ def test_no_table_or_no_pyproject_sets_nothing(tmp_path: Path) -> None:
     "[tool.constricter]\nnesting = 0\n",
     "[tool.constricter]\nnesting = true\n",
     '[tool.constricter]\nselect = "LVA001"\n',
+    '[tool.constricter]\nselect = ["XYZ"]\n',
+    "[tool.constricter]\njobs = -1\n",
+    "[tool.constricter]\nper-path-levels = 1\n",
+    '[tool.constricter.per-path-levels]\n"t/*" = "tight"\n',
     "[tool]\nconstricter = 1\n",
     "not toml [",
   ],
@@ -318,7 +322,7 @@ def test_a_bad_nesting_exits_2(nesting: str, capsys: pytest.CaptureFixture[str])
 def test_pyproject_nesting(tmp_path: Path) -> None:
   """`nesting` in `[tool.constricter]` takes a whole number of at least 1."""
   _pyproject(tmp_path, "[tool.constricter]\nnesting = 3\n")
-  assert cli.config_defaults(tmp_path) == {"nesting": 3}
+  assert config.config_defaults(tmp_path) == {"nesting": 3}
 
 
 DEMO: Final = "def f(items: list[int]) -> None:\n  a = 1\n  b = [1]\n  for c in items:\n    pass\n"
@@ -359,7 +363,7 @@ def test_select_and_ignore(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -
 def test_pyproject_select_and_ignore(tmp_path: Path) -> None:
   """`select` and `ignore` in `[tool.constricter]` take lists of codes."""
   _pyproject(tmp_path, '[tool.constricter]\nselect = ["LVA001"]\nignore = ["LVA002"]\n')
-  assert cli.config_defaults(tmp_path) == {"select": ["LVA001"], "ignore": ["LVA002"]}
+  assert config.config_defaults(tmp_path) == {"select": ["LVA001"], "ignore": ["LVA002"]}
 
 
 def test_a_select_matching_no_code_exits_2(capsys: pytest.CaptureFixture[str]) -> None:
@@ -396,3 +400,43 @@ def test_fix_and_diff_cant_be_combined(capsys: pytest.CaptureFixture[str]) -> No
     _ = cli.main(["--fix", "--diff"])
   assert exit_info.value.code == cli.EXIT_ERROR
   assert capsys.readouterr().err.endswith("--fix and --diff can't be combined\n")
+
+
+def test_per_path_levels(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+  """`per-path-levels` sets the level for files matching a glob; the first match wins."""
+  _pyproject(tmp_path, '[tool.constricter.per-path-levels]\n"tests/*" = "relaxed"\n"*.py" = 2\n')
+  _ = _write(tmp_path / "tests" / "demo.py", DEMO)
+  _ = _write(tmp_path / "src" / "demo.py", DEMO)
+  monkeypatch.chdir(tmp_path)
+  assert cli.main(["--statistics", "tests"]) == cli.EXIT_CLEAN
+  assert capsys.readouterr().out.splitlines()[:2] == ["    2  LVA001  warning", "    1  LVA002  warning"]
+  assert cli.main(["--statistics", "src"]) == cli.EXIT_FOUND
+  assert capsys.readouterr().out.splitlines()[:2] == ["    2  LVA001  error", "    1  LVA002  error"]
+
+
+@pytest.mark.parametrize("jobs", ["2", "0"])
+def test_jobs_check_files_in_parallel_in_order(
+  tmp_path: Path, capsys: pytest.CaptureFixture[str], jobs: str
+) -> None:
+  """`--jobs` checks files in parallel, and reports them in the same order as one at a time."""
+  name: str
+  for name in ("a.py", "b.py", "c.py"):
+    _ = _write(tmp_path / name, DEMO)
+  _ = _write(tmp_path / "bad.py", "def (:\n")
+  assert cli.main(["--jobs=1", str(tmp_path)]) == cli.EXIT_ERROR
+  serial: tuple[str, str] = capsys.readouterr()
+  assert cli.main([f"--jobs={jobs}", str(tmp_path)]) == cli.EXIT_ERROR
+  assert capsys.readouterr() == serial
+
+
+def test_pyproject_jobs_and_per_path_levels(tmp_path: Path) -> None:
+  """`jobs` takes 0 and up; `per-path-levels` maps globs to levels."""
+  _pyproject(tmp_path, '[tool.constricter]\njobs = 0\n[tool.constricter.per-path-levels]\n"t/*" = "Strict"\n')
+  assert config.config_defaults(tmp_path) == {"jobs": 0, "per_path_levels": {"t/*": "strict"}}
+
+
+def test_importing_the_main_module_doesnt_run_the_command() -> None:
+  """`--jobs` workers import `constricter.__main__`; that mustn't run the command again."""
+  assert runpy.run_module("constricter", run_name="__mp_main__")["main"] is cli.main

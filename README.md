@@ -1,5 +1,10 @@
 # `python-constricter`
 
+[![CI](https://github.com/ivylikethevine/python-constricter/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ivylikethevine/python-constricter/actions/workflows/ci.yml)
+[![Security](https://github.com/ivylikethevine/python-constricter/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/ivylikethevine/python-constricter/actions/workflows/security.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ivylikethevine/python-constricter/badge)](https://scorecard.dev/viewer/?uri=github.com/ivylikethevine/python-constricter)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE.md)
+
 > I want **all** of my python code typed.
 
 ```text
@@ -103,18 +108,20 @@ pylint symbols: `unannotated-local-variable`, `untyped-for-or-match-variable`,
 
 Options:
 
-| Option        | CLI                                           | `[tool.constricter]` | flake8 (CLI or config)        | pylint                            |
-| ------------- | --------------------------------------------- | -------------------- | ----------------------------- | --------------------------------- |
-| level         | `--level`                                     | `level`              | `--constricter-level`         | `constricter-level`               |
-| type comments | `--type-comments`                             | `type-comments`      | `--constricter-type-comments` | `constricter-type-comments = yes` |
-| all scopes    | `--all-scopes`                                | `all-scopes`         | `--constricter-all-scopes`    | `constricter-all-scopes = yes`    |
-| nesting       | `--nesting N`                                 | `nesting`            | `--constricter-nesting`       | `constricter-nesting`             |
-| fix           | `--fix`, or `--diff` to preview               | -                    | -                             | -                                 |
-| select        | `--select CODES` (codes or prefixes)          | `select`             | flake8's own `select`         | pylint's own `enable`             |
-| ignore        | `--ignore CODES`                              | `ignore`             | flake8's own `extend-ignore`  | pylint's own `disable`            |
-| exclude       | `--exclude GLOB` (repeatable)                 | `exclude`            | flake8's own `exclude`        | pylint's own `ignore-paths`       |
-| format        | `--format`: `text`, `json`, `github`, `sarif` | -                    | -                             | -                                 |
-| statistics    | `--statistics` (counts per code, text format) | -                    | -                             | -                                 |
+| Option          | CLI                                           | `[tool.constricter]` | flake8 (CLI or config)        | pylint                            |
+| --------------- | --------------------------------------------- | -------------------- | ----------------------------- | --------------------------------- |
+| level           | `--level`                                     | `level`              | `--constricter-level`         | `constricter-level`               |
+| type comments   | `--type-comments`                             | `type-comments`      | `--constricter-type-comments` | `constricter-type-comments = yes` |
+| all scopes      | `--all-scopes`                                | `all-scopes`         | `--constricter-all-scopes`    | `constricter-all-scopes = yes`    |
+| nesting         | `--nesting N`                                 | `nesting`            | `--constricter-nesting`       | `constricter-nesting`             |
+| fix             | `--fix`, or `--diff` to preview               | -                    | -                             | -                                 |
+| select          | `--select CODES` (codes or prefixes)          | `select`             | flake8's own `select`         | pylint's own `enable`             |
+| ignore          | `--ignore CODES`                              | `ignore`             | flake8's own `extend-ignore`  | pylint's own `disable`            |
+| exclude         | `--exclude GLOB` (repeatable)                 | `exclude`            | flake8's own `exclude`        | pylint's own `ignore-paths`       |
+| format          | `--format`: `text`, `json`, `github`, `sarif` | -                    | -                             | -                                 |
+| statistics      | `--statistics` (counts per code, text format) | -                    | -                             | -                                 |
+| jobs            | `--jobs N` (`-j`; 0: one per CPU)             | `jobs`               | flake8's own `--jobs`         | pylint's own `--jobs`             |
+| per-path levels | -                                             | `per-path-levels`    | -                             | -                                 |
 
 `constricter --explain LVA002` prints a code's rationale, its fix, and the levels that report it.
 
@@ -128,6 +135,11 @@ exclude = ["tests/fixtures/*"]
 type-comments = false
 all-scopes = true
 nesting = 5
+jobs = 0
+
+# The first glob a file matches sets its level; other files get `level`.
+[tool.constricter.per-path-levels]
+"tests/*" = "strict"
 select = ["LVA00"]
 ignore = ["LVA003"]
 ```
@@ -168,7 +180,7 @@ pip install python-constricter # once the first release is out; until then:
 pip install "python-constricter @ git+https://github.com/ivylikethevine/python-constricter@v0.2.0"
 ```
 
-pre-commit, after ruff's hooks:
+pre-commit, after ruff's hooks (or `constricter-fix`, which runs `--fix` first):
 
 ```yaml
 - repo: https://github.com/ivylikethevine/python-constricter
@@ -177,19 +189,28 @@ pre-commit, after ruff's hooks:
     - id: constricter
 ```
 
+GitHub Actions, as PR annotations (it installs from the action's own tag, not PyPI):
+
+```yaml
+- uses: ivylikethevine/python-constricter@v0.2.0
+  with:
+    args: --format=github src tests # the default is `--format=github` on `.`
+    python-version: "3.13" # 3.11 or later
+```
+
 ## Development
 
 With [uv](https://docs.astral.sh/uv/) installed (CI pins 0.12.17):
 
 ```bash
 export UV_PROJECT_ENVIRONMENT=local/.venv
-uv sync --locked --no-install-project # the dev group, hash-checked from uv.lock
+uv sync --locked --no-install-project --no-build # the dev group: hash-checked wheels from uv.lock
 uv pip install --python local/.venv --no-deps --no-build-isolation -e .
 ```
 
 Checks (as CI runs them): `ruff check .` (every rule, preview included), `ruff format --check .`,
 `basedpyright` (all), `mypy` (strict), `pylint src tests` (every extension), `flake8 src tests`,
-`typos`, `reuse lint`, `validate-pyproject pyproject.toml`, `uv lock --check`,
+`typos`, `validate-pyproject pyproject.toml`, `uv lock --check`,
 `constricter --level=suffocate --all-scopes src tests`, `pytest --cov` (100% branch coverage).
 Everything generated goes in `local/`. Python is indented with 2 spaces.
 
@@ -218,6 +239,8 @@ Everything else is on. Some of these may be revisited.
 | mypy, basedpyright | astroid's untyped calls and missing stubs                                                                             | astroid (pylint's parser) ships no type information.                                                                            |
 | typos              | the word `astroid`                                                                                                    | A real package name.                                                                                                            |
 | harden-runner      | `egress-policy: audit` on macOS and Windows, in the release and Scorecard jobs, and in the weekly external-link check | macOS and Windows reach unpredictable OS hosts; the release and Scorecard jobs haven't run yet; external links can go anywhere. |
+| reuse              | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)                                               | No recent release ships a wheel for Python 3.11+, so installing it builds from source with an unpinned `poetry-core`.           |
+| zizmor             | `self-repository` on the CI job that runs the repository's root action                                                | zizmor wants `$/`, and actionlint rejects a bare `$/` (it has no path), so that one line uses `./`.                             |
 | vulture            | not run                                                                                                               | Its only findings were flake8/pylint hook names, which it can't see being called.                                               |
 
 To apply the rulesets in `.github/rulesets/` (repo admin):
@@ -255,8 +278,13 @@ Done:
 - **All scopes:** `all-scopes` checks module and class bodies (`LVA004`).
 - **Suffocate:** `src/` and `tests/` pass at `--level=suffocate --all-scopes` in CI.
 - **More checks:** gitleaks over the whole history (Security), lychee on the Markdown links (offline
-  in Docs, external ones weekly), `reuse lint`, validate-pyproject and check-wheel-contents.
+  in Docs, external ones weekly), validate-pyproject and check-wheel-contents.
 - **SARIF docs**, and `--explain`, `--select` / `--ignore`, `--diff` and `--statistics`.
+- **Scorecard** blocks all but the hosts it was seen to use.
+- **Project files:** a `constricter-fix` pre-commit hook, a CHANGELOG (release notes grouped by
+  `.github/release.yml`), badges, issue and PR templates, CODEOWNERS and CONTRIBUTING.
+- **Per-path levels**, **`--jobs`** for parallel checking, and a **GitHub Action** (`action.yml`)
+  that CI runs on the project itself.
 - **LVA005, LVA006 and `--fix`.**
 - **Python 3.11+**, the oldest version still maintained after 3.10's end of life in October 2026.
   Older Pythons aren't planned: 3.10 would add a runtime dependency (`tomli`) for a month, and
@@ -265,36 +293,36 @@ Done:
 - **harden-runner** blocks all but the observed hosts in every Linux job that has run, the Linux
   Test jobs included.
 
-Next, smallest first:
+Next up, in this order:
 
-1. Switch the release jobs and Scorecard to `block` once they've run and their hosts are known.
-2. **A `constricter-fix` pre-commit hook**, running `--fix`.
-3. **CHANGELOG**, with generated release notes.
-4. **Badges:** CI, PyPI, Scorecard and licence.
-5. **Issue and PR templates, and CODEOWNERS.**
-6. **CONTRIBUTING**, kept short.
-7. **Per-path levels** in `[tool.constricter]`, e.g. `strict` for `tests/` and `suffocate`
-   elsewhere.
-8. **Parallel checking** for large repositories.
-9. **A GitHub Action** (`uses: ivylikethevine/python-constricter@v1`) that runs `--format=github`
-   for PR annotations.
-10. **Fuzzing:** hypothesis with hypothesmith generates valid Python; the checker must never crash
-    on it.
-11. **A weekly run over a large real codebase** (CPython's standard library) to catch crashes and
-    slowdowns.
-12. **Mutation testing (mutmut)**, weekly, to check the tests catch bugs rather than just cover
-    lines. It's slow, so not on every push.
-13. **An adoption guide** for existing codebases: start at `relaxed`, baseline, then raise the
-    level.
-14. **`# lva-ignore: LVA00x`:** a suppression that, unlike `# noqa` (which every front end honours),
-    still reports the offence as a warning at `suffocate`.
-15. **Trunk and MegaLinter plugin definitions**, submitted upstream once it's on PyPI.
-16. **A conda-forge recipe**, once it's on PyPI.
-17. **A baseline file (`--baseline`):** record existing offences so a large codebase can adopt the
-    tool and fail only on new ones.
-18. **A smarter `--fix`:** uniform list and dict literals (`[1, 2]` becomes `list[int]`), and calls
-    to same-module functions that declare their return type.
-19. **Jupyter notebooks:** check `.ipynb` code cells, as ruff does.
-20. **SLSA level-3 provenance** (slsa-github-generator), a stronger guarantee than today's
-    attestation.
-21. Revisit the [disabled rules](#disabled-rules).
+1. **A baseline file (`--baseline`):** record existing offences so a large codebase can adopt the
+   tool and fail only on new ones.
+2. **A smarter `--fix`:** uniform list and dict literals (`[1, 2]` becomes `list[int]`), and calls
+   to same-module functions that declare their return type.
+3. **Jupyter notebooks:** check `.ipynb` code cells, as ruff does.
+
+Then, smallest first:
+
+1. **Fuzzing:** hypothesis with hypothesmith generates valid Python; the checker must never crash on
+   it.
+2. **A weekly run over a large real codebase** (CPython's standard library) to catch crashes and
+   slowdowns.
+3. **Mutation testing (mutmut)**, weekly, to check the tests catch bugs rather than just cover
+   lines. It's slow, so not on every push.
+4. **An adoption guide** for existing codebases: start at `relaxed`, baseline, then raise the level.
+5. **`# lva-ignore: LVA00x`:** a suppression that, unlike `# noqa` (which every front end honours),
+   still reports the offence as a warning at `suffocate`.
+6. **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+.
+7. **SLSA level-3 provenance** (slsa-github-generator), a stronger guarantee than today's
+   attestation.
+8. Revisit the [disabled rules](#disabled-rules).
+
+After the first release (these need it on PyPI, or a published tag):
+
+1. **Switch the release jobs to `block`** with the hosts the first release run shows (PyPI upload,
+   Sigstore, GitHub releases).
+2. **A PyPI badge**, and `pip install python-constricter` as the documented install.
+3. **The GitHub Action on the Marketplace**, so `uses: ivylikethevine/python-constricter@v1` is
+   listed (it already works from any tag).
+4. **Trunk and MegaLinter plugin definitions**, submitted upstream.
+5. **A conda-forge recipe.**

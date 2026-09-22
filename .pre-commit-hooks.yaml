@@ -4,3 +4,9 @@
   entry: constricter --quiet
   language: python
   types: [python]
+- id: constricter-fix
+  name: constricter (fix)
+  description: Add the annotations a value makes unambiguous, then report the rest.
+  entry: constricter --fix --quiet
+  language: python
+  types: [python]

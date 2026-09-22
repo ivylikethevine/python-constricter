@@ -37,6 +37,9 @@
             "context": "Docs"
           },
           {
+            "context": "Action"
+          },
+          {
             "context": "Test (ubuntu-latest, 3.11)"
           },
           {

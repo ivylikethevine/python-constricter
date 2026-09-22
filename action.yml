@@ -1,0 +1,32 @@
+name: constricter
+description: Report local variables that aren't typed where they're first bound, as PR annotations.
+author: Ivy Duggan
+branding:
+  icon: check-square
+  color: green
+inputs:
+  args:
+    description: The command's arguments (options and paths); `[tool.constricter]` in pyproject.toml applies too.
+    default: --format=github
+  python-version:
+    description: The Python to run it with (3.11 or later).
+    default: "3.13"
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      id: python
+      with:
+        python-version: ${{ inputs.python-version }}
+        update-environment: false
+    - shell: bash
+      env:
+        PYTHON: ${{ steps.python.outputs.python-path }}
+        ARGS: ${{ inputs.args }}
+      run: |
+        "$PYTHON" -m venv "$RUNNER_TEMP/constricter"
+        bin="$RUNNER_TEMP/constricter/bin"
+        [ -d "$bin" ] || bin="$RUNNER_TEMP/constricter/Scripts"
+        "$bin/python" -m pip install --quiet "$GITHUB_ACTION_PATH"
+        read -r -a args <<< "$ARGS"
+        "$bin/constricter" "${args[@]}"

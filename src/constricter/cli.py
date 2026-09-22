@@ -3,30 +3,23 @@
 
 import argparse
 import difflib
-import json
+import os
 import sys
-import tomllib
-from collections import Counter
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
-from enum import Enum, StrEnum
+from enum import Enum
 from fnmatch import fnmatch
+from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, TypeAlias, cast
+from typing import Final, cast
 
 from constricter import __version__
 from constricter.checker import LEVELS, MESSAGES, NESTING, Level, Offence, check_source
+from constricter.config import config_defaults, unknown_codes
 from constricter.explain import explain
 from constricter.noqa import lines, unsuppressed
-
-if TYPE_CHECKING:
-  from datetime import date, datetime, time
-  from io import BufferedReader
-
-
-_Result: TypeAlias = tuple[Path, Offence]
-_Toml: TypeAlias = "str | int | float | bool | datetime | date | time | list[_Toml] | dict[str, _Toml]"
-_Default: TypeAlias = str | int | bool | list[str]
+from constricter.report import Format, Result, render, statistics
 
 _SKIPPED_DIRS: frozenset[str] = frozenset(
   {"__pycache__", "node_modules", "venv", "site-packages", "build", "dist"}
@@ -34,15 +27,6 @@ _SKIPPED_DIRS: frozenset[str] = frozenset(
 EXIT_CLEAN: Final = 0
 EXIT_FOUND: Final = 1
 EXIT_ERROR: Final = 2
-
-
-class Format(StrEnum):
-  """The `--format` choices."""
-
-  TEXT = "text"
-  JSON = "json"
-  GITHUB = "github"
-  SARIF = "sarif"
 
 
 def _excluded(path: Path, patterns: Sequence[str]) -> bool:
@@ -104,94 +88,22 @@ def diff_file(path: Path, offences: Sequence[Offence]) -> str:
   return "".join(difflib.unified_diff(lines(source), _fixed(source, offences), str(path), str(path)))
 
 
-def _github_escape(text: str, *, prop: bool = False) -> str:
-  text = text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-  return text.replace(":", "%3A").replace(",", "%2C") if prop else text
+def _at_least(minimum: int) -> Callable[[str], int]:
+  """Return a reader of whole numbers of at least `minimum`, for `--nesting` and `--jobs`."""
 
+  def read(text: str) -> int:
+    """Read `text`.
 
-def _severity(offence: Offence, level: Level) -> str:
-  return "error" if offence.is_error(level) else "warning"
+    Raises:
+      argparse.ArgumentTypeError: It isn't one.
 
+    """
+    if not text.isdigit() or int(text) < minimum:
+      message: str = f"expected a whole number of at least {minimum}, not {text!r}"
+      raise argparse.ArgumentTypeError(message)
+    return int(text)
 
-def _sarif(results: Sequence[_Result], level: Level) -> dict[str, object]:
-  return {
-    "version": "2.1.0",
-    "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
-    "runs": [
-      {
-        "tool": {
-          "driver": {
-            "name": "constricter",
-            "version": __version__,
-            "informationUri": "https://github.com/ivylikethevine/python-constricter",
-            "rules": [
-              {"id": code, "shortDescription": {"text": message.format(name="`name`")}}
-              for code, message in MESSAGES.items()
-            ],
-          }
-        },
-        "results": [
-          {
-            "ruleId": o.code,
-            "level": _severity(o, level),
-            "message": {"text": o.message},
-            "locations": [
-              {
-                "physicalLocation": {
-                  "artifactLocation": {"uri": path.as_posix()},
-                  "region": {"startLine": o.line, "startColumn": o.col + 1},
-                }
-              }
-            ],
-          }
-          for path, o in results
-        ],
-      }
-    ],
-  }
-
-
-def _render(fmt: Format, results: Sequence[_Result], level: Level) -> Iterator[str]:
-  """Yield the output lines for `results` in format `fmt`."""
-  path: Path
-  o: Offence
-  if fmt is Format.JSON:
-    yield json.dumps(
-      [
-        {
-          "path": str(path),
-          "line": o.line,
-          "column": o.col + 1,
-          "code": o.code,
-          "severity": _severity(o, level),
-          "message": o.message,
-        }
-        for path, o in results
-      ],
-      indent=2,
-    )
-  elif fmt is Format.SARIF:
-    yield json.dumps(_sarif(results, level), indent=2)
-  elif fmt is Format.GITHUB:
-    for path, o in results:
-      location: str = f"file={_github_escape(str(path), prop=True)},line={o.line},col={o.col + 1}"
-      yield f"::{_severity(o, level)} {location},title={o.code}::{_github_escape(o.message)}"
-  else:
-    for path, o in results:
-      yield f"{path}:{o.line}:{o.col + 1}: {_severity(o, level)}: {o.code} {o.message}"
-
-
-def _positive(text: str) -> int:
-  """Read a whole number of at least 1, for `--nesting`.
-
-  Raises:
-    argparse.ArgumentTypeError: `text` isn't one.
-
-  """
-  if not text.isdigit() or int(text) < 1:
-    message: str = f"expected a whole number of at least 1, not {text!r}"
-    raise argparse.ArgumentTypeError(message)
-  return int(text)
+  return read
 
 
 def _codes(text: str) -> list[str]:
@@ -203,7 +115,7 @@ def _codes(text: str) -> list[str]:
   """
   codes: list[str] = [code.strip().upper() for code in text.split(",") if code.strip()]
   unknown: list[str]
-  if unknown := [code for code in codes if not any(known.startswith(code) for known in MESSAGES)]:
+  if unknown := unknown_codes(codes):
     message: str = f"no code starts with {', '.join(unknown)}"
     raise argparse.ArgumentTypeError(message)
   return codes
@@ -243,7 +155,7 @@ def _parser() -> argparse.ArgumentParser:
   )
   _ = parser.add_argument(
     "--nesting",
-    type=_positive,
+    type=_at_least(1),
     default=NESTING,
     metavar="N",
     help=f"report an annotation nested N deep (LVA006; default: {NESTING})",
@@ -268,75 +180,17 @@ def _parser() -> argparse.ArgumentParser:
     "--statistics", action="store_true", help="print counts per code instead of each offence (text)"
   )
   _ = parser.add_argument("--explain", choices=list(MESSAGES), metavar="CODE", help="explain a code and exit")
+  _ = parser.add_argument(
+    "--jobs",
+    "-j",
+    type=_at_least(0),
+    default=1,
+    metavar="N",
+    help="check N files at a time (0: one per CPU; default: 1)",
+  )
   _ = parser.add_argument("--quiet", "-q", action="store_true", help="don't print the text summary line")
   _ = parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
   return parser
-
-
-def _pyproject(start: Path) -> Path | None:
-  """Return the nearest `pyproject.toml` in `start` or above it."""
-  directory: Path
-  path: Path
-  for directory in (start, *start.parents):
-    if (path := directory / "pyproject.toml").is_file():
-      return path
-  return None
-
-
-def _table(path: Path) -> dict[str, _Toml]:
-  """Return `path`'s `[tool.constricter]` table, or an empty one.
-
-  Raises:
-    ValueError: The file isn't TOML, or `tool.constricter` isn't a table.
-
-  """
-  file: BufferedReader
-  document: dict[str, _Toml]
-  message: str
-  with path.open("rb") as file:
-    try:
-      document = tomllib.load(file)
-    except tomllib.TOMLDecodeError as error:
-      message = f"{path}: {error}"
-      raise ValueError(message) from error
-  table: dict[str, _Toml]
-  match document.get("tool"):
-    case {"constricter": dict() as table}:
-      return table
-    case {"constricter": _}:
-      message = f"{path}: [tool.constricter] isn't a table"
-      raise ValueError(message)
-    case _:
-      return {}
-
-
-def config_defaults(start: Path) -> dict[str, _Default]:
-  """Return the option defaults in the nearest `pyproject.toml`'s `[tool.constricter]`.
-
-  Raises:
-    ValueError: The file isn't TOML, or the table has an unknown key or a wrong value.
-
-  """
-  path: Path | None
-  if (path := _pyproject(start)) is None:
-    return {}
-  defaults: dict[str, _Default] = {}
-  key: str
-  value: _Toml
-  for key, value in _table(path).items():
-    match key, value:
-      case "level", str() | int() if not isinstance(value, bool) and str(value).lower() in LEVELS:
-        defaults["level"] = str(value).lower()
-      case "nesting", int() if not isinstance(value, bool) and value >= 1:
-        defaults["nesting"] = value
-      case (("exclude" | "select" | "ignore"), list()) if all(isinstance(item, str) for item in value):
-        defaults[key] = [str(item) for item in value]
-      case (("type-comments" | "all-scopes"), bool()):
-        defaults[key.replace("-", "_")] = value
-      case _:
-        message: str = f"{path}: [tool.constricter] has an invalid {key} = {value!r}"
-        raise ValueError(message)
-  return defaults
 
 
 class _Mode(Enum):
@@ -358,19 +212,32 @@ class _Checks:
 
 @dataclass(frozen=True)
 class _Filter:
-  """Which offences are reported, and as what."""
+  """Which offences are reported, and at which level."""
 
   level: Level
+  per_path: dict[str, str]
   select: list[str]
   ignore: list[str]
 
-  def reports(self, offence: Offence) -> bool:
-    """Whether `offence` is reported at all."""
-    return (
-      offence.is_reported(self.level)
-      and (not self.select or offence.code.startswith(tuple(self.select)))
-      and not offence.code.startswith(tuple(self.ignore))
-    )
+  def level_for(self, path: Path) -> Level:
+    """Return the level of the first `per-path-levels` glob `path` matches, else `--level`'s."""
+    glob: str
+    level: str
+    for glob, level in self.per_path.items():
+      if _excluded(path, [glob]):
+        return LEVELS[level]
+    return self.level
+
+  def results(self, path: Path, offences: Sequence[Offence]) -> list[Result]:
+    """Return the offences in `path` that are reported, at its level."""
+    level: Level = self.level_for(path)
+    return [
+      Result(path, o, level)
+      for o in offences
+      if o.is_reported(level)
+      and (not self.select or o.code.startswith(tuple(self.select)))
+      and not o.code.startswith(tuple(self.ignore))
+    ]
 
 
 @dataclass(frozen=True)
@@ -392,6 +259,7 @@ class _Options:
   filter: _Filter
   output: _Output
   mode: _Mode
+  jobs: int
 
   @classmethod
   def parse(cls, argv: Sequence[str] | None) -> "_Options":
@@ -420,6 +288,7 @@ class _Options:
       ),
       filter=_Filter(
         level=LEVELS[cast("str", args.level)],
+        per_path=cast("dict[str, str]", getattr(args, "per_path_levels", {})),
         select=[c.upper() for c in cast("list[str]", args.select)],
         ignore=[c.upper() for c in cast("list[str]", args.ignore)],
       ),
@@ -429,81 +298,71 @@ class _Options:
         quiet=cast("bool", args.quiet),
       ),
       mode=_Mode.FIX if fix else _Mode.DIFF if diff else _Mode.CHECK,
+      jobs=cast("int", args.jobs) or os.cpu_count() or 1,
     )
 
 
-@dataclass
-class _Run:
-  """What checking every file found."""
+@dataclass(frozen=True)
+class _FileRun:
+  """What checking one file found (and fixed, or would fix)."""
 
-  results: list[_Result] = field(default_factory=list["_Result"])
-  files: int = 0
+  results: list[Result] = field(default_factory=list[Result])
   fixed: int = 0
-  diffs: list[str] = field(default_factory=list[str])
-  failed: bool = False
+  diff: str = ""
+  error: str = ""
 
 
-def _check_one(path: Path, options: _Options, run: _Run) -> None:
-  """Check (and fix, or diff) one file into `run`."""
+def _check_path(path: Path, options: _Options) -> _FileRun:
+  """Check (and fix, or diff) one file; a file that can't be read or parsed is an error."""
   checks: _Checks = options.checks
-  offences: list[Offence] = [
-    o
-    for o in check_file(
+  offences: list[Offence]
+  try:
+    offences = check_file(
       path, type_comments=checks.type_comments, all_scopes=checks.all_scopes, nesting=checks.nesting
     )
-    if options.filter.reports(o)
-  ]
-  diff: str
+  except (OSError, UnicodeDecodeError, SyntaxError) as error:
+    return _FileRun(error=f"{path}: error: {error}")
+  results: list[Result] = options.filter.results(path, offences)
+  reported: list[Offence] = [r.offence for r in results]
   if options.mode is _Mode.DIFF:
-    run.diffs += [diff] if (diff := diff_file(path, offences)) else []
-    return
+    return _FileRun(diff=diff_file(path, reported))
   if options.mode is _Mode.FIX:
-    run.fixed += fix_file(path, offences)
-    offences = [o for o in offences if not o.fix]
-  run.results += [(path, o) for o in offences]
+    return _FileRun([r for r in results if not r.offence.fix], fix_file(path, reported))
+  return _FileRun(results)
 
 
-def _check_all(options: _Options) -> _Run:
-  """Check every file; a file that can't be read or parsed is reported on stderr."""
-  run: _Run = _Run()
-  path: Path
-  for path in python_files(options.paths, options.exclude):
-    run.files += 1
-    try:
-      _check_one(path, options, run)
-    except (OSError, UnicodeDecodeError, SyntaxError) as error:
-      _ = sys.stderr.write(f"{path}: error: {error}\n")
-      run.failed = True
-  return run
-
-
-def _statistics(results: Sequence[_Result], level: Level) -> Iterator[str]:
-  """Yield one line per code: how many, the code, and its severity at `level`."""
-  code: str
-  count: int
-  for code, count in Counter(o.code for _, o in results).most_common():
-    yield f"{count:>5}  {code}  {_severity(Offence(1, 0, '', code), level)}"
+def _check_all(options: _Options) -> tuple[list[_FileRun], int]:
+  """Check every file (`--jobs` at a time), in order; return what each found, and how many."""
+  paths: list[Path] = list(python_files(options.paths, options.exclude))
+  check: Callable[[Path], _FileRun] = partial(_check_path, options=options)
+  if options.jobs == 1 or len(paths) <= 1:
+    return [check(path) for path in paths], len(paths)
+  pool: ProcessPoolExecutor
+  with ProcessPoolExecutor(max_workers=options.jobs) as pool:
+    return list(pool.map(check, paths)), len(paths)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
   """Run the command; return its exit status."""
   options: _Options = _Options.parse(argv)
-  run: _Run = _check_all(options)
+  runs: list[_FileRun]
+  files: int
+  runs, files = _check_all(options)
+  _ = sys.stderr.write("".join(f"{run.error}\n" for run in runs if run.error))
+  failed: bool = any(run.error for run in runs)
   if options.mode is _Mode.DIFF:
-    _ = sys.stdout.write("".join(run.diffs))
-    return EXIT_ERROR if run.failed else EXIT_FOUND if run.diffs else EXIT_CLEAN
-  level: Level = options.filter.level
+    diffs: str = "".join(run.diff for run in runs)
+    _ = sys.stdout.write(diffs)
+    return EXIT_ERROR if failed else EXIT_FOUND if diffs else EXIT_CLEAN
+  results: list[Result] = [result for run in runs for result in run.results]
   output: _Output = options.output
   text: bool = output.fmt is Format.TEXT
   line: str
-  for line in (
-    _statistics(run.results, level) if text and output.statistics else _render(output.fmt, run.results, level)
-  ):
+  for line in statistics(results) if text and output.statistics else render(output.fmt, results):
     _ = sys.stdout.write(f"{line}\n")
-  errors: int = sum(o.is_error(level) for _, o in run.results)
+  errors: int = sum(r.offence.is_error(r.level) for r in results)
   if text and not output.quiet:
-    summary: str = (
-      f"Found {errors} error(s) and {len(run.results) - errors} warning(s) in {run.files} file(s)"
-    )
-    _ = sys.stdout.write(f"{summary}; fixed {run.fixed}.\n" if options.mode is _Mode.FIX else f"{summary}.\n")
-  return EXIT_ERROR if run.failed else EXIT_FOUND if errors else EXIT_CLEAN
+    summary: str = f"Found {errors} error(s) and {len(results) - errors} warning(s) in {files} file(s)"
+    fixed: int = sum(run.fixed for run in runs)
+    _ = sys.stdout.write(f"{summary}; fixed {fixed}.\n" if options.mode is _Mode.FIX else f"{summary}.\n")
+  return EXIT_ERROR if failed else EXIT_FOUND if errors else EXIT_CLEAN
