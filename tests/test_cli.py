@@ -6,13 +6,13 @@ import runpy
 import sys
 import textwrap
 from pathlib import Path
-from typing import cast
+from typing import Final, cast
 
 import pytest
 
 from constricter import cli
 
-BROKEN = """
+BROKEN: Final = """
 def broken(items: list[int]) -> None:
     plain = 1
     other = 2  # noqa: LVA001
@@ -23,12 +23,12 @@ def broken(items: list[int]) -> None:
     for hushed in items:  # noqa: LVA002
         pass
 """
-ONE_CLEAN_FILE = "Found 0 error(s) and 0 warning(s) in 1 file(s).\n"
-PLAIN = "local variable 'plain' is not annotated where it's first bound"
-FOURTH = "local variable 'fourth' is not annotated where it's first bound"
-LOOP = "for/match variable 'loop' is untyped; declare it before the statement"
-_Sarif = dict[str, list[dict[str, list[dict[str, object]]]]]
-CLEAN = """
+ONE_CLEAN_FILE: Final = "Found 0 error(s) and 0 warning(s) in 1 file(s).\n"
+PLAIN: Final = "local variable 'plain' is not annotated where it's first bound"
+FOURTH: Final = "local variable 'fourth' is not annotated where it's first bound"
+LOOP: Final = "for/match variable 'loop' is untyped; declare it before the statement"
+type _Sarif = dict[str, list[dict[str, list[dict[str, object]]]]]
+CLEAN: Final = """
 def clean() -> None:
     fine: int = 1
 """
@@ -192,3 +192,75 @@ def test_sarif_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Non
       }
     }
   ]
+
+
+def _pyproject(directory: Path, text: str) -> None:
+  _ = (directory / "pyproject.toml").write_text(text, encoding="utf-8")
+
+
+def test_pyproject_sets_the_defaults(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+  """The nearest `pyproject.toml`'s `[tool.constricter]` sets the defaults; flags still win."""
+  _pyproject(
+    tmp_path,
+    """
+[tool.constricter]
+level = "constrict"
+exclude = ["skipped.py"]
+type-comments = true
+all-scopes = true
+""",
+  )
+  source: str = (
+    "LIMIT = 1\ndef f(items: list[int]) -> None:\n  x = 1  # type: int\n  for y in items:\n    pass\n"
+  )
+  _ = _write(tmp_path / "pkg" / "checked.py", source)
+  _ = _write(tmp_path / "pkg" / "skipped.py", "def f() -> None:\n  z = 1\n")
+  monkeypatch.chdir(tmp_path / "pkg")
+  assert cli.main(["."]) == cli.EXIT_FOUND
+  out: str = capsys.readouterr().out
+  assert [(line.split(": ")[1], line.split(": ")[2][:6]) for line in out.splitlines()[:-1]] == [
+    ("error", "LVA004"),
+    ("error", "LVA002"),
+  ]
+  assert out.endswith("Found 2 error(s) and 0 warning(s) in 1 file(s).\n")
+  assert cli.main(["--level=0", "."]) == cli.EXIT_CLEAN
+
+
+def test_pyproject_level_can_be_a_number(tmp_path: Path) -> None:
+  """`level` takes a number too."""
+  _pyproject(tmp_path, "[tool.constricter]\nlevel = 3\n")
+  assert cli.config_defaults(tmp_path) == {"level": "3"}
+
+
+def test_no_table_or_no_pyproject_sets_nothing(tmp_path: Path) -> None:
+  """A `pyproject.toml` without the table, or none at all, sets no defaults."""
+  _pyproject(tmp_path, '[project]\nname = "x"\n')
+  assert not cli.config_defaults(tmp_path)
+  assert not cli.config_defaults(Path(tmp_path.anchor))
+
+
+@pytest.mark.parametrize(
+  "text",
+  [
+    '[tool.constricter]\nlevel = "tight"\n',
+    "[tool.constricter]\nlevel = true\n",
+    '[tool.constricter]\nexclude = "x"\n',
+    "[tool.constricter]\nexclude = [1]\n",
+    "[tool.constricter]\nall-scopes = 1\n",
+    "[tool.constricter]\ncolour = 1\n",
+    "not toml [",
+  ],
+)
+def test_a_bad_pyproject_exits_2(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], text: str
+) -> None:
+  """An unreadable `pyproject.toml`, or a bad key or value in the table, exits 2."""
+  _pyproject(tmp_path, text)
+  monkeypatch.chdir(tmp_path)
+  exit_info: pytest.ExceptionInfo[SystemExit]
+  with pytest.raises(SystemExit) as exit_info:
+    _ = cli.main([])
+  assert exit_info.value.code == cli.EXIT_ERROR
+  assert f"{tmp_path / 'pyproject.toml'}: " in capsys.readouterr().err

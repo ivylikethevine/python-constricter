@@ -19,7 +19,9 @@ classifiers = [
 [project.optional-dependencies]
 flake8 = ["flake8>=7"]
 pylint = ["pylint>=3"]
-# Locked with hashes in requirements-dev.txt (see README, Development).
+
+[dependency-groups]
+# Locked with hashes in uv.lock (see README, Development).
 dev = [
     "basedpyright",
     "build",
@@ -34,7 +36,6 @@ dev = [
     "ruff",
     "twine",
     "typos",
-    "uv",
     "zizmor",
 ]
 
@@ -144,6 +145,7 @@ astroid = "astroid"
 
 [tool.uv]
 cache-dir = "local/.uv-cache"
+required-version = ">=0.12.17"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

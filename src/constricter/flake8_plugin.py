@@ -4,7 +4,7 @@
 import argparse
 import ast
 from collections.abc import Iterator, Sequence
-from typing import TYPE_CHECKING, ClassVar, cast, final
+from typing import TYPE_CHECKING, ClassVar, Final, cast, final
 
 from constricter import __version__
 from constricter.checker import LEVELS, Level, Offence, check_source, check_tree
@@ -12,7 +12,7 @@ from constricter.checker import LEVELS, Level, Offence, check_source, check_tree
 if TYPE_CHECKING:
   from flake8.options.manager import OptionManager
 
-_TYPE_COMMENT = "type:"
+_TYPE_COMMENT: Final = "type:"
 
 
 @final
@@ -23,6 +23,7 @@ class ConstricterChecker:
   version: str = __version__
   level: ClassVar[Level] = Level.STRICT
   type_comments: ClassVar[bool] = False
+  all_scopes: ClassVar[bool] = False
 
   def __init__(self, tree: ast.Module, lines: Sequence[str]) -> None:
     """Take the file flake8 parsed, and its lines."""
@@ -45,21 +46,28 @@ class ConstricterChecker:
       parse_from_config=True,
       help="count `x = 1  # type: int` as annotated",
     )
+    parser.add_option(
+      "--constricter-all-scopes",
+      action="store_true",
+      parse_from_config=True,
+      help="also check module and class bodies (LVA004)",
+    )
 
   @classmethod
   def parse_options(cls, options: argparse.Namespace) -> None:
     """Read the parsed options (flake8's plugin hook)."""
     cls.level = LEVELS[cast("str", options.constricter_level)]
     cls.type_comments = cast("bool", options.constricter_type_comments)
+    cls.all_scopes = cast("bool", options.constricter_all_scopes)
 
   def run(self) -> Iterator[tuple[int, int, str, type["ConstricterChecker"]]]:
     """Yield flake8's `(line, col, message, type)` per error-level offence."""
     source: str = "".join(self.lines)
     # flake8's tree has no `# type:` comments; reparse only when the file might have one.
     offences: list[Offence] = (
-      check_source(source, type_comments=self.type_comments)
+      check_source(source, type_comments=self.type_comments, all_scopes=self.all_scopes)
       if _TYPE_COMMENT in source
-      else check_tree(self.tree, lines=self.lines)
+      else check_tree(self.tree, all_scopes=self.all_scopes, lines=self.lines)
     )
     o: Offence
     for o in offences:

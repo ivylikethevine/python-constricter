@@ -6,6 +6,7 @@ import textwrap
 from collections.abc import Callable
 from io import StringIO
 from pathlib import Path
+from typing import Final
 
 import pytest
 from astroid import nodes
@@ -18,7 +19,7 @@ from constricter.checker import Level
 from constricter.flake8_plugin import ConstricterChecker
 from constricter.pylint_plugin import ConstricterChecker as PylintChecker
 
-SOURCE = """
+SOURCE: Final = """
 def broken(items: list[int]) -> None:
     plain = 1
     other = 2  # noqa: LVA001
@@ -29,9 +30,9 @@ def broken(items: list[int]) -> None:
     for commented in items:  # type: int
         pass
 """
-MESSAGE = "local variable {!r} is not annotated where it's first bound"
-LOOP = "for/match variable 'loop' is untyped; declare it before the statement"
-COMMENTED = "for variable 'commented' is typed only by a type comment; declare it before the loop"
+MESSAGE: Final = "local variable {!r} is not annotated where it's first bound"
+LOOP: Final = "for/match variable 'loop' is untyped; declare it before the statement"
+COMMENTED: Final = "for variable 'commented' is typed only by a type comment; declare it before the loop"
 
 
 def _write(tmp_path: Path) -> Path:
@@ -47,6 +48,7 @@ def _flake8_fixture(
   """Run flake8 in-process; its output lines. Undoes `parse_options`, which sets class state."""
   monkeypatch.setattr(ConstricterChecker, "level", Level.STRICT)
   monkeypatch.setattr(ConstricterChecker, "type_comments", False)
+  monkeypatch.setattr(ConstricterChecker, "all_scopes", False)
 
   def _run(*args: str) -> list[str]:
     application: Application = Application()
@@ -141,3 +143,15 @@ def test_pylint_checker_skips_a_module_without_source() -> None:
   linter: PyLinter = PyLinter(reporter=reporter)
   PylintChecker(linter).process_module(nodes.Module("in_memory", file=None))
   assert not reporter.messages
+
+
+def test_all_scopes_option(tmp_path: Path, flake8: Callable[..., list[str]]) -> None:
+  """`all-scopes` makes both plugins report LVA004 / C9104 for module variables."""
+  path: Path = tmp_path / "module.py"
+  _ = path.write_text("LIMIT = 1\n", encoding="utf-8")
+  member: str = "module or class variable 'LIMIT' is not annotated where it's first bound"
+  assert not flake8(str(path))
+  assert flake8("--constricter-all-scopes", str(path)) == [f"{path}:1:1: LVA004 {member}"]
+  assert _pylint(path, "--constricter-all-scopes=y") == [
+    f"1:0: C9104 unannotated-module-or-class-variable {member}"
+  ]

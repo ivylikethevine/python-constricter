@@ -4,6 +4,7 @@
 import ast
 import textwrap
 from pathlib import Path
+from typing import Final
 
 import pytest
 
@@ -11,6 +12,7 @@ from constricter import (
   COMMENT_TYPED_TARGET,
   LEVELS,
   UNANNOTATED,
+  UNANNOTATED_MEMBER,
   UNTYPED_TARGET,
   Level,
   Offence,
@@ -18,7 +20,7 @@ from constricter import (
   check_tree,
 )
 
-EXEMPT = """
+EXEMPT: Final = """
 import os
 from os import path as p
 
@@ -93,7 +95,7 @@ async def coroutine(items: list[str], *args: str, **kwargs: str) -> str:
         return str(m)
 """
 
-OFFENDING = """
+OFFENDING: Final = """
 def broken(items: list[int]) -> None:
     plain = 1
     a: int
@@ -107,7 +109,8 @@ def broken(items: list[int]) -> None:
     a = count
 """
 
-X_MESSAGE = "local variable 'x' is not annotated where it's first bound"
+MEMBER_MESSAGE: Final = "module or class variable 'x' is not annotated where it's first bound"
+X_MESSAGE: Final = "local variable 'x' is not annotated where it's first bound"
 
 
 def _check(source: str) -> list[Offence]:
@@ -241,12 +244,14 @@ def test_scopes(source: str, expected: list[Offence]) -> None:
 
 
 def test_its_own_source_follows_the_rule() -> None:
-  """The package and its tests pass every code."""
+  """The package and its tests pass every code, module and class bodies included."""
   package: Path = Path(__file__).resolve().parents[1] / "src" / "constricter"
   sources: list[Path] = sorted(package.glob("*.py")) + sorted(Path(__file__).parent.glob("*.py"))
   assert package / "checker.py" in sources
   offences: list[str] = [
-    f"{p}:{o.line}: {o.code} {o.name}" for p in sources for o in check_source(p.read_text(encoding="utf-8"))
+    f"{p}:{o.line}: {o.code} {o.name}"
+    for p in sources
+    for o in check_source(p.read_text(encoding="utf-8"), all_scopes=True)
   ]
   assert offences == []
 
@@ -316,14 +321,14 @@ def test_messages() -> None:
   ("level", "errors"),
   [
     (Level.RELAXED, set[str]()),
-    (Level.STRICT, {UNANNOTATED}),
-    (Level.CONSTRICT, {UNANNOTATED, UNTYPED_TARGET}),
-    (Level.SUFFOCATE, {UNANNOTATED, UNTYPED_TARGET, COMMENT_TYPED_TARGET}),
+    (Level.STRICT, {UNANNOTATED, UNANNOTATED_MEMBER}),
+    (Level.CONSTRICT, {UNANNOTATED, UNANNOTATED_MEMBER, UNTYPED_TARGET}),
+    (Level.SUFFOCATE, {UNANNOTATED, UNANNOTATED_MEMBER, UNTYPED_TARGET, COMMENT_TYPED_TARGET}),
   ],
 )
 def test_levels(level: Level, errors: set[str]) -> None:
   """Each level makes one more code an error; the rest are warnings."""
-  codes: tuple[str, ...] = (UNANNOTATED, UNTYPED_TARGET, COMMENT_TYPED_TARGET)
+  codes: tuple[str, ...] = (UNANNOTATED, UNANNOTATED_MEMBER, UNTYPED_TARGET, COMMENT_TYPED_TARGET)
   assert {code for code in codes if Offence(1, 0, "x", code).is_error(level)} == errors
 
 
@@ -377,3 +382,47 @@ def test_a_rest_capture_is_reported_at_its_name() -> None:
   assert [(o.line, o.col, o.name) for o in check_source(source)] == [(4, 20, "rest"), (8, 8, "more")]
   tree: ast.Module = ast.parse(source)
   assert [(o.line, o.col) for o in check_tree(tree)] == [(4, 9), (6, 9)]
+
+
+def test_python2_compatible_modules_count_type_comments() -> None:
+  """A `from __future__` import only Python 2 needs turns type comments on; others don't."""
+  body: str = "def f() -> None:\n  x = 1  # type: int\n"
+  assert not _codes("from __future__ import print_function\n" + body)
+  assert _codes("from __future__ import annotations\n" + body) == [("x", UNANNOTATED)]
+
+
+def test_all_scopes_checks_module_and_class_bodies() -> None:
+  """With `all_scopes`, module and class bodies report LVA004; enums and dunders are exempt."""
+  source: str = textwrap.dedent(
+    """
+    import enum
+    __all__ = ["C"]
+    LIMIT = 3
+    TYPED: int = 4
+    for item in []:
+      pass
+
+
+    class C:
+      size = 1
+      __slots__ = ()
+      name: str = "c"
+
+
+    class Colour(enum.Enum):
+      RED = 1
+
+
+    def f() -> None:
+      class Local:
+        inner = 2
+    """
+  )
+  assert _codes(source) == []
+  assert [(o.name, o.code) for o in check_source(source, all_scopes=True)] == [
+    ("LIMIT", UNANNOTATED_MEMBER),
+    ("item", UNTYPED_TARGET),
+    ("size", UNANNOTATED_MEMBER),
+    ("inner", UNANNOTATED_MEMBER),
+  ]
+  assert Offence(1, 0, "x", UNANNOTATED_MEMBER).message == MEMBER_MESSAGE

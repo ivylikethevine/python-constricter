@@ -7,17 +7,37 @@ from collections import deque
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from enum import IntEnum
+from typing import Final
 
-UNANNOTATED = "LVA001"
-UNTYPED_TARGET = "LVA002"
-COMMENT_TYPED_TARGET = "LVA003"
+UNANNOTATED: Final = "LVA001"
+UNTYPED_TARGET: Final = "LVA002"
+COMMENT_TYPED_TARGET: Final = "LVA003"
+UNANNOTATED_MEMBER: Final = "LVA004"
 MESSAGES: dict[str, str] = {
   UNANNOTATED: "local variable {name} is not annotated where it's first bound",
   UNTYPED_TARGET: "for/match variable {name} is untyped; declare it before the statement",
   COMMENT_TYPED_TARGET: "for variable {name} is typed only by a type comment; declare it before the loop",
+  UNANNOTATED_MEMBER: "module or class variable {name} is not annotated where it's first bound",
 }
 
-_FunctionDef = ast.FunctionDef | ast.AsyncFunctionDef
+type _FunctionDef = ast.FunctionDef | ast.AsyncFunctionDef
+_FUNCTION_DEFS: tuple[type[ast.FunctionDef], type[ast.AsyncFunctionDef]] = (
+  ast.FunctionDef,
+  ast.AsyncFunctionDef,
+)
+_FUTURE: Final = "__future__"
+# `from __future__` features only code that also runs on Python 2 imports: its type comments count.
+_PYTHON2_FUTURES: frozenset[str] = frozenset(
+  {
+    "nested_scopes",
+    "generators",
+    "division",
+    "absolute_import",
+    "with_statement",
+    "print_function",
+    "unicode_literals",
+  }
+)
 
 
 class Level(IntEnum):
@@ -35,6 +55,7 @@ _ERROR_FROM: dict[str, Level] = {
   UNANNOTATED: Level.STRICT,
   UNTYPED_TARGET: Level.CONSTRICT,
   COMMENT_TYPED_TARGET: Level.SUFFOCATE,
+  UNANNOTATED_MEMBER: Level.STRICT,
 }
 
 
@@ -58,11 +79,12 @@ class Offence:
 
 
 def check_source(
-  source: str | bytes, filename: str = "<unknown>", *, type_comments: bool = False
+  source: str | bytes, filename: str = "<unknown>", *, type_comments: bool = False, all_scopes: bool = False
 ) -> list[Offence]:
   """Return the offences in `source`, sorted. Raises `SyntaxError`.
 
-  With `type_comments`, `x = 1  # type: int` counts as annotated.
+  With `type_comments`, `x = 1  # type: int` counts as annotated; with `all_scopes`, module and
+  class bodies are checked too (LVA004).
   """
   tree: ast.Module
   try:
@@ -70,28 +92,77 @@ def check_source(
   except SyntaxError:  # a misplaced `# type:` comment, or a real error raised again here
     tree = ast.parse(source, filename)
   text: str = source.decode("utf-8") if isinstance(source, bytes) else source
-  return check_tree(tree, type_comments=type_comments, lines=text.splitlines())
+  return check_tree(tree, type_comments=type_comments, all_scopes=all_scopes, lines=text.splitlines())
 
 
-def check_tree(tree: ast.Module, *, type_comments: bool = False, lines: Sequence[str] = ()) -> list[Offence]:
+def check_tree(
+  tree: ast.Module, *, type_comments: bool = False, all_scopes: bool = False, lines: Sequence[str] = ()
+) -> list[Offence]:
   """Return the offences in a parsed module, sorted.
 
-  `# type:` comments are seen only if it was parsed with `type_comments=True`. With its source
-  `lines`, a `**rest` capture is reported at its name rather than at its pattern's start.
+  `# type:` comments are seen only if it was parsed with `type_comments=True`; they count for `=`
+  and `with` too in a module written to run on Python 2. With its source `lines`, a `**rest`
+  capture is reported at its name rather than at its pattern's start.
   """
+  type_comments = type_comments or _python2_compatible(tree)
   functions: list[_FunctionDef] = []
   _collect_functions(tree.body, functions)
   offences: list[Offence] = []
   while functions:
     offences += _check_function(functions.pop(), functions, type_comments=type_comments, lines=lines)
+  if all_scopes:
+    offences += _check_bodies(tree, type_comments=type_comments, lines=lines)
   return sorted(offences)
+
+
+def _python2_compatible(tree: ast.Module) -> bool:
+  """Whether a `from __future__` import only Python 2 needs marks the module as written for it."""
+  return any(
+    isinstance(stmt, ast.ImportFrom)
+    and stmt.module == _FUTURE
+    and any(alias.name in _PYTHON2_FUTURES for alias in stmt.names)
+    for stmt in tree.body
+  )
+
+
+def _check_bodies(tree: ast.Module, *, type_comments: bool, lines: Sequence[str]) -> list[Offence]:
+  """Return the offences in the module body and every class body but an enum's (LVA004).
+
+  Dunder names (`__all__`, `__slots__`) are exempt: annotating one can change what it means.
+  """
+  bodies: list[list[ast.stmt]] = [tree.body]
+  bodies += [node.body for node in ast.walk(tree) if isinstance(node, ast.ClassDef) and not _is_enum(node)]
+  offences: list[Offence] = []
+  body: list[ast.stmt]
+  for body in bodies:
+    scope: _Scope = _Scope(
+      {"_"}, [], type_comments=type_comments, lines=lines, unannotated=UNANNOTATED_MEMBER
+    )
+    stmt: ast.stmt
+    for stmt in body:
+      _visit(scope, stmt)
+    offences += [o for o in scope.offences if not (o.name.startswith("__") and o.name.endswith("__"))]
+  return offences
+
+
+def _is_enum(node: ast.ClassDef) -> bool:
+  """Whether a base's name ends in `Enum` or `Flag`: enum members mustn't be annotated."""
+  base: ast.expr
+  name: str
+  for base in node.bases:
+    match base:
+      case ast.Name(id=name) | ast.Attribute(attr=name) if name.endswith(("Enum", "Flag")):
+        return True
+      case _:
+        pass
+  return False
 
 
 def _collect_functions(body: list[ast.stmt], into: list[_FunctionDef]) -> None:
   """Collect functions in a module or class body, through compound statements and classes."""
   stmt: ast.stmt
   for stmt in body:
-    if isinstance(stmt, _FunctionDef):
+    if isinstance(stmt, _FUNCTION_DEFS):
       into.append(stmt)
     elif isinstance(stmt, ast.ClassDef):
       _collect_functions(stmt.body, into)
@@ -182,9 +253,16 @@ class _Scope:
   """One function body: names bound so far and offences found."""
 
   def __init__(
-    self, declared: set[str], nested: list[_FunctionDef], *, type_comments: bool, lines: Sequence[str]
+    self,
+    declared: set[str],
+    nested: list[_FunctionDef],
+    *,
+    type_comments: bool,
+    lines: Sequence[str],
+    unannotated: str = UNANNOTATED,
   ) -> None:
     self.declared: set[str] = declared
+    self.unannotated_code: str = unannotated
     self.nested: list[_FunctionDef] = nested
     self.type_comments: bool = type_comments
     self.lines: Sequence[str] = lines
@@ -206,12 +284,12 @@ class _Scope:
       if isinstance(current, ast.Lambda):
         continue
       if isinstance(current, ast.NamedExpr):
-        self.bind(current.target.id, _at(current.target), UNANNOTATED)
+        self.bind(current.target.id, _at(current.target), self.unannotated_code)
       pending.extend(ast.iter_child_nodes(current))
 
   def unannotated(self, type_comment: str | None) -> str | None:
     """Return the code for an `=` or `with` binding: `None` if a counted type comment types it."""
-    return None if type_comment is not None and self.type_comments else UNANNOTATED
+    return None if type_comment is not None and self.type_comments else self.unannotated_code
 
 
 def _check_function(

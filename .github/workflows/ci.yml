@@ -26,7 +26,12 @@ jobs:
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
-          egress-policy: audit
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            release-assets.githubusercontent.com:443
+            pypi.org:443
+            files.pythonhosted.org:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -38,11 +43,8 @@ jobs:
       - run: pylint src tests
       - run: flake8 src tests
       - run: typos
-      - name: Lock matches pyproject.toml
-        run: |
-          uv pip compile pyproject.toml --extra dev --universal --python-version 3.12 --generate-hashes --quiet -o requirements-dev.txt
-          git diff --exit-code requirements-dev.txt
-      - run: constricter --level=suffocate --format=github src tests
+      - run: uv lock --check
+      - run: constricter --level=suffocate --all-scopes --format=github src tests
       - run: pre-commit try-repo . constricter --all-files
 
   docs:
@@ -54,7 +56,11 @@ jobs:
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
-          egress-policy: audit
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            release-assets.githubusercontent.com:443
+            registry.npmjs.org:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -99,7 +105,12 @@ jobs:
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
-          egress-policy: audit
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            release-assets.githubusercontent.com:443
+            pypi.org:443
+            files.pythonhosted.org:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

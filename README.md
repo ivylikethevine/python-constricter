@@ -51,30 +51,36 @@ def total(items: list[int]) -> int:
 
 ## Rules
 
-Checked per function body, including methods and nested functions. Module and class bodies are
-not checked. Statements are read in source order, and only a name's first binding counts.
+Checked per function body, including methods and nested functions; with `all-scopes`, module and
+class bodies too. Statements are read in source order, and only a name's first binding counts.
 
-| Code     | Reports                                                  | Fix                                 |
-| -------- | -------------------------------------------------------- | ----------------------------------- |
-| `LVA001` | `=`, unpacking, `:=` or `with ... as` without annotation | `name: T = ...`, or `name: T` first |
-| `LVA002` | an untyped `for` target or `match` capture               | `name: T` first (or a type comment) |
-| `LVA003` | a `for` target typed only by `# type: T`                 | `name: T` first                     |
+| Code     | Reports                                                                | Fix                                            |
+| -------- | ---------------------------------------------------------------------- | ---------------------------------------------- |
+| `LVA001` | `=`, unpacking, `:=` or `with ... as` in a function without annotation | `name: T = ...`, or `name: T` first            |
+| `LVA002` | an untyped `for` target or `match` capture                             | `name: T` first (or a type comment)            |
+| `LVA003` | a `for` target typed only by `# type: T`                               | `name: T` first                                |
+| `LVA004` | with `all-scopes`: the same as `LVA001`, in a module or class body     | `name: T = ...` (`ClassVar[T]` in a dataclass) |
 
 Exempt: comprehensions, `except ... as`, imports, `def`/`class`, `type` aliases, parameters,
-`global`/`nonlocal`, and `_`. Opt-in: a `# type:` comment (`x = 1  # type: int`,
-`with f() as x:  # type: T`) counts as an annotation for `LVA001`.
+`global`/`nonlocal`, and `_`; in module and class bodies, dunder names (`__all__`, `__slots__`) and
+enum members (a class whose base's name ends in `Enum` or `Flag`).
+
+A `# type:` comment (`x = 1  # type: int`, `with f() as x:  # type: T`) counts as an annotation
+with `type-comments`, or automatically in a module written to run on Python 2: one that imports
+`print_function`, `unicode_literals`, `absolute_import`, `division`, `with_statement`,
+`generators` or `nested_scopes` from `__future__`.
 
 ## Levels
 
 Each level makes one more code an error. The rest are warnings: the CLI prints them (as
 `::warning` or SARIF `warning` in those formats) but exits 0; flake8 and pylint report errors only.
 
-| Level             | Errors                 | Warnings           |
-| ----------------- | ---------------------- | ------------------ |
-| `relaxed` / `0`   | none                   | all                |
-| `strict` / `1`    | `LVA001` (the default) | `LVA002`, `LVA003` |
-| `constrict` / `2` | `LVA001`, `LVA002`     | `LVA003`           |
-| `suffocate` / `3` | all                    | none               |
+| Level             | Errors                           | Warnings           |
+| ----------------- | -------------------------------- | ------------------ |
+| `relaxed` / `0`   | none                             | all                |
+| `strict` / `1`    | `LVA001`, `LVA004` (the default) | `LVA002`, `LVA003` |
+| `constrict` / `2` | `LVA001`, `LVA004`, `LVA002`     | `LVA003`           |
+| `suffocate` / `3` | all                              | none               |
 
 Python 3.12+, no runtime dependencies.
 
@@ -82,21 +88,34 @@ Python 3.12+, no runtime dependencies.
 
 | Tool   | Setup                                                 | Reports                         | Suppress                     |
 | ------ | ----------------------------------------------------- | ------------------------------- | ---------------------------- |
-| CLI    | `constricter [PATH...] [--level L] [--format F] [-q]` | `LVA001`–`LVA003`               | `# noqa: LVA001`             |
-| flake8 | install it (on by default)                            | `LVA001`–`LVA003`               | `# noqa: LVA001`             |
-| pylint | `load-plugins = ["constricter.pylint_plugin"]`        | `C9101`–`C9103` (symbols below) | `# pylint: disable=<symbol>` |
-| ruff   | run the CLI after ruff; set `lint.external = ["LVA"]` | `LVA001`–`LVA003`               | `# noqa: LVA001`             |
+| CLI    | `constricter [PATH...] [--level L] [--format F] [-q]` | `LVA001`–`LVA004`               | `# noqa: LVA001`             |
+| flake8 | install it (on by default)                            | `LVA001`–`LVA004`               | `# noqa: LVA001`             |
+| pylint | `load-plugins = ["constricter.pylint_plugin"]`        | `C9101`–`C9104` (symbols below) | `# pylint: disable=<symbol>` |
+| ruff   | run the CLI after ruff; set `lint.external = ["LVA"]` | `LVA001`–`LVA004`               | `# noqa: LVA001`             |
 
 pylint symbols: `unannotated-local-variable`, `untyped-for-or-match-variable`,
-`comment-typed-for-variable`.
+`comment-typed-for-variable`, `unannotated-module-or-class-variable`.
 
 Options:
 
-| Option        | CLI                                           | flake8 (CLI or config)                     | pylint                            |
-| ------------- | --------------------------------------------- | ------------------------------------------ | --------------------------------- |
-| level         | `--level`                                     | `--constricter-level`, `constricter-level` | `constricter-level`               |
-| type comments | `--type-comments`                             | `--constricter-type-comments`              | `constricter-type-comments = yes` |
-| format        | `--format`: `text`, `json`, `github`, `sarif` | -                                          | -                                 |
+| Option        | CLI                                           | `[tool.constricter]` | flake8 (CLI or config)        | pylint                            |
+| ------------- | --------------------------------------------- | -------------------- | ----------------------------- | --------------------------------- |
+| level         | `--level`                                     | `level`              | `--constricter-level`         | `constricter-level`               |
+| type comments | `--type-comments`                             | `type-comments`      | `--constricter-type-comments` | `constricter-type-comments = yes` |
+| all scopes    | `--all-scopes`                                | `all-scopes`         | `--constricter-all-scopes`    | `constricter-all-scopes = yes`    |
+| exclude       | `--exclude GLOB` (repeatable)                 | `exclude`            | flake8's own `exclude`        | pylint's own `ignore-paths`       |
+| format        | `--format`: `text`, `json`, `github`, `sarif` | -                    | -                             | -                                 |
+
+The CLI reads `[tool.constricter]` from the nearest `pyproject.toml` above the current directory;
+its flags override it, and `--exclude` adds to it. An unknown key or a bad value exits 2.
+
+```toml
+[tool.constricter]
+level = "constrict" # or 2
+exclude = ["tests/fixtures/*"]
+type-comments = false
+all-scopes = true
+```
 
 Tools that run flake8 or pylint (VS Code's extensions, python-lsp-server, prospector, MegaLinter,
 Trunk) pick the plugin up once it's installed alongside them.
@@ -104,11 +123,11 @@ Trunk) pick the plugin up once it's installed alongside them.
 Without `lint.external`, ruff flags `# noqa: LVA00x` (RUF102) and `--fix` deletes it.
 
 The CLI defaults to `.` and skips hidden dirs, `__pycache__`, `venv`, `site-packages`, `build`,
-`dist` and `node_modules`. Exit codes: `0` no errors, `1` errors, `2` an unreadable or unparsable file.
-
-Not on PyPI yet:
+`dist` and `node_modules`. Exit codes: `0` no errors, `1` errors, `2` an unreadable or unparsable
+file, or a bad `pyproject.toml`.
 
 ```bash
+pip install python-constricter # once the first release is out; until then:
 pip install "python-constricter @ git+https://github.com/ivylikethevine/python-constricter@v0.2.0"
 ```
 
@@ -123,16 +142,21 @@ pre-commit, after ruff's hooks:
 
 ## Development
 
+With [uv](https://docs.astral.sh/uv/) installed (CI pins 0.12.17):
+
 ```bash
-python -m venv local/.venv
-local/.venv/bin/pip install --require-hashes -r requirements-dev.txt
-local/.venv/bin/pip install --no-deps --no-build-isolation -e .
+export UV_PROJECT_ENVIRONMENT=local/.venv
+uv sync --locked --no-install-project # the dev group, hash-checked from uv.lock
+uv pip install --python local/.venv --no-deps --no-build-isolation -e .
 ```
 
 Checks (as CI runs them): `ruff check .` (every rule, preview included), `ruff format --check .`,
 `basedpyright` (all), `mypy` (strict), `pylint src tests` (every extension), `flake8 src tests`,
-`typos`, `constricter --level=suffocate src tests`, `pytest --cov` (100% branch coverage).
-Everything generated goes in `local/`. Python is indented with 2 spaces.
+`typos`, `uv lock --check`, `constricter --level=suffocate --all-scopes src tests`, `pytest --cov`
+(100% branch coverage). Everything generated goes in `local/`. Python is indented with 2 spaces.
+
+After editing the `dev` group, run `uv lock` (CI fails until you do). Dependabot updates `uv.lock`,
+the npm lock and the actions weekly.
 
 Markdown (markdownlint-cli2 and prettier, locked in `.github/package-lock.json`):
 
@@ -140,12 +164,6 @@ Markdown (markdownlint-cli2 and prettier, locked in `.github/package-lock.json`)
 npm ci --prefix .github
 git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/markdownlint-cli2
 git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/prettier --check
-```
-
-After editing the `dev` extra, regenerate the lock (CI fails until you do):
-
-```bash
-local/.venv/bin/uv pip compile pyproject.toml --extra dev --universal --python-version 3.12 --generate-hashes -o requirements-dev.txt
 ```
 
 ### Disabled rules
@@ -163,7 +181,7 @@ Everything else is on. Some of these may be revisited.
 | pylint             | the `while_used` extension                                                        | It bans `while` outright; the checker's work queues need it.                                                      |
 | typos              | the word `astroid`                                                                | A real package name.                                                                                              |
 | markdownlint       | line length (MD013)                                                               | Prose is hand-wrapped; tables and code can't wrap.                                                                |
-| harden-runner      | `egress-policy: audit`, not `block`                                               | `block` needs each job's allowed hosts, known only after CI has run.                                              |
+| harden-runner      | `egress-policy: audit` in the Test matrix and the release and Scorecard jobs      | macOS and Windows reach unpredictable OS hosts; the others haven't run yet, so their hosts aren't known.          |
 | vulture            | not run                                                                           | Its only findings were flake8/pylint hook names, which it can't see being called.                                 |
 
 To apply the rulesets in `.github/rulesets/` (repo admin):
@@ -173,44 +191,47 @@ gh api repos/ivylikethevine/python-constricter/rulesets --method POST --input .g
 gh api repos/ivylikethevine/python-constricter/rulesets --method POST --input .github/rulesets/tags.json
 ```
 
+To publish, add a trusted publisher on PyPI (repository `ivylikethevine/python-constricter`,
+workflow `release.yml`, environment `pypi`) and a `pypi` environment in the repo settings, then
+push a `v*` tag.
+
 ## Roadmap
 
 Done:
 
-- **ci.yml** runs on pushes and PRs. Lint job: the checks above and the pre-commit hook. Test job: pytest on Linux, macOS and Windows × Python 3.12–3.14. Build job:
-  sdist and wheel, `twine check`, a wheel smoke test, and upload as an artifact.
+- **ci.yml** runs on pushes and PRs: the checks above and the pre-commit hook (Lint), Markdown
+  (Docs), pytest on Linux, macOS and Windows × Python 3.12–3.14 (Test), and the sdist and wheel,
+  `twine check` and a wheel smoke test (Build).
 - **security.yml** runs on pushes, PRs and weekly: CodeQL (Python and Actions), zizmor (pedantic),
-  actionlint (kjanat fork) and pip-audit on the lock.
-- **release.yml** runs on `v*` tags: CI, a check that the tag matches the version, then build
-  provenance attestation.
-- **Pinning:** actions are pinned by SHA, Python dependencies by hash, and actionlint (kjanat's
-  fork, which reads the `$/` self-repository syntax the workflows use) by sha256. Dependabot updates
-  the first two weekly; actionlint is bumped by hand.
-- **Lock check:** CI fails when `requirements-dev.txt` doesn't match `pyproject.toml`.
-- **Docs:** CI lints and formats every Markdown file; `SECURITY.md` says how to report a
-  vulnerability.
-- **Releases:** each tag also gets a GitHub release with the dists and the provenance bundle.
-- **Rulesets:** `.github/rulesets/` requires every check on `main` and protects `v*` tags (apply
-  them as above).
-- **Suffocate:** `src/` and `tests/` pass at `--level=suffocate` in CI.
+  actionlint (kjanat's fork, which reads the `$/` self-repository syntax the workflows use),
+  pip-audit on the lock, and dependency review on PRs.
+- **scorecard.yml** runs OpenSSF Scorecard on `main` and weekly. Its pin check misreads the `$/`
+  references as unpinned actions, so it flags them.
+- **release.yml** runs on `v*` tags: CI, a check that the tag matches the version, build
+  provenance, PyPI (trusted publishing), then a GitHub release with the dists and the provenance
+  bundle.
+- **Pinning:** actions by SHA, Python dependencies by hash (`uv.lock`), npm by lockfile, actionlint
+  and uv by version. Dependabot updates all but the last two; `uv lock --check` fails CI on drift.
+- **harden-runner** blocks all but the observed hosts in every Linux job that has run.
+- **Rulesets:** `.github/rulesets/` requires every check on `main` and protects `v*` tags.
+- **Settings** from `[tool.constricter]` in `pyproject.toml`.
+- **Python 2 code:** type comments count automatically in modules that import Python 2
+  `__future__` features.
+- **All scopes:** `all-scopes` checks module and class bodies (`LVA004`).
+- **Suffocate:** `src/` and `tests/` pass at `--level=suffocate --all-scopes` in CI.
 
 Next, smallest first:
 
-1. Read `[tool.constricter]` (`level`, `exclude`, `type-comments`) from `pyproject.toml` in the CLI.
-2. After the first CI runs: fix what fails on GitHub, and switch harden-runner from `audit` to
-   `block` with each job's allowed hosts.
-3. Publish to PyPI: a trusted publisher, a `pypi` environment, and a `publish` job in release.yml
-   (`pypa/gh-action-pypi-publish`, `id-token: write`).
-4. Once the repo is public: OpenSSF Scorecard (its pin check misreads the workflows' `$/` references as
-   unpinned actions, so it will flag them) and `actions/dependency-review-action`. CodeQL
-   uploads and attestations also need a public repo or GitHub Advanced Security.
-5. **Python 2 code.** Turn on type comments automatically when a file looks like Python 2 (its
-   only annotation form). Parsing Python 2 syntax itself needs a separate parser.
-6. Optionally check module and class bodies (a fifth level, or an opt-in).
-7. Keep 100% of the project's own Python at `suffocate`, including any new scripts, and extend it to
-   module and class bodies once they're checked.
-8. Revisit the [disabled rules](#disabled-rules).
-9. **Python 3.6+.** Code written for any Python 3 version can already be checked, since this runs on
+1. Switch the Test matrix's Linux jobs, the release jobs and Scorecard to `block` once they've run
+   and their hosts are known.
+2. **LVA005:** warn on `Any` and similarly vague annotations (`object`, bare `list` or `dict`,
+   `Callable[..., Any]`), reported at `strict` (1) and above.
+3. **LVA006:** warn on an excessively complex annotation, nested 5 levels deep by default
+   (`dict[str, list[tuple[int, set[str]]]]` is 4); the depth is configurable.
+4. **`--fix`:** add the annotation where the type is unambiguous from the value (a literal like
+   `count = 0`, a constructor call like `path = Path(...)`), and leave the rest reported.
+5. Revisit the [disabled rules](#disabled-rules).
+6. **Python 3.6+.** Code written for any Python 3 version can already be checked, since this runs on
    3.12+ and newer parsers read older syntax. _Running_ on 3.6–3.11 would mean dropping `match`,
    `StrEnum`, `typing.override` and `X | Y` unions from the source. 3.8+ is cheap to reach. 3.6 and 3.7
    also need CI on old runner images and older pytest/ruff/pylint, all of which dropped them.

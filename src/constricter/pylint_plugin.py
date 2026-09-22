@@ -13,6 +13,7 @@ from constricter.checker import (
   LEVELS,
   MESSAGES,
   UNANNOTATED,
+  UNANNOTATED_MEMBER,
   UNTYPED_TARGET,
   Level,
   Offence,
@@ -31,6 +32,7 @@ SYMBOLS: dict[str, Message] = {
   UNANNOTATED: Message("C9101", "unannotated-local-variable"),
   UNTYPED_TARGET: Message("C9102", "untyped-for-or-match-variable"),
   COMMENT_TYPED_TARGET: Message("C9103", "comment-typed-for-variable"),
+  UNANNOTATED_MEMBER: Message("C9104", "unannotated-module-or-class-variable"),
 }
 
 
@@ -54,6 +56,10 @@ class ConstricterChecker(BaseRawFileChecker):
       "constricter-type-comments",
       {"default": False, "type": "yn", "metavar": "<y or n>", "help": "Count `# type:` comments."},
     ),
+    (
+      "constricter-all-scopes",
+      {"default": False, "type": "yn", "metavar": "<y or n>", "help": "Check module and class bodies."},
+    ),
   )
 
   def __init__(self, linter: PyLinter) -> None:
@@ -74,8 +80,11 @@ class ConstricterChecker(BaseRawFileChecker):
       source: bytes = stream.read()
     level: Level = LEVELS[cast("str", self.linter.config.constricter_level)]
     type_comments: bool = cast("bool", self.linter.config.constricter_type_comments)
+    all_scopes: bool = cast("bool", self.linter.config.constricter_all_scopes)
     o: Offence
-    for o in check_source(source, node.file or "<unknown>", type_comments=type_comments):
+    for o in check_source(
+      source, node.file or "<unknown>", type_comments=type_comments, all_scopes=all_scopes
+    ):
       if o.is_error(level):
         self.add_message(SYMBOLS[o.code].symbol, line=o.line, col_offset=o.col, args=(o.name,))
 
