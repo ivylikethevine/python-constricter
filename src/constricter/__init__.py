@@ -21,7 +21,7 @@ from constricter.checker import (
     check_tree,
 )
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 __all__ = [
     "COMMENT_TYPED_TARGET",
     "DEFAULT_CHECKS",

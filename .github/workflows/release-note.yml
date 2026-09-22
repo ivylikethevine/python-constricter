@@ -27,8 +27,8 @@ jobs:
   release-note:
     name: release note (pr body)
     if: >-
-      github.event.pull_request.draft != true &&
-      github.event.pull_request.user.login != 'dependabot[bot]'
+      github.event.pull_request.draft != true && github.event.pull_request.user.login !=
+      'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -65,5 +65,6 @@ jobs:
           {
             echo "### Release note"
             echo
+            echo "package: <https://pypi.org/project/python-constricter/>"
             printf '%s\n' "${note:-_none - this PR adds nothing to the release page_}"
           } >>"$GITHUB_STEP_SUMMARY"
