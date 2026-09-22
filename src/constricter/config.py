@@ -5,7 +5,7 @@ import tomllib
 from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, Final, TypeAlias
 
 from constricter.checker import LEVELS, MESSAGES
 
@@ -22,6 +22,15 @@ def unknown_codes(codes: Sequence[str]) -> list[str]:
   return [code for code in codes if not any(known.startswith(code.upper()) for known in MESSAGES)]
 
 
+DEFAULT_BASELINE: Final = "constricter-baseline.json"
+
+
+def project_root(start: Path) -> Path:
+  """Return the directory of the nearest `pyproject.toml`, or `start` if there's none."""
+  path: Path | None = _pyproject(start)
+  return start if path is None else path.parent
+
+
 def _pyproject(start: Path) -> Path | None:
   """Return the nearest `pyproject.toml` in `start` or above it."""
   directory: Path
@@ -34,6 +43,9 @@ def _pyproject(start: Path) -> Path | None:
 
 def _table(path: Path) -> dict[str, _Toml]:
   """Return `path`'s `[tool.constricter]` table, or an empty one.
+
+  Returns:
+    The table's keys and values, as TOML parsed them.
 
   Raises:
     ValueError: The file isn't TOML, or `tool.constricter` isn't a table.
@@ -93,6 +105,7 @@ def _levels(value: _Toml) -> dict[str, str] | None:
   return None if None in levels.values() else {glob: str(level) for glob, level in levels.items()}
 
 
+_BASELINE: Final = "baseline"
 # Each key's reader: its option default, or `None` for a wrong value.
 _READERS: dict[str, Callable[[_Toml], Default | None]] = {
   "level": _level,
@@ -104,11 +117,15 @@ _READERS: dict[str, Callable[[_Toml], Default | None]] = {
   "type-comments": _flag,
   "all-scopes": _flag,
   "per-path-levels": _levels,
+  _BASELINE: lambda value: value if isinstance(value, str) and value else None,
 }
 
 
 def config_defaults(start: Path) -> dict[str, Default]:
   """Return the option defaults in the nearest `pyproject.toml`'s `[tool.constricter]`.
+
+  Returns:
+    Each option's default, keyed by its `argparse` name (`type_comments`, not `type-comments`).
 
   Raises:
     ValueError: The file isn't TOML, or the table has an unknown key or a wrong value.
@@ -125,5 +142,6 @@ def config_defaults(start: Path) -> dict[str, Default]:
     if key not in _READERS or (default := _READERS[key](value)) is None:
       message: str = f"{path}: [tool.constricter] has an invalid {key} = {value!r}"
       raise ValueError(message)
-    defaults[key.replace("-", "_")] = default
+    # A baseline path is relative to the pyproject.toml that names it.
+    defaults[key.replace("-", "_")] = str(path.parent / str(default)) if key == _BASELINE else default
   return defaults

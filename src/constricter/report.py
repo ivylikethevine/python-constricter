@@ -35,10 +35,24 @@ class Result(NamedTuple):
     """`error` or `warning`, at the result's level."""
     return "error" if self.offence.is_error(self.level) else "warning"
 
+  @property
+  def message(self) -> str:
+    """The offence's message; in a notebook, with its cell and line first."""
+    o: Offence = self.offence
+    return o.message if o.cell is None else f"cell {o.cell}, line {o.line}: {o.message}"
+
 
 def _github_escape(text: str, *, prop: bool = False) -> str:
   text = text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
   return text.replace(":", "%3A").replace(",", "%2C") if prop else text
+
+
+def _where(result: Result) -> dict[str, _Json]:
+  """Return a SARIF physical location; a notebook's is the file, as its cells have no file lines."""
+  where: dict[str, _Json] = {"artifactLocation": {"uri": result.path.as_posix()}}
+  if result.offence.cell is None:
+    where["region"] = {"startLine": result.offence.line, "startColumn": result.offence.col + 1}
+  return where
 
 
 def _sarif(results: Sequence[Result]) -> dict[str, _Json]:
@@ -50,15 +64,8 @@ def _sarif(results: Sequence[Result]) -> dict[str, _Json]:
     {
       "ruleId": r.offence.code,
       "level": r.severity,
-      "message": {"text": r.offence.message},
-      "locations": [
-        {
-          "physicalLocation": {
-            "artifactLocation": {"uri": r.path.as_posix()},
-            "region": {"startLine": r.offence.line, "startColumn": r.offence.col + 1},
-          }
-        }
-      ],
+      "message": {"text": r.message},
+      "locations": [{"physicalLocation": _where(r)}],
     }
     for r in results
   ]
@@ -88,6 +95,7 @@ def render(fmt: Format, results: Sequence[Result]) -> Iterator[str]:
           "code": r.offence.code,
           "severity": r.severity,
           "message": r.offence.message,
+          "cell": r.offence.cell,
         }
         for r in results
       ],
@@ -97,13 +105,14 @@ def render(fmt: Format, results: Sequence[Result]) -> Iterator[str]:
     yield json.dumps(_sarif(results), indent=2)
   elif fmt is Format.GITHUB:
     for r in results:
-      location: str = (
-        f"file={_github_escape(str(r.path), prop=True)},line={r.offence.line},col={r.offence.col + 1}"
-      )
-      yield f"::{r.severity} {location},title={r.offence.code}::{_github_escape(r.offence.message)}"
+      location: str = f"file={_github_escape(str(r.path), prop=True)}"
+      if r.offence.cell is None:  # a notebook's cells have no file lines to point at
+        location += f",line={r.offence.line},col={r.offence.col + 1}"
+      yield f"::{r.severity} {location},title={r.offence.code}::{_github_escape(r.message)}"
   else:
     for r in results:
-      where: str = f"{r.path}:{r.offence.line}:{r.offence.col + 1}"
+      cell: str = "" if r.offence.cell is None else f"cell {r.offence.cell}:"
+      where: str = f"{r.path}:{cell}{r.offence.line}:{r.offence.col + 1}"
       yield f"{where}: {r.severity}: {r.offence.code} {r.offence.message}"
 
 

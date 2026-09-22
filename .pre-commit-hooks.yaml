@@ -3,10 +3,10 @@
   description: Every local variable is typed where it's first bound.
   entry: constricter --quiet
   language: python
-  types: [python]
+  types_or: [python, jupyter]
 - id: constricter-fix
   name: constricter (fix)
   description: Add the annotations a value makes unambiguous, then report the rest.
   entry: constricter --fix --quiet
   language: python
-  types: [python]
+  types_or: [python, jupyter]

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Final, TypeAlias, cast
 
-from constricter.annotations import depth, inferred, is_vague
+from constricter.annotations import depth, inferred, is_vague, returns
 
 UNANNOTATED: Final = "LVA001"
 UNTYPED_TARGET: Final = "LVA002"
@@ -79,6 +79,7 @@ class _Settings:
   all_scopes: bool
   nesting: int
   lines: Sequence[str]
+  calls: dict[str, str]  # each module function's return type, for `--fix`
 
 
 @dataclass(frozen=True, order=True)
@@ -91,6 +92,8 @@ class Offence:
   code: str = UNANNOTATED
   # The annotation `--fix` would add, where the value makes it unambiguous.
   fix: str | None = field(default=None, compare=False)
+  # In a notebook, the cell (from 1); `line` is then the line in that cell.
+  cell: int | None = field(default=None, compare=False)
 
   @property
   def message(self) -> str:
@@ -118,6 +121,10 @@ def check_source(
 
   With `type_comments`, `x = 1  # type: int` counts as annotated; with `all_scopes`, module and
   class bodies are checked too (LVA004); an annotation nested `nesting` deep is LVA006.
+
+  Returns:
+    Every offence; `# noqa` comments are the caller's to apply.
+
   """
   tree: ast.Module
   try:
@@ -143,8 +150,14 @@ def check_tree(
   `# type:` comments are seen only if it was parsed with `type_comments=True`; they count for `=`
   and `with` too in a module written to run on Python 2. With its source `lines`, a `**rest`
   capture is reported at its name rather than at its pattern's start.
+
+  Returns:
+    Every offence, in source order.
+
   """
-  settings: _Settings = _Settings(type_comments or _python2_compatible(tree), all_scopes, nesting, lines)
+  settings: _Settings = _Settings(
+    type_comments or _python2_compatible(tree), all_scopes, nesting, lines, returns(tree)
+  )
   functions: list[_FunctionDef] = []
   _collect_functions(tree.body, functions)
   offences: list[Offence] = _check_functions(functions, settings)
@@ -167,6 +180,10 @@ def _check_bodies(tree: ast.Module, settings: _Settings) -> list[Offence]:
   """Return the offences in the module body and every class body but an enum's (LVA004).
 
   Dunder names (`__all__`, `__slots__`) are exempt: annotating one can change what it means.
+
+  Returns:
+    The offences in those bodies, unsorted (the caller sorts them).
+
   """
   classes: list[list[ast.stmt]] = [
     node.body for node in ast.walk(tree) if isinstance(node, ast.ClassDef) and not _is_enum(node)
@@ -413,7 +430,7 @@ def _bind(scope: _Scope, stmt: ast.stmt) -> None:
   cases: list[ast.match_case]
   match stmt:
     case ast.Assign(targets=[ast.Name(id=name) as single], value=value, type_comment=comment):
-      scope.bind(name, _at(single), scope.unannotated(comment), inferred(value))
+      scope.bind(name, _at(single), scope.unannotated(comment), inferred(value, scope.settings.calls))
     case ast.Assign(targets=targets, type_comment=comment):
       _bind_targets(scope, targets, scope.unannotated(comment))
     case ast.With(items=items, type_comment=comment) | ast.AsyncWith(items=items, type_comment=comment):

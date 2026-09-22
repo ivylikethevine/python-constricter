@@ -64,9 +64,6 @@ cache-dir = "local/.ruff_cache"
 select = ["ALL"]
 preview = true
 ignore = [
-    # Docstrings stay one line: no Returns/Yields sections.
-    "docstring-missing-returns",
-    "docstring-missing-yields",
     # Conflict with the formatter or with the D211/D212 conventions.
     "missing-trailing-comma",
     "incorrect-blank-line-before-class",
@@ -77,6 +74,10 @@ ignore = [
     "indentation-with-invalid-multiple-comment",
 ]
 external = ["LVA"]
+
+[tool.ruff.lint.pydoclint]
+# A one-line docstring needs no Returns/Yields section; a longer one does.
+ignore-one-line-docstrings = true
 
 [tool.ruff.lint.flake8-copyright]
 # REUSE-IgnoreStart

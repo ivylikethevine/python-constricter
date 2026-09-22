@@ -9,4 +9,6 @@ Notable changes, newest first. Each release's full notes are generated from its 
 - First release, 0.2.0: `LVA001`–`LVA006`, the `relaxed` to `suffocate` levels, a flake8 plugin, a
   pylint plugin and the `constricter` command (with `--fix`, `--diff`, `--explain`, `--select`,
   `--ignore`, `--statistics` and text, JSON, GitHub and SARIF output), configured from
-  `[tool.constricter]` in `pyproject.toml`. Python 3.11+.
+  `[tool.constricter]` in `pyproject.toml`. Python 3.11+. Also baselines (`--write-baseline`,
+  `--baseline`), Jupyter notebooks, a GitHub Action, `--jobs`, per-path levels, and JSON with
+  comments wherever constricter reads JSON.
