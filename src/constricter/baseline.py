@@ -21,74 +21,91 @@ _Json: TypeAlias = "str | int | float | bool | list[_Json] | dict[str, _Json] | 
 
 
 def key(path: Path, baseline: Path) -> str:
-  """Return `path` as the baseline at `baseline` records it: relative to it, with `/`."""
-  return Path(os.path.relpath(path.resolve(), baseline.resolve().parent)).as_posix()
+    """Make `path` relative to the baseline at `baseline`.
+
+    Returns:
+      `path` as the baseline records it: relative to it, with `/`.
+
+    """
+    return Path(os.path.relpath(path.resolve(), baseline.resolve().parent)).as_posix()
 
 
 def _entry(offence: Offence) -> str:
-  return f"{offence.code} {offence.name}"
+    return f"{offence.code} {offence.name}"
 
 
 def read(baseline: Path) -> Entries:
-  """Return the entries in the baseline file `baseline`.
+    """Return the entries in the baseline file `baseline`.
 
-  Returns:
-    Each file's count of each `CODE name` entry.
+    Returns:
+      Each file's count of each `CODE name` entry.
 
-  Raises:
-    ValueError: It can't be read, or isn't a baseline.
+    Raises:
+      ValueError: It can't be read, or isn't a baseline.
 
-  """
-  message: str
-  document: _Json
-  try:
-    document = cast("_Json", jsonc.loads(baseline.read_bytes()))
-  except (OSError, ValueError) as error:
-    message = f"{baseline}: can't read the baseline ({error}); create it with --write-baseline"
-    raise ValueError(message) from error
-  files: dict[str, _Json]
-  entries: Entries = {}
-  match document:
-    case {"version": 1, "offences": dict() as files}:
-      path: str
-      counts: _Json
-      for path, counts in files.items():
-        if not isinstance(counts, dict) or not all(_is_count(n) for n in counts.values()):
-          break
-        entries[path] = {entry: n for entry, n in counts.items() if isinstance(n, int)}
-      else:
-        return entries
-    case _:
-      pass
-  message = f"{baseline}: not a constricter baseline (version {VERSION})"
-  raise ValueError(message)
+    """
+    message: str
+    document: _Json
+    try:
+        document = cast("_Json", jsonc.loads(baseline.read_bytes()))
+    except (OSError, ValueError) as error:
+        message = f"{baseline}: can't read the baseline ({error}); create it with --write-baseline"
+        raise ValueError(message) from error
+    files: dict[str, _Json]
+    entries: Entries = {}
+    match document:
+        case {"version": 1, "offences": dict() as files}:
+            path: str
+            counts: _Json
+            for path, counts in files.items():
+                if not isinstance(counts, dict) or not all(_is_count(n) for n in counts.values()):
+                    break
+                entries[path] = {entry: n for entry, n in counts.items() if isinstance(n, int)}
+            else:
+                return entries
+        case _:
+            pass
+    message = f"{baseline}: not a constricter baseline (version {VERSION})"
+    raise ValueError(message)
 
 
 def _is_count(value: _Json) -> bool:
-  return isinstance(value, int) and not isinstance(value, bool)
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def write(baseline: Path, found: Mapping[str, Sequence[Offence]]) -> int:
-  """Write every offence in `found` (keyed as `key` makes them) to `baseline`; return how many."""
-  files: Entries = {
-    path: dict(sorted(Counter(_entry(o) for o in offences).items()))
-    for path, offences in sorted(found.items())
-    if offences
-  }
-  _ = baseline.write_text(
-    json.dumps({"version": VERSION, "offences": files}, indent=2) + "\n", encoding="utf-8", newline="\n"
-  )
-  return sum(len(offences) for offences in found.values())
+    """Write every offence in `found` (keyed as `key` makes them) to `baseline`.
+
+    Returns:
+      How many it wrote.
+
+    """
+    files: Entries = {
+        path: dict(sorted(Counter(_entry(o) for o in offences).items()))
+        for path, offences in sorted(found.items())
+        if offences
+    }
+    _ = baseline.write_text(
+        json.dumps({"version": VERSION, "offences": files}, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    return sum(len(offences) for offences in found.values())
 
 
 def remaining(offences: Sequence[Offence], counts: Mapping[str, int]) -> tuple[list[Offence], int]:
-  """Return the offences the baseline's `counts` (for one file) don't cover, and how many they do."""
-  left: Counter[str] = Counter(counts)
-  kept: list[Offence] = []
-  o: Offence
-  for o in offences:
-    if left[_entry(o)] > 0:
-      left[_entry(o)] -= 1
-    else:
-      kept.append(o)
-  return kept, len(offences) - len(kept)
+    """Match one file's offences against the baseline's `counts` for it.
+
+    Returns:
+      The offences it doesn't cover, and how many it does.
+
+    """
+    left: Counter[str] = Counter(counts)
+    kept: list[Offence] = []
+    o: Offence
+    for o in offences:
+        if left[_entry(o)] > 0:
+            left[_entry(o)] -= 1
+        else:
+            kept.append(o)
+    return kept, len(offences) - len(kept)

@@ -15,3 +15,4 @@ Notable changes, newest first. Each release's full notes are generated from its 
   input, `gitlab`, `junit` and `rdjson` output, `--unsafe-fixes`, per-file ignores, `--exit-zero`
   and `--output-file`; `--fix` edits notebook cells; releases carry SLSA Build Level 3 provenance
   (GitHub artifact attestations); `--fix` types calls to functions in other checked files.
+  `check_source`, `check_tree` and `annotation_coverage` take their options as one `Checks`.

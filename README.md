@@ -38,22 +38,22 @@ plugin and a standalone command (for ruff, which loads no plugins).
 
 ```python
 def total(items: list[int]) -> int:
-  count = 0  # LVA001
-  result: int = 0  # ok
-  first, *rest = items  # LVA001 twice
-  head: int
-  tail: list[int]
-  head, *tail = items  # ok: declared first
-  if (n := len(items)) > 3:  # LVA001
-    result = n  # ok: rebinding
-  for item in items:  # LVA002
-    result += item
-  for other in items:  # type: int  # LVA003
-    result += other
-  value: int
-  for value in items:  # ok: declared first
-    result += value
-  return result
+    count = 0  # LVA001
+    result: int = 0  # ok
+    first, *rest = items  # LVA001 twice
+    head: int
+    tail: list[int]
+    head, *tail = items  # ok: declared first
+    if (n := len(items)) > 3:  # LVA001
+        result = n  # ok: rebinding
+    for item in items:  # LVA002
+        result += item
+    for other in items:  # type: int  # LVA003
+        result += other
+    value: int
+    for value in items:  # ok: declared first
+        result += value
+    return result
 ```
 
 ## Rules
@@ -287,8 +287,8 @@ commands = constricter --level=constrict src
 # noxfile.py
 @nox.session
 def types(session: nox.Session) -> None:
-  session.install("python-constricter")
-  session.run("constricter", "--level=constrict", "src")
+    session.install("python-constricter")
+    session.run("constricter", "--level=constrict", "src")
 ```
 
 GitHub Actions, as PR annotations (it installs from the action's own tag, not PyPI):
@@ -315,7 +315,7 @@ Checks (as CI runs them): `ruff check .` (every rule, preview included), `ruff f
 `typos`, `validate-pyproject pyproject.toml`, `uv lock --check`,
 `constricter --level=suffocate --all-scopes src tests`,
 `constricter --coverage --all-scopes --fail-under=100 src tests`, `pytest --cov` (100% branch
-coverage). Everything generated goes in `local/`. Python is indented with 2 spaces.
+coverage). Everything generated goes in `local/`. Python is indented with 4 spaces.
 
 After editing the `dev` group, run `uv lock` (CI fails until you do). Dependabot updates `uv.lock`,
 the npm lock and the actions weekly.
@@ -343,20 +343,15 @@ git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/prettier --check
 
 Everything else is on. Some of these may be revisited.
 
-| Tool               | Rule                                                                                                                                 | Why                                                                                                                                                                                                                                                                                                             |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ruff               | `docstring-missing-returns` and `-yields` (DOC201/DOC402) for one-line docstrings only (`lint.pydoclint.ignore-one-line-docstrings`) | A one-line summary ("Return the …") already says what comes back; a longer docstring gets a `Returns:` or `Yields:` section.                                                                                                                                                                                    |
-| ruff               | `missing-trailing-comma` (COM812)                                                                                                    | Conflicts with `ruff format`; ruff says to disable it.                                                                                                                                                                                                                                                          |
-| ruff               | `incorrect-blank-line-before-class`, `multi-line-summary-second-line` (D203/D213)                                                    | Each contradicts a rule that stays on (D211/D212); one of each pair has to go.                                                                                                                                                                                                                                  |
-| ruff               | `indentation-with-invalid-multiple` and `-comment` (E111/E114)                                                                       | They assume 4-space indents; ruff says to disable them at any other width. flake8's E111/E114 check the 2 spaces.                                                                                                                                                                                               |
-| ruff, pylint       | `max-args` raised from 5 to 6 (PLR0913/R0913)                                                                                        | `check_source`, `check_tree` and `check_text` take the source plus five keyword-only options (`calls` is the sixth).                                                                                                                                                                                            |
-| ruff (`tests/`)    | `assert` (S101)                                                                                                                      | pytest works through `assert`.                                                                                                                                                                                                                                                                                  |
-| mypy, basedpyright | astroid's untyped calls and missing stubs                                                                                            | astroid (pylint's parser) ships no type information.                                                                                                                                                                                                                                                            |
-| typos              | the word `astroid`                                                                                                                   | A real package name.                                                                                                                                                                                                                                                                                            |
-| harden-runner      | `egress-policy: audit` on macOS and Windows, in the release jobs (release.yml, build.yml), and in the weekly external-link check     | macOS and Windows reach unpredictable OS hosts; the release jobs haven't run yet; external links can go anywhere.                                                                                                                                                                                               |
-| reuse              | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)                                                              | No recent release ships a wheel for Python 3.11+, so installing it builds from source with an unpinned `poetry-core`.                                                                                                                                                                                           |
-| zizmor             | `self-repository` on the CI job that runs the repository's root action                                                               | zizmor wants `$/`, and actionlint rejects a bare `$/` (it has no path), so that one line uses `./`.                                                                                                                                                                                                             |
-| vulture            | not run                                                                                                                              | Re-checked with 2.16: its 10 findings were all false positives (flake8 and pylint hooks, pytest's `collect_ignore` and a fixture, and imports used only in quoted annotations). ruff, pylint and basedpyright already catch unused names within a file, and it found no unused public functions across modules. |
+| Tool               | Rule                                                                                                                             | Why                                                                                                                                        |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| ruff               | `incorrect-blank-line-before-class`, `multi-line-summary-second-line` (D203/D213)                                                | Each contradicts a rule that stays on (D211/D212); one of each pair has to go.                                                             |
+| ruff (`tests/`)    | `assert` (S101)                                                                                                                  | pytest works through `assert`.                                                                                                             |
+| mypy, basedpyright | astroid's untyped calls and missing stubs                                                                                        | astroid (pylint's parser) ships no type information.                                                                                       |
+| typos              | the word `astroid`                                                                                                               | A real package name.                                                                                                                       |
+| harden-runner      | `egress-policy: audit` on macOS and Windows, in the release jobs (release.yml, build.yml), and in the weekly external-link check | harden-runner supports only audit on GitHub's macOS and Windows runners; the release jobs haven't run yet; external links can go anywhere. |
+| reuse              | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)                                                          | No recent release ships a wheel for Python 3.11+, so installing it builds from source with an unpinned `poetry-core`.                      |
+| zizmor             | `self-repository` on the CI job that runs the repository's root action                                                           | zizmor wants `$/`, and actionlint rejects a bare `$/` (it has no path), so that one line uses `./`.                                        |
 
 To apply the rulesets in `.github/rulesets/` (repo admin):
 
@@ -426,8 +421,8 @@ Next:
 
 1. **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+ (6.2.0 still has only a
    CPython 3.10 one).
-2. Revisit the [disabled rules](#disabled-rules) as tools change (last checked with 0.2.0: none can
-   go yet).
+2. Revisit the [disabled rules](#disabled-rules) as tools change (last checked 2026-09-22: COM812,
+   one-line DOC201/DOC402 and `max-args` came back on; the rest can't go yet).
 
 After the first release (these need it on PyPI, or a published tag):
 
