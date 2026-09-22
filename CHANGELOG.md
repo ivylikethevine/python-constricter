@@ -6,6 +6,9 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- **LVA009**: a value, anywhere in a name's lifetime in the scope, whose type doesn't fit its
+  annotation (`count: int = 0`, then `count = "done"`). A warning, an error from `constrict`;
+  pylint's `C9109` (`mismatched-value-type`).
 - `nesting` (LVA006) defaults to 3, not 5: `dict[str, list[int]]` is fine, one level deeper isn't.
 - `--fix` infers method calls on an already-typed local: a method of a class defined in the same
   module (its declared return type; a bare `Self` return is the class itself), and

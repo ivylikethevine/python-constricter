@@ -12,6 +12,7 @@ import pytest
 from constricter import (
     COMMENT_TYPED_TARGET,
     LEVELS,
+    MISMATCHED_TYPE,
     NESTED_TYPE,
     REDUNDANT_TYPE,
     UNANNOTATED,
@@ -332,10 +333,17 @@ def test_messages() -> None:
     [
         (Level.RELAXED, set[str]()),
         (Level.STRICT, {UNANNOTATED, UNANNOTATED_MEMBER}),
-        (Level.CONSTRICT, {UNANNOTATED, UNANNOTATED_MEMBER, UNTYPED_TARGET}),
+        (Level.CONSTRICT, {UNANNOTATED, UNANNOTATED_MEMBER, UNTYPED_TARGET, MISMATCHED_TYPE}),
         (
             Level.SUFFOCATE,
-            {UNANNOTATED, UNANNOTATED_MEMBER, UNTYPED_TARGET, COMMENT_TYPED_TARGET, REDUNDANT_TYPE},
+            {
+                UNANNOTATED,
+                UNANNOTATED_MEMBER,
+                UNTYPED_TARGET,
+                COMMENT_TYPED_TARGET,
+                REDUNDANT_TYPE,
+                MISMATCHED_TYPE,
+            },
         ),
     ],
 )
@@ -347,6 +355,7 @@ def test_levels(level: Level, errors: set[str]) -> None:
         UNTYPED_TARGET,
         COMMENT_TYPED_TARGET,
         REDUNDANT_TYPE,
+        MISMATCHED_TYPE,
     )
     assert {code for code in codes if Offence(1, 0, "x", code).is_error(level)} == errors
 
@@ -540,7 +549,7 @@ def test_vague_and_nested_are_reported_from_strict() -> None:
                 x: int = 1
                 x: str = "a"
             """,
-            [],
+            [Offence(4, 4, "x", MISMATCHED_TYPE)],  # not redundant, but a value that doesn't fit
             id="a-different-annotation-is-not-redundant",
         ),
         pytest.param(
@@ -927,3 +936,30 @@ def test_annotation_coverage_counts_first_bindings() -> None:
     assert annotation_coverage(source, Checks(all_scopes=True)) == Coverage(3, 6)  # LIMIT; not __all__
     assert Coverage(3, 6).percent == HALF
     assert Coverage(0, 0).percent == ALL
+
+
+def test_a_value_that_doesnt_fit_its_annotation_is_lva009() -> None:
+    """LVA009 at each binding whose certain value doesn't fit the name's annotation; never fixed."""
+    source: str = textwrap.dedent(
+        """
+    def f(count: int) -> None:
+        count = "done"  # a parameter's annotation counts
+        total: float = 0
+        total = 2.5  # fits
+        label: str = None
+    """,
+    )
+    offences: list[Offence] = check_source(source)
+    assert [(o.line, o.name, o.code, o.fix) for o in offences] == [
+        (3, "count", MISMATCHED_TYPE, None),
+        (6, "label", MISMATCHED_TYPE, None),
+    ]
+    expected: str = "'count' is bound to `str` here, which doesn't fit its annotation"
+    assert offences[0].message == expected
+
+
+def test_lva009_warns_below_constrict() -> None:
+    """A real type error, but a new one: an error from `constrict`, a warning below it."""
+    offence: Offence = Offence(1, 0, "x", MISMATCHED_TYPE)
+    assert [offence.is_error(level) for level in Level] == [False, False, True, True]
+    assert all(offence.is_reported(level) for level in Level)

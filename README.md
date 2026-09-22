@@ -1,5 +1,9 @@
 # python-con`strict`er
 
+> EXPERIMENTAL UNTIL v1.0.0
+
+**I want all of my python code typed.**
+
 [![CI](https://github.com/ivylikethevine/python-constricter/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ivylikethevine/python-constricter/actions/workflows/ci.yml)
 [![Security](https://github.com/ivylikethevine/python-constricter/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/ivylikethevine/python-constricter/actions/workflows/security.yml)
 [![PyPI](https://img.shields.io/pypi/v/python-constricter)](https://pypi.org/project/python-constricter/)
@@ -9,7 +13,8 @@
 [![Annotations: 100%](https://img.shields.io/badge/annotations-100%25-brightgreen)](#annotation-coverage)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE.md)
 
-> I want **all** of my python code typed.
+Lint rules: every local variable is typed where it's first bound. Ships as a flake8 plugin, a pylint
+plugin and a standalone command (for ruff, which loads no plugins).
 
 ```text
             /^\/^\
@@ -31,14 +36,7 @@
                 ~--______-~                ~-___-~
 ```
 
-[snake](https://www.asciiart.eu/art/595284d82d1f8d6d)
-
-<https://pypi.org/project/python-constricter/>
-
 ---
-
-Lint rules: every local variable is typed where it's first bound. Ships as a flake8 plugin, a pylint
-plugin and a standalone command (for ruff, which loads no plugins).
 
 ```python
 def total(items: list[int]) -> int:
@@ -63,17 +61,19 @@ def total(items: list[int]) -> int:
 ## Rules
 
 Checked per function body, including methods and nested functions; with `all-scopes`, module and
-class bodies too. Statements are read in source order, and only a name's first binding counts.
+class bodies too. Statements are read in source order, and only a name's first binding counts
+(`LVA009` aside, which reads every one).
 
-| Code     | Reports                                                                | Fix                                            |
-| -------- | ---------------------------------------------------------------------- | ---------------------------------------------- |
-| `LVA001` | `=`, unpacking, `:=` or `with ... as` in a function without annotation | `name: T = ...`, or `name: T` first            |
-| `LVA002` | an untyped `for` target or `match` capture                             | `name: T` first (or a type comment)            |
-| `LVA003` | a `for` target typed only by `# type: T`                               | `name: T` first                                |
-| `LVA004` | with `all-scopes`: the same as `LVA001`, in a module or class body     | `name: T = ...` (`ClassVar[T]` in a dataclass) |
-| `LVA005` | an annotation with `Any`, `object` or a generic without its parameters | name the real type                             |
-| `LVA006` | an annotation nested `nesting` deep (3 by default)                     | a `type` alias for a part of it                |
-| `LVA007` | a name annotated again with the type it already has, in the same block | drop the second annotation                     |
+| Code     | Reports                                                                         | Fix                                            |
+| -------- | ------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `LVA001` | `=`, unpacking, `:=` or `with ... as` in a function without annotation          | `name: T = ...`, or `name: T` first            |
+| `LVA002` | an untyped `for` target or `match` capture                                      | `name: T` first (or a type comment)            |
+| `LVA003` | a `for` target typed only by `# type: T`                                        | `name: T` first                                |
+| `LVA004` | with `all-scopes`: the same as `LVA001`, in a module or class body              | `name: T = ...` (`ClassVar[T]` in a dataclass) |
+| `LVA005` | an annotation with `Any`, `object` or a generic without its parameters          | name the real type                             |
+| `LVA006` | an annotation nested `nesting` deep (3 by default)                              | a `type` alias for a part of it                |
+| `LVA007` | a name annotated again with the type it already has, in the same block          | drop the second annotation                     |
+| `LVA009` | a value, anywhere in the name's lifetime, whose type doesn't fit its annotation | fix the value, or widen the annotation         |
 
 Exempt: comprehensions, `except ... as`, imports, `def`/`class`, `type` aliases, parameters,
 `global`/`nonlocal`, and `_`; in module and class bodies, dunder names (`__all__`, `__slots__`) and
@@ -88,17 +88,25 @@ or `nested_scopes` from `__future__`.
 `LVA007` compares a block on its own: an `if`'s body and its `orelse`, a `try`'s body and its
 `except`s, and the like, are different blocks, since they don't both run in the same pass.
 
+`LVA009` checks every binding of an annotated name (or parameter) in the scope, wherever and in
+whatever order they run, but only one whose value's type `--fix` would infer with certainty, and
+only against types whose every subclass is known: builtins, and classes the module defines on such
+bases. An imported class, a protocol or an alias is never compared, builtin containers are compared
+by the container alone (`flags: tuple[str, ...] = ("-q",)` fits), a copy of a union-typed name is
+skipped (an `is None` check may have narrowed it), and so is a name annotated only under
+`if TYPE_CHECKING:`. It has no `--fix`.
+
 ## Levels
 
 Each level makes one more code an error. The rest are warnings: the CLI prints them (as `::warning`
 or SARIF `warning` in those formats) but exits 0; flake8 and pylint report errors only.
 
-| Level             | Errors                           | Warnings                              |
-| ----------------- | -------------------------------- | ------------------------------------- |
-| `relaxed` / `0`   | none                             | `LVA001`–`LVA004`, `LVA007`           |
-| `strict` / `1`    | `LVA001`, `LVA004` (the default) | `LVA002`, `LVA003`, `LVA005`–`LVA007` |
-| `constrict` / `2` | `LVA001`, `LVA004`, `LVA002`     | `LVA003`, `LVA005`–`LVA007`           |
-| `suffocate` / `3` | all                              | none                                  |
+| Level             | Errors                                 | Warnings                                        |
+| ----------------- | -------------------------------------- | ----------------------------------------------- |
+| `relaxed` / `0`   | none                                   | `LVA001`–`LVA004`, `LVA007`, `LVA009`           |
+| `strict` / `1`    | `LVA001`, `LVA004` (the default)       | `LVA002`, `LVA003`, `LVA005`–`LVA007`, `LVA009` |
+| `constrict` / `2` | `LVA001`, `LVA004`, `LVA002`, `LVA009` | `LVA003`, `LVA005`–`LVA007`                     |
+| `suffocate` / `3` | all                                    | none                                            |
 
 `LVA005` and `LVA006` aren't reported at `relaxed`.
 
@@ -106,16 +114,16 @@ Python 3.11+, no runtime dependencies.
 
 ## Use
 
-| Tool   | Setup                                                 | Reports                         | Suppress                                         |
-| ------ | ----------------------------------------------------- | ------------------------------- | ------------------------------------------------ |
-| CLI    | `constricter [PATH...] [--level L] [--format F] [-q]` | `LVA001`–`LVA007`               | `# noqa: LVA001`                                 |
-| flake8 | install it (on by default)                            | `LVA001`–`LVA007`               | `# noqa: LVA001`                                 |
-| pylint | `load-plugins = ["constricter.pylint_plugin"]`        | `C9101`–`C9107` (symbols below) | `# noqa: LVA001` or `# pylint: disable=<symbol>` |
-| ruff   | run the CLI after ruff; set `lint.external = ["LVA"]` | `LVA001`–`LVA007`               | `# noqa: LVA001`                                 |
+| Tool   | Setup                                                 | Reports                                  | Suppress                                         |
+| ------ | ----------------------------------------------------- | ---------------------------------------- | ------------------------------------------------ |
+| CLI    | `constricter [PATH...] [--level L] [--format F] [-q]` | `LVA001`–`LVA007`, `LVA009`              | `# noqa: LVA001`                                 |
+| flake8 | install it (on by default)                            | `LVA001`–`LVA007`, `LVA009`              | `# noqa: LVA001`                                 |
+| pylint | `load-plugins = ["constricter.pylint_plugin"]`        | `C9101`–`C9107`, `C9109` (symbols below) | `# noqa: LVA001` or `# pylint: disable=<symbol>` |
+| ruff   | run the CLI after ruff; set `lint.external = ["LVA"]` | `LVA001`–`LVA007`, `LVA009`              | `# noqa: LVA001`                                 |
 
 pylint symbols: `unannotated-local-variable`, `untyped-for-or-match-variable`,
 `comment-typed-for-variable`, `unannotated-module-or-class-variable`, `vague-annotation`,
-`deeply-nested-annotation`, `redundant-annotation`.
+`deeply-nested-annotation`, `redundant-annotation`, `mismatched-value-type`.
 
 Options:
 
@@ -534,6 +542,11 @@ Done:
 - **On PyPI**: `pip install python-constricter` is the documented install, with PyPI version and
   Python version badges (the classifiers now name 3.11–3.14, CPython and PyPy).
 
+- **LVA009: a value that doesn't fit the annotation**, over the name's whole lifetime in the scope
+  (see [Rules](#rules)): a warning, an error from `constrict`, pylint's `C9109`
+  (`mismatched-value-type`). Built on the value-flow engine (`constricter.flow`); across Python
+  3.14's standard library and the four corpus packages it finds 10, each a real mismatch.
+
 Next:
 
 1. **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+ (6.2.0 still has only a
@@ -550,21 +563,13 @@ Next:
    Left to decide before it reports: codes and levels, `# noqa` and `# type: ignore` handling, and
    the message. Semantic narrowing (a `str` only ever `"0"` or `"1"` could be a `bool`) is out of
    its reach: it compares types, not values.
-4. **LVA009: a value that doesn't fit the declared type.** An error: `count: int = 0` later
-   reassigned `count = "done"`. Built on the same engine, and the precise one of the three: across
-   Python 3.14's standard library and the four corpus packages it finds 10, every one a real
-   mismatch (most deliberately wrong test fixtures; one already carries `# type: ignore`). What
-   keeps it quiet elsewhere: it only compares types whose whole ancestry is visible (builtins, and
-   module classes whose bases are too), compares builtin containers by the container alone (a
-   display's element types follow its context), treats a copy of a union-typed name as unknown (an
-   `is None` guard before it can't be seen), and skips names annotated under `if TYPE_CHECKING:`.
-5. **LVA010: a declared union member no value uses.** A warning: `x: int | str = 0` where no value
+4. **LVA010: a declared union member no value uses.** A warning: `x: int | str = 0` where no value
    is ever a `str`. Also built on the engine, with LVA008: both claim only when every binding's
    value is known and no other scope writes the name (`global`, `nonlocal`), and never in a class
    body, since instances rebind its attributes. On the corpus they find nothing, as expected of
    codebases this full of imported types; worth measuring on smaller, self-contained ones before
-   choosing their levels.
-6. **Show how each fix was inferred.** `annotations.inferred` now decides a fix through one of
+   choosing their levels. `LVA009` shares their engine and is reported (see Done).
+5. **Show how each fix was inferred.** `annotations.inferred` now decides a fix through one of
    several mechanisms (a literal, a container of literals, a same/cross-module function's declared
    return type, a fixed-return builtin, a class it constructs, a copy of an already-typed local, a
    subscript or an attribute of one), but `Offence.fix` keeps only the resulting annotation text,
@@ -573,8 +578,7 @@ Next:
    `_called`, `_subscripted`, the copy and attribute checks in `inferred` itself) to report a reason
    alongside the type, not just the type — a real (if mechanical) change through most of
    `annotations.py`'s inference path, not a one-line addition.
-
-7. **A user-defined type hierarchy.** A project's own say in which types are narrower than which,
+6. **A user-defined type hierarchy.** A project's own say in which types are narrower than which,
    for LVA008–LVA010: `B` narrower than `A` means a name declared `A` that only ever holds what `B`
    can is narrowable, and a `B` value fits an `A` annotation. Its entries take precedence over the
    built-in defaults, per type, so a project can drop or change one (say, `int` not counting as
@@ -582,7 +586,7 @@ Next:
    otherwise never compares). `flow.Hierarchy` already takes each type's wider types as a plain
    mapping; what's left is the setting (`[tool.constricter.narrower]`, say, with the same keys on
    the CLI and plugins) and merging it over `DEFAULT_PARENTS`.
-8. **A maximum length for fixed-length annotations.** A warning or an error, by level: with a
+7. **A maximum length for fixed-length annotations.** A warning or an error, by level: with a
    maximum of 3, `tuple[str, str, str]` is fine and `tuple[str, str, str, str]` isn't, since a
    fixed-length tuple that long reads better as a `NamedTuple` or dataclass. Applies to the
    annotations that list one type per element (`tuple[...]` and `Tuple[...]`, not `tuple[T, ...]`);

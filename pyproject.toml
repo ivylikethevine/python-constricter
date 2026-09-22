@@ -78,8 +78,9 @@ build-backend = "flit_core.buildapi"
 name = "constricter"
 
 [tool.constricter]
-# Drafts for other projects (Trunk, conda-forge); Trunk's `basic.in.py` is untyped on purpose.
-exclude = ["upstream"]
+# Drafts for other projects (Trunk, conda-forge); Trunk's `basic.in.py` is untyped on purpose. The
+# directory name skips it in a walk; the path glob, where a file's named (pre-commit names each).
+exclude = ["upstream", "upstream/*"]
 
 [tool.ruff]
 line-length = 110

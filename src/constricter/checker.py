@@ -21,7 +21,7 @@ from constricter.annotations import (
     node_name,
     returns,
 )
-from constricter.flow import Finding, Hierarchy, Lifetime, augmented, findings, members
+from constricter.flow import Finding, Hierarchy, Kind, Lifetime, augmented, findings, members
 from constricter.jsonc import as_text
 
 UNANNOTATED: Final = "LVA001"
@@ -31,6 +31,7 @@ UNANNOTATED_MEMBER: Final = "LVA004"
 VAGUE_TYPE: Final = "LVA005"
 NESTED_TYPE: Final = "LVA006"
 REDUNDANT_TYPE: Final = "LVA007"
+MISMATCHED_TYPE: Final = "LVA009"
 MESSAGES: dict[str, str] = {
     UNANNOTATED: "local variable {name} is not annotated where it's first bound",
     UNTYPED_TARGET: "for/match variable {name} is untyped; declare it before the statement",
@@ -39,6 +40,7 @@ MESSAGES: dict[str, str] = {
     VAGUE_TYPE: "the annotation of {name} is vague: Any, object, or a generic without its parameters",
     NESTED_TYPE: "the annotation of {name} nests too deeply; name a part of it with a `type` alias",
     REDUNDANT_TYPE: "{name} is annotated again with the type it already has, in the same block",
+    MISMATCHED_TYPE: "{name} is bound to {detail} here, which doesn't fit its annotation",
 }
 NESTING: Final = 3  # LVA006's default depth
 
@@ -88,6 +90,7 @@ _ERROR_FROM: dict[str, Level] = {
     VAGUE_TYPE: Level.SUFFOCATE,
     NESTED_TYPE: Level.SUFFOCATE,
     REDUNDANT_TYPE: Level.SUFFOCATE,
+    MISMATCHED_TYPE: Level.CONSTRICT,
 }
 # Codes reported only from a level up (the rest are reported at every level).
 _REPORTED_FROM: dict[str, Level] = {VAGUE_TYPE: Level.STRICT, NESTED_TYPE: Level.STRICT}
@@ -120,11 +123,13 @@ class Offence:
     cell: int | None = field(default=None, compare=False)
     # Whether `fix` is a guess, applied only with `--unsafe-fixes`.
     unsafe: bool = field(default=False, compare=False)
+    # What the message names besides the variable: LVA009's value type.
+    detail: str = field(default="", compare=False)
 
     @property
     def message(self) -> str:
         """The report text."""
-        return MESSAGES[self.code].format(name=repr(self.name))
+        return MESSAGES[self.code].format(name=repr(self.name), detail=f"`{self.detail}`")
 
     def is_error(self, level: Level) -> bool:
         """Check this offence's severity at `level`.
@@ -227,7 +232,13 @@ def check_tree(
 
     """
     settings: _Settings = _settings(tree, checks, lines, {**(calls or {}), **returns(tree)})
-    return sorted([*(o for scope in _scopes(tree, settings) for o in scope.reported()), *_redundant(tree)])
+    scopes: list[_Scope] = _scopes(tree, settings)
+    mismatched: list[Offence] = [
+        Offence(found.line, found.col, found.name, MISMATCHED_TYPE, detail=found.detail)
+        for found in _value_flow(tree, scopes)
+        if found.kind is Kind.CONFLICT
+    ]
+    return sorted([*(o for scope in scopes for o in scope.reported()), *_redundant(tree), *mismatched])
 
 
 class Coverage(NamedTuple):
@@ -934,14 +945,23 @@ def value_flow(
 ) -> list[Finding]:
     """Return the value-flow findings in `source`, sorted (see `constricter.flow`). Raises `SyntaxError`.
 
-    Not yet reported as offences: the groundwork for LVA008, LVA009 and LVA010.
+    `check_tree` reports each `CONFLICT` as LVA009; the rest are the groundwork for LVA008 and LVA010.
 
     Returns:
       Every finding, in source order.
 
     """
     tree: ast.Module = _parse(source, filename)
-    settings: _Settings = _settings(tree, checks, (), returns(tree))
+    return _value_flow(tree, _scopes(tree, _settings(tree, checks, (), returns(tree))))
+
+
+def _value_flow(tree: ast.Module, scopes: list[_Scope]) -> list[Finding]:
+    """Compare each name's values with its declared type, in each of `scopes`.
+
+    Returns:
+      Every finding, in source order.
+
+    """
     escaped: frozenset[str] = frozenset(
         name for node in ast.walk(tree) if isinstance(node, ast.Global | ast.Nonlocal) for name in node.names
     )
@@ -954,6 +974,4 @@ def value_flow(
         for stmt in node.body
         if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name)
     )
-    return sorted(
-        found for scope in _scopes(tree, settings) for found in scope.value_flow(escaped, checking_only)
-    )
+    return sorted(found for scope in scopes for found in scope.value_flow(escaped, checking_only))

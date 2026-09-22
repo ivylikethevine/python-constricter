@@ -178,3 +178,12 @@ def test_vague_and_nested_annotations_at_suffocate(tmp_path: Path, flake8: Calla
         f"2:5: C9105 vague-annotation {vague}",
         f"2:5: C9106 deeply-nested-annotation {nested}",
     ]
+
+
+def test_a_mismatched_value_at_constrict(tmp_path: Path, flake8: Callable[..., list[str]]) -> None:
+    """At `constrict`, both plugins report LVA009 / C9109, naming the value's type."""
+    path: Path = tmp_path / "mismatched.py"
+    _ = path.write_text("def f() -> None:\n  x: int = 0\n  x = 'a'\n", encoding="utf-8", newline="\n")
+    message: str = "'x' is bound to `str` here, which doesn't fit its annotation"
+    assert flake8("--constricter-level=constrict", str(path)) == [f"{path}:3:3: LVA009 {message}"]
+    assert _pylint(path, "--constricter-level=constrict") == [f"3:2: C9109 mismatched-value-type {message}"]

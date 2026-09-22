@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""The rules as a pylint plugin (C9101-C9107); reports the codes the level makes errors."""
+"""The rules as a pylint plugin (C9101-C9107, C9109); reports the codes the level makes errors."""
 
 from typing import IO, TYPE_CHECKING, NamedTuple, cast, final
 
@@ -12,6 +12,7 @@ from constricter.checker import (
     COMMENT_TYPED_TARGET,
     LEVELS,
     MESSAGES,
+    MISMATCHED_TYPE,
     NESTED_TYPE,
     NESTING,
     REDUNDANT_TYPE,
@@ -56,6 +57,7 @@ SYMBOLS: dict[str, Message] = {
     VAGUE_TYPE: Message("C9105", "vague-annotation"),
     NESTED_TYPE: Message("C9106", "deeply-nested-annotation"),
     REDUNDANT_TYPE: Message("C9107", "redundant-annotation"),
+    MISMATCHED_TYPE: Message("C9109", "mismatched-value-type"),
 }
 
 
@@ -98,7 +100,11 @@ class ConstricterChecker(BaseRawFileChecker):
         """Register the messages with `linter`."""
         super().__init__(linter)
         self.msgs = {
-            message.msg_id: (MESSAGES[code].format(name="%r"), message.symbol, f"See constricter's {code}.")
+            message.msg_id: (
+                MESSAGES[code].format(name="%r", detail="%s"),
+                message.symbol,
+                f"See constricter's {code}.",
+            )
             for code, message in SYMBOLS.items()
         }
 
@@ -122,7 +128,9 @@ class ConstricterChecker(BaseRawFileChecker):
         o: Offence
         for o in unsuppressed(offences, lines(text)):  # suppression comments, as the CLI reads them
             if o.is_error(level):
-                self.add_message(SYMBOLS[o.code].symbol, line=o.line, col_offset=o.col, args=(o.name,))
+                # A message names the variable, then (LVA009's) its `detail`, as `msgs` spells them.
+                args: tuple[str, ...] = (o.name, f"`{o.detail}`") if o.detail else (o.name,)
+                self.add_message(SYMBOLS[o.code].symbol, line=o.line, col_offset=o.col, args=args)
 
 
 def register(linter: PyLinter) -> None:

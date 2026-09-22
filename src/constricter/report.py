@@ -68,7 +68,7 @@ def _where(result: Result) -> dict[str, _Json]:
 
 def _sarif(results: Sequence[Result]) -> dict[str, _Json]:
     rules: list[_Json] = [
-        {"id": code, "shortDescription": {"text": message.format(name="`name`")}}
+        {"id": code, "shortDescription": {"text": message.format(name="`name`", detail="`T`")}}
         for code, message in MESSAGES.items()
     ]
     findings: list[_Json] = [

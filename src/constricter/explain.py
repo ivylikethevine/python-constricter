@@ -6,6 +6,7 @@ from typing import Final
 from constricter.checker import (
     COMMENT_TYPED_TARGET,
     MESSAGES,
+    MISMATCHED_TYPE,
     NESTED_TYPE,
     REDUNDANT_TYPE,
     UNANNOTATED,
@@ -49,6 +50,12 @@ _WHY: Final = {
         "branches that never run together (an `if`'s two arms, a `try`'s body and its `except`) aren't\n"
         "compared, since typing the same name the same way in each is normal, not redundant."
     ),
+    MISMATCHED_TYPE: (
+        "Every value a name is bound to, over its whole lifetime in the scope, should fit its\n"
+        'annotation: `count: int = 0` then `count = "done"` makes `count` mean two things. Only a\n'
+        "value whose type is certain is checked, against types whose every subclass is known\n"
+        "(builtins, and classes the module defines on such bases), so an imported class never is."
+    ),
 }
 
 
@@ -65,4 +72,5 @@ def explain(code: str) -> str:
         for level in Level
         if offence.is_reported(level)
     ]
-    return f"{code}: {MESSAGES[code].format(name='`name`')}\n\n{_WHY[code]}\n\n{', '.join(levels)}\n"
+    message: str = MESSAGES[code].format(name="`name`", detail="`T`")
+    return f"{code}: {message}\n\n{_WHY[code]}\n\n{', '.join(levels)}\n"
