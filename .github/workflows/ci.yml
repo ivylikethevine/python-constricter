@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
   workflow_call:
+    outputs:
+      hashes:
+        description: The dists' sha256 hashes, base64-encoded, for SLSA provenance (release.yml).
+        value: ${{ jobs.build.outputs.hashes }}
 
 permissions: {}
 
@@ -147,6 +151,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+    outputs:
+      hashes: ${{ steps.hash.outputs.hashes }}
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
@@ -168,6 +174,8 @@ jobs:
           python -m venv "$RUNNER_TEMP/smoke"
           "$RUNNER_TEMP/smoke/bin/pip" install --no-deps --no-index dist/*.whl
           "$RUNNER_TEMP/smoke/bin/constricter" src
+      - id: hash
+        run: echo "hashes=$(cd dist && sha256sum -- * | base64 -w0)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist

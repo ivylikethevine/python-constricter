@@ -28,6 +28,8 @@ dev = [
     "check-wheel-contents",
     "flake8>=7",
     "flit_core>=4.1,<5",
+    "hypothesis",
+    "hypothesmith",
     "mypy",
     "pip-audit",
     "pre-commit",

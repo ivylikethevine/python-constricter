@@ -180,7 +180,18 @@ default one is used only if it exists.
 `.ipynb` files are checked too (directories include them): their code cells are read as one module,
 IPython-only lines (`%magic`, `!shell`, `obj?`, `%%cell` magics) are skipped, and each offence is
 reported at its cell and line (`analysis.ipynb:cell 3:2:5`). JSON output has a `cell` field; GitHub
-and SARIF output point at the file and put the cell in the message.
+and SARIF output point at the file and put the cell in the message. `--fix` and `--diff` edit the
+cells, keeping the notebook's formatting.
+
+### Adopting it on an existing codebase
+
+1. See the scale: `constricter --statistics src` counts offences per code.
+2. Record them: `constricter --write-baseline src`, and commit `constricter-baseline.json`.
+3. Enforce it for new code: add the pre-commit hook or the GitHub Action; the baseline keeps old
+   offences quiet, and `--diff` / `--fix` clear the easy ones.
+4. Burn it down: fix a file or package at a time, then `--write-baseline` again to shrink the file.
+5. Tighten: raise `level` (or `per-path-levels` for the parts that are clean), then turn on
+   `all-scopes`.
 
 ### SARIF (code scanning)
 
@@ -250,6 +261,12 @@ Everything generated goes in `local/`. Python is indented with 2 spaces.
 After editing the `dev` group, run `uv lock` (CI fails until you do). Dependabot updates `uv.lock`,
 the npm lock and the actions weekly.
 
+Fuzzing (`tests/test_fuzz.py`) runs with the tests: hypothesmith generates valid Python, which must
+never crash the checker and must stay valid after `--fix`. For a large real codebase, run
+`local/.venv/bin/python tests/corpus.py [PATH]` by hand: it checks PATH (default: this Python's
+standard library, about 660 files in two seconds) at `suffocate` and prints the time, the offences
+per code, and any crash.
+
 Markdown (markdownlint-cli2 and prettier, locked in `.github/package-lock.json`):
 
 ```bash
@@ -262,19 +279,20 @@ git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/prettier --check
 
 Everything else is on. Some of these may be revisited.
 
-| Tool               | Rule                                                                                                                                 | Why                                                                                                                             |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| ruff               | `docstring-missing-returns` and `-yields` (DOC201/DOC402) for one-line docstrings only (`lint.pydoclint.ignore-one-line-docstrings`) | A one-line summary ("Return the …") already says what comes back; a longer docstring gets a `Returns:` or `Yields:` section.    |
-| ruff               | `missing-trailing-comma` (COM812)                                                                                                    | Conflicts with `ruff format`; ruff says to disable it.                                                                          |
-| ruff               | `incorrect-blank-line-before-class`, `multi-line-summary-second-line` (D203/D213)                                                    | Each contradicts a rule that stays on (D211/D212); one of each pair has to go.                                                  |
-| ruff               | `indentation-with-invalid-multiple` and `-comment` (E111/E114)                                                                       | They assume 4-space indents; ruff says to disable them at any other width. flake8's E111/E114 check the 2 spaces.               |
-| ruff (`tests/`)    | `assert` (S101)                                                                                                                      | pytest works through `assert`.                                                                                                  |
-| mypy, basedpyright | astroid's untyped calls and missing stubs                                                                                            | astroid (pylint's parser) ships no type information.                                                                            |
-| typos              | the word `astroid`                                                                                                                   | A real package name.                                                                                                            |
-| harden-runner      | `egress-policy: audit` on macOS and Windows, in the release and Scorecard jobs, and in the weekly external-link check                | macOS and Windows reach unpredictable OS hosts; the release and Scorecard jobs haven't run yet; external links can go anywhere. |
-| reuse              | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)                                                              | No recent release ships a wheel for Python 3.11+, so installing it builds from source with an unpinned `poetry-core`.           |
-| zizmor             | `self-repository` on the CI job that runs the repository's root action                                                               | zizmor wants `$/`, and actionlint rejects a bare `$/` (it has no path), so that one line uses `./`.                             |
-| vulture            | not run                                                                                                                              | Its only findings were flake8/pylint hook names, which it can't see being called.                                               |
+| Tool                                         | Rule                                                                                                                                 | Why                                                                                                                             |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| ruff                                         | `docstring-missing-returns` and `-yields` (DOC201/DOC402) for one-line docstrings only (`lint.pydoclint.ignore-one-line-docstrings`) | A one-line summary ("Return the …") already says what comes back; a longer docstring gets a `Returns:` or `Yields:` section.    |
+| ruff                                         | `missing-trailing-comma` (COM812)                                                                                                    | Conflicts with `ruff format`; ruff says to disable it.                                                                          |
+| ruff                                         | `incorrect-blank-line-before-class`, `multi-line-summary-second-line` (D203/D213)                                                    | Each contradicts a rule that stays on (D211/D212); one of each pair has to go.                                                  |
+| ruff                                         | `indentation-with-invalid-multiple` and `-comment` (E111/E114)                                                                       | They assume 4-space indents; ruff says to disable them at any other width. flake8's E111/E114 check the 2 spaces.               |
+| ruff (`tests/`)                              | `assert` (S101)                                                                                                                      | pytest works through `assert`.                                                                                                  |
+| mypy, basedpyright                           | astroid's untyped calls and missing stubs                                                                                            | astroid (pylint's parser) ships no type information.                                                                            |
+| typos                                        | the word `astroid`                                                                                                                   | A real package name.                                                                                                            |
+| harden-runner                                | `egress-policy: audit` on macOS and Windows, in the release and Scorecard jobs, and in the weekly external-link check                | macOS and Windows reach unpredictable OS hosts; the release and Scorecard jobs haven't run yet; external links can go anywhere. |
+| reuse                                        | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)                                                              | No recent release ships a wheel for Python 3.11+, so installing it builds from source with an unpinned `poetry-core`.           |
+| zizmor                                       | `self-repository` on the CI job that runs the repository's root action                                                               | zizmor wants `$/`, and actionlint rejects a bare `$/` (it has no path), so that one line uses `./`.                             |
+| zizmor, and the sibling repos' SHA-pin check | `unpinned-uses` on release.yml's SLSA job                                                                                            | SLSA's generator must be referenced by its version tag, not a SHA: it verifies its own ref to produce level-3 provenance.       |
+| vulture                                      | not run                                                                                                                              | Its only findings were flake8/pylint hook names, which it can't see being called.                                               |
 
 To apply the rulesets in `.github/rulesets/` (repo admin):
 
@@ -321,6 +339,9 @@ Done:
 - **LVA005, LVA006 and `--fix`.**
 - **Baselines**, a **smarter `--fix`** (containers, same-module return types), **notebooks**, and
   JSON with comments and trailing commas wherever constricter reads JSON.
+- **Fuzzing**, a manual **corpus run** (`tests/corpus.py`), an **adoption guide**, **`--fix` for
+  notebooks**, and **SLSA level-3 provenance** (slsa-github-generator) on each release, alongside
+  the GitHub attestation.
 - **Python 3.11+**, the oldest version still maintained after 3.10's end of life in October 2026.
   Older Pythons aren't planned: 3.10 would add a runtime dependency (`tomli`) for a month, and
   3.6–3.9 would mean dropping `match` from the checker and keeping a second CI setup with older
@@ -330,16 +351,11 @@ Done:
 
 Next, smallest first:
 
-1. **Fuzzing:** hypothesis with hypothesmith generates valid Python; the checker must never crash on
-   it.
-2. **A weekly run over a large real codebase** (CPython's standard library) to catch crashes and
-   slowdowns.
-3. **An adoption guide** for existing codebases: start at `relaxed`, baseline, then raise the level.
-4. **`--fix` for notebooks**, rewriting the fixed cells inside the `.ipynb` JSON.
-5. **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+.
-6. **SLSA level-3 provenance** (slsa-github-generator), a stronger guarantee than today's
-   attestation.
-7. Revisit the [disabled rules](#disabled-rules).
+1. **A test coverage badge** (coverage is enforced at 100% already; the badge shows it).
+2. **An annotation-coverage report**: a `--coverage` option that prints the share of bindings that
+   are typed (overall and per file), for users' own badges, and shown for this project.
+3. **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+.
+4. Revisit the [disabled rules](#disabled-rules).
 
 After the first release (these need it on PyPI, or a published tag):
 

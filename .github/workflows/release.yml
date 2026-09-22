@@ -17,6 +17,19 @@ jobs:
     permissions:
       contents: read
 
+  slsa:
+    name: SLSA provenance
+    needs: ci
+    permissions:
+      actions: read # read this run, to describe the build
+      id-token: write # sign the provenance
+      contents: write # required by the generator (its release upload is off)
+    # zizmor: ignore[unpinned-uses] SLSA's generator must be referenced by tag: it verifies its own ref
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: ${{ needs.ci.outputs.hashes }}
+      provenance-name: python-constricter.intoto.jsonl
+
   provenance:
     name: Provenance
     needs: ci
@@ -68,7 +81,7 @@ jobs:
 
   release:
     name: GitHub release
-    needs: publish
+    needs: [publish, slsa]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: MIT
 """Jupyter notebooks: their code cells, joined into one module, and where each line came from."""
 
+import json
 import re
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter import jsonc
+from constricter import fixes, jsonc
+from constricter.checker import Offence
 
 SUFFIX: Final = ".ipynb"
 _Json: TypeAlias = "str | int | float | bool | list[_Json] | dict[str, _Json] | None"
@@ -20,10 +23,22 @@ class Line(NamedTuple):
   line: int
 
 
+class Cell(NamedTuple):
+  """A cell `fix` changed: its number (from 1), and its lines before and after."""
+
+  number: int
+  old: list[str]
+  new: list[str]
+
+
+def _text(source: _Json) -> str:
+  """Return a cell's source, which a notebook keeps as a string or a list of lines."""
+  return "".join(str(part) for part in source) if isinstance(source, list) else str(source)
+
+
 def _cell_lines(source: _Json) -> list[str]:
   """Return a cell's lines, each ending in a newline; IPython-only lines become blank."""
-  text: str = "".join(str(part) for part in source) if isinstance(source, list) else str(source)
-  lines: list[str] = text.splitlines()
+  lines: list[str] = _text(source).splitlines()
   if lines and lines[0].lstrip().startswith("%%"):  # a cell magic: the whole cell isn't Python
     return ["\n"] * len(lines)
   return ["\n" if _MAGIC.match(line) else f"{line}\n" for line in lines]
@@ -61,3 +76,28 @@ def read(path: Path) -> tuple[str, list[Line]]:
       case _:
         pass
   return "".join(joined), where
+
+
+def fix(path: Path, offences: Sequence[Offence]) -> tuple[str, list[Cell]]:
+  """Add each fixable offence's annotation in its cell.
+
+  Returns:
+    The notebook's new JSON (its indent, key order and final newline kept), and each changed
+    cell's number and old and new lines.
+
+  """
+  raw: str = path.read_bytes().decode("utf-8")
+  document: dict[str, _Json] = cast("dict[str, _Json]", jsonc.loads(raw))
+  cells: list[_Json] = cast("list[_Json]", document["cells"])
+  changed: list[Cell] = []
+  number: int
+  for number in sorted({o.cell for o in offences if o.fix and o.cell is not None}):
+    cell: dict[str, _Json] = cast("dict[str, _Json]", cells[number - 1])
+    source: _Json = cell["source"]
+    old: list[str] = _text(source).splitlines(keepends=True)
+    new: list[str] = fixes.apply(old, [o for o in offences if o.cell == number])
+    cell["source"] = list[_Json](new) if isinstance(source, list) else "".join(new)
+    changed.append(Cell(number, old, new))
+  indent: re.Match[str] | None = re.match(r"\{\r?\n( +)", raw)
+  text: str = json.dumps(document, indent=len(indent.group(1)) if indent else 1, ensure_ascii=False)
+  return text + ("\n" if raw.endswith("\n") else ""), changed

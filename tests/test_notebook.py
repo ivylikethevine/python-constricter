@@ -10,9 +10,10 @@ import pytest
 from constricter import cli
 
 _Json: TypeAlias = "str | int | list[_Json] | dict[str, _Json] | None"
+_Cell: TypeAlias = dict[str, str | list[str]]
 _Run: TypeAlias = dict[str, list[dict[str, _Json]]]
 _Sarif: TypeAlias = dict[str, list[_Run]]
-CELLS: Final = [
+CELLS: Final[list[_Cell]] = [
   {"cell_type": "markdown", "source": ["# A notebook"]},
   {"cell_type": "code", "source": ["%matplotlib inline\n", "!pip list\n", "import os\n", "os?\n"]},
   {"cell_type": "code", "source": "%%bash\necho $HOME\n"},
@@ -21,9 +22,14 @@ CELLS: Final = [
 MESSAGE: Final = "local variable 'count' is not annotated where it's first bound"
 
 
+def _nbformat(cells: list[_Cell]) -> str:
+  """Return a notebook's JSON as nbformat writes it: indent 1, and a final newline."""
+  return json.dumps({"cells": cells, "nbformat": 4}, indent=1) + "\n"
+
+
 def _notebook(tmp_path: Path) -> Path:
   path: Path = tmp_path / "analysis.ipynb"
-  _ = path.write_text(json.dumps({"cells": CELLS, "nbformat": 4}), encoding="utf-8", newline="\n")
+  _ = path.write_text(_nbformat(CELLS), encoding="utf-8", newline="\n")
   return path
 
 
@@ -50,14 +56,22 @@ def test_every_format_names_the_cell(tmp_path: Path, capsys: pytest.CaptureFixtu
   ]
 
 
-def test_notebooks_are_found_and_never_fixed(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-  """Directory walks include notebooks; `--fix` and `--diff` leave them alone."""
+def test_fix_and_diff_edit_the_cells(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+  """`--diff` shows each changed cell; `--fix` edits it and keeps the rest of the file as it was."""
   path: Path = _notebook(tmp_path)
-  before: bytes = path.read_bytes()
-  assert cli.main(["-q", "--fix", str(tmp_path)]) == cli.EXIT_FOUND
-  assert path.read_bytes() == before
-  assert cli.main(["--diff", str(tmp_path)]) == cli.EXIT_CLEAN
-  assert capsys.readouterr().out.startswith(f"{path}:cell 4:")
+  before: str = path.read_text(encoding="utf-8")
+  assert cli.main(["--diff", str(tmp_path)]) == cli.EXIT_FOUND
+  assert capsys.readouterr().out == (
+    f"--- {path}:cell 4\n+++ {path}:cell 4\n@@ -1,3 +1,3 @@\n def f() -> None:\n-  count = 0\n"
+    "+  count: int = 0\n   quiet = 1  # noqa: LVA001\n"
+  )
+  assert path.read_text(encoding="utf-8") == before
+  assert cli.main(["-q", "--fix", str(tmp_path)]) == cli.EXIT_CLEAN
+  fixed: list[_Cell] = [
+    *CELLS[:3],
+    {**CELLS[3], "source": ["def f() -> None:\n", "  count: int = 0\n", "  quiet = 1  # noqa: LVA001\n"]},
+  ]
+  assert path.read_text(encoding="utf-8") == _nbformat(fixed)
 
 
 @pytest.mark.parametrize("text", ['{"cells": 1}', "[]", "{not json"])

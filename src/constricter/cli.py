@@ -14,7 +14,7 @@ from functools import partial
 from pathlib import Path
 from typing import Final, cast
 
-from constricter import __version__, baseline, notebook
+from constricter import __version__, baseline, fixes, notebook
 from constricter.checker import LEVELS, MESSAGES, NESTING, Level, Offence, check_source
 from constricter.config import DEFAULT_BASELINE, config_defaults, project_root, unknown_codes
 from constricter.explain import explain
@@ -57,7 +57,7 @@ def check_file(
   """Return the offences in `path` that no `# noqa` suppresses.
 
   A notebook's code cells are checked as one module, and each offence placed in its cell (a
-  notebook's offences are never fixed). Raises `ValueError` for a file that isn't a notebook.
+  `--fix` edits its cells). Raises `ValueError` for a file that isn't a notebook.
 
   Returns:
     The unsuppressed offences, a notebook's placed in their cells.
@@ -74,36 +74,44 @@ def check_file(
     lines(source),
   )
   return (
-    [replace(o, line=where[o.line - 1].line, cell=where[o.line - 1].cell, fix=None) for o in offences]
+    [replace(o, line=where[o.line - 1].line, cell=where[o.line - 1].cell) for o in offences]
     if where
     else offences
   )
 
 
-def _fixed(source: str, offences: Sequence[Offence]) -> list[str]:
-  """Return `source`'s lines with each fixable offence's annotation added."""
-  text: list[str] = lines(source)
-  o: Offence
-  for o in sorted((o for o in offences if o.fix), key=lambda o: (o.line, o.col), reverse=True):
-    raw: bytes = text[o.line - 1].encode()
-    end: int = o.col + len(o.name.encode())  # `col` counts bytes, as `ast` does
-    text[o.line - 1] = (raw[:end] + f": {o.fix}".encode() + raw[end:]).decode()
-  return text
-
-
 def fix_file(path: Path, offences: Sequence[Offence]) -> int:
-  """Add each fixable offence's annotation to `path`; return how many were fixed."""
+  """Add each fixable offence's annotation to `path` (a notebook's, in its cells).
+
+  Returns:
+    How many offences were fixed.
+
+  """
   count: int
   if not (count := sum(1 for o in offences if o.fix)):
     return 0
-  _ = path.write_bytes("".join(_fixed(path.read_bytes().decode("utf-8"), offences)).encode())
+  text: str = (
+    notebook.fix(path, offences)[0]
+    if path.suffix == notebook.SUFFIX
+    else "".join(fixes.apply(lines(path.read_bytes().decode("utf-8")), offences))
+  )
+  _ = path.write_bytes(text.encode())
   return count
 
 
 def diff_file(path: Path, offences: Sequence[Offence]) -> str:
-  """Return the unified diff `fix_file` would make to `path` (empty if none)."""
+  """Return the unified diff `fix_file` would make to `path`, per cell for a notebook (empty if none)."""
+  if path.suffix == notebook.SUFFIX:
+    return "".join(
+      "".join(
+        difflib.unified_diff(cell.old, cell.new, f"{path}:cell {cell.number}", f"{path}:cell {cell.number}")
+      )
+      for cell in notebook.fix(path, offences)[1]
+    )
   source: str = path.read_bytes().decode("utf-8")
-  return "".join(difflib.unified_diff(lines(source), _fixed(source, offences), str(path), str(path)))
+  return "".join(
+    difflib.unified_diff(lines(source), fixes.apply(lines(source), offences), str(path), str(path))
+  )
 
 
 def _at_least(minimum: int) -> Callable[[str], int]:
