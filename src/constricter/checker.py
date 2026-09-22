@@ -61,6 +61,8 @@ _PYTHON2_FUTURES: frozenset[str] = frozenset(
 )
 # Enum members mustn't be annotated: a base imported from here is one, however it's aliased.
 _ENUM_MODULES: Final = frozenset({"enum"})
+# The conventional name of an instance method's first parameter: typed as its class, for `--fix`.
+_SELF: Final = "self"
 
 
 class Level(IntEnum):
@@ -98,6 +100,7 @@ class _Settings:
     calls: dict[str, str]  # each module function's return type, for `--fix`
     factories: frozenset[str]  # names imported that build a class or special form, for `--fix`
     classes: dict[str, dict[str, str]]  # each class's annotated attributes, for `--fix`
+    owners: dict[int, str]  # each method's class, by `id()`, to type its `self`, for `--fix`
 
 
 @dataclass(frozen=True, order=True)
@@ -200,6 +203,7 @@ def _settings(
         calls,
         factories(tree),
         classes(tree),
+        _owners(tree),
     )
 
 
@@ -426,6 +430,40 @@ def _collect_functions(body: list[ast.stmt], into: list[_FunctionDef]) -> None:
             _collect_functions(stmt.body, into)
         else:
             _collect_functions(_child_statements(stmt), into)
+
+
+def _owners(tree: ast.Module) -> dict[int, str]:
+    """Map each direct method of a class to that class's name, by the method's `id`.
+
+    For `--fix` to type a method's `self`. A method is a function directly in a class's body,
+    however deep through `if`/`try`/..., but not through a nested class's or function's own body.
+
+    Returns:
+      Each such function, by `id()`, mapped to its class's name.
+
+    """
+    found: dict[int, str] = {}
+    node: ast.AST
+    methods: list[_FunctionDef]
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            methods = []
+            _direct_methods(node.body, methods)
+            found.update((id(method), node.name) for method in methods)
+    return found
+
+
+def _direct_methods(body: list[ast.stmt], into: list[_FunctionDef]) -> None:
+    """Collect the functions directly in a class's body, through compound statements.
+
+    A nested class's own methods aren't included.
+    """
+    stmt: ast.stmt
+    for stmt in body:
+        if isinstance(stmt, _FUNCTION_DEFS):
+            into.append(stmt)
+        elif not isinstance(stmt, ast.ClassDef):
+            _direct_methods(_child_statements(stmt), into)
 
 
 def _child_statements(stmt: ast.stmt) -> list[ast.stmt]:
@@ -673,6 +711,9 @@ def _function_scope(func: _FunctionDef, functions: list[_FunctionDef], settings:
     # A copy of a plain, annotated parameter (`*args`/`**kwargs` aren't the type they're annotated
     # with) can be typed the same way, the moment it's assigned.
     scope.types.update((arg.arg, ast.unparse(arg.annotation)) for arg in named if arg.annotation is not None)
+    owner: str | None = settings.owners.get(id(func))
+    if owner is not None and named and named[0].arg == _SELF:
+        _ = scope.types.setdefault(_SELF, owner)
     stmt: ast.stmt
     for stmt in func.body:
         _visit(scope, stmt)
@@ -742,7 +783,7 @@ def _bind(scope: _Scope, stmt: ast.stmt) -> None:
                 scope.types,
                 scope.settings.classes,
             )
-            unsafe: bool = guessed(value, calls, frozenset(scope.guesses))
+            unsafe: bool = guessed(value, calls, frozenset(scope.guesses), scope.types)
             scope.bind(name, _at(single), scope.unannotated(comment), fix, unsafe=unsafe)
             if fix is not None and name not in scope.types:
                 scope.types[name] = fix

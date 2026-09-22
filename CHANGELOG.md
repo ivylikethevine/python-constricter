@@ -9,8 +9,11 @@ Notable changes, newest first. Each release's full notes are generated from its 
 - `--fix` infers more: `not x` (always `bool`), calls to builtins with a fixed return type (`len`,
   `isinstance`, `str`, ...), a plain `x = y` copying `y`'s already-known type (its annotation, an
   earlier fix, or an annotated parameter), a subscript of an already-typed local (`container[key]`,
-  its element type; a slice, the same type back), and an attribute of one (`obj.attr`, a class-level
-  annotated attribute of a class defined in the same module).
+  its element type; a slice, the same type back), an attribute of one (`obj.attr`, a class-level
+  annotated attribute of a class defined in the same module, or a `self.x: T = ...` annotated
+  anywhere in one of its methods), a method's own `self` typed as its class, and a call to a
+  `str`/`bytes` method whose return type doesn't depend on its arguments (`strip`, `split`,
+  `startswith`, `encode`, `decode`, ...) on an already-typed local.
 - **LVA007**: a name annotated again with the type it already has, in the same straight-line block
   (an `if`'s two arms, a `try`'s body and its `except`s, ... are compared separately, not against
   each other). A warning at every level, an error at `suffocate`.
@@ -22,7 +25,8 @@ Notable changes, newest first. Each release's full notes are generated from its 
 - `project.calls` finds a module/submodule import by name lookup instead of scanning every indexed
   module (`project.index` now returns a `project.Index`, not a plain `dict`).
 - `tests/corpus.py` and `tests/corpus_fix.py` (checking and `--fix`-ing a large real codebase) run
-  in CI's new Corpus job, against the runner's Python standard library.
+  in CI's Corpus job, against the runner's Python standard library and, from a new pinned `corpus`
+  dependency group, `requests`, `flask`, `django` and `sqlalchemy`.
 - Fix: `--fix` could corrupt a line (and crash) if an offence's fix landed inside a multi-byte
   character; that one offence is now left unfixed instead. Found by the new Corpus job, on the
   Python 3.11 standard library.

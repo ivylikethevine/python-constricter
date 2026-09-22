@@ -3,7 +3,7 @@
 
 import ast
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from functools import lru_cache
 from typing import TYPE_CHECKING, Final, cast
 
@@ -98,6 +98,106 @@ _BUILTIN_RETURNS: Final = {
 }
 # Modules `_FACTORIES`' names are imported from (so an aliased or re-exported import is still found).
 _FACTORY_MODULES: Final = frozenset({"enum", "typing", "typing_extensions"})
+# `str`/`bytes` methods whose return type is fixed by the language, whatever their arguments: safe
+# to infer for a call on an already-typed local, not a guess.
+_STR_METHODS: Final = {
+    "capitalize": "str",
+    "casefold": "str",
+    "center": "str",
+    "count": "int",
+    "encode": "bytes",
+    "endswith": "bool",
+    "expandtabs": "str",
+    "find": "int",
+    "format": "str",
+    "format_map": "str",
+    "index": "int",
+    "isalnum": "bool",
+    "isalpha": "bool",
+    "isascii": "bool",
+    "isdecimal": "bool",
+    "isdigit": "bool",
+    "isidentifier": "bool",
+    "islower": "bool",
+    "isnumeric": "bool",
+    "isprintable": "bool",
+    "isspace": "bool",
+    "istitle": "bool",
+    "isupper": "bool",
+    "join": "str",
+    "ljust": "str",
+    "lower": "str",
+    "lstrip": "str",
+    "removeprefix": "str",
+    "removesuffix": "str",
+    "replace": "str",
+    "rfind": "int",
+    "rindex": "int",
+    "rjust": "str",
+    "rsplit": "list[str]",
+    "rstrip": "str",
+    "split": "list[str]",
+    "splitlines": "list[str]",
+    "startswith": "bool",
+    "strip": "str",
+    "swapcase": "str",
+    "title": "str",
+    "translate": "str",
+    "upper": "str",
+    "zfill": "str",
+}
+_BYTES_METHODS: Final = {
+    "capitalize": "bytes",
+    "center": "bytes",
+    "count": "int",
+    "decode": "str",
+    "endswith": "bool",
+    "expandtabs": "bytes",
+    "find": "int",
+    "hex": "str",
+    "index": "int",
+    "isalnum": "bool",
+    "isalpha": "bool",
+    "isascii": "bool",
+    "isdigit": "bool",
+    "islower": "bool",
+    "isspace": "bool",
+    "istitle": "bool",
+    "isupper": "bool",
+    "join": "bytes",
+    "ljust": "bytes",
+    "lower": "bytes",
+    "lstrip": "bytes",
+    "removeprefix": "bytes",
+    "removesuffix": "bytes",
+    "replace": "bytes",
+    "rfind": "int",
+    "rindex": "int",
+    "rjust": "bytes",
+    "rsplit": "list[bytes]",
+    "rstrip": "bytes",
+    "split": "list[bytes]",
+    "splitlines": "list[bytes]",
+    "startswith": "bool",
+    "strip": "bytes",
+    "swapcase": "bytes",
+    "title": "bytes",
+    "translate": "bytes",
+    "upper": "bytes",
+    "zfill": "bytes",
+}
+_METHOD_RETURNS: Final = {"str": _STR_METHODS, "bytes": _BYTES_METHODS}
+
+
+def _method_return(receiver: str, method: str) -> str | None:
+    """Look up `method`'s return type on a receiver whose own type is `receiver`, as text.
+
+    Returns:
+      The annotation as source text, or `None` if `receiver` isn't `str`/`bytes`, or `method` isn't
+      one of `_METHOD_RETURNS`'.
+
+    """
+    return _METHOD_RETURNS.get(receiver, {}).get(method)
 
 
 def imported_from(tree: ast.Module, modules: frozenset[str]) -> frozenset[str]:
@@ -135,11 +235,11 @@ def factories(tree: ast.Module) -> frozenset[str]:
 
 
 def classes(tree: ast.Module) -> dict[str, dict[str, str]]:
-    """Map each class defined in the module to its class-level annotated attributes.
+    """Map each class defined in the module to its annotated attributes.
 
-    Only a class-body annotation counts (`class C: x: int`); one only assigned in `__init__` or
-    elsewhere needs dataflow across methods to see, which is out of scope here. A name that names
-    more than one class in the module (however unlikely) gets the last one's attributes.
+    A class-body annotation (`class C: x: int`) and a `self.x: int = ...` annotated assignment
+    anywhere in one of its methods both count; a name that names more than one class in the module
+    (however unlikely) gets the last one's attributes.
 
     Returns:
       Each class's name, mapped to its attributes' names and annotation text.
@@ -162,9 +262,32 @@ def _attributes(node: ast.ClassDef) -> dict[str, str]:
         match stmt:
             case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation):
                 attrs[name] = ast.unparse(annotation)
+            case ast.FunctionDef() | ast.AsyncFunctionDef():
+                attrs.update(_self_attributes(stmt))
             case _:
                 pass
     return attrs
+
+
+def _self_attributes(func: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[tuple[str, str]]:
+    """Find `self.attr: T = ...` annotated assignments anywhere in a method's body.
+
+    Yields:
+      Each attribute's name and annotation text.
+
+    """
+    node: ast.AST
+    name: str
+    annotation: ast.expr
+    for node in ast.walk(func):
+        match node:
+            case ast.AnnAssign(
+                target=ast.Attribute(value=ast.Name(id="self"), attr=name),
+                annotation=annotation,
+            ):
+                yield name, ast.unparse(annotation)
+            case _:
+                pass
 
 
 @lru_cache(maxsize=256)
@@ -332,6 +455,14 @@ def inferred(
         and (found := known_classes.get(declared[value.value.id], {}).get(value.attr)) is not None
     ):
         return found
+    if (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Attribute)
+        and isinstance(value.func.value, ast.Name)
+        and value.func.value.id in declared
+        and (found := _method_return(declared[value.func.value.id], value.func.attr)) is not None
+    ):
+        return found
     return (
         _scalar(value)
         or _container(value, calls, known_factories, declared, known_classes)
@@ -459,27 +590,44 @@ def _called(value: ast.expr, calls: Mapping[str, str], known_factories: frozense
             return None
 
 
-def guessed(value: ast.expr, calls: Mapping[str, str], guesses: frozenset[str]) -> bool:
+def guessed(
+    value: ast.expr,
+    calls: Mapping[str, str],
+    guesses: frozenset[str],
+    declared: Mapping[str, str],
+) -> bool:
     """Whether `inferred`'s annotation for `value` is a guess (`--unsafe-fixes`): it calls a class.
 
     A capitalised call may construct a generic class (`Box(1)` is really `Box[int]`) or be a factory
-    function; literals, calls to a module function or a fixed-return builtin (`len`, `isinstance`,
-    ...), and another local this scope already typed are certain. Copying a local `inferred` itself
-    only guessed (`guesses`) is no more certain than the guess it copies.
+    function; literals, calls to a module function, a fixed-return builtin (`len`, `isinstance`,
+    ...) or a fixed-return `str`/`bytes` method (`_method_return`) on an already-typed local, and
+    another local this scope already typed, are certain. Copying a local `inferred` itself only
+    guessed (`guesses`) is no more certain than the guess it copies.
 
     Returns:
       Whether any call in `value` is to something other than such a certain callee, or any name in
       it copies such a guess.
 
     """
-    return any(_is_guess(node, calls, guesses) for node in ast.walk(value))
+    return any(_is_guess(node, calls, guesses, declared) for node in ast.walk(value))
 
 
-def _is_guess(node: ast.AST, calls: Mapping[str, str], guesses: frozenset[str]) -> bool:
+def _is_guess(
+    node: ast.AST,
+    calls: Mapping[str, str],
+    guesses: frozenset[str],
+    declared: Mapping[str, str],
+) -> bool:
     name: str
     func: ast.expr
+    receiver: str
+    method: str
     match node:
         case ast.Call(func=ast.Name(id=name)) if name in _BUILTIN_RETURNS:
+            return False
+        case ast.Call(func=ast.Attribute(value=ast.Name(id=receiver), attr=method)) if (
+            receiver in declared and _method_return(declared[receiver], method) is not None
+        ):
             return False
         case ast.Call(func=func):
             return ast.unparse(func) not in calls

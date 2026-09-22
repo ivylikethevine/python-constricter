@@ -814,6 +814,91 @@ def test_an_attribute_of_a_guessed_fix_is_guessed_too() -> None:
     ]
 
 
+def test_fixes_infer_a_methods_self_attribute() -> None:
+    """`self.attr` in a method offers its type: class-level, or `self.attr: T = ...` in any method."""
+    source: str = textwrap.dedent(
+        """
+    class Counter:
+      total: int
+
+      def __init__(self) -> None:
+        self.name: str = "x"
+
+      def read(self) -> None:
+        a = self.total
+        b = self.name
+        c = self.missing
+    """,
+    )
+    assert [(o.name, o.fix, o.unsafe) for o in check_source(source, checks=Checks(all_scopes=True))] == [
+        ("a", "int", False),
+        ("b", "str", False),
+        ("c", None, False),
+    ]
+
+
+def test_a_nested_functions_self_is_not_typed() -> None:
+    """A function nested in a method isn't itself a method: its closed-over `self` isn't typed."""
+    source: str = textwrap.dedent(
+        """
+    class C:
+      x: int
+
+      def method(self) -> None:
+        def helper() -> None:
+          a = self.x
+        helper()
+    """,
+    )
+    assert [(o.name, o.fix) for o in check_source(source)] == [("a", None)]
+
+
+def test_a_classmethods_cls_is_not_typed_as_self() -> None:
+    """Only a `self`-named first parameter is typed as the class; `cls` (classmethods) isn't."""
+    source: str = textwrap.dedent(
+        """
+    class C:
+      x: int
+
+      @classmethod
+      def make(cls) -> "C":
+        return cls()
+
+      @classmethod
+      def read(cls) -> None:
+        a = cls.x
+    """,
+    )
+    assert [(o.name, o.fix) for o in check_source(source)] == [("a", None)]
+
+
+@pytest.mark.parametrize(
+    ("param", "call", "fix"),
+    [
+        ("s: str", "s.strip()", "str"),
+        ("s: str", "s.split(',')", "list[str]"),
+        ("s: str", "s.startswith('x')", "bool"),
+        ("s: str", "s.count('x')", "int"),
+        ("s: str", "s.encode()", "bytes"),
+        ("b: bytes", "b.decode()", "str"),
+        ("b: bytes", "b.hex()", "str"),
+        ("b: bytes", "b.strip()", "bytes"),
+        ("s: str", "s.unknown_method()", None),
+        ("n: int", "n.bit_length()", None),  # `int` isn't in `_METHOD_RETURNS`
+    ],
+)
+def test_fixes_infer_a_typed_locals_method_call(param: str, call: str, fix: str | None) -> None:
+    """A `str`/`bytes` method with a fixed return type, called on an already-typed local, offers it."""
+    source: str = f"def f({param}) -> None:\n  x = {call}\n"
+    assert [(o.name, o.fix) for o in check_source(source)] == [("x", fix)]
+
+
+def test_a_method_call_on_a_guessed_fix_is_not_offered() -> None:
+    """A method call on an unsafely-fixed local (`Box` isn't `str`/`bytes`) offers nothing."""
+    source: str = "def f() -> None:\n  a = Box('x')\n  b = a.strip()\n"
+    assert [(o.name, o.fix) for o in check_source(source)] == [("a", "Box"), ("b", None)]
+
+
 def test_annotation_coverage_counts_first_bindings() -> None:
     """Coverage counts the first bindings the rules cover; typed ones, type comments included."""
     source: str = textwrap.dedent(
