@@ -9,6 +9,15 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /.github
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      markdown:
+        patterns: ["*"]
   - package-ecosystem: pip
     directory: /
     schedule:

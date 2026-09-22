@@ -10,58 +10,58 @@ from constricter import __version__
 from constricter.checker import LEVELS, Level, Offence, check_source, check_tree
 
 if TYPE_CHECKING:
-    from flake8.options.manager import OptionManager
+  from flake8.options.manager import OptionManager
 
 _TYPE_COMMENT = "type:"
 
 
 @final
 class ConstricterChecker:
-    """flake8's checker: one instance per file."""
+  """flake8's checker: one instance per file."""
 
-    name: str = "constricter"
-    version: str = __version__
-    level: ClassVar[Level] = Level.STRICT
-    type_comments: ClassVar[bool] = False
+  name: str = "constricter"
+  version: str = __version__
+  level: ClassVar[Level] = Level.STRICT
+  type_comments: ClassVar[bool] = False
 
-    def __init__(self, tree: ast.Module, lines: Sequence[str]) -> None:
-        """Take the file flake8 parsed, and its lines."""
-        self.tree: ast.Module = tree
-        self.lines: Sequence[str] = lines
+  def __init__(self, tree: ast.Module, lines: Sequence[str]) -> None:
+    """Take the file flake8 parsed, and its lines."""
+    self.tree: ast.Module = tree
+    self.lines: Sequence[str] = lines
 
-    @classmethod
-    def add_options(cls, parser: "OptionManager") -> None:
-        """Register the options (flake8's plugin hook)."""
-        parser.add_option(
-            "--constricter-level",
-            choices=list(LEVELS),
-            default="strict",
-            parse_from_config=True,
-            help="which LVA codes are reported (default: strict)",
-        )
-        parser.add_option(
-            "--constricter-type-comments",
-            action="store_true",
-            parse_from_config=True,
-            help="count `x = 1  # type: int` as annotated",
-        )
+  @classmethod
+  def add_options(cls, parser: "OptionManager") -> None:
+    """Register the options (flake8's plugin hook)."""
+    parser.add_option(
+      "--constricter-level",
+      choices=list(LEVELS),
+      default="strict",
+      parse_from_config=True,
+      help="which LVA codes are reported (default: strict)",
+    )
+    parser.add_option(
+      "--constricter-type-comments",
+      action="store_true",
+      parse_from_config=True,
+      help="count `x = 1  # type: int` as annotated",
+    )
 
-    @classmethod
-    def parse_options(cls, options: argparse.Namespace) -> None:
-        """Read the parsed options (flake8's plugin hook)."""
-        cls.level = LEVELS[cast("str", options.constricter_level)]
-        cls.type_comments = cast("bool", options.constricter_type_comments)
+  @classmethod
+  def parse_options(cls, options: argparse.Namespace) -> None:
+    """Read the parsed options (flake8's plugin hook)."""
+    cls.level = LEVELS[cast("str", options.constricter_level)]
+    cls.type_comments = cast("bool", options.constricter_type_comments)
 
-    def run(self) -> Iterator[tuple[int, int, str, type["ConstricterChecker"]]]:
-        """Yield flake8's `(line, col, message, type)` per error-level offence."""
-        source: str = "".join(self.lines)
-        # flake8's tree has no `# type:` comments; reparse only when the file might have one.
-        offences: list[Offence] = (
-            check_source(source, type_comments=self.type_comments)
-            if _TYPE_COMMENT in source
-            else check_tree(self.tree)
-        )
-        o: Offence
-        for o in offences:
-            if o.is_error(self.level):
-                yield o.line, o.col, f"{o.code} {o.message}", type(self)
+  def run(self) -> Iterator[tuple[int, int, str, type["ConstricterChecker"]]]:
+    """Yield flake8's `(line, col, message, type)` per error-level offence."""
+    source: str = "".join(self.lines)
+    # flake8's tree has no `# type:` comments; reparse only when the file might have one.
+    offences: list[Offence] = (
+      check_source(source, type_comments=self.type_comments)
+      if _TYPE_COMMENT in source
+      else check_tree(self.tree, lines=self.lines)
+    )
+    o: Offence
+    for o in offences:
+      if o.is_error(self.level):
+        yield o.line, o.col, f"{o.code} {o.message}", type(self)

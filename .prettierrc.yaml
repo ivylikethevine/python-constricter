@@ -1,0 +1,6 @@
+# Markdown formatting, agreeing with .markdownlint.yaml and .editorconfig.
+proseWrap: preserve
+printWidth: 80
+tabWidth: 2
+useTabs: false
+endOfLine: lf

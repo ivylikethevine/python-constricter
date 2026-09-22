@@ -30,16 +30,41 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
       - run: ruff check --output-format=github .
       - run: ruff format --check .
       - run: basedpyright
       - run: mypy
       - run: pylint src tests
-      - run: flake8 --max-line-length=110 src tests
+      - run: flake8 src tests
       - run: typos
+      - name: Lock matches pyproject.toml
+        run: |
+          uv pip compile pyproject.toml --extra dev --universal --python-version 3.12 --generate-hashes --quiet -o requirements-dev.txt
+          git diff --exit-code requirements-dev.txt
       - run: constricter --level=suffocate --format=github src tests
       - run: pre-commit try-repo . constricter --all-files
+
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      # markdownlint-cli2 and prettier, locked in .github/package-lock.json.
+      - run: npm ci --prefix .github
+      - run: git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/markdownlint-cli2
+      - run: git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/prettier --check
 
   test:
     name: Test (${{ matrix.os }}, ${{ matrix.python }})
@@ -59,14 +84,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           python-version: ${{ matrix.python }}
       - run: python -m pytest --cov
 
   build:
     name: Build
-    needs: [lint, test]
+    needs: [lint, docs, test]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -78,7 +103,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
       - run: python -m build --no-isolation --outdir dist
       - run: twine check --strict dist/*
       - name: Smoke-test the wheel

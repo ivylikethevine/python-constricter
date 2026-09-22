@@ -34,6 +34,7 @@ dev = [
     "ruff",
     "twine",
     "typos",
+    "uv",
     "zizmor",
 ]
 
@@ -52,6 +53,7 @@ name = "constricter"
 
 [tool.ruff]
 line-length = 110
+indent-width = 2
 target-version = "py312"
 cache-dir = "local/.ruff_cache"
 
@@ -66,6 +68,10 @@ ignore = [
     "missing-trailing-comma",
     "incorrect-blank-line-before-class",
     "multi-line-summary-second-line",
+    # Assume 4-space indents (ruff says to disable them at any other width); flake8's E111/E114
+    # check the 2-space width instead.
+    "indentation-with-invalid-multiple",
+    "indentation-with-invalid-multiple-comment",
 ]
 external = ["LVA"]
 
@@ -131,9 +137,13 @@ load-plugins = [
 
 [tool.pylint.format]
 max-line-length = 110
+indent-string = "  "
 
 [tool.typos.default.extend-words]
 astroid = "astroid"
+
+[tool.uv]
+cache-dir = "local/.uv-cache"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
