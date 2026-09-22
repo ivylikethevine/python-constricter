@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main]
   pull_request:
   workflow_call:
 
@@ -34,7 +34,11 @@ jobs:
       - run: ruff check --output-format=github .
       - run: ruff format --check .
       - run: basedpyright
-      - run: constricter src tests
+      - run: mypy
+      - run: pylint src tests
+      - run: flake8 --max-line-length=110 src tests
+      - run: typos
+      - run: constricter --format=github src tests
       - run: pre-commit try-repo . constricter --all-files
 
   test:
@@ -43,7 +47,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python: ["3.12", "3.13", "3.14"]
+        python: ['3.12', '3.13', '3.14']
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     permissions:

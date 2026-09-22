@@ -1,6 +1,6 @@
 [project]
 name = "python-constricter"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Lint rule: every local variable is annotated where it's first bound. A flake8 plugin, a pylint plugin and a standalone CLI."
 readme = "README.md"
 license = "MIT"
@@ -25,6 +25,7 @@ dev = [
     "build",
     "flake8>=7",
     "flit_core>=4.1,<5",
+    "mypy",
     "pip-audit",
     "pre-commit",
     "pylint>=3",
@@ -32,6 +33,7 @@ dev = [
     "pytest-cov",
     "ruff",
     "twine",
+    "typos",
     "zizmor",
 ]
 
@@ -55,13 +57,87 @@ cache-dir = "local/.ruff_cache"
 
 [tool.ruff.lint]
 select = ["ALL"]
-# D1: docstrings stay optional. CPY001: no headers. COM812, D203, D213: conflict with the formatter/D211/D212.
-ignore = ["D1", "CPY001", "COM812", "D203", "D213"]
+preview = true
+ignore = [
+    # Docstrings stay one line: no Returns/Yields sections.
+    "docstring-missing-returns",
+    "docstring-missing-yields",
+    # Conflict with the formatter or with the D211/D212 conventions.
+    "missing-trailing-comma",
+    "incorrect-blank-line-before-class",
+    "multi-line-summary-second-line",
+]
 external = ["LVA"]
 
+[tool.ruff.lint.flake8-copyright]
+notice-rgx = "SPDX-License-Identifier: MIT"
+
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101", "S603", "PLR2004", "INP001"]
-"src/constricter/cli.py" = ["T201"]
+# pytest's assert; test names say what docstrings would.
+"tests/*" = ["assert", "D1"]
+
+[tool.mypy]
+files = ["src", "tests"]
+python_version = "3.12"
+cache_dir = "local/.mypy_cache"
+strict = true
+warn_unreachable = true
+follow_untyped_imports = true
+# astroid ships no annotations.
+untyped_calls_exclude = ["astroid"]
+enable_error_code = [
+    "deprecated",
+    "exhaustive-match",
+    "explicit-override",
+    "ignore-without-code",
+    "mutable-override",
+    "possibly-undefined",
+    "redundant-expr",
+    "redundant-self",
+    "truthy-bool",
+    "truthy-iterable",
+    "unimported-reveal",
+    "unused-awaitable",
+]
+
+[tool.pylint.main]
+py-version = "3.12"
+load-plugins = [
+    "constricter.pylint_plugin",
+    "pylint.extensions.bad_builtin",
+    "pylint.extensions.broad_try_clause",
+    "pylint.extensions.code_style",
+    "pylint.extensions.comparison_placement",
+    "pylint.extensions.confusing_elif",
+    "pylint.extensions.consider_refactoring_into_while_condition",
+    "pylint.extensions.consider_ternary_expression",
+    "pylint.extensions.dict_init_mutate",
+    "pylint.extensions.docparams",
+    "pylint.extensions.docstyle",
+    "pylint.extensions.dunder",
+    "pylint.extensions.empty_comment",
+    "pylint.extensions.eq_without_hash",
+    "pylint.extensions.for_any_all",
+    "pylint.extensions.magic_value",
+    "pylint.extensions.mccabe",
+    "pylint.extensions.no_self_use",
+    "pylint.extensions.overlapping_exceptions",
+    "pylint.extensions.private_import",
+    "pylint.extensions.redefined_loop_name",
+    "pylint.extensions.redefined_variable_type",
+    "pylint.extensions.set_membership",
+    "pylint.extensions.typing",
+]
+
+[tool.pylint.format]
+max-line-length = 110
+
+[tool.pylint.basic]
+# As ruff's D1 per-file ignore: private names and tests need no docstring.
+no-docstring-rgx = "^(_|test_)"
+
+[tool.typos.default.extend-words]
+astroid = "astroid"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -77,7 +153,6 @@ branch = true
 
 [tool.coverage.report]
 fail_under = 100
-exclude_also = ["if __name__ == .__main__.:", "except PackageNotFoundError:"]
 
 [tool.basedpyright]
 include = ["src", "tests"]
@@ -86,7 +161,5 @@ venvPath = "local"
 venv = ".venv"
 pythonVersion = "3.12"
 typeCheckingMode = "all"
-reportPrivateUsage = false
-reportUnusedFunction = false
-# astroid (pylint's AST) ships no type information; only the pylint plugin imports it.
-reportMissingTypeStubs = false
+# astroid (pylint's AST) ships no annotations.
+allowedUntypedLibraries = ["astroid"]

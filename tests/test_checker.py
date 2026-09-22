@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """The rule itself (constricter.checker): what it reports and what it exempts."""
 
 import textwrap
@@ -90,6 +91,8 @@ def broken(items: list[int]) -> None:
     a = count
 """
 
+X_MESSAGE = "local variable 'x' is not annotated where it's first bound"
+
 
 def _check(source: str) -> list[Offence]:
     return check_source(textwrap.dedent(source))
@@ -111,7 +114,7 @@ def test_each_unannotated_first_binding_is_reported_once_at_its_name() -> None:
 
 
 def test_the_message_names_the_variable() -> None:
-    assert Offence(1, 0, "x").message == "local variable 'x' is not annotated where it's first bound"
+    assert Offence(1, 0, "x").message == X_MESSAGE
 
 
 @pytest.mark.parametrize(
@@ -216,6 +219,19 @@ def test_scopes(source: str, expected: list[Offence]) -> None:
 def test_its_own_source_follows_the_rule() -> None:
     package: Path = Path(__file__).resolve().parents[1] / "src" / "constricter"
     sources: list[Path] = sorted(package.glob("*.py")) + sorted(Path(__file__).parent.glob("*.py"))
-    assert len(sources) > 5
+    assert package / "checker.py" in sources
     offences: list[str] = [f"{p}:{o.line}: {o.name}" for p in sources for o in check_source(p.read_text())]
     assert offences == []
+
+
+def test_type_comments_count_only_when_enabled() -> None:
+    source: str = textwrap.dedent(
+        """
+        def f(path: str) -> None:
+            a = 1  # type: int
+            with open(path) as fh:  # type: object
+                pass
+        """
+    )
+    assert [o.name for o in check_source(source)] == ["a", "fh"]
+    assert not check_source(source, type_comments=True)

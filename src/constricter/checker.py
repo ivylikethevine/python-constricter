@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """The rule: every local variable is annotated where it's first bound (see README)."""
 
 import ast
@@ -5,7 +6,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 
 CODE = "LVA001"
-MESSAGE = "local variable {name!r} is not annotated where it's first bound"
+MESSAGE = "local variable {name} is not annotated where it's first bound"
 
 _FunctionDef = ast.FunctionDef | ast.AsyncFunctionDef
 
@@ -20,16 +21,25 @@ class Offence:
 
     @property
     def message(self) -> str:
-        return MESSAGE.format(name=self.name)
+        """The report text."""
+        return MESSAGE.format(name=repr(self.name))
 
 
-def check_source(source: str | bytes, filename: str = "<unknown>") -> list[Offence]:
-    """Return the unannotated locals in `source`, sorted. Raises `SyntaxError`."""
-    return check_tree(ast.parse(source, filename))
+def check_source(
+    source: str | bytes, filename: str = "<unknown>", *, type_comments: bool = False
+) -> list[Offence]:
+    """Return the unannotated locals in `source`, sorted. Raises `SyntaxError`.
+
+    With `type_comments`, `x = 1  # type: int` counts as annotated.
+    """
+    return check_tree(ast.parse(source, filename, type_comments=type_comments))
 
 
 def check_tree(tree: ast.Module) -> list[Offence]:
-    """Return the unannotated locals in a parsed module, sorted."""
+    """Return the unannotated locals in a parsed module, sorted.
+
+    `# type:` comments count only if it was parsed with `type_comments=True`.
+    """
     functions: list[_FunctionDef] = []
     _collect_functions(tree.body, functions)
     offences: list[Offence] = []
@@ -92,10 +102,12 @@ class _Scope:
         self.nested: list[_FunctionDef] = nested
         self.offences: list[Offence] = []
 
-    def bind(self, name: ast.Name) -> None:
+    def bind(self, name: ast.Name, *, typed: bool = False) -> None:
+        """Bind `name`; its first binding is an offence unless `typed`."""
         if name.id not in self.declared:
             self.declared.add(name.id)
-            self.offences.append(Offence(name.lineno, name.col_offset, name.id))
+            if not typed:
+                self.offences.append(Offence(name.lineno, name.col_offset, name.id))
 
     def walrus(self, node: ast.AST | None) -> None:
         """Bind `:=` targets in an expression, comprehensions included, lambdas excluded."""
@@ -124,7 +136,9 @@ def _check_function(func: _FunctionDef, functions: list[_FunctionDef]) -> list[O
     return scope.offences
 
 
-def _visit(scope: _Scope, stmt: ast.stmt) -> None:  # noqa: C901, PLR0912 (one case per statement type)
+# One case per statement type.
+# pylint: disable-next=too-complex,too-many-branches,too-many-locals
+def _visit(scope: _Scope, stmt: ast.stmt) -> None:  # ruff: ignore[complex-structure, too-many-branches]
     """Bind the names `stmt` binds, then visit its nested statements."""
     match stmt:
         case ast.FunctionDef() | ast.AsyncFunctionDef():
@@ -142,22 +156,22 @@ def _visit(scope: _Scope, stmt: ast.stmt) -> None:  # noqa: C901, PLR0912 (one c
             scope.walrus(value)
             if isinstance(target, ast.Name):
                 scope.declared.add(target.id)
-        case ast.Assign(targets=targets, value=value):
+        case ast.Assign(targets=targets, value=value, type_comment=comment):
             scope.walrus(value)
             for target in targets:
                 for name in _names(target):
-                    scope.bind(name)
+                    scope.bind(name, typed=comment is not None)
         case ast.AugAssign(value=value):
             scope.walrus(value)
         case ast.For(target=target, iter=iter_) | ast.AsyncFor(target=target, iter=iter_):
             scope.walrus(iter_)
             scope.declared.update(name.id for name in _names(target))  # no annotated form: exempt
-        case ast.With(items=items) | ast.AsyncWith(items=items):
+        case ast.With(items=items, type_comment=comment) | ast.AsyncWith(items=items, type_comment=comment):
             for item in items:
                 scope.walrus(item.context_expr)
                 if item.optional_vars is not None:
                     for name in _names(item.optional_vars):
-                        scope.bind(name)
+                        scope.bind(name, typed=comment is not None)
         case ast.Try(handlers=handlers) | ast.TryStar(handlers=handlers):
             for handler in handlers:
                 if handler.name:

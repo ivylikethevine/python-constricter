@@ -1,5 +1,31 @@
 # constricter
 
+> I want **all** of my python code typed.
+
+```asciiart
+/^\/^\
+_|__|  O|
+\/     /~     \_/ \
+\____|__________/  \
+\_______      \
+     `\     \                 \
+       |     |                  \
+      /      /                    \
+     /     /                       \\
+   /      /                         \ \
+  /     /                            \  \
+/     /             _----_            \   \
+/     /           _-~      ~-_         |   |
+(      (        _-~    _--_    ~-_     _/   |
+\      ~-____-~    _-~    ~-_    ~-_-~    /
+ ~-_           _-~          ~-_       _-~
+    ~--______-~                ~-___-~
+```
+
+Source: <https://www.asciiart.eu/art/595284d82d1f8d6d>
+
+---
+
 Lint rule `LVA001`: every local variable is annotated where it's first bound. Ships as a flake8
 plugin, a pylint plugin and a standalone command (for ruff, which loads no plugins).
 
@@ -28,22 +54,31 @@ not checked.
 - Exempt: `for` targets, comprehensions, `except ... as`, `match` captures, imports, `def`/`class`,
   `type` aliases, parameters, `global`/`nonlocal`, and `_`.
 - Statements are read in source order.
+- Opt-in: a `# type:` comment (`x = 1  # type: int`, `with f() as x:  # type: T`) counts as an
+  annotation.
 
 Python 3.12+, no runtime dependencies.
 
 ## Use
 
-| Tool   | Setup                                                  | Reports                        | Suppress                                       |
-| ------ | ------------------------------------------------------ | ------------------------------ | ---------------------------------------------- |
-| CLI    | `constricter [PATH...] [--exclude GLOB] [-q]`          | `LVA001`                       | `# noqa: LVA001`                               |
-| flake8 | install it (on by default)                             | `LVA001`                       | `# noqa: LVA001`                               |
-| pylint | `load-plugins = ["constricter.pylint_plugin"]`         | `C9101` / `unannotated-local-variable` | `# pylint: disable=unannotated-local-variable` |
-| ruff   | run the CLI after ruff; set `lint.external = ["LVA"]` | `LVA001`                       | `# noqa: LVA001`                               |
+| Tool   | Setup                                                      | Reports                                | Suppress                                       |
+| ------ | ---------------------------------------------------------- | -------------------------------------- | ---------------------------------------------- |
+| CLI    | `constricter [PATH...] [--exclude GLOB] [--format F] [-q]` | `LVA001`                               | `# noqa: LVA001`                               |
+| flake8 | install it (on by default)                                 | `LVA001`                               | `# noqa: LVA001`                               |
+| pylint | `load-plugins = ["constricter.pylint_plugin"]`             | `C9101` / `unannotated-local-variable` | `# pylint: disable=unannotated-local-variable` |
+| ruff   | run the CLI after ruff; set `lint.external = ["LVA"]`      | `LVA001`                               | `# noqa: LVA001`                               |
+
+`--format` is `text` (default), `json`, `github` (workflow annotations) or `sarif` (code scanning,
+SonarQube, etc.). Type comments: `--type-comments` (CLI), `--constricter-type-comments` or
+`constricter-type-comments = true` (flake8), `constricter-type-comments = yes` (pylint).
+
+Tools that run flake8 or pylint (VS Code's extensions, python-lsp-server, prospector, MegaLinter,
+Trunk) pick the plugin up once it's installed alongside them.
 
 Without `lint.external`, ruff flags `# noqa: LVA001` (RUF102) and `--fix` deletes it.
 
 The CLI defaults to `.` and skips hidden dirs, `__pycache__`, `venv`, `site-packages`, `build`,
-`dist` and `node_modules`. Exit codes: `0` clean, `1` offences, `2` unreadable/unparseable file.
+`dist` and `node_modules`. Exit codes: `0` clean, `1` offences, `2` unreadable or unparsable file.
 
 Not on PyPI yet:
 
@@ -68,9 +103,10 @@ local/.venv/bin/pip install --require-hashes -r requirements-dev.txt
 local/.venv/bin/pip install --no-deps --no-build-isolation -e .
 ```
 
-Checks (as CI runs them): `ruff check .`, `ruff format --check .`, `basedpyright`,
-`constricter src tests`, `pytest --cov` (100% branch coverage). Everything generated goes in
-`local/`.
+Checks (as CI runs them): `ruff check .` (every rule, preview included), `ruff format --check .`,
+`basedpyright` (all), `mypy` (strict), `pylint src tests` (every extension),
+`flake8 --max-line-length=110 src tests`, `typos`, `constricter src tests`, `pytest --cov` (100%
+branch coverage). Everything generated goes in `local/`.
 
 After editing the `dev` extra, regenerate the lock:
 
@@ -82,8 +118,7 @@ uv pip compile pyproject.toml --extra dev --universal --python-version 3.12 --ge
 
 Done:
 
-- **ci.yml** runs on pushes and PRs. Lint job: ruff, basedpyright, the rule on itself, and the
-  pre-commit hook. Test job: pytest on Linux, macOS and Windows × Python 3.12–3.14. Build job:
+- **ci.yml** runs on pushes and PRs. Lint job: the checks above and the pre-commit hook. Test job: pytest on Linux, macOS and Windows × Python 3.12–3.14. Build job:
   sdist and wheel, `twine check`, a wheel smoke test, and upload as an artifact.
 - **security.yml** runs on pushes, PRs and weekly: CodeQL (Python and Actions), zizmor (pedantic),
   actionlint (kjanat fork) and pip-audit on the lock.
@@ -101,3 +136,10 @@ To publish:
 4. Once the repo is public: OpenSSF Scorecard and `actions/dependency-review-action`. CodeQL
    uploads and attestations also need a public repo or GitHub Advanced Security.
 5. Add a CI check that `requirements-dev.txt` matches `pyproject.toml`.
+
+Later:
+
+- **Python 3.6+.** Code written for any Python 3 version can already be checked, since this runs on
+  3.12+ and newer parsers read older syntax. _Running_ on 3.6–3.11 would mean dropping `match`,
+  `StrEnum`, `typing.override` and `X | Y` unions from the source. 3.8+ is cheap to reach. 3.6 and 3.7
+  also need CI on old runner images and older pytest/ruff/pylint, all of which dropped them.
