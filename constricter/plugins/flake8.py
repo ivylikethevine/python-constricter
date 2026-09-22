@@ -7,7 +7,7 @@ from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING, ClassVar, Final, cast, final
 
 from constricter import __version__
-from constricter.offences import LEVELS, MAX_LENGTH, NESTING, Checks, Level, Offence
+from constricter.offences import LEVELS, MAX_LENGTH, NESTING, OPT_IN, Checks, Level, Offence
 from constricter.rules.checker import check_source, check_tree
 from constricter.rules.flow import Narrower, parse_narrower
 
@@ -29,6 +29,7 @@ class ConstricterChecker:
     nesting: ClassVar[int] = NESTING
     max_length: ClassVar[int] = MAX_LENGTH
     narrower: ClassVar[tuple[Narrower, ...]] = ()
+    can_be_final: ClassVar[bool] = False  # report LVA012
 
     def __init__(self, tree: ast.Module, lines: Sequence[str]) -> None:
         """Take the file flake8 parsed, and its lines."""
@@ -87,6 +88,12 @@ class ConstricterChecker:
         cls.nesting = cast("int", options.constricter_nesting)
         cls.max_length = cast("int", options.constricter_max_length)
         cls.narrower = parse_narrower(cast("str", options.constricter_narrower))
+        # An opt-in code only when `select` or `extend-select` names it in full, as the CLI does.
+        chosen: list[str] = [
+            *(cast("list[str] | None", getattr(options, "select", None)) or []),
+            *(cast("list[str] | None", getattr(options, "extend_select", None)) or []),
+        ]
+        cls.can_be_final = bool(OPT_IN & set(chosen))
 
     def run(self) -> Iterator[tuple[int, int, str, type["ConstricterChecker"]]]:
         """Check the file.
@@ -103,6 +110,7 @@ class ConstricterChecker:
             nesting=self.nesting,
             max_length=self.max_length,
             narrower=self.narrower,
+            final=self.can_be_final,
         )
         offences: list[Offence] = (
             check_source(source, checks=checks)

@@ -6,6 +6,19 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `annotation_coverage` accepts `bytes` as `check_source` does (it crashed on a `match` with a
+  `**rest` capture), and `value_flow` places a `**rest` capture at its name, as `check_source` does.
+- **LVA012** (opt-in): a local bound once, by a plain assignment outside any loop, and never rebound
+  could be `Final`. Reported only when selected by its full code (`--extend-select LVA012`, new;
+  flake8's `extend-select`; pylint's `could-be-final`, `C9112`, off by default), and an error only
+  at `suffocate`.
+- `--extend-select` (`extend-select`): report more codes without narrowing to them.
+- Fix levels: each `--fix` mechanism has a stable id (`literal`, `copy`, `constructor`, ...), shown
+  by `--show-fixes` and as `kinds` in `--format=json`; `fix-select` and `fix-ignore` choose which
+  fixes are offered, and `unsafe-fix-select` makes a trusted guess (`constructor`, `narrow`)
+  certain. The defaults are unchanged. See `docs/FIXES.md`.
+- The error for a `--fix` a file's encoding can't hold names the encoding by its canonical name
+  (`iso8859-1`), the same on CPython and PyPy.
 - A module is read in its PEP 263 declaration's encoding (`# -*- coding: latin-1 -*-`) or its BOM's,
   not always UTF-8, and `--fix` writes it back in the same one (or leaves it, exit 2, when an
   annotation can't be written in it).

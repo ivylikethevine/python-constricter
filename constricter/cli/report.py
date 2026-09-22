@@ -191,7 +191,12 @@ def _json(results: Sequence[Result]) -> Iterator[str]:
                 "cell": r.offence.cell,
                 "fix": None
                 if r.offence.fix is None
-                else {"annotation": r.offence.fix, "reason": r.offence.reason, "unsafe": r.offence.unsafe},
+                else {
+                    "annotation": r.offence.fix,
+                    "reason": r.offence.reason,
+                    "unsafe": r.offence.unsafe,
+                    "kinds": sorted(r.offence.edit.kinds if r.offence.edit else ()),
+                },
             }
             for r in results
         ],
@@ -340,7 +345,9 @@ def fix_reasons(results: Sequence[Result]) -> Iterator[str]:
             cell: str = "" if r.offence.cell is None else f"cell {r.offence.cell}:"
             where: str = f"{r.path}:{cell}{r.offence.line}:{r.offence.col + 1}"
             guess: str = " (a guess: --unsafe-fixes)" if r.offence.unsafe else ""
-            yield f"{where}: fix {r.offence.name!r}: `{r.offence.fix}`, from {r.offence.reason}{guess}"
+            kinds: str = ", ".join(sorted(r.offence.edit.kinds if r.offence.edit else ()))
+            decided: str = f"`{r.offence.fix}`, from {r.offence.reason} [{kinds}]"
+            yield f"{where}: fix {r.offence.name!r}: {decided}{guess}"
 
 
 def statistics(results: Sequence[Result]) -> Iterator[str]:

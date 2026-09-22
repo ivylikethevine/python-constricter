@@ -71,5 +71,7 @@ def test_a_fix_the_encoding_cant_hold_leaves_the_file(
     out: str
     err: str
     out, err = capsys.readouterr()
-    assert err == f"{path}: error: an annotation can't be written in its encoding, latin-1; left as it was\n"
+    assert (
+        err == f"{path}: error: an annotation can't be written in its encoding, iso8859-1; left as it was\n"
+    )
     assert out.endswith("Found 2 error(s) and 0 warning(s) in 3 file(s); fixed 0.\n")

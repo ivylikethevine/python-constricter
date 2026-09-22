@@ -19,6 +19,7 @@ NARROWABLE_TYPE: Final = "LVA008"
 MISMATCHED_TYPE: Final = "LVA009"
 UNUSED_UNION_MEMBER: Final = "LVA010"
 LONG_TUPLE: Final = "LVA011"
+CAN_BE_FINAL: Final = "LVA012"
 MESSAGES: dict[str, str] = {
     UNANNOTATED: "local variable {name} is not annotated where it's first bound",
     UNTYPED_TARGET: "for/match variable {name} is untyped; declare it before the statement",
@@ -31,7 +32,32 @@ MESSAGES: dict[str, str] = {
     MISMATCHED_TYPE: "{name} is bound to `{detail}` here, which doesn't fit its annotation",
     UNUSED_UNION_MEMBER: "{name}'s annotation allows `{detail}`, which no value it's bound to ever is",
     LONG_TUPLE: "the annotation of {name} lists a tuple of {detail} elements; name them (a NamedTuple)",
+    CAN_BE_FINAL: "{name} is bound once and never rebound; it could be `Final`",
 }
+# Codes reported only when selected by their full code (`--select LVA012`), never by a prefix.
+OPT_IN: Final = frozenset({CAN_BE_FINAL})
+# Each way `--fix` can decide an annotation, by its stable id (`--show-fixes`, `fix-select`).
+FIX_KINDS: dict[str, str] = {
+    "literal": "a literal, an f-string, or `not x`",
+    "container": "a list, set, tuple or dict display whose elements' types agree",
+    "copy": "a copy of a local whose type is known",
+    "subscript": "a subscript of a known container",
+    "attribute": "an attribute of a class the module defines",
+    "method": "a method with a fixed or declared return type, on a known local",
+    "builtin": "a builtin with a fixed return type (`len`, `str`, ...)",
+    "call": "a function that declares its return type (this module's, or another checked file's)",
+    "constructor": "a call to a capitalised name, taken to construct one (a guess)",
+    "conditional": "both sides of `a if c else b`",
+    "arithmetic": "arithmetic on builtin scalars",
+    "comprehension": "a list, set or dict comprehension's elements",
+    "builder": "`sorted`, `list`, `set`, `frozenset` or `tuple` of known elements",
+    "await": "`await` of the module's `async def`",
+    "loop": "what a loop (or `sorted`, `list`, ...) iterates over",
+    "unpack": "an unpacking, split over its names",
+    "narrow": "LVA008's or LVA010's narrower annotation (a guess)",
+}
+CONSTRUCTOR: Final = "constructor"
+NARROW: Final = "narrow"
 NESTING: Final = 3  # LVA006's default depth
 MAX_LENGTH: Final = 4  # LVA011's default: the longest fixed-length tuple an annotation may list
 
@@ -59,6 +85,7 @@ _ERROR_FROM: dict[str, Level] = {
     MISMATCHED_TYPE: Level.CONSTRICT,
     UNUSED_UNION_MEMBER: Level.SUFFOCATE,
     LONG_TUPLE: Level.SUFFOCATE,
+    CAN_BE_FINAL: Level.SUFFOCATE,
 }
 # Codes reported only from a level up (the rest are reported at every level).
 _REPORTED_FROM: dict[str, Level] = {
@@ -86,6 +113,37 @@ class Fix(NamedTuple):
     unsafe: bool = False  # a guess, applied only with `--unsafe-fixes`
     edit: Edit = Edit.ANNOTATE
     span: tuple[int, int] = (0, 0)  # see `Edit`; columns count UTF-8 bytes, as `ast`'s do
+    kinds: frozenset[str] = frozenset()  # every `FIX_KINDS` mechanism that decided it
+
+
+class FixPolicy(NamedTuple):
+    """Which `FIX_KINDS` `--fix` offers (`select`, empty for all, less `ignore`), and which guesses it trusts.
+
+    A guess is certain when every guessing mechanism it rests on (`constructor`, `narrow`, through
+    any guessed local it copies) is in `unsafe_select`, as ruff's `extend-safe-fixes` does.
+    """
+
+    select: frozenset[str] = frozenset()
+    ignore: frozenset[str] = frozenset()
+    unsafe_select: frozenset[str] = frozenset()
+
+    def allows(self, kinds: frozenset[str]) -> bool:
+        """Check whether a fix decided by `kinds` is offered.
+
+        Returns:
+          Whether every one is selected and none ignored.
+
+        """
+        return (not self.select or kinds <= self.select) and not kinds & self.ignore
+
+    def trusts(self, origins: frozenset[str]) -> bool:
+        """Check whether a guess resting on `origins` is promoted to certain.
+
+        Returns:
+          Whether it rests on something, and all of it is in `unsafe_select`.
+
+        """
+        return bool(origins) and origins <= self.unsafe_select
 
 
 @dataclass(frozen=True, order=True)
@@ -156,6 +214,8 @@ class Checks(NamedTuple):
     max_length: int = MAX_LENGTH
     # A project's own type hierarchy, for LVA008-LVA010: each type and the types it's narrower than.
     narrower: tuple[Narrower, ...] = ()
+    fixes: FixPolicy = FixPolicy()  # which fixes `--fix` offers; it never changes what's reported
+    final: bool = False  # look for LVA012 (opt-in: see `OPT_IN`)
 
 
 DEFAULT_CHECKS: Final = Checks()

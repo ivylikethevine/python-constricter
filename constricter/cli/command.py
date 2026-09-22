@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 """The `constricter` command (see README)."""
 
+import codecs
 import contextlib
 import difflib
 import io
@@ -296,7 +297,9 @@ def _check_path(path: Path, calls: Mapping[str, str], options: Options) -> _Chec
     try:
         return _CheckRun(left, baselined, fix_file(path, fixing))
     except UnicodeEncodeError as failure:  # the file is left as it was, its offences unfixed
-        message: str = f"an annotation can't be written in its encoding, {failure.encoding}; left as it was"
+        # Its canonical name: PyPy reports `latin1` where CPython says `latin-1`.
+        encoding: str = codecs.lookup(failure.encoding).name
+        message: str = f"an annotation can't be written in its encoding, {encoding}; left as it was"
         return _CheckRun(results, baselined, error=f"{name}: error: {message}")
 
 

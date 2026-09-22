@@ -77,6 +77,7 @@ class bodies too. Statements are read in source order, and only a name's first b
 | `LVA009` | a value, anywhere in the name's lifetime, whose type doesn't fit its annotation           | fix the value, or widen the annotation         |
 | `LVA010` | with every value known: a union member no value is                                        | drop the member                                |
 | `LVA011` | an annotation listing a fixed-length tuple of more than `max-length` types (4 by default) | name the fields (a `NamedTuple`, a dataclass)  |
+| `LVA012` | opt-in: a local bound once, outside any loop, and never rebound                           | `name: Final = ...`                            |
 
 Exempt: comprehensions, `except ... as`, imports, `def`/`class`, `type` aliases, parameters,
 `global`/`nonlocal`, and `_`; in module and class bodies, dunder names (`__all__`, `__slots__`) and
@@ -118,7 +119,10 @@ or SARIF `warning` in those formats) but exits 0; flake8 and pylint report error
 | `suffocate` / `3` | all                                    | none                                                      |
 
 `LVA005`, `LVA006` and `LVA011` aren't reported at `relaxed`; `LVA008` and `LVA010` only from
-`constrict`.
+`constrict`. `LVA012` is opt-in, reported only when selected by its full code
+(`--extend-select LVA012`, flake8's `extend-select = LVA012`, pylint's `enable = could-be-final`),
+at every level, and an error only at `suffocate`: on the corpus, 45–70% of every codebase's first
+bindings qualify, so it suits a codebase that wants `Final` everywhere it can go, not a default.
 
 Python 3.11+, no runtime dependencies.
 
@@ -126,41 +130,44 @@ Python 3.11+, no runtime dependencies.
 
 | Tool   | Setup                                                 | Reports                         | Suppress                                         |
 | ------ | ----------------------------------------------------- | ------------------------------- | ------------------------------------------------ |
-| CLI    | `constricter [PATH...] [--level L] [--format F] [-q]` | `LVA001`–`LVA011`               | `# noqa: LVA001`                                 |
-| flake8 | install it (on by default)                            | `LVA001`–`LVA011`               | `# noqa: LVA001`                                 |
-| pylint | `load-plugins = ["constricter.plugins.pylint"]`       | `C9101`–`C9111` (symbols below) | `# noqa: LVA001` or `# pylint: disable=<symbol>` |
-| ruff   | run the CLI after ruff; set `lint.external = ["LVA"]` | `LVA001`–`LVA011`               | `# noqa: LVA001`                                 |
+| CLI    | `constricter [PATH...] [--level L] [--format F] [-q]` | `LVA001`–`LVA012`               | `# noqa: LVA001`                                 |
+| flake8 | install it (on by default)                            | `LVA001`–`LVA012`               | `# noqa: LVA001`                                 |
+| pylint | `load-plugins = ["constricter.plugins.pylint"]`       | `C9101`–`C9112` (symbols below) | `# noqa: LVA001` or `# pylint: disable=<symbol>` |
+| ruff   | run the CLI after ruff; set `lint.external = ["LVA"]` | `LVA001`–`LVA012`               | `# noqa: LVA001`                                 |
 
 pylint symbols: `unannotated-local-variable`, `untyped-for-or-match-variable`,
 `comment-typed-for-variable`, `unannotated-module-or-class-variable`, `vague-annotation`,
 `deeply-nested-annotation`, `redundant-annotation`, `narrowable-annotation`,
-`mismatched-value-type`, `unused-union-member`, `long-tuple-annotation`.
+`mismatched-value-type`, `unused-union-member`, `long-tuple-annotation`, `could-be-final` (off until
+enabled).
 
 Options:
 
-| Option           | CLI                                                                                              | `[tool.constricter]` | flake8 (CLI or config)          | pylint                            |
-| ---------------- | ------------------------------------------------------------------------------------------------ | -------------------- | ------------------------------- | --------------------------------- |
-| level            | `--level`                                                                                        | `level`              | `--constricter-level`           | `constricter-level`               |
-| type comments    | `--type-comments`                                                                                | `type-comments`      | `--constricter-type-comments`   | `constricter-type-comments = yes` |
-| all scopes       | `--all-scopes`                                                                                   | `all-scopes`         | `--constricter-all-scopes`      | `constricter-all-scopes = yes`    |
-| nesting          | `--nesting N`                                                                                    | `nesting`            | `--constricter-nesting`         | `constricter-nesting`             |
-| max length       | `--max-length N` (LVA011)                                                                        | `max-length`         | `--constricter-max-length`      | `constricter-max-length`          |
-| type hierarchy   | -                                                                                                | `narrower` (a table) | `--constricter-narrower`        | `constricter-narrower`            |
-| fix              | `--fix` (`--unsafe-fixes` for guesses), `--diff` to preview                                      | -                    | -                               | -                                 |
-| show fixes       | `--show-fixes` (each fix and how it was decided, text)                                           | -                    | -                               | -                                 |
-| select           | `--select CODES` (codes or prefixes)                                                             | `select`             | flake8's own `select`           | pylint's own `enable`             |
-| ignore           | `--ignore CODES`                                                                                 | `ignore`             | flake8's own `extend-ignore`    | pylint's own `disable`            |
-| exclude          | `--exclude GLOB` (repeatable)                                                                    | `exclude`            | flake8's own `exclude`          | pylint's own `ignore-paths`       |
-| format           | `--format`: `text`, `full` (with source), `json`, `github`, `sarif`, `gitlab`, `junit`, `rdjson` | -                    | -                               | -                                 |
-| statistics       | `--statistics` (counts per code, text format)                                                    | -                    | -                               | -                                 |
-| jobs             | `--jobs N` (`-j`; 0: one per CPU)                                                                | `jobs`               | flake8's own `--jobs`           | pylint's own `--jobs`             |
-| baseline         | `--baseline FILE`; `--write-baseline` records it                                                 | `baseline`           | -                               | -                                 |
-| coverage         | `--coverage`, `--fail-under PCT`                                                                 | -                    | -                               | -                                 |
-| per-path levels  | -                                                                                                | `per-path-levels`    | -                               | -                                 |
-| per-file ignores | -                                                                                                | `per-file-ignores`   | flake8's own `per-file-ignores` | -                                 |
-| stdin            | `-` as the path, `--stdin-filename PATH`                                                         | -                    | flake8's own `-`                | -                                 |
-| exit status      | `--exit-zero`                                                                                    | -                    | flake8's own `--exit-zero`      | pylint's own `--exit-zero`        |
-| output file      | `--output-file FILE`                                                                             | -                    | flake8's own `--output-file`    | pylint's own `--output`           |
+| Option           | CLI                                                                                                                                                                          | `[tool.constricter]`                            | flake8 (CLI or config)          | pylint                            |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------------------------------- | --------------------------------- |
+| level            | `--level`                                                                                                                                                                    | `level`                                         | `--constricter-level`           | `constricter-level`               |
+| type comments    | `--type-comments`                                                                                                                                                            | `type-comments`                                 | `--constricter-type-comments`   | `constricter-type-comments = yes` |
+| all scopes       | `--all-scopes`                                                                                                                                                               | `all-scopes`                                    | `--constricter-all-scopes`      | `constricter-all-scopes = yes`    |
+| nesting          | `--nesting N`                                                                                                                                                                | `nesting`                                       | `--constricter-nesting`         | `constricter-nesting`             |
+| max length       | `--max-length N` (LVA011)                                                                                                                                                    | `max-length`                                    | `--constricter-max-length`      | `constricter-max-length`          |
+| type hierarchy   | -                                                                                                                                                                            | `narrower` (a table)                            | `--constricter-narrower`        | `constricter-narrower`            |
+| fix              | `--fix` (`--unsafe-fixes` for guesses), `--diff` to preview                                                                                                                  | -                                               | -                               | -                                 |
+| show fixes       | `--show-fixes` (each fix and how it was decided, text)                                                                                                                       | -                                               | -                               | -                                 |
+| fix levels       | `--fix-select`, `--fix-ignore`, `--unsafe-fix-select` (mechanisms: [docs/FIXES.md](https://github.com/ivylikethevine/python-constricter/blob/main/docs/FIXES.md#fix-levels)) | `fix-select`, `fix-ignore`, `unsafe-fix-select` | -                               | -                                 |
+| select           | `--select CODES` (codes or prefixes)                                                                                                                                         | `select`                                        | flake8's own `select`           | pylint's own `enable`             |
+| extend select    | `--extend-select CODES` (also report these; an opt-in code by its full code)                                                                                                 | `extend-select`                                 | flake8's own `extend-select`    | pylint's own `enable`             |
+| ignore           | `--ignore CODES`                                                                                                                                                             | `ignore`                                        | flake8's own `extend-ignore`    | pylint's own `disable`            |
+| exclude          | `--exclude GLOB` (repeatable)                                                                                                                                                | `exclude`                                       | flake8's own `exclude`          | pylint's own `ignore-paths`       |
+| format           | `--format`: `text`, `full` (with source), `json`, `github`, `sarif`, `gitlab`, `junit`, `rdjson`                                                                             | -                                               | -                               | -                                 |
+| statistics       | `--statistics` (counts per code, text format)                                                                                                                                | -                                               | -                               | -                                 |
+| jobs             | `--jobs N` (`-j`; 0: one per CPU)                                                                                                                                            | `jobs`                                          | flake8's own `--jobs`           | pylint's own `--jobs`             |
+| baseline         | `--baseline FILE`; `--write-baseline` records it                                                                                                                             | `baseline`                                      | -                               | -                                 |
+| coverage         | `--coverage`, `--fail-under PCT`                                                                                                                                             | -                                               | -                               | -                                 |
+| per-path levels  | -                                                                                                                                                                            | `per-path-levels`                               | -                               | -                                 |
+| per-file ignores | -                                                                                                                                                                            | `per-file-ignores`                              | flake8's own `per-file-ignores` | -                                 |
+| stdin            | `-` as the path, `--stdin-filename PATH`                                                                                                                                     | -                                               | flake8's own `-`                | -                                 |
+| exit status      | `--exit-zero`                                                                                                                                                                | -                                               | flake8's own `--exit-zero`      | pylint's own `--exit-zero`        |
+| output file      | `--output-file FILE`                                                                                                                                                         | -                                               | flake8's own `--output-file`    | pylint's own `--output`           |
 
 `constricter --explain LVA002` prints a code's rationale, its fix, and the levels that report it.
 

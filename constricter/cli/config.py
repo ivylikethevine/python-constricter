@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, TypeAlias
 
 from constricter.jsonc import is_int
-from constricter.offences import LEVELS, MESSAGES
+from constricter.offences import FIX_KINDS, LEVELS, MESSAGES
 
 if TYPE_CHECKING:
     from datetime import date, datetime, time
@@ -115,6 +115,21 @@ def _codes(value: _Toml) -> list[str] | None:
     return None if codes is None or unknown_codes(codes) else [code.upper() for code in codes]
 
 
+def unknown_fix_kinds(kinds: Sequence[str]) -> list[str]:
+    """Check `kinds` against `FIX_KINDS`' ids.
+
+    Returns:
+      Those that aren't one.
+
+    """
+    return [kind for kind in kinds if kind not in FIX_KINDS]
+
+
+def _fix_kinds(value: _Toml) -> list[str] | None:
+    kinds: list[str] | None = _strings(value)
+    return None if kinds is None or unknown_fix_kinds(kinds) else kinds
+
+
 def _flag(value: _Toml) -> bool | None:
     return value if isinstance(value, bool) else None
 
@@ -165,6 +180,10 @@ _READERS: dict[str, Callable[[_Toml], Default | None]] = {
     "exclude": _strings,
     "select": _codes,
     "ignore": _codes,
+    "extend-select": _codes,
+    "fix-select": _fix_kinds,
+    "fix-ignore": _fix_kinds,
+    "unsafe-fix-select": _fix_kinds,
     "type-comments": _flag,
     "all-scopes": _flag,
     "per-path-levels": _levels,

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""The rules as a pylint plugin (C9101-C9111); reports the codes the level makes errors."""
+"""The rules as a pylint plugin (C9101-C9112); reports the codes the level makes errors."""
 
 from typing import IO, TYPE_CHECKING, NamedTuple, cast, final
 
@@ -11,6 +11,7 @@ from pylint.typing import Options
 from constricter.jsonc import as_text
 from constricter.noqa import lines, unsuppressed
 from constricter.offences import (
+    CAN_BE_FINAL,
     COMMENT_TYPED_TARGET,
     LEVELS,
     LONG_TUPLE,
@@ -20,6 +21,7 @@ from constricter.offences import (
     NARROWABLE_TYPE,
     NESTED_TYPE,
     NESTING,
+    OPT_IN,
     REDUNDANT_TYPE,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
@@ -66,6 +68,7 @@ SYMBOLS: dict[str, Message] = {
     MISMATCHED_TYPE: Message("C9109", "mismatched-value-type"),
     UNUSED_UNION_MEMBER: Message("C9110", "unused-union-member"),
     LONG_TUPLE: Message("C9111", "long-tuple-annotation"),
+    CAN_BE_FINAL: Message("C9112", "could-be-final"),
 }
 
 
@@ -125,11 +128,13 @@ class ConstricterChecker(BaseRawFileChecker):
     def __init__(self, linter: PyLinter) -> None:
         """Register the messages with `linter`."""
         super().__init__(linter)
+        # An opt-in code's message is off until enabled (`enable = could-be-final`).
         self.msgs = {
             message.msg_id: (
                 MESSAGES[code].format(name="%r", detail="%s"),
                 message.symbol,
                 f"See constricter's {code}.",
+                {"default_enabled": code not in OPT_IN},
             )
             for code, message in SYMBOLS.items()
         }
@@ -150,6 +155,7 @@ class ConstricterChecker(BaseRawFileChecker):
             nesting=cast("int", self.linter.config.constricter_nesting),
             max_length=cast("int", self.linter.config.constricter_max_length),
             narrower=parse_narrower(cast("str", self.linter.config.constricter_narrower)),
+            final=self.linter.is_message_enabled(SYMBOLS[CAN_BE_FINAL].symbol),
         )
         text: str = as_text(source)
         offences: list[Offence] = check_source(text, node.file or "<unknown>", checks)

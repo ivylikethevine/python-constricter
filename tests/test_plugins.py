@@ -58,6 +58,7 @@ def _flake8_fixture(
     monkeypatch.setattr(ConstricterChecker, "nesting", NESTING)
     monkeypatch.setattr(ConstricterChecker, "narrower", ())
     monkeypatch.setattr(ConstricterChecker, "max_length", MAX_LENGTH)
+    monkeypatch.setattr(ConstricterChecker, "can_be_final", False)
 
     def _run(*args: str) -> list[str]:
         application: Application = Application()
@@ -116,6 +117,7 @@ def _pylint(path: Path, *args: str) -> list[str]:
             "--load-plugins=constricter.plugins.pylint",
             "--disable=all",
             "--enable=constricter",
+            "--disable=could-be-final",  # enabling the checker enables its opt-in message too
             "--msg-template={line}:{column}: {msg_id} {symbol} {msg}",
             "--score=n",
             *args,
@@ -231,4 +233,22 @@ def test_both_plugins_take_a_max_length(tmp_path: Path, flake8: Callable[..., li
     ]
     assert _pylint(path, "--constricter-level=suffocate", "--constricter-max-length=2") == [
         f"2:5: C9111 long-tuple-annotation {message}",
+    ]
+
+
+def test_lva012_only_when_selected_by_its_full_code(
+    tmp_path: Path,
+    flake8: Callable[..., list[str]],
+) -> None:
+    """LVA012 is opt-in: flake8 reports it when `select`/`extend-select` names it in full; pylint, enabled."""
+    path: Path = tmp_path / "once.py"
+    _ = path.write_text("def f() -> None:\n    limit: int = 3\n", encoding="utf-8")
+    final: str = "'limit' is bound once and never rebound; it could be `Final`"
+    assert flake8("--constricter-level=suffocate", str(path)) == []
+    assert flake8("--constricter-level=suffocate", "--extend-select=LVA012", str(path)) == [
+        f"{path}:2:5: LVA012 {final}",
+    ]
+    assert _pylint(path, "--constricter-level=suffocate", "--enable=unannotated-local-variable") == []
+    assert _pylint(path, "--constricter-level=suffocate", "--enable=could-be-final") == [
+        f"2:4: C9112 could-be-final {final}",
     ]

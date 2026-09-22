@@ -4,7 +4,7 @@
 import ast
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Final, NamedTuple, cast
+from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.inference import (
     Inference,
@@ -18,9 +18,12 @@ from constricter.fix.inference import (
 )
 from constricter.jsonc import as_text
 from constricter.offences import (
+    CAN_BE_FINAL,
     COMMENT_TYPED_TARGET,
+    CONSTRUCTOR,
     DEFAULT_CHECKS,
     LONG_TUPLE,
+    NARROW,
     NESTED_TYPE,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
@@ -29,6 +32,7 @@ from constricter.offences import (
     Checks,
     Edit,
     Fix,
+    FixPolicy,
     Offence,
     at,
 )
@@ -59,6 +63,8 @@ from constricter.rules.syntax import (
 
 # The node class of `type X = ...` statements, by name: Python 3.11's `ast` has no `TypeAlias`.
 _TYPE_ALIAS: Final = "TypeAlias"
+_DISCARD: Final = "_"
+_FINAL: Final = "Final"
 # Enum members mustn't be annotated: a base imported from here is one, however it's aliased.
 _ENUM_MODULES: Final = frozenset({"enum"})
 # The conventional name of an instance method's first parameter: typed as its class, for `--fix`.
@@ -78,6 +84,7 @@ class _Settings:
     known: Known  # what the module declares that `--fix` infers types from
     hierarchy: Hierarchy  # which types are narrower than which, for value flow
     owners: dict[int, str]  # each method's class, by `id()`, to type its `self`, for `--fix`
+    fixes: FixPolicy  # which fixes `--fix` offers, and which guesses it trusts
 
 
 def check_source(
@@ -127,6 +134,7 @@ def _settings(
         Known(calls, factories(tree), classes(tree), method_returns(tree), awaited_returns(tree)),
         Hierarchy.for_module(tree, {name: frozenset(wider) for name, wider in checks.narrower}),
         owners(tree),
+        checks.fixes,
     )
 
 
@@ -150,8 +158,9 @@ def check_tree(
     settings: _Settings = _settings(tree, checks, lines, {**(calls or {}), **returns(tree)})
     scopes: list[_Scope] = _scopes(tree, settings)
     # A finding's kind is the code that reports it (LVA008, LVA009, LVA010).
-    flow: list[Offence] = _flow_offences(_value_flow(tree, scopes))
-    return sorted([*(o for scope in scopes for o in scope.reported()), *redundant(tree), *flow])
+    flow: list[Offence] = _flow_offences(_value_flow(tree, scopes), settings.fixes)
+    finals: list[Offence] = [o for scope in scopes for o in scope.finals()] if checks.final else []
+    return sorted([*(o for scope in scopes for o in scope.reported()), *redundant(tree), *flow, *finals])
 
 
 class Coverage(NamedTuple):
@@ -170,7 +179,7 @@ class Coverage(NamedTuple):
 _UNTYPED: Final = frozenset({UNANNOTATED, UNTYPED_TARGET, UNANNOTATED_MEMBER})
 
 
-def annotation_coverage(source: str, checks: Checks = DEFAULT_CHECKS) -> Coverage:
+def annotation_coverage(source: str | bytes, checks: Checks = DEFAULT_CHECKS) -> Coverage:
     """Count the first bindings in `source` the rules cover, and how many are typed.
 
     Returns:
@@ -178,7 +187,7 @@ def annotation_coverage(source: str, checks: Checks = DEFAULT_CHECKS) -> Coverag
 
     """
     tree: ast.Module = _parse(source, "<unknown>")
-    settings: _Settings = _settings(tree, checks, source.splitlines(), {})
+    settings: _Settings = _settings(tree, checks, as_text(source).splitlines(), {})
     scopes: list[_Scope] = _scopes(tree, settings)
     total: int = sum(len(scope.bound()) for scope in scopes)
     untyped: int = sum(o.code in _UNTYPED for scope in scopes for o in scope.reported())
@@ -238,12 +247,33 @@ def _is_enum(node: ast.ClassDef, imported: frozenset[str]) -> bool:
     )
 
 
+class _Kind(NamedTuple):
+    """What kind of body a scope is: the code its unannotated names get, and whether `--fix` fixes it."""
+
+    unannotated: str  # LVA001 in a function, LVA004 in a module or class body
+    fixable: bool  # a class body never is: annotating a dataclass's variable makes it a field
+
+
+# One plain assignment: where, and whether it's in a loop's body.
+_Placed: TypeAlias = tuple[tuple[int, int], bool]
+
+
+@dataclass
+class _Assignments:
+    """A scope's plain `name = value` (or `name: T = value`) bindings, for LVA012."""
+
+    found: dict[str, list[_Placed]] = field(default_factory=dict[str, list[_Placed]])  # each name's
+    looping: int = 0  # how many loops deep the statement being visited is
+
+
 @dataclass
 class _Inferred:
     """What `--fix` knows of a scope's names so far."""
 
     types: dict[str, str] = field(default_factory=dict[str, str])  # each known type, for `x = y`'s
     guesses: set[str] = field(default_factory=set[str])  # `types` from an unsafe fix: copies are too
+    # Each guess's guessing mechanisms (`FIX_KINDS`), for `unsafe-fix-select` to trust or not.
+    origins: dict[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
 
 
 class _Scope:
@@ -261,12 +291,12 @@ class _Scope:
         self.declared: set[str] = declared
         self.nested: list[FunctionDef] = nested
         self.settings: _Settings = settings
-        self.unannotated_code: str = unannotated
-        self.fixable: bool = fixable
+        self.kind: _Kind = _Kind(unannotated, fixable=fixable)
         self.offences: list[Offence] = []
         self.first: list[str] = []  # each first binding the rules cover, typed or not
         self.inferred: _Inferred = _Inferred()  # what `--fix` knows of the names bound so far
         self.flow: dict[str, Lifetime] = {}  # every binding of each name, for value flow
+        self.assignments: _Assignments = _Assignments()  # for LVA012
 
     def lifetime(self, name: str) -> Lifetime:
         """Find `name`'s value-flow record, starting one if it has none.
@@ -295,12 +325,36 @@ class _Scope:
             frozenset(self.inferred.guesses),
             self.inferred.types,
         )
+        origins: frozenset[str] = _origins(self, [value]) if unsafe else frozenset()
         self.lifetime(name).bind(at(target), _certain(self, value))
-        self._first(name, at(target), code, None if fix is None else Fix(fix.annotation, fix.reason, unsafe))
+        self.assigned(name, at(target))
+        self._first(name, at(target), code, None if fix is None else self.offer(fix, origins, unsafe=unsafe))
         if fix is not None and name not in self.inferred.types:
             self.inferred.types[name] = fix.annotation
             if unsafe:
                 self.inferred.guesses.add(name)
+                self.inferred.origins[name] = origins
+
+    def offer(
+        self,
+        fix: Inference,
+        origins: frozenset[str],
+        *,
+        unsafe: bool,
+        edit: Edit = Edit.ANNOTATE,
+        span: tuple[int, int] = (0, 0),
+    ) -> Fix | None:
+        """Offer `fix` as the project's fix policy has it: selected, and a guess unless trusted.
+
+        Returns:
+          The fix, or `None` if a mechanism that decided it isn't selected, or is ignored.
+
+        """
+        policy: FixPolicy = self.settings.fixes
+        if not policy.allows(fix.kinds):
+            return None
+        certain: bool = not unsafe or policy.trusts(origins)
+        return Fix(fix.annotation, fix.reason, not certain, edit, span, fix.kinds)
 
     def _first(
         self,
@@ -317,7 +371,7 @@ class _Scope:
             self.declared.add(name)
             self.first.append(name)
             if code is not None:
-                self.offences.append(Offence(*where, name, code, fix if self.fixable else None))
+                self.offences.append(Offence(*where, name, code, fix if self.kind.fixable else None))
 
     def declare(self, name: str) -> None:
         """Bind `name` by an annotation (`name: T`, `name: T = ...`): a typed first binding."""
@@ -342,7 +396,7 @@ class _Scope:
         name: str
         # A module or class body's names are state anything can rebind out of its sight (an instance's
         # `self.x = ...`, another module's `mod.X = ...`, `monkeypatch`, `globals().update(...)`).
-        body: bool = self.unannotated_code == UNANNOTATED_MEMBER
+        body: bool = self.kind.unannotated == UNANNOTATED_MEMBER
         for name in self.flow.keys() if body else escaped & self.flow.keys():
             self.flow[name].escaped = True
         return [
@@ -352,6 +406,37 @@ class _Scope:
             for found in findings(name, lifetime, self.settings.hierarchy)
         ]
 
+    def assigned(self, name: str, where: tuple[int, int]) -> None:
+        """Record a plain assignment to `name` at `where`, for LVA012."""
+        self.assignments.found.setdefault(name, []).append((where, self.assignments.looping > 0))
+
+    def finals(self) -> list[Offence]:
+        """Find the names that could be `Final` (LVA012); run after `value_flow`, which marks escapes.
+
+        Returns:
+          An offence for each name bound exactly once, by a plain assignment outside any loop, and not
+          declared apart from it or already `Final`, nor written from another scope.
+
+        """
+        found: list[Offence] = []
+        name: str
+        lifetime: Lifetime
+        for name, lifetime in self.flow.items():
+            if (
+                name == _DISCARD
+                or lifetime.escaped
+                or self.kind.unannotated == UNANNOTATED_MEMBER
+                or len(lifetime.bindings) != 1
+            ):
+                continue
+            where: tuple[int, int] = lifetime.bindings[0].at
+            if self.assignments.found.get(name) == [(where, False)] and (
+                lifetime.declared is None
+                or (lifetime.declared_at == where and not _is_final(lifetime.declared))
+            ):
+                found.append(Offence(*where, name, CAN_BE_FINAL))
+        return found
+
     def _covered(self, name: str) -> bool:
         """Check whether the rules cover `name` here.
 
@@ -359,7 +444,7 @@ class _Scope:
           Whether they do; a module or class body's dunder names are exempt.
 
         """
-        return self.unannotated_code != UNANNOTATED_MEMBER or not (
+        return self.kind.unannotated != UNANNOTATED_MEMBER or not (
             name.startswith("__") and name.endswith("__")
         )
 
@@ -402,7 +487,7 @@ class _Scope:
         current: ast.AST
         for current in ast.walk(node):
             if isinstance(current, ast.NamedExpr) and id(current) not in in_lambda:
-                self.bind(current.target.id, at(current.target), self.unannotated_code)
+                self.bind(current.target.id, at(current.target), self.kind.unannotated)
 
     def unannotated(self, type_comment: str | None) -> str | None:
         """Decide the code for an `=` or `with` binding.
@@ -411,7 +496,7 @@ class _Scope:
           The code, or `None` if a counted type comment types it.
 
         """
-        return None if type_comment is not None and self.settings.type_comments else self.unannotated_code
+        return None if type_comment is not None and self.settings.type_comments else self.kind.unannotated
 
 
 def _function_scopes(functions: list[FunctionDef], settings: _Settings) -> list["_Scope"]:
@@ -474,9 +559,15 @@ def _visit(scope: _Scope, stmt: ast.stmt) -> None:
         scope.walrus(part)
     _declare(scope, stmt)
     _bind(scope, stmt)
+    # A loop's body runs again and again (not its `else`), for LVA012.
+    body: set[int] = (
+        {id(s) for s in stmt.body} if isinstance(stmt, ast.For | ast.AsyncFor | ast.While) else set()
+    )
     child: ast.stmt
     for child in child_statements(stmt):
+        scope.assignments.looping += id(child) in body
         _visit(scope, child)
+        scope.assignments.looping -= id(child) in body
 
 
 def _declare(scope: _Scope, stmt: ast.stmt) -> None:
@@ -509,6 +600,7 @@ def _declare(scope: _Scope, stmt: ast.stmt) -> None:
             scope.lifetime(name).declare(ast.unparse(annotation), at(target), _span(annotation, target))
             if stmt.value is not None:
                 scope.lifetime(name).bind(at(target), _certain(scope, stmt.value))
+                scope.assigned(name, at(target))
         case _ if type(stmt).__name__ == _TYPE_ALIAS:
             alias: ast.expr = cast("ast.expr", next(ast.iter_child_nodes(stmt)))  # its first field, the name
             scope.declared.update(name.id for name in target_names(alias))
@@ -531,13 +623,14 @@ def _span(annotation: ast.expr, target: ast.expr) -> tuple[int, int] | None:
     return (annotation.col_offset, annotation.end_col_offset or 0) if one_line else None
 
 
-def _flow_offences(found: list[Finding]) -> list[Offence]:
+def _flow_offences(found: list[Finding], policy: FixPolicy) -> list[Offence]:
     """Report value-flow findings as offences, a finding's kind as its code.
 
     Each declaration LVA008 or LVA010 would narrow gets one fix, a guess (`--unsafe-fixes`: a
     declared type can be wider on purpose): the LVA008 finding's narrowed type if there's one,
     since it's already within the members the values use, else the union without its unused
-    members, on the first LVA010 finding. Two rewrites of one annotation can't both apply.
+    members, on the first LVA010 finding. Two rewrites of one annotation can't both apply. `policy`
+    decides whether it's offered (`narrow`), and whether it's trusted.
 
     Returns:
       The offences.
@@ -562,9 +655,51 @@ def _flow_offences(found: list[Finding]) -> list[Offence]:
                 if finding.kind is Kind.NARROWABLE
                 else "the members its values use"
             )
-            edit = Fix(finding.rewrite, reason, unsafe=True, edit=Edit.REPLACE, span=finding.span)
+            kinds: frozenset[str] = frozenset({NARROW})
+            if policy.allows(kinds):
+                edit = Fix(
+                    finding.rewrite,
+                    reason,
+                    unsafe=not policy.trusts(kinds),
+                    edit=Edit.REPLACE,
+                    span=finding.span,
+                    kinds=kinds,
+                )
         offences.append(Offence(*where, finding.name, finding.kind.value, edit, detail=finding.detail))
     return offences
+
+
+def _is_final(annotation: str) -> bool:
+    """Check whether an annotation is `Final` (`Final[T]`, `typing.Final`, ...).
+
+    Returns:
+      Whether it is.
+
+    """
+    # `annotation` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
+    root: ast.expr = ast.parse(annotation, mode="eval").body
+    return node_name(root.value if isinstance(root, ast.Subscript) else root) == _FINAL
+
+
+def _origins(scope: _Scope, values: Iterable[ast.expr]) -> frozenset[str]:
+    """Find what made a guess of `values` one: a call taken to construct its class, or a guessed local.
+
+    Returns:
+      The guessing mechanisms (`FIX_KINDS`): `constructor` for a call only guessed at, and each
+      guessed local's own.
+
+    """
+    known: Known = scope.settings.known
+    found: set[str] = set()
+    value: ast.expr
+    for value in values:
+        if guessed(value, known, frozenset(), scope.inferred.types):
+            found.add(CONSTRUCTOR)
+        node: ast.AST
+        for node in ast.walk(value):
+            if isinstance(node, ast.Name) and node.id in scope.inferred.origins:
+                found.update(scope.inferred.origins[node.id])
+    return frozenset(found)
 
 
 def _certain(scope: _Scope, value: ast.expr) -> str | None:
@@ -650,6 +785,9 @@ def _bind_declared(
     unsafe: bool = any(
         guessed(base, known, frozenset(scope.inferred.guesses), scope.inferred.types) for base in bases
     )
+    origins: frozenset[str] = _origins(scope, bases) if unsafe else frozenset()
+    # An unpacking's names are split from the value's type; a loop's are what it iterates (`loop`).
+    split: frozenset[str] = frozenset() if isinstance(stmt, ast.For | ast.AsyncFor) else frozenset({"unpack"})
     code: str | None = (
         UNTYPED_TARGET
         if isinstance(stmt, ast.For | ast.AsyncFor)
@@ -660,12 +798,19 @@ def _bind_declared(
     for name, annotation in unpacked(target, None if typed is None else typed.annotation):
         fix: Fix | None = None
         if typed is not None and annotation is not None:
-            fix = Fix(annotation, typed.reason, unsafe, Edit.DECLARE, (stmt.lineno, stmt.col_offset))
+            fix = scope.offer(
+                Inference(annotation, typed.reason, typed.kinds | split),
+                origins,
+                unsafe=unsafe,
+                edit=Edit.DECLARE,
+                span=(stmt.lineno, stmt.col_offset),
+            )
             # What the rest of the scope infers from `name` knows its type, as for `name = value`.
             if name.id not in scope.inferred.types:
                 scope.inferred.types[name.id] = annotation
                 if unsafe:
                     scope.inferred.guesses.add(name.id)
+                    scope.inferred.origins[name.id] = origins
         scope.bind(name.id, at(name), code, fix)
 
 
@@ -702,7 +847,9 @@ def value_flow(
 
     """
     tree: ast.Module = _parse(source, filename)
-    return _value_flow(tree, _scopes(tree, _settings(tree, checks, (), returns(tree))))
+    # Its lines place a `**rest` capture at its name, as `check_source` does.
+    settings: _Settings = _settings(tree, checks, as_text(source).splitlines(), returns(tree))
+    return _value_flow(tree, _scopes(tree, settings))
 
 
 def _value_flow(tree: ast.Module, scopes: list[_Scope]) -> list[Finding]:

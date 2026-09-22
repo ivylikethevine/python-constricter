@@ -227,6 +227,23 @@
   fetches, since it can't be installed on Python 3. Both are in CI's Corpus matrix: unparsable files
   reported, never a crash, nothing broken by `--fix`, one pass. Chosen from 15 measured candidates
   (CPython 2.7's `Lib/`, pip 20.3, Mercurial, ansible, Trac, hypothesis 4, ...).
+- **Fix levels**: each `--fix` mechanism has a stable id (`literal`, `copy`, `constructor`, ...,
+  seventeen in all; see `docs/FIXES.md`), covering every part a fix was built from, shown by
+  `--show-fixes` and in JSON. `fix-select` and `fix-ignore` choose which fixes are offered;
+  `unsafe-fix-select` trusts a guessing mechanism (`constructor`, `narrow`), and a copy of a trusted
+  guess with it. The rules' own value flow never sees the policy, so it changes no report, and the
+  defaults fix exactly what they did (the standard library: 28,395 before and after).
+- **LVA012, opt-in**: a local bound once, by a plain assignment outside any loop (a loop's body
+  rebinds it each pass, and type checkers reject `Final` there), and never rebound could be `Final`.
+  Reported only when selected by its full code (the CLI's new `--extend-select`, flake8's
+  `extend-select`, pylint's `could-be-final`), an error only at `suffocate`, with no `--fix` (it
+  would have to import `Final`). Measured as the roadmap asked, it fits 45–70% of every corpus's
+  first bindings (the standard library 54%, django 45%, sqlalchemy 52%, Twisted 71%, this repository
+  47%), which settles it: opt-in, nothing more.
+- **Every entry point takes bytes**: `annotation_coverage` accepts `str | bytes`, as `check_source`
+  and `value_flow` do, and each reads the source's lines as text (`jsonc.as_text`); given bytes it
+  used to crash on a `match` with a `**rest` capture. `value_flow` now gets those lines too, so it
+  places a `**rest` capture at its name, as `check_source` does.
 - **The README split up**: `docs/INTEGRATIONS.md` (pre-commit, CI and build tools), `docs/FIXES.md`
   (what `--fix` infers), this roadmap, and the development notes and disabled rules in
   `docs/CONTRIBUTING.md`; the README links them by absolute URL, so they work on PyPI too.
@@ -247,28 +264,14 @@ Nothing queued.
 
 ### Medium: a few days
 
-1. **Finer fix levels.** Give each inference mechanism a stable id alongside its reason (`literal`,
-   `copy`, `subscript`, `attribute`, `method`, `builtin`, `call`, `constructor`, `container`, ...),
-   print it in `--show-fixes`, and let a project choose which apply: `fix-select` and `fix-ignore`,
-   plus `unsafe-fix-select` to promote a guess it trusts (like ruff's `extend-safe-fixes`). Replaces
-   the single certain/guess split without breaking it: the defaults match today's.
-2. **An optional `Final` rule (LVA012).** A local bound once and never rebound (one binding in its
-   value-flow lifetime, not a loop target or augmented) could be `Final`. Off unless selected, an
-   error only at `suffocate`: most locals are bound once, so measure it on the corpus before
-   choosing anything more. Neither ruff nor pylint has one.
+Nothing queued.
 
 ### Large: a week or more
 
-1. **A language server** (`constricter server`, in an optional `lsp` extra with pygls): diagnostics
-   as a file changes, certain fixes as quick fixes and guesses as a separate action, settings from
-   `pyproject.toml`. The only way into Helix and Zed, and how JetBrains (LSP4IJ) and Neovim's
-   built-in client would use it; then a VS Code extension from Microsoft's python-tools template,
-   bundling it. Wants the result cache (Medium 2) first.
-2. **Type-checker-backed inference**, opt-in (`--infer-with=ty|basedpyright`): start that checker's
+1. **Type-checker-backed inference**, opt-in (`--infer-with=ty|basedpyright`): start that checker's
    language server, ask for the inlay hints over each file, and turn a hint on an unannotated first
    binding into a fix, always a guess (`--unsafe-fixes`), since a hint can be too wide, a `Literal`,
-   or name something the file doesn't import. The largest potential gain in fix rate; shares the
-   client side of the language-server plumbing.
+   or name something the file doesn't import.
 
 ## Ongoing
 

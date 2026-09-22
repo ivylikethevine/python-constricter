@@ -12,7 +12,13 @@ from typing import Final, cast
 
 from constricter import __version__
 from constricter.cli import baseline
-from constricter.cli.config import DEFAULT_BASELINE, config_defaults, project_root, unknown_codes
+from constricter.cli.config import (
+    DEFAULT_BASELINE,
+    config_defaults,
+    project_root,
+    unknown_codes,
+    unknown_fix_kinds,
+)
 from constricter.cli.explain import explain
 from constricter.cli.paths import STDIN, excluded
 from constricter.cli.report import Format, Result
@@ -21,7 +27,9 @@ from constricter.offences import (
     MAX_LENGTH,
     MESSAGES,
     NESTING,
+    OPT_IN,
     Checks,
+    FixPolicy,
     Level,
     Offence,
 )
@@ -94,6 +102,24 @@ def _codes(text: str) -> list[str]:
     return codes
 
 
+def _fix_kinds(text: str) -> list[str]:
+    """Read a comma-separated list of `--fix` mechanisms (`copy,constructor`).
+
+    Returns:
+      Them.
+
+    Raises:
+      argparse.ArgumentTypeError: One isn't a mechanism's id.
+
+    """
+    kinds: list[str] = [kind.strip() for kind in text.split(",") if kind.strip()]
+    unknown: list[str]
+    if unknown := unknown_fix_kinds(kinds):
+        message: str = f"no --fix mechanism is called {', '.join(unknown)} (see docs/FIXES.md)"
+        raise argparse.ArgumentTypeError(message)
+    return kinds
+
+
 def _parser() -> argparse.ArgumentParser:
     parser: argparse.ArgumentParser = argparse.ArgumentParser(
         prog="constricter",
@@ -157,6 +183,13 @@ def _parser() -> argparse.ArgumentParser:
         help="report only these codes or prefixes (LVA001,LVA00)",
     )
     _ = parser.add_argument(
+        "--extend-select",
+        type=_codes,
+        default=[],
+        metavar="CODES",
+        help="also report these codes (an opt-in one, like LVA012, by its full code)",
+    )
+    _ = parser.add_argument(
         "--ignore",
         type=_codes,
         default=[],
@@ -172,6 +205,27 @@ def _parser() -> argparse.ArgumentParser:
         "--unsafe-fixes",
         action="store_true",
         help="with --fix or --diff: also apply guesses (a call to a class that may be generic)",
+    )
+    _ = parser.add_argument(
+        "--fix-select",
+        type=_fix_kinds,
+        default=[],
+        metavar="KINDS",
+        help="offer only fixes these mechanisms decide (literal,copy,...; default: all)",
+    )
+    _ = parser.add_argument(
+        "--fix-ignore",
+        type=_fix_kinds,
+        default=[],
+        metavar="KINDS",
+        help="never offer a fix one of these mechanisms decided",
+    )
+    _ = parser.add_argument(
+        "--unsafe-fix-select",
+        type=_fix_kinds,
+        default=[],
+        metavar="KINDS",
+        help="treat guesses from these mechanisms (constructor, narrow) as certain",
     )
     _ = parser.add_argument(
         "--diff",
@@ -394,6 +448,12 @@ class Options:
                     (name, tuple(wider))
                     for name, wider in cast("dict[str, list[str]]", getattr(args, "narrower", {})).items()
                 ),
+                final=bool(OPT_IN & {*_select(args), *cast("list[str]", args.extend_select)}),
+                fixes=FixPolicy(
+                    frozenset(cast("list[str]", args.fix_select)),
+                    frozenset(cast("list[str]", args.fix_ignore)),
+                    frozenset(cast("list[str]", args.unsafe_fix_select)),
+                ),
             ),
             unsafe_fixes=cast("bool", args.unsafe_fixes),
             filter=_filter(parser, args, mode),
@@ -432,12 +492,22 @@ def _filter(parser: argparse.ArgumentParser, args: argparse.Namespace, mode: Mod
     return Filter(
         level=LEVELS[cast("str", args.level)],
         per_path=cast("dict[str, str]", getattr(args, "per_path_levels", {})),
-        select=[c.upper() for c in cast("list[str]", args.select)],
+        select=_select(args) + cast("list[str]", args.extend_select) if _select(args) else [],
         ignore=[c.upper() for c in cast("list[str]", args.ignore)],
         per_file_ignores=cast("dict[str, list[str]]", getattr(args, "per_file_ignores", {})),
         baseline_file=baseline_path,
         entries=entries,
     )
+
+
+def _select(args: argparse.Namespace) -> list[str]:
+    """Read `--select`.
+
+    Returns:
+      Its codes, upper-cased.
+
+    """
+    return [c.upper() for c in cast("list[str]", args.select)]
 
 
 def _mode(parser: argparse.ArgumentParser, args: argparse.Namespace) -> Mode:

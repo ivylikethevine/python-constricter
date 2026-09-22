@@ -11,7 +11,7 @@ from constricter import check_source
 from constricter.cli import command as cli
 
 # One JSON result, and its `fix` object.
-_Fix: TypeAlias = dict[str, str | bool]
+_Fix: TypeAlias = dict[str, str | bool | list[str]]
 _Entry: TypeAlias = dict[str, str | int | _Fix | None]
 
 SOURCE: str = """\
@@ -74,8 +74,11 @@ def test_show_fixes_lists_each_fix_after_the_report(
     assert cli.main(["-q", "--show-fixes", str(path)]) == cli.EXIT_FOUND
     out: list[str] = capsys.readouterr().out.splitlines()
     assert out[-2:] == [
-        f"{path}:2:5: fix 'a': `int`, from a literal",
-        f"{path}:3:5: fix 'b': `Box`, from a call to `Box`, taken to construct one (a guess: --unsafe-fixes)",
+        f"{path}:2:5: fix 'a': `int`, from a literal [literal]",
+        (
+            f"{path}:3:5: fix 'b': `Box`, from a call to `Box`, taken to construct one [constructor]"
+            " (a guess: --unsafe-fixes)"
+        ),
     ]
 
 
@@ -86,6 +89,6 @@ def test_json_carries_each_fix_and_its_reason(tmp_path: Path, capsys: pytest.Cap
     assert cli.main(["--format=json", str(path)]) == cli.EXIT_FOUND
     report: list[_Entry] = cast("list[_Entry]", json.loads(capsys.readouterr().out))
     assert [entry["fix"] for entry in report] == [
-        {"annotation": "int", "reason": "a literal", "unsafe": False},
+        {"annotation": "int", "reason": "a literal", "unsafe": False, "kinds": ["literal"]},
         None,
     ]

@@ -45,3 +45,47 @@ The type hierarchy LVA008–LVA010 compare through is the numeric tower (`bool` 
 `[tool.constricter.narrower]` (or the plugins' `narrower` option, as `B=A, int=`) replaces what
 those say for each type it names, and vouches for the types it names: an imported type the rules
 would never compare otherwise is compared.
+
+## Fix levels
+
+Each fix names the mechanisms that decided it, parts included (`[1, 2]` is a `container` of
+`literal`s), by a stable id: `--show-fixes` prints them after the reason (`[container, literal]`),
+and `--format=json`'s `fix` object has them as `kinds`.
+
+| Id              | Decided by                                                                          |
+| --------------- | ----------------------------------------------------------------------------------- |
+| `literal`       | a literal, an f-string, or `not x`                                                  |
+| `container`     | a list, set, tuple or dict display whose elements' types agree                      |
+| `copy`          | a copy of a local whose type is known                                               |
+| `subscript`     | a subscript of a known container                                                    |
+| `attribute`     | an attribute of a class the module defines                                          |
+| `method`        | a method with a fixed or declared return type, on a known local                     |
+| `builtin`       | a builtin with a fixed return type (`len`, `str`, ...)                              |
+| `call`          | a function that declares its return type (this module's, or another checked file's) |
+| `constructor`   | a call to a capitalised name, taken to construct one (a guess)                      |
+| `conditional`   | both sides of `a if c else b`                                                       |
+| `arithmetic`    | arithmetic on builtin scalars                                                       |
+| `comprehension` | a list, set or dict comprehension's elements                                        |
+| `builder`       | `sorted`, `list`, `set`, `frozenset` or `tuple` of known elements                   |
+| `await`         | `await` of the module's `async def`                                                 |
+| `loop`          | what a loop (or `sorted`, `list`, ...) iterates over                                |
+| `unpack`        | an unpacking, split over its names                                                  |
+| `narrow`        | LVA008's or LVA010's narrower annotation (a guess)                                  |
+
+A project chooses which apply, in `[tool.constricter]` or on the command line:
+
+- `fix-select` (`--fix-select KINDS`): offer only fixes every one of whose mechanisms is listed
+  (default: all);
+- `fix-ignore` (`--fix-ignore KINDS`): never offer a fix any listed mechanism decided;
+- `unsafe-fix-select` (`--unsafe-fix-select KINDS`): treat guesses from the listed guessing
+  mechanisms (`constructor`, `narrow`) as certain, so plain `--fix` applies them, as ruff's
+  `extend-safe-fixes` does. A copy of such a guess is trusted with it.
+
+```toml
+[tool.constricter]
+fix-ignore = ["arithmetic"]          # never annotate from arithmetic
+unsafe-fix-select = ["constructor"]  # this codebase's capitalised calls construct what they name
+```
+
+None of them changes what's reported: an offence whose fix isn't offered is still reported, without
+a fix. The defaults (every mechanism, nothing trusted) are the plain certain/guess split.

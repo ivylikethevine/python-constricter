@@ -187,7 +187,7 @@ def test_json_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
         "severity": "error",
         "message": PLAIN,
         "cell": None,
-        "fix": {"annotation": "int", "reason": "a literal", "unsafe": False},
+        "fix": {"annotation": "int", "reason": "a literal", "unsafe": False, "kinds": ["literal"]},
     }
     assert [(r["code"], r["severity"]) for r in results] == [
         ("LVA001", "error"),
