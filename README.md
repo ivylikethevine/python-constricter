@@ -31,6 +31,8 @@
 
 [snake](https://www.asciiart.eu/art/595284d82d1f8d6d)
 
+<https://pypi.org/project/python-constricter/>
+
 ---
 
 Lint rules: every local variable is typed where it's first bound. Ships as a flake8 plugin, a pylint
