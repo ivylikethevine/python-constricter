@@ -27,7 +27,8 @@ ONE_CLEAN_FILE: Final = "Found 0 error(s) and 0 warning(s) in 1 file(s).\n"
 PLAIN: Final = "local variable 'plain' is not annotated where it's first bound"
 FOURTH: Final = "local variable 'fourth' is not annotated where it's first bound"
 LOOP: Final = "for/match variable 'loop' is untyped; declare it before the statement"
-type _Sarif = dict[str, list[dict[str, list[dict[str, object]]]]]
+type _Json = str | int | float | bool | list[_Json] | dict[str, _Json] | None
+type _Sarif = dict[str, list[dict[str, list[dict[str, _Json]]]]]
 CLEAN: Final = """
 def clean() -> None:
     fine: int = 1
@@ -141,7 +142,7 @@ def test_json_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
   """`--format=json` prints one object per offence."""
   broken: Path = _write(tmp_path / "broken.py", BROKEN)
   assert cli.main(["--format=json", str(broken)]) == cli.EXIT_FOUND
-  results: list[dict[str, object]] = cast("list[dict[str, object]]", json.loads(capsys.readouterr().out))
+  results: list[dict[str, _Json]] = cast("list[dict[str, _Json]]", json.loads(capsys.readouterr().out))
   assert results[0] == {
     "path": str(broken),
     "line": 3,
@@ -178,7 +179,7 @@ def test_sarif_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Non
   broken: Path = _write(tmp_path / "broken.py", BROKEN)
   assert cli.main(["--format=sarif", str(broken)]) == cli.EXIT_FOUND
   sarif: _Sarif = cast("_Sarif", json.loads(capsys.readouterr().out))
-  results: list[dict[str, object]] = sarif["runs"][0]["results"]
+  results: list[dict[str, _Json]] = sarif["runs"][0]["results"]
   assert [(r["ruleId"], r["level"]) for r in results] == [
     ("LVA001", "error"),
     ("LVA001", "error"),
@@ -250,6 +251,9 @@ def test_no_table_or_no_pyproject_sets_nothing(tmp_path: Path) -> None:
     "[tool.constricter]\nexclude = [1]\n",
     "[tool.constricter]\nall-scopes = 1\n",
     "[tool.constricter]\ncolour = 1\n",
+    "[tool.constricter]\nnesting = 0\n",
+    "[tool.constricter]\nnesting = true\n",
+    "[tool]\nconstricter = 1\n",
     "not toml [",
   ],
 )
@@ -264,3 +268,53 @@ def test_a_bad_pyproject_exits_2(
     _ = cli.main([])
   assert exit_info.value.code == cli.EXIT_ERROR
   assert f"{tmp_path / 'pyproject.toml'}: " in capsys.readouterr().err
+
+
+def test_fix_adds_the_annotations_values_decide(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+  """`--fix` annotates what it can in place, keeps line endings, and reports the rest."""
+  source: bytes = (
+    b"def f() -> None:\r\n  a = 1; b = 'x'\r\n  c = [1]\r\n  d = 2  # noqa: LVA001\r\n  e = Path()\r\n"
+  )
+  path: Path = tmp_path / "fixable.py"
+  _ = path.write_bytes(source)
+  assert cli.main(["--fix", str(path)]) == cli.EXIT_FOUND
+  fixed: bytes = (
+    b"def f() -> None:\r\n"
+    b"  a: int = 1; b: str = 'x'\r\n"
+    b"  c = [1]\r\n"
+    b"  d = 2  # noqa: LVA001\r\n"
+    b"  e: Path = Path()\r\n"
+  )
+  assert path.read_bytes() == fixed
+  out: str = capsys.readouterr().out
+  assert out.startswith(f"{path}:3:3: error: LVA001 local variable 'c'")
+  assert out.endswith("Found 1 error(s) and 0 warning(s) in 1 file(s); fixed 3.\n")
+  assert cli.main(["--fix", "-q", str(path)]) == cli.EXIT_FOUND
+  assert cli.fix_file(path, []) == 0
+
+
+def test_relaxed_hides_vague_and_nested_annotations(
+  tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+  """LVA005 and LVA006 aren't reported at `relaxed`; `--nesting` sets LVA006's depth."""
+  path: Path = _write(tmp_path / "vague.py", "def f() -> None:\n  x: list[list[Any]] = []\n")
+  assert cli.main(["-q", "--level=relaxed", str(path)]) == cli.EXIT_CLEAN
+  assert not capsys.readouterr().out
+  assert cli.main(["-q", "--nesting=2", str(path)]) == cli.EXIT_CLEAN
+  assert [line.split(": ")[2][:6] for line in capsys.readouterr().out.splitlines()] == ["LVA005", "LVA006"]
+
+
+@pytest.mark.parametrize("nesting", ["0", "x", "-1"])
+def test_a_bad_nesting_exits_2(nesting: str, capsys: pytest.CaptureFixture[str]) -> None:
+  """`--nesting` takes a whole number of at least 1."""
+  exit_info: pytest.ExceptionInfo[SystemExit]
+  with pytest.raises(SystemExit) as exit_info:
+    _ = cli.main([f"--nesting={nesting}"])
+  assert exit_info.value.code == cli.EXIT_ERROR
+  assert capsys.readouterr().err.endswith(f"expected a whole number of at least 1, not {nesting!r}\n")
+
+
+def test_pyproject_nesting(tmp_path: Path) -> None:
+  """`nesting` in `[tool.constricter]` takes a whole number of at least 1."""
+  _pyproject(tmp_path, "[tool.constricter]\nnesting = 3\n")
+  assert cli.config_defaults(tmp_path) == {"nesting": 3}

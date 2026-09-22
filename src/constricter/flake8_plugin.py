@@ -7,7 +7,7 @@ from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING, ClassVar, Final, cast, final
 
 from constricter import __version__
-from constricter.checker import LEVELS, Level, Offence, check_source, check_tree
+from constricter.checker import LEVELS, NESTING, Level, Offence, check_source, check_tree
 
 if TYPE_CHECKING:
   from flake8.options.manager import OptionManager
@@ -24,6 +24,7 @@ class ConstricterChecker:
   level: ClassVar[Level] = Level.STRICT
   type_comments: ClassVar[bool] = False
   all_scopes: ClassVar[bool] = False
+  nesting: ClassVar[int] = NESTING
 
   def __init__(self, tree: ast.Module, lines: Sequence[str]) -> None:
     """Take the file flake8 parsed, and its lines."""
@@ -52,6 +53,13 @@ class ConstricterChecker:
       parse_from_config=True,
       help="also check module and class bodies (LVA004)",
     )
+    parser.add_option(
+      "--constricter-nesting",
+      type=int,
+      default=NESTING,
+      parse_from_config=True,
+      help=f"report an annotation nested this deep (LVA006; default: {NESTING})",
+    )
 
   @classmethod
   def parse_options(cls, options: argparse.Namespace) -> None:
@@ -59,15 +67,16 @@ class ConstricterChecker:
     cls.level = LEVELS[cast("str", options.constricter_level)]
     cls.type_comments = cast("bool", options.constricter_type_comments)
     cls.all_scopes = cast("bool", options.constricter_all_scopes)
+    cls.nesting = cast("int", options.constricter_nesting)
 
   def run(self) -> Iterator[tuple[int, int, str, type["ConstricterChecker"]]]:
     """Yield flake8's `(line, col, message, type)` per error-level offence."""
     source: str = "".join(self.lines)
     # flake8's tree has no `# type:` comments; reparse only when the file might have one.
     offences: list[Offence] = (
-      check_source(source, type_comments=self.type_comments, all_scopes=self.all_scopes)
+      check_source(source, type_comments=self.type_comments, all_scopes=self.all_scopes, nesting=self.nesting)
       if _TYPE_COMMENT in source
-      else check_tree(self.tree, all_scopes=self.all_scopes, lines=self.lines)
+      else check_tree(self.tree, all_scopes=self.all_scopes, nesting=self.nesting, lines=self.lines)
     )
     o: Offence
     for o in offences:

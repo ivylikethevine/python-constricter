@@ -11,9 +11,11 @@ import pytest
 from constricter import (
   COMMENT_TYPED_TARGET,
   LEVELS,
+  NESTED_TYPE,
   UNANNOTATED,
   UNANNOTATED_MEMBER,
   UNTYPED_TARGET,
+  VAGUE_TYPE,
   Level,
   Offence,
   check_source,
@@ -73,7 +75,7 @@ async def coroutine(items: list[str], *args: str, **kwargs: str) -> str:
     item: str
     async for item in aiter(items):
         pass
-    fh: object
+    fh: typing.TextIO
     async with open(os.devnull) as fh:
         pass
     while (n := n - 1) > 0:
@@ -81,7 +83,7 @@ async def coroutine(items: list[str], *args: str, **kwargs: str) -> str:
     m: re.Match[str] | None
     assert (m := re.match("x", joined)) or True
     type Alias = list[int]
-    square: object = lambda v: (w := v * v)
+    square: Callable[[int], int] = lambda v: (w := v * v)
     total: int = 0
     total += 1
 
@@ -426,3 +428,108 @@ def test_all_scopes_checks_module_and_class_bodies() -> None:
     ("inner", UNANNOTATED_MEMBER),
   ]
   assert Offence(1, 0, "x", UNANNOTATED_MEMBER).message == MEMBER_MESSAGE
+
+
+@pytest.mark.parametrize(
+  ("annotation", "codes"),
+  [
+    ("Any", [VAGUE_TYPE]),
+    ("typing.Any", [VAGUE_TYPE]),
+    ("object", [VAGUE_TYPE]),
+    ("list", [VAGUE_TYPE]),
+    ("list[Any]", [VAGUE_TYPE]),
+    ('"dict"', [VAGUE_TYPE]),
+    ("Callable", [VAGUE_TYPE]),
+    ("dict[str, int]", []),
+    ("Callable[..., int]", []),
+    ("tuple[int, ...]", []),
+    ('"list[int]"', []),
+    ('"not an expression ("', []),
+    ("int | None", []),
+  ],
+)
+def test_vague_annotations(annotation: str, codes: list[str]) -> None:
+  """`Any`, `object` and generics without their parameters are LVA005."""
+  source: str = f"def f() -> None:\n  x: {annotation}\n"
+  assert [o.code for o in check_source(source)] == codes
+
+
+@pytest.mark.parametrize(
+  ("annotation", "nesting", "codes"),
+  [
+    ("dict[str, list[tuple[int, set[str]]]]", 5, []),
+    ("dict[str, list[tuple[int, set[frozenset[str]]]]]", 5, [NESTED_TYPE]),
+    ("list[int] | dict[str, list[int]]", 2, [NESTED_TYPE]),
+    ('"list[list[int]]"', 2, [NESTED_TYPE]),
+    ("Callable[[list[int]], int]", 3, []),
+  ],
+)
+def test_nested_annotations(annotation: str, nesting: int, codes: list[str]) -> None:
+  """An annotation whose subscripts nest `nesting` deep is LVA006."""
+  source: str = f"def f() -> None:\n  x: {annotation} = []\n"
+  assert [o.code for o in check_source(source, nesting=nesting)] == codes
+
+
+def test_vague_and_nested_are_reported_from_strict() -> None:
+  """LVA005 and LVA006 aren't reported at `relaxed`, warn below `suffocate`, and error at it."""
+  offence: Offence
+  for offence in (Offence(1, 0, "x", VAGUE_TYPE), Offence(1, 0, "x", NESTED_TYPE)):
+    assert [offence.is_reported(level) for level in Level] == [False, True, True, True]
+    assert [offence.is_error(level) for level in Level] == [False, False, False, True]
+  assert Offence(1, 0, "x").is_reported(Level.RELAXED)
+
+
+@pytest.mark.parametrize(
+  ("value", "fix"),
+  [
+    ("0", "int"),
+    ("-1.5", "float"),
+    ("+2", "int"),
+    ("True", "bool"),
+    ("-True", None),
+    ("1j", "complex"),
+    ("'text'", "str"),
+    ("b'raw'", "bytes"),
+    ("f'{0}'", "str"),
+    ("Path('x')", "Path"),
+    ("ast.Name('x')", "ast.Name"),
+    ("TypeVar('T')", None),
+    ("Counter()", None),
+    ("path()", None),
+    ("None", None),
+    ("[1]", None),
+  ],
+)
+def test_fixes_are_offered_only_where_the_value_decides_the_type(value: str, fix: str | None) -> None:
+  """A literal or a capitalised constructor call offers its annotation; anything else doesn't."""
+  offences: list[Offence] = check_source(f"def f() -> None:\n  x = {value}\n")
+  assert [(o.name, o.fix) for o in offences] == [("x", fix)]
+
+
+def test_fixes_are_offered_only_for_a_single_plain_name() -> None:
+  """Unpacking, chained `=`, `:=`, `with` and class bodies are never fixed; module bodies are."""
+  source: str = textwrap.dedent(
+    """
+    LIMIT = 3
+
+
+    def f() -> None:
+      a, b = 1, 2
+      c = d = 3
+      if (e := 4):
+        pass
+
+
+    class C:
+      size = 1
+    """
+  )
+  assert [(o.name, o.fix) for o in check_source(source, all_scopes=True)] == [
+    ("LIMIT", "int"),
+    ("a", None),
+    ("b", None),
+    ("c", None),
+    ("d", None),
+    ("e", None),
+    ("size", None),
+  ]

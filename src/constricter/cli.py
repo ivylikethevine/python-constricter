@@ -2,25 +2,29 @@
 """The `constricter` command (see README)."""
 
 import argparse
+import io
 import json
 import re
 import sys
 import tomllib
 from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
+from datetime import date, datetime, time
 from enum import StrEnum
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
 
 from constricter import __version__
-from constricter.checker import LEVELS, MESSAGES, Level, Offence, check_source
+from constricter.checker import LEVELS, MESSAGES, NESTING, Level, Offence, check_source
 
 if TYPE_CHECKING:
   from io import BufferedReader
 
 
 type _Result = tuple[Path, Offence]
-type _Toml = dict[str, dict[str, dict[str, object]]]
+type _Toml = str | int | float | bool | datetime | date | time | list[_Toml] | dict[str, _Toml]
+type _Default = str | int | bool | list[str]
 
 _SKIPPED_DIRS: frozenset[str] = frozenset(
   {"__pycache__", "node_modules", "venv", "site-packages", "build", "dist"}
@@ -75,15 +79,39 @@ def python_files(paths: Sequence[Path], exclude: Sequence[str] = ()) -> Iterator
         yield found
 
 
-def check_file(path: Path, *, type_comments: bool = False, all_scopes: bool = False) -> list[Offence]:
+def _lines(text: str) -> list[str]:
+  """Split `text` into lines as Python does (LF, CRLF or CR), keeping each line's ending."""
+  return io.StringIO(text, newline="").readlines()
+
+
+def check_file(
+  path: Path, *, type_comments: bool = False, all_scopes: bool = False, nesting: int = NESTING
+) -> list[Offence]:
   """Return the offences in `path` that no `# noqa` suppresses."""
-  source: str = path.read_text(encoding="utf-8")
-  lines: list[str] = source.splitlines()
+  source: str = path.read_bytes().decode("utf-8")
+  lines: list[str] = _lines(source)
   return [
     o
-    for o in check_source(source, str(path), type_comments=type_comments, all_scopes=all_scopes)
+    for o in check_source(
+      source, str(path), type_comments=type_comments, all_scopes=all_scopes, nesting=nesting
+    )
     if not (o.line <= len(lines) and _suppressed(lines[o.line - 1], o.code))
   ]
+
+
+def fix_file(path: Path, offences: Sequence[Offence]) -> int:
+  """Add each fixable offence's annotation to `path`; return how many were fixed."""
+  fixes: list[Offence]
+  if not (fixes := sorted((o for o in offences if o.fix), key=lambda o: (o.line, o.col), reverse=True)):
+    return 0
+  lines: list[str] = _lines(path.read_bytes().decode("utf-8"))
+  o: Offence
+  for o in fixes:
+    raw: bytes = lines[o.line - 1].encode()
+    end: int = o.col + len(o.name.encode())  # `col` counts bytes, as `ast` does
+    lines[o.line - 1] = (raw[:end] + f": {o.fix}".encode() + raw[end:]).decode()
+  _ = path.write_bytes("".join(lines).encode())
+  return len(fixes)
 
 
 def _github_escape(text: str, *, prop: bool = False) -> str:
@@ -163,6 +191,19 @@ def _render(fmt: Format, results: Sequence[_Result], level: Level) -> Iterator[s
       yield f"{path}:{o.line}:{o.col + 1}: {_severity(o, level)}: {o.code} {o.message}"
 
 
+def _positive(text: str) -> int:
+  """Read a whole number of at least 1, for `--nesting`.
+
+  Raises:
+    argparse.ArgumentTypeError: `text` isn't one.
+
+  """
+  if not text.isdigit() or int(text) < 1:
+    message: str = f"expected a whole number of at least 1, not {text!r}"
+    raise argparse.ArgumentTypeError(message)
+  return int(text)
+
+
 def _parser() -> argparse.ArgumentParser:
   parser: argparse.ArgumentParser = argparse.ArgumentParser(
     prog="constricter",
@@ -195,100 +236,182 @@ def _parser() -> argparse.ArgumentParser:
   _ = parser.add_argument(
     "--all-scopes", action="store_true", help="also check module and class bodies (LVA004)"
   )
+  _ = parser.add_argument(
+    "--nesting",
+    type=_positive,
+    default=NESTING,
+    metavar="N",
+    help=f"report an annotation nested N deep (LVA006; default: {NESTING})",
+  )
+  _ = parser.add_argument(
+    "--fix", action="store_true", help="add the annotations a value makes unambiguous, in place"
+  )
   _ = parser.add_argument("--quiet", "-q", action="store_true", help="don't print the text summary line")
   _ = parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
   return parser
 
 
-def config_defaults(start: Path) -> dict[str, object]:
+def _pyproject(start: Path) -> Path | None:
+  """Return the nearest `pyproject.toml` in `start` or above it."""
+  directory: Path
+  path: Path
+  for directory in (start, *start.parents):
+    if (path := directory / "pyproject.toml").is_file():
+      return path
+  return None
+
+
+def _table(path: Path) -> dict[str, _Toml]:
+  """Return `path`'s `[tool.constricter]` table, or an empty one.
+
+  Raises:
+    ValueError: The file isn't TOML, or `tool.constricter` isn't a table.
+
+  """
+  file: BufferedReader
+  document: dict[str, _Toml]
+  message: str
+  with path.open("rb") as file:
+    try:
+      document = tomllib.load(file)
+    except tomllib.TOMLDecodeError as error:
+      message = f"{path}: {error}"
+      raise ValueError(message) from error
+  table: dict[str, _Toml]
+  match document.get("tool"):
+    case {"constricter": dict() as table}:
+      return table
+    case {"constricter": _}:
+      message = f"{path}: [tool.constricter] isn't a table"
+      raise ValueError(message)
+    case _:
+      return {}
+
+
+def config_defaults(start: Path) -> dict[str, _Default]:
   """Return the option defaults in the nearest `pyproject.toml`'s `[tool.constricter]`.
 
   Raises:
     ValueError: The file isn't TOML, or the table has an unknown key or a wrong value.
 
   """
-  directory: Path
-  path: Path
-  for directory in (start, *start.parents):
-    if (path := directory / "pyproject.toml").is_file():
-      break
-  else:
+  path: Path | None
+  if (path := _pyproject(start)) is None:
     return {}
-  file: BufferedReader
-  document: _Toml
-  message: str
-  with path.open("rb") as file:
-    try:
-      document = cast("_Toml", tomllib.load(file))
-    except tomllib.TOMLDecodeError as error:
-      message = f"{path}: {error}"
-      raise ValueError(message) from error
-  table: dict[str, object] = document.get("tool", {}).get("constricter", {})
-  defaults: dict[str, object] = {}
+  defaults: dict[str, _Default] = {}
   key: str
-  value: object
-  for key, value in table.items():
+  value: _Toml
+  for key, value in _table(path).items():
     match key, value:
       case "level", str() | int() if not isinstance(value, bool) and str(value).lower() in LEVELS:
         defaults["level"] = str(value).lower()
-      case "exclude", list() if all(isinstance(glob, str) for glob in cast("list[object]", value)):
-        defaults["exclude"] = value
+      case "nesting", int() if not isinstance(value, bool) and value >= 1:
+        defaults["nesting"] = value
+      case "exclude", list() if all(isinstance(glob, str) for glob in value):
+        defaults["exclude"] = [str(glob) for glob in value]
       case (("type-comments" | "all-scopes"), bool()):
         defaults[key.replace("-", "_")] = value
       case _:
-        message = f"{path}: [tool.constricter] has an invalid {key} = {value!r}"
+        message: str = f"{path}: [tool.constricter] has an invalid {key} = {value!r}"
         raise ValueError(message)
   return defaults
 
 
-def _check_all(
-  paths: Sequence[Path], exclude: Sequence[str], *, type_comments: bool, all_scopes: bool
-) -> tuple[list[_Result], int, bool]:
-  """Check every file: the results, how many files, and whether any couldn't be checked."""
+@dataclass(frozen=True)
+class _Checks:
+  """The options the checker itself takes."""
+
+  type_comments: bool
+  all_scopes: bool
+  nesting: int
+
+
+@dataclass(frozen=True)
+class _Options:
+  """The command's parsed options."""
+
+  paths: list[Path]
+  exclude: list[str]
+  level: Level
+  fmt: Format
+  checks: _Checks
+  fix: bool
+  quiet: bool
+
+  @classmethod
+  def parse(cls, argv: Sequence[str] | None) -> "_Options":
+    """Parse `argv` over the defaults `pyproject.toml` sets."""
+    parser: argparse.ArgumentParser = _parser()
+    try:
+      parser.set_defaults(**config_defaults(Path.cwd()))
+    except ValueError as error:
+      parser.error(str(error))
+    args: argparse.Namespace = parser.parse_args(argv)
+    return cls(
+      paths=cast("list[Path]", args.paths) or [Path()],
+      exclude=cast("list[str]", args.exclude),
+      level=LEVELS[cast("str", args.level)],
+      fmt=cast("Format", args.format),
+      checks=_Checks(
+        type_comments=cast("bool", args.type_comments),
+        all_scopes=cast("bool", args.all_scopes),
+        nesting=cast("int", args.nesting),
+      ),
+      fix=cast("bool", args.fix),
+      quiet=cast("bool", args.quiet),
+    )
+
+
+def _check_one(path: Path, options: _Options) -> tuple[list[Offence], int]:
+  """Check (and fix) one file: the offences left, and how many were fixed."""
+  checks: _Checks = options.checks
+  offences: list[Offence] = [
+    o
+    for o in check_file(
+      path, type_comments=checks.type_comments, all_scopes=checks.all_scopes, nesting=checks.nesting
+    )
+    if o.is_reported(options.level)
+  ]
+  if not options.fix:
+    return offences, 0
+  return [o for o in offences if not o.fix], fix_file(path, offences)
+
+
+def _check_all(options: _Options) -> tuple[list[_Result], int, int, bool]:
+  """Check (and fix) every file: the results left, the files, the fixes, and whether any failed."""
   results: list[_Result] = []
   files: int = 0
+  fixed: int = 0
   failed: bool = False
   path: Path
-  for path in python_files(paths, exclude):
+  offences: list[Offence]
+  count: int
+  for path in python_files(options.paths, options.exclude):
     files += 1
     try:
-      results += [(path, o) for o in check_file(path, type_comments=type_comments, all_scopes=all_scopes)]
+      offences, count = _check_one(path, options)
     except (OSError, UnicodeDecodeError, SyntaxError) as error:
       _ = sys.stderr.write(f"{path}: error: {error}\n")
       failed = True
-  return results, files, failed
-
-
-def _parse(argv: Sequence[str] | None) -> argparse.Namespace:
-  """Parse `argv` over the defaults `pyproject.toml` sets."""
-  parser: argparse.ArgumentParser = _parser()
-  try:
-    parser.set_defaults(**config_defaults(Path.cwd()))
-  except ValueError as error:
-    parser.error(str(error))
-  return parser.parse_args(argv)
+    else:
+      results += [(path, o) for o in offences]
+      fixed += count
+  return results, files, fixed, failed
 
 
 def main(argv: Sequence[str] | None = None) -> int:
   """Run the command; return its exit status."""
-  args: argparse.Namespace = _parse(argv)
-  paths: list[Path] = cast("list[Path]", args.paths) or [Path()]
-  exclude: list[str] = cast("list[str]", args.exclude)
-  level: Level = LEVELS[cast("str", args.level)]
-  fmt: Format = cast("Format", args.format)
-  type_comments: bool = cast("bool", args.type_comments)
-  all_scopes: bool = cast("bool", args.all_scopes)
-  quiet: bool = cast("bool", args.quiet)
-
+  options: _Options = _Options.parse(argv)
   results: list[_Result]
   files: int
+  fixed: int
   failed: bool
-  results, files, failed = _check_all(paths, exclude, type_comments=type_comments, all_scopes=all_scopes)
+  results, files, fixed, failed = _check_all(options)
   line: str
-  for line in _render(fmt, results, level):
+  for line in _render(options.fmt, results, options.level):
     _ = sys.stdout.write(f"{line}\n")
-  errors: int = sum(o.is_error(level) for _, o in results)
-  if fmt is Format.TEXT and not quiet:
-    warnings: int = len(results) - errors
-    _ = sys.stdout.write(f"Found {errors} error(s) and {warnings} warning(s) in {files} file(s).\n")
+  errors: int = sum(o.is_error(options.level) for _, o in results)
+  if options.fmt is Format.TEXT and not options.quiet:
+    summary: str = f"Found {errors} error(s) and {len(results) - errors} warning(s) in {files} file(s)"
+    _ = sys.stdout.write(f"{summary}; fixed {fixed}.\n" if options.fix else f"{summary}.\n")
   return EXIT_ERROR if failed else EXIT_FOUND if errors else EXIT_CLEAN

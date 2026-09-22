@@ -12,9 +12,12 @@ from constricter.checker import (
   COMMENT_TYPED_TARGET,
   LEVELS,
   MESSAGES,
+  NESTED_TYPE,
+  NESTING,
   UNANNOTATED,
   UNANNOTATED_MEMBER,
   UNTYPED_TARGET,
+  VAGUE_TYPE,
   Level,
   Offence,
   check_source,
@@ -33,6 +36,8 @@ SYMBOLS: dict[str, Message] = {
   UNTYPED_TARGET: Message("C9102", "untyped-for-or-match-variable"),
   COMMENT_TYPED_TARGET: Message("C9103", "comment-typed-for-variable"),
   UNANNOTATED_MEMBER: Message("C9104", "unannotated-module-or-class-variable"),
+  VAGUE_TYPE: Message("C9105", "vague-annotation"),
+  NESTED_TYPE: Message("C9106", "deeply-nested-annotation"),
 }
 
 
@@ -60,6 +65,10 @@ class ConstricterChecker(BaseRawFileChecker):
       "constricter-all-scopes",
       {"default": False, "type": "yn", "metavar": "<y or n>", "help": "Check module and class bodies."},
     ),
+    (
+      "constricter-nesting",
+      {"default": NESTING, "type": "int", "metavar": "<n>", "help": "Report an annotation nested this deep."},
+    ),
   )
 
   def __init__(self, linter: PyLinter) -> None:
@@ -81,9 +90,10 @@ class ConstricterChecker(BaseRawFileChecker):
     level: Level = LEVELS[cast("str", self.linter.config.constricter_level)]
     type_comments: bool = cast("bool", self.linter.config.constricter_type_comments)
     all_scopes: bool = cast("bool", self.linter.config.constricter_all_scopes)
+    nesting: int = cast("int", self.linter.config.constricter_nesting)
     o: Offence
     for o in check_source(
-      source, node.file or "<unknown>", type_comments=type_comments, all_scopes=all_scopes
+      source, node.file or "<unknown>", type_comments=type_comments, all_scopes=all_scopes, nesting=nesting
     ):
       if o.is_error(level):
         self.add_message(SYMBOLS[o.code].symbol, line=o.line, col_offset=o.col, args=(o.name,))

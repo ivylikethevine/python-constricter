@@ -15,7 +15,7 @@ from pylint.lint import PyLinter, Run
 from pylint.reporters import CollectingReporter
 from pylint.reporters.text import TextReporter
 
-from constricter.checker import Level
+from constricter.checker import NESTING, Level
 from constricter.flake8_plugin import ConstricterChecker
 from constricter.pylint_plugin import ConstricterChecker as PylintChecker
 
@@ -49,6 +49,7 @@ def _flake8_fixture(
   monkeypatch.setattr(ConstricterChecker, "level", Level.STRICT)
   monkeypatch.setattr(ConstricterChecker, "type_comments", False)
   monkeypatch.setattr(ConstricterChecker, "all_scopes", False)
+  monkeypatch.setattr(ConstricterChecker, "nesting", NESTING)
 
   def _run(*args: str) -> list[str]:
     application: Application = Application()
@@ -154,4 +155,20 @@ def test_all_scopes_option(tmp_path: Path, flake8: Callable[..., list[str]]) -> 
   assert flake8("--constricter-all-scopes", str(path)) == [f"{path}:1:1: LVA004 {member}"]
   assert _pylint(path, "--constricter-all-scopes=y") == [
     f"1:0: C9104 unannotated-module-or-class-variable {member}"
+  ]
+
+
+def test_vague_and_nested_annotations_at_suffocate(tmp_path: Path, flake8: Callable[..., list[str]]) -> None:
+  """At `suffocate`, both plugins report LVA005 / C9105 and, at the set nesting, LVA006 / C9106."""
+  path: Path = tmp_path / "annotated.py"
+  _ = path.write_text("def f() -> None:\n  x: list[list[Any]] = []\n", encoding="utf-8")
+  vague: str = "the annotation of 'x' is vague: Any, object, or a generic without its parameters"
+  nested: str = "the annotation of 'x' nests too deeply; name a part of it with a `type` alias"
+  assert flake8("--constricter-level=suffocate", "--constricter-nesting=2", str(path)) == [
+    f"{path}:2:6: LVA005 {vague}",
+    f"{path}:2:6: LVA006 {nested}",
+  ]
+  assert _pylint(path, "--constricter-level=suffocate", "--constricter-nesting=2") == [
+    f"2:5: C9105 vague-annotation {vague}",
+    f"2:5: C9106 deeply-nested-annotation {nested}",
   ]

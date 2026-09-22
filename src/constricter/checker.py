@@ -5,20 +5,27 @@ import ast
 import re
 from collections import deque
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Final
+
+from constricter.annotations import depth, inferred, is_vague
 
 UNANNOTATED: Final = "LVA001"
 UNTYPED_TARGET: Final = "LVA002"
 COMMENT_TYPED_TARGET: Final = "LVA003"
 UNANNOTATED_MEMBER: Final = "LVA004"
+VAGUE_TYPE: Final = "LVA005"
+NESTED_TYPE: Final = "LVA006"
 MESSAGES: dict[str, str] = {
   UNANNOTATED: "local variable {name} is not annotated where it's first bound",
   UNTYPED_TARGET: "for/match variable {name} is untyped; declare it before the statement",
   COMMENT_TYPED_TARGET: "for variable {name} is typed only by a type comment; declare it before the loop",
   UNANNOTATED_MEMBER: "module or class variable {name} is not annotated where it's first bound",
+  VAGUE_TYPE: "the annotation of {name} is vague: Any, object, or a generic without its parameters",
+  NESTED_TYPE: "the annotation of {name} nests too deeply; name a part of it with a `type` alias",
 }
+NESTING: Final = 5  # LVA006's default depth
 
 type _FunctionDef = ast.FunctionDef | ast.AsyncFunctionDef
 _FUNCTION_DEFS: tuple[type[ast.FunctionDef], type[ast.AsyncFunctionDef]] = (
@@ -56,7 +63,21 @@ _ERROR_FROM: dict[str, Level] = {
   UNTYPED_TARGET: Level.CONSTRICT,
   COMMENT_TYPED_TARGET: Level.SUFFOCATE,
   UNANNOTATED_MEMBER: Level.STRICT,
+  VAGUE_TYPE: Level.SUFFOCATE,
+  NESTED_TYPE: Level.SUFFOCATE,
 }
+# Codes reported only from a level up (the rest are reported at every level).
+_REPORTED_FROM: dict[str, Level] = {VAGUE_TYPE: Level.STRICT, NESTED_TYPE: Level.STRICT}
+
+
+@dataclass(frozen=True)
+class _Settings:
+  """One module's options, and its source lines (to place a `**rest` capture)."""
+
+  type_comments: bool
+  all_scopes: bool
+  nesting: int
+  lines: Sequence[str]
 
 
 @dataclass(frozen=True, order=True)
@@ -67,6 +88,8 @@ class Offence:
   col: int
   name: str
   code: str = UNANNOTATED
+  # The annotation `--fix` would add, where the value makes it unambiguous.
+  fix: str | None = field(default=None, compare=False)
 
   @property
   def message(self) -> str:
@@ -77,14 +100,23 @@ class Offence:
     """Whether `level` makes this an error rather than a warning."""
     return level >= _ERROR_FROM[self.code]
 
+  def is_reported(self, level: Level) -> bool:
+    """Whether `level` reports this at all."""
+    return level >= _REPORTED_FROM.get(self.code, Level.RELAXED)
+
 
 def check_source(
-  source: str | bytes, filename: str = "<unknown>", *, type_comments: bool = False, all_scopes: bool = False
+  source: str | bytes,
+  filename: str = "<unknown>",
+  *,
+  type_comments: bool = False,
+  all_scopes: bool = False,
+  nesting: int = NESTING,
 ) -> list[Offence]:
   """Return the offences in `source`, sorted. Raises `SyntaxError`.
 
   With `type_comments`, `x = 1  # type: int` counts as annotated; with `all_scopes`, module and
-  class bodies are checked too (LVA004).
+  class bodies are checked too (LVA004); an annotation nested `nesting` deep is LVA006.
   """
   tree: ast.Module
   try:
@@ -92,11 +124,18 @@ def check_source(
   except SyntaxError:  # a misplaced `# type:` comment, or a real error raised again here
     tree = ast.parse(source, filename)
   text: str = source.decode("utf-8") if isinstance(source, bytes) else source
-  return check_tree(tree, type_comments=type_comments, all_scopes=all_scopes, lines=text.splitlines())
+  return check_tree(
+    tree, type_comments=type_comments, all_scopes=all_scopes, nesting=nesting, lines=text.splitlines()
+  )
 
 
 def check_tree(
-  tree: ast.Module, *, type_comments: bool = False, all_scopes: bool = False, lines: Sequence[str] = ()
+  tree: ast.Module,
+  *,
+  type_comments: bool = False,
+  all_scopes: bool = False,
+  nesting: int = NESTING,
+  lines: Sequence[str] = (),
 ) -> list[Offence]:
   """Return the offences in a parsed module, sorted.
 
@@ -104,14 +143,14 @@ def check_tree(
   and `with` too in a module written to run on Python 2. With its source `lines`, a `**rest`
   capture is reported at its name rather than at its pattern's start.
   """
-  type_comments = type_comments or _python2_compatible(tree)
+  settings: _Settings = _Settings(type_comments or _python2_compatible(tree), all_scopes, nesting, lines)
   functions: list[_FunctionDef] = []
   _collect_functions(tree.body, functions)
   offences: list[Offence] = []
   while functions:
-    offences += _check_function(functions.pop(), functions, type_comments=type_comments, lines=lines)
+    offences += _check_function(functions.pop(), functions, settings)
   if all_scopes:
-    offences += _check_bodies(tree, type_comments=type_comments, lines=lines)
+    offences += _check_bodies(tree, settings)
   return sorted(offences)
 
 
@@ -125,19 +164,19 @@ def _python2_compatible(tree: ast.Module) -> bool:
   )
 
 
-def _check_bodies(tree: ast.Module, *, type_comments: bool, lines: Sequence[str]) -> list[Offence]:
+def _check_bodies(tree: ast.Module, settings: _Settings) -> list[Offence]:
   """Return the offences in the module body and every class body but an enum's (LVA004).
 
   Dunder names (`__all__`, `__slots__`) are exempt: annotating one can change what it means.
   """
-  bodies: list[list[ast.stmt]] = [tree.body]
-  bodies += [node.body for node in ast.walk(tree) if isinstance(node, ast.ClassDef) and not _is_enum(node)]
+  classes: list[list[ast.stmt]] = [
+    node.body for node in ast.walk(tree) if isinstance(node, ast.ClassDef) and not _is_enum(node)
+  ]
   offences: list[Offence] = []
   body: list[ast.stmt]
-  for body in bodies:
-    scope: _Scope = _Scope(
-      {"_"}, [], type_comments=type_comments, lines=lines, unannotated=UNANNOTATED_MEMBER
-    )
+  for body in (tree.body, *classes):
+    # A class body is never fixed: annotating a dataclass's variable makes it a field.
+    scope: _Scope = _Scope({"_"}, [], settings, unannotated=UNANNOTATED_MEMBER, fixable=body is tree.body)
     stmt: ast.stmt
     for stmt in body:
       _visit(scope, stmt)
@@ -256,24 +295,31 @@ class _Scope:
     self,
     declared: set[str],
     nested: list[_FunctionDef],
+    settings: _Settings,
     *,
-    type_comments: bool,
-    lines: Sequence[str],
     unannotated: str = UNANNOTATED,
+    fixable: bool = True,
   ) -> None:
     self.declared: set[str] = declared
-    self.unannotated_code: str = unannotated
     self.nested: list[_FunctionDef] = nested
-    self.type_comments: bool = type_comments
-    self.lines: Sequence[str] = lines
+    self.settings: _Settings = settings
+    self.unannotated_code: str = unannotated
+    self.fixable: bool = fixable
     self.offences: list[Offence] = []
 
-  def bind(self, name: str, at: tuple[int, int], code: str | None) -> None:
+  def bind(self, name: str, at: tuple[int, int], code: str | None, fix: str | None = None) -> None:
     """Bind `name`; unless it's already bound, report `code` at `(line, col)` (`None`: typed)."""
     if name not in self.declared:
       self.declared.add(name)
       if code is not None:
-        self.offences.append(Offence(*at, name, code))
+        self.offences.append(Offence(*at, name, code, fix if self.fixable else None))
+
+  def annotation(self, name: str, annotation: ast.expr) -> None:
+    """Report an annotation that's vague (LVA005) or nests too deeply (LVA006)."""
+    if is_vague(annotation):
+      self.offences.append(Offence(*_at(annotation), name, VAGUE_TYPE))
+    if depth(annotation) >= self.settings.nesting:
+      self.offences.append(Offence(*_at(annotation), name, NESTED_TYPE))
 
   def walrus(self, node: ast.AST) -> None:
     """Bind `:=` targets in an expression, comprehensions included, lambdas excluded."""
@@ -289,18 +335,16 @@ class _Scope:
 
   def unannotated(self, type_comment: str | None) -> str | None:
     """Return the code for an `=` or `with` binding: `None` if a counted type comment types it."""
-    return None if type_comment is not None and self.type_comments else self.unannotated_code
+    return None if type_comment is not None and self.settings.type_comments else self.unannotated_code
 
 
-def _check_function(
-  func: _FunctionDef, functions: list[_FunctionDef], *, type_comments: bool, lines: Sequence[str]
-) -> list[Offence]:
+def _check_function(func: _FunctionDef, functions: list[_FunctionDef], settings: _Settings) -> list[Offence]:
   """Return one function's offences; nested functions are queued onto `functions`."""
   args: ast.arguments = func.args
   params: set[str] = {a.arg for a in (*args.posonlyargs, *args.args, *args.kwonlyargs)}
   params.update(extra.arg for extra in (args.vararg, args.kwarg) if extra is not None)
   # `_` is a discard.
-  scope: _Scope = _Scope(params | {"_"}, functions, type_comments=type_comments, lines=lines)
+  scope: _Scope = _Scope(params | {"_"}, functions, settings)
   stmt: ast.stmt
   for stmt in func.body:
     _visit(scope, stmt)
@@ -324,6 +368,7 @@ def _declare(scope: _Scope, stmt: ast.stmt) -> None:
   aliases: list[ast.alias]
   names: list[str]
   name: str
+  annotation: ast.expr
   handlers: list[ast.ExceptHandler]
   match stmt:
     case ast.FunctionDef() | ast.AsyncFunctionDef():
@@ -336,7 +381,10 @@ def _declare(scope: _Scope, stmt: ast.stmt) -> None:
       scope.declared.update((alias.asname or alias.name).split(".")[0] for alias in aliases)
     case ast.Global(names=names) | ast.Nonlocal(names=names):
       scope.declared.update(names)
-    case ast.AnnAssign(target=ast.Name(id=name)) | ast.TypeAlias(name=ast.Name(id=name)):
+    case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation):
+      scope.declared.add(name)
+      scope.annotation(name, annotation)
+    case ast.TypeAlias(name=ast.Name(id=name)):
       scope.declared.add(name)
     case ast.Try(handlers=handlers) | ast.TryStar(handlers=handlers):
       scope.declared.update(handler.name for handler in handlers if handler.name)
@@ -350,8 +398,13 @@ def _bind(scope: _Scope, stmt: ast.stmt) -> None:
   target: ast.expr
   items: list[ast.withitem]
   comment: str | None
+  name: str
+  single: ast.Name
+  value: ast.expr
   cases: list[ast.match_case]
   match stmt:
+    case ast.Assign(targets=[ast.Name(id=name) as single], value=value, type_comment=comment):
+      scope.bind(name, _at(single), scope.unannotated(comment), inferred(value))
     case ast.Assign(targets=targets, type_comment=comment):
       _bind_targets(scope, targets, scope.unannotated(comment))
     case ast.With(items=items, type_comment=comment) | ast.AsyncWith(items=items, type_comment=comment):
@@ -379,5 +432,5 @@ def _bind_captures(scope: _Scope, cases: list[ast.match_case]) -> None:
   name: str
   at: tuple[int, int]
   for case in cases:
-    for name, at in _captures(case.pattern, scope.lines):
+    for name, at in _captures(case.pattern, scope.settings.lines):
       scope.bind(name, at, UNTYPED_TARGET)
