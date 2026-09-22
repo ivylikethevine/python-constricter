@@ -47,6 +47,7 @@ jobs:
       - run: validate-pyproject pyproject.toml
       - run: uv lock --check
       - run: constricter --level=suffocate --all-scopes --format=github src tests
+      - run: constricter --coverage --all-scopes --fail-under=100 src tests
       - run: pre-commit try-repo . constricter --all-files
 
   docs:
@@ -160,16 +161,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: $/.github/actions/setup
-      - run: python -m build --no-isolation --outdir dist
-      - run: twine check --strict dist/*
-      - run: check-wheel-contents dist/*.whl
-      - name: Smoke-test the wheel
-        run: |
-          python -m venv "$RUNNER_TEMP/smoke"
-          "$RUNNER_TEMP/smoke/bin/pip" install --no-deps --no-index dist/*.whl
-          "$RUNNER_TEMP/smoke/bin/constricter" src
+      - uses: $/.github/actions/build
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: dist
+          name: ci-dist # release.yml's build uploads `dist`
           path: dist/
           if-no-files-found: error

@@ -3,6 +3,8 @@
 [![CI](https://github.com/ivylikethevine/python-constricter/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ivylikethevine/python-constricter/actions/workflows/ci.yml)
 [![Security](https://github.com/ivylikethevine/python-constricter/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/ivylikethevine/python-constricter/actions/workflows/security.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ivylikethevine/python-constricter/badge)](https://scorecard.dev/viewer/?uri=github.com/ivylikethevine/python-constricter)
+[![Test coverage: 100%](https://img.shields.io/badge/test_coverage-100%25-brightgreen)](pyproject.toml)
+[![Annotations: 100%](https://img.shields.io/badge/annotations-100%25-brightgreen)](#annotation-coverage)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE.md)
 
 > I want **all** of my python code typed.
@@ -122,6 +124,7 @@ Options:
 | statistics      | `--statistics` (counts per code, text format)    | -                    | -                             | -                                 |
 | jobs            | `--jobs N` (`-j`; 0: one per CPU)                | `jobs`               | flake8's own `--jobs`         | pylint's own `--jobs`             |
 | baseline        | `--baseline FILE`; `--write-baseline` records it | `baseline`           | -                             | -                                 |
+| coverage        | `--coverage`, `--fail-under PCT`                 | -                    | -                             | -                                 |
 | per-path levels | -                                                | `per-path-levels`    | -                             | -                                 |
 
 `constricter --explain LVA002` prints a code's rationale, its fix, and the levels that report it.
@@ -175,12 +178,34 @@ to it. It's JSON, and like every JSON file constricter reads it may have `//` an
 and trailing commas. `--baseline FILE` or `baseline` in `[tool.constricter]` names another file; the
 default one is used only if it exists.
 
+### Annotation coverage
+
+`constricter --coverage src` prints the share of first bindings that are typed, per file and in
+total; the bindings are the ones the rules cover (with `--all-scopes`, module and class bodies too),
+and `# noqa` doesn't make one typed. `--fail-under PCT` (which implies `--coverage`) exits 1 below
+PCT, so CI can hold a codebase to a share. With `--format=json` it prints
+`{"typed", "total", "percent", "files"}`, which a badge can read: publish that JSON somewhere (a
+gist, a release asset) and point
+[shields.io's dynamic JSON badge](https://shields.io/badges/dynamic-json-badge) at it with the query
+`$.percent`. This project keeps its own share at 100% in CI, so its badge is static.
+
 ### Notebooks
 
 `.ipynb` files are checked too (directories include them): their code cells are read as one module,
 IPython-only lines (`%magic`, `!shell`, `obj?`, `%%cell` magics) are skipped, and each offence is
 reported at its cell and line (`analysis.ipynb:cell 3:2:5`). JSON output has a `cell` field; GitHub
-and SARIF output point at the file and put the cell in the message.
+and SARIF output point at the file and put the cell in the message. `--fix` and `--diff` edit the
+cells, keeping the notebook's formatting.
+
+### Adopting it on an existing codebase
+
+1. See the scale: `constricter --statistics src` counts offences per code.
+2. Record them: `constricter --write-baseline src`, and commit `constricter-baseline.json`.
+3. Enforce it for new code: add the pre-commit hook or the GitHub Action; the baseline keeps old
+   offences quiet, and `--diff` / `--fix` clear the easy ones.
+4. Burn it down: fix a file or package at a time, then `--write-baseline` again to shrink the file.
+5. Tighten: raise `level` (or `per-path-levels` for the parts that are clean), then turn on
+   `all-scopes`.
 
 ### SARIF (code scanning)
 
@@ -244,11 +269,18 @@ uv pip install --python local/.venv --no-deps --no-build-isolation -e .
 Checks (as CI runs them): `ruff check .` (every rule, preview included), `ruff format --check .`,
 `basedpyright` (all), `mypy` (strict), `pylint src tests` (every extension), `flake8 src tests`,
 `typos`, `validate-pyproject pyproject.toml`, `uv lock --check`,
-`constricter --level=suffocate --all-scopes src tests`, `pytest --cov` (100% branch coverage).
-Everything generated goes in `local/`. Python is indented with 2 spaces.
+`constricter --level=suffocate --all-scopes src tests`,
+`constricter --coverage --all-scopes --fail-under=100 src tests`, `pytest --cov` (100% branch
+coverage). Everything generated goes in `local/`. Python is indented with 2 spaces.
 
 After editing the `dev` group, run `uv lock` (CI fails until you do). Dependabot updates `uv.lock`,
 the npm lock and the actions weekly.
+
+Fuzzing (`tests/test_fuzz.py`) runs with the tests: hypothesmith generates valid Python, which must
+never crash the checker and must stay valid after `--fix`. For a large real codebase, run
+`local/.venv/bin/python tests/corpus.py [PATH]` by hand: it checks PATH (default: this Python's
+standard library, about 660 files in two seconds) at `suffocate` and prints the time, the offences
+per code, and any crash.
 
 Markdown (markdownlint-cli2 and prettier, locked in `.github/package-lock.json`):
 
@@ -299,8 +331,11 @@ Done:
   pip-audit on the lock, and dependency review on PRs.
 - **scorecard.yml** runs OpenSSF Scorecard on `main` and weekly. Its pin check misreads the `$/`
   references as unpinned actions, so it flags them.
-- **release.yml** runs on `v*` tags: CI, a check that the tag matches the version, build provenance,
-  PyPI (trusted publishing), then a GitHub release with the dists and the provenance bundle.
+- **release.yml** runs on `v*` tags: CI, then **build.yml** (a reusable workflow) builds the dists,
+  checks the tag matches the version, and attests their provenance (SLSA v1 Build Level 3, as the
+  build and attestation run in a reusable workflow), then PyPI (trusted publishing), then a GitHub
+  release with the dists and the attestation bundle. Verify a download with
+  `gh attestation verify FILE --repo ivylikethevine/python-constricter --signer-workflow ivylikethevine/python-constricter/.github/workflows/build.yml`.
 - **Pinning:** actions by SHA, Python dependencies by hash (`uv.lock`), npm by lockfile, actionlint
   and uv by version. Dependabot updates all but the last two; `uv lock --check` fails CI on drift.
 - **harden-runner** blocks all but the observed hosts in every Linux job that has run.
@@ -319,8 +354,13 @@ Done:
 - **Per-path levels**, **`--jobs`** for parallel checking, and a **GitHub Action** (`action.yml`)
   that CI runs on the project itself.
 - **LVA005, LVA006 and `--fix`.**
+- **`--coverage`** (and `--fail-under`) for annotation coverage, with test- and annotation-coverage
+  badges this project's CI keeps true.
 - **Baselines**, a **smarter `--fix`** (containers, same-module return types), **notebooks**, and
   JSON with comments and trailing commas wherever constricter reads JSON.
+- **Fuzzing**, a manual **corpus run** (`tests/corpus.py`), an **adoption guide**, **`--fix` for
+  notebooks**, and **SLSA Build Level 3 provenance** (GitHub's artifact attestations, from a
+  reusable build workflow) on each release.
 - **Python 3.11+**, the oldest version still maintained after 3.10's end of life in October 2026.
   Older Pythons aren't planned: 3.10 would add a runtime dependency (`tomli`) for a month, and
   3.6–3.9 would mean dropping `match` from the checker and keeping a second CI setup with older
@@ -330,16 +370,8 @@ Done:
 
 Next, smallest first:
 
-1. **Fuzzing:** hypothesis with hypothesmith generates valid Python; the checker must never crash on
-   it.
-2. **A weekly run over a large real codebase** (CPython's standard library) to catch crashes and
-   slowdowns.
-3. **An adoption guide** for existing codebases: start at `relaxed`, baseline, then raise the level.
-4. **`--fix` for notebooks**, rewriting the fixed cells inside the `.ipynb` JSON.
-5. **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+.
-6. **SLSA level-3 provenance** (slsa-github-generator), a stronger guarantee than today's
-   attestation.
-7. Revisit the [disabled rules](#disabled-rules).
+1. **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+.
+2. Revisit the [disabled rules](#disabled-rules).
 
 After the first release (these need it on PyPI, or a published tag):
 

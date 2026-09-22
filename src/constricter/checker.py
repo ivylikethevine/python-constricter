@@ -6,7 +6,7 @@ import re
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Final, TypeAlias, cast
+from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.annotations import depth, inferred, is_vague, returns
 
@@ -126,15 +126,19 @@ def check_source(
     Every offence; `# noqa` comments are the caller's to apply.
 
   """
-  tree: ast.Module
-  try:
-    tree = ast.parse(source, filename, type_comments=True)
-  except SyntaxError:  # a misplaced `# type:` comment, or a real error raised again here
-    tree = ast.parse(source, filename)
+  tree: ast.Module = _parse(source, filename)
   text: str = source.decode("utf-8") if isinstance(source, bytes) else source
   return check_tree(
     tree, type_comments=type_comments, all_scopes=all_scopes, nesting=nesting, lines=text.splitlines()
   )
+
+
+def _parse(source: str | bytes, filename: str) -> ast.Module:
+  """Parse `source` with its `# type:` comments; without them if one is misplaced. Raises `SyntaxError`."""
+  try:
+    return ast.parse(source, filename, type_comments=True)
+  except SyntaxError:  # a misplaced `# type:` comment, or a real error raised again here
+    return ast.parse(source, filename)
 
 
 def check_tree(
@@ -158,12 +162,50 @@ def check_tree(
   settings: _Settings = _Settings(
     type_comments or _python2_compatible(tree), all_scopes, nesting, lines, returns(tree)
   )
+  return sorted(o for scope in _scopes(tree, settings) for o in scope.reported())
+
+
+class Coverage(NamedTuple):
+  """How many of a module's typeable first bindings are typed, of how many."""
+
+  typed: int
+  total: int
+
+  @property
+  def percent(self) -> float:
+    """The typed share, as a percentage (100 when there's nothing to type)."""
+    return 100 * self.typed / self.total if self.total else 100.0
+
+
+# The codes that mean a binding has no type at all (LVA003's type comment is a type).
+_UNTYPED: Final = frozenset({UNANNOTATED, UNTYPED_TARGET, UNANNOTATED_MEMBER})
+
+
+def annotation_coverage(source: str, *, type_comments: bool = False, all_scopes: bool = False) -> Coverage:
+  """Count the first bindings in `source` the rules cover, and how many are typed.
+
+  Returns:
+    The counts; `# noqa` comments don't make a binding typed. Raises `SyntaxError`.
+
+  """
+  tree: ast.Module = _parse(source, "<unknown>")
+  settings: _Settings = _Settings(
+    type_comments or _python2_compatible(tree), all_scopes, NESTING, source.splitlines(), {}
+  )
+  scopes: list[_Scope] = _scopes(tree, settings)
+  total: int = sum(len(scope.bound()) for scope in scopes)
+  untyped: int = sum(o.code in _UNTYPED for scope in scopes for o in scope.reported())
+  return Coverage(total - untyped, total)
+
+
+def _scopes(tree: ast.Module, settings: _Settings) -> list["_Scope"]:
+  """Return every function's scope, and with `all_scopes` every module and class body's."""
   functions: list[_FunctionDef] = []
   _collect_functions(tree.body, functions)
-  offences: list[Offence] = _check_functions(functions, settings)
-  if all_scopes:
-    offences += _check_bodies(tree, settings)
-  return sorted(offences)
+  scopes: list[_Scope] = _function_scopes(functions, settings)
+  if settings.all_scopes:
+    scopes += _body_scopes(tree, settings)
+  return scopes
 
 
 def _python2_compatible(tree: ast.Module) -> bool:
@@ -176,19 +218,12 @@ def _python2_compatible(tree: ast.Module) -> bool:
   )
 
 
-def _check_bodies(tree: ast.Module, settings: _Settings) -> list[Offence]:
-  """Return the offences in the module body and every class body but an enum's (LVA004).
-
-  Dunder names (`__all__`, `__slots__`) are exempt: annotating one can change what it means.
-
-  Returns:
-    The offences in those bodies, unsorted (the caller sorts them).
-
-  """
+def _body_scopes(tree: ast.Module, settings: _Settings) -> list["_Scope"]:
+  """Return the scopes of the module body and every class body but an enum's (LVA004)."""
   classes: list[list[ast.stmt]] = [
     node.body for node in ast.walk(tree) if isinstance(node, ast.ClassDef) and not _is_enum(node)
   ]
-  offences: list[Offence] = []
+  scopes: list[_Scope] = []
   body: list[ast.stmt]
   for body in (tree.body, *classes):
     # A class body is never fixed: annotating a dataclass's variable makes it a field.
@@ -196,8 +231,8 @@ def _check_bodies(tree: ast.Module, settings: _Settings) -> list[Offence]:
     stmt: ast.stmt
     for stmt in body:
       _visit(scope, stmt)
-    offences += [o for o in scope.offences if not (o.name.startswith("__") and o.name.endswith("__"))]
-  return offences
+    scopes.append(scope)
+  return scopes
 
 
 def _is_enum(node: ast.ClassDef) -> bool:
@@ -322,13 +357,33 @@ class _Scope:
     self.unannotated_code: str = unannotated
     self.fixable: bool = fixable
     self.offences: list[Offence] = []
+    self.first: list[str] = []  # each first binding the rules cover, typed or not
 
   def bind(self, name: str, at: tuple[int, int], code: str | None, fix: str | None = None) -> None:
     """Bind `name`; unless it's already bound, report `code` at `(line, col)` (`None`: typed)."""
     if name not in self.declared:
       self.declared.add(name)
+      self.first.append(name)
       if code is not None:
         self.offences.append(Offence(*at, name, code, fix if self.fixable else None))
+
+  def declare(self, name: str) -> None:
+    """Bind `name` by an annotation (`name: T`, `name: T = ...`): a typed first binding."""
+    if name not in self.declared:
+      self.declared.add(name)
+      self.first.append(name)
+
+  def _covered(self, name: str) -> bool:
+    """Whether the rules cover `name` here; a module or class body's dunder names are exempt."""
+    return self.unannotated_code != UNANNOTATED_MEMBER or not (name.startswith("__") and name.endswith("__"))
+
+  def reported(self) -> list[Offence]:
+    """Return the offences found, but for exempt names."""
+    return [o for o in self.offences if self._covered(o.name)]
+
+  def bound(self) -> list[str]:
+    """Return the first bindings the rules cover, typed or not."""
+    return [name for name in self.first if self._covered(name)]
 
   def annotation(self, name: str, annotation: ast.expr) -> None:
     """Report an annotation that's vague (LVA005) or nests too deeply (LVA006)."""
@@ -352,19 +407,19 @@ class _Scope:
     return None if type_comment is not None and self.settings.type_comments else self.unannotated_code
 
 
-def _check_functions(functions: list[_FunctionDef], settings: _Settings) -> list[Offence]:
-  """Return the offences in `functions` and in every function defined inside them."""
-  offences: list[Offence] = []
+def _function_scopes(functions: list[_FunctionDef], settings: _Settings) -> list["_Scope"]:
+  """Return the scopes of `functions` and of every function defined inside them."""
+  scopes: list[_Scope] = []
   func: _FunctionDef
   for func in functions:
     nested: list[_FunctionDef] = []
-    offences += _check_function(func, nested, settings)
-    offences += _check_functions(nested, settings)
-  return offences
+    scopes.append(_function_scope(func, nested, settings))
+    scopes += _function_scopes(nested, settings)
+  return scopes
 
 
-def _check_function(func: _FunctionDef, functions: list[_FunctionDef], settings: _Settings) -> list[Offence]:
-  """Return one function's offences; functions defined in it are collected into `functions`."""
+def _function_scope(func: _FunctionDef, functions: list[_FunctionDef], settings: _Settings) -> "_Scope":
+  """Return one function's checked scope; functions defined in it are collected into `functions`."""
   args: ast.arguments = func.args
   params: set[str] = {a.arg for a in (*args.posonlyargs, *args.args, *args.kwonlyargs)}
   params.update(extra.arg for extra in (args.vararg, args.kwarg) if extra is not None)
@@ -373,7 +428,7 @@ def _check_function(func: _FunctionDef, functions: list[_FunctionDef], settings:
   stmt: ast.stmt
   for stmt in func.body:
     _visit(scope, stmt)
-  return scope.offences
+  return scope
 
 
 def _visit(scope: _Scope, stmt: ast.stmt) -> None:
@@ -407,7 +462,7 @@ def _declare(scope: _Scope, stmt: ast.stmt) -> None:
     case ast.Global(names=names) | ast.Nonlocal(names=names):
       scope.declared.update(names)
     case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation):
-      scope.declared.add(name)
+      scope.declare(name)
       scope.annotation(name, annotation)
     case _ if type(stmt).__name__ == _TYPE_ALIAS:
       alias: ast.expr = cast("ast.expr", next(ast.iter_child_nodes(stmt)))  # its first field, the name

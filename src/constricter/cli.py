@@ -3,6 +3,7 @@
 
 import argparse
 import difflib
+import json
 import os
 import sys
 from collections.abc import Callable, Iterator, Sequence
@@ -14,8 +15,17 @@ from functools import partial
 from pathlib import Path
 from typing import Final, cast
 
-from constricter import __version__, baseline, notebook
-from constricter.checker import LEVELS, MESSAGES, NESTING, Level, Offence, check_source
+from constricter import __version__, baseline, fixes, notebook
+from constricter.checker import (
+  LEVELS,
+  MESSAGES,
+  NESTING,
+  Coverage,
+  Level,
+  Offence,
+  annotation_coverage,
+  check_source,
+)
 from constricter.config import DEFAULT_BASELINE, config_defaults, project_root, unknown_codes
 from constricter.explain import explain
 from constricter.noqa import lines, unsuppressed
@@ -27,6 +37,7 @@ _SKIPPED_DIRS: frozenset[str] = frozenset(
 EXIT_CLEAN: Final = 0
 EXIT_FOUND: Final = 1
 EXIT_ERROR: Final = 2
+_ALL: Final = 100  # percent
 
 
 def _excluded(path: Path, patterns: Sequence[str]) -> bool:
@@ -51,59 +62,71 @@ def python_files(paths: Sequence[Path], exclude: Sequence[str] = ()) -> Iterator
         yield found
 
 
+def _source(path: Path) -> tuple[str, list[notebook.Line]]:
+  """Return `path`'s Python (a notebook's code cells, joined), and each line's cell if it's one."""
+  if path.suffix == notebook.SUFFIX:
+    return notebook.read(path)
+  return path.read_bytes().decode("utf-8"), []
+
+
 def check_file(
   path: Path, *, type_comments: bool = False, all_scopes: bool = False, nesting: int = NESTING
 ) -> list[Offence]:
   """Return the offences in `path` that no `# noqa` suppresses.
 
   A notebook's code cells are checked as one module, and each offence placed in its cell (a
-  notebook's offences are never fixed). Raises `ValueError` for a file that isn't a notebook.
+  `--fix` edits its cells). Raises `ValueError` for a file that isn't a notebook.
 
   Returns:
     The unsuppressed offences, a notebook's placed in their cells.
 
   """
   source: str
-  where: list[notebook.Line] = []
-  if path.suffix == notebook.SUFFIX:
-    source, where = notebook.read(path)
-  else:
-    source = path.read_bytes().decode("utf-8")
+  where: list[notebook.Line]
+  source, where = _source(path)
   offences: list[Offence] = unsuppressed(
     check_source(source, str(path), type_comments=type_comments, all_scopes=all_scopes, nesting=nesting),
     lines(source),
   )
   return (
-    [replace(o, line=where[o.line - 1].line, cell=where[o.line - 1].cell, fix=None) for o in offences]
+    [replace(o, line=where[o.line - 1].line, cell=where[o.line - 1].cell) for o in offences]
     if where
     else offences
   )
 
 
-def _fixed(source: str, offences: Sequence[Offence]) -> list[str]:
-  """Return `source`'s lines with each fixable offence's annotation added."""
-  text: list[str] = lines(source)
-  o: Offence
-  for o in sorted((o for o in offences if o.fix), key=lambda o: (o.line, o.col), reverse=True):
-    raw: bytes = text[o.line - 1].encode()
-    end: int = o.col + len(o.name.encode())  # `col` counts bytes, as `ast` does
-    text[o.line - 1] = (raw[:end] + f": {o.fix}".encode() + raw[end:]).decode()
-  return text
-
-
 def fix_file(path: Path, offences: Sequence[Offence]) -> int:
-  """Add each fixable offence's annotation to `path`; return how many were fixed."""
+  """Add each fixable offence's annotation to `path` (a notebook's, in its cells).
+
+  Returns:
+    How many offences were fixed.
+
+  """
   count: int
   if not (count := sum(1 for o in offences if o.fix)):
     return 0
-  _ = path.write_bytes("".join(_fixed(path.read_bytes().decode("utf-8"), offences)).encode())
+  text: str = (
+    notebook.fix(path, offences)[0]
+    if path.suffix == notebook.SUFFIX
+    else "".join(fixes.apply(lines(path.read_bytes().decode("utf-8")), offences))
+  )
+  _ = path.write_bytes(text.encode())
   return count
 
 
 def diff_file(path: Path, offences: Sequence[Offence]) -> str:
-  """Return the unified diff `fix_file` would make to `path` (empty if none)."""
+  """Return the unified diff `fix_file` would make to `path`, per cell for a notebook (empty if none)."""
+  if path.suffix == notebook.SUFFIX:
+    return "".join(
+      "".join(
+        difflib.unified_diff(cell.old, cell.new, f"{path}:cell {cell.number}", f"{path}:cell {cell.number}")
+      )
+      for cell in notebook.fix(path, offences)[1]
+    )
   source: str = path.read_bytes().decode("utf-8")
-  return "".join(difflib.unified_diff(lines(source), _fixed(source, offences), str(path), str(path)))
+  return "".join(
+    difflib.unified_diff(lines(source), fixes.apply(lines(source), offences), str(path), str(path))
+  )
 
 
 def _at_least(minimum: int) -> Callable[[str], int]:
@@ -125,6 +148,27 @@ def _at_least(minimum: int) -> Callable[[str], int]:
     return int(text)
 
   return read
+
+
+def _percent(text: str) -> float:
+  """Read a percentage, 0 to 100.
+
+  Returns:
+    The percentage.
+
+  Raises:
+    argparse.ArgumentTypeError: `text` isn't one.
+
+  """
+  value: float
+  try:
+    value = float(text)
+  except ValueError:
+    value = -1.0
+  if not 0 <= value <= _ALL:
+    message: str = f"expected a percentage from 0 to 100, not {text!r}"
+    raise argparse.ArgumentTypeError(message)
+  return value
 
 
 def _codes(text: str) -> list[str]:
@@ -204,6 +248,15 @@ def _parser() -> argparse.ArgumentParser:
     "--statistics", action="store_true", help="print counts per code instead of each offence (text)"
   )
   _ = parser.add_argument(
+    "--coverage", action="store_true", help="print the share of first bindings that are typed, per file"
+  )
+  _ = parser.add_argument(
+    "--fail-under",
+    type=_percent,
+    metavar="PCT",
+    help="with --coverage (which it implies): exit 1 if the typed share is below PCT",
+  )
+  _ = parser.add_argument(
     "--baseline", type=Path, metavar="FILE", help="don't report the offences recorded in this baseline file"
   )
   _ = parser.add_argument(
@@ -232,6 +285,7 @@ class _Mode(Enum):
   FIX = "fix"
   DIFF = "diff"
   WRITE_BASELINE = "write-baseline"
+  COVERAGE = "coverage"
 
 
 @dataclass(frozen=True)
@@ -288,6 +342,7 @@ class _Output:
   fmt: Format
   statistics: bool
   quiet: bool
+  fail_under: float | None = None  # --coverage's threshold
 
 
 @dataclass(frozen=True)
@@ -347,6 +402,7 @@ class _Options:
         fmt=cast("Format", args.format),
         statistics=cast("bool", args.statistics),
         quiet=cast("bool", args.quiet),
+        fail_under=cast("float | None", args.fail_under),
       ),
       mode=mode,
       jobs=cast("int", args.jobs) or os.cpu_count() or 1,
@@ -361,11 +417,12 @@ def _mode(parser: argparse.ArgumentParser, args: argparse.Namespace) -> _Mode:
       (_Mode.FIX, cast("bool", args.fix)),
       (_Mode.DIFF, cast("bool", args.diff)),
       (_Mode.WRITE_BASELINE, cast("bool", args.write_baseline)),
+      (_Mode.COVERAGE, cast("bool", args.coverage) or cast("float | None", args.fail_under) is not None),
     )
     if chosen
   ]
   if len(modes) > 1:
-    parser.error("--fix, --diff and --write-baseline can't be combined")
+    parser.error("--fix, --diff, --write-baseline and --coverage can't be combined")
   return modes[0] if modes else _Mode.CHECK
 
 
@@ -379,6 +436,7 @@ class _FileRun:
   error: str = ""
   baselined: int = 0
   found: list[Offence] = field(default_factory=list[Offence])  # every offence, for --write-baseline
+  coverage: Coverage | None = None
 
 
 def _check_path(path: Path, options: _Options) -> _FileRun:
@@ -404,10 +462,24 @@ def _check_path(path: Path, options: _Options) -> _FileRun:
   return _FileRun(results, baselined=baselined)
 
 
+def _cover_path(path: Path, options: _Options) -> _FileRun:
+  """Count one file's typed first bindings; a file that can't be read or parsed is an error."""
+  try:
+    return _FileRun(
+      coverage=annotation_coverage(
+        _source(path)[0], type_comments=options.checks.type_comments, all_scopes=options.checks.all_scopes
+      )
+    )
+  except (OSError, ValueError, SyntaxError) as error:
+    return _FileRun(error=f"{path}: error: {error}")
+
+
 def _check_all(options: _Options) -> tuple[list[Path], list[_FileRun]]:
   """Check every file (`--jobs` at a time), in order; return the files and what each found."""
   paths: list[Path] = list(python_files(options.paths, options.exclude))
-  check: Callable[[Path], _FileRun] = partial(_check_path, options=options)
+  check: Callable[[Path], _FileRun] = partial(
+    _cover_path if options.mode is _Mode.COVERAGE else _check_path, options=options
+  )
   if options.jobs == 1 or len(paths) <= 1:
     return paths, [check(path) for path in paths]
   pool: ProcessPoolExecutor
@@ -434,6 +506,35 @@ def _report(options: _Options, runs: Sequence[_FileRun], files: int) -> int:
   return EXIT_FOUND if errors else EXIT_CLEAN
 
 
+def _coverage(options: _Options, paths: Sequence[Path], runs: Sequence[_FileRun]) -> int:
+  """Print each file's and the total annotation coverage; return the exit status."""
+  counted: list[tuple[Path, Coverage]] = [
+    (path, run.coverage) for path, run in zip(paths, runs, strict=True) if run.coverage is not None
+  ]
+  total: Coverage = Coverage(sum(c.typed for _, c in counted), sum(c.total for _, c in counted))
+  if options.output.fmt is Format.JSON:
+    report: dict[str, str | int | float | list[dict[str, str | int | float]]] = {
+      "typed": total.typed,
+      "total": total.total,
+      "percent": round(total.percent, 1),
+      "files": [
+        {"path": str(path), "typed": c.typed, "total": c.total, "percent": round(c.percent, 1)}
+        for path, c in counted
+      ],
+    }
+    _ = sys.stdout.write(json.dumps(report, indent=2) + "\n")
+  else:
+    path: Path
+    c: Coverage
+    for path, c in counted:
+      _ = sys.stdout.write(f"{path}: {c.typed}/{c.total} typed ({c.percent:.1f}%)\n")
+    _ = sys.stdout.write(
+      f"Total: {total.typed}/{total.total} typed ({total.percent:.1f}%) in {len(counted)} file(s).\n"
+    )
+  threshold: float | None = options.output.fail_under
+  return EXIT_FOUND if threshold is not None and total.percent < threshold else EXIT_CLEAN
+
+
 def main(argv: Sequence[str] | None = None) -> int:
   """Run the command; return its exit status."""
   options: _Options = _Options.parse(argv)
@@ -450,6 +551,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     }
     _ = sys.stdout.write(f"Wrote {baseline.write(file, found)} offence(s) to {file}.\n")
     status = EXIT_CLEAN
+  elif options.mode is _Mode.COVERAGE:
+    status = _coverage(options, paths, runs)
   elif options.mode is _Mode.DIFF:
     diffs: str = "".join(run.diff for run in runs)
     _ = sys.stdout.write(diffs)

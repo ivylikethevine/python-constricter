@@ -401,7 +401,9 @@ def test_fix_and_diff_cant_be_combined(capsys: pytest.CaptureFixture[str]) -> No
   with pytest.raises(SystemExit) as exit_info:
     _ = cli.main(["--fix", "--diff"])
   assert exit_info.value.code == cli.EXIT_ERROR
-  assert capsys.readouterr().err.endswith("--fix, --diff and --write-baseline can't be combined\n")
+  assert capsys.readouterr().err.endswith(
+    "--fix, --diff, --write-baseline and --coverage can't be combined\n"
+  )
 
 
 def test_per_path_levels(
@@ -535,3 +537,41 @@ def test_a_baseline_can_have_comments(tmp_path: Path, capsys: pytest.CaptureFixt
   )
   assert cli.main(["-q", "--baseline", str(file), str(path)]) == cli.EXIT_CLEAN
   assert [line.split(": ")[2][:6] for line in capsys.readouterr().out.splitlines()] == ["LVA002"]
+
+
+def test_coverage_reports_the_typed_share(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+  """`--coverage` prints each file's and the total typed share; `--format=json` too."""
+  demo: Path = _write(tmp_path / "demo.py", DEMO)
+  clean: Path = _write(tmp_path / "clean.py", CLEAN)
+  assert cli.main(["--coverage", str(tmp_path)]) == cli.EXIT_CLEAN
+  assert capsys.readouterr().out == (
+    f"{clean}: 1/1 typed (100.0%)\n{demo}: 0/3 typed (0.0%)\nTotal: 1/4 typed (25.0%) in 2 file(s).\n"
+  )
+  assert cli.main(["--coverage", "--format=json", str(demo)]) == cli.EXIT_CLEAN
+  assert json.loads(capsys.readouterr().out) == {
+    "typed": 0,
+    "total": 3,
+    "percent": 0.0,
+    "files": [{"path": str(demo), "typed": 0, "total": 3, "percent": 0.0}],
+  }
+
+
+def test_fail_under_sets_the_exit_status(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+  """`--fail-under PCT` implies `--coverage`, and exits 1 below PCT; an unparsable file exits 2."""
+  _ = _write(tmp_path / "demo.py", DEMO)
+  _ = _write(tmp_path / "clean.py", CLEAN)
+  assert cli.main(["--fail-under=25", str(tmp_path)]) == cli.EXIT_CLEAN
+  assert cli.main(["--fail-under=25.1", str(tmp_path)]) == cli.EXIT_FOUND
+  _ = _write(tmp_path / "bad.py", "def (:\n")
+  assert cli.main(["--coverage", str(tmp_path)]) == cli.EXIT_ERROR
+  assert capsys.readouterr().err.startswith(f"{tmp_path / 'bad.py'}: error: ")
+
+
+@pytest.mark.parametrize("percent", ["-1", "101", "half"])
+def test_a_bad_fail_under_exits_2(percent: str, capsys: pytest.CaptureFixture[str]) -> None:
+  """`--fail-under` takes a percentage from 0 to 100."""
+  exit_info: pytest.ExceptionInfo[SystemExit]
+  with pytest.raises(SystemExit) as exit_info:
+    _ = cli.main([f"--fail-under={percent}"])
+  assert exit_info.value.code == cli.EXIT_ERROR
+  assert capsys.readouterr().err.endswith(f"expected a percentage from 0 to 100, not {percent!r}\n")

@@ -17,8 +17,10 @@ from constricter import (
   UNANNOTATED_MEMBER,
   UNTYPED_TARGET,
   VAGUE_TYPE,
+  Coverage,
   Level,
   Offence,
+  annotation_coverage,
   check_source,
   check_tree,
 )
@@ -112,6 +114,8 @@ def broken(items: list[int]) -> None:
 """
 
 MEMBER_MESSAGE: Final = "module or class variable 'x' is not annotated where it's first bound"
+HALF: Final = 50.0
+ALL: Final = 100.0
 X_MESSAGE: Final = "local variable 'x' is not annotated where it's first bound"
 
 
@@ -595,3 +599,33 @@ def test_fixes_use_same_module_return_types() -> None:
     ("i", None),
     ("j", None),
   ]
+
+
+def test_annotation_coverage_counts_first_bindings() -> None:
+  """Coverage counts the first bindings the rules cover; typed ones, type comments included."""
+  source: str = textwrap.dedent(
+    """
+    import os
+    LIMIT = 1
+    __all__ = ["f"]
+
+
+    def f(items: list[int]) -> None:
+      a: int = 1
+      b = 2
+      b = 3
+      b: int = 4  # a later annotation doesn't count it again
+      c: str
+      for c in []:
+        pass
+      for d in items:  # type: int
+        pass
+      for e in items:
+        pass
+      _ = 4
+    """
+  )
+  assert annotation_coverage(source) == Coverage(3, 5)  # a, c, d typed; b, e not
+  assert annotation_coverage(source, all_scopes=True) == Coverage(3, 6)  # LIMIT; not __all__
+  assert Coverage(3, 6).percent == HALF
+  assert Coverage(0, 0).percent == ALL
