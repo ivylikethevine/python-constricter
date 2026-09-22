@@ -111,12 +111,17 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ['3.11', '3.12', '3.13', '3.14']
+        group: [dev]
+        include:
+          - {os: ubuntu-latest, python: pypy3.11, group: test}
+          - {os: ubuntu-latest, python: 3.14t, group: test}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     permissions:
       contents: read
     steps:
-      # Linux only: macOS and Windows reach OS hosts no allowlist can predict.
+      # Linux only: macOS and Windows reach OS hosts no allowlist can predict. pypi.org: setup-python
+      # upgrades pip when it downloads an interpreter the runner image lacks (3.14t).
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         if: runner.os == 'Linux'
         with:
@@ -126,6 +131,9 @@ jobs:
             raw.githubusercontent.com:443
             releases.astral.sh:443
             files.pythonhosted.org:443
+            downloads.python.org:443
+            release-assets.githubusercontent.com:443
+            pypi.org:443
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         if: runner.os != 'Linux'
         with:
@@ -136,10 +144,12 @@ jobs:
       - uses: $/.github/actions/setup
         with:
           python-version: ${{ matrix.python }}
-      # Coverage on 3.12+: 3.11 can't reach the branch for `type X = ...` statements.
+          group: ${{ matrix.group }}
+      # Coverage on CPython 3.12+ with every dev tool: 3.11 can't reach the branch for `type X = ...`
+      # statements, and the test group has no hypothesmith, so the fuzz tests are skipped there.
       - run: python -m pytest ${COVERAGE:+"$COVERAGE"}
         env:
-          COVERAGE: ${{ matrix.python != '3.11' && '--cov' || '' }}
+          COVERAGE: ${{ matrix.group == 'dev' && matrix.python != '3.11' && '--cov' || '' }}
 
   build:
     name: Build

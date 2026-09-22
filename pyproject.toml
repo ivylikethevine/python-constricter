@@ -22,20 +22,24 @@ pylint = ["pylint>=3"]
 
 [dependency-groups]
 # Locked with hashes in uv.lock (see README, Development).
-dev = [
-    "basedpyright",
-    "build",
-    "check-wheel-contents",
+# What the tests need: pure Python, so it installs on PyPy and free-threaded builds too.
+test = [
     "flake8>=7",
     "flit_core>=4.1,<5",
     "hypothesis",
+    "pylint>=3",
+    "pytest",
+    "pytest-cov",
+]
+dev = [
+    { include-group = "test" },
+    "basedpyright",
+    "build",
+    "check-wheel-contents",
     "hypothesmith",
     "mypy",
     "pip-audit",
     "pre-commit",
-    "pylint>=3",
-    "pytest",
-    "pytest-cov",
     "ruff",
     "twine",
     "typos",
@@ -58,7 +62,7 @@ name = "constricter"
 
 [tool.ruff]
 line-length = 110
-indent-width = 2
+indent-width = 4
 target-version = "py311"
 cache-dir = "local/.ruff_cache"
 
@@ -66,20 +70,11 @@ cache-dir = "local/.ruff_cache"
 select = ["ALL"]
 preview = true
 ignore = [
-    # Conflict with the formatter or with the D211/D212 conventions.
-    "missing-trailing-comma",
+    # Conflict with the D211/D212 conventions.
     "incorrect-blank-line-before-class",
     "multi-line-summary-second-line",
-    # Assume 4-space indents (ruff says to disable them at any other width); flake8's E111/E114
-    # check the 2-space width instead.
-    "indentation-with-invalid-multiple",
-    "indentation-with-invalid-multiple-comment",
 ]
 external = ["LVA"]
-
-[tool.ruff.lint.pydoclint]
-# A one-line docstring needs no Returns/Yields section; a longer one does.
-ignore-one-line-docstrings = true
 
 [tool.ruff.lint.flake8-copyright]
 # REUSE-IgnoreStart
@@ -146,7 +141,7 @@ load-plugins = [
 
 [tool.pylint.format]
 max-line-length = 110
-indent-string = "  "
+indent-string = "    "
 
 [tool.typos.default.extend-words]
 astroid = "astroid"

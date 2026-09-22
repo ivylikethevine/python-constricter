@@ -1,4 +1,4 @@
-# `python-constricter`
+# python-con`strict`er
 
 [![CI](https://github.com/ivylikethevine/python-constricter/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ivylikethevine/python-constricter/actions/workflows/ci.yml)
 [![Security](https://github.com/ivylikethevine/python-constricter/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/ivylikethevine/python-constricter/actions/workflows/security.yml)
@@ -29,7 +29,7 @@
                 ~--______-~                ~-___-~
 ```
 
-Source: <https://www.asciiart.eu/art/595284d82d1f8d6d>
+[snake](https://www.asciiart.eu/art/595284d82d1f8d6d)
 
 ---
 
@@ -38,22 +38,22 @@ plugin and a standalone command (for ruff, which loads no plugins).
 
 ```python
 def total(items: list[int]) -> int:
-  count = 0  # LVA001
-  result: int = 0  # ok
-  first, *rest = items  # LVA001 twice
-  head: int
-  tail: list[int]
-  head, *tail = items  # ok: declared first
-  if (n := len(items)) > 3:  # LVA001
-    result = n  # ok: rebinding
-  for item in items:  # LVA002
-    result += item
-  for other in items:  # type: int  # LVA003
-    result += other
-  value: int
-  for value in items:  # ok: declared first
-    result += value
-  return result
+    count = 0  # LVA001
+    result: int = 0  # ok
+    first, *rest = items  # LVA001 twice
+    head: int
+    tail: list[int]
+    head, *tail = items  # ok: declared first
+    if (n := len(items)) > 3:  # LVA001
+        result = n  # ok: rebinding
+    for item in items:  # LVA002
+        result += item
+    for other in items:  # type: int  # LVA003
+        result += other
+    value: int
+    for value in items:  # ok: declared first
+        result += value
+    return result
 ```
 
 ## Rules
@@ -110,22 +110,26 @@ pylint symbols: `unannotated-local-variable`, `untyped-for-or-match-variable`,
 
 Options:
 
-| Option          | CLI                                              | `[tool.constricter]` | flake8 (CLI or config)        | pylint                            |
-| --------------- | ------------------------------------------------ | -------------------- | ----------------------------- | --------------------------------- |
-| level           | `--level`                                        | `level`              | `--constricter-level`         | `constricter-level`               |
-| type comments   | `--type-comments`                                | `type-comments`      | `--constricter-type-comments` | `constricter-type-comments = yes` |
-| all scopes      | `--all-scopes`                                   | `all-scopes`         | `--constricter-all-scopes`    | `constricter-all-scopes = yes`    |
-| nesting         | `--nesting N`                                    | `nesting`            | `--constricter-nesting`       | `constricter-nesting`             |
-| fix             | `--fix`, or `--diff` to preview                  | -                    | -                             | -                                 |
-| select          | `--select CODES` (codes or prefixes)             | `select`             | flake8's own `select`         | pylint's own `enable`             |
-| ignore          | `--ignore CODES`                                 | `ignore`             | flake8's own `extend-ignore`  | pylint's own `disable`            |
-| exclude         | `--exclude GLOB` (repeatable)                    | `exclude`            | flake8's own `exclude`        | pylint's own `ignore-paths`       |
-| format          | `--format`: `text`, `json`, `github`, `sarif`    | -                    | -                             | -                                 |
-| statistics      | `--statistics` (counts per code, text format)    | -                    | -                             | -                                 |
-| jobs            | `--jobs N` (`-j`; 0: one per CPU)                | `jobs`               | flake8's own `--jobs`         | pylint's own `--jobs`             |
-| baseline        | `--baseline FILE`; `--write-baseline` records it | `baseline`           | -                             | -                                 |
-| coverage        | `--coverage`, `--fail-under PCT`                 | -                    | -                             | -                                 |
-| per-path levels | -                                                | `per-path-levels`    | -                             | -                                 |
+| Option           | CLI                                                         | `[tool.constricter]` | flake8 (CLI or config)          | pylint                            |
+| ---------------- | ----------------------------------------------------------- | -------------------- | ------------------------------- | --------------------------------- |
+| level            | `--level`                                                   | `level`              | `--constricter-level`           | `constricter-level`               |
+| type comments    | `--type-comments`                                           | `type-comments`      | `--constricter-type-comments`   | `constricter-type-comments = yes` |
+| all scopes       | `--all-scopes`                                              | `all-scopes`         | `--constricter-all-scopes`      | `constricter-all-scopes = yes`    |
+| nesting          | `--nesting N`                                               | `nesting`            | `--constricter-nesting`         | `constricter-nesting`             |
+| fix              | `--fix` (`--unsafe-fixes` for guesses), `--diff` to preview | -                    | -                               | -                                 |
+| select           | `--select CODES` (codes or prefixes)                        | `select`             | flake8's own `select`           | pylint's own `enable`             |
+| ignore           | `--ignore CODES`                                            | `ignore`             | flake8's own `extend-ignore`    | pylint's own `disable`            |
+| exclude          | `--exclude GLOB` (repeatable)                               | `exclude`            | flake8's own `exclude`          | pylint's own `ignore-paths`       |
+| format           | `--format`: `text`, `json`, `github`, `sarif`               | -                    | -                               | -                                 |
+| statistics       | `--statistics` (counts per code, text format)               | -                    | -                               | -                                 |
+| jobs             | `--jobs N` (`-j`; 0: one per CPU)                           | `jobs`               | flake8's own `--jobs`           | pylint's own `--jobs`             |
+| baseline         | `--baseline FILE`; `--write-baseline` records it            | `baseline`           | -                               | -                                 |
+| coverage         | `--coverage`, `--fail-under PCT`                            | -                    | -                               | -                                 |
+| per-path levels  | -                                                           | `per-path-levels`    | -                               | -                                 |
+| per-file ignores | -                                                           | `per-file-ignores`   | flake8's own `per-file-ignores` | -                                 |
+| stdin            | `-` as the path, `--stdin-filename PATH`                    | -                    | flake8's own `-`                | -                                 |
+| exit status      | `--exit-zero`                                               | -                    | flake8's own `--exit-zero`      | pylint's own `--exit-zero`        |
+| output file      | `--output-file FILE`                                        | -                    | flake8's own `--output-file`    | pylint's own `--output`           |
 
 `constricter --explain LVA002` prints a code's rationale, its fix, and the levels that report it.
 
@@ -145,6 +149,10 @@ baseline = "constricter-baseline.json" # the default; relative to this pyproject
 # The first glob a file matches sets its level; other files get `level`.
 [tool.constricter.per-path-levels]
 "tests/*" = "strict"
+
+# Codes (or prefixes) to drop for files matching a glob.
+[tool.constricter.per-file-ignores]
+"tests/fixtures/*" = ["LVA005", "LVA006"]
 select = ["LVA00"]
 ignore = ["LVA003"]
 ```
@@ -155,12 +163,14 @@ module body:
 - a literal: `count = 0` becomes `count: int = 0`;
 - a container whose elements agree: `[1, 2]` gives `list[int]`, `{"a": (1, "b")}` gives
   `dict[str, tuple[int, str]]`;
-- a call to a capitalised name (`path = Path(...)` gives `Path`), or to a plain function in the same
-  module that declares its return type (not a decorated, generic, async or redefined one, and not a
-  return of `None`, `Any` or one that uses a `TypeVar`).
+- a call to a capitalised name (`path = Path(...)` gives `Path`), or to a plain function that
+  declares its return type (not a decorated, generic, async or redefined one, and not a return of
+  `None`, `Any` or one that uses a `TypeVar`), in the same module or, with the CLI, in another file
+  it's checking: `from pkg.util import f`, `import pkg.util as u` then `u.f()`, relative imports and
+  re-exports all work, as long as every name in the type already means the same thing in the file.
 
-It never touches class bodies (a dataclass would gain a field), unpacking or notebooks, and it
-leaves what it can't fix reported.
+It never touches class bodies (a dataclass would gain a field) or unpacking, and it leaves what it
+can't fix reported. The standard library and third-party packages are out of reach.
 
 ### Baselines
 
@@ -207,6 +217,23 @@ cells, keeping the notebook's formatting.
 5. Tighten: raise `level` (or `per-path-levels` for the parts that are clean), then turn on
    `all-scopes`.
 
+### Output formats
+
+`--format` is `text` (the default), `json`, `github` (workflow annotations), `sarif` (below),
+`gitlab` (Code Climate JSON, for GitLab's merge-request Code Quality widget: pass the file as a
+`codequality` report artifact), `junit` (a test suite per file, a failed test case per offence, for
+Jenkins, Azure Pipelines, CircleCI or GitLab's test reports) or `rdjson` (for
+[reviewdog](https://github.com/reviewdog/reviewdog), with each certain fix as a suggestion).
+`--output-file FILE` writes the report there, and `--exit-zero` exits 0 even when there are errors
+(not when a file can't be read).
+
+### Editors (standard input)
+
+`constricter - --stdin-filename path/to/file.py` checks standard input, reported as that path (which
+also picks its per-path level and baseline entry; a `.ipynb` name reads a notebook). With `--fix` it
+prints the fixed source instead of a report, and `--diff` diffs it. That's what editors that lint
+unsaved buffers through a command need (none-ls, nvim-lint, flycheck, ALE, efm-langserver, Helix).
+
 ### SARIF (code scanning)
 
 `--format=sarif` writes SARIF 2.1.0, with each result's level (`error` or `warning`) set by
@@ -247,6 +274,23 @@ pre-commit, after ruff's hooks (or `constricter-fix`, which runs `--fix` first):
     - id: constricter
 ```
 
+tox and nox, with it in the environment's dependencies:
+
+```ini
+# tox.ini
+[testenv:types]
+deps = python-constricter
+commands = constricter --level=constrict src
+```
+
+```python
+# noxfile.py
+@nox.session
+def types(session: nox.Session) -> None:
+    session.install("python-constricter")
+    session.run("constricter", "--level=constrict", "src")
+```
+
 GitHub Actions, as PR annotations (it installs from the action's own tag, not PyPI):
 
 ```yaml
@@ -271,7 +315,7 @@ Checks (as CI runs them): `ruff check .` (every rule, preview included), `ruff f
 `typos`, `validate-pyproject pyproject.toml`, `uv lock --check`,
 `constricter --level=suffocate --all-scopes src tests`,
 `constricter --coverage --all-scopes --fail-under=100 src tests`, `pytest --cov` (100% branch
-coverage). Everything generated goes in `local/`. Python is indented with 2 spaces.
+coverage). Everything generated goes in `local/`. Python is indented with 4 spaces.
 
 After editing the `dev` group, run `uv lock` (CI fails until you do). Dependabot updates `uv.lock`,
 the npm lock and the actions weekly.
@@ -280,7 +324,12 @@ Fuzzing (`tests/test_fuzz.py`) runs with the tests: hypothesmith generates valid
 never crash the checker and must stay valid after `--fix`. For a large real codebase, run
 `local/.venv/bin/python tests/corpus.py [PATH]` by hand: it checks PATH (default: this Python's
 standard library, about 660 files in two seconds) at `suffocate` and prints the time, the offences
-per code, and any crash.
+per code, and any crash. `local/.venv/bin/python tests/corpus_fix.py [PATH]` runs
+`--fix --unsafe-fixes` on a copy of it (in `local/corpus-fix/`) and checks every file still compiles
+and a second pass has nothing left to fix (the standard library: about 3,800 fixes, none breaking).
+
+CI also runs the tests on PyPy 3.11 and free-threaded Python 3.14, which install only the `test`
+dependency group: every dev tool doesn't have wheels for them, and the tests don't need them all.
 
 Markdown (markdownlint-cli2 and prettier, locked in `.github/package-lock.json`):
 
@@ -294,19 +343,15 @@ git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/prettier --check
 
 Everything else is on. Some of these may be revisited.
 
-| Tool               | Rule                                                                                                                                 | Why                                                                                                                             |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| ruff               | `docstring-missing-returns` and `-yields` (DOC201/DOC402) for one-line docstrings only (`lint.pydoclint.ignore-one-line-docstrings`) | A one-line summary ("Return the …") already says what comes back; a longer docstring gets a `Returns:` or `Yields:` section.    |
-| ruff               | `missing-trailing-comma` (COM812)                                                                                                    | Conflicts with `ruff format`; ruff says to disable it.                                                                          |
-| ruff               | `incorrect-blank-line-before-class`, `multi-line-summary-second-line` (D203/D213)                                                    | Each contradicts a rule that stays on (D211/D212); one of each pair has to go.                                                  |
-| ruff               | `indentation-with-invalid-multiple` and `-comment` (E111/E114)                                                                       | They assume 4-space indents; ruff says to disable them at any other width. flake8's E111/E114 check the 2 spaces.               |
-| ruff (`tests/`)    | `assert` (S101)                                                                                                                      | pytest works through `assert`.                                                                                                  |
-| mypy, basedpyright | astroid's untyped calls and missing stubs                                                                                            | astroid (pylint's parser) ships no type information.                                                                            |
-| typos              | the word `astroid`                                                                                                                   | A real package name.                                                                                                            |
-| harden-runner      | `egress-policy: audit` on macOS and Windows, in the release and Scorecard jobs, and in the weekly external-link check                | macOS and Windows reach unpredictable OS hosts; the release and Scorecard jobs haven't run yet; external links can go anywhere. |
-| reuse              | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)                                                              | No recent release ships a wheel for Python 3.11+, so installing it builds from source with an unpinned `poetry-core`.           |
-| zizmor             | `self-repository` on the CI job that runs the repository's root action                                                               | zizmor wants `$/`, and actionlint rejects a bare `$/` (it has no path), so that one line uses `./`.                             |
-| vulture            | not run                                                                                                                              | Its only findings were flake8/pylint hook names, which it can't see being called.                                               |
+| Tool               | Rule                                                                                                                             | Why                                                                                                                                        |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| ruff               | `incorrect-blank-line-before-class`, `multi-line-summary-second-line` (D203/D213)                                                | Each contradicts a rule that stays on (D211/D212); one of each pair has to go.                                                             |
+| ruff (`tests/`)    | `assert` (S101)                                                                                                                  | pytest works through `assert`.                                                                                                             |
+| mypy, basedpyright | astroid's untyped calls and missing stubs                                                                                        | astroid (pylint's parser) ships no type information.                                                                                       |
+| typos              | the word `astroid`                                                                                                               | A real package name.                                                                                                                       |
+| harden-runner      | `egress-policy: audit` on macOS and Windows, in the release jobs (release.yml, build.yml), and in the weekly external-link check | harden-runner supports only audit on GitHub's macOS and Windows runners; the release jobs haven't run yet; external links can go anywhere. |
+| reuse              | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)                                                          | No recent release ships a wheel for Python 3.11+, so installing it builds from source with an unpinned `poetry-core`.                      |
+| zizmor             | `self-repository` on the CI job that runs the repository's root action                                                           | zizmor wants `$/`, and actionlint rejects a bare `$/` (it has no path), so that one line uses `./`.                                        |
 
 To apply the rulesets in `.github/rulesets/` (repo admin):
 
@@ -366,12 +411,18 @@ Done:
   3.6–3.9 would mean dropping `match` from the checker and keeping a second CI setup with older
   tools. Code written for any Python 3 version can still be checked.
 - **harden-runner** blocks all but the observed hosts in every Linux job that has run, the Linux
-  Test jobs included.
+  Test jobs and Scorecard included.
+- **Stdin**, **`gitlab`, `junit` and `rdjson` output**, **safe and `--unsafe-fixes`**, **per-file
+  ignores**, **`--exit-zero`** and **`--output-file`**, **tox and nox** snippets, **PyPy 3.11 and
+  free-threaded 3.14** in CI, and a manual **`--fix` corpus run** (`tests/corpus_fix.py`).
+- **Cross-module `--fix`** in the CLI (the flake8 and pylint plugins see one file at a time).
 
-Next, smallest first:
+Next:
 
-1. **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+.
-2. Revisit the [disabled rules](#disabled-rules).
+1. **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+ (6.2.0 still has only a
+   CPython 3.10 one).
+2. Revisit the [disabled rules](#disabled-rules) as tools change (last checked 2026-09-22: COM812,
+   one-line DOC201/DOC402 and `max-args` came back on; the rest can't go yet).
 
 After the first release (these need it on PyPI, or a published tag):
 

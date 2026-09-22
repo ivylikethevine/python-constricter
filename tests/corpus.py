@@ -26,31 +26,36 @@ _UNPARSABLE: Final = ": error: "  # how the command reports a file it can't read
 
 
 def main(argv: Sequence[str]) -> int:
-  """Check the corpus and print what it found; a crash isn't caught."""
-  root: Path = Path(argv[0]) if argv else Path(sysconfig.get_paths()["stdlib"])
-  files: int = sum(1 for _ in cli.python_files([root]))
-  out: io.StringIO = io.StringIO()
-  err: io.StringIO = io.StringIO()
-  start: float = time.perf_counter()
-  with (
-    contextlib.redirect_stdout(out),
-    contextlib.redirect_stderr(err),
-  ):  # a crash propagates, traceback and all
-    _ = cli.main(["--format=json", "--level=suffocate", "--all-scopes", "--jobs=0", str(root)])
-  seconds: float = time.perf_counter() - start
-  results: list[dict[str, _Json]] = cast("list[dict[str, _Json]]", json.loads(out.getvalue() or "[]"))
-  unparsable: list[str] = [line for line in err.getvalue().splitlines() if _UNPARSABLE in line]
-  _ = sys.stdout.write(f"{root}: {files} files in {seconds:.1f}s ({files / seconds:.0f} files/s)\n")
-  code: str
-  count: int
-  for code, count in sorted(Counter(str(r["code"]) for r in results).items()):
-    _ = sys.stdout.write(f"  {code}: {count}\n")
-  _ = sys.stdout.write(f"  unparsable by Python itself: {len(unparsable)}\n")
-  line: str
-  for line in unparsable[:10]:
-    _ = sys.stdout.write(f"    {line}\n")
-  return 0
+    """Check the corpus and print what it found; a crash isn't caught.
+
+    Returns:
+      0.
+
+    """
+    root: Path = Path(argv[0]) if argv else Path(sysconfig.get_paths()["stdlib"])
+    files: int = sum(1 for _ in cli.python_files([root]))
+    out: io.StringIO = io.StringIO()
+    err: io.StringIO = io.StringIO()
+    start: float = time.perf_counter()
+    with (
+        contextlib.redirect_stdout(out),
+        contextlib.redirect_stderr(err),
+    ):  # a crash propagates, traceback and all
+        _ = cli.main(["--format=json", "--level=suffocate", "--all-scopes", "--jobs=0", str(root)])
+    seconds: float = time.perf_counter() - start
+    results: list[dict[str, _Json]] = cast("list[dict[str, _Json]]", json.loads(out.getvalue() or "[]"))
+    unparsable: list[str] = [line for line in err.getvalue().splitlines() if _UNPARSABLE in line]
+    _ = sys.stdout.write(f"{root}: {files} files in {seconds:.1f}s ({files / seconds:.0f} files/s)\n")
+    code: str
+    count: int
+    for code, count in sorted(Counter(str(r["code"]) for r in results).items()):
+        _ = sys.stdout.write(f"  {code}: {count}\n")
+    _ = sys.stdout.write(f"  unparsable by Python itself: {len(unparsable)}\n")
+    line: str
+    for line in unparsable[:10]:
+        _ = sys.stdout.write(f"    {line}\n")
+    return 0
 
 
 if __name__ == "__main__":
-  sys.exit(main(sys.argv[1:]))
+    sys.exit(main(sys.argv[1:]))

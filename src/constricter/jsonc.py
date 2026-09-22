@@ -16,11 +16,16 @@ _TRAILING: re.Pattern[str] = re.compile(r'"(?:\\.|[^"\\])*"|,(?=\s*[\]}])')
 
 
 def _blank(match: re.Match[str]) -> str:
-  text: str = match.group()
-  return text if text.startswith('"') else re.sub(r"[^\n]", " ", text)
+    text: str = match.group()
+    return text if text.startswith('"') else re.sub(r"[^\n]", " ", text)
 
 
 def loads(text: str | bytes) -> object:
-  """Parse JSON that may have comments and trailing commas. Raises `ValueError` as `json.loads` does."""
-  source: str = text.decode("utf-8") if isinstance(text, bytes) else text
-  return cast("object", json.loads(_TRAILING.sub(_blank, _COMMENT.sub(_blank, source))))
+    """Parse JSON that may have comments and trailing commas.
+
+    Returns:
+      The value. Raises `ValueError` as `json.loads` does.
+
+    """
+    source: str = text.decode("utf-8") if isinstance(text, bytes) else text
+    return cast("object", json.loads(_TRAILING.sub(_blank, _COMMENT.sub(_blank, source))))
