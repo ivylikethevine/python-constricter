@@ -23,6 +23,7 @@ from constricter.noqa import lines, unsuppressed
 from constricter.offences import (
     DEFAULT_CHECKS,
     Checks,
+    Edit,
     Offence,
 )
 from constricter.rules.checker import Coverage, annotation_coverage, check_source
@@ -76,11 +77,22 @@ def check_text(
         check_source(source, str(name), checks, calls=calls),
         lines(source),
     )
-    return (
-        [replace(o, line=where[o.line - 1].line, cell=where[o.line - 1].cell) for o in offences]
-        if where
-        else offences
-    )
+    return [_placed(o, where) for o in offences] if where else offences
+
+
+def _placed(offence: Offence, where: list[notebook.Line]) -> Offence:
+    """Place an offence from a notebook's joined module in its cell, its declaration's line too.
+
+    Returns:
+      The offence, its `line` (and a `Edit.DECLARE` fix's statement line) counted in its `cell`.
+
+    """
+    line: notebook.Line = where[offence.line - 1]
+    placed: Offence = replace(offence, line=line.line, cell=line.cell)
+    if offence.edit is not None and offence.edit.edit is Edit.DECLARE:
+        statement: int = where[offence.edit.span[0] - 1].line
+        placed = replace(placed, edit=offence.edit._replace(span=(statement, offence.edit.span[1])))
+    return placed
 
 
 # One changed part of a fixed file (the file, or a notebook's cell): its label, old and new lines.
@@ -165,6 +177,22 @@ class _CoverageRun:
 _FileRun: TypeAlias = _CheckRun | _BaselineRun | _CoverageRun
 
 
+def _shown_lines(raw: str, name: Path) -> dict[tuple[int | None, int], str]:
+    """Map each line of `raw` (a notebook's, in its cells) to its text, as offences are placed.
+
+    Returns:
+      Each line's text, by its cell (`None` outside a notebook) and line number.
+
+    """
+    source: str
+    where: list[notebook.Line]
+    source, where = _source(raw, name)
+    return {
+        (where[index].cell if where else None, where[index].line if where else index + 1): text
+        for index, text in enumerate(source.splitlines())
+    }
+
+
 def _checked(path: Path, name: Path, checks: Checks, calls: Mapping[str, str]) -> tuple[str, list[Offence]]:
     """Read `path` and check it as `name`; raises what reading or parsing it does.
 
@@ -213,7 +241,11 @@ def _check_path(path: Path, calls: Mapping[str, str], options: Options) -> _Chec
         return _CheckRun(error=error)
     baselined: int
     offences, baselined = options.filter.unbaselined(name, offences)
-    results: list[Result] = options.filter.results(name, offences)
+    shown: dict[tuple[int | None, int], str] = _shown_lines(raw, name)
+    results: list[Result] = [
+        r._replace(source=shown.get((r.offence.cell, r.offence.line), ""))
+        for r in options.filter.results(name, offences)
+    ]
     unsafe: bool = options.unsafe_fixes
     fixing: list[Offence] = [r.offence for r in results if r.offence.fix and (unsafe or not r.offence.unsafe)]
     if options.mode is Mode.DIFF:
@@ -290,7 +322,7 @@ def _report(options: Options, runs: Sequence[_FileRun], files: int) -> int:
     checked: Sequence[_CheckRun] = cast("Sequence[_CheckRun]", runs)
     results: list[Result] = [result for run in checked for result in run.results]
     output: Output = options.output
-    text: bool = output.fmt is Format.TEXT
+    text: bool = output.fmt in {Format.TEXT, Format.FULL}
     line: str
     for line in statistics(results) if text and output.statistics else render(output.fmt, results):
         _ = sys.stdout.write(f"{line}\n")

@@ -21,6 +21,7 @@ class Format(StrEnum):
     """The `--format` choices."""
 
     TEXT = "text"
+    FULL = "full"  # text, with each offence's source line and a caret under the name
     JSON = "json"
     GITHUB = "github"
     SARIF = "sarif"
@@ -35,6 +36,7 @@ class Result(NamedTuple):
     path: Path
     offence: Offence
     level: Level
+    source: str = ""  # the offending line, for `--format=full`
 
     @property
     def severity(self) -> str:
@@ -99,6 +101,29 @@ def _text(results: Sequence[Result]) -> Iterator[str]:
         cell: str = "" if r.offence.cell is None else f"cell {r.offence.cell}:"
         where: str = f"{r.path}:{cell}{r.offence.line}:{r.offence.col + 1}"
         yield f"{where}: {r.severity}: {r.offence.code} {r.offence.message}"
+
+
+def _full(results: Sequence[Result]) -> Iterator[str]:
+    """Render `_text`'s lines, each followed by its source line and a caret under the name.
+
+    Yields:
+      The lines: a result's text line, then a gutter numbered with its line, the source, and the
+      caret, then a blank line.
+
+    """
+    r: Result
+    for r in results:
+        yield from _text([r])
+        source: str = r.source
+        # `col` counts UTF-8 bytes, as `ast` does; the caret goes under that many characters.
+        start: int = len(source.encode()[: r.offence.col].decode(errors="ignore"))
+        width: int = len(r.offence.name) if source[start:].startswith(r.offence.name) else 1
+        number: str = str(r.offence.line)
+        gutter: str = " " * len(number)
+        yield f"{gutter} |"
+        yield f"{number} | {source}"
+        yield f"{gutter} | {' ' * start}{'^' * width}"
+        yield ""
 
 
 def _json(results: Sequence[Result]) -> Iterator[str]:
@@ -224,6 +249,7 @@ def _rdjson(results: Sequence[Result]) -> Iterator[str]:
 _Renderer: TypeAlias = Callable[[Sequence[Result]], Iterator[str]]
 _RENDERERS: dict[Format, _Renderer] = {
     Format.TEXT: _text,
+    Format.FULL: _full,
     Format.JSON: _json,
     Format.GITHUB: _github,
     Format.SARIF: lambda results: iter([json.dumps(_sarif(results), indent=2)]),

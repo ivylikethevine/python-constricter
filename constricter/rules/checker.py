@@ -6,7 +6,16 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Final, NamedTuple, cast
 
-from constricter.fix.inference import Inference, Known, guessed, inference, inferred
+from constricter.fix.inference import (
+    Inference,
+    Known,
+    guessed,
+    inference,
+    inferred,
+    iterated,
+    looped,
+    unpacked,
+)
 from constricter.jsonc import as_text
 from constricter.offences import (
     COMMENT_TYPED_TARGET,
@@ -18,10 +27,13 @@ from constricter.offences import (
     UNTYPED_TARGET,
     VAGUE_TYPE,
     Checks,
+    Edit,
+    Fix,
     Offence,
     at,
 )
 from constricter.rules.annotations import (
+    awaited_returns,
     classes,
     depth,
     factories,
@@ -32,7 +44,7 @@ from constricter.rules.annotations import (
     node_name,
     returns,
 )
-from constricter.rules.flow import Finding, Hierarchy, Lifetime, augmented, findings, members
+from constricter.rules.flow import Finding, Hierarchy, Kind, Lifetime, augmented, findings, members
 from constricter.rules.redundant import redundant
 from constricter.rules.syntax import (
     FunctionDef,
@@ -112,7 +124,7 @@ def _settings(
         checks.nesting,
         checks.max_length,
         lines,
-        Known(calls, factories(tree), classes(tree), method_returns(tree)),
+        Known(calls, factories(tree), classes(tree), method_returns(tree), awaited_returns(tree)),
         Hierarchy.for_module(tree, {name: frozenset(wider) for name, wider in checks.narrower}),
         owners(tree),
     )
@@ -138,10 +150,7 @@ def check_tree(
     settings: _Settings = _settings(tree, checks, lines, {**(calls or {}), **returns(tree)})
     scopes: list[_Scope] = _scopes(tree, settings)
     # A finding's kind is the code that reports it (LVA008, LVA009, LVA010).
-    flow: list[Offence] = [
-        Offence(found.line, found.col, found.name, found.kind.value, detail=found.detail)
-        for found in _value_flow(tree, scopes)
-    ]
+    flow: list[Offence] = _flow_offences(_value_flow(tree, scopes))
     return sorted([*(o for scope in scopes for o in scope.reported()), *redundant(tree), *flow])
 
 
@@ -268,13 +277,13 @@ class _Scope:
         """
         return self.flow.setdefault(name, Lifetime())
 
-    def bind(self, name: str, where: tuple[int, int], code: str | None) -> None:
+    def bind(self, name: str, where: tuple[int, int], code: str | None, fix: Fix | None = None) -> None:
         """Bind `name` to a value value flow can't see; unless it's already bound, report `code`.
 
-        `code` is reported at `(line, col)`; `None` means typed.
+        `code` is reported at `(line, col)` (`None` means typed), offering `fix` if there's one.
         """
         self.lifetime(name).bind(where, None)
-        self._first(name, where, code, None, unsafe=False)
+        self._first(name, where, code, fix)
 
     def assign(self, target: ast.Name, code: str | None, value: ast.expr) -> None:
         """Bind `target` to `value` (`name = value`), offering `--fix`'s annotation for it."""
@@ -287,7 +296,7 @@ class _Scope:
             self.inferred.types,
         )
         self.lifetime(name).bind(at(target), _certain(self, value))
-        self._first(name, at(target), code, fix, unsafe=unsafe)
+        self._first(name, at(target), code, None if fix is None else Fix(fix.annotation, fix.reason, unsafe))
         if fix is not None and name not in self.inferred.types:
             self.inferred.types[name] = fix.annotation
             if unsafe:
@@ -298,23 +307,22 @@ class _Scope:
         name: str,
         where: tuple[int, int],
         code: str | None,
-        fix: Inference | None,
-        *,
-        unsafe: bool,
+        fix: Fix | None,
     ) -> None:
-        """Unless `name` is already bound, record its first binding, reporting `code` (`None`: typed)."""
+        """Unless `name` is already bound, record its first binding, reporting `code` (`None`: typed).
+
+        The offence offers `fix`, unless this is a class body (a dataclass's annotation is a field).
+        """
         if name not in self.declared:
             self.declared.add(name)
             self.first.append(name)
             if code is not None:
-                offered: Inference = fix if fix and self.fixable else Inference("", "")
-                fixed: str | None = offered.annotation or None
-                self.offences.append(Offence(*where, name, code, fixed, unsafe=unsafe, reason=offered.reason))
+                self.offences.append(Offence(*where, name, code, fix if self.fixable else None))
 
     def declare(self, name: str) -> None:
         """Bind `name` by an annotation (`name: T`, `name: T = ...`): a typed first binding."""
         # position is unused: `code` is `None`, so nothing is reported
-        self._first(name, (0, 0), None, None, unsafe=False)
+        self._first(name, (0, 0), None, None)
 
     def opaque(self, names: Iterable[str]) -> None:
         """Record bindings whose values value flow can't see: an import, a `def`, `except ... as`."""
@@ -498,7 +506,7 @@ def _declare(scope: _Scope, stmt: ast.stmt) -> None:
             scope.declare(name)
             scope.annotation(name, annotation)
             _ = scope.inferred.types.setdefault(name, ast.unparse(annotation))
-            scope.lifetime(name).declare(ast.unparse(annotation), at(target))
+            scope.lifetime(name).declare(ast.unparse(annotation), at(target), _span(annotation, target))
             if stmt.value is not None:
                 scope.lifetime(name).bind(at(target), _certain(scope, stmt.value))
         case _ if type(stmt).__name__ == _TYPE_ALIAS:
@@ -510,6 +518,53 @@ def _declare(scope: _Scope, stmt: ast.stmt) -> None:
             scope.opaque(names)
         case _:
             pass
+
+
+def _span(annotation: ast.expr, target: ast.expr) -> tuple[int, int] | None:
+    """Find an annotation's columns, if it's all on its target's line (so `--fix` can rewrite it).
+
+    Returns:
+      Its start and end columns (UTF-8 bytes, as `ast` counts), or `None`.
+
+    """
+    one_line: bool = annotation.lineno == annotation.end_lineno == target.lineno
+    return (annotation.col_offset, annotation.end_col_offset or 0) if one_line else None
+
+
+def _flow_offences(found: list[Finding]) -> list[Offence]:
+    """Report value-flow findings as offences, a finding's kind as its code.
+
+    Each declaration LVA008 or LVA010 would narrow gets one fix, a guess (`--unsafe-fixes`: a
+    declared type can be wider on purpose): the LVA008 finding's narrowed type if there's one,
+    since it's already within the members the values use, else the union without its unused
+    members, on the first LVA010 finding. Two rewrites of one annotation can't both apply.
+
+    Returns:
+      The offences.
+
+    """
+    offences: list[Offence] = []
+    fixed: set[tuple[int, int]] = set()
+    finding: Finding
+    narrowed: set[tuple[int, int]] = {(f.line, f.col) for f in found if f.kind is Kind.NARROWABLE}
+    for finding in sorted(found, key=lambda f: f.kind is not Kind.NARROWABLE):
+        where: tuple[int, int] = (finding.line, finding.col)
+        edit: Fix | None = None
+        if (
+            finding.span
+            and finding.rewrite
+            and where not in fixed
+            and (finding.kind is Kind.NARROWABLE or where not in narrowed)
+        ):
+            fixed.add(where)
+            reason: str = (
+                "the values it's bound to"
+                if finding.kind is Kind.NARROWABLE
+                else "the members its values use"
+            )
+            edit = Fix(finding.rewrite, reason, unsafe=True, edit=Edit.REPLACE, span=finding.span)
+        offences.append(Offence(*where, finding.name, finding.kind.value, edit, detail=finding.detail))
+    return offences
 
 
 def _certain(scope: _Scope, value: ast.expr) -> str | None:
@@ -546,6 +601,9 @@ def _bind(scope: _Scope, stmt: ast.stmt) -> None:
     match stmt:
         case ast.Assign(targets=[ast.Name() as single], value=value, type_comment=comment):
             scope.assign(single, scope.unannotated(comment), value)
+        case ast.Assign(targets=[ast.Tuple() | ast.List() as target], value=value, type_comment=comment):
+            typed: Inference | None = inference(value, scope.settings.known, scope.inferred.types)
+            _bind_declared(scope, stmt, target, typed, [value])
         case ast.Assign(targets=targets, type_comment=comment):
             _bind_targets(scope, targets, scope.unannotated(comment))
         case ast.With(items=items, type_comment=comment) | ast.AsyncWith(items=items, type_comment=comment):
@@ -554,14 +612,61 @@ def _bind(scope: _Scope, stmt: ast.stmt) -> None:
                 [i.optional_vars for i in items if i.optional_vars],
                 scope.unannotated(comment),
             )
-        case ast.For(target=target, type_comment=comment) | ast.AsyncFor(target=target, type_comment=comment):
-            _bind_targets(scope, [target], UNTYPED_TARGET if comment is None else COMMENT_TYPED_TARGET)
+        case (
+            ast.For(target=target, iter=value, type_comment=None)
+            | ast.AsyncFor(
+                target=target,
+                iter=value,
+                type_comment=None,
+            )
+        ):
+            typed = looped(value, scope.settings.known, scope.inferred.types)
+            _bind_declared(scope, stmt, target, typed, iterated(value))
+        case ast.For(target=target) | ast.AsyncFor(target=target):
+            _bind_targets(scope, [target], COMMENT_TYPED_TARGET)
         case ast.Match(cases=cases):
             _bind_captures(scope, cases)
         case ast.AugAssign(target=ast.Name(id=name) as single, op=op, value=value):
             scope.lifetime(name).bind(at(single), augmented(op, _certain(scope, value)))
         case _:
             pass
+
+
+def _bind_declared(
+    scope: _Scope,
+    stmt: ast.stmt,
+    target: ast.expr,
+    typed: Inference | None,
+    bases: list[ast.expr],
+) -> None:
+    """Bind each name in `target` (a loop's, or an unpacking's), offering to declare each before `stmt`.
+
+    `typed` is what the whole target gets (a loop's element, an unpacked value's type), split over
+    its names (see `unpacked`); a name whose part isn't known gets no fix. The fixes are guesses if
+    any of `bases`, the values `typed` came from, is. A loop's untyped target is LVA002, an
+    unpacking's LVA001 (or LVA004), unless a type comment types it.
+    """
+    known: Known = scope.settings.known
+    unsafe: bool = any(
+        guessed(base, known, frozenset(scope.inferred.guesses), scope.inferred.types) for base in bases
+    )
+    code: str | None = (
+        UNTYPED_TARGET
+        if isinstance(stmt, ast.For | ast.AsyncFor)
+        else scope.unannotated(cast("ast.Assign", stmt).type_comment)
+    )
+    name: ast.Name
+    annotation: str | None
+    for name, annotation in unpacked(target, None if typed is None else typed.annotation):
+        fix: Fix | None = None
+        if typed is not None and annotation is not None:
+            fix = Fix(annotation, typed.reason, unsafe, Edit.DECLARE, (stmt.lineno, stmt.col_offset))
+            # What the rest of the scope infers from `name` knows its type, as for `name = value`.
+            if name.id not in scope.inferred.types:
+                scope.inferred.types[name.id] = annotation
+                if unsafe:
+                    scope.inferred.guesses.add(name.id)
+        scope.bind(name.id, at(name), code, fix)
 
 
 def _bind_targets(scope: _Scope, targets: list[ast.expr], code: str | None) -> None:

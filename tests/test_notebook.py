@@ -9,7 +9,7 @@ import pytest
 
 from constricter import notebook
 from constricter.cli import command as cli
-from constricter.offences import Offence
+from constricter.offences import Fix, Offence
 
 _Json: TypeAlias = "str | int | list[_Json] | dict[str, _Json] | None"
 _Cell: TypeAlias = dict[str, str | list[str]]
@@ -100,9 +100,9 @@ def test_fix_ignores_an_offence_without_a_fix_or_a_cell() -> None:
     cells: list[_Cell] = [{"cell_type": "code", "source": ["a = 0\n"]}]
     raw: str = _nbformat(cells)
     offences: list[Offence] = [
-        Offence(1, 0, "unfixable", fix=None, cell=1),
-        Offence(1, 0, "cellless", fix="int", cell=None),
-        Offence(1, 0, "a", fix="int", cell=1),
+        Offence(1, 0, "unfixable", cell=1),
+        Offence(1, 0, "cellless", edit=Fix("int"), cell=None),
+        Offence(1, 0, "a", edit=Fix("int"), cell=1),
     ]
     text: str
     changed: list[notebook.Cell]

@@ -3,7 +3,7 @@
 
 import ast
 from dataclasses import dataclass, field
-from enum import IntEnum
+from enum import IntEnum, StrEnum
 from typing import Final, NamedTuple
 
 from constricter.rules.flow import Narrower
@@ -70,6 +70,24 @@ _REPORTED_FROM: dict[str, Level] = {
 }
 
 
+class Edit(StrEnum):
+    """Where a `Fix` writes its annotation."""
+
+    ANNOTATE = "annotate"  # `: T` after the offence's name
+    REPLACE = "replace"  # over an annotation already there (`Fix.span`: its start and end column)
+    DECLARE = "declare"  # `name: T` on a line of its own before a statement (`Fix.span`: its line and column)
+
+
+class Fix(NamedTuple):
+    """The annotation `--fix` would write for an offence, how its value decided it, and where."""
+
+    annotation: str
+    reason: str = ""  # `--show-fixes`
+    unsafe: bool = False  # a guess, applied only with `--unsafe-fixes`
+    edit: Edit = Edit.ANNOTATE
+    span: tuple[int, int] = (0, 0)  # see `Edit`; columns count UTF-8 bytes, as `ast`'s do
+
+
 @dataclass(frozen=True, order=True)
 class Offence:
     """One untyped first binding; `col` is 0-based."""
@@ -78,16 +96,27 @@ class Offence:
     col: int
     name: str
     code: str = UNANNOTATED
-    # The annotation `--fix` would add, where the value makes it unambiguous.
-    fix: str | None = field(default=None, compare=False)
+    # What `--fix` would write, where the value makes it unambiguous (or, if `unsafe`, a guess).
+    edit: Fix | None = field(default=None, compare=False)
     # In a notebook, the cell (from 1); `line` is then the line in that cell.
     cell: int | None = field(default=None, compare=False)
-    # Whether `fix` is a guess, applied only with `--unsafe-fixes`.
-    unsafe: bool = field(default=False, compare=False)
-    # How the value decided `fix` (`--show-fixes`).
-    reason: str = field(default="", compare=False)
     # What the message names besides the variable: LVA008's to LVA010's type, LVA011's length.
     detail: str = field(default="", compare=False)
+
+    @property
+    def fix(self) -> str | None:
+        """The annotation `--fix` would write, if any."""
+        return None if self.edit is None else self.edit.annotation
+
+    @property
+    def unsafe(self) -> bool:
+        """Whether the fix is a guess, applied only with `--unsafe-fixes`."""
+        return self.edit is not None and self.edit.unsafe
+
+    @property
+    def reason(self) -> str:
+        """How the value decided the fix (`--show-fixes`)."""
+        return "" if self.edit is None else self.edit.reason
 
     @property
     def message(self) -> str:

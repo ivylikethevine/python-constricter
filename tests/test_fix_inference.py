@@ -53,7 +53,7 @@ def test_fixes_are_offered_only_where_the_value_decides_the_type(value: str, fix
 
 
 def test_fixes_are_offered_only_for_a_single_plain_name() -> None:
-    """Unpacking, chained `=`, `:=`, `with` and class bodies are never fixed; module bodies are."""
+    """Chained `=`, `:=` and class bodies are never fixed; module bodies are, and so is unpacking."""
     source: str = textwrap.dedent(
         """
     LIMIT = 3
@@ -72,8 +72,8 @@ def test_fixes_are_offered_only_for_a_single_plain_name() -> None:
     )
     assert [(o.name, o.fix) for o in check_source(source, checks=Checks(all_scopes=True))] == [
         ("LIMIT", "int"),
-        ("a", None),
-        ("b", None),
+        ("a", "int"),  # declared before the statement: see tests/test_declarations.py
+        ("b", "int"),
         ("c", None),
         ("d", None),
         ("e", None),

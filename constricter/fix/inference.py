@@ -3,9 +3,10 @@
 
 import ast
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, NamedTuple
 
+from constricter.fix.returns import BUILTIN_RETURNS, METHOD_RETURNS, method_return
 from constricter.rules.annotations import GENERICS, node_name
 
 if TYPE_CHECKING:
@@ -30,123 +31,19 @@ _FACTORIES: Final = frozenset(
 
 
 _NUMBERS: Final = (int, float, complex)
-
-
-# Builtins whose return type is fixed by the language, whatever their argument: safe to infer, not
-# a guess (unlike a capitalised call, which could really be a generic class or a factory function).
-_BUILTIN_RETURNS: Final = {
-    "bool": "bool",
-    "bytes": "bytes",
-    "callable": "bool",
-    "chr": "str",
-    "complex": "complex",
-    "float": "float",
-    "hasattr": "bool",
-    "hash": "int",
-    "id": "int",
-    "int": "int",
-    "isinstance": "bool",
-    "issubclass": "bool",
-    "len": "int",
-    "ord": "int",
-    "repr": "str",
-    "str": "str",
+# The builtin scalars arithmetic on which nothing can overload: numbers, and text.
+_FLOAT: Final = "float"
+_NUMBER_NAMES: Final = frozenset({"bool", "int", _FLOAT})
+_INTEGER_NAMES: Final = frozenset({"bool", "int"})
+_TEXT_NAMES: Final = frozenset({"str", "bytes"})
+# Builtins that build a container of their argument's elements, and the type they build.
+_CONTAINER_BUILDERS: Final = {
+    "sorted": "list[{}]",
+    "list": "list[{}]",
+    "set": "set[{}]",
+    "frozenset": "frozenset[{}]",
+    "tuple": "tuple[{}, ...]",
 }
-
-
-# `str`/`bytes` methods whose return type is fixed by the language, whatever their arguments: safe
-# to infer for a call on an already-typed local, not a guess.
-_STR_METHODS: Final = {
-    "capitalize": "str",
-    "casefold": "str",
-    "center": "str",
-    "count": "int",
-    "encode": "bytes",
-    "endswith": "bool",
-    "expandtabs": "str",
-    "find": "int",
-    "format": "str",
-    "format_map": "str",
-    "index": "int",
-    "isalnum": "bool",
-    "isalpha": "bool",
-    "isascii": "bool",
-    "isdecimal": "bool",
-    "isdigit": "bool",
-    "isidentifier": "bool",
-    "islower": "bool",
-    "isnumeric": "bool",
-    "isprintable": "bool",
-    "isspace": "bool",
-    "istitle": "bool",
-    "isupper": "bool",
-    "join": "str",
-    "ljust": "str",
-    "lower": "str",
-    "lstrip": "str",
-    "removeprefix": "str",
-    "removesuffix": "str",
-    "replace": "str",
-    "rfind": "int",
-    "rindex": "int",
-    "rjust": "str",
-    "rsplit": "list[str]",
-    "rstrip": "str",
-    "split": "list[str]",
-    "splitlines": "list[str]",
-    "startswith": "bool",
-    "strip": "str",
-    "swapcase": "str",
-    "title": "str",
-    "translate": "str",
-    "upper": "str",
-    "zfill": "str",
-}
-
-
-_BYTES_METHODS: Final = {
-    "capitalize": "bytes",
-    "center": "bytes",
-    "count": "int",
-    "decode": "str",
-    "endswith": "bool",
-    "expandtabs": "bytes",
-    "find": "int",
-    "hex": "str",
-    "index": "int",
-    "isalnum": "bool",
-    "isalpha": "bool",
-    "isascii": "bool",
-    "isdigit": "bool",
-    "islower": "bool",
-    "isspace": "bool",
-    "istitle": "bool",
-    "isupper": "bool",
-    "join": "bytes",
-    "ljust": "bytes",
-    "lower": "bytes",
-    "lstrip": "bytes",
-    "removeprefix": "bytes",
-    "removesuffix": "bytes",
-    "replace": "bytes",
-    "rfind": "int",
-    "rindex": "int",
-    "rjust": "bytes",
-    "rsplit": "list[bytes]",
-    "rstrip": "bytes",
-    "split": "list[bytes]",
-    "splitlines": "list[bytes]",
-    "startswith": "bool",
-    "strip": "bytes",
-    "swapcase": "bytes",
-    "title": "bytes",
-    "translate": "bytes",
-    "upper": "bytes",
-    "zfill": "bytes",
-}
-
-
-_METHOD_RETURNS: Final = {"str": _STR_METHODS, "bytes": _BYTES_METHODS}
 
 
 @dataclass(frozen=True)
@@ -157,90 +54,14 @@ class Known:
     `factories`: names that build a class or special form rather than an instance of it (see
     `factories`), so a call to one is never guessed to construct one. `classes` and `methods`: each
     class's annotated attributes (see `classes`) and methods' return types (see `method_returns`).
+    `awaits`: what awaiting a call to each of its `async def`s gives (see `awaited_returns`).
     """
 
     calls: Mapping[str, str]
     factories: frozenset[str]
     classes: Mapping[str, Mapping[str, str]]
     methods: Mapping[str, Mapping[str, str]]
-
-
-def _method_return(
-    receiver: str,
-    call: ast.Call,
-    method: str,
-    known_methods: Mapping[str, Mapping[str, str]],
-) -> str | None:
-    """Look up the type of `call`, a `method` call on a receiver whose own type is `receiver`, as text.
-
-    A fixed-return `str`/`bytes` method (`_METHOD_RETURNS`), a method of a class defined in the
-    module (`known_methods`, see `method_returns`), or a `list`/`set`/`dict` method whose return is the
-    receiver's own element type (`_element_method`).
-
-    Returns:
-      The annotation as source text, or `None` if none of those decides one.
-
-    """
-    return (
-        _METHOD_RETURNS.get(receiver, {}).get(method)
-        or known_methods.get(receiver, {}).get(method)
-        or _element_method(receiver, call, method)
-    )
-
-
-def _element_method(receiver: str, call: ast.Call, method: str) -> str | None:
-    """Infer a `list`, `set` or `dict` method call's type from the receiver's own type parameters.
-
-    `copy()` is the receiver's type; `pop()` a `list`'s or `set`'s element (with an optional index
-    for a `list`); `pop(key)`, `setdefault(key, value)` and `get(key)` a `dict`'s value (`get` as
-    `V | None`); `popitem()` its `tuple[K, V]`. A call with any other arguments (`pop(key, default)`,
-    a keyword) can return something else, so it decides nothing.
-
-    Returns:
-      The annotation as source text, or `None` if the call doesn't decide one.
-
-    """
-    # `receiver` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
-    root: ast.expr = ast.parse(receiver, mode="eval").body
-    call_shape: tuple[str, int | None] = (method, None if call.keywords else len(call.args))
-    element: ast.expr
-    key: ast.expr
-    match root:
-        case ast.Subscript(value=ast.Name(id="list" | "List" | "set" | "Set" | "dict" | "Dict")) if (
-            call_shape == ("copy", 0)
-        ):
-            return receiver
-        case ast.Subscript(value=ast.Name(id="list" | "List"), slice=element) if call_shape in {
-            ("pop", 0),
-            ("pop", 1),
-        }:
-            return ast.unparse(element)
-        case ast.Subscript(value=ast.Name(id="set" | "Set"), slice=element) if call_shape == ("pop", 0):
-            return ast.unparse(element)
-        case ast.Subscript(value=ast.Name(id="dict" | "Dict"), slice=ast.Tuple(elts=[key, element])):
-            return _dict_method(call_shape, key, element)
-        case _:
-            return None
-
-
-def _dict_method(call_shape: tuple[str, int | None], key: ast.expr, value: ast.expr) -> str | None:
-    """Infer a `dict[key, value]` method call's type, by its name and positional argument count.
-
-    Returns:
-      The annotation as source text, or `None` if the call doesn't decide one.
-
-    """
-    match call_shape:
-        case ("pop", 1) | ("setdefault", 2):
-            return ast.unparse(value)
-        case ("get", 1) if not any(
-            isinstance(node, ast.Constant) and isinstance(node.value, str) for node in ast.walk(value)
-        ):  # a string (forward-reference) value type can't take `| None` where it's evaluated
-            return f"{ast.unparse(value)} | None"
-        case ("popitem", 0):
-            return f"tuple[{ast.unparse(key)}, {ast.unparse(value)}]"
-        case _:
-            return None
+    awaits: Mapping[str, str] = field(default_factory=dict[str, str])
 
 
 class Inference(NamedTuple):
@@ -270,7 +91,7 @@ def inference(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
     declares its return type, a class it constructs, or (`declared`) another local this scope
     already gave a type: a plain copy, a subscript of a known container, an attribute of a class
     defined in this module, or a method call on it (a `str`/`bytes` or `list`/`set`/`dict` method,
-    or a method of a class defined in this module; see `_method_return`).
+    or a method of a class defined in this module; see `method_return`).
 
     Returns:
       The annotation as source text and its reason, or `None` if the value doesn't decide one.
@@ -301,7 +122,7 @@ def _from_local(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
         ):
             return Inference(found, f"the annotation of `{declared[name]}.{attr}`")
         case ast.Call(func=ast.Attribute(value=ast.Name(id=name), attr=attr)) if name in declared and (
-            found := _method_return(declared[name], value, attr, known.methods)
+            found := method_return(declared[name], value, attr, known.methods)
         ):
             return Inference(found, _method_reason(declared[name], attr, known.methods))
         case _:
@@ -309,13 +130,13 @@ def _from_local(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
 
 
 def _method_reason(receiver: str, method: str, known_methods: Mapping[str, Mapping[str, str]]) -> str:
-    """Say which of `_method_return`'s sources typed a `method` call on a `receiver`.
+    """Say which of `method_return`'s sources typed a `method` call on a `receiver`.
 
     Returns:
       The reason.
 
     """
-    if method in _METHOD_RETURNS.get(receiver, {}):
+    if method in METHOD_RETURNS.get(receiver, {}):
         return f"`{receiver}.{method}`'s fixed return type"
     if method in known_methods.get(receiver, {}):
         return f"`{receiver}.{method}`'s declared return type"
@@ -350,7 +171,141 @@ def _from_value(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
         return Inference(found, _scalar_reason(value))
     if found := _container(value, known, declared):
         return Inference(found, f"a {found.partition('[')[0]} whose elements' types agree")
-    return _called(value, known.calls, known.factories)
+    return _computed(value, known, declared) or _called(value, known.calls, known.factories)
+
+
+def _computed(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inference | None:
+    """Infer a value computed from others whose types are known.
+
+    `a if c else b` when both agree; arithmetic on builtin scalars (`_arithmetic`); a list, set or
+    dict comprehension whose elements' type is known, its targets typed as a loop's; `sorted`,
+    `list`, `set`, `frozenset` or `tuple` of something whose elements are known; and `await` of a
+    call to one of the module's `async def`s.
+
+    Returns:
+      The inference, or `None`.
+
+    """
+    body: ast.expr
+    orelse: ast.expr
+    name: str
+    first: ast.expr
+    match value:
+        case ast.IfExp(body=body, orelse=orelse):
+            sides: tuple[str | None, str | None] = (
+                inferred(body, known, declared),
+                inferred(orelse, known, declared),
+            )
+            return (
+                Inference(sides[0], "both sides of a conditional")
+                if sides[0] and sides[0] == sides[1]
+                else None
+            )
+        case ast.BinOp():
+            return _arithmetic(value, known, declared)
+        case ast.ListComp() | ast.SetComp() | ast.DictComp():
+            return _comprehension(value, known, declared)
+        case ast.Call(func=ast.Name(id=name), args=[first], keywords=[]) if name in _CONTAINER_BUILDERS:
+            found: Inference | None = looped(first, known, declared)
+            built: str = _CONTAINER_BUILDERS[name]
+            return (
+                None
+                if found is None
+                else Inference(built.format(found.annotation), f"`{name}` of {found.reason}")
+            )
+        case ast.Await(value=ast.Call(func=ast.Name(id=name))) if name in known.awaits:
+            return Inference(known.awaits[name], f"`{name}`'s declared return type, awaited")
+        case _:
+            return None
+
+
+def _arithmetic(value: ast.BinOp, known: Known, declared: Mapping[str, str]) -> Inference | None:
+    """Infer arithmetic on builtin scalars, whose operators nothing can overload.
+
+    Numbers: `/` gives a `float`; `+`, `-`, `*`, `//` and `%` a `float` if either side is one, else
+    an `int` (`**` can give a `float` from `int`s, so it's left out). `str` and `bytes`: `+` of two,
+    `*` by an `int`, and `%` formatting give the same type back.
+
+    Returns:
+      The inference, or `None` for any other operator or operand.
+
+    """
+    left: str | None = inferred(value.left, known, declared)
+    right: str | None = inferred(value.right, known, declared)
+    op: ast.operator = value.op
+    reason: str = "arithmetic on builtin types"
+    if left in _NUMBER_NAMES and right in _NUMBER_NAMES:
+        if isinstance(op, ast.Div):
+            return Inference("float", reason)
+        if isinstance(op, ast.Add | ast.Sub | ast.Mult | ast.FloorDiv | ast.Mod):
+            return Inference(_FLOAT if _FLOAT in {left, right} else "int", reason)
+        return None
+    text: str | None = left if left in _TEXT_NAMES else None
+    return Inference(text, reason) if text is not None and _keeps_text(op, text, right) else None
+
+
+def _keeps_text(op: ast.operator, text: str, right: str | None) -> bool:
+    """Check whether `text op right` (`text` a `str` or `bytes`) gives `text` back.
+
+    Returns:
+      Whether it does: `+` of two, `*` by an integer, or `%` formatting.
+
+    """
+    if isinstance(op, ast.Add):
+        return right == text
+    if isinstance(op, ast.Mult):
+        return right in _INTEGER_NAMES
+    return isinstance(op, ast.Mod)
+
+
+def _comprehension(
+    value: ast.ListComp | ast.SetComp | ast.DictComp,
+    known: Known,
+    declared: Mapping[str, str],
+) -> Inference | None:
+    """Infer a comprehension's type from its elements', its targets typed as a loop's are.
+
+    Returns:
+      The inference, or `None` if an element's type isn't known.
+
+    """
+    inside: dict[str, str] = comprehended(value, known, declared)
+    reason: str = "a comprehension's elements"
+    match value:
+        case ast.DictComp():
+            key: str | None = inferred(value.key, known, inside)
+            item: str | None = inferred(value.value, known, inside)
+            return Inference(f"dict[{key}, {item}]", reason) if key and item else None
+        case _:
+            element: str | None = inferred(value.elt, known, inside)
+            kind: str = "list" if isinstance(value, ast.ListComp) else "set"
+            return Inference(f"{kind}[{element}]", reason) if element else None
+
+
+def comprehended(value: ast.expr, known: Known, declared: Mapping[str, str]) -> dict[str, str]:
+    """Type the targets of every comprehension in `value`, as a loop's are, over what's `declared`.
+
+    A target whose type isn't known is dropped (it shadows any outer name of the same name).
+
+    Returns:
+      `declared`, with the targets' types.
+
+    """
+    inside: dict[str, str] = dict(declared)
+    node: ast.AST
+    generator: ast.comprehension
+    for node in ast.walk(value):
+        if isinstance(node, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp):
+            for generator in node.generators:
+                found: Inference | None = looped(generator.iter, known, inside)
+                name: ast.Name
+                part: str | None
+                for name, part in unpacked(generator.target, None if found is None else found.annotation):
+                    if part is None:
+                        _ = inside.pop(name.id, None)
+                    else:
+                        inside[name.id] = part
+    return inside
 
 
 def _scalar(value: ast.expr) -> str | None:
@@ -446,8 +401,8 @@ def _called(value: ast.expr, calls: Mapping[str, str], known_factories: frozense
     match value:
         case ast.Call(func=ast.Name() | ast.Attribute() as func) if ast.unparse(func) in calls:
             return Inference(calls[ast.unparse(func)], f"`{ast.unparse(func)}`'s declared return type")
-        case ast.Call(func=ast.Name(id=name)) if name in _BUILTIN_RETURNS:
-            return Inference(_BUILTIN_RETURNS[name], f"`{name}`'s fixed return type")
+        case ast.Call(func=ast.Name(id=name)) if name in BUILTIN_RETURNS:
+            return Inference(BUILTIN_RETURNS[name], f"`{name}`'s fixed return type")
         case ast.Call(func=ast.Name() | ast.Attribute() as func) if _constructs(
             node_name(func),
             known_factories,
@@ -467,7 +422,7 @@ def guessed(
 
     A capitalised call may construct a generic class (`Box(1)` is really `Box[int]`) or be a factory
     function; literals, calls to a module function, a fixed-return builtin (`len`, `isinstance`,
-    ...) or a method `_method_return` resolves on an already-typed local, and
+    ...) or a method `method_return` resolves on an already-typed local, and
     another local this scope already typed, are certain. Copying a local `inferred` itself only
     guessed (`guesses`) is no more certain than the guess it copies.
 
@@ -476,7 +431,8 @@ def guessed(
       it copies such a guess.
 
     """
-    return any(_is_guess(node, known, guesses, declared) for node in ast.walk(value))
+    inside: dict[str, str] = comprehended(value, known, declared)
+    return any(_is_guess(node, known, guesses, inside) for node in ast.walk(value))
 
 
 def _is_guess(
@@ -490,12 +446,21 @@ def _is_guess(
     receiver: str
     method: str
     call: ast.Call
+    owner: ast.Name
     match node:
-        case ast.Call(func=ast.Name(id=name)) if name in _BUILTIN_RETURNS:
+        case ast.Call(func=ast.Name(id=name)) if (
+            name in BUILTIN_RETURNS
+            or name in _CONTAINER_BUILDERS
+            or name in _LOOP_BUILTINS
+            or name in known.awaits
+        ):
             return False
-        case ast.Call(func=ast.Attribute(value=ast.Name(id=receiver), attr=method)) as call if (
+        case ast.Call(func=ast.Attribute(value=ast.Name(id=receiver) as owner, attr=method)) as call if (
             receiver in declared
-            and _method_return(declared[receiver], call, method, known.methods) is not None
+            and (
+                method_return(declared[receiver], call, method, known.methods) is not None
+                or (method in _DICT_VIEWS and _view(owner, method, known, declared) is not None)
+            )
         ):
             return False
         case ast.Call(func=func):
@@ -517,3 +482,196 @@ def _constructs(name: str, known_factories: frozenset[str]) -> bool:
     return (
         name[:1].isupper() and name not in known_factories and name not in _FACTORIES and name not in GENERICS
     )
+
+
+# Builtins that iterate over their (first) argument's elements, one to one.
+_SAME_ELEMENTS: Final = frozenset({"reversed", "sorted"})
+_DICT_VIEWS: Final = frozenset({"keys", "values", "items"})
+# Containers whose one type parameter is their elements'.
+_ONE_ELEMENT_TYPE: Final = frozenset({"list", "List", "set", "Set", "frozenset", "FrozenSet"})
+_RANGE: Final = "range"
+_ENUMERATE: Final = "enumerate"
+_ITERATORS: Final = frozenset({_RANGE, _ENUMERATE, "zip", *_SAME_ELEMENTS})
+_LOOP_BUILTINS: Final = _ITERATORS
+# `tuple[T, ...]`'s two parts: the element type and the ellipsis.
+_ANY_LENGTH: Final = 2
+
+
+def looped(iterable: ast.expr, known: Known, declared: Mapping[str, str]) -> Inference | None:
+    """Infer what a `for` loop over `iterable` binds each time round, and say how.
+
+    `range()` gives `int`s; `enumerate(x)` `tuple[int, T]` and `zip(x, y)` `tuple[T, U]`, given
+    `x`'s and `y`'s; `reversed(x)` and `sorted(x)` what `x` does; a `dict`'s `.keys()`, `.values()`
+    and `.items()` its keys, values and pairs; and anything else whose type is inferred, its
+    elements: a `list`, `set`, `frozenset` or `tuple[T, ...]`'s `T`, a `dict`'s keys, a `str`'s
+    `str`s and a `bytes`'s `int`s.
+
+    Returns:
+      The element's annotation as source text and its reason, or `None` if it isn't known.
+
+    """
+    name: str
+    args: list[ast.expr]
+    view: str
+    receiver: ast.expr
+    match iterable:
+        case ast.Call(func=ast.Name(id=name), args=args, keywords=[]) if name in _ITERATORS and args:
+            return _iterator(name, args, known, declared)
+        case ast.Call(func=ast.Attribute(value=receiver, attr=view), args=[]) if view in _DICT_VIEWS:
+            return _view(receiver, view, known, declared)
+        case _:
+            found: Inference | None = inference(iterable, known, declared)
+            return None if found is None else _elements(found.annotation, f"the elements of {found.reason}")
+
+
+def _iterator(name: str, args: list[ast.expr], known: Known, declared: Mapping[str, str]) -> Inference | None:
+    """Infer what one of `_ITERATORS`, called with `args`, yields.
+
+    Returns:
+      Its elements' annotation and reason, or `None` if an argument's elements aren't known.
+
+    """
+    if name == _RANGE:
+        return Inference("int", "`range`, which yields `int`s")
+    if name in _SAME_ELEMENTS:
+        return looped(args[0], known, declared)
+    counted: list[ast.expr] = args[:1] if name == _ENUMERATE else args
+    parts: list[Inference | None] = [looped(arg, known, declared) for arg in counted]
+    found: list[Inference] = [part for part in parts if part is not None]
+    if len(found) != len(parts):
+        return None
+    annotations: list[str] = ["int"] * (name == _ENUMERATE) + [part.annotation for part in found]
+    return Inference(f"tuple[{', '.join(annotations)}]", f"`{name}`'s tuples")
+
+
+def _view(receiver: ast.expr, view: str, known: Known, declared: Mapping[str, str]) -> Inference | None:
+    """Infer the elements of a `dict`'s `.keys()`, `.values()` or `.items()`.
+
+    Returns:
+      Them, or `None` if the receiver isn't a `dict` whose type is known.
+
+    """
+    found: Inference | None = inference(receiver, known, declared)
+    root: ast.expr | None = None if found is None else ast.parse(found.annotation, mode="eval").body
+    key: ast.expr
+    value: ast.expr
+    match root:
+        case ast.Subscript(value=ast.Name(id="dict" | "Dict"), slice=ast.Tuple(elts=[key, value])):
+            by_view: dict[str, str] = {
+                "keys": ast.unparse(key),
+                "values": ast.unparse(value),
+                "items": f"tuple[{ast.unparse(key)}, {ast.unparse(value)}]",
+            }
+            return Inference(by_view[view], f"a `dict`'s `.{view}()`")
+        case _:
+            return None
+
+
+def _elements(container: str, reason: str) -> Inference | None:
+    """Infer the elements of a value typed `container`.
+
+    Returns:
+      Them, or `None` for a type whose elements aren't known from it alone.
+
+    """
+    # `container` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
+    root: ast.expr = ast.parse(container, mode="eval").body
+    name: str
+    item: ast.expr
+    key: ast.expr
+    last: ast.expr
+    match root:
+        case ast.Name(id="str"):
+            return Inference("str", reason)
+        case ast.Name(id="bytes"):
+            return Inference("int", reason)
+        case ast.Subscript(value=ast.Name(id=name), slice=item) if name in _ONE_ELEMENT_TYPE:
+            return Inference(ast.unparse(item), reason)
+        case ast.Subscript(value=ast.Name(id="dict" | "Dict"), slice=ast.Tuple(elts=[key, _])):
+            return Inference(ast.unparse(key), reason)
+        case ast.Subscript(value=ast.Name(id="tuple" | "Tuple"), slice=ast.Tuple(elts=[item, last])) if (
+            isinstance(last, ast.Constant) and last.value is Ellipsis
+        ):
+            return Inference(ast.unparse(item), reason)
+        case _:
+            return None
+
+
+def _is_ellipsis(node: ast.expr) -> bool:
+    return isinstance(node, ast.Constant) and node.value is Ellipsis
+
+
+def unpacked(target: ast.expr, annotation: str | None) -> list[tuple[ast.Name, str | None]]:
+    """Match an unpacking target's names with the parts of a value typed `annotation`.
+
+    A plain name takes the whole type; a tuple or list of targets takes a `tuple[A, B, ...]` of the
+    same length part by part, or a `tuple[T, ...]`'s `T` for each. A starred name, or a shape that
+    doesn't match, gets `None`.
+
+    Returns:
+      Each name the target binds, with its type as text (or `None`).
+
+    """
+    elements: list[ast.expr]
+    value: ast.expr
+    match target:
+        case ast.Name():
+            return [(target, annotation)]
+        case ast.Tuple(elts=elements) | ast.List(elts=elements):
+            parts: list[str | None] = _parts(annotation, len(elements))
+            return [
+                pair
+                for element, part in zip(elements, parts, strict=True)
+                for pair in unpacked(element, part)
+            ]
+        case ast.Starred(value=value):
+            return unpacked(value, None)
+        case _:
+            return []
+
+
+def _parts(annotation: str | None, count: int) -> list[str | None]:
+    """Split a tuple type into `count` parts, one per target.
+
+    Returns:
+      Each part's type as text; all `None` if `annotation` isn't a tuple of that many (or of any
+      length, `tuple[T, ...]`).
+
+    """
+    unknown: list[str | None] = [None] * count
+    if annotation is None:
+        return unknown
+    root: ast.expr = ast.parse(annotation, mode="eval").body
+    elements: list[ast.expr]
+    match root:
+        case ast.Subscript(value=ast.Name(id="tuple" | "Tuple"), slice=ast.Tuple(elts=elements)):
+            if len(elements) == _ANY_LENGTH and _is_ellipsis(elements[-1]):
+                return [ast.unparse(elements[0])] * count
+            return [ast.unparse(e) for e in elements] if len(elements) == count else unknown
+        case _:
+            return unknown
+
+
+def iterated(iterable: ast.expr) -> list[ast.expr]:
+    """Find the values `looped` typed a loop over `iterable` from, to judge whether it guessed.
+
+    Through `enumerate` (its first argument), `zip`, `reversed`, `sorted` and a `dict` view to what
+    they iterate; a `range()` iterates nothing typed.
+
+    Returns:
+      Those values.
+
+    """
+    name: str
+    args: list[ast.expr]
+    receiver: ast.expr
+    view: str
+    match iterable:
+        case ast.Call(func=ast.Name(id=name), args=args, keywords=[]) if name in _ITERATORS and args:
+            if name == _RANGE:
+                return []
+            return [part for arg in (args[:1] if name == _ENUMERATE else args) for part in iterated(arg)]
+        case ast.Call(func=ast.Attribute(value=receiver, attr=view), args=[]) if view in _DICT_VIEWS:
+            return [receiver]
+        case _:
+            return [iterable]

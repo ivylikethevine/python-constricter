@@ -108,6 +108,8 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 [tool.ruff.lint.per-file-ignores]
 # pytest's assert.
 "tests/*" = ["assert"]
+# The corpus table runs each constricter version under test as a subprocess.
+"tests/corpus_table.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 
 [tool.mypy]
 files = ["constricter", "tests"]

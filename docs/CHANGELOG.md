@@ -6,6 +6,16 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` declares a loop's target (LVA002) or an unpacking's names (`name: T` before the
+  statement), infers conditionals, arithmetic on builtin scalars, comprehensions, `sorted`/`list`/
+  `set`/`frozenset`/`tuple` of known elements and `await` of the module's `async def`s, and, with
+  `--unsafe-fixes`, rewrites the annotation LVA008 or LVA010 would narrow.
+- **Breaking** (the API): an `Offence`'s fix is an `edit=Fix(...)` (annotation, reason, guess,
+  where); `offence.fix`, `.unsafe` and `.reason` still read as before.
+- `--format=full`: each offence with its source line and a caret under the name.
+- Editor settings for VS Code, Zed and Neovim (`docs/editors/`), and `uvx`, `pipx`, Bazel and Pants
+  notes in the README.
+- `tests/corpus_table.py` records each version's corpus results in `docs/RUNS.md`.
 - **Breaking**: the pylint plugin is `constricter.plugins.pylint` (was `constricter.pylint_plugin`),
   and the package is reorganised (`constricter.rules`, `constricter.fix`, `constricter.cli`,
   `constricter.plugins`); the `constricter` package's own exports are unchanged.

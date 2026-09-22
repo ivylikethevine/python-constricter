@@ -238,7 +238,8 @@ def _variadic(elements: list[ast.expr]) -> bool:
       Whether they do.
 
     """
-    return isinstance(elements[-1], ast.Constant) and elements[-1].value is Ellipsis
+    # `tuple[()]` (the empty tuple) has no elements at all.
+    return bool(elements) and isinstance(elements[-1], ast.Constant) and elements[-1].value is Ellipsis
 
 
 def depth(annotation: ast.expr) -> int:
@@ -341,8 +342,25 @@ def _type_vars(tree: ast.Module) -> frozenset[str]:
     return frozenset(names)
 
 
-def _declared_returns(body: Sequence[ast.stmt], type_vars: frozenset[str]) -> dict[str, str]:
-    """Find the plain functions defined directly in `body` whose calls `--fix` can annotate.
+def awaited_returns(tree: ast.Module) -> dict[str, str]:
+    """Return the declared return type of each plain top-level `async def`: what awaiting a call gives.
+
+    The same rules as `returns`' functions, for `async def` instead of `def`.
+
+    Returns:
+      Each such function's name, and its return annotation as source text.
+
+    """
+    return _declared_returns(tree.body, _type_vars(tree), awaited=True)
+
+
+def _declared_returns(
+    body: Sequence[ast.stmt],
+    type_vars: frozenset[str],
+    *,
+    awaited: bool = False,
+) -> dict[str, str]:
+    """Find the plain functions (`async` ones if `awaited`) directly in `body` `--fix` can annotate.
 
     Returns:
       Each such function's name, and its return annotation as source text.
@@ -356,7 +374,7 @@ def _declared_returns(body: Sequence[ast.stmt], type_vars: frozenset[str]) -> di
         match stmt:
             case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name):
                 counts[name] = counts.get(name, 0) + 1
-                if isinstance(stmt, ast.FunctionDef) and _plain(stmt):
+                if isinstance(stmt, ast.AsyncFunctionDef) == awaited and _plain(stmt):
                     found[name] = ast.unparse(cast("ast.expr", stmt.returns))
             case _:
                 pass
@@ -367,7 +385,7 @@ def _declared_returns(body: Sequence[ast.stmt], type_vars: frozenset[str]) -> di
     }
 
 
-def _plain(func: ast.FunctionDef) -> bool:
+def _plain(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     """Check that `func` declares a return type its calls always have.
 
     Returns:

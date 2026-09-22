@@ -419,9 +419,9 @@ def test_diff_prints_the_fixes_and_changes_nothing(
     path: Path = _write(tmp_path / "demo.py", DEMO)
     assert cli.main(["--diff", str(path)]) == cli.EXIT_FOUND
     assert capsys.readouterr().out == (
-        f"--- {path}\n+++ {path}\n@@ -1,5 +1,5 @@\n"
+        f"--- {path}\n+++ {path}\n@@ -1,5 +1,6 @@\n"
         " def f(items: list[int]) -> None:\n-  a = 1\n+  a: int = 1\n"
-        "   b = []\n   for c in items:\n     pass\n"
+        "   b = []\n+  c: int\n   for c in items:\n     pass\n"
     )
     assert path.read_text(encoding="utf-8") == DEMO
     clean: Path = _write(tmp_path / "clean.py", CLEAN)
@@ -654,7 +654,10 @@ def test_stdin_fix_prints_the_fixed_source(
     """`--fix` on standard input prints the fixed source instead of a report; `--diff` diffs it."""
     _stdin(monkeypatch, DEMO)
     assert cli.main(["--fix", "-"]) == cli.EXIT_FOUND  # `b = []` is left, an error
-    assert capsys.readouterr().out == DEMO.replace("  a = 1", "  a: int = 1")
+    assert capsys.readouterr().out == DEMO.replace("  a = 1", "  a: int = 1").replace(
+        "  for c",
+        "  c: int\n  for c",
+    )
     _stdin(monkeypatch, DEMO)
     assert cli.main(["--diff", "--stdin-filename", "app.py", "-"]) == cli.EXIT_FOUND
     assert capsys.readouterr().out.startswith("--- app.py\n+++ app.py\n")

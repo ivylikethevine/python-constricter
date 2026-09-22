@@ -79,6 +79,10 @@ class Finding:
     name: str
     kind: Kind
     detail: str
+    # LVA008's and LVA010's: the annotation it could be instead, and where the declared one is on
+    # its line (start and end columns; `None` where it isn't all on the name's line).
+    rewrite: str = field(default="", compare=False)
+    span: tuple[int, int] | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
@@ -95,14 +99,16 @@ class Lifetime:
 
     declared: str | None = None
     declared_at: tuple[int, int] = (0, 0)
+    declared_span: tuple[int, int] | None = None  # the annotation's columns, if it's all on one line
     bindings: list[Binding] = field(default_factory=list[Binding])
     escaped: bool = False  # written somewhere this scope can't see (`global`, `nonlocal`, ...)
 
-    def declare(self, annotation: str, at: tuple[int, int]) -> None:
-        """Record an annotation; only the first counts."""
+    def declare(self, annotation: str, at: tuple[int, int], span: tuple[int, int] | None = None) -> None:
+        """Record an annotation, and its columns if it's all on the name's line; only the first counts."""
         if self.declared is None:
             self.declared = annotation
             self.declared_at = at
+            self.declared_span = span
 
     def bind(self, at: tuple[int, int], value: str | None) -> None:
         """Record a binding, with its value's type if known."""
@@ -420,7 +426,7 @@ def findings(name: str, lifetime: Lifetime, hierarchy: Hierarchy) -> list[Findin
         return found
     return found + _narrowing(
         name,
-        lifetime.declared_at,
+        lifetime,
         declared,
         frozenset[str]().union(*values),
         hierarchy,
@@ -429,7 +435,7 @@ def findings(name: str, lifetime: Lifetime, hierarchy: Hierarchy) -> list[Findin
 
 def _narrowing(
     name: str,
-    at: tuple[int, int],
+    lifetime: Lifetime,
     declared: frozenset[str],
     values: frozenset[str],
     hierarchy: Hierarchy,
@@ -440,13 +446,17 @@ def _narrowing(
       The `UNUSED_MEMBER` and `NARROWABLE` findings.
 
     """
+    at: tuple[int, int] = lifetime.declared_at
+    span: tuple[int, int] | None = lifetime.declared_span
     used: frozenset[str] = frozenset(m for m in declared if any(hierarchy.fits(v, m) for v in values))
     found: list[Finding] = [
-        Finding(*at, name, Kind.UNUSED_MEMBER, member) for member in sorted(declared - used)
+        Finding(*at, name, Kind.UNUSED_MEMBER, member, _render(used), span)
+        for member in sorted(declared - used)
     ]
     narrowest: frozenset[str] = hierarchy.simplified(values)
     if not hierarchy.fits_all(used, narrowest):  # every value fits `used`: no `CONFLICT` got here
-        found.append(Finding(*at, name, Kind.NARROWABLE, _render(narrowest)))
+        rendered: str = _render(narrowest)
+        found.append(Finding(*at, name, Kind.NARROWABLE, rendered, rendered, span))
     return found
 
 

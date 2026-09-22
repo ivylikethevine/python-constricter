@@ -1,0 +1,11 @@
+{
+  "flake8.importStrategy": "fromEnvironment",
+  "flake8.args": [
+    "--constricter-level=constrict"
+  ],
+  "pylint.importStrategy": "fromEnvironment",
+  "pylint.args": [
+    "--load-plugins=constricter.plugins.pylint",
+    "--constricter-level=constrict"
+  ]
+}

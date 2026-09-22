@@ -138,29 +138,29 @@ pylint symbols: `unannotated-local-variable`, `untyped-for-or-match-variable`,
 
 Options:
 
-| Option           | CLI                                                         | `[tool.constricter]` | flake8 (CLI or config)          | pylint                            |
-| ---------------- | ----------------------------------------------------------- | -------------------- | ------------------------------- | --------------------------------- |
-| level            | `--level`                                                   | `level`              | `--constricter-level`           | `constricter-level`               |
-| type comments    | `--type-comments`                                           | `type-comments`      | `--constricter-type-comments`   | `constricter-type-comments = yes` |
-| all scopes       | `--all-scopes`                                              | `all-scopes`         | `--constricter-all-scopes`      | `constricter-all-scopes = yes`    |
-| nesting          | `--nesting N`                                               | `nesting`            | `--constricter-nesting`         | `constricter-nesting`             |
-| max length       | `--max-length N` (LVA011)                                   | `max-length`         | `--constricter-max-length`      | `constricter-max-length`          |
-| type hierarchy   | -                                                           | `narrower` (a table) | `--constricter-narrower`        | `constricter-narrower`            |
-| fix              | `--fix` (`--unsafe-fixes` for guesses), `--diff` to preview | -                    | -                               | -                                 |
-| show fixes       | `--show-fixes` (each fix and how it was decided, text)      | -                    | -                               | -                                 |
-| select           | `--select CODES` (codes or prefixes)                        | `select`             | flake8's own `select`           | pylint's own `enable`             |
-| ignore           | `--ignore CODES`                                            | `ignore`             | flake8's own `extend-ignore`    | pylint's own `disable`            |
-| exclude          | `--exclude GLOB` (repeatable)                               | `exclude`            | flake8's own `exclude`          | pylint's own `ignore-paths`       |
-| format           | `--format`: `text`, `json`, `github`, `sarif`               | -                    | -                               | -                                 |
-| statistics       | `--statistics` (counts per code, text format)               | -                    | -                               | -                                 |
-| jobs             | `--jobs N` (`-j`; 0: one per CPU)                           | `jobs`               | flake8's own `--jobs`           | pylint's own `--jobs`             |
-| baseline         | `--baseline FILE`; `--write-baseline` records it            | `baseline`           | -                               | -                                 |
-| coverage         | `--coverage`, `--fail-under PCT`                            | -                    | -                               | -                                 |
-| per-path levels  | -                                                           | `per-path-levels`    | -                               | -                                 |
-| per-file ignores | -                                                           | `per-file-ignores`   | flake8's own `per-file-ignores` | -                                 |
-| stdin            | `-` as the path, `--stdin-filename PATH`                    | -                    | flake8's own `-`                | -                                 |
-| exit status      | `--exit-zero`                                               | -                    | flake8's own `--exit-zero`      | pylint's own `--exit-zero`        |
-| output file      | `--output-file FILE`                                        | -                    | flake8's own `--output-file`    | pylint's own `--output`           |
+| Option           | CLI                                                                                              | `[tool.constricter]` | flake8 (CLI or config)          | pylint                            |
+| ---------------- | ------------------------------------------------------------------------------------------------ | -------------------- | ------------------------------- | --------------------------------- |
+| level            | `--level`                                                                                        | `level`              | `--constricter-level`           | `constricter-level`               |
+| type comments    | `--type-comments`                                                                                | `type-comments`      | `--constricter-type-comments`   | `constricter-type-comments = yes` |
+| all scopes       | `--all-scopes`                                                                                   | `all-scopes`         | `--constricter-all-scopes`      | `constricter-all-scopes = yes`    |
+| nesting          | `--nesting N`                                                                                    | `nesting`            | `--constricter-nesting`         | `constricter-nesting`             |
+| max length       | `--max-length N` (LVA011)                                                                        | `max-length`         | `--constricter-max-length`      | `constricter-max-length`          |
+| type hierarchy   | -                                                                                                | `narrower` (a table) | `--constricter-narrower`        | `constricter-narrower`            |
+| fix              | `--fix` (`--unsafe-fixes` for guesses), `--diff` to preview                                      | -                    | -                               | -                                 |
+| show fixes       | `--show-fixes` (each fix and how it was decided, text)                                           | -                    | -                               | -                                 |
+| select           | `--select CODES` (codes or prefixes)                                                             | `select`             | flake8's own `select`           | pylint's own `enable`             |
+| ignore           | `--ignore CODES`                                                                                 | `ignore`             | flake8's own `extend-ignore`    | pylint's own `disable`            |
+| exclude          | `--exclude GLOB` (repeatable)                                                                    | `exclude`            | flake8's own `exclude`          | pylint's own `ignore-paths`       |
+| format           | `--format`: `text`, `full` (with source), `json`, `github`, `sarif`, `gitlab`, `junit`, `rdjson` | -                    | -                               | -                                 |
+| statistics       | `--statistics` (counts per code, text format)                                                    | -                    | -                               | -                                 |
+| jobs             | `--jobs N` (`-j`; 0: one per CPU)                                                                | `jobs`               | flake8's own `--jobs`           | pylint's own `--jobs`             |
+| baseline         | `--baseline FILE`; `--write-baseline` records it                                                 | `baseline`           | -                               | -                                 |
+| coverage         | `--coverage`, `--fail-under PCT`                                                                 | -                    | -                               | -                                 |
+| per-path levels  | -                                                                                                | `per-path-levels`    | -                               | -                                 |
+| per-file ignores | -                                                                                                | `per-file-ignores`   | flake8's own `per-file-ignores` | -                                 |
+| stdin            | `-` as the path, `--stdin-filename PATH`                                                         | -                    | flake8's own `-`                | -                                 |
+| exit status      | `--exit-zero`                                                                                    | -                    | flake8's own `--exit-zero`      | pylint's own `--exit-zero`        |
+| output file      | `--output-file FILE`                                                                             | -                    | flake8's own `--output-file`    | pylint's own `--output`           |
 
 `constricter --explain LVA002` prints a code's rationale, its fix, and the levels that report it.
 
@@ -209,10 +209,24 @@ module body:
   a plain copy (`y = x`), a subscript (`nums[0]`), an attribute or method call of a class defined in
   the same module (`p.x`, `p.norm()`), a `str`/`bytes` method with a fixed return (`s.strip()`), or
   a `list`/`set`/`dict` method that returns its own element type (`nums.pop()`, `d.get(k)` as
-  `V | None`).
+  `V | None`);
+- a value computed from such: `a if c else b` when both sides agree; arithmetic on builtin scalars
+  (`n + 1`, `n / 2`, `"x" * n`, `"%s" % n`; never `**`, whose result can change type); a list, set
+  or dict comprehension whose elements are known; `sorted`, `list`, `set`, `frozenset` or `tuple` of
+  something whose elements are; and `await` of a call to one of the module's `async def`s.
 
-It never touches class bodies (a dataclass would gain a field) or unpacking, and it leaves what it
-can't fix reported. The standard library and third-party packages are out of reach.
+A loop's target (LVA002) and an unpacking's names (LVA001) are declared instead, on a line of their
+own before the statement: `for k, v in ages.items():` with `ages: dict[str, int]` gets `k: str` and
+`v: int` above it. The target's type comes from what's iterated: a `range`, `enumerate` and `zip` of
+known things, a `dict`'s `.keys()`/`.values()`/`.items()`, or any container whose type is known; an
+unpacking splits a tuple type (`a, b = pair`, `pair: tuple[int, str]`) over its names.
+
+With `--unsafe-fixes`, LVA008 and LVA010 are fixed too, by rewriting the annotation (`total: float`
+only ever given `int`s becomes `total: int`): a guess, since a declared type can be wider on
+purpose.
+
+It never touches class bodies (a dataclass would gain a field), and it leaves what it can't fix
+reported. The standard library and third-party packages are out of reach.
 
 `--show-fixes` lists, after the report, each fix and how its value decided it (for `b = s.strip()`:
 `str`, from `str.strip`'s fixed return type), marking the guesses `--unsafe-fixes` would add;
@@ -315,8 +329,12 @@ directory names (or globs) to skip the same way, on top of matching whole paths 
 codes: `0` no errors, `1` errors, `2` an unreadable or unparsable file, or a bad `pyproject.toml`.
 
 ```bash
-pip install python-constricter
+pip install python-constricter           # into the project's environment
+uvx --from python-constricter constricter # or run it without installing: uv's tool runner
+pipx run --spec python-constricter constricter  # or pipx's
 ```
+
+Editors: VS Code, Zed and Neovim settings are in [`docs/editors/`](docs/editors/README.md).
 
 pre-commit, after ruff's hooks (or `constricter-fix`, which runs `--fix` first):
 
@@ -342,6 +360,32 @@ commands = constricter --level=constrict src
 def types(session: nox.Session) -> None:
     session.install("python-constricter")
     session.run("constricter", "--level=constrict", "src")
+```
+
+Bazel, through [rules_lint](https://github.com/aspect-build/rules_lint)'s flake8 aspect, with the
+plugin in the flake8 binary's dependencies (`tools/lint/BUILD.bazel`, then `linters.bzl` as
+rules_lint's own docs have it):
+
+```starlark
+load("@rules_python//python/entry_points:py_console_script_binary.bzl", "py_console_script_binary")
+
+py_console_script_binary(
+    name = "flake8",
+    pkg = "@pip//flake8:pkg",
+    deps = ["@pip//python_constricter"],  # the plugin, from your requirements
+)
+```
+
+Pants, whose flake8 installs from a resolve with the plugin locked in it (`pants.toml`; both
+`flake8` and `python-constricter` in that resolve's requirements):
+
+```toml
+[python.resolves]
+flake8 = "3rdparty/python/flake8.lock"
+
+[flake8]
+install_from_resolve = "flake8"
+requirements = ["flake8", "python-constricter"]
 ```
 
 GitHub Actions, as PR annotations (it installs from the action's own tag, not PyPI):
@@ -383,6 +427,12 @@ per code, and any crash. `local/.venv/bin/python tests/corpus_fix.py [PATH]` run
 and a second pass has nothing left to fix. CI's Corpus job runs both against the standard library
 and, from the pinned `corpus` dependency group (`requests`, `flask`, `django`, `sqlalchemy` — a tiny
 HTTP client, two web frameworks and an ORM), the same way.
+
+`tests/corpus_table.py` measures every corpus with released constricter versions and this checkout
+(each isolated in its own environment), at every level, checked and fixed, and records a section per
+version in [`docs/RUNS.md`](docs/RUNS.md): offences per code, errors and warnings at each level,
+fixes, guesses, and anything a fix broke. It needs the `corpus` group
+(`uv sync --group dev --group corpus`) and `uv`; see its docstring for the options.
 
 CI also runs the tests on PyPy 3.11 and free-threaded Python 3.14, which install only the `test`
 dependency group: every dev tool doesn't have wheels for them, and the tests don't need them all.
@@ -599,62 +649,92 @@ Done:
 - **Reorganised**: a flat `constricter/` (no `src/`) in `rules/`, `fix/`, `cli/` and `plugins/`,
   with no module over 750 lines; `docs/` holds the changelog and contributing and security policies.
 
-Next:
+- **Editor setup, install notes, `--format=full` and corpus runs**: settings for VS Code, Zed and
+  Neovim in `docs/editors/`; `uvx`/`pipx`, Bazel and Pants notes; `--format=full`, each offence with
+  its source line and a caret under the name; and `tests/corpus_table.py`, recording each version's
+  results on the corpus in `docs/RUNS.md`.
 
-1. **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+ (6.2.0 still has only a
-   CPython 3.10 one).
-2. Revisit the [disabled rules](#disabled-rules) as tools change (last checked 2026-09-22: COM812,
-   one-line DOC201/DOC402 and `max-args` came back on; the rest can't go yet).
-3. **A regeneratable corpus table.** One script that runs `tests/corpus.py` and
-   `tests/corpus_fix.py` over every corpus package at each level, and writes the table above (with
-   more columns: per-code counts at each level, fixed and guessed, time) as Markdown, so it's
-   regenerated rather than hand-edited, and a PR's effect on it is one rerun.
-4. **Finer fix levels than `--fix` and `--unsafe-fixes`.** Name each inference mechanism (the
-   reasons `--show-fixes` prints already do), and let a project choose which to apply
-   (`--fix-select`/`fix-ignore`, like ruff's `extend-safe-fixes`/`extend-unsafe-fixes`), instead of
-   the one certain/guess split.
-5. **Example editor settings**, for VS Code and Zed, to enable the plugin in a Python project: VS
-   Code's flake8 and pylint extensions (flake8's needs `"flake8.importStrategy": "fromEnvironment"`
-   to load plugins) and Zed's ruff/pyright setup plus a task running the CLI.
-6. **`--fix` for LVA002 loop targets and more certain expressions**: `x: T` before a loop over a
-   `range`, a typed `list`/`set`/`dict` or its `.items()`, `enumerate`; comprehensions,
-   `a if c else b`, and `int + int`-style arithmetic on builtin scalars only. LVA002 is the
-   second-largest code on the standard library.
-7. **A result cache and parallel profiling**: cache per file on its content, config and version
-   (like `.ruff_cache`), and find why `-j0` uses only about half of 16 cores on the standard
-   library.
-8. **Distribution odds and ends**: nvim-lint and none-ls definitions, `require_serial` on the
-   `constricter-fix` hook (its cross-module `--fix` needs every file), Bazel `rules_lint` and Pants
-   snippets, `uvx`/`pipx` install notes, SARIF `helpUri` and `fixes`.
-9. **A language server** (an optional extra) with `--fix` as quick fixes: the way into Helix and
-   Zed, and the base for a VS Code extension.
-10. **A docs site**: a page per rule (what SARIF's `helpUri` and `--explain` link to), and a "why
-    not a type checker?" page, since type checkers decline to require local annotations.
-11. **More `--fix` inference**: `sorted()`, `list()`, `set()` and `tuple()` of a container whose
-    type is known; `await` of an async function defined in the same module; and unpacking from a
-    tuple whose type is known (`a, b = pair` with `pair: tuple[int, str]`, declaring each name
-    before the statement).
-12. **Type-checker-backed inference**, opt-in (`--infer-with=ty|basedpyright`): read the variable
-    types those checkers already show as inlay hints (their language servers return them as text
-    edits), and apply them only as `--unsafe-fixes`, since an inferred type can be too wide or a
-    literal. The largest potential gain in fix rate; shares plumbing with a language server.
-13. **Fixes for LVA008 and LVA010**: the narrowed annotation, or the union without its unused
-    member, offered as suggestions in rdjson and SARIF output and applied as rewrites under
-    `--unsafe-fixes`. The value-flow engine already knows the answer.
-14. **An optional `Final` rule**: a local bound once and never rebound could be `Final`. Off by
-    default, reported at `suffocate`; neither ruff nor pylint has one. Measure its noise on the
-    corpus first.
-15. **GitHub Action improvements**: a `version` input that installs that release from PyPI (with uv,
-    faster than building the action's own checkout), a summary table on the run page
-    (`$GITHUB_STEP_SUMMARY`), and an optional SARIF upload to code scanning.
-16. **Richer text output**: the offending source line with a caret under the name, as ruff's `full`
-    output does, with today's one-line format kept as the concise default.
+- **`--fix` does more**: declarations before a loop (LVA002) or an unpacking; computed values
+  (conditionals, arithmetic on builtin scalars, comprehensions, `sorted`/`list`/`set`/`tuple` of
+  known elements, `await`); and, with `--unsafe-fixes`, LVA008's and LVA010's narrowed annotation.
+  On the corpus, with nothing broken and still one pass: the standard library 23,645 → 28,393 fixed,
+  django 2,324 → 2,648, sqlalchemy 1,123 → 1,409, flask 44 → 67, `requests` 66 → 79.
 
-After the first release (it's on PyPI now), each waiting on a step outside this repository:
+Next, by scope (smallest first) and, within each, by value. Each item says what it is, why, how, and
+when it's done.
 
-1. **The GitHub Action on the Marketplace**, so it's listed (it already works from any tag, and
-   `action.yml` has the name, description and branding the listing needs): tick "Publish this Action
-   to the GitHub Marketplace" when publishing a release.
+### Small: a day or less
+
+1. **pre-commit fixes.** `require_serial: true` on the `constricter-fix` hook: pre-commit splits a
+   large file list across processes, so each one's cross-module `--fix` sees only part of the
+   project. Plus a pre-commit.ci snippet in the README (the hooks are pure Python, so they run there
+   as they are). Done when a split run fixes what a single run does.
+
+2. **SARIF `helpUri` and `fixes`.** Each rule links to its README section (a docs-site page later,
+   Medium 4), and each certain fix is a SARIF `fix` (the insertion, declaration or rewrite `Fix`
+   records), so code scanning can show and apply it. Done when `tests/test_cli.py`'s SARIF test
+   checks both and the output validates against the SARIF 2.1.0 schema.
+3. **GitHub Action improvements.** A `version` input that installs that release from PyPI (with uv)
+   instead of building the action's own checkout; a per-code summary table on the run page
+   (`$GITHUB_STEP_SUMMARY`); and a `sarif-file` output, documented with `upload-sarif`. Done when
+   CI's Action job uses each.
+
+4. **Investigate non-UTF-8 source.** A file with a PEP 263 coding declaration
+   (`# -*- coding: latin-1 -*-`) is a valid Python module, but the CLI reads every file as UTF-8, so
+   one is an unreadable file today (exit 2), and 0.2.2's `--fix` crashed on the standard library's
+   `test/encoded_modules/` (docs/RUNS.md). Find out how common such files are (the corpus has a
+   few), then decode by the declaration (`tokenize.detect_encoding`) for checking, and decide what
+   `--fix` should write back: the same encoding, or refuse. Done when the encoded modules check and
+   fix like any other.
+
+### Medium: a few days
+
+1. **Finer fix levels.** Give each inference mechanism a stable id alongside its reason (`literal`,
+   `copy`, `subscript`, `attribute`, `method`, `builtin`, `call`, `constructor`, `container`, ...),
+   print it in `--show-fixes`, and let a project choose which apply: `fix-select` and `fix-ignore`,
+   plus `unsafe-fix-select` to promote a guess it trusts (like ruff's `extend-safe-fixes`). Replaces
+   the single certain/guess split without breaking it: the defaults match today's.
+
+2. **A result cache.** One entry per file, keyed on its content, the settings, the version and the
+   cross-module return types it saw (`project.calls`), in `.constricter_cache/`, so a pre-commit or
+   editor rerun only rechecks what changed; `--no-cache` to skip it. Measured 2026-09-22 on Python
+   3.14's standard library with its tests: about 35 s with `-j1` and 8.8 s with `-j0` on 16 cores,
+   at 58% CPU, so profile the parallel run too (the cross-module index is built serially before the
+   pool starts).
+3. **An optional `Final` rule (LVA012).** A local bound once and never rebound (one binding in its
+   value-flow lifetime, not a loop target or augmented) could be `Final`. Off unless selected, an
+   error only at `suffocate`: most locals are bound once, so measure it on the corpus before
+   choosing anything more. Neither ruff nor pylint has one.
+4. **A docs site.** A page per rule generated from what `--explain` prints (one source for both),
+   which SARIF's `helpUri` then links to; a "why not a type checker?" page (they decline to require
+   local annotations: pyright discussion #7894) with an FAQ on running both; and the adoption guide
+   and corpus results moved out of this README.
+
+### Large: a week or more
+
+1. **A language server** (`constricter server`, in an optional `lsp` extra with pygls): diagnostics
+   as a file changes, certain fixes as quick fixes and guesses as a separate action, settings from
+   `pyproject.toml`. The only way into Helix and Zed, and how JetBrains (LSP4IJ) and Neovim's
+   built-in client would use it; then a VS Code extension from Microsoft's python-tools template,
+   bundling it. Wants the result cache (Medium 2) first.
+2. **Type-checker-backed inference**, opt-in (`--infer-with=ty|basedpyright`): start that checker's
+   language server, ask for the inlay hints over each file, and turn a hint on an unannotated first
+   binding into a fix, always a guess (`--unsafe-fixes`), since a hint can be too wide, a `Literal`,
+   or name something the file doesn't import. The largest potential gain in fix rate; shares the
+   client side of the language-server plumbing.
+
+### Ongoing
+
+- **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+ (last checked 2026-09-22:
+  6.2.0 still has only a CPython 3.10 one).
+- **Revisit the [disabled rules](#disabled-rules)** as tools change (last checked 2026-09-22:
+  COM812, one-line DOC201/DOC402 and `max-args` came back on; the rest can't go yet).
+
+### Waiting on a step outside this repository
+
+1. **The GitHub Action on the Marketplace.** It already works from any tag, and `action.yml` has the
+   name, description and branding a listing needs: tick "Publish this Action to the GitHub
+   Marketplace" when publishing a release.
 2. **Trunk and MegaLinter plugin definitions**, submitted upstream. MegaLinter's is
    `mega-linter-plugin-constricter/constricter.megalinter-descriptor.yml` (usable now through
    `PLUGINS`); what's left is a pull request adding it to `.automation/plugins.yml` in
@@ -662,9 +742,9 @@ After the first release (it's on PyPI now), each waiting on a step outside this 
    request to trunk-io/plugins with the snapshot its test harness generates.
 3. **A conda-forge recipe**, submitted to conda-forge/staged-recipes: drafted in
    `upstream/conda-forge/recipes/python-constricter/`. It builds and passes its tests with
-   rattler-build against flit-core 4.0.2, conda-forge's newest; `pyproject.toml` asks for
-   `flit_core>=4.1`, so either the recipe's host pin or that floor has to give until conda-forge has
-   4.1.
+   rattler-build against flit-core 4.0.2, still conda-forge's newest (2026-09-22), while
+   `pyproject.toml` asks for `flit_core>=4.1`: either the recipe's host pin or that floor has to
+   give until conda-forge has 4.1.
 
 ## Disabled rules
 

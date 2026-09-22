@@ -19,6 +19,7 @@ from constricter.rules.annotations import length
         ("tuple[int, str]", 2),
         ("Tuple[int]", 1),
         ("tuple[int, ...]", 0),
+        ("tuple[()]", 0),  # the empty tuple
         ("typing.Tuple[int, int, int]", 3),
         ("dict[str, tuple[int, int, int, int, int]]", 5),
         ("'tuple[int, int, int]'", 3),
