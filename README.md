@@ -312,6 +312,7 @@ With [uv](https://docs.astral.sh/uv/) installed (CI pins 0.12.17):
 
 ```bash
 export UV_PROJECT_ENVIRONMENT=local/.venv
+uv venv --prompt constricter local/.venv # the prompt name; uv sync reuses this venv
 uv sync --locked --no-install-project --no-build # the dev group: hash-checked wheels from uv.lock
 uv pip install --python local/.venv --no-deps --no-build-isolation -e .
 ```
