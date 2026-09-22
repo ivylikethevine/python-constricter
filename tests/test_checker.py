@@ -403,6 +403,22 @@ def test_a_rest_capture_is_reported_at_its_name() -> None:
     assert [(o.line, o.col) for o in check_tree(tree)] == [(4, 9), (6, 9)]
 
 
+def test_a_rest_capture_skips_an_earlier_non_matching_one_on_the_same_line() -> None:
+    """A nested pattern's `**capture` before the outer one's, on the same line, isn't mistaken for it."""
+    source: str = textwrap.dedent(
+        """
+    def f(obj: object) -> None:
+      match obj:
+        case {"a": {"b": 1, **inner}, **outer}:
+          pass
+    """,
+    )
+    assert [(o.line, o.col, o.name) for o in check_source(source)] == [
+        (4, 26, "inner"),
+        (4, 36, "outer"),
+    ]
+
+
 def test_python2_compatible_modules_count_type_comments() -> None:
     """A `from __future__` import only Python 2 needs turns type comments on; others don't."""
     body: str = "def f() -> None:\n  x = 1  # type: int\n"

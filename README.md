@@ -445,15 +445,26 @@ Next:
 2. Revisit the [disabled rules](#disabled-rules) as tools change (last checked 2026-09-22: COM812,
    one-line DOC201/DOC402 and `max-args` came back on; the rest can't go yet).
 3. **A second, more complex corpus** as a permanent, pinned CI target: OpenCV's Python bindings
-   turned out to be a poor fit (they're mostly thin C bindings, not hand-annotated Python), so this
-   still needs a real candidate settled on and vendored or checked out reproducibly. By hand,
+   turned out to be a poor fit (they're mostly thin C bindings, not hand-annotated Python). By hand,
    against already-installed packages (mypy 2.3.1, pylint 4.0.8, libcst 1.9.0; ~130k, ~40k and ~40k
-   lines) as stand-ins: no crashes, and `--unsafe-fixes` left nothing broken or unfixed on a second
-   pass, on all three. `--nesting`'s default (5) never reported LVA006 on the standard library, mypy
-   or pylint, and only 1 time on mypy at `--nesting=4`; libcst (deeply nested CST types) hit it 201
-   times at the default. LVA007 found nothing on any of the four, at any nesting. Worth a decision:
-   keep `--nesting`'s default at 5 (safe, rarely fires) or tighten it (3 already reported 45 times
-   on mypy, 2 on the standard library) to make the rule useful more often.
+   lines) and `uiautomator2` 3.7.0 (Android UI automation over adb/HTTP: real external API calls,
+   ~8k lines, and much less already typed than the others — a more typical real-world codebase): no
+   crashes, and `--unsafe-fixes` left nothing broken or unfixed on a second pass, on all four.
+   `--nesting`'s default (5) never reported LVA006 on the standard library, mypy, pylint or
+   `uiautomator2`, and only 1 time on mypy at `--nesting=4`; libcst (deeply nested CST types) hit it
+   201 times at the default. LVA007 found nothing on any of the four, at any nesting. `uiautomator2`
+   is the best candidate seen so far (small, fast to check, genuinely different in character from
+   the others) — still needs vendoring or a reproducible checkout to become a permanent CI target,
+   and a decision on `--nesting`'s default: keep it at 5 (safe, rarely fires) or tighten it (3
+   already reported 45 times on mypy, 2 on the standard library) to make the rule useful more often.
+4. **LVA008: a type that could narrow.** A warning at `constrict`, an error at `suffocate`: a
+   declared type that every value assigned to the name (across its lifetime, not just its first
+   binding) is consistent with a strictly narrower one, e.g. a `str` only ever assigned `"0"` or
+   `"1"` (could be `bool`), or a `float` only ever incremented, never divided (could be `int`).
+   Needs whole-variable value-flow analysis across every reassignment in a scope, not just a first
+   binding, which is a different (and much bigger) kind of check than `LVA001`–`LVA007`; wants its
+   own design pass (what counts as "consistent with" a type, how far to follow calls and mutation,
+   false-positive risk on a codebase this analysis can't fully see) before it's worth building.
 
 After the first release (these need it on PyPI, or a published tag):
 

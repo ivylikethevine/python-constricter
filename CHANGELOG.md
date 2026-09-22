@@ -18,6 +18,9 @@ Notable changes, newest first. Each release's full notes are generated from its 
   module (`project.index` now returns a `project.Index`, not a plain `dict`).
 - `tests/corpus.py` and `tests/corpus_fix.py` (checking and `--fix`-ing a large real codebase) run
   in CI's new Corpus job, against the runner's Python standard library.
+- Fix: `--fix` could corrupt a line (and crash) if an offence's fix landed inside a multi-byte
+  character; that one offence is now left unfixed instead. Found by the new Corpus job, on the
+  Python 3.11 standard library.
 - First release, 0.2.0: `LVA001`–`LVA006`, the `relaxed` to `suffocate` levels, a flake8 plugin, a
   pylint plugin and the `constricter` command (with `--fix`, `--diff`, `--explain`, `--select`,
   `--ignore`, `--statistics` and text, JSON, GitHub and SARIF output), configured from
