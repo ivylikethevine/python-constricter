@@ -143,6 +143,11 @@ load-plugins = [
 max-line-length = 110
 indent-string = "    "
 
+[tool.pylint.design]
+# `_Scope` (checker.py) genuinely tracks 9 independent facts about a scope; splitting it into two
+# objects just to fit under 7 would add indirection, not clarity.
+max-attributes = 9
+
 [tool.typos.default.extend-words]
 astroid = "astroid"
 

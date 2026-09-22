@@ -437,6 +437,18 @@ Done:
   `_baseline_path` share a `_read_checked` read-and-report-errors wrapper.
 - **LVA007: duplicate/redundant typing.** A name annotated again with the type it already has, in
   the same straight-line block; a warning at every level, an error at `suffocate`.
+- **`--fix` infers more**: `not x` (always a real `bool`, unlike a comparison, which sqlalchemy's
+  own corpus data proves isn't safe to assume — it overloads `<`/`==` to build query expressions); a
+  table of builtins with a fixed, un-overloadable return type (`len`→`int`,
+  `isinstance`/`hasattr`/`callable`/`issubclass`→`bool`, `str`/`repr`/`chr`→`str`, `int`/`float`
+  →themselves, ...); and copying an already-known local's type for a plain `x = y` (from its own
+  annotation, an earlier fix in the same scope, or an annotated parameter) — a guessed source's type
+  copies too, marked just as guessed, so a chain of copies still converges in one `--fix` pass
+  instead of needing a second. Verified on the eighteen-codebase corpus below: fixed rose from
+  12,104 to 13,608 of the same 94,523 found (12.8% → 14.4%), no crashes, nothing left to fix on a
+  second pass anywhere, and `requests`' own test suite (not just its compile check) passed
+  identically — 617 passed, 15 skipped, 1 xfailed — before and after `--fix --unsafe-fixes` on its
+  source.
 
 Next:
 
@@ -498,39 +510,17 @@ Next:
    the permanent corpus: run its own test suite before/after `--fix`, not just check that it still
    compiles.
 
-4. **Raise `--fix`'s auto-fix rate.** Only 12.8% of found offences are auto-fixed today (see the
-   corpus table above); `annotations.inferred` only handles literals, uniform containers, and calls
-   to a same/cross-module function or a constructed class. A breakdown of what a sample of ~34,500
-   unfixed `LVA001`s across the standard library, sqlalchemy and django actually assign, ranked by
-   how much each would add if handled:
-   - **41% are calls** (14,174): 68% are a method call on some other object (`x = obj.method()`,
-     needs the receiver's type, see below); of the rest, the most common bare-name callees are
-     `getattr`, `len`, `set`, `list`, `int`, `dict`, `str`, `cast`, `sorted`, `max`, `type`, `next`,
-     `tuple`, `min`. A small table of well-known builtins with a fixed, un-overloadable return type
-     (`len`→`int`, `isinstance`/`hasattr`/`callable`/`issubclass`→`bool`, `str`/`repr`→`str`, ...)
-     is a safe, cheap win; container builtins (`list`, `dict`, `set`, `tuple`) need their argument's
-     element type, same machinery as the container literals already handled.
-   - **20% are unpacking, `:=` or `with ... as`** (6,994): structurally can't get one inferred type
-     from a single expression the way a plain `=` can; out of scope for `inferred` as designed.
-   - **11% are attribute access** (3,707), **6% are subscripts** (2,205): both need to know the
-     receiver's own type first (`obj.attr`, `container[key]`). The same missing piece as the
-     method-call majority above: `inferred` has no notion of "the type this local already has,
-     declared earlier in this scope." Adding one (a `declared: Mapping[str, str]` alongside `calls`,
-     built from `_Scope`'s own annotated bindings, threaded the way `calls`/`factories` already are)
-     would unlock attribute access, subscripts and method calls together — the single biggest lever
-     here, but real design work: parsing a container type's element out of its own annotation text,
-     deciding how far to trust a mutated/reassigned local, scope correctly.
-   - **5% are `BinOp`** (1,680, `a + b`) and **~2% `Name`** (608, `x = y`): `Name` is a trivial case
-     of the same "known local type" lookup above (copy `y`'s declared type). `BinOp` would need
-     operand types plus knowing the operator isn't overloaded to something else — riskier, lower
-     value, skip.
-   - **Two free, unambiguous, always-safe wins**, unrelated to the above: `not x` always yields a
-     real `bool` (not overloadable, unlike comparisons) — `_scalar`'s `UnaryOp` case only handles
-     `USub`/`UAdd` today, not `Not`. And an `ast.Compare` (`a < b`, `a == b`, ...) — **not** safe
-     unconditionally: sqlalchemy's own corpus data is direct proof, since it overloads comparison
-     operators to build query expressions instead of returning `bool`. Comparisons would need to be
-     a guessed (`--unsafe-fixes`) fix, like class construction already is, not a safe one.
-
+4. **Raise `--fix`'s auto-fix rate further.** The easy, safe wins are done (see Done, above); what's
+   left needs the bigger lever: `attribute access` (`x = obj.attr`) and `subscripts`
+   (`x = container[key]`) still can't be inferred, nor can a method call on an already-typed local
+   (`x = some_str.strip()`) — together the largest remaining category in the original breakdown (a
+   sample of ~34,500 unfixed `LVA001`s across the standard library, sqlalchemy and django: 68% of
+   "calls" were a method call on some other object). `_Scope.types` (a local's known type, added for
+   the copying already done) already has the piece these need, but using it here means parsing a
+   container type's element out of its own annotation text (`list[int]` → `int` for `container[0]`)
+   and deciding how far to trust a mutated or reassigned local; real design work, not a mechanical
+   extension. `BinOp` (`a + b`, ~5% of the sample) would need operand types plus knowing the
+   operator isn't overloaded to something else — riskier, lower value, likely skip.
 5. **LVA008: a type that could narrow.** A warning at `constrict`, an error at `suffocate`: a
    declared type that every value assigned to the name (across its lifetime, not just its first
    binding) is consistent with a strictly narrower one, e.g. a `str` only ever assigned `"0"` or

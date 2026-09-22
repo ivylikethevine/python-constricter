@@ -76,6 +76,26 @@ _FACTORIES: Final = frozenset(
 )
 _NUMBERS: Final = (int, float, complex)
 _TYPE_VARS: Final = frozenset({"TypeVar", "ParamSpec", "TypeVarTuple"})
+# Builtins whose return type is fixed by the language, whatever their argument: safe to infer, not
+# a guess (unlike a capitalised call, which could really be a generic class or a factory function).
+_BUILTIN_RETURNS: Final = {
+    "bool": "bool",
+    "bytes": "bytes",
+    "callable": "bool",
+    "chr": "str",
+    "complex": "complex",
+    "float": "float",
+    "hasattr": "bool",
+    "hash": "int",
+    "id": "int",
+    "int": "int",
+    "isinstance": "bool",
+    "issubclass": "bool",
+    "len": "int",
+    "ord": "int",
+    "repr": "str",
+    "str": "str",
+}
 # Modules `_FACTORIES`' names are imported from (so an aliased or re-exported import is still found).
 _FACTORY_MODULES: Final = frozenset({"enum", "typing", "typing_extensions"})
 
@@ -242,20 +262,29 @@ def _words(annotation: str) -> list[str]:
     return [word for word in re.split(r"\W+", annotation) if word]
 
 
-def inferred(value: ast.expr, calls: Mapping[str, str], known_factories: frozenset[str]) -> str | None:
+def inferred(
+    value: ast.expr,
+    calls: Mapping[str, str],
+    known_factories: frozenset[str],
+    declared: Mapping[str, str],
+) -> str | None:
     """Return the annotation `value` makes unambiguous, given the module's function `calls`.
 
     A literal's type (containers too, when their elements agree), a call to a module function that
-    declares its return type, or a class it constructs. `known_factories` (see `factories`) are
-    calls that build a class or special form rather than an instance of it, so they're never guessed
-    to construct one.
+    declares its return type, a class it constructs, or (`declared`) another local this scope
+    already gave a type. `known_factories` (see `factories`) are calls that build a class or special
+    form rather than an instance of it, so they're never guessed to construct one.
 
     Returns:
       The annotation as source text, or `None` if the value doesn't decide one.
 
     """
+    if isinstance(value, ast.Name) and value.id in declared:
+        return declared[value.id]
     return (
-        _scalar(value) or _container(value, calls, known_factories) or _called(value, calls, known_factories)
+        _scalar(value)
+        or _container(value, calls, known_factories, declared)
+        or _called(value, calls, known_factories)
     )
 
 
@@ -269,27 +298,34 @@ def _scalar(value: ast.expr) -> str | None:
             _NUMBERS,
         ) and not isinstance(constant, bool):
             return type(constant).__name__
+        case ast.UnaryOp(op=ast.Not()):  # `not x` always yields a real `bool`, unlike a comparison
+            return "bool"
         case ast.JoinedStr():
             return "str"
         case _:
             return None
 
 
-def _container(value: ast.expr, calls: Mapping[str, str], known_factories: frozenset[str]) -> str | None:
+def _container(
+    value: ast.expr,
+    calls: Mapping[str, str],
+    known_factories: frozenset[str],
+    declared: Mapping[str, str],
+) -> str | None:
     elements: list[ast.expr]
     keys: list[ast.expr | None]
     values: list[ast.expr]
     parts: list[str | None]
     match value:
         case ast.List(elts=elements) | ast.Set(elts=elements) if elements:
-            element: str | None = _uniform(elements, calls, known_factories)
+            element: str | None = _uniform(elements, calls, known_factories, declared)
             return f"{'list' if isinstance(value, ast.List) else 'set'}[{element}]" if element else None
         case ast.Tuple(elts=elements) if elements:
-            parts = [inferred(element, calls, known_factories) for element in elements]
+            parts = [inferred(element, calls, known_factories, declared) for element in elements]
             return None if None in parts else f"tuple[{', '.join(str(part) for part in parts)}]"
         case ast.Dict(keys=keys, values=values) if keys and None not in keys:
-            key: str | None = _uniform([k for k in keys if k is not None], calls, known_factories)
-            item: str | None = _uniform(values, calls, known_factories)
+            key: str | None = _uniform([k for k in keys if k is not None], calls, known_factories, declared)
+            item: str | None = _uniform(values, calls, known_factories, declared)
             return f"dict[{key}, {item}]" if key and item else None
         case _:
             return None
@@ -299,6 +335,7 @@ def _uniform(
     elements: Sequence[ast.expr],
     calls: Mapping[str, str],
     known_factories: frozenset[str],
+    declared: Mapping[str, str],
 ) -> str | None:
     """Find the one type every element has.
 
@@ -306,15 +343,18 @@ def _uniform(
       That type, or `None` if they differ or any is unknown.
 
     """
-    types: set[str | None] = {inferred(element, calls, known_factories) for element in elements}
+    types: set[str | None] = {inferred(element, calls, known_factories, declared) for element in elements}
     return next(iter(types)) if len(types) == 1 else None
 
 
 def _called(value: ast.expr, calls: Mapping[str, str], known_factories: frozenset[str]) -> str | None:
     func: ast.expr
+    name: str
     match value:
         case ast.Call(func=ast.Name() | ast.Attribute() as func) if ast.unparse(func) in calls:
             return calls[ast.unparse(func)]
+        case ast.Call(func=ast.Name(id=name)) if name in _BUILTIN_RETURNS:
+            return _BUILTIN_RETURNS[name]
         case ast.Call(func=ast.Name() | ast.Attribute() as func) if _constructs(
             node_name(func),
             known_factories,
@@ -324,17 +364,34 @@ def _called(value: ast.expr, calls: Mapping[str, str], known_factories: frozense
             return None
 
 
-def guessed(value: ast.expr, calls: Mapping[str, str]) -> bool:
+def guessed(value: ast.expr, calls: Mapping[str, str], guesses: frozenset[str]) -> bool:
     """Whether `inferred`'s annotation for `value` is a guess (`--unsafe-fixes`): it calls a class.
 
     A capitalised call may construct a generic class (`Box(1)` is really `Box[int]`) or be a factory
-    function; literals and calls to module functions with a declared return type are certain.
+    function; literals, calls to a module function or a fixed-return builtin (`len`, `isinstance`,
+    ...), and another local this scope already typed are certain. Copying a local `inferred` itself
+    only guessed (`guesses`) is no more certain than the guess it copies.
 
     Returns:
-      Whether any call in `value` is to something other than such a module function.
+      Whether any call in `value` is to something other than such a certain callee, or any name in
+      it copies such a guess.
 
     """
-    return any(isinstance(node, ast.Call) and ast.unparse(node.func) not in calls for node in ast.walk(value))
+    return any(_is_guess(node, calls, guesses) for node in ast.walk(value))
+
+
+def _is_guess(node: ast.AST, calls: Mapping[str, str], guesses: frozenset[str]) -> bool:
+    name: str
+    func: ast.expr
+    match node:
+        case ast.Call(func=ast.Name(id=name)) if name in _BUILTIN_RETURNS:
+            return False
+        case ast.Call(func=func):
+            return ast.unparse(func) not in calls
+        case ast.Name(id=name):
+            return name in guesses
+        case _:
+            return False
 
 
 def _constructs(name: str, known_factories: frozenset[str]) -> bool:

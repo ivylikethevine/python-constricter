@@ -599,12 +599,15 @@ def test_redundant_typing_is_reported_from_relaxed_and_errors_at_suffocate() -> 
         ("+2", "int"),
         ("True", "bool"),
         ("-True", None),
+        ("not y", "bool"),
         ("1j", "complex"),
         ("'text'", "str"),
         ("b'raw'", "bytes"),
         ("f'{0}'", "str"),
         ("Path('x')", "Path"),
         ("ast.Name('x')", "ast.Name"),
+        ("len([1])", "int"),
+        ("isinstance(1, int)", "bool"),
         ("TypeVar('T')", None),
         ("Counter()", None),
         ("path()", None),
@@ -706,6 +709,37 @@ def test_fixes_use_same_module_return_types() -> None:
         ("h", None),
         ("i", None),
         ("j", None),
+    ]
+
+
+def test_fixes_copy_an_already_typed_locals_type() -> None:
+    """A plain `x = y` offers `y`'s type: its annotation, an earlier fix, or its parameter's."""
+    source: str = textwrap.dedent(
+        """
+    def f(n: int) -> None:
+      a: int = 1
+      b = a
+      c = 2
+      d = c
+      e = n
+      g = h
+    """,
+    )
+    assert [(o.name, o.fix, o.unsafe) for o in check_source(source)] == [
+        ("b", "int", False),
+        ("c", "int", False),
+        ("d", "int", False),
+        ("e", "int", False),
+        ("g", None, False),
+    ]
+
+
+def test_a_copy_of_a_guessed_fix_is_guessed_too() -> None:
+    """A copy of an unsafely-fixed local is offered too, but it's no more certain than its source."""
+    source: str = "def f() -> None:\n  a = Box(1)\n  b = a\n"
+    assert [(o.name, o.fix, o.unsafe) for o in check_source(source)] == [
+        ("a", "Box", True),
+        ("b", "Box", True),
     ]
 
 

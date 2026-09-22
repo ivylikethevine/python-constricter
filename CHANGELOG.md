@@ -6,6 +6,9 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` infers more: `not x` (always `bool`), calls to builtins with a fixed return type (`len`,
+  `isinstance`, `str`, ...), and a plain `x = y` copying `y`'s already-known type (its annotation,
+  an earlier fix, or an annotated parameter).
 - **LVA007**: a name annotated again with the type it already has, in the same straight-line block
   (an `if`'s two arms, a `try`'s body and its `except`s, ... are compared separately, not against
   each other). A warning at every level, an error at `suffocate`.

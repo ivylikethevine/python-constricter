@@ -556,6 +556,8 @@ class _Scope:
         self.fixable: bool = fixable
         self.offences: list[Offence] = []
         self.first: list[str] = []  # each first binding the rules cover, typed or not
+        self.types: dict[str, str] = {}  # each name's known type, for inferring `x = y`'s
+        self.guesses: set[str] = set()  # `types` entries from an unsafe fix: copying one is too
 
     def bind(
         self,
@@ -660,10 +662,14 @@ def _function_scope(func: _FunctionDef, functions: list[_FunctionDef], settings:
 
     """
     args: ast.arguments = func.args
-    params: set[str] = {a.arg for a in (*args.posonlyargs, *args.args, *args.kwonlyargs)}
+    named: tuple[ast.arg, ...] = (*args.posonlyargs, *args.args, *args.kwonlyargs)
+    params: set[str] = {a.arg for a in named}
     params.update(extra.arg for extra in (args.vararg, args.kwarg) if extra is not None)
     # `_` is a discard.
     scope: _Scope = _Scope(params | {"_"}, functions, settings)
+    # A copy of a plain, annotated parameter (`*args`/`**kwargs` aren't the type they're annotated
+    # with) can be typed the same way, the moment it's assigned.
+    scope.types.update((arg.arg, ast.unparse(arg.annotation)) for arg in named if arg.annotation is not None)
     stmt: ast.stmt
     for stmt in func.body:
         _visit(scope, stmt)
@@ -703,6 +709,7 @@ def _declare(scope: _Scope, stmt: ast.stmt) -> None:
         case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation):
             scope.declare(name)
             scope.annotation(name, annotation)
+            _ = scope.types.setdefault(name, ast.unparse(annotation))
         case _ if type(stmt).__name__ == _TYPE_ALIAS:
             alias: ast.expr = cast("ast.expr", next(ast.iter_child_nodes(stmt)))  # its first field, the name
             scope.declared.update(name.id for name in _names(alias))
@@ -725,13 +732,13 @@ def _bind(scope: _Scope, stmt: ast.stmt) -> None:
     match stmt:
         case ast.Assign(targets=[ast.Name(id=name) as single], value=value, type_comment=comment):
             calls: dict[str, str] = scope.settings.calls
-            scope.bind(
-                name,
-                _at(single),
-                scope.unannotated(comment),
-                inferred(value, calls, scope.settings.factories),
-                unsafe=guessed(value, calls),
-            )
+            fix: str | None = inferred(value, calls, scope.settings.factories, scope.types)
+            unsafe: bool = guessed(value, calls, frozenset(scope.guesses))
+            scope.bind(name, _at(single), scope.unannotated(comment), fix, unsafe=unsafe)
+            if fix is not None and name not in scope.types:
+                scope.types[name] = fix
+                if unsafe:
+                    scope.guesses.add(name)
         case ast.Assign(targets=targets, type_comment=comment):
             _bind_targets(scope, targets, scope.unannotated(comment))
         case ast.With(items=items, type_comment=comment) | ast.AsyncWith(items=items, type_comment=comment):
