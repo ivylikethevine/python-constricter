@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter.annotations import depth, inferred, is_vague, returns
+from constricter.annotations import depth, guessed, inferred, is_vague, returns
 
 UNANNOTATED: Final = "LVA001"
 UNTYPED_TARGET: Final = "LVA002"
@@ -94,6 +94,8 @@ class Offence:
   fix: str | None = field(default=None, compare=False)
   # In a notebook, the cell (from 1); `line` is then the line in that cell.
   cell: int | None = field(default=None, compare=False)
+  # Whether `fix` is a guess, applied only with `--unsafe-fixes`.
+  unsafe: bool = field(default=False, compare=False)
 
   @property
   def message(self) -> str:
@@ -359,13 +361,15 @@ class _Scope:
     self.offences: list[Offence] = []
     self.first: list[str] = []  # each first binding the rules cover, typed or not
 
-  def bind(self, name: str, at: tuple[int, int], code: str | None, fix: str | None = None) -> None:
+  def bind(
+    self, name: str, at: tuple[int, int], code: str | None, fix: str | None = None, *, unsafe: bool = False
+  ) -> None:
     """Bind `name`; unless it's already bound, report `code` at `(line, col)` (`None`: typed)."""
     if name not in self.declared:
       self.declared.add(name)
       self.first.append(name)
       if code is not None:
-        self.offences.append(Offence(*at, name, code, fix if self.fixable else None))
+        self.offences.append(Offence(*at, name, code, fix if self.fixable else None, unsafe=unsafe))
 
   def declare(self, name: str) -> None:
     """Bind `name` by an annotation (`name: T`, `name: T = ...`): a typed first binding."""
@@ -485,7 +489,10 @@ def _bind(scope: _Scope, stmt: ast.stmt) -> None:
   cases: list[ast.match_case]
   match stmt:
     case ast.Assign(targets=[ast.Name(id=name) as single], value=value, type_comment=comment):
-      scope.bind(name, _at(single), scope.unannotated(comment), inferred(value, scope.settings.calls))
+      calls: dict[str, str] = scope.settings.calls
+      scope.bind(
+        name, _at(single), scope.unannotated(comment), inferred(value, calls), unsafe=guessed(value, calls)
+      )
     case ast.Assign(targets=targets, type_comment=comment):
       _bind_targets(scope, targets, scope.unannotated(comment))
     case ast.With(items=items, type_comment=comment) | ast.AsyncWith(items=items, type_comment=comment):

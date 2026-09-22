@@ -240,6 +240,22 @@ def _called(value: ast.expr, calls: Mapping[str, str]) -> str | None:
       return None
 
 
+def guessed(value: ast.expr, calls: Mapping[str, str]) -> bool:
+  """Whether `inferred`'s annotation for `value` is a guess (`--unsafe-fixes`): it calls a class.
+
+  A capitalised call may construct a generic class (`Box(1)` is really `Box[int]`) or be a factory
+  function; literals and calls to module functions with a declared return type are certain.
+
+  Returns:
+    Whether any call in `value` is to something other than such a module function.
+
+  """
+  return any(
+    isinstance(node, ast.Call) and not (isinstance(node.func, ast.Name) and node.func.id in calls)
+    for node in ast.walk(value)
+  )
+
+
 def _constructs(name: str) -> bool:
   """Whether a call to `name` is, by its capitalised name, a class's constructor worth annotating."""
   return name[:1].isupper() and name not in _FACTORIES and name not in _GENERICS

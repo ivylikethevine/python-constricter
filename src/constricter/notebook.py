@@ -4,7 +4,6 @@
 import json
 import re
 from collections.abc import Sequence
-from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter import fixes, jsonc
@@ -44,8 +43,8 @@ def _cell_lines(source: _Json) -> list[str]:
   return ["\n" if _MAGIC.match(line) else f"{line}\n" for line in lines]
 
 
-def read(path: Path) -> tuple[str, list[Line]]:
-  """Return a notebook's code cells as one module, and where each of its lines came from.
+def parse(raw: str, name: str) -> tuple[str, list[Line]]:
+  """Return notebook JSON's code cells as one module, and where each of its lines came from.
 
   Returns:
     The module's source, and a `Line` for each of its lines.
@@ -54,13 +53,13 @@ def read(path: Path) -> tuple[str, list[Line]]:
     ValueError: It isn't a notebook (JSON with a `cells` list).
 
   """
-  document: _Json = cast("_Json", jsonc.loads(path.read_bytes()))
+  document: _Json = cast("_Json", jsonc.loads(raw))
   cells: list[_Json]
   match document:
     case {"cells": list() as cells}:
       pass
     case _:
-      message: str = f"{path}: not a Jupyter notebook"
+      message: str = f"{name}: not a Jupyter notebook"
       raise ValueError(message)
   joined: list[str] = []
   where: list[Line] = []
@@ -78,15 +77,14 @@ def read(path: Path) -> tuple[str, list[Line]]:
   return "".join(joined), where
 
 
-def fix(path: Path, offences: Sequence[Offence]) -> tuple[str, list[Cell]]:
-  """Add each fixable offence's annotation in its cell.
+def fix(raw: str, offences: Sequence[Offence]) -> tuple[str, list[Cell]]:
+  """Add each fixable offence's annotation in its cell of the notebook JSON `raw`.
 
   Returns:
     The notebook's new JSON (its indent, key order and final newline kept), and each changed
     cell's number and old and new lines.
 
   """
-  raw: str = path.read_bytes().decode("utf-8")
   document: dict[str, _Json] = cast("dict[str, _Json]", jsonc.loads(raw))
   cells: list[_Json] = cast("list[_Json]", document["cells"])
   changed: list[Cell] = []

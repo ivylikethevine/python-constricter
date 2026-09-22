@@ -11,5 +11,7 @@ Notable changes, newest first. Each release's full notes are generated from its 
   `--ignore`, `--statistics` and text, JSON, GitHub and SARIF output), configured from
   `[tool.constricter]` in `pyproject.toml`. Python 3.11+. Also baselines (`--write-baseline`,
   `--baseline`), Jupyter notebooks, a GitHub Action, `--jobs`, per-path levels, and JSON with
-  comments wherever constricter reads JSON. `--coverage` reports annotation coverage; `--fix` edits
-  notebook cells; releases carry SLSA Build Level 3 provenance (GitHub artifact attestations).
+  comments wherever constricter reads JSON. `--coverage` reports annotation coverage; standard
+  input, `gitlab`, `junit` and `rdjson` output, `--unsafe-fixes`, per-file ignores, `--exit-zero`
+  and `--output-file`; `--fix` edits notebook cells; releases carry SLSA Build Level 3 provenance
+  (GitHub artifact attestations).

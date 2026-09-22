@@ -2,6 +2,7 @@
 """The `constricter` command (see README)."""
 
 import argparse
+import contextlib
 import difflib
 import json
 import os
@@ -13,7 +14,7 @@ from enum import Enum
 from fnmatch import fnmatch
 from functools import partial
 from pathlib import Path
-from typing import Final, cast
+from typing import Final, TextIO, cast
 
 from constricter import __version__, baseline, fixes, notebook
 from constricter.checker import (
@@ -62,20 +63,26 @@ def python_files(paths: Sequence[Path], exclude: Sequence[str] = ()) -> Iterator
         yield found
 
 
-def _source(path: Path) -> tuple[str, list[notebook.Line]]:
-  """Return `path`'s Python (a notebook's code cells, joined), and each line's cell if it's one."""
-  if path.suffix == notebook.SUFFIX:
-    return notebook.read(path)
-  return path.read_bytes().decode("utf-8"), []
+STDIN: Final = Path("-")
 
 
-def check_file(
-  path: Path, *, type_comments: bool = False, all_scopes: bool = False, nesting: int = NESTING
+def _read(path: Path) -> str:
+  """Return `path`'s text; `-` is standard input."""
+  return sys.stdin.read() if path == STDIN else path.read_bytes().decode("utf-8")
+
+
+def _source(raw: str, name: Path) -> tuple[str, list[notebook.Line]]:
+  """Return the Python in `raw` (a notebook's code cells, joined), and each line's cell if it's one."""
+  return notebook.parse(raw, str(name)) if name.suffix == notebook.SUFFIX else (raw, [])
+
+
+def check_text(
+  raw: str, name: Path, *, type_comments: bool = False, all_scopes: bool = False, nesting: int = NESTING
 ) -> list[Offence]:
-  """Return the offences in `path` that no `# noqa` suppresses.
+  """Return the offences in `raw`, the text of `name`, that no `# noqa` suppresses.
 
-  A notebook's code cells are checked as one module, and each offence placed in its cell (a
-  `--fix` edits its cells). Raises `ValueError` for a file that isn't a notebook.
+  A notebook's code cells are checked as one module, and each offence placed in its cell.
+  Raises `ValueError` for a `.ipynb` that isn't a notebook.
 
   Returns:
     The unsuppressed offences, a notebook's placed in their cells.
@@ -83,15 +90,42 @@ def check_file(
   """
   source: str
   where: list[notebook.Line]
-  source, where = _source(path)
+  source, where = _source(raw, name)
   offences: list[Offence] = unsuppressed(
-    check_source(source, str(path), type_comments=type_comments, all_scopes=all_scopes, nesting=nesting),
+    check_source(source, str(name), type_comments=type_comments, all_scopes=all_scopes, nesting=nesting),
     lines(source),
   )
   return (
     [replace(o, line=where[o.line - 1].line, cell=where[o.line - 1].cell) for o in offences]
     if where
     else offences
+  )
+
+
+def _fixed(
+  raw: str, name: Path, offences: Sequence[Offence]
+) -> tuple[str, list[tuple[str, list[str], list[str]]]]:
+  """Add each fixable offence's annotation to `raw`, the text of `name`.
+
+  Returns:
+    The new text, and each changed part (the file, or a notebook's cell): its label and old and
+    new lines.
+
+  """
+  if name.suffix == notebook.SUFFIX:
+    text: str
+    cells: list[notebook.Cell]
+    text, cells = notebook.fix(raw, offences)
+    return text, [(f"{name}:cell {c.number}", c.old, c.new) for c in cells]
+  old: list[str] = lines(raw)
+  new: list[str] = fixes.apply(old, offences)
+  return "".join(new), [(str(name), old, new)] if new != old else []
+
+
+def _diff(raw: str, name: Path, offences: Sequence[Offence]) -> str:
+  return "".join(
+    "".join(difflib.unified_diff(old, new, label, label))
+    for label, old, new in _fixed(raw, name, offences)[1]
   )
 
 
@@ -105,28 +139,8 @@ def fix_file(path: Path, offences: Sequence[Offence]) -> int:
   count: int
   if not (count := sum(1 for o in offences if o.fix)):
     return 0
-  text: str = (
-    notebook.fix(path, offences)[0]
-    if path.suffix == notebook.SUFFIX
-    else "".join(fixes.apply(lines(path.read_bytes().decode("utf-8")), offences))
-  )
-  _ = path.write_bytes(text.encode())
+  _ = path.write_bytes(_fixed(_read(path), path, offences)[0].encode())
   return count
-
-
-def diff_file(path: Path, offences: Sequence[Offence]) -> str:
-  """Return the unified diff `fix_file` would make to `path`, per cell for a notebook (empty if none)."""
-  if path.suffix == notebook.SUFFIX:
-    return "".join(
-      "".join(
-        difflib.unified_diff(cell.old, cell.new, f"{path}:cell {cell.number}", f"{path}:cell {cell.number}")
-      )
-      for cell in notebook.fix(path, offences)[1]
-    )
-  source: str = path.read_bytes().decode("utf-8")
-  return "".join(
-    difflib.unified_diff(lines(source), fixes.apply(lines(source), offences), str(path), str(path))
-  )
 
 
 def _at_least(minimum: int) -> Callable[[str], int]:
@@ -194,7 +208,9 @@ def _parser() -> argparse.ArgumentParser:
     prog="constricter",
     description="Report local variables that aren't typed where they're first bound.",
   )
-  _ = parser.add_argument("paths", nargs="*", type=Path, help="files and directories (default: .)")
+  _ = parser.add_argument(
+    "paths", nargs="*", type=Path, help="files and directories (default: .); `-` reads standard input"
+  )
   _ = parser.add_argument(
     "--exclude",
     action="append",
@@ -242,6 +258,11 @@ def _parser() -> argparse.ArgumentParser:
     "--fix", action="store_true", help="add the annotations a value makes unambiguous, in place"
   )
   _ = parser.add_argument(
+    "--unsafe-fixes",
+    action="store_true",
+    help="with --fix or --diff: also apply guesses (a call to a class that may be generic)",
+  )
+  _ = parser.add_argument(
     "--diff", action="store_true", help="print what --fix would change, and change nothing"
   )
   _ = parser.add_argument(
@@ -273,6 +294,17 @@ def _parser() -> argparse.ArgumentParser:
     metavar="N",
     help="check N files at a time (0: one per CPU; default: 1)",
   )
+  _ = parser.add_argument(
+    "--stdin-filename",
+    type=Path,
+    default=STDIN,
+    metavar="PATH",
+    help="with `-` as the path: the name to report standard input under (a `.ipynb` is a notebook)",
+  )
+  _ = parser.add_argument("--exit-zero", action="store_true", help="exit 0 even when offences are errors")
+  _ = parser.add_argument(
+    "--output-file", type=Path, metavar="FILE", help="write the report to FILE, not stdout"
+  )
   _ = parser.add_argument("--quiet", "-q", action="store_true", help="don't print the text summary line")
   _ = parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
   return parser
@@ -295,6 +327,20 @@ class _Checks:
   type_comments: bool
   all_scopes: bool
   nesting: int
+  unsafe_fixes: bool = False
+
+
+@dataclass(frozen=True)
+class _Input:
+  """What to check: paths (`-` is standard input, reported as `stdin_name`) and globs to skip."""
+
+  paths: list[Path]
+  exclude: list[str]
+  stdin_name: Path = STDIN
+
+  def name(self, path: Path) -> Path:
+    """Return the name `path` is reported, levelled and baselined under."""
+    return self.stdin_name if path == STDIN else path
 
 
 @dataclass(frozen=True)
@@ -305,6 +351,7 @@ class _Filter:
   per_path: dict[str, str]
   select: list[str]
   ignore: list[str]
+  per_file_ignores: dict[str, list[str]] = field(default_factory=dict[str, list[str]])
   baseline_file: Path | None = None
   entries: baseline.Entries = field(default_factory=dict[str, dict[str, int]])
 
@@ -326,31 +373,36 @@ class _Filter:
   def results(self, path: Path, offences: Sequence[Offence]) -> list[Result]:
     """Return the offences in `path` that are reported, at its level."""
     level: Level = self.level_for(path)
+    ignored: tuple[str, ...] = (
+      *self.ignore,
+      *(code for glob, codes in self.per_file_ignores.items() if _excluded(path, [glob]) for code in codes),
+    )
     return [
       Result(path, o, level)
       for o in offences
       if o.is_reported(level)
       and (not self.select or o.code.startswith(tuple(self.select)))
-      and not o.code.startswith(tuple(self.ignore))
+      and not o.code.startswith(ignored)
     ]
 
 
 @dataclass(frozen=True)
 class _Output:
-  """How the report looks."""
+  """How the report looks, where it goes, and how the command exits."""
 
   fmt: Format
   statistics: bool
   quiet: bool
   fail_under: float | None = None  # --coverage's threshold
+  exit_zero: bool = False
+  output_file: Path | None = None
 
 
 @dataclass(frozen=True)
 class _Options:
   """The command's parsed options."""
 
-  paths: list[Path]
-  exclude: list[str]
+  input: _Input
   checks: _Checks
   filter: _Filter
   output: _Output
@@ -370,43 +422,54 @@ class _Options:
     if (code := cast("str | None", args.explain)) is not None:
       _ = sys.stdout.write(explain(code))
       parser.exit()
+    paths: list[Path] = cast("list[Path]", args.paths) or [Path()]
+    if STDIN in paths and len(paths) > 1:
+      parser.error("`-` (standard input) must be the only path")
     mode: _Mode = _mode(parser, args)
-    # Without --baseline or `baseline`, the default file is used if it exists, and written to.
-    default: Path = project_root(Path.cwd()) / DEFAULT_BASELINE
-    baseline_path: Path | None = cast("Path | None", args.baseline) or (
-      default if mode is _Mode.WRITE_BASELINE or default.is_file() else None
-    )
-    entries: baseline.Entries = {}
-    if baseline_path is not None and mode is not _Mode.WRITE_BASELINE:
-      try:
-        entries = baseline.read(baseline_path)
-      except ValueError as error:
-        parser.error(str(error))
     return cls(
-      paths=cast("list[Path]", args.paths) or [Path()],
-      exclude=cast("list[str]", args.exclude),
+      input=_Input(paths, cast("list[str]", args.exclude), cast("Path", args.stdin_filename)),
       checks=_Checks(
         type_comments=cast("bool", args.type_comments),
         all_scopes=cast("bool", args.all_scopes),
         nesting=cast("int", args.nesting),
+        unsafe_fixes=cast("bool", args.unsafe_fixes),
       ),
-      filter=_Filter(
-        level=LEVELS[cast("str", args.level)],
-        per_path=cast("dict[str, str]", getattr(args, "per_path_levels", {})),
-        select=[c.upper() for c in cast("list[str]", args.select)],
-        ignore=[c.upper() for c in cast("list[str]", args.ignore)],
-        baseline_file=baseline_path,
-        entries=entries,
-      ),
+      filter=_filter(parser, args, mode),
       output=_Output(
         fmt=cast("Format", args.format),
         statistics=cast("bool", args.statistics),
         quiet=cast("bool", args.quiet),
         fail_under=cast("float | None", args.fail_under),
+        exit_zero=cast("bool", args.exit_zero),
+        output_file=cast("Path | None", args.output_file),
       ),
       mode=mode,
-      jobs=cast("int", args.jobs) or os.cpu_count() or 1,
+      # Standard input can only be read once, in this process.
+      jobs=1 if paths == [STDIN] else cast("int", args.jobs) or os.cpu_count() or 1,
     )
+
+
+def _filter(parser: argparse.ArgumentParser, args: argparse.Namespace, mode: _Mode) -> _Filter:
+  """Return the filter the options set, with the baseline read (the default one, if it exists)."""
+  default: Path = project_root(Path.cwd()) / DEFAULT_BASELINE
+  baseline_path: Path | None = cast("Path | None", args.baseline) or (
+    default if mode is _Mode.WRITE_BASELINE or default.is_file() else None
+  )
+  entries: baseline.Entries = {}
+  if baseline_path is not None and mode is not _Mode.WRITE_BASELINE:
+    try:
+      entries = baseline.read(baseline_path)
+    except ValueError as error:
+      parser.error(str(error))
+  return _Filter(
+    level=LEVELS[cast("str", args.level)],
+    per_path=cast("dict[str, str]", getattr(args, "per_path_levels", {})),
+    select=[c.upper() for c in cast("list[str]", args.select)],
+    ignore=[c.upper() for c in cast("list[str]", args.ignore)],
+    per_file_ignores=cast("dict[str, list[str]]", getattr(args, "per_file_ignores", {})),
+    baseline_file=baseline_path,
+    entries=entries,
+  )
 
 
 def _mode(parser: argparse.ArgumentParser, args: argparse.Namespace) -> _Mode:
@@ -432,59 +495,80 @@ class _FileRun:
 
   results: list[Result] = field(default_factory=list[Result])
   fixed: int = 0
-  diff: str = ""
+  text: str = ""  # --diff's diff, or standard input's fixed source
   error: str = ""
   baselined: int = 0
   found: list[Offence] = field(default_factory=list[Offence])  # every offence, for --write-baseline
   coverage: Coverage | None = None
 
 
+def _checked(path: Path, name: Path, checks: _Checks) -> tuple[str, list[Offence]]:
+  """Read `path` and check it as `name`; raises what reading or parsing it does.
+
+  Returns:
+    Its text, and its offences.
+
+  """
+  raw: str = _read(path)
+  return raw, check_text(
+    raw, name, type_comments=checks.type_comments, all_scopes=checks.all_scopes, nesting=checks.nesting
+  )
+
+
 def _check_path(path: Path, options: _Options) -> _FileRun:
   """Check (and fix, or diff) one file; a file that can't be read or parsed is an error."""
   checks: _Checks = options.checks
+  name: Path = options.input.name(path)
+  raw: str
   offences: list[Offence]
   try:
-    offences = check_file(
-      path, type_comments=checks.type_comments, all_scopes=checks.all_scopes, nesting=checks.nesting
-    )
+    raw, offences = _checked(path, name, checks)
   except (OSError, ValueError, SyntaxError) as error:  # UnicodeDecodeError is a ValueError
-    return _FileRun(error=f"{path}: error: {error}")
+    return _FileRun(error=f"{name}: error: {error}")
   if options.mode is _Mode.WRITE_BASELINE:
     return _FileRun(found=offences)
   baselined: int
-  offences, baselined = options.filter.unbaselined(path, offences)
-  results: list[Result] = options.filter.results(path, offences)
-  reported: list[Offence] = [r.offence for r in results]
+  offences, baselined = options.filter.unbaselined(name, offences)
+  results: list[Result] = options.filter.results(name, offences)
+  unsafe: bool = options.checks.unsafe_fixes
+  fixing: list[Offence] = [r.offence for r in results if r.offence.fix and (unsafe or not r.offence.unsafe)]
   if options.mode is _Mode.DIFF:
-    return _FileRun(diff=diff_file(path, reported))
-  if options.mode is _Mode.FIX:
-    return _FileRun([r for r in results if not r.offence.fix], fix_file(path, reported), baselined=baselined)
-  return _FileRun(results, baselined=baselined)
+    return _FileRun(text=_diff(raw, name, fixing))
+  if options.mode is not _Mode.FIX:
+    return _FileRun(results, baselined=baselined)
+  left: list[Result] = [r for r in results if r.offence not in fixing]
+  if path == STDIN:  # the fixed source goes to stdout
+    return _FileRun(left, len(fixing), _fixed(raw, name, fixing)[0], baselined=baselined)
+  return _FileRun(left, fix_file(path, fixing), baselined=baselined)
 
 
 def _cover_path(path: Path, options: _Options) -> _FileRun:
   """Count one file's typed first bindings; a file that can't be read or parsed is an error."""
+  name: Path = options.input.name(path)
   try:
     return _FileRun(
       coverage=annotation_coverage(
-        _source(path)[0], type_comments=options.checks.type_comments, all_scopes=options.checks.all_scopes
+        _source(_read(path), name)[0],
+        type_comments=options.checks.type_comments,
+        all_scopes=options.checks.all_scopes,
       )
     )
   except (OSError, ValueError, SyntaxError) as error:
-    return _FileRun(error=f"{path}: error: {error}")
+    return _FileRun(error=f"{name}: error: {error}")
 
 
 def _check_all(options: _Options) -> tuple[list[Path], list[_FileRun]]:
-  """Check every file (`--jobs` at a time), in order; return the files and what each found."""
-  paths: list[Path] = list(python_files(options.paths, options.exclude))
+  """Check every file (`--jobs` at a time), in order; return the names and what each found."""
+  paths: list[Path] = list(python_files(options.input.paths, options.input.exclude))
   check: Callable[[Path], _FileRun] = partial(
     _cover_path if options.mode is _Mode.COVERAGE else _check_path, options=options
   )
+  names: list[Path] = [options.input.name(path) for path in paths]
   if options.jobs == 1 or len(paths) <= 1:
-    return paths, [check(path) for path in paths]
+    return names, [check(path) for path in paths]
   pool: ProcessPoolExecutor
   with ProcessPoolExecutor(max_workers=options.jobs) as pool:
-    return paths, list(pool.map(check, paths))
+    return names, list(pool.map(check, paths))
 
 
 def _report(options: _Options, runs: Sequence[_FileRun], files: int) -> int:
@@ -500,6 +584,9 @@ def _report(options: _Options, runs: Sequence[_FileRun], files: int) -> int:
     parts: list[str] = [f"Found {errors} error(s) and {len(results) - errors} warning(s) in {files} file(s)"]
     if options.mode is _Mode.FIX:
       parts.append(f"fixed {sum(run.fixed for run in runs)}")
+      guesses: int
+      if guesses := sum(r.offence.fix is not None for r in results):
+        parts.append(f"{guesses} more with --unsafe-fixes")
     if options.filter.baseline_file is not None:
       parts.append(f"{sum(run.baselined for run in runs)} baselined")
     _ = sys.stdout.write("; ".join(parts) + ".\n")
@@ -535,28 +622,43 @@ def _coverage(options: _Options, paths: Sequence[Path], runs: Sequence[_FileRun]
   return EXIT_FOUND if threshold is not None and total.percent < threshold else EXIT_CLEAN
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-  """Run the command; return its exit status."""
-  options: _Options = _Options.parse(argv)
-  paths: list[Path]
+def _run(options: _Options) -> int:
+  """Check, fix, diff, count or baseline, printing what that finds; return the exit status."""
+  names: list[Path]
   runs: list[_FileRun]
-  paths, runs = _check_all(options)
+  names, runs = _check_all(options)
   _ = sys.stderr.write("".join(f"{run.error}\n" for run in runs if run.error))
   failed: bool = any(run.error for run in runs)
   status: int
   if options.mode is _Mode.WRITE_BASELINE and options.filter.baseline_file is not None:
     file: Path = options.filter.baseline_file
     found: dict[str, list[Offence]] = {
-      baseline.key(p, file): run.found for p, run in zip(paths, runs, strict=True)
+      baseline.key(n, file): run.found for n, run in zip(names, runs, strict=True)
     }
     _ = sys.stdout.write(f"Wrote {baseline.write(file, found)} offence(s) to {file}.\n")
     status = EXIT_CLEAN
   elif options.mode is _Mode.COVERAGE:
-    status = _coverage(options, paths, runs)
+    status = _coverage(options, names, runs)
   elif options.mode is _Mode.DIFF:
-    diffs: str = "".join(run.diff for run in runs)
+    diffs: str = "".join(run.text for run in runs)
     _ = sys.stdout.write(diffs)
     status = EXIT_FOUND if diffs else EXIT_CLEAN
+  elif options.mode is _Mode.FIX and options.input.paths == [STDIN] and runs and not failed:
+    _ = sys.stdout.write(runs[0].text)  # standard input, fixed, is the whole output
+    status = EXIT_FOUND if any(r.offence.is_error(r.level) for r in runs[0].results) else EXIT_CLEAN
   else:
-    status = _report(options, runs, len(paths))
+    status = _report(options, runs, len(names))
   return EXIT_ERROR if failed else status
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+  """Run the command; return its exit status."""
+  options: _Options = _Options.parse(argv)
+  file: Path | None = options.output.output_file
+  stream: TextIO
+  with (
+    file.open("w", encoding="utf-8", newline="\n") if file else contextlib.nullcontext(sys.stdout) as stream,
+    contextlib.redirect_stdout(stream),
+  ):
+    status: int = _run(options)
+  return EXIT_CLEAN if options.output.exit_zero and status == EXIT_FOUND else status

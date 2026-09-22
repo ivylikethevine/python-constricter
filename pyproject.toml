@@ -22,20 +22,24 @@ pylint = ["pylint>=3"]
 
 [dependency-groups]
 # Locked with hashes in uv.lock (see README, Development).
-dev = [
-    "basedpyright",
-    "build",
-    "check-wheel-contents",
+# What the tests need: pure Python, so it installs on PyPy and free-threaded builds too.
+test = [
     "flake8>=7",
     "flit_core>=4.1,<5",
     "hypothesis",
+    "pylint>=3",
+    "pytest",
+    "pytest-cov",
+]
+dev = [
+    { include-group = "test" },
+    "basedpyright",
+    "build",
+    "check-wheel-contents",
     "hypothesmith",
     "mypy",
     "pip-audit",
     "pre-commit",
-    "pylint>=3",
-    "pytest",
-    "pytest-cov",
     "ruff",
     "twine",
     "typos",

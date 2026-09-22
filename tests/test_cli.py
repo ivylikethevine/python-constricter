@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 """The `constricter` command: file discovery, `# noqa`, output and exit status."""
 
+import io
 import json
 import runpy
 import sys
@@ -259,6 +260,8 @@ def test_no_table_or_no_pyproject_sets_nothing(tmp_path: Path) -> None:
     "[tool.constricter]\njobs = -1\n",
     "[tool.constricter]\nper-path-levels = 1\n",
     '[tool.constricter.per-path-levels]\n"t/*" = "tight"\n',
+    "[tool.constricter]\nper-file-ignores = 1\n",
+    '[tool.constricter.per-file-ignores]\n"t/*" = ["XYZ"]\n',
     "[tool]\nconstricter = 1\n",
     "not toml [",
   ],
@@ -277,25 +280,24 @@ def test_a_bad_pyproject_exits_2(
 
 
 def test_fix_adds_the_annotations_values_decide(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-  """`--fix` annotates what it can in place, keeps line endings, and reports the rest."""
+  """`--fix` annotates what's certain in place (keeping line endings); `--unsafe-fixes` adds guesses."""
   source: bytes = (
     b"def f() -> None:\r\n  a = 1; b = 'x'\r\n  c = []\r\n  d = 2  # noqa: LVA001\r\n  e = Path()\r\n"
   )
   path: Path = tmp_path / "fixable.py"
   _ = path.write_bytes(source)
   assert cli.main(["--fix", str(path)]) == cli.EXIT_FOUND
-  fixed: bytes = (
-    b"def f() -> None:\r\n"
-    b"  a: int = 1; b: str = 'x'\r\n"
-    b"  c = []\r\n"
-    b"  d = 2  # noqa: LVA001\r\n"
-    b"  e: Path = Path()\r\n"
-  )
-  assert path.read_bytes() == fixed
+  assert path.read_bytes() == source.replace(b"a = 1; b = 'x'", b"a: int = 1; b: str = 'x'")
   out: str = capsys.readouterr().out
   assert out.startswith(f"{path}:3:3: error: LVA001 local variable 'c'")
-  assert out.endswith("Found 1 error(s) and 0 warning(s) in 1 file(s); fixed 3.\n")
-  assert cli.main(["--fix", "-q", str(path)]) == cli.EXIT_FOUND
+  assert out.endswith(
+    "Found 2 error(s) and 0 warning(s) in 1 file(s); fixed 2; 1 more with --unsafe-fixes.\n"
+  )
+  assert cli.main(["--fix", "--unsafe-fixes", "-q", str(path)]) == cli.EXIT_FOUND
+  assert path.read_bytes().endswith(b"  e: Path = Path()\r\n")
+  _ = capsys.readouterr()
+  assert cli.main(["--fix", str(path)]) == cli.EXIT_FOUND  # only `c = []` is left, and it can't be fixed
+  assert capsys.readouterr().out.endswith("Found 1 error(s) and 0 warning(s) in 1 file(s); fixed 0.\n")
   assert cli.fix_file(path, []) == 0
 
 
@@ -326,6 +328,8 @@ def test_pyproject_nesting(tmp_path: Path) -> None:
   assert config.config_defaults(tmp_path) == {"nesting": 3}
 
 
+RDJSON_ERROR: Final = "ERROR"
+DEMO_CODES: Final = ("LVA001", "LVA001", "LVA002")
 ALL_BASELINED: Final = "Found 0 error(s) and 0 warning(s) in 1 file(s); 3 baselined.\n"
 DEMO: Final = "def f(items: list[int]) -> None:\n  a = 1\n  b = []\n  for c in items:\n    pass\n"
 
@@ -575,3 +579,110 @@ def test_a_bad_fail_under_exits_2(percent: str, capsys: pytest.CaptureFixture[st
     _ = cli.main([f"--fail-under={percent}"])
   assert exit_info.value.code == cli.EXIT_ERROR
   assert capsys.readouterr().err.endswith(f"expected a percentage from 0 to 100, not {percent!r}\n")
+
+
+def _stdin(monkeypatch: pytest.MonkeyPatch, text: str) -> None:
+  monkeypatch.setattr(sys, "stdin", io.StringIO(text))
+
+
+def test_stdin_is_checked_under_its_filename(
+  monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+  """`-` reads standard input, reported under `--stdin-filename` (default `-`)."""
+  _stdin(monkeypatch, DEMO)
+  assert cli.main(["-q", "--stdin-filename", "app.py", "-"]) == cli.EXIT_FOUND
+  assert capsys.readouterr().out.startswith("app.py:2:3: error: LVA001 local variable 'a'")
+  _stdin(monkeypatch, DEMO)
+  assert cli.main(["-q", "-"]) == cli.EXIT_FOUND
+  assert capsys.readouterr().out.startswith("-:2:3: error:")
+
+
+def test_stdin_fix_prints_the_fixed_source(
+  monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+  """`--fix` on standard input prints the fixed source instead of a report; `--diff` diffs it."""
+  _stdin(monkeypatch, DEMO)
+  assert cli.main(["--fix", "-"]) == cli.EXIT_FOUND  # `b = []` is left, an error
+  assert capsys.readouterr().out == DEMO.replace("  a = 1", "  a: int = 1")
+  _stdin(monkeypatch, DEMO)
+  assert cli.main(["--diff", "--stdin-filename", "app.py", "-"]) == cli.EXIT_FOUND
+  assert capsys.readouterr().out.startswith("--- app.py\n+++ app.py\n")
+
+
+def test_stdin_notebook_and_errors(
+  monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+  """A `.ipynb` stdin filename reads a notebook; `-` must be the only path; bad input exits 2."""
+  _stdin(monkeypatch, '{"cells": [{"cell_type": "code", "source": "def f() -> None:\\n  x = 1\\n"}]}')
+  assert cli.main(["-q", "--stdin-filename", "nb.ipynb", "-"]) == cli.EXIT_FOUND
+  assert capsys.readouterr().out.startswith("nb.ipynb:cell 1:2:3: error:")
+  _stdin(monkeypatch, "def (:\n")
+  assert cli.main(["--coverage", "-"]) == cli.EXIT_ERROR
+  assert capsys.readouterr().err.startswith("-: error: ")
+  exit_info: pytest.ExceptionInfo[SystemExit]
+  with pytest.raises(SystemExit) as exit_info:
+    _ = cli.main(["-", "src"])
+  assert exit_info.value.code == cli.EXIT_ERROR
+  assert capsys.readouterr().err.endswith("`-` (standard input) must be the only path\n")
+
+
+def test_exit_zero_and_output_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+  """`--exit-zero` exits 0 despite errors (not for unreadable files); `--output-file` gets the report."""
+  demo: Path = _write(tmp_path / "demo.py", DEMO)
+  report: Path = tmp_path / "report.txt"
+  assert cli.main(["--exit-zero", "--output-file", str(report), str(demo)]) == cli.EXIT_CLEAN
+  assert not capsys.readouterr().out
+  assert report.read_text(encoding="utf-8").endswith("Found 2 error(s) and 1 warning(s) in 1 file(s).\n")
+  bad: Path = _write(tmp_path / "bad.py", "def (:\n")
+  assert cli.main(["--exit-zero", str(bad)]) == cli.EXIT_ERROR
+
+
+def test_per_file_ignores(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+  """`per-file-ignores` drops codes (or prefixes) for files matching a glob."""
+  _pyproject(tmp_path, '[tool.constricter.per-file-ignores]\n"tests/*" = ["LVA001"]\n')
+  _ = _write(tmp_path / "tests" / "demo.py", DEMO)
+  monkeypatch.chdir(tmp_path)
+  assert cli.main(["--statistics", "-q", "tests"]) == cli.EXIT_CLEAN
+  assert capsys.readouterr().out.split() == ["1", *DEMO_CODES[2:], "warning"]
+  assert config.config_defaults(tmp_path) == {"per_file_ignores": {"tests/*": ["LVA001"]}}
+
+
+def test_gitlab_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+  """`--format=gitlab` is Code Climate JSON with fingerprints unique per offence."""
+  demo: Path = _write(tmp_path / "demo.py", DEMO + "  a = 2\n")
+  assert cli.main(["--format=gitlab", str(demo)]) == cli.EXIT_FOUND
+  issues: list[dict[str, _Json]] = cast("list[dict[str, _Json]]", json.loads(capsys.readouterr().out))
+  assert [(i["check_name"], i["severity"], i["location"]) for i in issues] == [
+    ("LVA001", "major", {"path": demo.as_posix(), "lines": {"begin": 2}}),
+    ("LVA001", "major", {"path": demo.as_posix(), "lines": {"begin": 3}}),
+    ("LVA002", "minor", {"path": demo.as_posix(), "lines": {"begin": 4}}),
+  ]
+  assert len({str(i["fingerprint"]) for i in issues}) == len(issues)
+
+
+def test_junit_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+  """`--format=junit` is a test suite per file, with a failed test case per offence."""
+  demo: Path = _write(tmp_path / "demo.py", DEMO)
+  assert cli.main(["--format=junit", str(demo)]) == cli.EXIT_FOUND
+  out: str = capsys.readouterr().out
+  assert out.startswith(
+    "<?xml version='1.0' encoding='utf-8'?>\n<testsuites name=\"constricter\" tests=\"3\""
+  )
+  assert f'<testcase name="LVA002 c" classname="{demo}">' in out
+  assert out.count("<failure ") == out.count("</testcase>") == len(DEMO_CODES)
+
+
+def test_rdjson_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+  """`--format=rdjson` is reviewdog's JSON; a certain fix is a suggestion at the name's end."""
+  demo: Path = _write(tmp_path / "demo.py", DEMO)
+  assert cli.main(["--format=rdjson", str(demo)]) == cli.EXIT_FOUND
+  report: dict[str, list[dict[str, _Json]]] = cast(
+    "dict[str, list[dict[str, _Json]]]", json.loads(capsys.readouterr().out)
+  )
+  first: dict[str, _Json] = report["diagnostics"][0]
+  assert first["severity"] == RDJSON_ERROR
+  end: dict[str, int] = {"line": 2, "column": 4}
+  assert first["suggestions"] == [{"range": {"start": end, "end": end}, "text": ": int"}]
+  assert set(report["diagnostics"][1]) == set(first) - {"suggestions"}  # `b = []` has no fix

@@ -14,7 +14,7 @@ if TYPE_CHECKING:
   from io import BufferedReader
 
 _Toml: TypeAlias = "str | int | float | bool | datetime | date | time | list[_Toml] | dict[str, _Toml]"
-Default: TypeAlias = str | int | bool | list[str] | dict[str, str]
+Default: TypeAlias = str | int | bool | list[str] | dict[str, str] | dict[str, list[str]]
 
 
 def unknown_codes(codes: Sequence[str]) -> list[str]:
@@ -106,6 +106,15 @@ def _levels(value: _Toml) -> dict[str, str] | None:
 
 
 _BASELINE: Final = "baseline"
+
+
+def _ignores(value: _Toml) -> dict[str, list[str]] | None:
+  if not isinstance(value, dict):
+    return None
+  ignores: dict[str, list[str] | None] = {glob: _codes(codes) for glob, codes in value.items()}
+  return None if None in ignores.values() else {glob: list(codes or []) for glob, codes in ignores.items()}
+
+
 # Each key's reader: its option default, or `None` for a wrong value.
 _READERS: dict[str, Callable[[_Toml], Default | None]] = {
   "level": _level,
@@ -117,6 +126,7 @@ _READERS: dict[str, Callable[[_Toml], Default | None]] = {
   "type-comments": _flag,
   "all-scopes": _flag,
   "per-path-levels": _levels,
+  "per-file-ignores": _ignores,
   _BASELINE: lambda value: value if isinstance(value, str) and value else None,
 }
 

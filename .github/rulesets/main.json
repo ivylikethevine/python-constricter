@@ -76,6 +76,12 @@
             "context": "Test (windows-latest, 3.14)"
           },
           {
+            "context": "Test (ubuntu-latest, pypy3.11)"
+          },
+          {
+            "context": "Test (ubuntu-latest, 3.14t)"
+          },
+          {
             "context": "Build"
           },
           {
