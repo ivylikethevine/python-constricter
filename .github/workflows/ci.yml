@@ -26,47 +26,30 @@ jobs:
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
-          egress-policy: audit
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            pypi.org:443
+            files.pythonhosted.org:443
+            raw.githubusercontent.com:443
+            releases.astral.sh:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
       - run: ruff check --output-format=github .
       - run: ruff format --check .
       - run: basedpyright
       - run: mypy
       - run: pylint src tests
-      - run: flake8 --max-line-length=110 src tests
+      - run: flake8 src tests
       - run: typos
-      - run: constricter --format=github src tests
+      - run: uv lock --check
+      - run: constricter --level=suffocate --all-scopes --format=github src tests
       - run: pre-commit try-repo . constricter --all-files
 
-  test:
-    name: Test (${{ matrix.os }}, ${{ matrix.python }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        python: ['3.12', '3.13', '3.14']
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    steps:
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-        with:
-          python-version: ${{ matrix.python }}
-      - run: python -m pytest --cov
-
-  build:
-    name: Build
-    needs: [lint, test]
+  docs:
+    name: Docs
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -74,11 +57,78 @@ jobs:
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            registry.npmjs.org:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      # markdownlint-cli2 and prettier, locked in .github/package-lock.json.
+      - run: npm ci --prefix .github
+      - run: git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/markdownlint-cli2
+      - run: git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/prettier --check
+
+  test:
+    name: Test (${{ matrix.os }}, ${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ['3.11', '3.12', '3.13', '3.14']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      # Linux only: macOS and Windows reach OS hosts no allowlist can predict.
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        if: runner.os == 'Linux'
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            raw.githubusercontent.com:443
+            releases.astral.sh:443
+            files.pythonhosted.org:443
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        if: runner.os != 'Linux'
+        with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
+        with:
+          python-version: ${{ matrix.python }}
+      # Coverage on 3.12+: 3.11 can't reach the branch for `type X = ...` statements.
+      - run: python -m pytest ${COVERAGE:+"$COVERAGE"}
+        env:
+          COVERAGE: ${{ matrix.python != '3.11' && '--cov' || '' }}
+
+  build:
+    name: Build
+    needs: [lint, docs, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            files.pythonhosted.org:443
+            raw.githubusercontent.com:443
+            releases.astral.sh:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup
       - run: python -m build --no-isolation --outdir dist
       - run: twine check --strict dist/*
       - name: Smoke-test the wheel

@@ -3,3 +3,6 @@ local/
 
 # Written next to the sources by Python.
 __pycache__/
+
+# The Markdown tools (npm ci --prefix .github).
+.github/node_modules/

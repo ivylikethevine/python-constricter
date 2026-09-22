@@ -1,0 +1,16 @@
+# markdownlint-cli2's rules for every tracked .md (as in the sibling repos).
+default: true
+
+# Name the emphasis style rather than infer it per file; prettier writes `_x_`.
+MD049:
+  style: underscore
+
+# Prose wraps at 100 (prettier does it); tables and code can't wrap.
+MD013:
+  line_length: 100
+  tables: false
+  code_blocks: false
+
+# Only the `# H1` is a title, never front matter.
+MD025:
+  front_matter_title: ""

@@ -1,4 +1,0 @@
-rules:
-  # `$/` breaks OpenSSF Scorecard's pin check; keep `./` (as in the sibling repos).
-  self-repository:
-    disable: true

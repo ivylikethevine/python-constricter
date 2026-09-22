@@ -1,12 +1,12 @@
 [project]
 name = "python-constricter"
 dynamic = ["version"]
-description = "Lint rule: every local variable is annotated where it's first bound. A flake8 plugin, a pylint plugin and a standalone CLI."
+description = "Lint rules: every local variable is typed where it's first bound. A flake8 plugin, a pylint plugin and a standalone CLI."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE.md"]
 authors = [{ name = "Ivy Duggan" }]
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 dependencies = []
 classifiers = [
     "Framework :: Flake8",
@@ -19,7 +19,9 @@ classifiers = [
 [project.optional-dependencies]
 flake8 = ["flake8>=7"]
 pylint = ["pylint>=3"]
-# Locked with hashes in requirements-dev.txt (see README, Development).
+
+[dependency-groups]
+# Locked with hashes in uv.lock (see README, Development).
 dev = [
     "basedpyright",
     "build",
@@ -52,7 +54,8 @@ name = "constricter"
 
 [tool.ruff]
 line-length = 110
-target-version = "py312"
+indent-width = 2
+target-version = "py311"
 cache-dir = "local/.ruff_cache"
 
 [tool.ruff.lint]
@@ -66,6 +69,10 @@ ignore = [
     "missing-trailing-comma",
     "incorrect-blank-line-before-class",
     "multi-line-summary-second-line",
+    # Assume 4-space indents (ruff says to disable them at any other width); flake8's E111/E114
+    # check the 2-space width instead.
+    "indentation-with-invalid-multiple",
+    "indentation-with-invalid-multiple-comment",
 ]
 external = ["LVA"]
 
@@ -73,12 +80,12 @@ external = ["LVA"]
 notice-rgx = "SPDX-License-Identifier: MIT"
 
 [tool.ruff.lint.per-file-ignores]
-# pytest's assert; test names say what docstrings would.
-"tests/*" = ["assert", "D1"]
+# pytest's assert.
+"tests/*" = ["assert"]
 
 [tool.mypy]
 files = ["src", "tests"]
-python_version = "3.12"
+python_version = "3.11"
 cache_dir = "local/.mypy_cache"
 strict = true
 warn_unreachable = true
@@ -101,7 +108,7 @@ enable_error_code = [
 ]
 
 [tool.pylint.main]
-py-version = "3.12"
+py-version = "3.11"
 load-plugins = [
     "constricter.pylint_plugin",
     "pylint.extensions.bad_builtin",
@@ -127,17 +134,19 @@ load-plugins = [
     "pylint.extensions.redefined_variable_type",
     "pylint.extensions.set_membership",
     "pylint.extensions.typing",
+    "pylint.extensions.while_used",
 ]
 
 [tool.pylint.format]
 max-line-length = 110
-
-[tool.pylint.basic]
-# As ruff's D1 per-file ignore: private names and tests need no docstring.
-no-docstring-rgx = "^(_|test_)"
+indent-string = "  "
 
 [tool.typos.default.extend-words]
 astroid = "astroid"
+
+[tool.uv]
+cache-dir = "local/.uv-cache"
+required-version = ">=0.12.17"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -159,7 +168,7 @@ include = ["src", "tests"]
 # The dev venv (see README, Development).
 venvPath = "local"
 venv = ".venv"
-pythonVersion = "3.12"
+pythonVersion = "3.11"
 typeCheckingMode = "all"
 # astroid (pylint's AST) ships no annotations.
 allowedUntypedLibraries = ["astroid"]
