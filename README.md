@@ -240,6 +240,42 @@ Done:
 Next, smallest first:
 
 1. Switch the release jobs and Scorecard to `block` once they've run and their hosts are known.
-2. **`# lva-ignore: LVA00x`:** a suppression that, unlike `# noqa` (which every front end honours),
-   still reports the offence as a warning at `suffocate`.
-3. Revisit the [disabled rules](#disabled-rules).
+2. **gitleaks:** scan the history for committed secrets (as the sibling repos do).
+3. **lychee:** check the Markdown files' links, offline in CI and weekly for external ones.
+4. **`reuse lint`:** check every file's licence header (the SPDX headers are already there).
+5. **validate-pyproject and check-wheel-contents:** catch packaging mistakes before a release.
+6. **A `constricter-fix` pre-commit hook**, running `--fix`.
+7. **SARIF upload docs:** examples for GitHub code scanning, SonarQube and Codacy.
+8. **CHANGELOG**, with generated release notes.
+9. **Badges:** CI, PyPI, Scorecard and licence.
+10. **Issue and PR templates, and CODEOWNERS.**
+11. **CONTRIBUTING**, kept short.
+12. **`--explain LVA00x`:** print a rule's rationale and examples, as `ruff rule` does.
+13. **`--select` / `--ignore`:** choose codes without changing the level.
+14. **`--diff`:** preview what `--fix` would change.
+15. **`--statistics`:** counts per code, to track progress on a large codebase.
+16. **Per-path levels** in `[tool.constricter]`, e.g. `strict` for `tests/` and `suffocate`
+    elsewhere.
+17. **Parallel checking** for large repositories.
+18. **A GitHub Action** (`uses: ivylikethevine/python-constricter@v1`) that runs `--format=github`
+    for PR annotations.
+19. **Fuzzing:** hypothesis with hypothesmith generates valid Python; the checker must never crash
+    on it.
+20. **A weekly run over a large real codebase** (CPython's standard library) to catch crashes and
+    slowdowns.
+21. **Mutation testing (mutmut)**, weekly, to check the tests catch bugs rather than just cover
+    lines. It's slow, so not on every push.
+22. **An adoption guide** for existing codebases: start at `relaxed`, baseline, then raise the
+    level.
+23. **`# lva-ignore: LVA00x`:** a suppression that, unlike `# noqa` (which every front end honours),
+    still reports the offence as a warning at `suffocate`.
+24. **Trunk and MegaLinter plugin definitions**, submitted upstream once it's on PyPI.
+25. **A conda-forge recipe**, once it's on PyPI.
+26. **A baseline file (`--baseline`):** record existing offences so a large codebase can adopt the
+    tool and fail only on new ones.
+27. **A smarter `--fix`:** uniform list and dict literals (`[1, 2]` becomes `list[int]`), and calls
+    to same-module functions that declare their return type.
+28. **Jupyter notebooks:** check `.ipynb` code cells, as ruff does.
+29. **SLSA level-3 provenance** (slsa-github-generator), a stronger guarantee than today's
+    attestation.
+30. Revisit the [disabled rules](#disabled-rules).
