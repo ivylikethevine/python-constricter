@@ -168,7 +168,7 @@ def test_a_repeated_annotation_is_dropped(tmp_path: Path, capsys: pytest.Capture
     )
     assert all(o.edit is None for o in ignored if o.code == REDUNDANT)
     path: Path = tmp_path / "again.py"
-    _ = path.write_text(source, encoding="utf-8")
+    _ = path.write_text(source, encoding="utf-8", newline="\n")
     assert cli.main(["--fix", "-q", "--level=suffocate", str(path)]) == cli.EXIT_FOUND
     assert path.read_text(encoding="utf-8") == source.replace("x: int = 2", "x = 2")
     _ = capsys.readouterr()
@@ -183,6 +183,7 @@ def test_sarif_and_rdjson_carry_both_edits_of_a_declaration(
     _ = path.write_text(
         "def f(items: list[int]) -> None:\n    for x in items:  # type: int\n        pass\n",
         encoding="utf-8",
+        newline="\n",  # the edits' text is compared exactly, line ending included
     )
     assert cli.main(["--format=rdjson", "--level=suffocate", str(path)]) == cli.EXIT_FOUND
     rdjson: _Object = cast("_Object", json.loads(capsys.readouterr().out))

@@ -119,6 +119,7 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 "tests/**" = ["assert"]
 # The corpus table runs each constricter version under test as a subprocess.
 "tests/corpus/corpus_table.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
+"tests/corpus/corpus_suite.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
 "tests/corpus/corpus_sources.py" = ["suspicious-url-open-usage"] # downloads only its pinned https URLs
 "tests/cli/test_cli.py" = ["suspicious-url-open-usage"] # fetches the SARIF schema from its pinned URL
 

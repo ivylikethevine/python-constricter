@@ -25,8 +25,11 @@
   fixed-return builtins and `str`/`bytes` methods; copies, subscripts, attributes (annotated,
   `self.x: T`, `@property` returns) and method calls of a known local, and `cls` in a classmethod as
   `type[C]`; computed values (conditionals, arithmetic on builtin scalars, comprehensions,
-  `sorted`/`list`/..., `await`); `typing.cast`; loop targets and unpackings as declarations before
-  the statement.
+  `sorted`/`list`/..., `await`); `typing.cast`; standard-library functions with a builtin result,
+  resolved through the imports; `x = None` later rebound to one type as `T | None`; loop targets and
+  unpackings as declarations before the statement. A tuple longer than `max-length` is
+  `tuple[T, ...]` (found on pip's vendored chardet, whose frequency tables had become
+  thousand-element annotations).
 - **Guesses** apply only with `--unsafe-fixes` (a capitalised call taken to construct its class,
   LVA008's and LVA010's narrowed annotation), and a copy of a guess is one too.
 - **Fix levels**: every mechanism has a stable id, shown by `--show-fixes` and in JSON;
@@ -35,8 +38,9 @@
   repeat's annotation is dropped).
 - **Safe by construction**: it never touches class bodies, keeps line endings and a file's encoding
   (PEP 263 or a BOM; a fix the encoding can't hold leaves the file, exit 2), edits notebooks' cells
-  in place, and converges in one pass on every corpus with nothing broken. `requests`' own test
-  suite passed identically before and after `--fix --unsafe-fixes` on its source.
+  in place, and converges in one pass on every corpus with nothing broken. `requests`', flask's and
+  fastapi's own test suites pass identically before and after `--fix --unsafe-fixes` on their
+  source.
 
 ### Command and output
 
@@ -64,7 +68,11 @@
 - **`tests/corpus/corpus.py`** (no crash) and **`tests/corpus/corpus_fix.py`** (nothing broken, one
   pass) on the standard library and pinned packages, in CI's Corpus job;
   **`tests/corpus/corpus_table.py`** records each version's results in [RUNS.md](RUNS.md), with
-  totals and percentages, and `--label` for a pseudo-version (`0.2.4-rc.N`).
+  totals and percentages, how much `--fix` grows each corpus (0.4% in bytes and 0.2% in lines, about
+  9 bytes per fix; 0.9% with guesses), and `--label` for a pseudo-version (`0.2.4-rc.N`).
+- **`tests/corpus/corpus_suite.py`** clones a corpus package at its pinned tag, installs its locked
+  test dependencies, and runs its test suite as released, after `--fix`, and after
+  `--fix --unsafe-fixes`; flask (490 tests) and fastapi (3,341) come out identical.
 - **Python 3**: `requests`, `flask`, `django` (the 5.2 LTS, for 3.11), `sqlalchemy`, `fastapi`,
   `pydantic`, `rich` (chosen from 18 measured by hand) and `pandas` 3.0.6 (1,421 files with its
   tests; overloads, generics, `TYPE_CHECKING` imports; 30,140 fixed, nothing broken, one pass).
@@ -108,23 +116,7 @@ it's done.
 
 ### Small: a day or less
 
-Items marked † are from [NEXT-UP.md](NEXT-UP.md#findings), which measures each on the corpus.
-
-1. **† Standard-library functions with a builtin result**, resolved by import like the builtins
-   table: a curated table of functions whose return type is a builtin and doesn't depend on their
-   arguments (`time.time` → `float`, `textwrap.dedent` → `str`, `os.getpid` → `int`, `struct.pack` →
-   `bytes`, `os.environ.get(k)` → `str | None`). `AnyStr` functions only when their arguments' types
-   are known. About 900 on the corpus. Done when the table's functions type their result through
-   `import m`, `import m as a` and `from m import f`, and a same-named function from elsewhere
-   doesn't.
-2. **† `x = None`, later rebound**: `T | None`, when every other binding of the name in the scope
-   has a certain type and they agree, from value flow. At least 100 on the corpus. Done when that
-   case is fixed and a rebinding of unknown type leaves it alone.
-3. **Measure how much `--fix` grows a codebase.** Every fix adds text (an annotation, or a
-   declaration line), and a large codebase's reviewers, diffs and download size feel it. For each
-   corpus, record the bytes and lines before and after `--fix` and `--fix --unsafe-fixes` (total,
-   and per fix), in `tests/corpus/corpus_table.py`'s tables in `docs/RUNS.md`. Done when every
-   corpus's growth is recorded there, per version.
+Nothing queued.
 
 ### Medium: a few days
 
@@ -149,18 +141,15 @@ Items marked † are from [NEXT-UP.md](NEXT-UP.md#findings), which measures each
    guess for a method (a subclass may override it). Needs the callee's scope checked before its
    callers'. At least 656 calls on the corpus, mostly in unannotated code. Done when such a call is
    typed and a function with a bare `return`, a fall-through or a `yield` isn't.
-5. **Run more corpora's own test suites after `--fix`, with `--unsafe-fixes` above all.** Only
-   `requests`' suite has been run before and after `--fix --unsafe-fixes` (identical results); the
-   corpus scripts only check that fixed files still compile and converge. Guesses (a capitalised
-   call taken to construct its class, LVA008's and LVA010's narrowing, and trusted guesses under
-   `unsafe-fix-select`) are the fixes most likely to be wrong, and annotations are code: pydantic
-   and fastapi read them at runtime, and a wrong one changes behaviour, not just a type checker's
-   view. Clone each corpus package's source at its pinned version, run its tests, apply `--fix`
-   (then `--fix --unsafe-fixes`), and run them again; add a script (`tests/corpus/corpus_suite.py`)
-   so it can be repeated per release, and record the results in `docs/RUNS.md`. Start with the
-   annotation-reading ones (pydantic, fastapi), then sqlalchemy and rich. Done when each Python 3
-   corpus's suite passes the same before and after, or each difference is traced to a fix and that
-   mechanism corrected or made a guess.
+5. **Run the remaining corpora's test suites, and their type checkers, after `--fix`.**
+   `tests/corpus/corpus_suite.py` runs flask's and fastapi's suites (and `requests`' was run by
+   hand) before and after `--fix` and `--fix --unsafe-fixes`, identically. Add pydantic, rich,
+   sqlalchemy, django and pandas (whose 27% guesses make it the most telling). A local's annotation
+   is never evaluated at runtime, so a test suite catches a fix that breaks the code, not a wrong
+   type: also run each project's own type checker (mypy or pyright, as its CI does) before and
+   after, and count the new errors per fix mechanism. Done when every Python 3 corpus's suite passes
+   the same, and each new type error is traced to a mechanism and that mechanism corrected or made a
+   guess.
 
 ### Large: a week or more
 

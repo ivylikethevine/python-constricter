@@ -2,12 +2,13 @@
 """The rules: every local variable is typed where it's first bound (see README)."""
 
 import ast
-import re
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Final, NamedTuple, TypeAlias, cast
 
+from constricter.fix import stdlib
 from constricter.fix.inference import (
+    ClassSide,
     Inference,
     Known,
     guessed,
@@ -52,17 +53,19 @@ from constricter.rules.annotations import (
     node_name,
     returns,
 )
-from constricter.rules.flow import Finding, Hierarchy, Kind, Lifetime, augmented, findings, members
+from constricter.rules.flow import Binding, Finding, Hierarchy, Kind, Lifetime, augmented, findings, members
 from constricter.rules.redundant import redundant
 from constricter.rules.syntax import (
     FunctionDef,
     captures,
     child_statements,
     collect_functions,
+    comment_type,
     expressions,
     owners,
     python2_compatible,
     target_names,
+    type_comment_span,
 )
 
 # The node class of `type X = ...` statements, by name: Python 3.11's `ast` has no `TypeAlias`.
@@ -70,7 +73,8 @@ _TYPE_ALIAS: Final = "TypeAlias"
 _DISCARD: Final = "_"
 _CLASSMETHOD: Final = "classmethod"
 _COMMENT: Final = "comment"  # the fix kind of LVA003's declaration
-_TYPE_COMMENT: Final = re.compile(rb"#\s*type:")
+_OPTIONAL: Final = "optional"  # the fix kind of a `None` default rebound to one type
+_NONE: Final = "None"
 _FINAL: Final = "Final"
 # Enum members mustn't be annotated: a base imported from here is one, however it's aliased.
 _ENUM_MODULES: Final = frozenset({"enum"})
@@ -144,9 +148,10 @@ def _settings(
             classes(tree),
             method_returns(tree),
             awaited_returns(tree),
-            class_attributes(tree),
-            class_methods(tree),
+            ClassSide(class_attributes(tree), class_methods(tree)),
             casts(tree),
+            stdlib.origins(tree),
+            checks.max_length,
         ),
         Hierarchy.for_module(tree, {name: frozenset(wider) for name, wider in checks.narrower}),
         owners(tree),
@@ -176,6 +181,9 @@ def check_tree(
     # A finding's kind is the code that reports it (LVA008, LVA009, LVA010).
     flow: list[Offence] = _flow_offences(_value_flow(tree, scopes), settings.fixes)
     finals: list[Offence] = [o for scope in scopes for o in scope.finals()] if checks.final else []
+    scope: _Scope
+    for scope in scopes:
+        scope.optionals()  # after value flow, which marks the names written from elsewhere
     reported: list[Offence] = [o for scope in scopes for o in scope.reported()]
     return sorted([*reported, *redundant(tree, settings.fixes), *flow, *finals])
 
@@ -426,6 +434,35 @@ class _Scope:
     def assigned(self, name: str, where: tuple[int, int]) -> None:
         """Record a plain assignment to `name` at `where`, for LVA012."""
         self.assignments.found.setdefault(name, []).append((where, self.assignments.looping > 0))
+
+    def optionals(self) -> None:
+        """Offer `T | None` to a name first bound to `None`, then only ever to a certain `T`.
+
+        Every later binding must have a type value flow is sure of, all the same one, not itself
+        allowing `None`, and nothing in another scope may write the name (`nonlocal`, `global`).
+        """
+        index: int
+        o: Offence
+        for index, o in enumerate(self.offences):
+            lifetime: Lifetime | None = self.flow.get(o.name)
+            if o.code != UNANNOTATED or o.edit is not None or lifetime is None or lifetime.escaped:
+                continue
+            first: Binding
+            rest: list[Binding]
+            first, *rest = lifetime.bindings
+            types: set[str | None] = {binding.value for binding in rest}
+            if first.at != (o.line, o.col) or first.value != _NONE or len(types) != 1:
+                continue
+            found: str | None = types.pop()
+            if found is None or _NONE in (members(found) or [found]):
+                continue
+            reason: str = f"`None`, then only `{found}`"
+            fix: Fix | None = self.offer(
+                Inference(f"{found} | None", reason, frozenset({_OPTIONAL})),
+                frozenset(),
+                unsafe=False,
+            )
+            self.offences[index] = replace(o, edit=fix)
 
     def finals(self) -> list[Offence]:
         """Find the names that could be `Final` (LVA012); run after `value_flow`, which marks escapes.
@@ -848,8 +885,8 @@ def _bind_commented(scope: _Scope, stmt: ast.For | ast.AsyncFor, target: ast.exp
     would see the name declared twice. Only for a loop whose header is on one line, where the comment
     is found after its iterable.
     """
-    drop: tuple[int, int] | None = _type_comment_span(scope.settings.lines, stmt)
-    annotation: str | None = _comment_type(comment) if drop is not None else None
+    drop: tuple[int, int] | None = type_comment_span(scope.settings.lines, stmt)
+    annotation: str | None = comment_type(comment) if drop is not None else None
     name: ast.Name
     part: str | None
     for name, part in unpacked(target, annotation):
@@ -864,45 +901,6 @@ def _bind_commented(scope: _Scope, stmt: ast.For | ast.AsyncFor, target: ast.exp
             )
             fix = None if fix is None else fix._replace(drop=drop)
         scope.bind(name.id, at(name), COMMENT_TYPED_TARGET, fix)
-
-
-def _comment_type(comment: str) -> str | None:
-    """Read a loop's `# type:` comment as an annotation (`int, str` is a tuple's parts).
-
-    Returns:
-      It, or `None` if it doesn't parse as one.
-
-    """
-    text: str = comment.split("#", 1)[0].strip()  # a comment after it (`# noqa`) isn't part of it
-    try:
-        parsed: ast.expr = ast.parse(text, mode="eval").body
-    except SyntaxError:
-        return None
-    if isinstance(parsed, ast.Tuple):
-        return f"tuple[{', '.join(ast.unparse(part) for part in parsed.elts)}]"
-    return ast.unparse(parsed)
-
-
-def _type_comment_span(lines: Sequence[str], stmt: ast.For | ast.AsyncFor) -> tuple[int, int] | None:
-    """Find the columns (UTF-8 bytes) of a one-line loop header's `# type:` comment, to delete it.
-
-    From the end of the header's code (or, with a comment after it, `# type: int  # noqa`, from the
-    `#`), up to that comment or the end of the line, so the other comment stays.
-
-    Returns:
-      Them, or `None` if the header spans lines or the comment isn't found after the iterable.
-
-    """
-    if not lines or stmt.body[0].lineno == stmt.lineno or stmt.iter.end_lineno != stmt.lineno:
-        return None
-    raw: bytes = lines[stmt.lineno - 1].encode()
-    found: re.Match[bytes] | None
-    if (found := _TYPE_COMMENT.search(raw, stmt.iter.end_col_offset or 0)) is None:
-        return None
-    after: int
-    if (after := raw.find(b"#", found.end())) >= 0:
-        return found.start(), after
-    return len(raw[: found.start()].rstrip()), len(raw.rstrip(b"\r\n"))
 
 
 def _bind_targets(scope: _Scope, targets: list[ast.expr], code: str | None) -> None:

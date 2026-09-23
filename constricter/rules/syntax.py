@@ -8,6 +8,9 @@ from typing import Final, TypeAlias
 
 from constricter.offences import at
 
+# A `# type:` comment, as a loop header writes one (LVA003).
+_TYPE_COMMENT: Final = re.compile(rb"#\s*type:")
+
 FunctionDef: TypeAlias = ast.FunctionDef | ast.AsyncFunctionDef
 FUNCTION_DEFS: tuple[type[ast.FunctionDef], type[ast.AsyncFunctionDef]] = (
     ast.FunctionDef,
@@ -195,3 +198,42 @@ def _rest_at(node: ast.MatchMapping, name: str, lines: Sequence[str]) -> tuple[i
             if found.group(1) == target:
                 return number, found.start(1)
     return at(node)
+
+
+def comment_type(comment: str) -> str | None:
+    """Read a loop's `# type:` comment as an annotation (`int, str` is a tuple's parts).
+
+    Returns:
+      It, or `None` if it doesn't parse as one.
+
+    """
+    text: str = comment.split("#", 1)[0].strip()  # a comment after it (`# noqa`) isn't part of it
+    try:
+        parsed: ast.expr = ast.parse(text, mode="eval").body
+    except SyntaxError:
+        return None
+    if isinstance(parsed, ast.Tuple):
+        return f"tuple[{', '.join(ast.unparse(part) for part in parsed.elts)}]"
+    return ast.unparse(parsed)
+
+
+def type_comment_span(lines: Sequence[str], stmt: ast.For | ast.AsyncFor) -> tuple[int, int] | None:
+    """Find the columns (UTF-8 bytes) of a one-line loop header's `# type:` comment, to delete it.
+
+    From the end of the header's code (or, with a comment after it, `# type: int  # noqa`, from the
+    `#`), up to that comment or the end of the line, so the other comment stays.
+
+    Returns:
+      Them, or `None` if the header spans lines or the comment isn't found after the iterable.
+
+    """
+    if not lines or stmt.body[0].lineno == stmt.lineno or stmt.iter.end_lineno != stmt.lineno:
+        return None
+    raw: bytes = lines[stmt.lineno - 1].encode()
+    found: re.Match[bytes] | None
+    if (found := _TYPE_COMMENT.search(raw, stmt.iter.end_col_offset or 0)) is None:
+        return None
+    after: int
+    if (after := raw.find(b"#", found.end())) >= 0:
+        return found.start(), after
+    return len(raw[: found.start()].rstrip()), len(raw.rstrip(b"\r\n"))

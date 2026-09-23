@@ -6,7 +6,8 @@ in a function or module body:
 
 - a literal: `count = 0` becomes `count: int = 0`;
 - a container whose elements agree: `[1, 2]` gives `list[int]`, `{"a": (1, "b")}` gives
-  `dict[str, tuple[int, str]]`;
+  `dict[str, tuple[int, str]]`; a tuple longer than `max-length` (4) is `tuple[T, ...]` if its
+  elements agree, and untyped if not (it would be LVA011's);
 - a call to a capitalised name (`path = Path(...)` gives `Path`), or to a plain function that
   declares its return type (not a decorated, generic, async or redefined one, and not a return of
   `None`, `Any` or one that uses a `TypeVar`), in the same module or, with the CLI, in another file
@@ -20,6 +21,12 @@ in a function or module body:
   `type[C]`, whose class attributes (`limit: int = 3`, `ClassVar[T]`) and classmethods' and
   staticmethods' declared returns type `cls.x` and `cls.m()`;
 - `typing.cast(T, x)`, however `cast` is imported: `T`;
+- a standard-library function with a builtin result, resolved through the imports (`import m`,
+  `import m as a`, `from m import f`): `time.time()` is a `float`, `textwrap.dedent(...)` a `str`,
+  `os.environ.get(k)` a `str | None` (a `str` with a `str` default), and an `AnyStr` function
+  (`os.path.join`, `re.escape`) the type all its arguments share;
+- `x = None`, when every later binding of `x` in the function has one certain type `T` (and nothing
+  else writes it): `T | None`;
 - a value computed from such: `a if c else b` when both sides agree; arithmetic on builtin scalars
   (`n + 1`, `n / 2`, `"x" * n`, `"%s" % n`; never `**`, whose result can change type); a list, set
   or dict comprehension whose elements are known; `sorted`, `list`, `set`, `frozenset` or `tuple` of
@@ -82,6 +89,8 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `cast`          | `typing.cast(T, x)`: its `T`                                                        |
 | `comment`       | LVA003: the loop's own `# type:` comment, as a declaration                          |
 | `redundant`     | LVA007: the repeated annotation, dropped                                            |
+| `stdlib`        | a standard-library function with a builtin result (`time.time`, `os.path.join`)     |
+| `optional`      | `x = None`, then only ever a value of one known type `T`: `T \| None`               |
 
 A project chooses which apply, in `[tool.constricter]` or on the command line:
 

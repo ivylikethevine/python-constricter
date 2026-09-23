@@ -6,6 +6,12 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types standard-library functions with a builtin result (`time.time()`, `os.getpid()`,
+  `textwrap.dedent(...)`, `os.environ.get(k)`, `os.path.join` of `str`s; fix kind `stdlib`),
+  resolved through the imports, and `x = None` later rebound to one known type as `T | None` (fix
+  kind `optional`).
+- `--fix` types a tuple longer than `max-length` as `tuple[T, ...]` when its elements agree, and not
+  at all when they differ, instead of listing every element's type.
 - `--fix` types a `@property`'s declared return (`obj.prop`), `cls` in a classmethod (`type[C]`:
   `cls.x` from class attributes, `cls.m()` from classmethods and staticmethods), and
   `typing.cast(T, x)` as `T` (fix kind `cast`).

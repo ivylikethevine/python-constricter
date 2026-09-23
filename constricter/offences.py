@@ -53,6 +53,8 @@ FIX_KINDS: dict[str, str] = {
     "builder": "`sorted`, `list`, `set`, `frozenset` or `tuple` of known elements",
     "await": "`await` of the module's `async def`",
     "cast": "`typing.cast(T, x)`: its `T`",
+    "stdlib": "a standard-library function with a builtin result (`time.time`, `os.path.join`)",
+    "optional": "`x = None`, then only ever a value of one known type `T`: `T | None`",
     "loop": "what a loop (or `sorted`, `list`, ...) iterates over",
     "unpack": "an unpacking, split over its names",
     "narrow": "LVA008's or LVA010's narrower annotation (a guess)",

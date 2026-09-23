@@ -6,8 +6,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, NamedTuple
 
+from constricter.fix import stdlib
 from constricter.fix.returns import BUILTIN_RETURNS, METHOD_RETURNS, method_return
-from constricter.offences import CONSTRUCTOR
+from constricter.offences import CONSTRUCTOR, MAX_LENGTH
 from constricter.rules.annotations import GENERICS, is_vague, node_name
 
 if TYPE_CHECKING:
@@ -37,6 +38,9 @@ _FLOAT: Final = "float"
 _NUMBER_NAMES: Final = frozenset({"bool", "int", _FLOAT})
 _INTEGER_NAMES: Final = frozenset({"bool", "int"})
 _TEXT_NAMES: Final = frozenset({"str", "bytes"})
+_STDLIB: Final = "stdlib"  # the fix kind of a standard-library call
+_STR: Final = "str"
+_WITH_DEFAULT: Final = 2  # `os.environ.get(key, default)`'s arguments
 # Builtins that build a container of their argument's elements, and the type they build.
 _CONTAINER_BUILDERS: Final = {
     "sorted": "list[{}]",
@@ -45,6 +49,13 @@ _CONTAINER_BUILDERS: Final = {
     "frozenset": "frozenset[{}]",
     "tuple": "tuple[{}, ...]",
 }
+
+
+class ClassSide(NamedTuple):
+    """What each class the module defines offers on the class itself: `class_attributes`, `class_methods`."""
+
+    attributes: Mapping[str, Mapping[str, str]]
+    methods: Mapping[str, Mapping[str, str]]
 
 
 @dataclass(frozen=True)
@@ -56,8 +67,8 @@ class Known:
     `factories`), so a call to one is never guessed to construct one. `classes` and `methods`: each
     class's annotated attributes (see `classes`) and methods' return types (see `method_returns`).
     `awaits`: what awaiting a call to each of its `async def`s gives (see `awaited_returns`).
-    `class_attributes` and `class_methods`: what `cls.x` and `cls.method()` give in a classmethod,
-    where `cls` is `type[C]` (see `class_attributes`, `class_methods`). `casts`: how the module spells
+    `class_side`: what `cls.x` and `cls.method()` give in a classmethod, where `cls` is `type[C]`
+    (see `ClassSide`). `casts`: how the module spells
     `typing.cast` (see `casts`).
     """
 
@@ -66,9 +77,10 @@ class Known:
     classes: Mapping[str, Mapping[str, str]]
     methods: Mapping[str, Mapping[str, str]]
     awaits: Mapping[str, str] = field(default_factory=dict[str, str])
-    class_attributes: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
-    class_methods: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
+    class_side: "ClassSide" = field(default_factory=lambda: ClassSide({}, {}))
     casts: frozenset[str] = frozenset()
+    stdlib: Mapping[str, str] = field(default_factory=dict[str, str])  # see `stdlib.origins`
+    max_length: int = MAX_LENGTH  # the longest tuple display typed element by element (LVA011's)
 
 
 class Inference(NamedTuple):
@@ -185,7 +197,7 @@ def _attribute(receiver: str, attr: str, known: Known) -> str | None:
     """
     owner: str | None
     if (owner := _class_of(receiver)) is not None:
-        return known.class_attributes.get(owner, {}).get(attr)
+        return known.class_side.attributes.get(owner, {}).get(attr)
     return known.classes.get(receiver, {}).get(attr)
 
 
@@ -198,7 +210,7 @@ def _method(receiver: str, call: ast.Call, method: str, known: Known) -> str | N
     """
     owner: str | None
     if (owner := _class_of(receiver)) is not None:
-        return known.class_methods.get(owner, {}).get(method)
+        return known.class_side.methods.get(owner, {}).get(method)
     return method_return(receiver, call, method, known.methods)
 
 
@@ -246,8 +258,42 @@ def _from_value(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
         _container(value, known, declared)
         or _computed(value, known, declared)
         or _cast(value, known.casts)
+        or _library(value, known, declared)
         or _called(value, known.calls, known.factories)
     )
+
+
+def _library(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inference | None:
+    """Infer a call to a standard-library function the tables type (see `constricter.fix.stdlib`).
+
+    A fixed builtin result; an `AnyStr` function's, when every argument is a `str` (or every one a
+    `bytes`); an environment lookup's `str | None` (`str` with a `str` default).
+
+    Returns:
+      The inference, or `None` for any other call, or arguments that don't decide it.
+
+    """
+    func: ast.expr
+    args: list[ast.expr]
+    match value:
+        case ast.Call(func=func, args=args, keywords=[]):
+            pass
+        case _:
+            return None
+    name: str | None = stdlib.resolved(func, known.stdlib)
+    reason: str = f"`{name}`'s return type"
+    kinds: frozenset[str] = frozenset({_STDLIB})
+    if name in stdlib.RETURNS:
+        return Inference(stdlib.RETURNS[name], reason, kinds)
+    parts: list[Inference | None] = [inference(arg, known, declared) for arg in args]
+    types: set[str | None] = {None if part is None else part.annotation for part in parts}
+    if name in stdlib.ANY_STR and len(types) == 1 and types <= _TEXT_NAMES:
+        return Inference(str(next(iter(types))), reason, _kinds(*parts, kind=_STDLIB))
+    if name in stdlib.ENVIRONMENT and len(args) == 1:
+        return Inference("str | None", reason, kinds)
+    if name in stdlib.ENVIRONMENT and len(args) == _WITH_DEFAULT and parts[1] and parts[1].annotation == _STR:
+        return Inference(_STR, reason, _kinds(parts[1], kind=_STDLIB))
+    return None
 
 
 def _cast(value: ast.expr, spellings: frozenset[str]) -> Inference | None:
@@ -486,12 +532,7 @@ def _container(value: ast.expr, known: Known, declared: Mapping[str, str]) -> In
             found = f"{'list' if isinstance(value, ast.List) else 'set'}[{element}]" if element else None
         case ast.Tuple(elts=elements) if elements:
             parts = [inference(element, known, declared) for element in elements]
-            known_parts: list[Inference] = [part for part in parts if part is not None]
-            found = (
-                f"tuple[{', '.join(part.annotation for part in known_parts)}]"
-                if len(known_parts) == len(parts)
-                else None
-            )
+            found = _tuple(parts, known.max_length)
         case ast.Dict(keys=keys, values=values) if keys and None not in keys:
             present: list[ast.expr] = [k for k in keys if k is not None]
             key_parts: list[Inference | None] = [inference(k, known, declared) for k in present]
@@ -511,6 +552,26 @@ def _container(value: ast.expr, known: Known, declared: Mapping[str, str]) -> In
             _kinds(*parts, kind="container"),
         )
     )
+
+
+def _tuple(parts: Sequence[Inference | None], max_length: int) -> str | None:
+    """Type a tuple display from its elements' types.
+
+    One type per element (`tuple[int, str]`), up to `max_length` of them; a longer one (LVA011's)
+    is `tuple[T, ...]` when every element is a `T`, and nothing when they differ: its fields need
+    names, not a list of types.
+
+    Returns:
+      The annotation, or `None` if an element's type isn't known or a long tuple's differ.
+
+    """
+    known_parts: list[Inference] = [part for part in parts if part is not None]
+    if len(known_parts) != len(parts):
+        return None
+    if len(parts) <= max_length:
+        return f"tuple[{', '.join(part.annotation for part in known_parts)}]"
+    element: str | None = _uniform(parts)
+    return None if element is None else f"tuple[{element}, ...]"
 
 
 def _uniform(parts: Sequence[Inference | None]) -> str | None:
@@ -629,7 +690,9 @@ def _is_guess(
             or name in known.awaits
         ):
             return False
-        case ast.Call(func=func) if ast.unparse(func) in known.casts:
+        case ast.Call(func=func) if ast.unparse(func) in known.casts or (
+            stdlib.resolved(func, known.stdlib) in stdlib.KNOWN
+        ):
             return False
         case ast.Call(func=ast.Attribute(value=ast.Name(id=receiver) as owner, attr=method)) as call if (
             receiver in declared

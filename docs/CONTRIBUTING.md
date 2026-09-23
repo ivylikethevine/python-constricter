@@ -49,6 +49,10 @@ library and Python 2/3-era code with `# type:` comments), the same way, and agai
 `__future__` imports), hash-pinned sdists `tests/corpus/corpus_sources.py` fetches, since neither
 installs as a dependency.
 
+`tests/corpus/corpus_suite.py` runs a corpus package's own test suite (cloned at its pinned tag,
+with its locked test dependencies, in `local/corpus-suites/`) as released, after `--fix`, and after
+`--fix --unsafe-fixes`, and exits 1 if either differs; it needs `git`, `uv` and the network.
+
 `tests/corpus/corpus_table.py` measures every corpus with released constricter versions and this
 checkout (each isolated in its own environment), at every level, checked and fixed, and records a
 section per version in [`docs/RUNS.md`](RUNS.md): offences per code, errors and warnings at each
