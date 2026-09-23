@@ -199,7 +199,12 @@ it's done.
 
 ### Small: a day or less
 
-Nothing queued.
+1. **Release pages built from the release notes.** `release-note.yml` makes every pull request fill
+   in its `## Release note` section, but `release.yml` still publishes with `--generate-notes`
+   alone, so nothing reads them. Hand the generate-notes body to `.github/scripts/release_notes.sh`
+   (`<owner/repo> <generated-notes-file>` mode, `pull-requests: read`) and put its "What changed"
+   list on the release page with the badges. Done when a tag's release page shows the merged pull
+   requests' notes.
 
 ### Medium: a few days
 
