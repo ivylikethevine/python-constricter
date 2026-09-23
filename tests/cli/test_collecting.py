@@ -42,3 +42,15 @@ def test_by_hand_leaves_collection_off_if_it_was() -> None:
     with collecting.by_hand():
         assert not gc.isenabled()
     assert not gc.isenabled()
+
+
+@pytest.mark.usefixtures("restored")
+def test_by_hand_without_freezing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A collector that can't freeze (PyPy's) is still run by hand, and nothing is frozen."""
+    monkeypatch.setattr(collecting, "_FREEZES", False)
+    gc.enable()
+    with collecting.by_hand():
+        collecting.indexed()
+        assert not _FREEZES or gc.get_freeze_count() == 0
+        collecting.sweep()
+    assert gc.isenabled()

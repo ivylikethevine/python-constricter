@@ -37,8 +37,11 @@ typeshed stubs with `local/.venv/bin/python -m tests.typeshed.stdlib_tables` (CI
 `local/.venv/bin/python tests/ci_local.py` runs them all at once, as CI does: it reads the Lint,
 Docs and Test jobs' steps from `.github/workflows/ci.yml` (so it can't fall behind it), fails a step
 by its exit status alone (pylint still rates a run with one finding 10.00/10), and prints each
-failing step's output in full. Name jobs to run only those (`tests/ci_local.py lint docs`), and add
-`--install-hook` once to run it before every `git push`.
+failing step's output in full. It also runs the tests on each other Python in the Test job's matrix
+(PyPy and free-threaded builds included), each in its own `local/.venv-<python>` that uv creates, so
+what only one interpreter breaks fails before CI. Name jobs to run only those
+(`tests/ci_local.py lint docs interpreters`), and add `--install-hook` once to run it before every
+`git push`.
 
 After editing a dependency group, run `uv lock` (CI fails until you do). Dependabot updates
 `uv.lock`, the npm lock and the actions weekly.
