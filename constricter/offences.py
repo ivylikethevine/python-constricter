@@ -58,6 +58,7 @@ FIX_KINDS: dict[str, str] = {
     "rebound": "a name later bound to a wider type: the type every value fits (`int`, then `float`)",
     "filled": "an empty container, then only what the function adds to it (a guess)",
     "returned": "an unannotated function's own `return`s (a method's: a guess)",
+    "assigned": "an unannotated instance attribute's every `self.x = value` in its class (a guess)",
     "final": "LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)",
     "checker": "a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)",
     "open": "`open(path, mode)`'s file object, by its literal mode (`io.TextIOWrapper`, ...)",

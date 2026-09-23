@@ -51,6 +51,12 @@ in a function or module body:
   type and it can't fall off its end: that type, certain for a function and a guess for a method (a
   subclass may override it); a function whose `return`s are themselves guesses makes its calls
   guesses too. Chains (`f` returns `g()`) are followed, a few links deep;
+- with `--unsafe-fixes`, an unannotated instance attribute (`self.x`, or `x` on any value typed as
+  its class), when every `self.x = value` in the class's own methods gives one known type (numbers
+  widen to the widest: `int`, then `float`): that type. A guess, since a subclass or outside code
+  may assign it too; an attribute the class body binds, stored any other way (`+=`, an unpacking,
+  `del`, a nested function's `self.x = ...`), or assigned a local bound more than once, is left
+  alone;
 - an attribute, property or method of a class another checked file defines, when the file can name
   its type (the CLI only: the plugins see one file at a time);
 - with `--unsafe-fixes`, an empty container (`[]`, `{}`, `set()`, `list()`, `dict()`) the function
@@ -223,6 +229,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `optional`      | `x = None`, then only ever a value of one known type `T`: `T \| None`               |
 | `filled`        | an empty container, then only what the function adds to it (a guess)                |
 | `returned`      | an unannotated function's own `return`s (a method's: a guess)                       |
+| `assigned`      | an unannotated instance attribute's every `self.x = value` in its class (a guess)   |
 
 A project chooses which apply, in `[tool.constricter]` or on the command line:
 

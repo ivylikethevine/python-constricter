@@ -70,6 +70,16 @@ _ENUM_MODULES: Final = frozenset({"enum"})
 # The conventional name of an instance method's first parameter: typed as its class, for `--fix`.
 _SELF: Final = "self"
 _TYPE_CHECKING: Final = "TYPE_CHECKING"
+# Statements whose nested statements may not all run: what one rebinds a name to may not reach past it.
+_BRANCHING: Final = (
+    ast.If,
+    ast.For,
+    ast.AsyncFor,
+    ast.While,
+    ast.Try,
+    ast.TryStar,
+    ast.Match,
+)
 
 
 def check_source(
@@ -282,6 +292,7 @@ def _function_scopes(
             table.checked(
                 func,
                 [_recorded(scope, value) for value in scope.inferred.returns] if settled else [],
+                _assigned(scope) if settled else [],
             )
         scopes += _function_scopes(nested, settings, table)
     return scopes
@@ -354,15 +365,26 @@ def _visit(scope: Scope, stmt: ast.stmt) -> None:
     binding.bind(scope, stmt)
     if isinstance(stmt, ast.Return):
         scope.inferred.returns.append(stmt.value)
+    elif isinstance(stmt, ast.Assign):
+        scope.inferred.assigned.extend(
+            (target.attr, stmt.value)
+            for target in stmt.targets
+            if isinstance(target, ast.Attribute)
+            and isinstance(target.value, ast.Name)
+            and target.value.id == _SELF
+        )
     # A loop's body runs again and again (not its `else`), for LVA012.
     body: set[int] = (
         {id(s) for s in stmt.body} if isinstance(stmt, ast.For | ast.AsyncFor | ast.While) else set()
     )
+    before: dict[str, str] | None = dict(scope.inferred.types) if isinstance(stmt, _BRANCHING) else None
     child: ast.stmt
     for child in child_statements(stmt):
         scope.assignments.looping += id(child) in body
         _visit(scope, child)
         scope.assignments.looping -= id(child) in body
+    if before is not None:
+        scope.inferred.rejoined(before)
 
 
 def _declare(scope: Scope, stmt: ast.stmt) -> None:
@@ -436,18 +458,24 @@ def _returned(
       The settings with what the functions return, and the scopes checked with them.
 
     """
-    found: Returned = returned.returned(tree, table.recorded)
+    recorded: dict[int, list[returned.Recorded]] = table.recorded
+    assigned: dict[int, list[returned.Assigned]] = table.assigned
+    found: Returned = returned.returned(tree, recorded, assigned)
     settings = replace(settings, known=replace(settings.known, returned=found))
     functions: list[tuple[Scope, FunctionDef]] = [
         (scope, scope.kind.function) for scope in scopes if scope.kind.function is not None
     ]
-    recorded: dict[int, list[returned.Recorded]] = table.recorded
+    owners: Mapping[int, str] = settings.owners
+    # The first pass knew no attribute's type: they're read once every method is checked.
     again: set[int] = {
         id(scope)
         for scope, func in functions
-        if table.stale(func) or scope.inferred.late.keys() - scope.inferred.seeded.keys()
+        if table.stale(func)
+        or scope.inferred.late.keys() - scope.inferred.seeded.keys()
+        or _reads_new(tree, func, owners, (Returned(), found))
     }
     changed: bool = False
+    retyped: set[str] = set()  # the attributes the rounds typed anew
     _round: int
     for _round in range(_ROUNDS):
         if not again:
@@ -463,24 +491,75 @@ def _returned(
         recorded.update(
             (id(func), [_recorded(scope, value) for value in scope.inferred.returns]) for scope, func in fresh
         )
-        latest: Returned = returned.returned(tree, recorded)
-        typed: bool
-        if typed := latest != found and returned.called(tree, tree, latest):  # even if only a body calls one
+        assigned.update((id(func), _assigned(scope)) for scope, func in fresh)
+        latest: Returned = returned.returned(tree, recorded, assigned)
+        typed: bool = latest != found and returned.called(tree, tree, latest)  # even if only a body calls one
+        # Attributes typed anew: what reads one, of any value, may be typed now.
+        newly: set[str] = _retyped(found, latest)
+        if typed or newly:
             found = latest
             settings = replace(settings, known=replace(settings.known, returned=found))
-            changed = True
+            changed = changed or typed
+            retyped |= newly
         again = {
             id(scope)
             for scope, func in functions
             if (typed and returned.called(tree, func, found))
+            or returned.reads(tree, func, newly, anywhere=True)
             or scope.inferred.late.keys() - scope.inferred.seeded.keys()
         }
     bodies: list[Scope] = [scope for scope in scopes if scope.kind.function is None]
     # The bodies were checked after every function, knowing the first pass's types: only what the
     # rounds typed since is news to them.
-    if changed and bodies and any(returned.called(tree, stmt, found) for stmt in _body_statements(tree.body)):
+    if (
+        (changed or retyped)
+        and bodies
+        and any(
+            returned.called(tree, stmt, found) or returned.reads(tree, stmt, retyped, anywhere=True)
+            for stmt in _body_statements(tree.body)
+        )
+    ):
         bodies = _body_scopes(tree, settings)
     return settings, [scope for scope, _ in functions] + bodies
+
+
+def _reads_new(
+    tree: ast.Module,
+    func: FunctionDef,
+    owners: Mapping[int, str],
+    tables: tuple[Returned, Returned],
+) -> bool:
+    """Check whether a method reads an attribute of its own class's that `tables`' later one types anew.
+
+    Returns:
+      Whether it does (`self.a`, typed differently, or only now): checking it again could type more.
+
+    """
+    owner: str | None = owners.get(id(func))
+    if owner is None:
+        return False
+    old: Mapping[str, str] = tables[0].attributes.get(owner, {})
+    new: Mapping[str, str] = tables[1].attributes.get(owner, {})
+    return returned.reads(
+        tree,
+        func,
+        {attr for attr, annotation in new.items() if old.get(attr) != annotation},
+    )
+
+
+def _retyped(before: Returned, after: Returned) -> set[str]:
+    """Name the attributes, of any class, that `after` types and `before` didn't, or typed otherwise.
+
+    Returns:
+      Their names.
+
+    """
+    return {
+        attr
+        for owner, attributes in after.attributes.items()
+        for attr, annotation in attributes.items()
+        if before.attributes.get(owner, {}).get(attr) != annotation
+    }
 
 
 def _body_statements(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
@@ -523,6 +602,35 @@ def _recorded(scope: Scope, value: ast.expr | None) -> returned.Recorded:
     if value is None:
         return None, frozenset()
     return inference(value, scope.settings.known, scope.inferred.types), guesses_in(scope, [value])[1]
+
+
+def _assigned(scope: Scope) -> list[returned.Assigned]:
+    """Record a finished function's `self.x = value` assignments, each value as `_recorded` does a `return`'s.
+
+    But a value reading a local bound more than once is unknown: the scope's type for it is its last
+    binding's, not what reaches the assignment (`x = None`, `if c: x = 1`, then `self.x = x`).
+
+    Returns:
+      Each attribute, and its value's inference and guesses.
+
+    """
+    return [
+        (attr, (None, frozenset()) if _rebound_in(scope, value) else _recorded(scope, value))
+        for attr, value in scope.inferred.assigned
+    ]
+
+
+def _rebound_in(scope: Scope, value: ast.expr) -> bool:
+    """Check whether `value` reads a local of `scope` bound more than once.
+
+    Returns:
+      Whether it does.
+
+    """
+    return any(
+        isinstance(node, ast.Name) and node.id in scope.flow and len(scope.flow[node.id].bindings) > 1
+        for node in ast.walk(value)
+    )
 
 
 def value_flow(

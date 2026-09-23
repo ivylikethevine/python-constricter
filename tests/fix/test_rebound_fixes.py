@@ -102,3 +102,13 @@ def test_a_widened_fix_is_declared_before_the_first_binding() -> None:
             return y
         """,
     )
+
+
+def test_a_branch_rebinding_makes_later_copies_guesses() -> None:
+    """`x = 1`, then `x = "a"` only under `if`: past it, `x` may be either, so a copy of it is a guess."""
+    source: str = (
+        "def f(flag: bool) -> None:\n    x = 1\n    if flag:\n        x = 'a'\n        y = x\n    z = x\n"
+    )
+    fixed: dict[str, tuple[str | None, bool]] = {o.name: (o.fix, o.unsafe) for o in check_source(source)}
+    assert fixed["y"] == ("str", True)
+    assert fixed["z"] == ("int", True)

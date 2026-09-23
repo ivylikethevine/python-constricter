@@ -277,3 +277,24 @@ def test_a_chain_on_a_late_type_stops_after_its_rounds() -> None:
     source: str = f"{base}{links}def use() -> None:\n    near = f3(1)\n    far = f7(1)\n"
     fixed: dict[str, str | None] = {o.name: o.fix for o in check_source(source)}
     assert fixed == {"x": "int | None", "near": "int | None", "far": None}
+
+
+def test_a_branch_narrowing_doesnt_reach_the_return() -> None:
+    """`x = None`, then `x = n` only under `if`: past the `if`, `x` is `int | None` again, not `int`."""
+    source: str = textwrap.dedent(
+        """
+        def late(n: int, flag: bool):
+            x = None
+            if flag:
+                x = n
+            return x
+
+
+        def use() -> None:
+            a = late(1, True)
+        """,
+    )
+    assert {o.name: (o.fix, o.unsafe) for o in check_source(source)} == {
+        "x": ("int | None", False),
+        "a": ("int | None", False),
+    }

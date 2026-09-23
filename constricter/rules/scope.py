@@ -2,7 +2,7 @@
 """One scope being checked: what it binds and reports, what `--fix` knows of it, and its late fixes."""
 
 import ast
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Final, NamedTuple, TypeAlias
 
@@ -122,6 +122,8 @@ class Inferred:
     # Each guess's guessing mechanisms (`FIX_KINDS`), for `unsafe-fix-select` to trust or not.
     origins: dict[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
     returns: list[ast.expr | None] = field(default_factory=list[ast.expr | None])  # its `return`s' values
+    # Its `self.x = value` assignments: each attribute, and its value.
+    assigned: list[tuple[str, ast.expr]] = field(default_factory=list[tuple[str, ast.expr]])
     # Names typed only once the whole scope was seen (a container filled later, `None` rebound): the
     # type, and what it rests on if a guess; and those it was checked again knowing.
     late: dict[str, Late] = field(default_factory=dict[str, "Late"])
@@ -157,6 +159,18 @@ class Inferred:
                 return
         if name not in self.guesses:
             self.guess(name, frozenset({REBOUND}))
+
+    def rejoined(self, before: Mapping[str, str]) -> None:
+        """Take each name a branch (`if`, a loop, `try`, `match`) retyped back to its type `before` it.
+
+        The branch may not have run: past it, a name is what it was, or what the branch made it. That's
+        its type before, certainly, if that's a union the branch's type is a member of (`int | None`,
+        narrowed to `int` inside `if`); otherwise `rebound` already made it a guess.
+        """
+        name: str
+        annotation: str
+        for name, annotation in before.items():
+            self.types[name] = annotation
 
 
 class Scope:

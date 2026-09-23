@@ -50,6 +50,13 @@
 - **Loop targets from `enumerate` and `zip`, one part at a time**: `for i, x in enumerate(xs)`
   declares `i: int` whatever `xs` is, each part certain or a guess as its own type is, and the
   keywords that don't change what they yield (`start=`, `strict=`, `sorted`'s `key=`) are allowed.
+- **Instance attributes typed by their assignments** (`assigned`, a guess): an unannotated
+  attribute every one of whose `self.x = value`s in its class's own methods gives one known type
+  (numbers widened) types its reads and chains (`self.name.upper()`, `box.name`); stored any other
+  way, bound in the class body, or assigned a local bound more than once, it's left alone. 456
+  more guesses on the standard library, where most such values are unannotated parameters or
+  `None` first; the check takes about 12% longer (30.3s to 34.0s, `--jobs=1`), left for an
+  optimization pass.
 - **Fixes for LVA003** (the loop's `# type:` comment becomes a declaration) and **LVA007** (the
   repeat's annotation is dropped).
 - **Type-checker-backed inference** (`--infer-with basedpyright,ty`): the checkers' language
@@ -207,14 +214,7 @@ Nothing queued.
    `from pkg.util import f` types as a same-file call does. Done when those calls are typed, the
    standard library's check takes no more than 10% longer, and every corpus converges with no new
    `--types` error.
-2. **Instance attributes typed by their assignments.** `self.x` reads with no fix: 4,345 (630 in
-   annotated functions), and a `self.x.method()` chain stops there too (part of the 11,910
-   `self.method()` calls, and of the 13,589 chained ones, 1,361 in annotated code). Type an
-   unannotated attribute from every `self.x = value` in its class, when each value's type is known
-   and they agree (numbers widening as `rebinding` widens them), as `returned` types an unannotated
-   function from its `return`s. A guess: a subclass or outside code can assign it too. Done when
-   such attributes type their reads and chains, and `--types` finds no new error with `--fix`.
-3. **Standard-library calls decided by their arguments.** 8,672 calls through a standard-library
+2. **Standard-library calls decided by their arguments.** 8,672 calls through a standard-library
    module still have no fix (and 6,014 to a name imported from one, mostly the standard library's
    own test helpers): `os.path` (1,516; `os.path.join` alone 1,043, `AnyStr` with arguments whose
    types aren't known), `re` (744: generic `Pattern`/`Match`), `os`, `asyncio`, `tempfile`,
@@ -225,7 +225,7 @@ Nothing queued.
    literal's value, as `open` does), and fill a generic's parameters from them. Done when those are
    generated from the stubs like the rest, and every corpus converges with `--types` finding no new
    error.
-4. **Fewer guesses a type checker rejects.** `--fix` adds no type errors now, but
+3. **Fewer guesses a type checker rejects.** `--fix` adds no type errors now, but
    `--fix --unsafe-fixes` still adds 11 (pydantic), 42 (sqlalchemy) and 97 (pandas), mostly from
    `constructor`, `subscript`, `returned` and `copy` guesses on a name bound again later. And "a
    later value whose type isn't known makes the fix a guess" costs 115–133 certain fixes per corpus:

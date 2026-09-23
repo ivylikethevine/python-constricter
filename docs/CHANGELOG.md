@@ -6,6 +6,16 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A name narrowed inside a branch that may not run (`x = None`, then `x = n` under `if`) is no
+  longer taken past the branch as the narrowed type: a call to `def late(n, flag)` returning `x`
+  was typed a certain `int`, and is now `int | None`. A name rebound in a branch to a type outside
+  its earlier one is a guess past it (`rebound`).
+- `--fix --unsafe-fixes` types an unannotated instance attribute from its assignments (fix kind
+  `assigned`): when every `self.x = value` in the class's own methods gives one known type (or
+  numbers, widened to the widest), reads of `self.x`, and of `x` on any value typed as the class,
+  are typed as guesses, and chains go on from them (`self.name.upper()`). An attribute the class
+  body binds, or that is stored any other way (`+=`, an unpacking, `del`, a nested function), or
+  assigned a local bound more than once, is left alone. 456 more guesses on the standard library.
 - A GitHub release page starts with the README's badges (their relative links made absolute at the
   release's tag), above the generated notes.
 - CI skips a tree it already passed, byte for byte: the push to `main` after a pull request's merge,
