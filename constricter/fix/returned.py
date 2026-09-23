@@ -9,6 +9,8 @@ it. Each `return`'s value is typed as the checker sees it there, with the functi
 """
 
 import ast
+import bisect
+import operator
 from collections.abc import Iterator, Mapping, Sequence
 from functools import lru_cache
 from typing import Final, TypeAlias
@@ -20,6 +22,10 @@ from constricter.rules.walked import nodes
 # what that rests on if it's a guess (`FIX_KINDS`; empty: certain).
 Recorded: TypeAlias = tuple[Inference | None, frozenset[str]]
 _FUNCTIONS: Final = (ast.FunctionDef, ast.AsyncFunctionDef)
+_END: Final = 1 << 62  # past any line: a module's span has no end
+# What a call calls: a name (`f()`), or an attribute (`x.m()`), the other `None`.
+_Callee: TypeAlias = tuple[str | None, str | None]
+_Call: TypeAlias = tuple[tuple[int, int], _Callee]  # where a call starts (line, column), and what it calls
 _SCOPES: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
 
 
@@ -51,46 +57,55 @@ def returned(tree: ast.Module, recorded: Mapping[int, Sequence[Recorded]]) -> Re
     return Returned(calls, methods, guesses)
 
 
-def called(tree: ast.AST, found: Returned) -> bool:
-    """Check whether `tree` (a module, or a function) calls any function `found` types.
+def called(module: ast.Module, node: ast.AST, found: Returned) -> bool:
+    """Check whether `node` (the module, a function, or a statement in it) calls any function `found` types.
 
-    By name, or as a method.
+    By name, or as a method. A function's decorators aren't its own calls: they're before it.
 
     Returns:
       Whether it does: otherwise checking it again would change nothing.
 
     """
-    names: frozenset[str]
-    attributes: frozenset[str]
-    names, attributes = _callees(tree)
-    return bool(names & found.calls.keys()) or any(
-        attributes & methods.keys() for methods in found.methods.values()
+    methods: set[str] = {name for methods in found.methods.values() for name in methods}
+    starts: list[tuple[int, int]]
+    callees: list[_Callee]
+    starts, callees = _calls(module)
+    span: slice = slice(
+        bisect.bisect_left(starts, (getattr(node, "lineno", 0), getattr(node, "col_offset", 0))),
+        bisect.bisect_left(
+            starts,
+            (getattr(node, "end_lineno", _END) or _END, getattr(node, "end_col_offset", 0) or 0),
+        ),
     )
+    return any(name in found.calls or attr in methods for name, attr in callees[span])
 
 
-@lru_cache(maxsize=4096)  # asked of the same module and functions once per round
-def _callees(tree: ast.AST) -> tuple[frozenset[str], frozenset[str]]:
-    """Find what `tree` calls.
+@lru_cache(maxsize=4)  # asked of the same module's functions, each round
+def _calls(module: ast.Module) -> tuple[list[tuple[int, int]], list[_Callee]]:
+    """Find every call in the module, in source order, from its one shared walk (`nodes`).
+
+    A function's (or statement's) calls are then those within its span of the source: no walk of
+    its own, which the rounds of `checker._returned` asked of every function again and again.
 
     Returns:
-      The names it calls (`f()`), and the attributes (`x.m()`).
+      Where each call starts (its line and column), and what it calls: a name (`f()`) or an
+      attribute (`x.m()`), each `None` if not.
 
     """
-    names: set[str] = set()
-    attributes: set[str] = set()
+    found: list[_Call] = []
     node: ast.AST
     name: str
     attr: str
-    # A module's whole walk is shared (`nodes`); a function's is its own, read once.
-    for node in nodes(tree) if isinstance(tree, ast.Module) else ast.walk(tree):
+    for node in nodes(module):
         match node:
             case ast.Call(func=ast.Name(id=name)):
-                names.add(name)
+                found.append(((node.lineno, node.col_offset), (name, None)))
             case ast.Call(func=ast.Attribute(attr=attr)):
-                attributes.add(attr)
+                found.append(((node.lineno, node.col_offset), (None, attr)))
             case _:
                 pass
-    return frozenset(names), frozenset(attributes)
+    found.sort(key=operator.itemgetter(0))
+    return [start for start, _ in found], [callee for _, callee in found]
 
 
 def _typed(

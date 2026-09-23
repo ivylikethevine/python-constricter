@@ -123,9 +123,7 @@ def _settings(
 ) -> Settings:
     imported: Classes | None = None if outside is None else outside.classes
     return Settings(
-        checks.type_comments or python2_compatible(tree),
-        checks.all_scopes,
-        checks.nesting,
+        checks._replace(type_comments=checks.type_comments or python2_compatible(tree)),
         lines,
         Known(
             calls,
@@ -139,7 +137,7 @@ def _settings(
         ),
         Hierarchy.for_module(tree, {name: frozenset(wider) for name, wider in checks.narrower}),
         owners(tree),
-        checks.fixes,
+        any(isinstance(node, ast.NamedExpr) for node in nodes(tree)),
         () if outside is None else outside.hints,
     )
 
@@ -168,10 +166,10 @@ def check_tree(
     settings, scopes = _returned(tree, settings, scopes)
     # A finding's kind is the code that reports it (LVA008, LVA009, LVA010).
     _finished(tree, scopes)
-    flow: list[Offence] = flow_offences(_value_flow(tree, scopes), settings.fixes)
+    flow: list[Offence] = flow_offences(_value_flow(tree, scopes), settings.checks.fixes)
     finals: list[Offence] = [o for scope in scopes for o in scope.finals()] if checks.final else []
     reported: list[Offence] = [o for scope in scopes for o in scope.reported()]
-    return sorted([*reported, *redundant(tree, settings.fixes), *flow, *finals])
+    return sorted([*reported, *redundant(tree, settings.checks.fixes), *flow, *finals])
 
 
 class Coverage(NamedTuple):
@@ -215,7 +213,7 @@ def _scopes(tree: ast.Module, settings: Settings) -> list["Scope"]:
     functions: list[FunctionDef] = []
     collect_functions(tree.body, functions)
     scopes: list[Scope] = _function_scopes(functions, settings)
-    if settings.all_scopes:
+    if settings.checks.all_scopes:
         scopes += _body_scopes(tree, settings)
     return scopes
 
@@ -431,13 +429,13 @@ def _returned(tree: ast.Module, settings: Settings, scopes: list[Scope]) -> tupl
         )
         latest: Returned = returned.returned(tree, recorded)
         typed: bool
-        if typed := latest != found and returned.called(tree, latest):  # even if only a body calls one
+        if typed := latest != found and returned.called(tree, tree, latest):  # even if only a body calls one
             found = latest
             settings = replace(settings, known=replace(settings.known, returned=found))
         again: set[int] = {
             id(scope)
             for scope, func in functions
-            if (typed and returned.called(func, found))
+            if (typed and returned.called(tree, func, found))
             or scope.inferred.late.keys() - scope.inferred.seeded.keys()
         }
         if not again:
@@ -450,7 +448,7 @@ def _returned(tree: ast.Module, settings: Settings, scopes: list[Scope]) -> tupl
         renewed: dict[int, Scope] = {id(func): scope for scope, func in fresh}
         functions = [(renewed.get(id(func), scope), func) for scope, func in functions]
     bodies: list[Scope] = [scope for scope in scopes if scope.kind.function is None]
-    if bodies and any(returned.called(stmt, found) for stmt in _body_statements(tree.body)):
+    if bodies and any(returned.called(tree, stmt, found) for stmt in _body_statements(tree.body)):
         bodies = _body_scopes(tree, settings)
     return settings, [scope for scope, _ in functions] + bodies
 

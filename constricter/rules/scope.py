@@ -17,6 +17,7 @@ from constricter.offences import (
     UNANNOTATED,
     UNANNOTATED_MEMBER,
     VAGUE_TYPE,
+    Checks,
     Edit,
     Fix,
     FixPolicy,
@@ -49,14 +50,13 @@ _NO_ALIASES: Final = frozenset[str]()
 class Settings:
     """One module's options, and its source lines (to place a `**rest` capture)."""
 
-    type_comments: bool
-    all_scopes: bool
-    nesting: int  # LVA011's `max-length` is `known.max_length`
+    # The checks asked for (a module written for Python 2 counts its `# type:` comments whatever they say).
+    checks: Checks
     lines: Sequence[str]
     known: Known  # what the module declares that `--fix` infers types from
     hierarchy: Hierarchy  # which types are narrower than which, for value flow
     owners: dict[int, str]  # each method's class, by `id()`, to type its `self`, for `--fix`
-    fixes: FixPolicy  # which fixes `--fix` offers, and which guesses it trusts
+    walruses: bool  # whether the module has any `:=`: most don't, and needn't be looked through for one
     # Type checkers' types, for what `--fix` can't type (`--infer-with`): each checker's, in order.
     hints: tuple[Hints, ...] = ()
 
@@ -185,7 +185,7 @@ class Scope:
 
         """
         # Not used at all where not offered: what follows from it would rest on it unseen.
-        if not self.settings.fixes.allows(frozenset({hinted.KIND})):
+        if not self.settings.checks.fixes.allows(frozenset({hinted.KIND})):
             return None
         where: tuple[int, int] = (target.lineno, target.end_col_offset or 0)
         found: Hints
@@ -197,7 +197,7 @@ class Scope:
                     text,
                     found.checker,
                     self.settings.known,
-                    nesting=self.settings.nesting,
+                    nesting=self.settings.checks.nesting,
                     # A module body's annotation is evaluated there: only what's bound before it will do.
                     before=target.lineno if self.kind.function is None else None,
                 )
@@ -220,7 +220,7 @@ class Scope:
           The fix, or `None` if a mechanism that decided it isn't selected, or is ignored.
 
         """
-        policy: FixPolicy = self.settings.fixes
+        policy: FixPolicy = self.settings.checks.fixes
         if not policy.allows(fix.kinds):
             return None
         certain: bool = not unsafe or policy.trusts(origins)
@@ -409,7 +409,12 @@ class Scope:
         plan: ImportPlan | None = self.settings.known.names.plan
         spelled: str | None = None if plan is None else plan.spell(_TYPING_FINAL)
         kinds: frozenset[str] = frozenset({_FINAL_KIND})
-        if plan is None or spelled is None or not self.kind.fixable or not self.settings.fixes.allows(kinds):
+        if (
+            plan is None
+            or spelled is None
+            or not self.kind.fixable
+            or not self.settings.checks.fixes.allows(kinds)
+        ):
             return None
         reason: str = "bound once, and never rebound"
         if lifetime.declared is not None:
@@ -473,7 +478,7 @@ class Scope:
         """Report a vague annotation (LVA005), too deep a one (LVA006), or too long a tuple (LVA011)."""
         if is_vague(annotation):
             self.offences.append(Offence(*at(annotation), name, VAGUE_TYPE))
-        if depth(annotation) >= self.settings.nesting:
+        if depth(annotation) >= self.settings.checks.nesting:
             self.offences.append(Offence(*at(annotation), name, NESTED_TYPE))
         longest: int
         if (longest := length(annotation)) > self.settings.known.max_length:
@@ -481,6 +486,8 @@ class Scope:
 
     def walrus(self, node: ast.AST) -> None:
         """Bind `:=` targets in an expression, comprehensions included, lambdas excluded."""
+        if not self.settings.walruses:
+            return
         in_lambda: set[int] = {
             id(inner)
             for outer in ast.walk(node)
@@ -499,7 +506,9 @@ class Scope:
           The code, or `None` if a counted type comment types it.
 
         """
-        return None if type_comment is not None and self.settings.type_comments else self.kind.unannotated
+        return (
+            None if type_comment is not None and self.settings.checks.type_comments else self.kind.unannotated
+        )
 
 
 def is_final(annotation: str, aliases: frozenset[str] = _NO_ALIASES) -> bool:
