@@ -6,6 +6,26 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `tests/corpus/corpus_profile.py` profiles a check of a large codebase, printing constricter's
+  slowest modules and functions, and where the rest of the time went (`ast.walk`, mostly); CI's
+  Corpus job adds it to its summary and keeps the profile.
+- `--infer-with basedpyright` (or `ty`, or both, `basedpyright,ty`, the first named preferred;
+  `infer-with` in `[tool.constricter]`): `--fix` asks those type checkers' language servers, all at
+  once (basedpyright over up to four, as `--jobs` and `--infer-memory` allow, 8 GB by default; each
+  behind a guard that kills it if constricter is killed), for their inlay hints, and types what it
+  can't type itself from them, as guesses (fix kind `checker`, applied with `--unsafe-fixes`). A
+  `Literal` is widened to its values' types; a hint that's vague, isn't an annotation, or names
+  something the file can't use is dropped; a class the checker prints bare (`Callable`, `Path`, ...)
+  is imported. With `--fix`, a changed file is asked about and fixed again until nothing changes
+  (four rounds at most). On `requests`, `flask`, `fastapi`, `rich` and `pydantic` it about doubles
+  what `--fix --unsafe-fixes` types.
+- `x = None`, later rebound only to a guessed type, is `T | None` as a guess too (it waited for the
+  guess to be applied, and a second `--fix`, before).
+- `check_source` and `check_tree` take what's known of a file from outside it as one `outside`
+  argument (`Outside`: other files' return types and classes, and a type checker's hints), in place
+  of `calls` and `classes`.
+- `constricter.fix.inference` is split: guesses are judged in `constricter.fix.guesses`, and a type
+  split over a loop's or an unpacking's names in `constricter.fix.targets`.
 - `--fix` adds the import a type needs: `open(path, mode)` is typed by its literal mode
   (`io.TextIOWrapper`, `io.BufferedReader`, `io.BufferedWriter`, `io.BufferedRandom`; fix kind
   `open`), and `with open(...) as f` declares `f` before the statement; standard-library classes and

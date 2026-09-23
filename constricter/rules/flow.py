@@ -87,10 +87,15 @@ class Finding:
 
 @dataclass(frozen=True)
 class Binding:
-    """One binding of a name: where, and its value's type as text (`None`: unknown)."""
+    """One binding of a name: where, and its value's type as text (`None`: unknown).
+
+    `guess`: when the type isn't certain, `--fix`'s guess at it, and what that rests on (`FIX_KINDS`).
+    Value flow never compares a guess; `--fix` offers `T | None` from one, as a guess too.
+    """
 
     at: tuple[int, int]
     value: str | None
+    guess: tuple[str, frozenset[str]] | None = field(default=None, compare=False)
 
 
 @dataclass
@@ -110,9 +115,14 @@ class Lifetime:
             self.declared_at = at
             self.declared_span = span
 
-    def bind(self, at: tuple[int, int], value: str | None) -> None:
-        """Record a binding, with its value's type if known."""
-        self.bindings.append(Binding(at, value))
+    def bind(
+        self,
+        at: tuple[int, int],
+        value: str | None,
+        guess: tuple[str, frozenset[str]] | None = None,
+    ) -> None:
+        """Record a binding, with its value's type if known (or `--fix`'s guess at it, if not)."""
+        self.bindings.append(Binding(at, value, guess))
 
 
 class Hierarchy:

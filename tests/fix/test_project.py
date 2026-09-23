@@ -10,7 +10,7 @@ import pytest
 from constricter import Offence, check_source
 from constricter.cli import command as cli
 from constricter.fix import project
-from constricter.fix.known import Classes
+from constricter.fix.known import Classes, Outside
 
 UTIL: Final = """
 from pkg.types import Row
@@ -223,7 +223,10 @@ def test_imported_classes_type_their_members(tmp_path: Path) -> None:
     _ = _write(tmp_path / "pkg" / "models.py", MODELS)
     main: Path = _write(tmp_path / "main.py", USES)
     imported: project.Imported = project.imported(project.index(sorted(tmp_path.rglob("*.py"))), main)
-    offences: list[Offence] = check_source(main.read_text(encoding="utf-8"), classes=imported.classes)
+    offences: list[Offence] = check_source(
+        main.read_text(encoding="utf-8"),
+        outside=Outside(classes=imported.classes),
+    )
     assert {o.name: o.fix for o in offences} == {
         "a": "int",
         "b": "str",

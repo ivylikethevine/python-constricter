@@ -14,43 +14,48 @@ from typing import Final, cast
 from constricter.rules.syntax import child_statements
 
 _VAGUE: Final = frozenset({"Any", "object"})
-# Generics that say little without their parameters.
-GENERICS: Final = frozenset(
+# `collections.abc`'s generic classes (`typing` has each too).
+ABSTRACT: Final = frozenset(
     {
-        "AbstractSet",
         "AsyncGenerator",
         "AsyncIterable",
         "AsyncIterator",
         "Awaitable",
         "Callable",
-        "ChainMap",
         "Collection",
         "Container",
         "Coroutine",
-        "Counter",
-        "DefaultDict",
-        "Deque",
-        "Dict",
-        "FrozenSet",
         "Generator",
         "ItemsView",
         "Iterable",
         "Iterator",
         "KeysView",
-        "List",
         "Mapping",
-        "Match",
         "MutableMapping",
         "MutableSequence",
         "MutableSet",
-        "OrderedDict",
-        "Pattern",
         "Reversible",
         "Sequence",
+        "ValuesView",
+    },
+)
+# Generics that say little without their parameters.
+GENERICS: Final = ABSTRACT | frozenset(
+    {
+        "AbstractSet",
+        "ChainMap",
+        "Counter",
+        "DefaultDict",
+        "Deque",
+        "Dict",
+        "FrozenSet",
+        "List",
+        "Match",
+        "OrderedDict",
+        "Pattern",
         "Set",
         "Tuple",
         "Type",
-        "ValuesView",
         "defaultdict",
         "deque",
         "dict",

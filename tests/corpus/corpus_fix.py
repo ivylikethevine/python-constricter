@@ -4,7 +4,7 @@
 CI's Corpus job runs this against its Python's standard library; run it by hand against a larger
 one:
 
-  local/.venv/bin/python tests/corpus/corpus_fix.py [PATH]   # default: this Python's standard library
+  local/.venv/bin/python tests/corpus/corpus_fix.py [PATH] [OPTION ...]   # default: the standard library
 
 It copies PATH's Python files to local/corpus-fix/, runs `--fix --unsafe-fixes --all-scopes` on the
 copy, then compiles every file that compiled before and checks a second `--diff` has nothing left
@@ -60,7 +60,9 @@ def main(argv: Sequence[str]) -> int:
       1 if a fix broke a file or left more to fix, else 0.
 
     """
-    root: Path = Path(argv[0]) if argv else Path(sysconfig.get_paths()["stdlib"])
+    named: list[str] = [arg for arg in argv if not arg.startswith("-")]
+    extra: list[str] = [arg for arg in argv if arg.startswith("-")]  # e.g. `--infer-with=basedpyright`
+    root: Path = Path(named[0]) if named else Path(sysconfig.get_paths()["stdlib"])
     shutil.rmtree(COPY, ignore_errors=True)
     valid: list[Path] = []
     source: Path
@@ -71,11 +73,11 @@ def main(argv: Sequence[str]) -> int:
         if _compiles(copy):
             valid.append(copy)
     start: float = time.perf_counter()
-    summary: str = _run(["--fix", *FIX, str(COPY)])[1].splitlines()[-1]
+    summary: str = _run(["--fix", *FIX, *extra, str(COPY)])[1].splitlines()[-1]
     seconds: float = time.perf_counter() - start
     broken: list[Path] = [path for path in valid if not _compiles(path)]
     diff: str
-    diff = _run(["--diff", *FIX, str(COPY)])[1]
+    diff = _run(["--diff", *FIX, *extra, str(COPY)])[1]
     left: int = diff.count(chr(10) + "+++ ")
     _ = sys.stdout.write(f"{root}: {len(valid)} valid files fixed in {seconds:.1f}s. {summary}\n")
     _ = sys.stdout.write(f"  no longer compile: {len(broken)}\n")

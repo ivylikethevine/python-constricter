@@ -20,6 +20,7 @@ from constricter.cli.config import (
     unknown_fix_kinds,
 )
 from constricter.cli.explain import explain
+from constricter.cli.hints import SERVERS
 from constricter.cli.paths import STDIN, excluded
 from constricter.cli.report import Format, Result
 from constricter.offences import (
@@ -118,6 +119,54 @@ def _fix_kinds(text: str) -> list[str]:
         message: str = f"no --fix mechanism is called {', '.join(unknown)} (see docs/FIXES.md)"
         raise argparse.ArgumentTypeError(message)
     return kinds
+
+
+def _gigabytes(text: str) -> float:
+    """Read `--infer-memory`: a positive number of gigabytes (GiB).
+
+    Returns:
+      It.
+
+    Raises:
+      ArgumentTypeError: It isn't one.
+
+    """
+    try:
+        value: float = float(text)
+    except ValueError:
+        value = 0.0
+    if not value > 0:
+        message: str = f"expected a positive number of gigabytes, got {text!r}"
+        raise argparse.ArgumentTypeError(message)
+    return value
+
+
+def _bytes(gigabytes: float | None) -> int | None:
+    """Turn gigabytes (GiB) into bytes.
+
+    Returns:
+      Them, or `None` for none.
+
+    """
+    return None if gigabytes is None else int(gigabytes * (1 << 30))
+
+
+def _checkers(text: str) -> list[str]:
+    """Read `--infer-with`'s checkers: comma-separated, each once, in the order they're preferred.
+
+    Returns:
+      Them.
+
+    Raises:
+      ArgumentTypeError: One isn't a checker it knows.
+
+    """
+    checkers: list[str] = [checker.strip() for checker in text.split(",") if checker.strip()]
+    unknown: list[str]
+    if unknown := [checker for checker in checkers if checker not in SERVERS]:
+        message: str = f"unknown checker {', '.join(unknown)} (known: {', '.join(sorted(SERVERS))})"
+        raise argparse.ArgumentTypeError(message)
+    return list(dict.fromkeys(checkers))
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -226,6 +275,19 @@ def _parser() -> argparse.ArgumentParser:
         default=[],
         metavar="KINDS",
         help="treat guesses from these mechanisms (constructor, narrow) as certain",
+    )
+    _ = parser.add_argument(
+        "--infer-with",
+        type=_checkers,
+        default=[],
+        metavar="CHECKERS",
+        help="type what --fix can't with these type checkers' inferred types, as guesses (basedpyright,ty)",
+    )
+    _ = parser.add_argument(
+        "--infer-memory",
+        type=_gigabytes,
+        metavar="GB",
+        help="with --infer-with: the most memory each checker's servers use together (default: 8)",
     )
     _ = parser.add_argument(
         "--diff",
@@ -414,6 +476,8 @@ class Options:
     output: Output
     mode: Mode
     jobs: int
+    infer_with: tuple[str, ...] = ()  # the type checkers whose inferred types `--fix` guesses with
+    infer_memory: int | None = None  # bytes each checker's servers may use together (`--infer-memory`)
 
     @classmethod
     def parse(cls, argv: Sequence[str] | None) -> "Options":
@@ -469,6 +533,8 @@ class Options:
             mode=mode,
             # Standard input can only be read once, in this process.
             jobs=1 if paths == [STDIN] else cast("int", args.jobs) or os.cpu_count() or 1,
+            infer_with=tuple(cast("list[str]", args.infer_with)),
+            infer_memory=_bytes(cast("float | None", args.infer_memory)),
         )
 
 

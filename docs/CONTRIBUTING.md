@@ -40,14 +40,17 @@ never crash the checker and must stay valid after `--fix`. For a large real code
 Python's standard library, about 730 files in a few seconds) at `suffocate` and prints the time, the
 offences per code, and any crash. `local/.venv/bin/python tests/corpus/corpus_fix.py [PATH]` runs
 `--fix --unsafe-fixes` on a copy of it (in `local/corpus-fix/`) and checks every file still compiles
-and a second pass has nothing left to fix. CI's Corpus job runs both against the standard library
-and, from the pinned `corpus` dependency group (`requests`, `flask`, `django`, `sqlalchemy`,
-`fastapi`, `pydantic`, `rich`, `pandas`, `sentry_sdk` — a tiny HTTP client, two web frameworks, an
-ORM, an annotation-driven API framework, a runtime-validation library, a terminal renderer, a data
-library and Python 2/3-era code with `# type:` comments), the same way, and against pure Python 2
-(Twisted 12.3.0) and pip 20.3.4 (2/3-era code whose `# type:` comments sit in modules with Python 2
-`__future__` imports), hash-pinned sdists `tests/corpus/corpus_sources.py` fetches, since neither
-installs as a dependency.
+and a second pass has nothing left to fix.
+`local/.venv/bin/python tests/corpus/corpus_profile.py [PATH]` checks it under `cProfile`, in one
+process, and prints (as Markdown) constricter's slowest modules and functions, and where the rest of
+the time went; the profile is saved to `local/profile/`. CI's Corpus job runs all three against the
+standard library and, from the pinned `corpus` dependency group (`requests`, `flask`, `django`,
+`sqlalchemy`, `fastapi`, `pydantic`, `rich`, `pandas`, `sentry_sdk` — a tiny HTTP client, two web
+frameworks, an ORM, an annotation-driven API framework, a runtime-validation library, a terminal
+renderer, a data library and Python 2/3-era code with `# type:` comments), the same way, and against
+pure Python 2 (Twisted 12.3.0) and pip 20.3.4 (2/3-era code whose `# type:` comments sit in modules
+with Python 2 `__future__` imports), hash-pinned sdists `tests/corpus/corpus_sources.py` fetches,
+since neither installs as a dependency.
 
 `tests/corpus/corpus_suite.py` runs a corpus package's own test suite (cloned at its pinned tag,
 with its locked test dependencies, in `local/corpus-suites/`) as released, after `--fix`, and after

@@ -79,6 +79,52 @@ With `--unsafe-fixes`, LVA008 and LVA010 are fixed too, by rewriting the annotat
 only ever given `int`s becomes `total: int`): a guess, since a declared type can be wider on
 purpose.
 
+## A type checker's types (`--infer-with`)
+
+`--infer-with basedpyright` (or `ty`, or both: `basedpyright,ty`) asks that type checker what it
+infers, for the bindings `--fix` can't type itself. It starts the checker's language server
+(`basedpyright-langserver`, or `ty server`, on `PATH` or beside the Python running constricter),
+asks it for the inlay hints over each file, and turns a variable's hint into a fix. Every such fix
+is a guess (fix kind `checker`), applied with `--unsafe-fixes`: a hint is the type of the value
+where the name is bound, which a later binding can widen, and the checker can be wrong about what
+the code means. Its guesses feed the rest of the scope as `--fix`'s own do (a copy of a hinted local
+is typed too, as a guess).
+
+A hint is used only as an annotation the file can hold:
+
+- `Literal[...]` is widened to its values' types (`Literal[1] | None` is `int | None`,
+  `Literal[Color.RED]` is `Color`), and `LiteralString` to `str`;
+- anything vague (`Any`, `list[Unknown]`), not an annotation (`Module("os")`, a signature), as deep
+  as LVA006 reports or as long a tuple as LVA011 does, or a bare `None`, is dropped;
+- every name in it must be a builtin, a name the module binds at its top level (before the binding,
+  in a module body), or a class the checker prints bare that `--fix` can import
+  (`collections.abc`'s, `Path`, `deque`, `Decimal`, `UUID`, ...: one is added as other fixes add
+  theirs). Otherwise nothing says what the name means, and the hint is dropped.
+
+With several checkers, each name takes the first checker's hint, in the order they're named, that
+passes the checks above: one checker's `Unknown` falls back to the next's type. They're asked at the
+same time, each over its own servers. A checker that works one file at a time (basedpyright) gets up
+to four servers (more only repeat each other's work: SQLAlchemy's hints took 20s with one, 11s with
+four, 18s with sixteen), as `--jobs` allows, one per 32 files; one that works in parallel itself
+(`ty`) gets one. Free servers take the files a few at a time, the biggest first, each always with
+its next few asked before its last few are answered. Each server holds its own copy of the program
+it checks: about 1.2 GB for SQLAlchemy, 3.4 GB for pandas. `--infer-memory GB` (`infer-memory`) caps
+what a checker's servers use together: by default 8 GB, or half the memory available if that's less;
+set, never more than is available. One server a checker always gets.
+
+Each server runs behind a small guard process, which passes its input and output through and kills
+it (and anything it started: a venv's `basedpyright-langserver` starts `node`) once constricter has
+gone, however it went (interrupted, terminated, or killed outright): no server outlives the run,
+even one stuck waiting on constricter.
+
+`--fix` repeats with `--infer-with`: a file a round changed is sent to the checker again and fixed
+again, as its new annotations change what the checker infers, until a round changes nothing (four at
+most). `--diff` shows the first round. A checker that isn't installed, fails, or says nothing at all
+for two minutes (it reports its progress as it works: pandas' first answer took basedpyright seven
+minutes) stops the run with an error; a notebook, standard input and a file that can't be decoded
+aren't sent to it. The checker's own configuration (its `[tool.basedpyright]` or `ty.toml`, its
+environment) decides what it infers.
+
 It never touches class bodies (a dataclass would gain a field), and it leaves what it can't fix
 reported. The standard library and third-party packages are out of reach.
 
@@ -124,6 +170,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `stdlib`        | a standard-library function with a builtin result or class (`time.time`, `uuid4`)   |
 | `open`          | `open(path, mode)`'s file object, by its literal mode (`io.TextIOWrapper`, ...)     |
 | `final`         | LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)       |
+| `checker`       | a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)      |
 | `optional`      | `x = None`, then only ever a value of one known type `T`: `T \| None`               |
 | `filled`        | an empty container, then only what the function adds to it (a guess)                |
 | `returned`      | an unannotated function's own `return`s (a method's: a guess)                       |

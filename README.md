@@ -152,6 +152,7 @@ Options:
 | max length       | `--max-length N` (LVA011)                                                                                                                                                    | `max-length`                                    | `--constricter-max-length`      | `constricter-max-length`          |
 | type hierarchy   | -                                                                                                                                                                            | `narrower` (a table)                            | `--constricter-narrower`        | `constricter-narrower`            |
 | fix              | `--fix` (`--unsafe-fixes` for guesses), `--diff` to preview                                                                                                                  | -                                               | -                               | -                                 |
+| infer with       | `--infer-with CHECKERS` (`basedpyright`, `ty`, both: inferred types, as guesses)                                                                                             | `infer-with`                                    | -                               | -                                 |
 | show fixes       | `--show-fixes` (each fix and how it was decided, text)                                                                                                                       | -                                               | -                               | -                                 |
 | fix levels       | `--fix-select`, `--fix-ignore`, `--unsafe-fix-select` (mechanisms: [docs/FIXES.md](https://github.com/ivylikethevine/python-constricter/blob/main/docs/FIXES.md#fix-levels)) | `fix-select`, `fix-ignore`, `unsafe-fix-select` | -                               | -                                 |
 | select           | `--select CODES` (codes or prefixes)                                                                                                                                         | `select`                                        | flake8's own `select`           | pylint's own `enable`             |
@@ -206,8 +207,9 @@ ignore = ["LVA003"]
 return type (in another checked file too), a copy, subscript, attribute or method call of a local
 whose type is known, and values computed from those; a loop's target or an unpacking's names get a
 declaration on the line before. `--unsafe-fixes` adds guesses, and `--show-fixes` lists each fix and
-how its value decided it. The full list is in
-[docs/FIXES.md](https://github.com/ivylikethevine/python-constricter/blob/main/docs/FIXES.md).
+how its value decided it. `--infer-with basedpyright` (or `ty`, or `basedpyright,ty`, installed
+alongside) asks those type checkers for what `--fix` can't type itself, as guesses. The full list is
+in [docs/FIXES.md](https://github.com/ivylikethevine/python-constricter/blob/main/docs/FIXES.md).
 
 ### Installing and running
 

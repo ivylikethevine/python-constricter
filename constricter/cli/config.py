@@ -7,6 +7,7 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, TypeAlias
 
+from constricter.cli.hints import SERVERS
 from constricter.jsonc import is_int
 from constricter.offences import FIX_KINDS, LEVELS, MESSAGES
 
@@ -15,7 +16,7 @@ if TYPE_CHECKING:
     from io import BufferedReader
 
 _Toml: TypeAlias = "str | int | float | bool | datetime | date | time | list[_Toml] | dict[str, _Toml]"
-Default: TypeAlias = str | int | bool | list[str] | dict[str, str] | dict[str, list[str]]
+Default: TypeAlias = str | int | float | bool | list[str] | dict[str, str] | dict[str, list[str]]
 
 
 def unknown_codes(codes: Sequence[str]) -> list[str]:
@@ -134,6 +135,29 @@ def _flag(value: _Toml) -> bool | None:
     return value if isinstance(value, bool) else None
 
 
+def _gigabytes(value: _Toml) -> float | None:
+    """Read `infer-memory`: a positive number of gigabytes.
+
+    Returns:
+      It, or `None` for anything else.
+
+    """
+    return (
+        float(value) if isinstance(value, int | float) and not isinstance(value, bool) and value > 0 else None
+    )
+
+
+def _checkers(value: _Toml) -> list[str] | None:
+    """Read `infer-with`: a checker, or a list of them, each one it knows.
+
+    Returns:
+      Them, or `None` for anything else.
+
+    """
+    checkers: list[str] | None = [value] if isinstance(value, str) else _strings(value)
+    return checkers if checkers and all(checker in SERVERS for checker in checkers) else None
+
+
 def _levels(value: _Toml) -> dict[str, str] | None:
     if not isinstance(value, dict):
         return None
@@ -189,6 +213,8 @@ _READERS: dict[str, Callable[[_Toml], Default | None]] = {
     "per-path-levels": _levels,
     "per-file-ignores": _ignores,
     "narrower": _narrower,
+    "infer-with": _checkers,
+    "infer-memory": _gigabytes,
 }
 
 

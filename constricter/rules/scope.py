@@ -6,14 +6,10 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix import fills
-from constricter.fix.inference import (
-    guess_origins,
-    guessed,
-    inference,
-    inferred,
-)
-from constricter.fix.known import ImportPlan, Inference, Known
+from constricter.fix import fills, hinted
+from constricter.fix.guesses import guess_origins, guessed
+from constricter.fix.inference import inference, inferred
+from constricter.fix.known import Hints, ImportPlan, Inference, Known
 from constricter.offences import (
     CAN_BE_FINAL,
     LONG_TUPLE,
@@ -55,13 +51,14 @@ class Settings:
 
     type_comments: bool
     all_scopes: bool
-    nesting: int
-    max_length: int
+    nesting: int  # LVA011's `max-length` is `known.max_length`
     lines: Sequence[str]
     known: Known  # what the module declares that `--fix` infers types from
     hierarchy: Hierarchy  # which types are narrower than which, for value flow
     owners: dict[int, str]  # each method's class, by `id()`, to type its `self`, for `--fix`
     fixes: FixPolicy  # which fixes `--fix` offers, and which guesses it trusts
+    # Type checkers' types, for what `--fix` can't type (`--infer-with`): each checker's, in order.
+    hints: tuple[Hints, ...] = ()
 
 
 class Kind(NamedTuple):
@@ -162,7 +159,13 @@ class Scope:
             self.inferred.types,
         )
         origins: frozenset[str] = rests_on(self, [value]) if unsafe else frozenset()
-        self.lifetime(name).bind(at(target), certain_type(self, value))
+        if fix is None and (fix := self.hint(target)) is not None:
+            unsafe, origins = True, frozenset({hinted.KIND})
+        self.lifetime(name).bind(
+            at(target),
+            certain_type(self, value),
+            (fix.annotation, origins) if fix is not None and unsafe else None,
+        )
         self.assigned(name, at(target))
         kind: str | None
         if (kind := fills.empty(value)) is not None:
@@ -173,6 +176,34 @@ class Scope:
             if unsafe:
                 self.inferred.guesses.add(name)
                 self.inferred.origins[name] = origins
+
+    def hint(self, target: ast.Name) -> Inference | None:
+        """Type `target` by the type checkers' hints for it (`--infer-with`): the first the file can use.
+
+        Returns:
+          The inference (a guess), or `None`.
+
+        """
+        # Not used at all where not offered: what follows from it would rest on it unseen.
+        if not self.settings.fixes.allows(frozenset({hinted.KIND})):
+            return None
+        where: tuple[int, int] = (target.lineno, target.end_col_offset or 0)
+        found: Hints
+        for found in self.settings.hints:
+            text: str | None = found.types.get(where)
+            typed: Inference | None
+            if text is not None and (
+                typed := hinted.hinted(
+                    text,
+                    found.checker,
+                    self.settings.known,
+                    nesting=self.settings.nesting,
+                    # A module body's annotation is evaluated there: only what's bound before it will do.
+                    before=target.lineno if self.kind.function is None else None,
+                )
+            ):
+                return typed
+        return None
 
     def offer(
         self,
@@ -267,34 +298,39 @@ class Scope:
         self.assignments.found.setdefault(name, []).append((where, self.assignments.looping > 0))
 
     def optionals(self) -> None:
-        """Offer `T | None` to a name first bound to `None`, then only ever to a certain `T`.
+        """Offer `T | None` to a name first bound to `None`, then only ever to a known `T`.
 
-        Every later binding must have a type value flow is sure of, all the same one, not itself
-        allowing `None`, and nothing in another scope may write the name (`nonlocal`, `global`).
+        Every later binding must have a type value flow is sure of (or `--fix` guessed, which makes
+        this a guess too), all the same one, not itself allowing `None`, and nothing in another scope
+        may write the name (`nonlocal`, `global`).
         """
         index: int
         o: Offence
         for index, o in enumerate(self.offences):
             lifetime: Lifetime | None = self.flow.get(o.name)
-            if o.code != UNANNOTATED or o.edit is not None or lifetime is None or lifetime.escaped:
+            if o.code != UNANNOTATED or _fixed(o) or lifetime is None or lifetime.escaped:
                 continue
             first: Binding
             rest: list[Binding]
             first, *rest = lifetime.bindings
-            types: set[str | None] = {binding.value for binding in rest}
+            guesses: list[Late] = [
+                binding.guess for binding in rest if binding.value is None and binding.guess is not None
+            ]
+            types: set[str | None] = {binding.value or (binding.guess or (None,))[0] for binding in rest}
             if first.at != (o.line, o.col) or first.value != _NONE or len(types) != 1:
                 continue
             found: str | None = types.pop()
             if found is None or _NONE in (members(found) or [found]):
                 continue
+            origins: frozenset[str] = frozenset[str]().union(*(rests for _, rests in guesses))
             reason: str = f"`None`, then only `{found}`"
             fix: Fix | None = self.offer(
-                Inference(f"{found} | None", reason, frozenset({_OPTIONAL})),
-                frozenset(),
-                unsafe=False,
+                Inference(f"{found} | None", reason, frozenset({_OPTIONAL}) | origins),
+                origins,
+                unsafe=bool(guesses),
             )
             self.offences[index] = replace(o, edit=fix)
-            self.inferred.late[o.name] = (f"{found} | None", frozenset())
+            self.inferred.late[o.name] = (f"{found} | None", origins)
 
     def fills(self) -> None:
         """Offer an empty container, bound nowhere else, the type of what its function adds to it.
@@ -306,7 +342,7 @@ class Scope:
         for index, o in enumerate(self.offences):
             lifetime: Lifetime | None = self.flow.get(o.name)
             kind: str | None = self.assignments.empty.get(o.name)
-            if o.code != UNANNOTATED or o.edit is not None or kind is None:
+            if o.code != UNANNOTATED or _fixed(o) or kind is None:
                 continue
             if lifetime is None or lifetime.escaped or len(lifetime.bindings) != 1:
                 continue
@@ -440,7 +476,7 @@ class Scope:
         if depth(annotation) >= self.settings.nesting:
             self.offences.append(Offence(*at(annotation), name, NESTED_TYPE))
         longest: int
-        if (longest := length(annotation)) > self.settings.max_length:
+        if (longest := length(annotation)) > self.settings.known.max_length:
             self.offences.append(Offence(*at(annotation), name, LONG_TUPLE, detail=str(longest)))
 
     def walrus(self, node: ast.AST) -> None:
@@ -540,3 +576,13 @@ def _final_fix(fix: Fix, plan: ImportPlan) -> Fix:
 
     """
     return fix._replace(imports=_imports(fix.annotation, plan), after=plan.after)
+
+
+def _fixed(offence: Offence) -> bool:
+    """Check whether an offence already has a fix a late one (`optionals`, `fills`) mustn't replace.
+
+    Returns:
+      Whether it has one, other than a type checker's hint (`--infer-with`), which one would.
+
+    """
+    return offence.edit is not None and hinted.KIND not in offence.edit.kinds

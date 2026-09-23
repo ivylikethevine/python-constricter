@@ -22,7 +22,7 @@ def plan(tree: ast.Module) -> ImportPlan:
       A fresh plan for the module's fixes.
 
     """
-    return ImportPlan(_bound(tree), _taken(tree), _after(tree))
+    return ImportPlan(_bound(tree), _taken(tree), _after(tree), _defined(tree))
 
 
 def _bound(tree: ast.Module) -> dict[str, str]:
@@ -49,6 +49,44 @@ def _bound(tree: ast.Module) -> dict[str, str]:
             case _:
                 pass
     return found
+
+
+def _defined(tree: ast.Module) -> dict[str, int]:
+    """Map each name the module binds at its top level (or under a top-level `if`/`try`) to its line.
+
+    Returns:
+      Each name, and the line it's first bound on.
+
+    """
+    found: dict[str, int] = {}
+    stmt: ast.stmt
+    for stmt in _running(tree.body):
+        name: str
+        for name in _names(stmt):
+            _ = found.setdefault(name, stmt.lineno)
+    return found
+
+
+def _names(stmt: ast.stmt) -> list[str]:
+    """Name what one top-level statement binds, when it's plainly a name (not an unpacking's parts).
+
+    Returns:
+      The names.
+
+    """
+    name: str
+    targets: list[ast.expr]
+    match stmt:
+        case ast.Import() | ast.ImportFrom():
+            return [alias.asname or alias.name.split(".", 1)[0] for alias in stmt.names]
+        case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) | ast.ClassDef(name=name):
+            return [name]
+        case ast.AnnAssign(target=ast.Name(id=name)):
+            return [name]
+        case ast.Assign(targets=targets):
+            return [target.id for target in targets if isinstance(target, ast.Name)]
+        case _:
+            return []
 
 
 def _running(body: list[ast.stmt]) -> Iterator[ast.stmt]:

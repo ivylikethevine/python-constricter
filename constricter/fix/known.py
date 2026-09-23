@@ -29,13 +29,15 @@ class ImportPlan:
     """How a module can name a library type, and the imports that takes (see `fix.imports.plan`).
 
     `bound`: each name its imports bind, and what that is (`io`, `io.BytesIO`); `taken`: every name
-    bound anywhere in it; `after`: the line added imports go after; `added`: each name an added
-    import binds, and that import's statement, as `spell` chose them.
+    bound anywhere in it; `after`: the line added imports go after; `defined`: each name it binds
+    at its top level (an import, a class, a function, an assignment), and the line it's first bound
+    on; `added`: each name an added import binds, and that import's statement, as `spell` chose them.
     """
 
     bound: Mapping[str, str]
     taken: frozenset[str]
     after: int
+    defined: Mapping[str, int] = field(default_factory=dict[str, int])
     added: dict[str, str] = field(default_factory=dict[str, str])
 
     def spell(self, qualified: str) -> str | None:
@@ -136,6 +138,31 @@ class Known:
     names: LibraryNames = field(default_factory=LibraryNames)
     max_length: int = MAX_LENGTH  # the longest tuple display typed element by element (LVA011's)
     returned: Returned = field(default_factory=Returned)
+
+
+class Hints(NamedTuple):
+    """A type checker's inlay hints for one file (`--infer-with`): which checker, and each type.
+
+    Each hint's type is its text as the checker printed it (`int`, `list[str]`), by where the name
+    it types ends: its line (from 1) and UTF-8 byte column, as `ast`'s `end_col_offset`.
+    """
+
+    checker: str = ""
+    # A plain `dict`, not a `MappingProxyType`: the CLI's worker processes are sent it, pickled.
+    types: Mapping[tuple[int, int], str] = {}
+
+
+class Outside(NamedTuple):
+    """What the CLI knows of a file from outside it, for `--fix`.
+
+    `calls`: the return types of functions other checked files define, and `classes` their classes'
+    attributes and methods' returns, as the file spells them (see `project.imported`); `hints`, a
+    type checker's types for what `--fix` can't type itself (`--infer-with`).
+    """
+
+    calls: Mapping[str, str] = {}
+    classes: Classes | None = None
+    hints: tuple[Hints, ...] = ()  # each checker's, in the order they were named
 
 
 class Inference(NamedTuple):

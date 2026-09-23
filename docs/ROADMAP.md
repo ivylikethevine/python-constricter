@@ -42,6 +42,12 @@
   `fix-select`, `fix-ignore` and `unsafe-fix-select` choose which apply. Never changes a report.
 - **Fixes for LVA003** (the loop's `# type:` comment becomes a declaration) and **LVA007** (the
   repeat's annotation is dropped).
+- **Type-checker-backed inference** (`--infer-with basedpyright,ty`): the checkers' language
+  servers' inlay hints (asked all at once, over several servers for basedpyright) type what `--fix`
+  can't, as guesses, widened (`Literal`), checked (nothing vague, nothing the file can't name) and
+  imported (`Callable`, `Path`, ...); `--fix` repeats while the checker's view changes. With
+  basedpyright it about doubles what the annotated corpora's `--fix --unsafe-fixes` types (rich: 708
+  to 1,441) and still converges in one run.
 - **Fixes that add an import**: `open(p, "rb")` is an `io.BufferedReader` by its literal mode (and
   `with open(...) as f` declares `f` first), standard-library classes and what returns them
   (`logging.getLogger()`, `datetime.now()`, `uuid4()`) are typed, and LVA012 offers `Final`. The
@@ -143,10 +149,7 @@ Nothing queued.
 
 ### Large: a week or more
 
-1. **Type-checker-backed inference**, opt-in (`--infer-with=ty|basedpyright`): start that checker's
-   language server, ask for the inlay hints over each file, and turn a hint on an unannotated first
-   binding into a fix, always a guess (`--unsafe-fixes`), since a hint can be too wide, a `Literal`,
-   or name something the file doesn't import.
+Nothing queued.
 
 ## Ongoing
 

@@ -131,7 +131,7 @@ jobs:
       matrix:
         package: [stdlib, requests, flask, django, sqlalchemy, fastapi, pydantic, rich, pandas, sentry_sdk, twisted, pip]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20 # the standard library's profile, in one process, takes minutes
     permissions:
       contents: read
     steps:
@@ -177,6 +177,17 @@ jobs:
       - run: python tests/corpus/corpus_fix.py ${TARGET_PATH:+"$TARGET_PATH"}
         env:
           TARGET_PATH: ${{ steps.target.outputs.path }}
+      # Where constricter's own time goes (corpus_profile.py): its slowest modules and functions, in
+      # the job's summary, and the profile itself, kept for `python -m pstats` or snakeviz.
+      - name: Profile
+        run: python tests/corpus/corpus_profile.py ${TARGET_PATH:+"$TARGET_PATH"} >> "$GITHUB_STEP_SUMMARY"
+        env:
+          TARGET_PATH: ${{ steps.target.outputs.path }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: profile-${{ matrix.package }}
+          path: local/profile/
+          if-no-files-found: error
 
   test:
     name: Test (${{ matrix.os }}, ${{ matrix.python }})

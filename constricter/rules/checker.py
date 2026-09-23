@@ -7,16 +7,20 @@ from dataclasses import replace
 from functools import lru_cache
 from typing import Final, NamedTuple, cast
 
-from constricter.fix import imports, returned, stdlib
-from constricter.fix.inference import (
-    guessed,
-    inference,
-    iterated,
-    looped,
-    unpacked,
+from constricter.fix import hinted, imports, returned, stdlib
+from constricter.fix.guesses import guessed
+from constricter.fix.inference import inference, looped
+from constricter.fix.known import (
+    Classes,
+    ClassSide,
+    Inference,
+    Known,
+    LibraryNames,
+    Outside,
+    Returned,
 )
-from constricter.fix.known import Classes, ClassSide, Inference, Known, LibraryNames, Returned
 from constricter.fix.opened import opened
+from constricter.fix.targets import iterated, unpacked
 from constricter.jsonc import as_text
 from constricter.offences import (
     COMMENT_TYPED_TARGET,
@@ -77,20 +81,23 @@ def check_source(
     filename: str = "<unknown>",
     checks: Checks = DEFAULT_CHECKS,
     *,
-    calls: Mapping[str, str] | None = None,
-    classes: Classes | None = None,
+    outside: Outside | None = None,
 ) -> list[Offence]:
     """Return the offences in `source`, sorted. Raises `SyntaxError`.
 
-    `calls` adds the return types of functions other modules define, and `classes` their classes'
-    attributes and methods' returns, for `--fix` (see `project.imported`).
+    `outside` adds what's known of it from other files and a type checker, for `--fix` (see `Outside`).
 
     Returns:
       Every offence; `# noqa` comments are the caller's to apply.
 
     """
     tree: ast.Module = _parse(source, filename)
-    return check_tree(tree, checks, lines=as_text(source).splitlines(), calls=calls, classes=classes)
+    return check_tree(
+        tree,
+        checks,
+        lines=as_text(source).splitlines(),
+        outside=outside,
+    )
 
 
 def _parse(source: str | bytes, filename: str) -> ast.Module:
@@ -111,13 +118,13 @@ def _settings(
     checks: Checks,
     lines: Sequence[str],
     calls: dict[str, str],
-    imported: Classes | None = None,
+    outside: Outside | None = None,
 ) -> Settings:
+    imported: Classes | None = None if outside is None else outside.classes
     return Settings(
         checks.type_comments or python2_compatible(tree),
         checks.all_scopes,
         checks.nesting,
-        checks.max_length,
         lines,
         Known(
             calls,
@@ -132,6 +139,7 @@ def _settings(
         Hierarchy.for_module(tree, {name: frozenset(wider) for name, wider in checks.narrower}),
         owners(tree),
         checks.fixes,
+        () if outside is None else outside.hints,
     )
 
 
@@ -140,20 +148,21 @@ def check_tree(
     checks: Checks = DEFAULT_CHECKS,
     *,
     lines: Sequence[str] = (),
-    calls: Mapping[str, str] | None = None,
-    classes: Classes | None = None,
+    outside: Outside | None = None,
 ) -> list[Offence]:
     """Return the offences in a parsed module, sorted.
 
     `# type:` comments are seen only if it was parsed with `type_comments=True`; they count for `=`
     and `with` too in a module written to run on Python 2. With its source `lines`, a `**rest`
-    capture is reported at its name rather than at its pattern's start.
+    capture is reported at its name rather than at its pattern's start. `outside` adds what's known
+    of it from other files and a type checker, for `--fix` (see `Outside`).
 
     Returns:
       Every offence, in source order.
 
     """
-    settings: Settings = _settings(tree, checks, lines, {**(calls or {}), **returns(tree)}, classes)
+    calls: Mapping[str, str] = {} if outside is None else outside.calls
+    settings: Settings = _settings(tree, checks, lines, {**calls, **returns(tree)}, outside)
     scopes: list[Scope] = _scopes(tree, settings)
     settings, scopes = _returned(tree, settings, scopes)
     # A finding's kind is the code that reports it (LVA008, LVA009, LVA010).
@@ -566,22 +575,48 @@ def _bind_declared(
     name: ast.Name
     annotation: str | None
     for name, annotation in unpacked(target, None if typed is None else typed.annotation):
-        fix: Fix | None = None
-        if typed is not None and annotation is not None:
-            fix = scope.offer(
-                Inference(annotation, typed.reason, typed.kinds | split),
-                origins,
-                unsafe=unsafe,
-                edit=Edit.DECLARE,
-                span=(stmt.lineno, stmt.col_offset),
-            )
-            # What the rest of the scope infers from `name` knows its type, as for `name = value`.
-            if name.id not in scope.inferred.types:
-                scope.inferred.types[name.id] = annotation
-                if unsafe:
-                    scope.inferred.guesses.add(name.id)
-                    scope.inferred.origins[name.id] = origins
-        scope.bind(name.id, at(name), code, fix)
+        part: Inference | None = (
+            None
+            if typed is None or annotation is None
+            else Inference(annotation, typed.reason, typed.kinds | split)
+        )
+        _bind_declaration(scope, stmt, name, code, (part, unsafe, origins))
+
+
+def _bind_declaration(
+    scope: Scope,
+    stmt: ast.stmt,
+    name: ast.Name,
+    code: str | None,
+    typed: tuple[Inference | None, bool, frozenset[str]],
+) -> None:
+    """Bind one name a statement binds, offering to declare it before `stmt` as `typed` has it.
+
+    `typed`: its inference (`None`: unknown, when the type checker's hint is asked), whether that's a
+    guess, and what the guess rests on.
+    """
+    found: Inference | None
+    unsafe: bool
+    origins: frozenset[str]
+    found, unsafe, origins = typed
+    if found is None and (found := scope.hint(name)) is not None:
+        unsafe, origins = True, frozenset({hinted.KIND})
+    fix: Fix | None = None
+    if found is not None:
+        fix = scope.offer(
+            found,
+            origins,
+            unsafe=unsafe,
+            edit=Edit.DECLARE,
+            span=(stmt.lineno, stmt.col_offset),
+        )
+        # What the rest of the scope infers from `name` knows its type, as for `name = value`.
+        if name.id not in scope.inferred.types:
+            scope.inferred.types[name.id] = found.annotation
+            if unsafe:
+                scope.inferred.guesses.add(name.id)
+                scope.inferred.origins[name.id] = origins
+    scope.bind(name.id, at(name), code, fix)
 
 
 def _bind_commented(scope: Scope, stmt: ast.For | ast.AsyncFor, target: ast.expr, comment: str) -> None:
@@ -625,17 +660,8 @@ def _bind_with(scope: Scope, stmt: ast.stmt, items: list[ast.withitem], code: st
             opened(item.context_expr, scope.settings.known) if isinstance(stmt, ast.With) else None
         )
         match item.optional_vars:
-            case ast.Name() as name if typed is not None:
-                fix: Fix | None = scope.offer(
-                    typed,
-                    frozenset(),
-                    unsafe=False,
-                    edit=Edit.DECLARE,
-                    span=(stmt.lineno, stmt.col_offset),
-                )
-                if name.id not in scope.inferred.types:
-                    scope.inferred.types[name.id] = typed.annotation
-                scope.bind(name.id, at(name), code, fix)
+            case ast.Name() as name:
+                _bind_declaration(scope, stmt, name, code, (typed, False, frozenset()))
             case None:
                 pass
             case target:

@@ -58,6 +58,7 @@ FIX_KINDS: dict[str, str] = {
     "filled": "an empty container, then only what the function adds to it (a guess)",
     "returned": "an unannotated function's own `return`s (a method's: a guess)",
     "final": "LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)",
+    "checker": "a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)",
     "open": "`open(path, mode)`'s file object, by its literal mode (`io.TextIOWrapper`, ...)",
     "loop": "what a loop (or `sorted`, `list`, ...) iterates over",
     "unpack": "an unpacking, split over its names",
