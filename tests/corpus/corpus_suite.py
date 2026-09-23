@@ -2,7 +2,7 @@
 """Run a corpus package's own test suite before and after `--fix`, and after `--fix --unsafe-fixes`.
 
   local/.venv/bin/python tests/corpus/corpus_suite.py            # every suite below
-  local/.venv/bin/python tests/corpus/corpus_suite.py fastapi    # just these
+  local/.venv/bin/python tests/corpus/corpus_suite.py NAME ...   # just these
 
 Each package's source is cloned at its pinned tag into `local/corpus-suites/`, its locked test
 dependencies installed there with `uv sync --locked` (its own `uv.lock`), and its tests run three
@@ -36,10 +36,9 @@ class Suite(NamedTuple):
 
 
 WORK: Final = Path(__file__).resolve().parents[2] / "local" / "corpus-suites"
-SUITES: Final = {
-    "flask": Suite("https://github.com/pallets/flask", "3.1.3", "src/flask", "tests"),
-    "fastapi": Suite("https://github.com/fastapi/fastapi", "0.141.1", "fastapi", "tests"),
-}
+# None yet: flask's and fastapi's were run (identical after `--fix`, see docs/RUNS.md) until they left
+# the corpus; the remaining corpora's are the roadmap's next.
+SUITES: Final[dict[str, Suite]] = {}
 _EVERYWHERE: Final = ("--level=suffocate", "--all-scopes", "--jobs=0", "-q")
 _FAILED: Final = re.compile(r"^(?:FAILED|ERROR) (\S+)", re.MULTILINE)
 _COUNTS: Final = re.compile(r"(\d+) (passed|failed|skipped|xfailed|xpassed|errors?|warnings?)")

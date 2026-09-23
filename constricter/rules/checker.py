@@ -64,7 +64,7 @@ from constricter.rules.syntax import (
     target_names,
     type_comment_span,
 )
-from constricter.rules.walked import nodes
+from constricter.rules.walked import classes, of_type
 
 # The node class of `type X = ...` statements, by name: Python 3.11's `ast` has no `TypeAlias`.
 _TYPE_ALIAS: Final = "TypeAlias"
@@ -144,7 +144,7 @@ def _settings(
         ),
         Hierarchy.for_module(tree, {name: frozenset(wider) for name, wider in checks.narrower}),
         owners(tree),
-        any(isinstance(node, ast.NamedExpr) for node in nodes(tree)),
+        bool(of_type(tree, ast.NamedExpr)),
         () if outside is None else outside.hints,
     )
 
@@ -233,9 +233,7 @@ def _body_scopes(tree: ast.Module, settings: Settings) -> list["Scope"]:
 
     """
     imported: frozenset[str] = imported_from(tree, _ENUM_MODULES)
-    class_bodies: list[list[ast.stmt]] = [
-        node.body for node in nodes(tree) if isinstance(node, ast.ClassDef) and not _is_enum(node, imported)
-    ]
+    class_bodies: list[list[ast.stmt]] = [node.body for node in classes(tree) if not _is_enum(node, imported)]
     scopes: list[Scope] = []
     body: list[ast.stmt]
     for body in (tree.body, *class_bodies):
@@ -735,10 +733,10 @@ def _module_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
     escaped: set[str] = set()
     checking_only: set[str] = set()
     node: ast.AST
-    for node in nodes(tree):
+    for node in of_type(tree, ast.Global, ast.Nonlocal, ast.If):
         if isinstance(node, ast.Global | ast.Nonlocal):
             escaped.update(node.names)
-        elif isinstance(node, ast.If) and node_name(node.test) == _TYPE_CHECKING:
+        elif isinstance(node, ast.If) and node_name(node.test) == _TYPE_CHECKING:  # the only other kind
             checking_only.update(
                 stmt.target.id
                 for stmt in node.body

@@ -89,10 +89,12 @@
   9 bytes per fix; 0.9% with guesses), and `--label` for a pseudo-version (`0.2.4-rc.N`).
 - **`tests/corpus/corpus_suite.py`** clones a corpus package at its pinned tag, installs its locked
   test dependencies, and runs its test suite as released, after `--fix`, and after
-  `--fix --unsafe-fixes`; flask (490 tests) and fastapi (3,341) come out identical.
-- **Python 3**: `requests`, `flask`, `django` (the 5.2 LTS, for 3.11), `sqlalchemy`, `fastapi`,
-  `pydantic`, `rich` (chosen from 18 measured by hand) and `pandas` 3.0.6 (1,421 files with its
-  tests; overloads, generics, `TYPE_CHECKING` imports; 30,140 fixed, nothing broken, one pass).
+  `--fix --unsafe-fixes`; flask (490 tests) and fastapi (3,341) came out identical, before they left
+  the corpus.
+- **Python 3**: `django` (the 5.2 LTS, for 3.11), `sqlalchemy`, `pydantic`, `rich` (chosen from 18
+  measured by hand; `requests`, `flask` and `fastapi` were dropped as small and alike) and `pandas`
+  3.0.6 (1,421 files with its tests; overloads, generics, `TYPE_CHECKING` imports; 30,140 fixed,
+  nothing broken, one pass).
 - **Python 2**: `sentry-sdk` 1.45.1 (2/3-era `# type:` comments, installed), and Twisted 12.3.0
   (pure Python 2, 147 of 819 files unparsable) and pip 20.3.4 (the most type comments in
   `__future__` modules), hash-pinned sdists `tests/corpus/corpus_sources.py` fetches; chosen from 15
@@ -138,14 +140,14 @@ Nothing queued.
 ### Medium: a few days
 
 1. **Run the remaining corpora's test suites, and their type checkers, after `--fix`.**
-   `tests/corpus/corpus_suite.py` runs flask's and fastapi's suites (and `requests`' was run by
-   hand) before and after `--fix` and `--fix --unsafe-fixes`, identically. Add pydantic, rich,
-   sqlalchemy, django and pandas (whose 27% guesses make it the most telling). A local's annotation
-   is never evaluated at runtime, so a test suite catches a fix that breaks the code, not a wrong
-   type: also run each project's own type checker (mypy or pyright, as its CI does) before and
-   after, and count the new errors per fix mechanism. Done when every Python 3 corpus's suite passes
-   the same, and each new type error is traced to a mechanism and that mechanism corrected or made a
-   guess.
+   `tests/corpus/corpus_suite.py` ran flask's and fastapi's suites (and `requests`' by hand) before
+   and after `--fix` and `--fix --unsafe-fixes`, identically, before those left the corpus; it has
+   no suites now. Add pydantic, rich, sqlalchemy, django and pandas (whose 27% guesses make it the
+   most telling). A local's annotation is never evaluated at runtime, so a test suite catches a fix
+   that breaks the code, not a wrong type: also run each project's own type checker (mypy or
+   pyright, as its CI does) before and after, and count the new errors per fix mechanism. Done when
+   every Python 3 corpus's suite passes the same, and each new type error is traced to a mechanism
+   and that mechanism corrected or made a guess.
 
 ### Large: a week or more
 

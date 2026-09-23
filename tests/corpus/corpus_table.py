@@ -53,11 +53,8 @@ DEV: Final = "dev"
 VERSIONS: Final = ("0.2.2", "0.2.3", DEV)
 # The `corpus` dependency group's packages, by import name (their distribution names match).
 PACKAGES: Final = (
-    "requests",
-    "flask",
     "django",
     "sqlalchemy",
-    "fastapi",
     "pydantic",
     "rich",
     "sentry_sdk",

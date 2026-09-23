@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Final, TypeAlias
 
-from constricter.rules.walked import nodes
+from constricter.rules.walked import classes as defined_classes
 
 # Each named type's directly wider types.
 Parents: TypeAlias = Mapping[str, frozenset[str]]
@@ -155,11 +155,10 @@ class Hierarchy:
         defined: dict[str, list[ast.expr]] = {}
         node: ast.AST
         bases: frozenset[str]
-        for node in nodes(tree):
-            if isinstance(node, ast.ClassDef):
-                defined[node.name] = node.bases
-                if bases := frozenset(b.id for b in node.bases if isinstance(b, ast.Name)):
-                    parents[node.name] = bases
+        for node in defined_classes(tree):
+            defined[node.name] = node.bases
+            if bases := frozenset(b.id for b in node.bases if isinstance(b, ast.Name)):
+                parents[node.name] = bases
         parents.update(own)
         vouched: frozenset[str] = frozenset(own).union(*own.values())
         return cls(parents, vouched | {name for name in defined if _visible(name, defined, frozenset())})
