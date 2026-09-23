@@ -25,6 +25,24 @@ _ITERATOR_KEYWORDS: Final = {
 _ANY_LENGTH: Final = 2
 
 
+def sole(argument: ast.expr) -> ast.expr:
+    """Read a one-parameter generic's type argument, written with a trailing comma or not.
+
+    `list[int,]` (as a formatter writes a long one split over lines) subscripts `list` with the
+    tuple `(int,)`; its element is still `int`.
+
+    Returns:
+      The type argument.
+
+    """
+    element: ast.expr
+    match argument:
+        case ast.Tuple(elts=[element]):
+            return element
+        case _:
+            return argument
+
+
 def element_type(container: str, reason: str, kinds: frozenset[str]) -> Inference | None:
     """Infer the elements of a value typed `container`.
 
@@ -44,7 +62,7 @@ def element_type(container: str, reason: str, kinds: frozenset[str]) -> Inferenc
         case ast.Name(id="bytes"):
             return Inference("int", reason, kinds)
         case ast.Subscript(value=ast.Name(id=name), slice=item) if name in _ONE_ELEMENT_TYPE:
-            return Inference(ast.unparse(item), reason, kinds)
+            return Inference(ast.unparse(sole(item)), reason, kinds)
         case ast.Subscript(value=ast.Name(id="dict" | "Dict"), slice=ast.Tuple(elts=[key, _])):
             return Inference(ast.unparse(key), reason, kinds)
         case ast.Subscript(value=ast.Name(id="tuple" | "Tuple"), slice=ast.Tuple(elts=[item, last])) if (

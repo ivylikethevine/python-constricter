@@ -42,6 +42,7 @@ _NONE: Final = "None"
 _OPTIONAL: Final = "Optional"
 _UNION: Final = "Union"
 _COMPLEX: Final = "complex"
+_TEXT: Final = frozenset({"str", "bytes"})
 # `typing`'s capitalised aliases, compared as the builtins they stand for.
 _ALIASES: Final = {
     "Dict": "dict",
@@ -378,18 +379,21 @@ def _atom(node: ast.expr) -> str:
             return ast.unparse(node)
 
 
-def augmented(op: ast.operator, operand: str | None) -> str | None:
+def augmented(op: ast.operator, operand: str | None, own: str | None = None) -> str | None:
     """Infer the type an augmented assignment (`x op= operand`) can bind, besides `x`'s own.
 
     `/` gives a `float` for real numbers (a `complex` for one); `+`, `-`, `*`, `//` and `%` give a
     type both sides fit in, which the operand's own type stands for, since `x`'s is already among
     its values. Any other operator (`**` can turn an `int` into a `float`; bit operators, `@`, ...)
-    is unknown.
+    is unknown. Text (`own`, `x`'s certain type, a `str` or `bytes`) stays text by `+`, `*` and `%`,
+    whatever the operand: any other would raise.
 
     Returns:
       The type as text, or `None` if unknown.
 
     """
+    if own in _TEXT and isinstance(op, ast.Add | ast.Mult | ast.Mod):
+        return own
     match op:
         case ast.Div():
             if operand == _COMPLEX:

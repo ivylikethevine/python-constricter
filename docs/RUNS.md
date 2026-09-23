@@ -25,13 +25,13 @@ the error differently). pandas runs its CI's selection (not `slow`, `network` or
 A local's annotation is never evaluated, so the tests can't catch a wrong one:
 `corpus_suite.py --types` runs each package's own type checker as its CI does, before and after, and
 traces each error it didn't have as released to the fix (and so the mechanism) behind it. Django's
-CI has none.
+CI has none. On 0.2.4, and since (Unreleased: see [FIXES.md](FIXES.md#what-a-type-checker-sees)):
 
 | Package    | Checker                            | Released errors | New after `--fix` | New after `--fix --unsafe-fixes` |
 | ---------- | ---------------------------------- | --------------: | ----------------: | -------------------------------: |
-| pydantic   | `pyright pydantic`                 |               0 |                18 |                               20 |
-| sqlalchemy | `mypy noxfile.py ./lib/sqlalchemy` |               0 |                60 |                               75 |
-| pandas     | mypy and pyright, as configured    |             259 |               117 |                              165 |
+| pydantic   | `pyright pydantic`                 |               0 |         18, now 0 |                       20, now 11 |
+| sqlalchemy | `mypy noxfile.py ./lib/sqlalchemy` |               0 |         61, now 0 |                       76, now 42 |
+| pandas     | mypy and pyright, as configured    |             259 |        117, now 0 |                      165, now 97 |
 
 Earlier suites, on 0.2.4-rc.5:
 

@@ -166,12 +166,15 @@ class Outside(NamedTuple):
 
     `calls`: the return types of functions other checked files define, and `classes` their classes'
     attributes and methods' returns, as the file spells them (see `project.imported`); `hints`, a
-    type checker's types for what `--fix` can't type itself (`--infer-with`).
+    type checker's types for what `--fix` can't type itself (`--infer-with`); `type_vars`, the names
+    it imports that are type variables where they're defined (see `project.type_vars`), which a
+    type its own functions declare can't be written with outside them.
     """
 
     calls: Mapping[str, str] = {}
     classes: Classes | None = None
     hints: tuple[Hints, ...] = ()  # each checker's, in the order they were named
+    type_vars: frozenset[str] = frozenset()
 
 
 class Inference(NamedTuple):

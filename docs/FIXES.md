@@ -16,22 +16,31 @@ in a function or module body:
 - a builtin with a fixed result: `len(x)` is an `int`, `hex(n)` a `str`, `any(xs)` a `bool`, `dir()`
   a `list[str]`, `range(n)` a `range`, and so on; but not where the module binds the name itself (a
   parameter named `format`, a local `input`, its own `def dir()`), anywhere in it;
-- a fixed-return `str`/`bytes` method on a literal: `", ".join(parts)` is a `str`,
-  `"k=v".partition("=")` a `tuple[str, str, str]`;
-- a local whose type is already known (annotated, a parameter, or fixed earlier in the same scope):
-  a plain copy (`y = x`), a subscript (`nums[0]`), an attribute (an annotated one, or a `@property`
-  declaring its return) or method call of a class defined in the same module (`p.x`, `p.norm()`), a
-  `str`/`bytes` method with a fixed return (`s.strip()`), or a `list`/`set`/`dict` method that
-  returns its own element type (`nums.pop()`, `d.get(k)` as `V | None`); in a classmethod, `cls` is
-  `type[C]`, whose class attributes (`limit: int = 3`, `ClassVar[T]`) and classmethods' and
-  staticmethods' declared returns type `cls.x` and `cls.m()`;
+- a copy of a local whose type is already known (annotated, a parameter, or fixed earlier in the
+  same scope): `y = x`;
+- a member of any value whose type is known, a local or anything else here (`self.index`, `f()`,
+  `xs[0]`, `", "`), however deep (`self.index.name.upper()`): a subscript (`nums[0]`; a slice, or an
+  index typed `slice`, is the container's own type), an attribute (an annotated one, or a
+  `@property` declaring its return) or method call of a class defined in the same module or another
+  checked file (`p.x`, `p.norm()`), a `str`/`bytes` method with a fixed return (`s.strip()`,
+  `", ".join(parts)`, `"k=v".partition("=")` as `tuple[str, str, str]`), or a `list`/`set`/`dict`
+  method that returns its own element type (`nums.pop()`, `d.get(k)` as `V | None`); in a
+  classmethod, `cls` is `type[C]`, whose class attributes (`limit: int = 3`, `ClassVar[T]`) and
+  classmethods' and staticmethods' declared returns type `cls.x` and `cls.m()`. A member of a
+  guessed value is a guess too (`Box().name`), and its fix kinds include the value's;
 - `typing.cast(T, x)`, however `cast` is imported: `T`;
-- a standard-library function with a builtin result, resolved through the imports (`import m`,
-  `import m as a`, `from m import f`): `time.time()` is a `float`, `textwrap.dedent(...)` a `str`,
-  `os.environ.get(k)` a `str | None` (a `str` with a `str` default), and an `AnyStr` function
-  (`os.path.join`, `re.escape`) the type all its arguments share; a standard-library class, or a
-  function returning one: `logging.getLogger()` is a `logging.Logger`, `datetime.now()` a
-  `datetime.datetime`, `uuid4()` a `uuid.UUID`, `argparse.ArgumentParser(...)` itself;
+- the standard library, resolved through the imports (`import m`, `import m as a`,
+  `from m import f`), by tables generated from typeshed's stubs (`tests/typeshed/stdlib_tables.py`,
+  keeping what's the same on Linux, macOS and Windows and Python 3.11 to 3.14): a function returning
+  a builtin type whatever its arguments (`time.time()` is a `float`, `os.cpu_count()` an
+  `int | None`, `sys.intern(s)` a `str`); an `AnyStr` function (`os.path.join`, `re.escape`) the
+  type all its arguments share; `os.environ.get(k)` a `str | None` (a `str` with a `str` default); a
+  non-generic class, or a function or classmethod returning one: `logging.getLogger()` is a
+  `logging.Logger`, `datetime.now()` a `datetime.datetime`, `asyncio.Lock()` an `asyncio.Lock`,
+  `os.stat(p)` an `os.stat_result`; and on a value typed as such a class, its attributes and
+  properties, and its methods' returns (`parser.prog` is a `str`, `dt.astimezone()` a
+  `datetime.datetime`). Not an overload that depends on its arguments (`parser.parse_args()`,
+  `subprocess.run`), a generic class, or a function only some platforms have (`os.getuid`);
 - `open(path, mode)` (or `io.open`), by its literal mode (`r` when there's none): a text mode gives
   an `io.TextIOWrapper`, a binary one an `io.BufferedReader` to read, an `io.BufferedWriter` to
   write, and an `io.BufferedRandom` for both (`+`). Not unbuffered (`buffering`, which gives an
@@ -87,6 +96,36 @@ A name annotated again with the type it already has (LVA007) loses the repeat: `
 With `--unsafe-fixes`, LVA008 and LVA010 are fixed too, by rewriting the annotation (`total: float`
 only ever given `int`s becomes `total: int`): a guess, since a declared type can be wider on
 purpose.
+
+## What a type checker sees
+
+A fix is only as certain as a type checker would find it (`tests/corpus/corpus_suite.py --types`
+runs the corpus packages' own checkers after `--fix`), so where a checker sees the value otherwise
+than the fix says, the fix is changed, made a guess, or not offered:
+
+- a name bound again later must take every value: `x = 1` then `x = None` declares `x: int | None`
+  on a line of its own before the first binding (annotated there, mypy wouldn't narrow it to the
+  `int` it's bound to), and `total = 0` then `total += 0.5` declares `total: float` (fix kind
+  `rebound`); another type that doesn't fit (`x = 1` then `x = "a"`, a class and its base) leaves it
+  untyped. A later value whose type isn't known may be anything, which makes the fix a guess;
+- after it's bound again, a name is what it was bound to: certain where that's a member of its
+  declared union (`int | None`, then `1`), which every checker narrows it to; a guess otherwise;
+- a copy, attribute or subscript of a union, or of anything the function tests (`isinstance(x, C)`,
+  `x is None`, `is_c(x)`, an `assert`, a `match`), may be narrowed where it's read: a guess; so is a
+  comprehension of a union with a condition (`[c for c in cs if isinstance(c, Column)]`);
+- an ALL_CAPS module-level name bound to a literal is a constant to pyright, which keeps its
+  `Literal` type: `MODE = "r"`'s `str` would widen it, so it's a guess;
+- `self`, and a method declared to return `Self` called on `self` or `cls`, is `Self`, not its class
+  (in a subclass, the class isn't `Self`): written as the module already imports `Self`
+  (`typing.Self` is Python 3.11's, so no import is added), and not offered without one; a `Self`
+  later bound to anything else isn't offered either;
+- a generic class the module defines is never written bare (`list[Box]`, as `[self]` in `Box` would
+  be): it's missing its type arguments;
+- a declared return that names a type variable, the module's own, one it imports from another
+  checked file (`from ._typing import T`, under `if TYPE_CHECKING:` too) or `typing.AnyStr`, depends
+  on the arguments: its calls aren't typed;
+- a one-parameter generic written with a trailing comma (`list[int,]`, as a formatter splits a long
+  one) has the element it would without.
 
 ## A type checker's types (`--infer-with`)
 
@@ -159,9 +198,9 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `literal`       | a literal, an f-string, or `not x`                                                  |
 | `container`     | a list, set, tuple or dict display whose elements' types agree                      |
 | `copy`          | a copy of a local whose type is known                                               |
-| `subscript`     | a subscript of a known container                                                    |
-| `attribute`     | an attribute of a class the module defines                                          |
-| `method`        | a method with a fixed or declared return type, on a known local or a literal        |
+| `subscript`     | a subscript of a container whose type is known                                      |
+| `attribute`     | an attribute of a class the module (or another checked file) defines                |
+| `method`        | a method with a fixed or declared return type, on a value whose type is known       |
 | `builtin`       | a builtin with a fixed return type (`len`, `str`, ...)                              |
 | `call`          | a function that declares its return type (this module's, or another checked file's) |
 | `constructor`   | a call to a capitalised name, taken to construct one (a guess)                      |
@@ -176,10 +215,11 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `cast`          | `typing.cast(T, x)`: its `T`                                                        |
 | `comment`       | LVA003: the loop's own `# type:` comment, as a declaration                          |
 | `redundant`     | LVA007: the repeated annotation, dropped                                            |
-| `stdlib`        | a standard-library function with a builtin result or class (`time.time`, `uuid4`)   |
+| `stdlib`        | the standard library's functions, classes and members, from typeshed (`uuid4`)      |
 | `open`          | `open(path, mode)`'s file object, by its literal mode (`io.TextIOWrapper`, ...)     |
 | `final`         | LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)       |
 | `checker`       | a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)      |
+| `rebound`       | a name later bound to a wider type: the type every value fits (`int`, then `float`) |
 | `optional`      | `x = None`, then only ever a value of one known type `T`: `T \| None`               |
 | `filled`        | an empty container, then only what the function adds to it (a guess)                |
 | `returned`      | an unannotated function's own `return`s (a method's: a guess)                       |

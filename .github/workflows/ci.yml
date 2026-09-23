@@ -50,6 +50,8 @@ jobs:
       - run: typos
       - run: validate-pyproject pyproject.toml
       - run: uv lock --check
+      # The standard-library tables are generated from the pinned basedpyright's typeshed stubs.
+      - run: python -m tests.typeshed.stdlib_tables --check
       - run: constricter --level=suffocate --all-scopes --format=github constricter tests
       - run: constricter --coverage --all-scopes --fail-under=100 constricter tests
       - run: pre-commit try-repo . constricter --all-files

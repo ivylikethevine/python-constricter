@@ -367,7 +367,7 @@ def test_final_isnt_offered_where_not_selected() -> None:
 
 
 def test_a_guessed_argument_doesnt_make_opens_type_a_guess() -> None:
-    """`open(path)`'s type is its mode's, `getLogger(name)`'s a `Logger`, whatever the argument is.
+    """`open(path)`'s type is its mode's, `getLogger(name)`'s a `Logger`, `len(x)`'s `int`, whatever `x` is.
 
     Found on the standard library's `http.server`: `f = None`, then `f = open(path, "rb")` with a
     guessed `path`, was typed only once `path` was, on a second pass.
@@ -387,6 +387,6 @@ def test_a_guessed_argument_doesnt_make_opens_type_a_guess() -> None:
         ("path", "Box", True),
         ("a", "BufferedReader", False),
         ("b", "logging.Logger", False),
-        ("c", "int", True),
+        ("c", "int", False),
         ("d", "TextIOWrapper | None", False),
     ]

@@ -592,7 +592,9 @@ def _outside(
     path: Path
     for path in paths:
         imported: project.Imported = project.imported(modules, path)
-        found.append(Outside(imported.calls, imported.classes, hinted.get(path, ())))
+        found.append(
+            Outside(imported.calls, imported.classes, hinted.get(path, ()), project.type_vars(modules, path)),
+        )
     return found
 
 

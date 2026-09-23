@@ -8,6 +8,39 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 - `tests/ci_local.py` runs CI's Lint, Docs and Test checks locally, in parallel, straight from
   `ci.yml`, and `--install-hook` makes it a `pre-push` hook.
+- `--fix` types a member of any value whose type it knows, not just of a local: `self.index.name`,
+  `t.make().label()`, `rows[0].strip()`, `f().x`, however deep; a member of a guessed value is a
+  guess, and its fix kinds include the value's. A call whose type is its callee's alone (a
+  fixed-return builtin, a function declaring its return, a method with a fixed or declared return)
+  is certain whatever its arguments are: `len(Box())` and `"{}".format(Box())` were guesses. An
+  index typed `slice` slices (`items[since]` was typed as an element). `constricter.fix.members`
+  holds the member lookup, its sources in `SOURCES`.
+- `--fix`'s standard-library tables are generated from the typeshed stubs basedpyright bundles
+  (`tests/typeshed/stdlib_tables.py`, checked in CI), in place of the curated ones: 894 functions
+  with a builtin result, 38 `AnyStr` ones, 1,478 classes and functions returning one, and 810
+  classes' methods and 713's attributes (`dt.astimezone()`, `parser.prog`), for what's the same on
+  every platform and Python 3.11 to 3.14. A standard-library class's call (`asyncio.Lock()`,
+  `unittest.TestLoader()`) is certain, no longer a guess, and a fixed-return function's keyword
+  arguments no longer stop it being typed. On the corpora, 6,050 more fixes are certain and 3,708
+  fewer are guesses (most in the standard library itself).
+- `--fix` adds no type errors to the corpus packages' own type checks (`corpus_suite.py --types`:
+  pydantic's pyright, sqlalchemy's mypy, pandas's mypy and pyright), where it added 18, 61 and 117:
+  - a name bound again later takes every value: `x = 1` then `x = None` declares `x: int | None`
+    before the first binding, `total = 0` then `total += 0.5` a `float` (fix kind `rebound`);
+    another type leaves it untyped, and a later value whose type isn't known makes the fix a guess;
+  - after it's bound again, a name is what it was bound to (certain for a member of its declared
+    union, a guess otherwise), not its annotation or first binding's type;
+  - a copy, attribute or subscript of a union, or of anything the function tests (`isinstance`, a
+    `TypeGuard`, `is None`, an `assert`, a `match`), is a guess, as is a comprehension of a union
+    with a condition: a checker narrows them where they're read;
+  - an ALL_CAPS module-level literal the module passes to a call or a default is a guess: pyright
+    keeps its `Literal` type;
+  - `self`, and a `Self` method called on `self` or `cls`, in a method whose signature says `Self`,
+    is written `Self` as the module imports it (or not at all), not as its class;
+  - a generic class the module defines is never written bare (`list[Mapper]`);
+  - a declared return naming a type variable imported from another checked file (under
+    `if TYPE_CHECKING:` too) or `typing.AnyStr` doesn't type its calls;
+  - a type argument with a trailing comma (`list[\n    int,\n]`) is read as the element it is.
 - `--fix` types a loop over `enumerate` or `zip` one part at a time: `for i, x in enumerate(xs)`
   declares `i: int` even when `xs`'s elements aren't known, and a guess about one part no longer
   makes the others guesses. `enumerate(xs, start=1)`, `zip(a, b, strict=True)` and

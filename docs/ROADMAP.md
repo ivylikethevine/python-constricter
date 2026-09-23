@@ -44,6 +44,9 @@
   and the rest with a fixed result, `str`/`bytes` methods on a literal (`", ".join(parts)`) and
   `partition`; and a builtin's name the module rebinds (a parameter named `format`) is no longer
   taken for the builtin. Not `slice` or `memoryview`, generic in recent typeshed.
+- **Members of any typed value**: `self.index.name`, `t.make().label()`, `rows[0].strip()`, however
+  deep, through one lookup (`constricter.fix.members.SOURCES`); a member of a guess is a guess, and
+  a call whose type is its callee's alone is certain whatever its arguments.
 - **Loop targets from `enumerate` and `zip`, one part at a time**: `for i, x in enumerate(xs)`
   declares `i: int` whatever `xs` is, each part certain or a guess as its own type is, and the
   keywords that don't change what they yield (`start=`, `strict=`, `sorted`'s `key=`) are allowed.
@@ -60,6 +63,18 @@
   (`logging.getLogger()`, `datetime.now()`, `uuid4()`) are typed, and LVA012 offers `Final`. The
   name is spelled through an import the module has, or one added after its leading imports (never
   under `if TYPE_CHECKING:`, over a name the module binds, or over a builtin).
+- **Standard-library tables generated from typeshed** (`tests/typeshed/stdlib_tables.py`, checked in
+  CI): the stubs basedpyright bundles, read as Linux, macOS and Windows and Python 3.11 to 3.14 see
+  them (re-exports, `__all__`, overloads, method resolution order), keeping what they all agree on,
+  replace the curated tables: 894 functions with a builtin result, 38 `AnyStr` ones, 1,478 classes
+  and functions or classmethods returning one (`asyncio.Lock()` is certain, no longer a guess), and
+  810 classes' methods' returns and 713's attributes (`dt.astimezone()`, `parser.prog`). On the
+  corpora, 6,050 more fixes are certain and 3,708 fewer are guesses. `--types` finds one more error
+  than before, on sqlalchemy: `time.fromisoformat(v)`, newly typed, is later rebound to `None`, as
+  its `datetime` and `date` siblings already were (Medium 1's first-binding case). Left for later:
+  an overload that depends on its arguments (`parser.parse_args()`, `subprocess.run`, `os.listdir`),
+  a generic class, a class inside a builtin generic (`list[Path]`), and a function only some
+  platforms have (`os.getuid`).
 - **Faster checking**: the standard library's check, profiled (`tests/corpus/corpus_profile.py`, in
   CI's Corpus job on every PR), from 227s to 52s over 0.2.4 and after: one shared walk of each
   module, sorted by node type once, for every pass over all of it (`ast.walk` from 130s to about
@@ -72,6 +87,16 @@
   to 2.0s); and each file parsed once, its tree kept from the cross-file index for the check, in the
   same worker (`rules/parsed.py`; up to 40 MB of source, about 1 GB of trees, shared among the
   workers), so `--jobs=0` on 16 cores went from 7.5s to 6.3s. Every corpus's fixes are unchanged.
+- **No new type errors**: `corpus_suite.py --types` runs pydantic's, sqlalchemy's and pandas's own
+  type checkers after `--fix`, which found 18, 61 and 117 errors they didn't have as released; now
+  none (with guesses: 20, 76 and 165, now 11, 41 and 97). A name bound again later is declared with
+  a type every value fits, or left untyped; after a rebinding it's what it was bound to; a read of
+  what a checker narrows (a union, or anything the function tests) is a guess, as is an ALL_CAPS
+  constant's literal passed to a call; `Self` is written where the method says `Self`; a generic
+  class isn't written bare; an imported type variable doesn't type a call; and `list[int,]`'s
+  element is `int` (see [FIXES.md](FIXES.md#what-a-type-checker-sees)). About a tenth of the certain
+  fixes became guesses (the standard library's 22,073 are 19,825), still offered with
+  `--unsafe-fixes`.
 - **Safe by construction**: it never touches class bodies, keeps line endings and a file's encoding
   (PEP 263 or a BOM; a fix the encoding can't hold leaves the file, exit 2), edits notebooks' cells
   in place, and converges in one pass on every corpus with nothing broken. `requests`', flask's and
@@ -159,40 +184,7 @@ Nothing queued.
 
 ### Medium: a few days
 
-1. **Make `--fix` add no type errors to the corpora.** `tests/corpus/corpus_suite.py` runs
-   pydantic's, sqlalchemy's, django's and pandas's suites, which pass the same after `--fix` and
-   `--fix --unsafe-fixes` (see [RUNS.md](RUNS.md)), and with `--types` their own type checkers
-   (django has none), tracing each new error to its fix's mechanism: 195 after `--fix` and 260 with
-   guesses. Correct the mechanisms, or make their fixes guesses, most first: a first binding's type
-   when the name is later bound to another (`None`, the other `cast` of an `if`/`else`: `cast`,
-   `literal`, `call`, `method`, `builtin`, `stdlib`, `arithmetic`); a declared `Optional` attribute
-   or name copied where it's narrowed (`attribute`, `copy`); a method returning `Self`, or a copy of
-   `self`, written as the class (`method`, `copy`), bare where it's generic; an imported `TypeVar`
-   left unbound (`call`); a module constant's literal widened to `str` (`literal`, `LVA004`); and an
-   element type taken from a subscript with a trailing comma, `list[\n int,\n]`, written as the
-   tuple `(int,)` (`loop`). Done when `--types` finds no new error after `--fix` on any corpus.
-2. **Standard-library tables generated from typeshed.** `stdlib.RETURNS` and `CLASSES` are curated
-   by hand: small, and not always right (`sys.getswitchinterval` was `int`). Generate them from the
-   typeshed stubs basedpyright bundles, with a script checked in and its output committed: every
-   function whose return names no `TypeVar` and no `Any` and doesn't depend on its overload (1,426
-   with a builtin result, 3,928 functions or classes with a standard-library class), spelled by the
-   public path the call goes through (`unittest.TestLoader`, not where it's defined), without
-   `typing`'s factories (`TypeVar`, `NewType`). Measured: 2,593 more bindings (2,410 certain, mostly
-   the standard library's own code), and about 760 of today's constructor guesses become certain
-   (`asyncio.Lock()`, `unittest.TestLoader()`). Then, from the same stubs, the methods and
-   attributes of those classes on a typed local (`parser.parse_args()`, `dt.astimezone()`): about
-   530 more, certain. Left for later: generic classes, `TypeVar` returns (`os.path.dirname`) and
-   overloads that differ (`subprocess.run`), which need the arguments' types. Done when the tables
-   are generated, the curated ones gone, and every corpus converges with `--types` finding no new
-   error they cause.
-3. **Methods, attributes and subscripts on any typed receiver.** `_from_local` types `x.m()` only
-   when `x` is a local name; `self.index._getitem_slice(...)` and `a.b.c` aren't. Infer the
-   receiver's type as any other value's, and look the member up on it. A fixed-return method's
-   arguments can't change its type, so `guesses._deciding` should skip them (as it does for `open`
-   and `library_class`): 234 of its 629 guesses are guesses only for a call among the arguments.
-   Measured: 2,077 bindings (1,448 certain, 384 in annotated code), overlapping the Small item on
-   literal receivers. Done when chained receivers are typed, and a fixed-return method's arguments
-   don't make its call a guess.
+Nothing queued.
 
 ### Large: a week or more
 

@@ -301,3 +301,25 @@ def test_a_drop_left_unmade_where_it_cant_be() -> None:
         "        pass",
     ]  # no comment in them
     assert [(o.code, o.edit) for o in check_tree(tree, lines=lines)] == [(COMMENT_TYPED, None)]
+
+
+def test_a_type_argument_with_a_trailing_comma_is_still_the_element() -> None:
+    """`list[int,]` (a formatter's split) subscripts `list` with `(int,)`: its element is still `int`."""
+    source: str = """
+    def f(nums: list[
+        int,
+    ], names: set[
+        str,
+    ]) -> None:
+        for num in nums:
+            pass
+        first = nums[0]
+        last = nums.pop()
+        name = names.pop()
+    """
+    assert {o.name: o.fix for o in check_source(textwrap.dedent(source))} == {
+        "num": "int",
+        "first": "int",
+        "last": "int",
+        "name": "str",
+    }

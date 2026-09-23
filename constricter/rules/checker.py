@@ -8,6 +8,7 @@ from functools import lru_cache
 from typing import Final, NamedTuple, cast
 
 from constricter.fix import hinted, imports, returned, stdlib
+from constricter.fix.doubts import Facts, passed
 from constricter.fix.inference import LoopPart, inference, looped, looped_parts
 from constricter.fix.known import (
     Classes,
@@ -40,10 +41,14 @@ from constricter.rules.annotations import (
     class_attributes,
     class_methods,
     factories,
+    free_of,
+    free_of_all,
+    generic_classes,
     imported_from,
     method_returns,
     node_name,
     returns,
+    self_returns,
 )
 from constricter.rules.annotations import classes as instance_attributes
 from constricter.rules.flow import Finding, Hierarchy, augmented
@@ -120,16 +125,18 @@ def _settings(
     outside: Outside | None = None,
 ) -> Settings:
     imported: Classes | None = None if outside is None else outside.classes
+    # The file's own types that mention a type variable it imports (`--fix` sees only its own).
+    free: frozenset[str] = frozenset() if outside is None else outside.type_vars
     return Settings(
         checks._replace(type_comments=checks.type_comments or python2_compatible(tree)),
         lines,
         Known(
-            calls,
+            free_of(calls, free),
             factories(tree),
-            {**(imported.attributes if imported else {}), **instance_attributes(tree)},
-            {**(imported.methods if imported else {}), **method_returns(tree)},
-            awaited_returns(tree),
-            ClassSide(class_attributes(tree), class_methods(tree)),
+            {**(imported.attributes if imported else {}), **free_of_all(instance_attributes(tree), free)},
+            {**(imported.methods if imported else {}), **free_of_all(method_returns(tree), free)},
+            free_of(awaited_returns(tree), free),
+            ClassSide(free_of_all(class_attributes(tree), free), free_of_all(class_methods(tree), free)),
             LibraryNames(casts(tree), stdlib.origins(tree), imports.plan(tree)),
             checks.max_length,
         ),
@@ -137,6 +144,7 @@ def _settings(
         owners(tree),
         bool(of_type(tree, ast.NamedExpr)),
         () if outside is None else outside.hints,
+        Facts(self_returns(tree), generic_classes(tree), passed(tree)),
     )
 
 
@@ -338,11 +346,8 @@ def _function_scope(
     name: str
     late: Late
     for name, late in (seed or {}).items():
-        _ = scope.inferred.types.setdefault(name, late[0])
-        if late[1]:
-            scope.inferred.guesses.add(name)
-            scope.inferred.origins[name] = late[1]
         scope.inferred.seeded[name] = late
+        scope.inferred.learn(name, late[0], late[1] or None)
     stmt: ast.stmt
     for stmt in func.body:
         _visit(scope, stmt)
@@ -514,6 +519,7 @@ def _finished(tree: ast.Module, scopes: Sequence[Scope]) -> None:
     for scope in scopes:
         scope.mark_escaped(_module_names(tree)[0])
         scope.optionals()
+        scope.rebinds()
         scope.fills()
 
 
@@ -570,7 +576,10 @@ def _bind(scope: Scope, stmt: ast.stmt) -> None:
         case ast.Match(cases=cases):
             _bind_captures(scope, cases)
         case ast.AugAssign(target=ast.Name(id=name) as single, op=op, value=value):
-            scope.lifetime(name).bind(at(single), augmented(op, certain_type(scope, value)))
+            own: str | None = None if name in scope.inferred.guesses else scope.inferred.types.get(name)
+            bound: str | None = augmented(op, certain_type(scope, value), own)
+            scope.lifetime(name).bind(at(single), bound)
+            scope.inferred.rebound(name, bound)
         case _:
             pass
 
@@ -671,11 +680,7 @@ def _bind_declaration(
             span=(stmt.lineno, stmt.col_offset),
         )
         # What the rest of the scope infers from `name` knows its type, as for `name = value`.
-        if name.id not in scope.inferred.types:
-            scope.inferred.types[name.id] = found.annotation
-            if unsafe:
-                scope.inferred.guesses.add(name.id)
-                scope.inferred.origins[name.id] = origins
+        scope.inferred.learn(name.id, found.annotation, origins if unsafe else None)
     scope.bind(name.id, at(name), code, fix)
 
 

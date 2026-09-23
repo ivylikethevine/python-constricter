@@ -55,6 +55,7 @@ FIX_KINDS: dict[str, str] = {
     "cast": "`typing.cast(T, x)`: its `T`",
     "stdlib": "a standard-library function with a builtin result or class (`time.time`, `uuid4`)",
     "optional": "`x = None`, then only ever a value of one known type `T`: `T | None`",
+    "rebound": "a name later bound to a wider type: the type every value fits (`int`, then `float`)",
     "filled": "an empty container, then only what the function adds to it (a guess)",
     "returned": "an unannotated function's own `return`s (a method's: a guess)",
     "final": "LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)",

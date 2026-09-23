@@ -372,7 +372,7 @@ def test_a_builtin_the_module_rebinds_is_not_typed_as_the_builtin() -> None:
 
 
 def test_a_fixed_return_method_on_a_literal_is_certain() -> None:
-    """`", ".join(xs)` is a `str` whatever `xs` is, but `"{}".format(Box())` rests on the guess."""
+    """`", ".join(xs)` is a `str` whatever `xs` is, and `"{}".format(Box())` whatever `Box()` is."""
     source: str = "def f(xs: list[str]) -> None:\n  a = ', '.join(xs)\n  b = '{}'.format(Box())\n"
     offences: list[Offence] = check_source(source)
-    assert [(o.name, o.fix, o.unsafe) for o in offences] == [("a", "str", False), ("b", "str", True)]
+    assert [(o.name, o.fix, o.unsafe) for o in offences] == [("a", "str", False), ("b", "str", False)]

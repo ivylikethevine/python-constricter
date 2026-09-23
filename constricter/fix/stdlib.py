@@ -1,207 +1,60 @@
 # SPDX-License-Identifier: MIT
-"""Standard-library functions whose return type is a builtin one, and how a module names them.
+"""Standard-library functions and classes whose types `--fix` knows, and how a module names them.
 
-`RETURNS` holds functions that return the same builtin type whatever their arguments; `ANY_STR`
-functions return the type of their arguments (`str` in, `str` out; `bytes` in, `bytes` out), so
-they're typed only when those are known. A call is matched by the module and name it resolves to
-through the module's imports (`origins`), not by how it's spelled, so `import os as o` then
-`o.getpid()`, or `from os import getpid`, are the same call, and a `getpid` from anywhere else isn't.
+The tables are generated from typeshed's stubs into `stdlib.json` (see
+`tests/typeshed/stdlib_tables.py`): `RETURNS` holds functions returning the same builtin type
+whatever their arguments; `ANY_STR` functions return the type of their arguments (`str` in, `str`
+out; `bytes` in, `bytes` out), so they're typed only when those are known; `CLASSES` holds
+non-generic classes, and functions returning one; `library_member` types those classes' methods
+and attributes. A call is matched by the module and name it resolves to through the module's imports
+(`origins`), not by how it's spelled, so `import os as o` then `o.getpid()`, or `from os import
+getpid`, are the same call, and a `getpid` from anywhere else isn't.
 """
 
 import ast
-from collections.abc import Mapping
-from typing import Final
+from collections.abc import Iterable, Mapping
+from functools import lru_cache
+from pathlib import Path
+from typing import Final, TypeAlias, TypedDict, cast
 
-_FLOAT: Final = "float"
-_INT: Final = "int"
-_STR: Final = "str"
-_BOOL: Final = "bool"
-_BYTES: Final = "bytes"
-RETURNS: Final = {
-    **dict.fromkeys(
-        ["time.time", "time.monotonic", "time.perf_counter", "time.process_time", "time.thread_time"],
-        _FLOAT,
-    ),
-    **dict.fromkeys(
-        ["time.time_ns", "time.monotonic_ns", "time.perf_counter_ns", "time.process_time_ns"],
-        _INT,
-    ),
-    **dict.fromkeys(["time.ctime", "time.asctime", "time.strftime"], _STR),
-    **dict.fromkeys(["os.getpid", "os.getppid", "os.open", "os.dup"], _INT),
-    **dict.fromkeys(["os.getcwd", "os.getlogin", "os.fsdecode"], _STR),
-    **dict.fromkeys(["os.getcwdb", "os.urandom", "os.fsencode"], _BYTES),
-    **dict.fromkeys(
-        ["os.path.exists", "os.path.isfile", "os.path.isdir", "os.path.isabs", "os.path.islink"],
-        _BOOL,
-    ),
-    "os.path.getsize": _INT,
-    **dict.fromkeys(["os.path.getmtime", "os.path.getatime", "os.path.getctime"], _FLOAT),
-    **dict.fromkeys(["textwrap.dedent", "textwrap.indent", "textwrap.fill", "textwrap.shorten"], _STR),
-    "textwrap.wrap": "list[str]",
-    **dict.fromkeys(["shlex.quote", "shlex.join"], _STR),
-    "shlex.split": "list[str]",
-    "json.dumps": _STR,
-    "struct.pack": _BYTES,
-    "struct.calcsize": _INT,
-    **dict.fromkeys(["random.random", "random.uniform"], _FLOAT),
-    **dict.fromkeys(["random.randint", "random.randrange", "random.getrandbits"], _INT),
-    **dict.fromkeys(
-        [
-            "math.floor",
-            "math.ceil",
-            "math.gcd",
-            "math.lcm",
-            "math.isqrt",
-            "math.factorial",
-            "math.comb",
-            "math.perm",
-        ],
-        _INT,
-    ),
-    **dict.fromkeys(
-        ["math.sqrt", "math.log", "math.log2", "math.log10", "math.exp", "math.fsum", "math.hypot"],
-        _FLOAT,
-    ),
-    **dict.fromkeys(["math.isclose", "math.isnan", "math.isinf", "math.isfinite"], _BOOL),
-    **dict.fromkeys(
-        # Not `sys.getrefcount`: CPython's own, missing on PyPy.
-        ["sys.getrecursionlimit", "sys.getsizeof"],
-        _INT,
-    ),
-    "sys.getswitchinterval": _FLOAT,  # seconds
-    **dict.fromkeys(["sys.intern", "sys.getdefaultencoding", "sys.getfilesystemencoding"], _STR),
-    **dict.fromkeys(
-        [
-            "platform.system",
-            "platform.machine",
-            "platform.node",
-            "platform.release",
-            "platform.version",
-            "platform.python_version",
-            "platform.platform",
-        ],
-        _STR,
-    ),
-    "socket.gethostname": _STR,
-    "getpass.getuser": _STR,
-    **dict.fromkeys(
-        [
-            "base64.b64encode",
-            "base64.b64decode",
-            "base64.urlsafe_b64encode",
-            "base64.urlsafe_b64decode",
-            "binascii.hexlify",
-            "binascii.unhexlify",
-            "binascii.b2a_base64",
-            "zlib.compress",
-            "zlib.decompress",
-        ],
-        _BYTES,
-    ),
-    **dict.fromkeys(["binascii.crc32", "zlib.crc32", "zlib.adler32"], _INT),
-    **dict.fromkeys(
-        [
-            "string.capwords",
-            "html.escape",
-            "html.unescape",
-            "urllib.parse.quote",
-            "urllib.parse.quote_plus",
-            "urllib.parse.unquote",
-            "urllib.parse.unquote_plus",
-            "urllib.parse.urlencode",
-            "inspect.cleandoc",
-            "inspect.getsource",
-            "locale.getpreferredencoding",
-        ],
-        _STR,
-    ),
-    **dict.fromkeys(
-        [
-            "keyword.iskeyword",
-            "inspect.isclass",
-            "inspect.isfunction",
-            "inspect.ismethod",
-            "inspect.ismodule",
-            "inspect.iscoroutinefunction",
-            "inspect.isgeneratorfunction",
-        ],
-        _BOOL,
-    ),
-}
-# Functions returning the type of their arguments (`AnyStr`): `str` if they're all `str`, `bytes`
-# if all `bytes`.
-ANY_STR: Final = frozenset(
-    {
-        "os.path.join",
-        "os.path.basename",
-        "os.path.dirname",
-        "os.path.abspath",
-        "os.path.normpath",
-        "os.path.normcase",
-        "os.path.realpath",
-        "os.path.expanduser",
-        "os.path.expandvars",
-        "os.path.relpath",
-        "re.escape",
-    },
-)
-# Functions (and classes' constructors and classmethods) returning a standard-library class, not a
-# generic one: typed by that class, spelled (and imported, if it must be) the way the module can.
-_SELF_TYPED: Final = (
-    "argparse.ArgumentParser",
-    "argparse.Namespace",
-    "datetime.date",
-    "datetime.datetime",
-    "datetime.time",
-    "datetime.timedelta",
-    "datetime.timezone",
-    "decimal.Decimal",
-    "fractions.Fraction",
-    "io.BytesIO",
-    "io.StringIO",
-    "pathlib.Path",
-    "pathlib.PurePath",
-    "socket.socket",
-    "threading.Condition",
-    "threading.Event",
-    "threading.Semaphore",
-    "uuid.UUID",
-)
-CLASSES: Final = {
-    **{name: name for name in _SELF_TYPED},
-    "logging.getLogger": "logging.Logger",
-    "inspect.signature": "inspect.Signature",
-    **dict.fromkeys(["uuid.uuid1", "uuid.uuid3", "uuid.uuid4", "uuid.uuid5"], "uuid.UUID"),
-    **dict.fromkeys(
-        [
-            "datetime.datetime.now",
-            "datetime.datetime.utcnow",
-            "datetime.datetime.today",
-            "datetime.datetime.fromtimestamp",
-            "datetime.datetime.utcfromtimestamp",
-            "datetime.datetime.fromisoformat",
-            "datetime.datetime.strptime",
-            "datetime.datetime.combine",
-        ],
-        "datetime.datetime",
-    ),
-    **dict.fromkeys(
-        [
-            "datetime.date.today",
-            "datetime.date.fromisoformat",
-            "datetime.date.fromtimestamp",
-            "datetime.date.fromordinal",
-        ],
-        "datetime.date",
-    ),
-    **dict.fromkeys(["pathlib.Path.cwd", "pathlib.Path.home"], "pathlib.Path"),
-}
+from constricter.fix.known import ImportPlan, Inference, Known
+from constricter.jsonc import loads
+
+_Members: TypeAlias = Mapping[str, Mapping[str, str]]  # each class's members' annotations, by name
+
+
+class _Tables(TypedDict):
+    """`stdlib.json`'s tables (see `tests/typeshed/stdlib_tables.py`)."""
+
+    returns: dict[str, str]
+    any_str: list[str]
+    classes: dict[str, str]
+    aliases: dict[str, str]
+    methods: dict[str, dict[str, str]]
+    attributes: dict[str, dict[str, str]]
+
+
+_TABLES: Final = cast("_Tables", loads(Path(__file__).with_name("stdlib.json").read_bytes()))
+RETURNS: Final = _TABLES["returns"]
+ANY_STR: Final = frozenset(_TABLES["any_str"])
+# Classes, and functions (constructors, classmethods) returning one: typed by that class's dotted
+# path, spelled (and imported, if it must be) the way the module can.
+CLASSES: Final = _TABLES["classes"]
+_ALIASES: Final[Mapping[str, str]] = _TABLES["aliases"]  # a class's other public paths, to its own
+_METHODS: Final[_Members] = _TABLES["methods"]
+_ATTRIBUTES: Final[_Members] = _TABLES["attributes"]
 # An environment lookup: `os.environ.get(k)` or `os.getenv(k)` is `str | None`, with a `str` default
-# it's `str`.
+# it's `str` (`os.getenv`'s overloads, and `os.environ`'s generic `Mapping.get`, decide it by the
+# arguments, which the tables leave out).
 ENVIRONMENT: Final = frozenset({"os.environ.get", "os.getenv"})
+BY_ARGUMENTS: Final = ANY_STR | ENVIRONMENT  # the functions typed by their arguments' types
+_KIND: Final = "stdlib"  # the fix kind of what the tables type
+_DOT: Final = "."
 KNOWN: Final = frozenset({*RETURNS, *ANY_STR, *ENVIRONMENT, *CLASSES})  # every function the tables type
 _TABLE_MODULES: Final = frozenset(
-    {name.rsplit(".", 1)[0] for name in KNOWN} | {name.split(".", 1)[0] for name in KNOWN},
+    name.rsplit(".", count)[0]
+    for name in (*KNOWN, *_ALIASES, *_METHODS, *_ATTRIBUTES)
+    for count in range(1, name.count(".") + 1)
 )
 
 
@@ -216,11 +69,21 @@ def origins(tree: ast.Module) -> dict[str, str]:
       Each bound name, mapped to its dotted origin.
 
     """
+    return _imported(tree.body)
+
+
+def _imported(body: Iterable[ast.stmt]) -> dict[str, str]:
+    """Map the names the imports among `body` bind to what they are (see `origins`).
+
+    Returns:
+      Each bound name, mapped to its dotted origin.
+
+    """
     found: dict[str, str] = {}
     stmt: ast.stmt
     module: str
     alias: ast.alias
-    for stmt in tree.body:
+    for stmt in body:
         match stmt:
             case ast.Import():
                 for alias in stmt.names:
@@ -254,3 +117,70 @@ def resolved(func: ast.expr, bound: Mapping[str, str]) -> str | None:
             return None if found is None else f"{found}.{attr}"
         case _:
             return None
+
+
+def library_member(receiver: str, name: str, call: ast.Call | None, known: Known) -> Inference | None:
+    """Type a standard-library class's attribute or property, or (`call`) its method's return.
+
+    `receiver` is the annotation of what it's looked up on, as the module spells it
+    (`ArgumentParser`, `argparse.ArgumentParser`), resolved through its imports and the ones `--fix`
+    is adding to it; a class the member gives is spelled (and imported, if it must be) as the
+    module can. The arguments of a call don't matter: the tables hold only what they can't change.
+
+    Returns:
+      Its inference, or `None` if the class or its member isn't in the tables, or a class it gives
+      can't be named.
+
+    """
+    path: str | None = _class_path(receiver, known)
+    table: _Members = _ATTRIBUTES if call is None else _METHODS
+    found: str | None = None if path is None else table.get(path, {}).get(name)
+    plan: ImportPlan | None = known.names.plan
+    if found is not None and _is_class(found):
+        found = None if plan is None else plan.spell(found)
+    what: str = "annotation" if call is None else "return type"
+    return (
+        None
+        if found is None
+        else Inference(found, f"`{path}.{name}`'s {what} in typeshed", frozenset({_KIND}))
+    )
+
+
+def _class_path(receiver: str, known: Known) -> str | None:
+    """Resolve a receiver's annotation to a class's path in the tables (its own, not an alias).
+
+    Returns:
+      The path, or `None` if the annotation doesn't name a standard-library class the module imports
+      (or `--fix` is importing).
+
+    """
+    root: ast.expr = _parsed(receiver)
+    path: str | None = resolved(root, known.names.stdlib)
+    plan: ImportPlan | None = known.names.plan
+    if path is None and plan is not None and plan.added:
+        path = resolved(root, _imported(ast.parse("\n".join(plan.added.values())).body))
+    return None if path is None else _ALIASES.get(path, path)
+
+
+@lru_cache(maxsize=4096)
+def _parsed(annotation: str) -> ast.expr:
+    """Parse an annotation, once for all its lookups.
+
+    `annotation` is always `ast.unparse`'s own output, so it's always valid Python. The tree is
+    shared: only read it.
+
+    Returns:
+      Its expression.
+
+    """
+    return ast.parse(annotation, mode="eval").body
+
+
+def _is_class(annotation: str) -> bool:
+    """Check whether a table's annotation is a class's dotted path (`io.BytesIO`), not a builtin one.
+
+    Returns:
+      Whether it is.
+
+    """
+    return _DOT in annotation and all(part.isidentifier() for part in annotation.split(_DOT))
