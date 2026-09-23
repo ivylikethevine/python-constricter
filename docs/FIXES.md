@@ -27,6 +27,17 @@ in a function or module body:
   (`os.path.join`, `re.escape`) the type all its arguments share;
 - `x = None`, when every later binding of `x` in the function has one certain type `T` (and nothing
   else writes it): `T | None`;
+- a call to an unannotated function (or method) of the module, when every `return` it has gives one
+  type and it can't fall off its end: that type, certain for a function and a guess for a method (a
+  subclass may override it); a function whose `return`s are themselves guesses makes its calls
+  guesses too. Chains (`f` returns `g()`) are followed, a few links deep;
+- an attribute, property or method of a class another checked file defines, when the file can name
+  its type (the CLI only: the plugins see one file at a time);
+- with `--unsafe-fixes`, an empty container (`[]`, `{}`, `set()`, `list()`, `dict()`) the function
+  then only adds to, every addition typed alike (`append`, `insert`, `add`, `setdefault`,
+  `x[k] = v`): `list[T]`, `set[T]` or `dict[K, V]`. A guess, since something else could add to it;
+  any use that could (`extend`, `update`, passing it to another function, aliasing it, a nested
+  function) leaves it alone;
 - a value computed from such: `a if c else b` when both sides agree; arithmetic on builtin scalars
   (`n + 1`, `n / 2`, `"x" * n`, `"%s" % n`; never `**`, whose result can change type); a list, set
   or dict comprehension whose elements are known; `sorted`, `list`, `set`, `frozenset` or `tuple` of
@@ -91,6 +102,8 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `redundant`     | LVA007: the repeated annotation, dropped                                            |
 | `stdlib`        | a standard-library function with a builtin result (`time.time`, `os.path.join`)     |
 | `optional`      | `x = None`, then only ever a value of one known type `T`: `T \| None`               |
+| `filled`        | an empty container, then only what the function adds to it (a guess)                |
+| `returned`      | an unannotated function's own `return`s (a method's: a guess)                       |
 
 A project chooses which apply, in `[tool.constricter]` or on the command line:
 

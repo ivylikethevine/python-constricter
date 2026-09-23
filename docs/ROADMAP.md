@@ -31,7 +31,13 @@
   `tuple[T, ...]` (found on pip's vendored chardet, whose frequency tables had become
   thousand-element annotations).
 - **Guesses** apply only with `--unsafe-fixes` (a capitalised call taken to construct its class,
-  LVA008's and LVA010's narrowed annotation), and a copy of a guess is one too.
+  LVA008's and LVA010's narrowed annotation, an empty container typed by what's added to it, a
+  method typed by its `return`s), and a copy of a guess is one too.
+- **Unannotated functions' `return`s** type their calls, a few links of a chain deep in one run;
+  **classes from other checked files** type their attributes, properties and methods' calls; and the
+  checking that needs to repeat for them re-checks only the functions affected, while the
+  cross-module index is read in the worker pool: the standard library checks in 9s where it took
+  11.5s before.
 - **Fix levels**: every mechanism has a stable id, shown by `--show-fixes` and in JSON;
   `fix-select`, `fix-ignore` and `unsafe-fix-select` choose which apply. Never changes a report.
 - **Fixes for LVA003** (the loop's `# type:` comment becomes a declaration) and **LVA007** (the
@@ -120,28 +126,13 @@ Nothing queued.
 
 ### Medium: a few days
 
-1. **† Classes from other checked modules.** `project.Index` holds only functions; add each class's
-   annotated attributes, `@property` returns, and methods' and classmethods' declared returns, and
-   resolve a receiver typed as an imported class through them, under the name rules `project.calls`
-   follows. Up to ~900 bindings in the annotated corpora (`param.method()`, `local.x`,
-   `Table.grid(...)`), the largest gain found. Done when a class's attribute, property, method and
-   classmethod type their uses from another checked file, the same way they do in their own.
-2. **† Fixes that add an import.** Many inferred types need a name the file doesn't import:
+1. **† Fixes that add an import.** Many inferred types need a name the file doesn't import:
    `with open(p, "rb") as f` is an `io.BufferedReader` (938 `open` calls), `logging.getLogger()` a
    `logging.Logger`, and LVA012's fix would be `Final`. Add or extend an import safely (after
    `from __future__`, not inside `TYPE_CHECKING`, never over a name already taken), then type
    `open()` by its literal mode and give LVA012 a fix. Done when those fixes add a correct import
    and a second `--fix` pass is a no-op.
-3. **† Empty containers filled later**: `x = []` then only `x.append(v)` in the same scope, every
-   `v` typed and agreeing, gives `list[T]` (`{}` with `x[k] = v`, `set()` with `.add(v)`), a guess,
-   since other code may add to it. At least 558 on the corpus. Done when those are guessed and a
-   container passed elsewhere, extended or filled with differing types is left alone.
-4. **† Return types of unannotated functions**, from their `return` statements when every one is
-   typed and they agree and the function can't fall off its end: certain for a module function, a
-   guess for a method (a subclass may override it). Needs the callee's scope checked before its
-   callers'. At least 656 calls on the corpus, mostly in unannotated code. Done when such a call is
-   typed and a function with a bare `return`, a fall-through or a `yield` isn't.
-5. **Run the remaining corpora's test suites, and their type checkers, after `--fix`.**
+2. **Run the remaining corpora's test suites, and their type checkers, after `--fix`.**
    `tests/corpus/corpus_suite.py` runs flask's and fastapi's suites (and `requests`' was run by
    hand) before and after `--fix` and `--fix --unsafe-fixes`, identically. Add pydantic, rich,
    sqlalchemy, django and pandas (whose 27% guesses make it the most telling). A local's annotation

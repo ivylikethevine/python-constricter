@@ -22,6 +22,7 @@ from constricter.cli.options import Mode, Options, Output
 from constricter.cli.paths import STDIN, python_files
 from constricter.cli.report import Format, Result, fix_reasons, render, statistics
 from constricter.fix import fixes, project
+from constricter.fix.known import Classes
 from constricter.noqa import lines, unsuppressed
 from constricter.offences import (
     DEFAULT_CHECKS,
@@ -79,6 +80,7 @@ def check_text(
     checks: Checks = DEFAULT_CHECKS,
     *,
     calls: Mapping[str, str] | None = None,
+    classes: Classes | None = None,
 ) -> list[Offence]:
     """Return the offences in `raw`, the text of `name`, that no `# noqa` suppresses.
 
@@ -93,7 +95,7 @@ def check_text(
     where: list[notebook.Line]
     source, where = _source(raw, name)
     offences: list[Offence] = unsuppressed(
-        check_source(source, str(name), checks, calls=calls),
+        check_source(source, str(name), checks, calls=calls, classes=classes),
         lines(source),
     )
     return [_placed(o, where) for o in offences] if where else offences
@@ -217,7 +219,7 @@ def _shown_lines(raw: str, name: Path) -> dict[tuple[int | None, int], str]:
     }
 
 
-def _checked(path: Path, name: Path, checks: Checks, calls: Mapping[str, str]) -> tuple[str, list[Offence]]:
+def _checked(path: Path, name: Path, checks: Checks, imported: project.Imported) -> tuple[str, list[Offence]]:
     """Read `path` and check it as `name`; raises what reading or parsing it does.
 
     Returns:
@@ -225,14 +227,14 @@ def _checked(path: Path, name: Path, checks: Checks, calls: Mapping[str, str]) -
 
     """
     raw: str = _read(path)
-    return raw, check_text(raw, name, checks, calls=calls)
+    return raw, check_text(raw, name, checks, calls=imported.calls, classes=imported.classes)
 
 
 def _read_checked(
     path: Path,
     name: Path,
     checks: Checks,
-    calls: Mapping[str, str],
+    imported: project.Imported,
 ) -> tuple[str, list[Offence], str]:
     """Read and check `path`, turning a read or parse error into a message instead of raising.
 
@@ -243,7 +245,7 @@ def _read_checked(
     raw: str
     offences: list[Offence]
     try:
-        raw, offences = _checked(path, name, checks, calls)
+        raw, offences = _checked(path, name, checks, imported)
     except (OSError, ValueError, SyntaxError) as error:  # UnicodeDecodeError is a ValueError
         return "", [], f"{name}: error: {error}"
     return raw, offences, ""
@@ -268,7 +270,7 @@ def _results(raw: str, name: Path, offences: Sequence[Offence], options: Options
     ]
 
 
-def _check_path(path: Path, calls: Mapping[str, str], options: Options) -> _CheckRun:
+def _check_path(path: Path, imported: project.Imported, options: Options) -> _CheckRun:
     """Check (and fix, or diff) one file, given the imported functions' return types.
 
     Returns:
@@ -279,7 +281,7 @@ def _check_path(path: Path, calls: Mapping[str, str], options: Options) -> _Chec
     raw: str
     offences: list[Offence]
     error: str
-    raw, offences, error = _read_checked(path, name, options.checks, calls)
+    raw, offences, error = _read_checked(path, name, options.checks, imported)
     if error:
         return _CheckRun(error=error)
     baselined: int
@@ -305,7 +307,7 @@ def _check_path(path: Path, calls: Mapping[str, str], options: Options) -> _Chec
         return _CheckRun(results, baselined, error=f"{name}: error: {message}")
 
 
-def _baseline_path(path: Path, calls: Mapping[str, str], options: Options) -> _BaselineRun:
+def _baseline_path(path: Path, imported: project.Imported, options: Options) -> _BaselineRun:
     """Check one file, unfiltered, for --write-baseline.
 
     Returns:
@@ -315,11 +317,11 @@ def _baseline_path(path: Path, calls: Mapping[str, str], options: Options) -> _B
     name: Path = options.input.name(path)
     offences: list[Offence]
     error: str
-    _, offences, error = _read_checked(path, name, options.checks, calls)
+    _, offences, error = _read_checked(path, name, options.checks, imported)
     return _BaselineRun(error=error) if error else _BaselineRun(found=offences)
 
 
-def _cover_path(path: Path, _calls: Mapping[str, str], options: Options) -> _CoverageRun:
+def _cover_path(path: Path, _imported: project.Imported, options: Options) -> _CoverageRun:
     """Count one file's typed first bindings.
 
     Returns:
@@ -341,7 +343,7 @@ def _check_all(options: Options) -> tuple[list[Path], list[_FileRun]]:
 
     """
     paths: list[Path] = list(python_files(options.input.paths, options.input.exclude))
-    check: Callable[[Path, Mapping[str, str]], _FileRun]
+    check: Callable[[Path, project.Imported], _FileRun]
     if options.mode is Mode.COVERAGE:
         check = partial(_cover_path, options=options)
     elif options.mode is Mode.WRITE_BASELINE:
@@ -349,14 +351,27 @@ def _check_all(options: Options) -> tuple[list[Path], list[_FileRun]]:
     else:
         check = partial(_check_path, options=options)
     names: list[Path] = [options.input.name(path) for path in paths]
-    # The functions each file imports from the others, for --fix (and its hints).
-    modules: project.Index = project.Index({}, []) if options.mode is Mode.COVERAGE else project.index(paths)
-    calls: list[dict[str, str]] = [project.calls(modules, path) for path in paths]
+    coverage: bool = options.mode is Mode.COVERAGE  # needs nothing from the other files
     if options.jobs == 1 or len(paths) <= 1:
-        return names, list(itertools.starmap(check, zip(paths, calls, strict=True)))
+        modules: project.Index = project.Index({}, []) if coverage else project.index(paths)
+        return names, list(
+            itertools.starmap(check, zip(paths, _imported(modules, paths), strict=True)),
+        )
     pool: ProcessPoolExecutor
     with ProcessPoolExecutor(max_workers=options.jobs) as pool:
-        return names, list(pool.map(check, paths, calls))
+        # The index, as the checks, read one file per task.
+        modules = project.Index({}, []) if coverage else project.index(paths, partial(pool.map, chunksize=16))
+        return names, list(pool.map(check, paths, _imported(modules, paths)))
+
+
+def _imported(modules: project.Index, paths: Sequence[Path]) -> list[project.Imported]:
+    """Find what each file imports from the others, for `--fix` (and its hints).
+
+    Returns:
+      Each file's, in order.
+
+    """
+    return [project.imported(modules, path) for path in paths]
 
 
 def _report(options: Options, runs: Sequence[_FileRun], files: int) -> int:

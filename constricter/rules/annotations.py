@@ -11,6 +11,8 @@ from collections.abc import Iterator, Sequence
 from functools import lru_cache
 from typing import Final, cast
 
+from constricter.rules.syntax import child_statements
+
 _VAGUE: Final = frozenset({"Any", "object"})
 # Generics that say little without their parameters.
 GENERICS: Final = frozenset(
@@ -133,6 +135,47 @@ def casts(tree: ast.Module) -> frozenset[str]:
     return frozenset(names)
 
 
+@lru_cache(maxsize=16)  # the class tables all read them, for each module
+def _class_nodes(tree: ast.Module) -> tuple[ast.ClassDef, ...]:
+    """Find every class the module defines, however deep.
+
+    Returns:
+      Them, in source order.
+
+    """
+    return tuple(node for node in _statements(tree.body) if isinstance(node, ast.ClassDef))
+
+
+def _statements(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
+    """Walk statements only, into every nested block (a function's and a class's too), not expressions.
+
+    Much less than `ast.walk` visits, for what only a statement can be: a class, an annotated
+    assignment.
+
+    Yields:
+      Each statement, before those inside it.
+
+    """
+    stmt: ast.stmt
+    for stmt in body:
+        yield stmt
+        yield from _statements(_blocks(stmt))
+
+
+def _blocks(stmt: ast.stmt) -> list[ast.stmt]:
+    """Collect the statements directly inside `stmt`, a function's or class's body included.
+
+    Returns:
+      Them, in source order.
+
+    """
+    return (
+        stmt.body
+        if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+        else child_statements(stmt)
+    )
+
+
 def classes(tree: ast.Module) -> dict[str, dict[str, str]]:
     """Map each class defined in the module to its instances' annotated attributes.
 
@@ -147,10 +190,9 @@ def classes(tree: ast.Module) -> dict[str, dict[str, str]]:
     """
     properties: dict[str, dict[str, str]] = _class_returns(tree, _PROPERTIES)
     found: dict[str, dict[str, str]] = {}
-    node: ast.AST
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef):
-            found[node.name] = {**properties.get(node.name, {}), **_attributes(node)}
+    node: ast.ClassDef
+    for node in _class_nodes(tree):
+        found[node.name] = {**properties.get(node.name, {}), **_attributes(node)}
     return found
 
 
@@ -172,8 +214,8 @@ def class_attributes(tree: ast.Module) -> dict[str, dict[str, str]]:
     name: str
     annotation: ast.expr
     value: ast.expr | None
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef) and not _generic(node):
+    for node in _class_nodes(tree):
+        if not _generic(node):
             attrs: dict[str, str] = {}
             for stmt in node.body:
                 match stmt:
@@ -240,10 +282,10 @@ def _self_attributes(func: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[t
       Each attribute's name and annotation text.
 
     """
-    node: ast.AST
+    node: ast.stmt
     name: str
     annotation: ast.expr
-    for node in ast.walk(func):
+    for node in _statements(func.body):  # an annotated assignment is always a statement
         match node:
             case ast.AnnAssign(
                 target=ast.Attribute(value=ast.Name(id="self"), attr=name),
@@ -403,9 +445,9 @@ def _class_returns(tree: ast.Module, decorators: frozenset[str]) -> dict[str, di
     """
     type_vars: frozenset[str] = _type_vars(tree)
     found: dict[str, dict[str, str]] = {}
-    node: ast.AST
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef) and not _generic(node):
+    node: ast.ClassDef
+    for node in _class_nodes(tree):
+        if not _generic(node):
             found[node.name] = {
                 name: node.name if _is_self(annotation) else annotation
                 for name, annotation in _declared_returns(node.body, type_vars, decorators=decorators).items()
@@ -437,6 +479,7 @@ def _is_self(annotation: str) -> bool:
     return node_name(ast.parse(annotation, mode="eval").body) == _SELF
 
 
+@lru_cache(maxsize=16)  # each class table asks, for each module
 def _type_vars(tree: ast.Module) -> frozenset[str]:
     """Find the module-level names bound to a `TypeVar`, `ParamSpec` or `TypeVarTuple`.
 

@@ -40,8 +40,8 @@ inference, a Large item).
 `rich` still leave 77% (4,303 of 5,600) untyped, even with the CLI's cross-module return types
 (which type only about 140 more). Sampling those, by likely gain in annotated code:
 
-1. **Classes from other checked modules.** A local or parameter annotated with an imported class
-   gets nothing from its attributes or methods (`field_info.get_constraints()`,
+1. **Done: classes from other checked modules.** A local or parameter annotated with an imported
+   class gets nothing from its attributes or methods (`field_info.get_constraints()`,
    `prepared_request.headers`, `Text.from_markup(...)`, `Table.grid(...)`): `project.Index` holds
    only functions. Indexing each class's annotated attributes, `@property` returns, and methods' and
    classmethods' declared returns, as `classes` and `method_returns` already do within a module,
@@ -56,28 +56,29 @@ inference, a Large item).
 4. **Done: `typing.cast(T, x)`** is `T`, by definition: 117 across the corpus (pydantic uses it
    most). Tiny and certain: the annotation is the first argument as written (or a string's
    contents).
-5. **Standard-library functions with a builtin result**, resolved by import as the builtins table is
-   (`time.time`, `time.monotonic` → `float`; `textwrap.dedent`, `os.getcwd` → `str`; `os.open`,
-   `random.randrange` → `int`; `struct.pack` → `bytes`; `os.environ.get(k)` → `str | None`). 8,242
-   untyped bindings call a standard-library function; the 100 most-called cover 5,434, of which
-   those with a builtin, non-generic result are roughly 900. Small: a curated table, as `str`
-   methods have. `AnyStr` functions (`os.path.join`, `re.escape`) only when their arguments' types
-   are known.
+5. **Done: standard-library functions with a builtin result**, resolved by import as the builtins
+   table is (`time.time`, `time.monotonic` → `float`; `textwrap.dedent`, `os.getcwd` → `str`;
+   `os.open`, `random.randrange` → `int`; `struct.pack` → `bytes`; `os.environ.get(k)` →
+   `str | None`). 8,242 untyped bindings call a standard-library function; the 100 most-called cover
+   5,434, of which those with a builtin, non-generic result are roughly 900. Small: a curated table,
+   as `str` methods have. `AnyStr` functions (`os.path.join`, `re.escape`) only when their
+   arguments' types are known.
 6. **Fixes that add an import.** Many results need a name the file doesn't import:
    `with open(path, "rb") as f` is an `io.BufferedReader` (813 `open` calls with a literal mode, 125
    more with none), `logging.getLogger()` a `logging.Logger`, `datetime(...)` a `datetime`, and
    LVA012's fix would be `Final`. Adding (or extending) an import safely enables all of them.
    Medium: where to put it, `from __future__` and `TYPE_CHECKING` blocks, an alias already taken.
-7. **Empty containers filled later**: `x = []` then `x.append(v)` in the same function, every `v`
-   known and agreeing, gives `list[T]` (likewise `{}` with `x[k] = v`, and `set()` with `.add`). At
-   least 558 of the 4,180 empty containers (counting only values typed on their own; more with the
-   scope's types); 961 are never filled where they're made. A guess: something else may add to it.
-8. **Return types of unannotated functions**, from their `return` statements, when every one is
-   typed and they agree (and the function can't fall off its end): at least 656 calls to same-file
-   functions and methods, mostly in unannotated code. A guess for a method (a subclass may override
-   it); medium effort, since the callee's scope must be checked before the caller's.
-9. **`x = None`, later rebound**: `T | None` when every other binding's type is known, from value
-   flow. At least 100 of 971. Small.
+7. **Done: empty containers filled later**: `x = []` then `x.append(v)` in the same function, every
+   `v` known and agreeing, gives `list[T]` (likewise `{}` with `x[k] = v`, and `set()` with `.add`).
+   At least 558 of the 4,180 empty containers (counting only values typed on their own; more with
+   the scope's types); 961 are never filled where they're made. A guess: something else may add to
+   it.
+8. **Done: return types of unannotated functions**, from their `return` statements, when every one
+   is typed and they agree (and the function can't fall off its end): at least 656 calls to
+   same-file functions and methods, mostly in unannotated code. A guess for a method (a subclass may
+   override it); medium effort, since the callee's scope must be checked before the caller's.
+9. **Done: `x = None`, later rebound**: `T | None` when every other binding's type is known, from
+   value flow. At least 100 of 971. Small.
 
 Left alone on purpose: `getattr(...)` (881), bound-method aliases (`append = parts.append`, a `rich`
 idiom whose type is a long `Callable`), `dict.get` on a `dict[str, Any]` (it's `Any`), and `a or b`

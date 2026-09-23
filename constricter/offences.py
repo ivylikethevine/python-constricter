@@ -55,6 +55,8 @@ FIX_KINDS: dict[str, str] = {
     "cast": "`typing.cast(T, x)`: its `T`",
     "stdlib": "a standard-library function with a builtin result (`time.time`, `os.path.join`)",
     "optional": "`x = None`, then only ever a value of one known type `T`: `T | None`",
+    "filled": "an empty container, then only what the function adds to it (a guess)",
+    "returned": "an unannotated function's own `return`s (a method's: a guess)",
     "loop": "what a loop (or `sorted`, `list`, ...) iterates over",
     "unpack": "an unpacking, split over its names",
     "narrow": "LVA008's or LVA010's narrower annotation (a guess)",

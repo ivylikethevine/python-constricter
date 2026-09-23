@@ -17,7 +17,8 @@ import pytest
 from constricter import check_source, check_tree
 from constricter.cli import command as cli
 from constricter.fix import fixes
-from constricter.fix.inference import Inference, Known, looped, unpacked
+from constricter.fix.inference import looped, unpacked
+from constricter.fix.known import Inference, Known
 from constricter.offences import COMMENT_TYPED_TARGET as COMMENT_TYPED
 from constricter.offences import Edit, Fix, Offence
 

@@ -3,12 +3,12 @@
 
 import ast
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Final, NamedTuple
+from typing import TYPE_CHECKING, Final
 
 from constricter.fix import stdlib
+from constricter.fix.known import Inference, Known
 from constricter.fix.returns import BUILTIN_RETURNS, METHOD_RETURNS, method_return
-from constricter.offences import CONSTRUCTOR, MAX_LENGTH
+from constricter.offences import CONSTRUCTOR
 from constricter.rules.annotations import GENERICS, is_vague, node_name
 
 if TYPE_CHECKING:
@@ -39,6 +39,7 @@ _NUMBER_NAMES: Final = frozenset({"bool", "int", _FLOAT})
 _INTEGER_NAMES: Final = frozenset({"bool", "int"})
 _TEXT_NAMES: Final = frozenset({"str", "bytes"})
 _STDLIB: Final = "stdlib"  # the fix kind of a standard-library call
+_RETURNED: Final = "returned"  # the fix kind of an unannotated function's `return`s
 _STR: Final = "str"
 _WITH_DEFAULT: Final = 2  # `os.environ.get(key, default)`'s arguments
 # Builtins that build a container of their argument's elements, and the type they build.
@@ -49,50 +50,6 @@ _CONTAINER_BUILDERS: Final = {
     "frozenset": "frozenset[{}]",
     "tuple": "tuple[{}, ...]",
 }
-
-
-class ClassSide(NamedTuple):
-    """What each class the module defines offers on the class itself: `class_attributes`, `class_methods`."""
-
-    attributes: Mapping[str, Mapping[str, str]]
-    methods: Mapping[str, Mapping[str, str]]
-
-
-@dataclass(frozen=True)
-class Known:
-    """What a module declares that `--fix` can infer a value's type from.
-
-    `calls`: its functions' return types (`returns`, plus other modules', see `project.calls`).
-    `factories`: names that build a class or special form rather than an instance of it (see
-    `factories`), so a call to one is never guessed to construct one. `classes` and `methods`: each
-    class's annotated attributes (see `classes`) and methods' return types (see `method_returns`).
-    `awaits`: what awaiting a call to each of its `async def`s gives (see `awaited_returns`).
-    `class_side`: what `cls.x` and `cls.method()` give in a classmethod, where `cls` is `type[C]`
-    (see `ClassSide`). `casts`: how the module spells
-    `typing.cast` (see `casts`).
-    """
-
-    calls: Mapping[str, str]
-    factories: frozenset[str]
-    classes: Mapping[str, Mapping[str, str]]
-    methods: Mapping[str, Mapping[str, str]]
-    awaits: Mapping[str, str] = field(default_factory=dict[str, str])
-    class_side: "ClassSide" = field(default_factory=lambda: ClassSide({}, {}))
-    casts: frozenset[str] = frozenset()
-    stdlib: Mapping[str, str] = field(default_factory=dict[str, str])  # see `stdlib.origins`
-    max_length: int = MAX_LENGTH  # the longest tuple display typed element by element (LVA011's)
-
-
-class Inference(NamedTuple):
-    """An annotation `--fix` would add, how the value decided it (`--show-fixes`), and by which means.
-
-    `kinds` are the `FIX_KINDS` ids of every mechanism that decided it, parts included (`[1, 2]`
-    is a `container` of `literal`s), for `fix-select` and `fix-ignore`.
-    """
-
-    annotation: str
-    reason: str
-    kinds: frozenset[str] = frozenset()
 
 
 def _kinds(*parts: Inference | None, kind: str) -> frozenset[str]:
@@ -159,6 +116,12 @@ def _from_local(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
             found := _attribute(declared[name], attr, known)
         ):
             return Inference(found, f"the annotation of `{declared[name]}.{attr}`", frozenset({"attribute"}))
+        case ast.Call(func=ast.Attribute(value=ast.Name(id=name), attr=attr)) if (
+            name in declared
+            and (found := known.returned.methods.get(declared[name], {}).get(attr))
+            and not _method(declared[name], value, attr, known)
+        ):
+            return Inference(found, f"`{declared[name]}.{attr}`'s `return`s", frozenset({_RETURNED}))
         case ast.Call(func=ast.Attribute(value=ast.Name(id=name), attr=attr)) if name in declared and (
             found := _method(declared[name], value, attr, known)
         ):
@@ -257,10 +220,26 @@ def _from_value(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
     return (
         _container(value, known, declared)
         or _computed(value, known, declared)
-        or _cast(value, known.casts)
+        or _cast(value, known.names.casts)
         or _library(value, known, declared)
+        or _returns(value, known)
         or _called(value, known.calls, known.factories)
     )
+
+
+def _returns(value: ast.expr, known: Known) -> Inference | None:
+    """Infer a call to one of the module's unannotated functions whose `return`s decide its type.
+
+    Returns:
+      The inference, or `None`.
+
+    """
+    name: str
+    match value:
+        case ast.Call(func=ast.Name(id=name)) if name in known.returned.calls and name not in known.calls:
+            return Inference(known.returned.calls[name], f"`{name}`'s `return`s", frozenset({_RETURNED}))
+        case _:
+            return None
 
 
 def _library(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inference | None:
@@ -280,7 +259,7 @@ def _library(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Infe
             pass
         case _:
             return None
-    name: str | None = stdlib.resolved(func, known.stdlib)
+    name: str | None = stdlib.resolved(func, known.names.stdlib)
     reason: str = f"`{name}`'s return type"
     kinds: frozenset[str] = frozenset({_STDLIB})
     if name in stdlib.RETURNS:
@@ -670,6 +649,65 @@ def guessed(
     return any(_is_guess(node, known, guesses, inside) for node in ast.walk(value))
 
 
+def guess_origins(value: ast.expr, known: Known, declared: Mapping[str, str]) -> frozenset[str]:
+    """Name what makes `value`'s calls guesses, for `unsafe-fix-select` to trust or not.
+
+    Returns:
+      `returned` for a method typed only by its `return`s, `constructor` for any other guessed call.
+
+    """
+    inside: dict[str, str] = comprehended(value, known, declared)
+    found: set[str] = set()
+    node: ast.AST
+    for node in ast.walk(value):
+        if isinstance(node, ast.Call) and _is_guess(node, known, frozenset(), inside):
+            found.update(_guessed_by(node, known, inside))
+    return frozenset(found)
+
+
+def _guessed_by(call: ast.Call, known: Known, declared: Mapping[str, str]) -> frozenset[str]:
+    """Name what makes one guessed call a guess.
+
+    Returns:
+      A method typed by its `return`s: `returned`, and what those rest on; a function whose
+      `return`s are guesses: what they rest on; anything else: `constructor`.
+
+    """
+    name: str
+    receiver: str
+    method: str
+    match call:
+        case ast.Call(func=ast.Name(id=name)) if name in known.returned.guesses:
+            return known.returned.guesses[name]
+        case ast.Call(func=ast.Attribute(value=ast.Name(id=receiver), attr=method)) if _returned_method(
+            call,
+            known,
+            declared,
+        ):
+            return frozenset({_RETURNED}) | known.returned.guesses.get(
+                f"{declared[receiver]}.{method}",
+                frozenset(),
+            )
+        case _:
+            return frozenset({CONSTRUCTOR})
+
+
+def _returned_method(call: ast.Call, known: Known, declared: Mapping[str, str]) -> bool:
+    """Check whether `call` is a method typed only by its `return`s (see `Returned`).
+
+    Returns:
+      Whether it is.
+
+    """
+    receiver: str
+    method: str
+    match call:
+        case ast.Call(func=ast.Attribute(value=ast.Name(id=receiver), attr=method)) if receiver in declared:
+            return method in known.returned.methods.get(declared[receiver], {})
+        case _:
+            return False
+
+
 def _is_guess(
     node: ast.AST,
     known: Known,
@@ -688,10 +726,11 @@ def _is_guess(
             or name in _CONTAINER_BUILDERS
             or name in _LOOP_BUILTINS
             or name in known.awaits
+            or (name in known.returned.calls and name not in known.returned.guesses)
         ):
             return False
-        case ast.Call(func=func) if ast.unparse(func) in known.casts or (
-            stdlib.resolved(func, known.stdlib) in stdlib.KNOWN
+        case ast.Call(func=func) if ast.unparse(func) in known.names.casts or (
+            stdlib.resolved(func, known.names.stdlib) in stdlib.KNOWN
         ):
             return False
         case ast.Call(func=ast.Attribute(value=ast.Name(id=receiver) as owner, attr=method)) as call if (

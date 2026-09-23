@@ -6,6 +6,12 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types calls to the module's unannotated functions from their `return`s (fix kind
+  `returned`; a method's is a guess), uses of classes other checked files define (their attributes,
+  properties and methods), and, as a guess, an empty container from what the function then adds to
+  it (fix kind `filled`).
+- The CLI reads the cross-module index in parallel with `--jobs`, so checking is faster.
+- `sys.getrefcount` isn't in the standard-library table: it's CPython's only.
 - `--fix` types standard-library functions with a builtin result (`time.time()`, `os.getpid()`,
   `textwrap.dedent(...)`, `os.environ.get(k)`, `os.path.join` of `str`s; fix kind `stdlib`),
   resolved through the imports, and `x = None` later rebound to one known type as `T | None` (fix
