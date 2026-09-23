@@ -53,11 +53,13 @@ def _deciding(value: ast.AST, known: Known) -> Iterator[ast.AST]:
       Each node.
 
     """
-    yield value
-    if not (isinstance(value, ast.Call) and (opened(value, known) or library_class(value, known))):
-        child: ast.AST
-        for child in ast.iter_child_nodes(value):
-            yield from _deciding(child, known)
+    # A stack, not a recursion: a nested generator passes each node up through every level above it.
+    waiting: list[ast.AST] = [value]
+    node: ast.AST
+    for node in iter(lambda: waiting.pop() if waiting else None, None):
+        yield node
+        if not (isinstance(node, ast.Call) and (opened(node, known) or library_class(node, known))):
+            waiting.extend(reversed(list(ast.iter_child_nodes(node))))
 
 
 def guess_origins(value: ast.expr, known: Known, declared: Mapping[str, str]) -> frozenset[str]:

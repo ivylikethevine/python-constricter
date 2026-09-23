@@ -159,11 +159,13 @@ class Scope:
             self.inferred.types,
         )
         origins: frozenset[str] = rests_on(self, [value]) if unsafe else frozenset()
+        # Value flow's type is `--fix`'s own, if certain: worked out once, here, for both.
+        certain: str | None = certain_type(self, value, (None if fix is None else fix.annotation, unsafe))
         if fix is None and (fix := self.hint(target)) is not None:
             unsafe, origins = True, frozenset({hinted.KIND})
         self.lifetime(name).bind(
             at(target),
-            certain_type(self, value),
+            certain,
             (fix.annotation, origins) if fix is not None and unsafe else None,
         )
         self.assigned(name, at(target))
@@ -543,12 +545,17 @@ def rests_on(scope: Scope, values: Iterable[ast.expr]) -> frozenset[str]:
     return frozenset(found)
 
 
-def certain_type(scope: Scope, value: ast.expr) -> str | None:
+def certain_type(
+    scope: Scope,
+    value: ast.expr,
+    worked_out: tuple[str | None, bool] | None = None,
+) -> str | None:
     """Infer `value`'s type for value flow: only a certain `--fix` inference, never a guess.
 
     `None` itself (which `--fix` never offers: `x: None = None` says nothing) is `"None"` here. A
     copy of a name typed as a union is unknown: an `isinstance` or `is None` check before it may
-    have narrowed the name, which value flow (blind to control flow) can't see.
+    have narrowed the name, which value flow (blind to control flow) can't see. `worked_out`: `--fix`'s
+    annotation for `value` and whether it's a guess, if they're known already.
 
     Returns:
       The type as text, or `None` if it's unknown or only a guess.
@@ -558,9 +565,13 @@ def certain_type(scope: Scope, value: ast.expr) -> str | None:
         return "None"
     if isinstance(value, ast.Name) and len(members(scope.inferred.types.get(value.id, "")) or ()) > 1:
         return None
-    if guessed(value, scope.settings.known, frozenset(scope.inferred.guesses), scope.inferred.types):
-        return None
-    return inferred(value, scope.settings.known, scope.inferred.types)
+    annotation: str | None
+    unsafe: bool
+    annotation, unsafe = worked_out or (
+        inferred(value, scope.settings.known, scope.inferred.types),
+        guessed(value, scope.settings.known, frozenset(scope.inferred.guesses), scope.inferred.types),
+    )
+    return None if unsafe else annotation
 
 
 def _imports(annotation: str, plan: ImportPlan) -> tuple[str, ...]:

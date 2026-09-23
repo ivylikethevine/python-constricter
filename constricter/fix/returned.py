@@ -16,7 +16,7 @@ from functools import lru_cache
 from typing import Final, TypeAlias
 
 from constricter.fix.known import Inference, Returned
-from constricter.rules.walked import nodes
+from constricter.rules.walked import classes, of_type
 
 # A `return` statement as the checker saw it: its value's inference (`None`: none, or unknown), and
 # what that rests on if it's a guess (`FIX_KINDS`; empty: certain).
@@ -96,7 +96,7 @@ def _calls(module: ast.Module) -> tuple[list[tuple[int, int]], list[_Callee]]:
     node: ast.AST
     name: str
     attr: str
-    for node in nodes(module):
+    for node in of_type(module, ast.Call):
         match node:
             case ast.Call(func=ast.Name(id=name)):
                 found.append(((node.lineno, node.col_offset), (name, None)))
@@ -163,7 +163,7 @@ def _classes(tree: ast.Module) -> tuple[ast.ClassDef, ...]:
       Them.
 
     """
-    return tuple(node for node in nodes(tree) if isinstance(node, ast.ClassDef))
+    return tuple(classes(tree))
 
 
 @lru_cache(maxsize=4096)  # asked of the same functions once per round

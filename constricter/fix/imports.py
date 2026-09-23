@@ -7,9 +7,20 @@ from functools import lru_cache
 from typing import Final
 
 from constricter.fix.known import ImportPlan
-from constricter.rules.walked import nodes
+from constricter.rules.walked import of_type
 
 _TYPE_CHECKING: Final = "TYPE_CHECKING"
+# The nodes that bind a name: all `_taken` needs look at.
+_BINDERS: Final = (
+    ast.Name,
+    ast.arg,
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.ClassDef,
+    ast.alias,
+    ast.ExceptHandler,
+    ast.MatchAs,
+)
 
 
 def plan(tree: ast.Module) -> ImportPlan:
@@ -122,7 +133,7 @@ def _taken(tree: ast.Module) -> frozenset[str]:
     node: ast.AST
     name: str
     asname: str | None
-    for node in nodes(tree):
+    for node in of_type(tree, *_BINDERS):
         match node:
             case ast.Name(id=name, ctx=ast.Store()) | ast.arg(arg=name):
                 names.add(name)

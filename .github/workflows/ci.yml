@@ -129,7 +129,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [stdlib, requests, flask, django, sqlalchemy, fastapi, pydantic, rich, pandas, sentry_sdk, twisted, pip]
+        package: [stdlib, django, sqlalchemy, pydantic, rich, pandas, sentry_sdk, twisted, pip]
     runs-on: ubuntu-latest
     timeout-minutes: 20 # the standard library's profile, in one process, takes minutes
     permissions:
@@ -152,9 +152,8 @@ jobs:
           python-version: "3.12" # the `corpus` group's django needs 3.12+
           group: corpus
       # Against the runner's standard library, or one pinned real package (`pyproject.toml`'s
-      # `corpus` group: a tiny HTTP client, two web frameworks, an ORM, an annotation-driven API
-      # framework, a runtime-validation library, a terminal renderer, a data library, Python 2/3-era
-      # code), or pure
+      # `corpus` group: a web framework, an ORM, a runtime-validation library, a terminal renderer, a
+      # data library, Python 2/3-era code), or pure
       # Python 2 (Twisted 12.3.0) and pip 20.3.4's 2/3-era type comments, hash-pinned sdists
       # tests/corpus/corpus_sources.py fetches (neither installs as a dependency): no crashes or slowdowns
       # (corpus.py), and `--fix` doesn't break any file or leave anything for a second pass

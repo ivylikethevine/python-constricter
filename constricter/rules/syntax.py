@@ -7,7 +7,7 @@ from collections.abc import Iterator, Sequence
 from typing import Final, TypeAlias
 
 from constricter.offences import at
-from constricter.rules.walked import nodes
+from constricter.rules.walked import classes
 
 # A `# type:` comment, as a loop header writes one (LVA003).
 _TYPE_COMMENT: Final = re.compile(rb"#\s*type:")
@@ -72,11 +72,10 @@ def owners(tree: ast.Module) -> dict[int, str]:
     found: dict[int, str] = {}
     node: ast.AST
     methods: list[FunctionDef]
-    for node in nodes(tree):
-        if isinstance(node, ast.ClassDef):
-            methods = []
-            _direct_methods(node.body, methods)
-            found.update((id(method), node.name) for method in methods)
+    for node in classes(tree):
+        methods = []
+        _direct_methods(node.body, methods)
+        found.update((id(method), node.name) for method in methods)
     return found
 
 

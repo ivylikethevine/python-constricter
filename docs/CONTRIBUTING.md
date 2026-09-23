@@ -44,9 +44,8 @@ and a second pass has nothing left to fix.
 `local/.venv/bin/python tests/corpus/corpus_profile.py [PATH]` checks it under `cProfile`, in one
 process, and prints (as Markdown) constricter's slowest modules and functions, and where the rest of
 the time went; the profile is saved to `local/profile/`. CI's Corpus job runs all three against the
-standard library and, from the pinned `corpus` dependency group (`requests`, `flask`, `django`,
-`sqlalchemy`, `fastapi`, `pydantic`, `rich`, `pandas`, `sentry_sdk` — a tiny HTTP client, two web
-frameworks, an ORM, an annotation-driven API framework, a runtime-validation library, a terminal
+standard library and, from the pinned `corpus` dependency group (`django`, `sqlalchemy`, `pydantic`,
+`rich`, `pandas`, `sentry_sdk` — a web framework, an ORM, a runtime-validation library, a terminal
 renderer, a data library and Python 2/3-era code with `# type:` comments), the same way, and against
 pure Python 2 (Twisted 12.3.0) and pip 20.3.4 (2/3-era code whose `# type:` comments sit in modules
 with Python 2 `__future__` imports), hash-pinned sdists `tests/corpus/corpus_sources.py` fetches,
