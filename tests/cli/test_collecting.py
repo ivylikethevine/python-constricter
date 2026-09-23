@@ -8,6 +8,8 @@ import pytest
 
 from constricter.cli import collecting
 
+_FREEZES: bool = hasattr(gc, "freeze")  # PyPy's collector has no freezing
+
 
 @pytest.fixture
 def restored() -> Generator[None]:
@@ -27,10 +29,10 @@ def test_by_hand_turns_collection_off_and_back_on() -> None:
     with collecting.by_hand():
         assert not gc.isenabled()
         collecting.indexed()
-        assert gc.get_freeze_count() > 0
+        assert not _FREEZES or gc.get_freeze_count() > 0
         collecting.sweep()
     assert gc.isenabled()
-    assert gc.get_freeze_count() == 0
+    assert not _FREEZES or gc.get_freeze_count() == 0
 
 
 @pytest.mark.usefixtures("restored")

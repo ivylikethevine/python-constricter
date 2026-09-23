@@ -14,6 +14,7 @@ from collections.abc import Generator
 from typing import Final
 
 _YOUNG: Final = 1  # the generations collected after each file: 0 and 1, never the frozen or the old
+_FREEZES: Final = hasattr(gc, "freeze")  # PyPy's collector has no freezing
 
 
 @contextlib.contextmanager
@@ -29,14 +30,16 @@ def by_hand() -> Generator[None]:
     try:
         yield
     finally:
-        gc.unfreeze()
+        if _FREEZES:
+            gc.unfreeze()
         if was:
             gc.enable()
 
 
 def indexed() -> None:
     """Freeze what indexing built (the kept trees, the index): it lives until the check takes it."""
-    gc.freeze()
+    if _FREEZES:
+        gc.freeze()
 
 
 def sweep() -> None:
