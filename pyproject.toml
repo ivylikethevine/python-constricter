@@ -41,16 +41,13 @@ test = [
 ]
 # A pinned, reproducible corpus of real code for tests/corpus/corpus.py and tests/corpus/corpus_fix.py to check
 # and --fix, alongside the running interpreter's own standard library: a web framework, an ORM, a
-# runtime-validation library, a terminal renderer, a data library, and Python 2/3-era code, each a
-# different style of real-world Python.
+# runtime-validation library and a data library, each a different style of real-world Python.
 # Pure Python 2 code (Twisted 12.3.0) can't be installed on 3.11+: tests/corpus/corpus_sources.py fetches it.
 corpus = [
     "django==5.2.17", # 6.x needs Python 3.12+; 5.2 is the current LTS and still supports 3.11
     "flit_core>=4.1,<5", # build backend, needed for the setup action's editable `-e .` install
     "pandas==3.0.6", # a large, partly annotated data library: overloads, generics, TYPE_CHECKING imports
     "pydantic==2.13.5",
-    "rich==15.0.0",
-    "sentry-sdk==1.45.1", # Python 2/3-era code: `__future__` imports and `# type:` comments
     "sqlalchemy==2.0.54",
 ]
 dev = [

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field, replace
 from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix import fills, hinted
-from constricter.fix.guesses import guess_origins, guessed
+from constricter.fix.guesses import guessed, guessing
 from constricter.fix.inference import inference, inferred
 from constricter.fix.known import Hints, ImportPlan, Inference, Known
 from constricter.offences import (
@@ -152,13 +152,9 @@ class Scope:
         """Bind `target` to `value` (`name = value`), offering `--fix`'s annotation for it."""
         name: str = target.id
         fix: Inference | None = inference(value, self.settings.known, self.inferred.types)
-        unsafe: bool = guessed(
-            value,
-            self.settings.known,
-            frozenset(self.inferred.guesses),
-            self.inferred.types,
-        )
-        origins: frozenset[str] = rests_on(self, [value]) if unsafe else frozenset()
+        unsafe: bool
+        origins: frozenset[str]
+        unsafe, origins = guesses_in(self, [value])
         # Value flow's type is `--fix`'s own, if certain: worked out once, here, for both.
         certain: str | None = certain_type(self, value, (None if fix is None else fix.annotation, unsafe))
         if fix is None and (fix := self.hint(target)) is not None:
@@ -487,9 +483,10 @@ class Scope:
             self.offences.append(Offence(*at(annotation), name, LONG_TUPLE, detail=str(longest)))
 
     def walrus(self, node: ast.AST) -> None:
-        """Bind `:=` targets in an expression, comprehensions included, lambdas excluded."""
-        if not self.settings.walruses:
-            return
+        """Bind `:=` targets in an expression, comprehensions included, lambdas excluded.
+
+        Asked only in a module with one (`Settings.walruses`).
+        """
         in_lambda: set[int] = {
             id(inner)
             for outer in ast.walk(node)
@@ -525,24 +522,29 @@ def is_final(annotation: str, aliases: frozenset[str] = _NO_ALIASES) -> bool:
     return node_name(root.value if isinstance(root, ast.Subscript) else root) in aliases | {_FINAL}
 
 
-def rests_on(scope: Scope, values: Iterable[ast.expr]) -> frozenset[str]:
-    """Find what made a guess of `values` one: a call taken to construct its class, or a guessed local.
+def guesses_in(scope: Scope, values: Iterable[ast.expr]) -> tuple[bool, frozenset[str]]:
+    """Work out whether any of `values`' types is a guess, and what the guesses rest on (see `guessing`).
 
     Returns:
-      The guessing mechanisms (`FIX_KINDS`): `constructor` for a call only guessed at, and each
-      guessed local's own.
+      Whether one is, and the guessing mechanisms (`FIX_KINDS`) theirs rest on.
 
     """
-    known: Known = scope.settings.known
+    unsafe: bool = False
     found: set[str] = set()
     value: ast.expr
     for value in values:
-        found.update(guess_origins(value, known, scope.inferred.types))
-        node: ast.AST
-        for node in ast.walk(value):
-            if isinstance(node, ast.Name) and node.id in scope.inferred.origins:
-                found.update(scope.inferred.origins[node.id])
-    return frozenset(found)
+        guess: bool
+        origins: frozenset[str]
+        guess, origins = guessing(
+            value,
+            scope.settings.known,
+            frozenset(scope.inferred.guesses),
+            scope.inferred.origins,
+            scope.inferred.types,
+        )
+        unsafe = unsafe or guess
+        found.update(origins)
+    return unsafe, frozenset(found)
 
 
 def certain_type(

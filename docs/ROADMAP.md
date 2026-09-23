@@ -53,6 +53,13 @@
   (`logging.getLogger()`, `datetime.now()`, `uuid4()`) are typed, and LVA012 offers `Final`. The
   name is spelled through an import the module has, or one added after its leading imports (never
   under `if TYPE_CHECKING:`, over a name the module binds, or over a builtin).
+- **Faster checking**: the standard library's check, profiled (`tests/corpus/corpus_profile.py`, in
+  CI's Corpus job on every PR), from 227s to 63s over 0.2.4: one shared walk of each module, sorted
+  by node type once, for every pass over all of it (`ast.walk` from 130s to about 20s); a function's
+  calls found by its span, not walked each round; a guess and what it rests on worked out in one
+  walk (13.5s to 7.2s); `:=` looked for only in a module with one (3.4s to 0.4s); value flow's types
+  taken from `--fix`'s own inference, not worked out twice. The statement walks' remaining 5.6s are
+  lookups, not generator nesting: the Medium "faster walk" is where the rest is.
 - **Safe by construction**: it never touches class bodies, keeps line endings and a file's encoding
   (PEP 263 or a BOM; a fix the encoding can't hold leaves the file, exit 2), edits notebooks' cells
   in place, and converges in one pass on every corpus with nothing broken. `requests`', flask's and
@@ -85,20 +92,20 @@
 - **`tests/corpus/corpus.py`** (no crash) and **`tests/corpus/corpus_fix.py`** (nothing broken, one
   pass) on the standard library and pinned packages, in CI's Corpus job;
   **`tests/corpus/corpus_table.py`** records each version's results in [RUNS.md](RUNS.md), with
-  totals and percentages, how much `--fix` grows each corpus (0.4% in bytes and 0.2% in lines, about
-  9 bytes per fix; 0.9% with guesses), and `--label` for a pseudo-version (`0.2.4-rc.N`).
+  totals and percentages, and `--label` for a pseudo-version (`0.2.4-rc.N`). (It measured how much
+  `--fix` grows each corpus too, until 0.2.4: 0.5% in bytes, 0.2% in lines, about 10 bytes a fix.)
 - **`tests/corpus/corpus_suite.py`** clones a corpus package at its pinned tag, installs its locked
   test dependencies, and runs its test suite as released, after `--fix`, and after
   `--fix --unsafe-fixes`; flask (490 tests) and fastapi (3,341) came out identical, before they left
   the corpus.
-- **Python 3**: `django` (the 5.2 LTS, for 3.11), `sqlalchemy`, `pydantic`, `rich` (chosen from 18
-  measured by hand; `requests`, `flask` and `fastapi` were dropped as small and alike) and `pandas`
+- **Python 3**: `django` (the 5.2 LTS, for 3.11), `sqlalchemy`, `pydantic` (chosen from 18 measured
+  by hand; `requests`, `flask`, `fastapi` and `rich` were dropped as small and alike) and `pandas`
   3.0.6 (1,421 files with its tests; overloads, generics, `TYPE_CHECKING` imports; 30,140 fixed,
   nothing broken, one pass).
-- **Python 2**: `sentry-sdk` 1.45.1 (2/3-era `# type:` comments, installed), and Twisted 12.3.0
-  (pure Python 2, 147 of 819 files unparsable) and pip 20.3.4 (the most type comments in
-  `__future__` modules), hash-pinned sdists `tests/corpus/corpus_sources.py` fetches; chosen from 15
-  measured.
+- **Python 2**: Twisted 12.3.0 (pure Python 2, 147 of 819 files unparsable) and pip 20.3.4 (the most
+  type comments in `__future__` modules), hash-pinned sdists `tests/corpus/corpus_sources.py`
+  fetches; chosen from 15 measured (`sentry-sdk` 1.45.1's 2/3-era type comments were dropped as
+  pip's alike).
 - **What `--fix` still can't type** is measured in [NEXT-UP.md](NEXT-UP.md).
 
 ### CI, security and releases
@@ -142,12 +149,28 @@ Nothing queued.
 1. **Run the remaining corpora's test suites, and their type checkers, after `--fix`.**
    `tests/corpus/corpus_suite.py` ran flask's and fastapi's suites (and `requests`' by hand) before
    and after `--fix` and `--fix --unsafe-fixes`, identically, before those left the corpus; it has
-   no suites now. Add pydantic, rich, sqlalchemy, django and pandas (whose 27% guesses make it the
-   most telling). A local's annotation is never evaluated at runtime, so a test suite catches a fix
-   that breaks the code, not a wrong type: also run each project's own type checker (mypy or
-   pyright, as its CI does) before and after, and count the new errors per fix mechanism. Done when
-   every Python 3 corpus's suite passes the same, and each new type error is traced to a mechanism
-   and that mechanism corrected or made a guess.
+   no suites now. Add pydantic, sqlalchemy, django and pandas (whose 27% guesses make it the most
+   telling). A local's annotation is never evaluated at runtime, so a test suite catches a fix that
+   breaks the code, not a wrong type: also run each project's own type checker (mypy or pyright, as
+   its CI does) before and after, and count the new errors per fix mechanism. Done when every Python
+   3 corpus's suite passes the same, and each new type error is traced to a mechanism and that
+   mechanism corrected or made a guess.
+2. **Parse each file once.** Each file is parsed to index it for cross-file types (`project.read`,
+   7.8s) and again to check it (`checker._parse`, 7.6s). Index from the tree the check parses: send
+   a file's index and check to the same worker (the same chunks, in both passes) and keep its tree
+   there between them, or index during the check and re-check only the files that import one whose
+   types it found. Done when the standard library is parsed once a file, with no more memory than a
+   worker's share of trees.
+3. **A faster walk.** The one shared walk and its sort by type (`walked.nodes`, `_by_type`: 9.9s)
+   are `ast.walk`, which asks every node for all its fields (`iter_fields`, 35 million calls) to
+   find its children. A walk with each node class's child fields worked out once (the fields that
+   can hold a node or a list of them), over a stack, reads only those. Done when the walk costs
+   under half, over the same nodes in the same order.
+4. **Check functions in call order.** A function calling an unannotated one whose `return`s type it
+   is checked again once its callee's type is known (`_returned`'s rounds: 13.3s), whole. Checking
+   callees before callers (the module's call graph, cycles together) types most calls the first
+   time; only a cycle needs rounds. Done when the rounds re-check a small share of functions, and
+   every corpus still converges in one pass.
 
 ### Large: a week or more
 

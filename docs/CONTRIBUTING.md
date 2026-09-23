@@ -45,11 +45,10 @@ and a second pass has nothing left to fix.
 process, and prints (as Markdown) constricter's slowest modules and functions, and where the rest of
 the time went; the profile is saved to `local/profile/`. CI's Corpus job runs all three against the
 standard library and, from the pinned `corpus` dependency group (`django`, `sqlalchemy`, `pydantic`,
-`rich`, `pandas`, `sentry_sdk` — a web framework, an ORM, a runtime-validation library, a terminal
-renderer, a data library and Python 2/3-era code with `# type:` comments), the same way, and against
-pure Python 2 (Twisted 12.3.0) and pip 20.3.4 (2/3-era code whose `# type:` comments sit in modules
-with Python 2 `__future__` imports), hash-pinned sdists `tests/corpus/corpus_sources.py` fetches,
-since neither installs as a dependency.
+`pandas` — a web framework, an ORM, a runtime-validation library and a data library), the same way,
+and against pure Python 2 (Twisted 12.3.0) and pip 20.3.4 (2/3-era code whose `# type:` comments sit
+in modules with Python 2 `__future__` imports), hash-pinned sdists `tests/corpus/corpus_sources.py`
+fetches, since neither installs as a dependency.
 
 `tests/corpus/corpus_suite.py` runs a corpus package's own test suite (cloned at its pinned tag,
 with its locked test dependencies, in `local/corpus-suites/`) as released, after `--fix`, and after

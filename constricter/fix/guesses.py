@@ -6,11 +6,12 @@ from collections.abc import Iterator, Mapping
 
 from constricter.fix import stdlib
 from constricter.fix.inference import (
+    COMPREHENSIONS,
     CONTAINER_BUILDERS,
     RETURNED,
-    comprehended,
     dict_view,
     library_class,
+    targets_typed,
     typed_method,
 )
 from constricter.fix.known import Known
@@ -39,8 +40,13 @@ def guessed(
       it copies such a guess.
 
     """
-    inside: Mapping[str, str] = comprehended(value, known, declared)
-    return any(_is_guess(node, known, guesses, inside) for node in _deciding(value, known))
+    walked: list[ast.AST] = list(_deciding(value, known))
+    inside: Mapping[str, str] = targets_typed(
+        [node for node in walked if isinstance(node, COMPREHENSIONS)],
+        known,
+        declared,
+    )
+    return any(_is_guess(node, known, guesses, inside) for node in walked)
 
 
 def _deciding(value: ast.AST, known: Known) -> Iterator[ast.AST]:
@@ -54,28 +60,49 @@ def _deciding(value: ast.AST, known: Known) -> Iterator[ast.AST]:
 
     """
     # A stack, not a recursion: a nested generator passes each node up through every level above it.
-    waiting: list[ast.AST] = [value]
+    waiting: list[ast.AST | None] = [None, value]  # `None` at its bottom ends it
     node: ast.AST
-    for node in iter(lambda: waiting.pop() if waiting else None, None):
+    for node in iter(waiting.pop, None):
         yield node
         if not (isinstance(node, ast.Call) and (opened(node, known) or library_class(node, known))):
             waiting.extend(reversed(list(ast.iter_child_nodes(node))))
 
 
-def guess_origins(value: ast.expr, known: Known, declared: Mapping[str, str]) -> frozenset[str]:
-    """Name what makes `value`'s calls guesses, for `unsafe-fix-select` to trust or not.
+def guessing(
+    value: ast.expr,
+    known: Known,
+    guesses: frozenset[str],
+    origins: Mapping[str, frozenset[str]],
+    declared: Mapping[str, str],
+) -> tuple[bool, frozenset[str]]:
+    """Work out, in one pass, whether `value`'s type is a guess (see `guessed`), and what it rests on.
+
+    `origins` holds what each guessed local (of `guesses`) rests on.
 
     Returns:
-      `returned` for a method typed only by its `return`s, `constructor` for any other guessed call.
+      Whether it's a guess; and if it is, its guessing mechanisms (`FIX_KINDS`): `returned` for a
+      method typed only by its `return`s, `constructor` for any other guessed call, and each guessed
+      local's own.
 
     """
-    inside: Mapping[str, str] = comprehended(value, known, declared)
+    # One walk, for both: the comprehensions whose targets the rest may use, then each node.
+    walked: list[ast.AST] = list(_deciding(value, known))
+    inside: Mapping[str, str] = targets_typed(
+        [node for node in walked if isinstance(node, COMPREHENSIONS)],
+        known,
+        declared,
+    )
+    unsafe: bool = False
     found: set[str] = set()
     node: ast.AST
-    for node in _deciding(value, known):
-        if isinstance(node, ast.Call) and _is_guess(node, known, frozenset(), inside):
-            found.update(_guessed_by(node, known, inside))
-    return frozenset(found)
+    for node in walked:
+        if _is_guess(node, known, guesses, inside):
+            unsafe = True
+            if isinstance(node, ast.Call):
+                found.update(_guessed_by(node, known, inside))
+        if isinstance(node, ast.Name) and node.id in origins:
+            found.update(origins[node.id])
+    return unsafe, frozenset(found) if unsafe else frozenset()
 
 
 def _guessed_by(call: ast.Call, known: Known, declared: Mapping[str, str]) -> frozenset[str]:

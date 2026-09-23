@@ -158,13 +158,16 @@ def _statements(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
     assignment.
 
     Yields:
-      Each statement, before those inside it.
+      Each statement, before those inside it (depth first, in source order).
 
     """
+    # A stack, not a recursion: a nested generator passes each statement up through every level.
+    # `None` at its bottom ends it: popped, the walk's done.
+    waiting: list[ast.stmt | None] = [None, *reversed(body)]
     stmt: ast.stmt
-    for stmt in body:
+    for stmt in iter(waiting.pop, None):
         yield stmt
-        yield from _statements(_blocks(stmt))
+        waiting.extend(reversed(_blocks(stmt)))
 
 
 def _blocks(stmt: ast.stmt) -> list[ast.stmt]:

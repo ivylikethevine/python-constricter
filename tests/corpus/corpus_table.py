@@ -56,8 +56,6 @@ PACKAGES: Final = (
     "django",
     "sqlalchemy",
     "pydantic",
-    "rich",
-    "sentry_sdk",
     "pandas",
 )
 _SOURCES: Final = Path(__file__).with_name("corpus_sources.py")
@@ -71,23 +69,6 @@ _WRITE_FLAG: Final = "--write"
 _REPLACE_FLAG: Final = "--replace"
 _LABEL_FLAG: Final = "--label"
 _PROSE_WIDTH: Final = 100  # .prettierrc.yaml's printWidth
-_GROWTH_NOTE: Final = (
-    "How much fixing grew the corpus's Python files: bytes and lines added (and their share), and "
-    "bytes per fix, by `--fix` and then by `--fix --unsafe-fixes` (certain fixes and guesses) on a "
-    "fresh copy:"
-)
-_GROWTH_HEADER: Final = [
-    "Corpus",
-    "constricter",
-    "Bytes",
-    "Lines",
-    "`--fix`: bytes",
-    "lines",
-    "per fix",
-    "`--unsafe-fixes`: bytes",
-    "lines",
-    "per fix",
-]
 _LEVELS_NOTE: Final = (
     "Errors / warnings at each level, by the version's own rules and defaults; what `--fix` fixed and "
     "what `--unsafe-fixes` guessed on top (each also as a share of the offences at `suffocate`), files "
@@ -122,27 +103,6 @@ class Measured(NamedTuple):
     guessed: int | None  # fixed only with `--unsafe-fixes`, beyond `fixed`
     broken: int  # files that compiled before `--fix --unsafe-fixes` and don't after
     left: int  # what a second `--fix --unsafe-fixes` pass would still fix
-    size: "Size"  # the corpus's Python files, before any fix
-    fixed_size: "Size | None"  # after `--fix` (`None`: it crashed)
-    unsafe_size: "Size | None"  # after `--fix --unsafe-fixes`
-
-
-class Size(NamedTuple):
-    """How big a tree's Python files are, together."""
-
-    size: int  # bytes
-    lines: int
-
-
-def _size(root: Path) -> Size:
-    """Measure every Python file under `root`.
-
-    Returns:
-      Their bytes and lines, added up.
-
-    """
-    data: list[bytes] = [path.read_bytes() for path in paths.python_files([root])]
-    return Size(sum(len(chunk) for chunk in data), sum(chunk.count(b"\n") for chunk in data))
 
 
 def corpora() -> list[Corpus]:
@@ -300,29 +260,23 @@ class _Fixing(NamedTuple):
     guessed: int | None
     broken: int
     left: int
-    size: Size
-    fixed_size: Size | None
-    unsafe_size: Size | None
 
 
 def _fixes(python: str, corpus: Corpus, version: str) -> _Fixing:
-    """Fix copies of `corpus`: certain fixes only, then guesses too, measuring each copy.
+    """Fix copies of `corpus`: certain fixes only, then guesses too.
 
     Returns:
-      How many certain fixes, how many more guesses, files the guesses broke, what a second pass
-      would still fix, and how big the files were before and after each.
+      How many certain fixes, how many more guesses, files the guesses broke, and what a second
+      pass would still fix.
 
     """
     fixing: list[str] = ["--level=suffocate", *_EVERYWHERE]
     root: Path
     valid: list[Path]
     root, _ = _copy(corpus, version)
-    size: Size = _size(root)
     fixed: int | None = _fixed_count(_run(python, ["--fix", *fixing, str(root)]))
-    fixed_size: Size = _size(root)
     root, valid = _copy(corpus, version)
     both: int | None = _fixed_count(_run(python, ["--fix", "--unsafe-fixes", *fixing, str(root)]))
-    unsafe_size: Size = _size(root)
     broken: int = sum(not _compiles(path) for path in valid)
     left: int = _run(python, ["--diff", "--unsafe-fixes", *fixing, str(root)]).count("\n+")
     return _Fixing(
@@ -330,9 +284,6 @@ def _fixes(python: str, corpus: Corpus, version: str) -> _Fixing:
         None if fixed is None or both is None else both - fixed,
         broken,
         left,
-        size,
-        None if fixed is None else fixed_size,
-        None if both is None else unsafe_size,
     )
 
 
@@ -528,67 +479,7 @@ def tables(measured: Sequence[Measured]) -> str:
             levels_note,
             "",
             *second,
-            "",
-            textwrap.fill(_GROWTH_NOTE, width=_PROSE_WIDTH),
-            "",
-            *_table([_GROWTH_HEADER, *(row for rows in versions for row in _growth_rows(rows))], right=2),
         ],
-    )
-
-
-def _grown(before: Size, after: Size | None, fixes: int | None) -> tuple[str, str, str]:
-    """Write how much fixing grew a tree: bytes, lines, and bytes per fix.
-
-    Returns:
-      The three cells (`crashed` if the fix did).
-
-    """
-    if after is None or fixes is None:
-        return "crashed", "crashed", "crashed"
-    grown: int = after.size - before.size
-    return (
-        _share(grown, before.size),
-        _share(after.lines - before.lines, before.lines),
-        f"{grown / fixes:.1f}" if fixes else "-",
-    )
-
-
-def _growth_rows(rows: Sequence[Measured]) -> list[list[str]]:
-    """Lay out one version's growth under `--fix`, a row per corpus, then their total.
-
-    Returns:
-      The rows: each corpus's size, then what `--fix` and `--fix --unsafe-fixes` added.
-
-    """
-
-    def row(name: str, m: Sequence[Measured]) -> list[str]:
-        before: Size = Size(sum(one.size.size for one in m), sum(one.size.lines for one in m))
-        fixed: int | None = _sum(one.fixed for one in m)
-        both: int | None = None if fixed is None else _sum(one.guessed for one in m)
-        after: Size | None = _added(one.fixed_size for one in m)
-        unsafe: Size | None = _added(one.unsafe_size for one in m)
-        return [
-            name,
-            m[0].version,
-            f"{before.size:,}",
-            f"{before.lines:,}",
-            *_grown(before, after, fixed),
-            *_grown(before, unsafe, None if both is None or fixed is None else fixed + both),
-        ]
-
-    return [*(row(m.corpus.name, [m]) for m in rows), row("**Total**", rows)]
-
-
-def _added(sizes: Iterable[Size | None]) -> Size | None:
-    """Add sizes up.
-
-    Returns:
-      Their total, or `None` (crashed) if any is.
-
-    """
-    known: list[Size | None] = list(sizes)
-    return (
-        None if None in known else Size(*(sum(part) for part in zip(*cast("list[Size]", known), strict=True)))
     )
 
 

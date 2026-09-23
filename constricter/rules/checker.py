@@ -9,7 +9,6 @@ from functools import lru_cache
 from typing import Final, NamedTuple, cast
 
 from constricter.fix import hinted, imports, returned, stdlib
-from constricter.fix.guesses import guessed
 from constricter.fix.inference import inference, looped
 from constricter.fix.known import (
     Classes,
@@ -50,7 +49,7 @@ from constricter.rules.annotations import classes as instance_attributes
 from constricter.rules.flow import Finding, Hierarchy, augmented
 from constricter.rules.narrowing import flow_offences
 from constricter.rules.redundant import redundant
-from constricter.rules.scope import Kind, Late, Scope, Settings, certain_type, rests_on
+from constricter.rules.scope import Kind, Late, Scope, Settings, certain_type, guesses_in
 from constricter.rules.syntax import (
     FUNCTION_DEFS,
     FunctionDef,
@@ -338,8 +337,9 @@ def _function_scope(
 def _visit(scope: Scope, stmt: ast.stmt) -> None:
     """Bind the names `stmt` binds, as Python would, then visit its nested statements."""
     part: ast.AST
-    for part in expressions(stmt):
-        scope.walrus(part)
+    if scope.settings.walruses:  # most modules have no `:=`: none of their parts need a look
+        for part in expressions(stmt):
+            scope.walrus(part)
     _declare(scope, stmt)
     _bind(scope, stmt)
     if isinstance(stmt, ast.Return):
@@ -496,9 +496,7 @@ def _recorded(scope: Scope, value: ast.expr | None) -> returned.Recorded:
     """
     if value is None:
         return None, frozenset()
-    known: Known = scope.settings.known
-    unsafe: bool = guessed(value, known, frozenset(scope.inferred.guesses), scope.inferred.types)
-    return inference(value, known, scope.inferred.types), rests_on(scope, [value]) if unsafe else frozenset()
+    return inference(value, scope.settings.known, scope.inferred.types), guesses_in(scope, [value])[1]
 
 
 def _bind(scope: Scope, stmt: ast.stmt) -> None:
@@ -562,11 +560,9 @@ def _bind_declared(
     any of `bases`, the values `typed` came from, is. A loop's untyped target is LVA002, an
     unpacking's LVA001 (or LVA004), unless a type comment types it.
     """
-    known: Known = scope.settings.known
-    unsafe: bool = any(
-        guessed(base, known, frozenset(scope.inferred.guesses), scope.inferred.types) for base in bases
-    )
-    origins: frozenset[str] = rests_on(scope, bases) if unsafe else frozenset()
+    unsafe: bool
+    origins: frozenset[str]
+    unsafe, origins = guesses_in(scope, bases)
     # An unpacking's names are split from the value's type; a loop's are what it iterates (`loop`).
     split: frozenset[str] = frozenset() if isinstance(stmt, ast.For | ast.AsyncFor) else frozenset({"unpack"})
     code: str | None = (
