@@ -10,11 +10,11 @@ import json
 import sys
 import tokenize
 from collections.abc import Callable, Mapping, Sequence
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
-from typing import Final, NamedTuple, TextIO, TypeAlias, cast
+from typing import Final, NamedTuple, Self, TextIO, TypeAlias, cast
 
 from constricter import notebook
 from constricter.cli import baseline, hints
@@ -30,6 +30,7 @@ from constricter.offences import (
     Edit,
     Offence,
 )
+from constricter.rules import parsed
 from constricter.rules.checker import Coverage, annotation_coverage, check_source
 
 EXIT_CLEAN: Final = 0
@@ -203,6 +204,10 @@ class _CoverageRun:
 
 
 _FileRun: TypeAlias = _CheckRun | _BaselineRun | _CoverageRun
+_Check: TypeAlias = Callable[[Path, Outside], _FileRun]  # check (or count, or baseline) one file
+# A worker's answers, one per file of its share: what it read (to index), and what it found.
+_Reading: TypeAlias = "Future[list[project.Module | None]]"
+_Checking: TypeAlias = "Future[list[_FileRun]]"
 HINT_ROUNDS: Final = 4  # with `--fix --infer-with`: how many times each file is fixed, at most
 
 
@@ -412,14 +417,135 @@ def _checked_all(
         return list(
             itertools.starmap(check, zip(paths, _outside(modules, paths, hinted), strict=True)),
         ), modules
-    pool: ProcessPoolExecutor
-    with ProcessPoolExecutor(max_workers=options.jobs) as pool:
+    workers: _Workers
+    with _Workers(paths, options.jobs) as workers:
         if modules is None:
-            # The index, as the checks, read one file per task.
-            modules = (
-                project.Index({}, []) if coverage else project.index(paths, partial(pool.map, chunksize=16))
+            modules = project.Index({}, []) if coverage else workers.index()
+        return workers.check(check, _outside(modules, paths, hinted)), modules
+
+
+class _Workers:
+    """Worker processes, each with its own share of the files, which it indexes and then checks.
+
+    The trees a worker parsed to index its files are still there to check (`parsed.keep`), within its
+    part of the budget: sharing the files out anew for the check (a pool's way) would parse them again.
+    """
+
+    def __init__(self, paths: Sequence[Path], jobs: int) -> None:
+        """Share `paths` out among up to `jobs` workers (see `_shares`)."""
+        self.paths: Sequence[Path] = paths
+        self.shares: list[list[int]] = _shares(paths, jobs)
+        self.stack: contextlib.ExitStack = contextlib.ExitStack()
+        self.pools: list[ProcessPoolExecutor] = []
+
+    def __enter__(self) -> Self:
+        """Start the workers, one process each, each with its part of the budget.
+
+        Returns:
+          Them.
+
+        """
+        self.pools = [
+            self.stack.enter_context(
+                ProcessPoolExecutor(max_workers=1, initializer=parsed.budget, initargs=(len(self.shares),)),
             )
-        return list(pool.map(check, paths, _outside(modules, paths, hinted))), modules
+            for _ in self.shares
+        ]
+        return self
+
+    def __exit__(self, *_details: object) -> None:
+        """Stop the workers."""
+        self.stack.close()
+
+    def index(self) -> project.Index:
+        """Index every file, each worker its share.
+
+        Returns:
+          The index, as one process would build it.
+
+        """
+        read: list[_Reading] = [
+            pool.submit(_read_share, [self.paths[at] for at in share])
+            for pool, share in zip(self.pools, self.shares, strict=True)
+        ]
+        found: dict[int, project.Module | None] = {}
+        share: list[int]
+        future: _Reading
+        for share, future in zip(self.shares, read, strict=True):
+            found.update(zip(share, future.result(), strict=True))
+        return project.indexed(found[at] for at in range(len(self.paths)))  # in their order, as one at a time
+
+    def check(self, check: _Check, outside: Sequence[Outside]) -> list[_FileRun]:
+        """Check every file, each worker the share it indexed.
+
+        Returns:
+          What each file found, in their order.
+
+        """
+        checked: list[_Checking] = [
+            pool.submit(_check_share, check, [(self.paths[at], outside[at]) for at in share])
+            for pool, share in zip(self.pools, self.shares, strict=True)
+        ]
+        found: dict[int, _FileRun] = {}
+        share: list[int]
+        future: _Checking
+        for share, future in zip(self.shares, checked, strict=True):
+            found.update(zip(share, future.result(), strict=True))
+        return [found[at] for at in range(len(self.paths))]
+
+
+def _shares(paths: Sequence[Path], workers: int) -> list[list[int]]:
+    """Share the files among the workers, the biggest first to the least loaded: a check's time goes by size.
+
+    Returns:
+      Each worker's files, by their place in `paths` (no more workers than files).
+
+    """
+    loads: list[int] = [0] * min(workers, len(paths))
+    shares: list[list[int]] = [[] for _ in loads]
+    sizes: list[int] = [_size(path) for path in paths]
+    index: int
+    for index in sorted(range(len(paths)), key=lambda at: -sizes[at]):
+        least: int = loads.index(min(loads))
+        shares[least].append(index)
+        loads[least] += sizes[index] or 1
+    return [sorted(share) for share in shares if share]
+
+
+def _size(path: Path) -> int:
+    """Find a file's size, to balance the workers by.
+
+    Returns:
+      It, or 0 if it can't be read (checking it reports that).
+
+    """
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0
+
+
+def _read_share(paths: Sequence[Path]) -> list[project.Module | None]:
+    """Index a worker's share of the files (see `project.read`).
+
+    Returns:
+      Each file's module, or `None`.
+
+    """
+    return [project.read(path) for path in paths]
+
+
+def _check_share(
+    check: _Check,
+    files: Sequence[tuple[Path, Outside]],
+) -> list[_FileRun]:
+    """Check a worker's share of the files.
+
+    Returns:
+      What each found.
+
+    """
+    return list(itertools.starmap(check, files))
 
 
 def _merged(before: _CheckRun, after: _CheckRun) -> _CheckRun:

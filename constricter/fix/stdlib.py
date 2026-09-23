@@ -65,9 +65,10 @@ RETURNS: Final = {
     **dict.fromkeys(["math.isclose", "math.isnan", "math.isinf", "math.isfinite"], _BOOL),
     **dict.fromkeys(
         # Not `sys.getrefcount`: CPython's own, missing on PyPy.
-        ["sys.getrecursionlimit", "sys.getsizeof", "sys.getswitchinterval"],
+        ["sys.getrecursionlimit", "sys.getsizeof"],
         _INT,
     ),
+    "sys.getswitchinterval": _FLOAT,  # seconds
     **dict.fromkeys(["sys.intern", "sys.getdefaultencoding", "sys.getfilesystemencoding"], _STR),
     **dict.fromkeys(
         [

@@ -14,12 +14,13 @@ import ast
 import bisect
 import builtins
 import itertools
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.known import Classes
+from constricter.rules import parsed
 from constricter.rules.annotations import classes, method_returns, returns
 
 _BUILTINS: Final = frozenset(dir(builtins))
@@ -142,19 +143,24 @@ def _bound(stmt: ast.stmt) -> Iterator[str]:
             pass
 
 
-def index(
-    paths: Sequence[Path],
-    mapper: Callable[[Callable[[Path], Module | None], Sequence[Path]], Iterable[Module | None]] = map,
-) -> Index:
+def index(paths: Sequence[Path]) -> Index:
     """Read each `.py` file in `paths` (one that can't be read or parsed is left out).
-
-    `mapper` reads them (`map`, or a process pool's, to read them in parallel).
 
     Returns:
       Each module's name, mapped to what it offers and uses.
 
     """
-    modules: dict[str, Module] = {module.name: module for module in mapper(read, paths) if module is not None}
+    return indexed(read(path) for path in paths)
+
+
+def indexed(found: Iterable[Module | None]) -> Index:
+    """Index modules already read (`read`'s, in any process): `None`s, for files it couldn't, left out.
+
+    Returns:
+      Each module's name, mapped to what it offers and uses.
+
+    """
+    modules: dict[str, Module] = {module.name: module for module in found if module is not None}
     return Index(modules, sorted(modules))
 
 
@@ -167,10 +173,14 @@ def read(path: Path) -> Module | None:
     """
     if path.suffix != _SUFFIX or not path.is_file():
         return None
-    try:
-        tree: ast.Module = ast.parse(path.read_bytes(), str(path))
-    except (OSError, SyntaxError, ValueError):
+    source: str | None
+    if (source := _source(path)) is None:
         return None
+    try:
+        tree: ast.Module = parsed.parse(source, str(path))
+    except (SyntaxError, ValueError):  # a null byte is a ValueError
+        return None
+    parsed.keep(source, tree)  # for the check to take, rather than parse it again
     name: str = module_name(path)
     return Module(
         name,
@@ -179,6 +189,19 @@ def read(path: Path) -> Module | None:
         classes(tree),
         method_returns(tree),
     )
+
+
+def _source(path: Path) -> str | None:
+    """Read a module's text.
+
+    Returns:
+      It, or `None` if it can't be read, or decoded (`SyntaxError`: an unknown encoding).
+
+    """
+    try:
+        return parsed.text(path.read_bytes())
+    except (OSError, SyntaxError, ValueError):  # UnicodeDecodeError is a ValueError
+        return None
 
 
 def _origin(module: Module, name: str) -> Origin | None:

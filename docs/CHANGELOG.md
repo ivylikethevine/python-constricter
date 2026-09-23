@@ -6,6 +6,13 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- Faster checking (the standard library's, profiled, 63s to 52s): a module's functions are checked
+  callees first, so few are checked again for a callee's return type; each file is parsed once, the
+  cross-file index's tree kept for its check in the same worker; and the shared walk reads only each
+  node class's fields. The fixes are unchanged.
+- `tests/corpus/corpus_suite.py` runs pydantic's, sqlalchemy's, django's and pandas's test suites
+  before and after `--fix`, and with `--types` their own type checkers, tracing each new type error
+  to the fix mechanism behind it.
 - `tests/corpus/corpus_profile.py` profiles a check of a large codebase, printing constricter's
   slowest modules and functions, and where the rest of the time went (`ast.walk`, mostly); CI's
   Corpus job adds it to its summary and keeps the profile.
@@ -42,6 +49,7 @@ Notable changes, newest first. Each release's full notes are generated from its 
   it (fix kind `filled`).
 - The CLI reads the cross-module index in parallel with `--jobs`, so checking is faster.
 - `sys.getrefcount` isn't in the standard-library table: it's CPython's only.
+- `sys.getswitchinterval()` is typed `float`, not `int`.
 - `--fix` types standard-library functions with a builtin result (`time.time()`, `os.getpid()`,
   `textwrap.dedent(...)`, `os.environ.get(k)`, `os.path.join` of `str`s; fix kind `stdlib`),
   resolved through the imports, and `x = None` later rebound to one known type as `T | None` (fix

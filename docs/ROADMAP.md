@@ -54,12 +54,17 @@
   name is spelled through an import the module has, or one added after its leading imports (never
   under `if TYPE_CHECKING:`, over a name the module binds, or over a builtin).
 - **Faster checking**: the standard library's check, profiled (`tests/corpus/corpus_profile.py`, in
-  CI's Corpus job on every PR), from 227s to 63s over 0.2.4: one shared walk of each module, sorted
-  by node type once, for every pass over all of it (`ast.walk` from 130s to about 20s); a function's
+  CI's Corpus job on every PR), from 227s to 52s over 0.2.4 and after: one shared walk of each
+  module, sorted by node type once, for every pass over all of it (`ast.walk` from 130s to about
+  20s), generation by generation over each node class's fields worked out once (`_by_type` 9.9s to
+  7.2s profiled, 1.6x unprofiled; not the 2x hoped for: the rest is list building); a function's
   calls found by its span, not walked each round; a guess and what it rests on worked out in one
   walk (13.5s to 7.2s); `:=` looked for only in a module with one (3.4s to 0.4s); value flow's types
-  taken from `--fix`'s own inference, not worked out twice. The statement walks' remaining 5.6s are
-  lookups, not generator nesting: the Medium "faster walk" is where the rest is.
+  taken from `--fix`'s own inference, not worked out twice; functions checked callees first (the
+  module's call graph, a cycle in rounds), so `_returned`'s rounds re-check 1.7% of functions (13.3s
+  to 2.0s); and each file parsed once, its tree kept from the cross-file index for the check, in the
+  same worker (`rules/parsed.py`; up to 40 MB of source, about 1 GB of trees, shared among the
+  workers), so `--jobs=0` on 16 cores went from 7.5s to 6.3s. Every corpus's fixes are unchanged.
 - **Safe by construction**: it never touches class bodies, keeps line endings and a file's encoding
   (PEP 263 or a BOM; a fix the encoding can't hold leaves the file, exit 2), edits notebooks' cells
   in place, and converges in one pass on every corpus with nothing broken. `requests`', flask's and
@@ -94,10 +99,11 @@
   **`tests/corpus/corpus_table.py`** records each version's results in [RUNS.md](RUNS.md), with
   totals and percentages, and `--label` for a pseudo-version (`0.2.4-rc.N`). (It measured how much
   `--fix` grows each corpus too, until 0.2.4: 0.5% in bytes, 0.2% in lines, about 10 bytes a fix.)
-- **`tests/corpus/corpus_suite.py`** clones a corpus package at its pinned tag, installs its locked
-  test dependencies, and runs its test suite as released, after `--fix`, and after
-  `--fix --unsafe-fixes`; flask (490 tests) and fastapi (3,341) came out identical, before they left
-  the corpus.
+- **`tests/corpus/corpus_suite.py`** clones a corpus package at its pinned tag, installs its test
+  dependencies as its CI does, and runs its test suite as released, after `--fix`, and after
+  `--fix --unsafe-fixes`: pydantic, sqlalchemy, django and pandas come out identical (see
+  [RUNS.md](RUNS.md)), as flask and fastapi did before they left the corpus. `--types` runs each
+  one's own type checker the same way and traces each new error to its fix mechanism.
 - **Python 3**: `django` (the 5.2 LTS, for 3.11), `sqlalchemy`, `pydantic` (chosen from 18 measured
   by hand; `requests`, `flask`, `fastapi` and `rich` were dropped as small and alike) and `pandas`
   3.0.6 (1,421 files with its tests; overloads, generics, `TYPE_CHECKING` imports; 30,140 fixed,
@@ -142,35 +148,58 @@ it's done.
 
 ### Small: a day or less
 
-Nothing queued.
+1. **More fixed-return builtins, and methods on literals.** `", ".join(x)`, `"{}".format(x)` and
+   `b"".join(...)` are untyped: `_from_local` takes a method's receiver only as a local name. Type a
+   literal receiver by its literal (`str`, `bytes`, ...), and add the builtins with a fixed result
+   to `BUILTIN_RETURNS`: `bytearray()`, `range()`, `slice()`, `any`/`all` (`bool`), `dir()`
+   (`list[str]`), `input()`, `format`/`hex`/`ascii` (`str`), and `str.partition`
+   (`tuple[str, str, str]`). Not `memoryview`, generic in recent typeshed. Measured: about 1,640
+   bindings directly, 2,300 with what they type in turn, mostly certain (264 in annotated code).
+   Done when they're typed, and every corpus still converges with nothing broken.
+2. **Loop targets from `enumerate` and `zip`, one part at a time.** `for i, x in enumerate(xs)`
+   types nothing when `xs`'s element type is unknown, though `i` is always `int`; and `zip`'s parts
+   are typed only all together. Type each part that's known on its own, and accept the keywords that
+   don't change the parts (`strict=`, `start=`; today's `keywords=[]` patterns reject them). An
+   `int` index is certain whatever `enumerate`'s argument is: it's never a guess for the argument
+   being a call. Measured: 668 bindings (562 certain, 207 in annotated code). Done when each known
+   part is typed, certain as its own type is.
 
 ### Medium: a few days
 
-1. **Run the remaining corpora's test suites, and their type checkers, after `--fix`.**
-   `tests/corpus/corpus_suite.py` ran flask's and fastapi's suites (and `requests`' by hand) before
-   and after `--fix` and `--fix --unsafe-fixes`, identically, before those left the corpus; it has
-   no suites now. Add pydantic, sqlalchemy, django and pandas (whose 27% guesses make it the most
-   telling). A local's annotation is never evaluated at runtime, so a test suite catches a fix that
-   breaks the code, not a wrong type: also run each project's own type checker (mypy or pyright, as
-   its CI does) before and after, and count the new errors per fix mechanism. Done when every Python
-   3 corpus's suite passes the same, and each new type error is traced to a mechanism and that
-   mechanism corrected or made a guess.
-2. **Parse each file once.** Each file is parsed to index it for cross-file types (`project.read`,
-   7.8s) and again to check it (`checker._parse`, 7.6s). Index from the tree the check parses: send
-   a file's index and check to the same worker (the same chunks, in both passes) and keep its tree
-   there between them, or index during the check and re-check only the files that import one whose
-   types it found. Done when the standard library is parsed once a file, with no more memory than a
-   worker's share of trees.
-3. **A faster walk.** The one shared walk and its sort by type (`walked.nodes`, `_by_type`: 9.9s)
-   are `ast.walk`, which asks every node for all its fields (`iter_fields`, 35 million calls) to
-   find its children. A walk with each node class's child fields worked out once (the fields that
-   can hold a node or a list of them), over a stack, reads only those. Done when the walk costs
-   under half, over the same nodes in the same order.
-4. **Check functions in call order.** A function calling an unannotated one whose `return`s type it
-   is checked again once its callee's type is known (`_returned`'s rounds: 13.3s), whole. Checking
-   callees before callers (the module's call graph, cycles together) types most calls the first
-   time; only a cycle needs rounds. Done when the rounds re-check a small share of functions, and
-   every corpus still converges in one pass.
+1. **Make `--fix` add no type errors to the corpora.** `tests/corpus/corpus_suite.py` runs
+   pydantic's, sqlalchemy's, django's and pandas's suites, which pass the same after `--fix` and
+   `--fix --unsafe-fixes` (see [RUNS.md](RUNS.md)), and with `--types` their own type checkers
+   (django has none), tracing each new error to its fix's mechanism: 195 after `--fix` and 260 with
+   guesses. Correct the mechanisms, or make their fixes guesses, most first: a first binding's type
+   when the name is later bound to another (`None`, the other `cast` of an `if`/`else`: `cast`,
+   `literal`, `call`, `method`, `builtin`, `stdlib`, `arithmetic`); a declared `Optional` attribute
+   or name copied where it's narrowed (`attribute`, `copy`); a method returning `Self`, or a copy of
+   `self`, written as the class (`method`, `copy`), bare where it's generic; an imported `TypeVar`
+   left unbound (`call`); a module constant's literal widened to `str` (`literal`, `LVA004`); and an
+   element type taken from a subscript with a trailing comma, `list[\n int,\n]`, written as the
+   tuple `(int,)` (`loop`). Done when `--types` finds no new error after `--fix` on any corpus.
+2. **Standard-library tables generated from typeshed.** `stdlib.RETURNS` and `CLASSES` are curated
+   by hand: small, and not always right (`sys.getswitchinterval` was `int`). Generate them from the
+   typeshed stubs basedpyright bundles, with a script checked in and its output committed: every
+   function whose return names no `TypeVar` and no `Any` and doesn't depend on its overload (1,426
+   with a builtin result, 3,928 functions or classes with a standard-library class), spelled by the
+   public path the call goes through (`unittest.TestLoader`, not where it's defined), without
+   `typing`'s factories (`TypeVar`, `NewType`). Measured: 2,593 more bindings (2,410 certain, mostly
+   the standard library's own code), and about 760 of today's constructor guesses become certain
+   (`asyncio.Lock()`, `unittest.TestLoader()`). Then, from the same stubs, the methods and
+   attributes of those classes on a typed local (`parser.parse_args()`, `dt.astimezone()`): about
+   530 more, certain. Left for later: generic classes, `TypeVar` returns (`os.path.dirname`) and
+   overloads that differ (`subprocess.run`), which need the arguments' types. Done when the tables
+   are generated, the curated ones gone, and every corpus converges with `--types` finding no new
+   error they cause.
+3. **Methods, attributes and subscripts on any typed receiver.** `_from_local` types `x.m()` only
+   when `x` is a local name; `self.index._getitem_slice(...)` and `a.b.c` aren't. Infer the
+   receiver's type as any other value's, and look the member up on it. A fixed-return method's
+   arguments can't change its type, so `guesses._deciding` should skip them (as it does for `open`
+   and `library_class`): 234 of its 629 guesses are guesses only for a call among the arguments.
+   Measured: 2,077 bindings (1,448 certain, 384 in annotated code), overlapping the Small item on
+   literal receivers. Done when chained receivers are typed, and a fixed-return method's arguments
+   don't make its call a guess.
 
 ### Large: a week or more
 

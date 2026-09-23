@@ -9,6 +9,7 @@ import runpy
 import sys
 import textwrap
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Final, TypeAlias, cast
 
@@ -554,6 +555,23 @@ def test_jobs_check_files_in_parallel_in_order(
     assert cli.main(["--jobs=1", str(tmp_path)]) == cli.EXIT_ERROR
     serial: tuple[str, str] = capsys.readouterr()
     assert cli.main([f"--jobs={jobs}", str(tmp_path)]) == cli.EXIT_ERROR
+    assert capsys.readouterr() == serial
+
+
+def test_jobs_workers_index_and_check_their_own_shares(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each worker indexes its share of the files, then checks it, with the trees it kept: in threads here."""
+    name: str
+    for name in ("a.py", "b.py", "c.py"):
+        _ = _write(tmp_path / name, DEMO)
+    (tmp_path / "gone.py").symlink_to(tmp_path / "nowhere.py")  # no size to share it out by
+    assert cli.main(["--jobs=1", "--diff", str(tmp_path)]) == cli.EXIT_ERROR
+    serial: tuple[str, str] = capsys.readouterr()
+    monkeypatch.setattr(cli, "ProcessPoolExecutor", ThreadPoolExecutor)
+    assert cli.main(["--jobs=2", "--diff", str(tmp_path)]) == cli.EXIT_ERROR
     assert capsys.readouterr() == serial
 
 

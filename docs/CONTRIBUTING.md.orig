@@ -50,12 +50,9 @@ and against pure Python 2 (Twisted 12.3.0) and pip 20.3.4 (2/3-era code whose `#
 in modules with Python 2 `__future__` imports), hash-pinned sdists `tests/corpus/corpus_sources.py`
 fetches, since neither installs as a dependency.
 
-`tests/corpus/corpus_suite.py` runs a Python 3 corpus package's own test suite (cloned at its pinned
-tag, with its test dependencies as its CI installs them, in `local/corpus-suites/`) as released,
-after `--fix`, and after `--fix --unsafe-fixes`, and exits 1 if either differs; with `--types` it
-runs the package's own type checker (as its CI does) the same three times instead, traces each new
-error to the fix mechanism behind it, and exits 1 if there are any. It needs `git`, `uv`, a C
-compiler, Rust and the network.
+`tests/corpus/corpus_suite.py` runs a corpus package's own test suite (cloned at its pinned tag,
+with its locked test dependencies, in `local/corpus-suites/`) as released, after `--fix`, and after
+`--fix --unsafe-fixes`, and exits 1 if either differs; it needs `git`, `uv` and the network.
 
 `tests/corpus/corpus_table.py` measures every corpus with released constricter versions and this
 checkout (each isolated in its own environment), at every level, checked and fixed, and records a
