@@ -31,6 +31,12 @@ Checks (as CI runs them): `ruff check .` (every rule, preview included), `ruff f
 `constricter --coverage --all-scopes --fail-under=100 constricter tests`, `pytest --cov` (100%
 branch coverage). Everything generated goes in `local/`. Python is indented with 4 spaces.
 
+`local/.venv/bin/python tests/ci_local.py` runs them all at once, as CI does: it reads the Lint,
+Docs and Test jobs' steps from `.github/workflows/ci.yml` (so it can't fall behind it), fails a step
+by its exit status alone (pylint still rates a run with one finding 10.00/10), and prints each
+failing step's output in full. Name jobs to run only those (`tests/ci_local.py lint docs`), and add
+`--install-hook` once to run it before every `git push`.
+
 After editing a dependency group, run `uv lock` (CI fails until you do). Dependabot updates
 `uv.lock`, the npm lock and the actions weekly.
 

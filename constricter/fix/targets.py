@@ -154,8 +154,8 @@ def iterated(iterable: ast.expr) -> list[ast.expr]:
       Those values.
 
     """
-    call: tuple[str, list[ast.expr]] | None = iterator_call(iterable)
-    if call is not None:
+    call: tuple[str, list[ast.expr]] | None
+    if (call := iterator_call(iterable)) is not None:
         return [] if call[0] == RANGE else [part for arg in counted(*call) for part in iterated(arg)]
     receiver: ast.expr
     view: str

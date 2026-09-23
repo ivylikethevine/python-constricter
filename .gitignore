@@ -8,3 +8,6 @@ __pycache__/
 .github/node_modules/
 
 .hypothesis
+
+# Claude Code's agent worktrees: other checkouts of this repository.
+.claude/worktrees/

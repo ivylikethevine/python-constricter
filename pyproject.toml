@@ -90,7 +90,8 @@ indent-width = 4
 target-version = "py311"
 cache-dir = "local/.ruff_cache"
 # Drafts for other projects (Trunk, conda-forge), in their own formats; `basic.in.py` is untyped on purpose.
-extend-exclude = ["upstream"]
+# `.claude/worktrees/`: other checkouts of this repository, made by Claude Code's agents.
+extend-exclude = ["upstream", ".claude"]
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -115,6 +116,8 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 # `--infer-with`'s tests start its guard and a fake server, and a constricter to kill.
 "tests/cli/test_hints.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 "tests/corpus/corpus_suite.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
+# The local CI runner runs the workflow's own steps (and git) as subprocesses.
+"tests/ci_local.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
 # `--infer-with` starts the type checker's language server, from a fixed table of commands.
 "constricter/cli/{hints,guard}.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 "tests/corpus/corpus_sources.py" = ["suspicious-url-open-usage"] # downloads only its pinned https URLs

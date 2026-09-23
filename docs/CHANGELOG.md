@@ -6,6 +6,8 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `tests/ci_local.py` runs CI's Lint, Docs and Test checks locally, in parallel, straight from
+  `ci.yml`, and `--install-hook` makes it a `pre-push` hook.
 - `--fix` types a loop over `enumerate` or `zip` one part at a time: `for i, x in enumerate(xs)`
   declares `i: int` even when `xs`'s elements aren't known, and a guess about one part no longer
   makes the others guesses. `enumerate(xs, start=1)`, `zip(a, b, strict=True)` and
