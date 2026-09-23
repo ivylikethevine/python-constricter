@@ -6,6 +6,79 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `tests/corpus/corpus_profile.py` profiles a check of a large codebase, printing constricter's
+  slowest modules and functions, and where the rest of the time went (`ast.walk`, mostly); CI's
+  Corpus job adds it to its summary and keeps the profile.
+- `--infer-with basedpyright` (or `ty`, or both, `basedpyright,ty`, the first named preferred;
+  `infer-with` in `[tool.constricter]`): `--fix` asks those type checkers' language servers, all at
+  once (basedpyright over up to four, as `--jobs` and `--infer-memory` allow, 8 GB by default; each
+  behind a guard that kills it if constricter is killed), for their inlay hints, and types what it
+  can't type itself from them, as guesses (fix kind `checker`, applied with `--unsafe-fixes`). A
+  `Literal` is widened to its values' types; a hint that's vague, isn't an annotation, or names
+  something the file can't use is dropped; a class the checker prints bare (`Callable`, `Path`, ...)
+  is imported. With `--fix`, a changed file is asked about and fixed again until nothing changes
+  (four rounds at most). On `requests`, `flask`, `fastapi`, `rich` and `pydantic` it about doubles
+  what `--fix --unsafe-fixes` types.
+- `x = None`, later rebound only to a guessed type, is `T | None` as a guess too (it waited for the
+  guess to be applied, and a second `--fix`, before).
+- `check_source` and `check_tree` take what's known of a file from outside it as one `outside`
+  argument (`Outside`: other files' return types and classes, and a type checker's hints), in place
+  of `calls` and `classes`.
+- `constricter.fix.inference` is split: guesses are judged in `constricter.fix.guesses`, and a type
+  split over a loop's or an unpacking's names in `constricter.fix.targets`.
+- `--fix` adds the import a type needs: `open(path, mode)` is typed by its literal mode
+  (`io.TextIOWrapper`, `io.BufferedReader`, `io.BufferedWriter`, `io.BufferedRandom`; fix kind
+  `open`), and `with open(...) as f` declares `f` before the statement; standard-library classes and
+  functions returning one (`logging.getLogger()` → `logging.Logger`, `datetime.now()`, `uuid4()`,
+  `Path.cwd()`, `argparse.ArgumentParser(...)`) are typed (fix kind `stdlib`); and LVA012 offers
+  `Final` (`Final[T]` around its annotation or LVA001's type, a bare `Final` without one; fix kind
+  `final`). An existing import is reused (`import io` gives `io.BufferedReader`); otherwise one is
+  added after the module's docstring and leading imports, never under `if TYPE_CHECKING:`, over a
+  name the module binds, or over a builtin. In a notebook, a fix that needs an import is reported
+  but not applied.
+- `--fix` types calls to the module's unannotated functions from their `return`s (fix kind
+  `returned`; a method's is a guess), uses of classes other checked files define (their attributes,
+  properties and methods), and, as a guess, an empty container from what the function then adds to
+  it (fix kind `filled`).
+- The CLI reads the cross-module index in parallel with `--jobs`, so checking is faster.
+- `sys.getrefcount` isn't in the standard-library table: it's CPython's only.
+- `--fix` types standard-library functions with a builtin result (`time.time()`, `os.getpid()`,
+  `textwrap.dedent(...)`, `os.environ.get(k)`, `os.path.join` of `str`s; fix kind `stdlib`),
+  resolved through the imports, and `x = None` later rebound to one known type as `T | None` (fix
+  kind `optional`).
+- `--fix` types a tuple longer than `max-length` as `tuple[T, ...]` when its elements agree, and not
+  at all when they differ, instead of listing every element's type.
+- `--fix` types a `@property`'s declared return (`obj.prop`), `cls` in a classmethod (`type[C]`:
+  `cls.x` from class attributes, `cls.m()` from classmethods and staticmethods), and
+  `typing.cast(T, x)` as `T` (fix kind `cast`).
+- `--fix` for LVA003 (the loop's `# type:` comment becomes a declaration before it, fix kind
+  `comment`) and LVA007 (the repeated annotation is dropped, fix kind `redundant`).
+- SARIF and rdjson carry every edit of a fix (LVA003's has two); `Result.replacements` replaces
+  `Result.replacement`.
+- `annotation_coverage` accepts `bytes` as `check_source` does (it crashed on a `match` with a
+  `**rest` capture), and `value_flow` places a `**rest` capture at its name, as `check_source` does.
+- **LVA012** (opt-in): a local bound once, by a plain assignment outside any loop, and never rebound
+  could be `Final`. Reported only when selected by its full code (`--extend-select LVA012`, new;
+  flake8's `extend-select`; pylint's `could-be-final`, `C9112`, off by default), and an error only
+  at `suffocate`.
+- `--extend-select` (`extend-select`): report more codes without narrowing to them.
+- Fix levels: each `--fix` mechanism has a stable id (`literal`, `copy`, `constructor`, ...), shown
+  by `--show-fixes` and as `kinds` in `--format=json`; `fix-select` and `fix-ignore` choose which
+  fixes are offered, and `unsafe-fix-select` makes a trusted guess (`constructor`, `narrow`)
+  certain. The defaults are unchanged. See `docs/FIXES.md`.
+- The error for a `--fix` a file's encoding can't hold names the encoding by its canonical name
+  (`iso8859-1`), the same on CPython and PyPy.
+- A module is read in its PEP 263 declaration's encoding (`# -*- coding: latin-1 -*-`) or its BOM's,
+  not always UTF-8, and `--fix` writes it back in the same one (or leaves it, exit 2, when an
+  annotation can't be written in it).
+- SARIF: each rule has its help text and a `helpUri`, each certain fix is a SARIF `fix`, and columns
+  count characters (`columnKind: unicodeCodePoints`), not UTF-8 bytes.
+- rdjson: a loop target's or an unpacking's suggestion declares it on a line before the statement
+  (it was `for x: T in ...`).
+- The GitHub Action: a `version` input (a PyPI release, installed with uv), a per-code summary table
+  on the run page (`summary`), and a `sarif-file` output for `upload-sarif`.
+- The `constricter-fix` pre-commit hook runs as one process (`require_serial`), so its cross-module
+  `--fix` sees every file; a pre-commit.ci snippet in the README.
 - `--fix` declares a loop's target (LVA002) or an unpacking's names (`name: T` before the
   statement), infers conditionals, arithmetic on builtin scalars, comprehensions, `sorted`/`list`/
   `set`/`frozenset`/`tuple` of known elements and `await` of the module's `async def`s, and, with

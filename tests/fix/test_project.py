@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Cross-module `--fix`: calls to functions other checked files define."""
+"""Cross-module `--fix`: calls to functions, and uses of classes, other checked files define."""
 
 import textwrap
 from pathlib import Path
@@ -7,8 +7,10 @@ from typing import Final
 
 import pytest
 
+from constricter import Offence, check_source
 from constricter.cli import command as cli
 from constricter.fix import project
+from constricter.fix.known import Classes, Outside
 
 UTIL: Final = """
 from pkg.types import Row
@@ -51,6 +53,7 @@ def run() -> None:
     f = u.trow()
     g = length()
 """
+SERIAL: Final = "\n  require_serial: true\n"
 DEEP: Final = "    x: int = helper()\n    y = far()\n"
 FIXED: Final = """
 from pkg import helper
@@ -145,3 +148,94 @@ def test_calls_skip_what_they_cannot_resolve(tmp_path: Path) -> None:
         "b": project.Module("b", {}, {"f": ("a", "f")}),
     }
     assert not project.calls(project.Index(cycle, sorted(cycle)), Path("a.py"))
+
+
+def test_split_run_misses_what_the_serial_hook_fixes(tmp_path: Path) -> None:
+    """Split across processes (as pre-commit does by default), `main.py` can't see `pkg`'s types.
+
+    So the `constricter-fix` hook asks pre-commit for one process (`require_serial`).
+    """
+    _package(tmp_path)
+    main: Path = _write(tmp_path / "main.py", MAIN)
+    assert cli.main(["--fix", "-q", str(main)]) == cli.EXIT_FOUND
+    assert main.read_text(encoding="utf-8") != FIXED
+    assert cli.main(["--fix", "-q", str(main), str(tmp_path / "pkg")]) == cli.EXIT_FOUND
+    assert main.read_text(encoding="utf-8") == FIXED
+    hooks: list[str] = (
+        (Path(__file__).parents[2] / ".pre-commit-hooks.yaml").read_text(encoding="utf-8").split("- id: ")
+    )
+    fix: str = next(hook for hook in hooks if hook.startswith("constricter-fix\n"))
+    assert SERIAL in fix
+
+
+MODELS: Final = """
+from typing import Self
+
+from pkg.types import Tag
+
+
+class Row:
+    size: int
+    tag: Tag
+    local: "Hidden"
+
+    @property
+    def label(self) -> str:
+        return ""
+
+    def total(self) -> float:
+        return 0.0
+
+    def again(self) -> Self:
+        return self
+
+
+class Hidden:
+    pass
+"""
+USES: Final = """
+import pkg.models as m
+from pkg import Row
+from pkg.types import Tag
+
+
+def f(row: Row, other: m.Row) -> None:
+    a = row.size
+    b = row.label
+    c = row.total()
+    d = row.again()
+    e = other.again()
+    g = row.tag
+    h = other.tag
+    i = row.local
+    j = other.missing
+"""
+
+
+def test_imported_classes_type_their_members(tmp_path: Path) -> None:
+    """An imported class's attributes, properties and methods type their uses, as in its own module.
+
+    Through `from pkg import Row` (a re-export) and `import pkg.models as m`; a `Self` return is the
+    class as the file spells it; a type the file can't name (`Hidden`) is left out.
+    """
+    _ = _write(tmp_path / "pkg" / "__init__.py", "from .models import Row\n")
+    _ = _write(tmp_path / "pkg" / "types.py", "class Tag:\n    pass\n")
+    _ = _write(tmp_path / "pkg" / "models.py", MODELS)
+    main: Path = _write(tmp_path / "main.py", USES)
+    imported: project.Imported = project.imported(project.index(sorted(tmp_path.rglob("*.py"))), main)
+    offences: list[Offence] = check_source(
+        main.read_text(encoding="utf-8"),
+        outside=Outside(classes=imported.classes),
+    )
+    assert {o.name: o.fix for o in offences} == {
+        "a": "int",
+        "b": "str",
+        "c": "float",
+        "d": "Row",
+        "e": "m.Row",
+        "g": "Tag",
+        "h": "Tag",
+        "i": None,
+        "j": None,
+    }
+    assert project.imported(project.Index({}, []), main) == project.Imported({}, Classes({}, {}))

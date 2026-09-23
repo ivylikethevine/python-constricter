@@ -102,12 +102,25 @@ jobs:
             github.com:443
             pypi.org:443
             files.pythonhosted.org:443
+            raw.githubusercontent.com:443
+            releases.astral.sh:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The repository's own action, run on its own code.
+      # The repository's own action, run on its own code (with the summary table on the run page).
+      - uses: ./
+        id: constricter
+        with:
+          args: --level=suffocate --all-scopes --format=github constricter tests
+      # Its SARIF log: there, and as clean as the check.
+      - env:
+          SARIF: ${{ steps.constricter.outputs.sarif-file }}
+        run: jq -e '.version == "2.1.0" and (.runs[0].results | length) == 0' "$SARIF"
+      # The latest release from PyPI, installed with uv.
       - uses: ./
         with:
+          version: 0.2.3
+          summary: "false"
           args: --level=suffocate --all-scopes --format=github constricter tests
 
   corpus:
@@ -116,9 +129,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [stdlib, requests, flask, django, sqlalchemy]
+        package: [stdlib, requests, flask, django, sqlalchemy, fastapi, pydantic, rich, pandas, sentry_sdk, twisted, pip]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20 # the standard library's profile, in one process, takes minutes
     permissions:
       contents: read
     steps:
@@ -139,7 +152,11 @@ jobs:
           python-version: "3.12" # the `corpus` group's django needs 3.12+
           group: corpus
       # Against the runner's standard library, or one pinned real package (`pyproject.toml`'s
-      # `corpus` group: a tiny HTTP client, two web frameworks, an ORM): no crashes or slowdowns
+      # `corpus` group: a tiny HTTP client, two web frameworks, an ORM, an annotation-driven API
+      # framework, a runtime-validation library, a terminal renderer, a data library, Python 2/3-era
+      # code), or pure
+      # Python 2 (Twisted 12.3.0) and pip 20.3.4's 2/3-era type comments, hash-pinned sdists
+      # tests/corpus/corpus_sources.py fetches (neither installs as a dependency): no crashes or slowdowns
       # (corpus.py), and `--fix` doesn't break any file or leave anything for a second pass
       # (corpus_fix.py).
       - name: Find the package's path
@@ -149,15 +166,28 @@ jobs:
         run: |
           if [ "$PACKAGE" = stdlib ]; then
             echo "path=" >> "$GITHUB_OUTPUT"
+          elif [ "$PACKAGE" = twisted ] || [ "$PACKAGE" = pip ]; then
+            echo "path=$(python tests/corpus/corpus_sources.py "$PACKAGE")" >> "$GITHUB_OUTPUT"
           else
             echo "path=$(python -c "import $PACKAGE, os; print(os.path.dirname($PACKAGE.__file__))")" >> "$GITHUB_OUTPUT"
           fi
-      - run: python tests/corpus.py ${TARGET_PATH:+"$TARGET_PATH"}
+      - run: python tests/corpus/corpus.py ${TARGET_PATH:+"$TARGET_PATH"}
         env:
           TARGET_PATH: ${{ steps.target.outputs.path }}
-      - run: python tests/corpus_fix.py ${TARGET_PATH:+"$TARGET_PATH"}
+      - run: python tests/corpus/corpus_fix.py ${TARGET_PATH:+"$TARGET_PATH"}
         env:
           TARGET_PATH: ${{ steps.target.outputs.path }}
+      # Where constricter's own time goes (corpus_profile.py): its slowest modules and functions, in
+      # the job's summary, and the profile itself, kept for `python -m pstats` or snakeviz.
+      - name: Profile
+        run: python tests/corpus/corpus_profile.py ${TARGET_PATH:+"$TARGET_PATH"} >> "$GITHUB_STEP_SUMMARY"
+        env:
+          TARGET_PATH: ${{ steps.target.outputs.path }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: profile-${{ matrix.package }}
+          path: local/profile/
+          if-no-files-found: error
 
   test:
     name: Test (${{ matrix.os }}, ${{ matrix.python }})

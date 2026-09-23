@@ -12,8 +12,15 @@ from typing import Final, cast
 
 from constricter import __version__
 from constricter.cli import baseline
-from constricter.cli.config import DEFAULT_BASELINE, config_defaults, project_root, unknown_codes
+from constricter.cli.config import (
+    DEFAULT_BASELINE,
+    config_defaults,
+    project_root,
+    unknown_codes,
+    unknown_fix_kinds,
+)
 from constricter.cli.explain import explain
+from constricter.cli.hints import SERVERS
 from constricter.cli.paths import STDIN, excluded
 from constricter.cli.report import Format, Result
 from constricter.offences import (
@@ -21,7 +28,9 @@ from constricter.offences import (
     MAX_LENGTH,
     MESSAGES,
     NESTING,
+    OPT_IN,
     Checks,
+    FixPolicy,
     Level,
     Offence,
 )
@@ -94,6 +103,72 @@ def _codes(text: str) -> list[str]:
     return codes
 
 
+def _fix_kinds(text: str) -> list[str]:
+    """Read a comma-separated list of `--fix` mechanisms (`copy,constructor`).
+
+    Returns:
+      Them.
+
+    Raises:
+      argparse.ArgumentTypeError: One isn't a mechanism's id.
+
+    """
+    kinds: list[str] = [kind.strip() for kind in text.split(",") if kind.strip()]
+    unknown: list[str]
+    if unknown := unknown_fix_kinds(kinds):
+        message: str = f"no --fix mechanism is called {', '.join(unknown)} (see docs/FIXES.md)"
+        raise argparse.ArgumentTypeError(message)
+    return kinds
+
+
+def _gigabytes(text: str) -> float:
+    """Read `--infer-memory`: a positive number of gigabytes (GiB).
+
+    Returns:
+      It.
+
+    Raises:
+      ArgumentTypeError: It isn't one.
+
+    """
+    try:
+        value: float = float(text)
+    except ValueError:
+        value = 0.0
+    if not value > 0:
+        message: str = f"expected a positive number of gigabytes, got {text!r}"
+        raise argparse.ArgumentTypeError(message)
+    return value
+
+
+def _bytes(gigabytes: float | None) -> int | None:
+    """Turn gigabytes (GiB) into bytes.
+
+    Returns:
+      Them, or `None` for none.
+
+    """
+    return None if gigabytes is None else int(gigabytes * (1 << 30))
+
+
+def _checkers(text: str) -> list[str]:
+    """Read `--infer-with`'s checkers: comma-separated, each once, in the order they're preferred.
+
+    Returns:
+      Them.
+
+    Raises:
+      ArgumentTypeError: One isn't a checker it knows.
+
+    """
+    checkers: list[str] = [checker.strip() for checker in text.split(",") if checker.strip()]
+    unknown: list[str]
+    if unknown := [checker for checker in checkers if checker not in SERVERS]:
+        message: str = f"unknown checker {', '.join(unknown)} (known: {', '.join(sorted(SERVERS))})"
+        raise argparse.ArgumentTypeError(message)
+    return list(dict.fromkeys(checkers))
+
+
 def _parser() -> argparse.ArgumentParser:
     parser: argparse.ArgumentParser = argparse.ArgumentParser(
         prog="constricter",
@@ -157,6 +232,13 @@ def _parser() -> argparse.ArgumentParser:
         help="report only these codes or prefixes (LVA001,LVA00)",
     )
     _ = parser.add_argument(
+        "--extend-select",
+        type=_codes,
+        default=[],
+        metavar="CODES",
+        help="also report these codes (an opt-in one, like LVA012, by its full code)",
+    )
+    _ = parser.add_argument(
         "--ignore",
         type=_codes,
         default=[],
@@ -172,6 +254,40 @@ def _parser() -> argparse.ArgumentParser:
         "--unsafe-fixes",
         action="store_true",
         help="with --fix or --diff: also apply guesses (a call to a class that may be generic)",
+    )
+    _ = parser.add_argument(
+        "--fix-select",
+        type=_fix_kinds,
+        default=[],
+        metavar="KINDS",
+        help="offer only fixes these mechanisms decide (literal,copy,...; default: all)",
+    )
+    _ = parser.add_argument(
+        "--fix-ignore",
+        type=_fix_kinds,
+        default=[],
+        metavar="KINDS",
+        help="never offer a fix one of these mechanisms decided",
+    )
+    _ = parser.add_argument(
+        "--unsafe-fix-select",
+        type=_fix_kinds,
+        default=[],
+        metavar="KINDS",
+        help="treat guesses from these mechanisms (constructor, narrow) as certain",
+    )
+    _ = parser.add_argument(
+        "--infer-with",
+        type=_checkers,
+        default=[],
+        metavar="CHECKERS",
+        help="type what --fix can't with these type checkers' inferred types, as guesses (basedpyright,ty)",
+    )
+    _ = parser.add_argument(
+        "--infer-memory",
+        type=_gigabytes,
+        metavar="GB",
+        help="with --infer-with: the most memory each checker's servers use together (default: 8)",
     )
     _ = parser.add_argument(
         "--diff",
@@ -360,6 +476,8 @@ class Options:
     output: Output
     mode: Mode
     jobs: int
+    infer_with: tuple[str, ...] = ()  # the type checkers whose inferred types `--fix` guesses with
+    infer_memory: int | None = None  # bytes each checker's servers may use together (`--infer-memory`)
 
     @classmethod
     def parse(cls, argv: Sequence[str] | None) -> "Options":
@@ -394,6 +512,12 @@ class Options:
                     (name, tuple(wider))
                     for name, wider in cast("dict[str, list[str]]", getattr(args, "narrower", {})).items()
                 ),
+                final=bool(OPT_IN & {*_select(args), *cast("list[str]", args.extend_select)}),
+                fixes=FixPolicy(
+                    frozenset(cast("list[str]", args.fix_select)),
+                    frozenset(cast("list[str]", args.fix_ignore)),
+                    frozenset(cast("list[str]", args.unsafe_fix_select)),
+                ),
             ),
             unsafe_fixes=cast("bool", args.unsafe_fixes),
             filter=_filter(parser, args, mode),
@@ -409,6 +533,8 @@ class Options:
             mode=mode,
             # Standard input can only be read once, in this process.
             jobs=1 if paths == [STDIN] else cast("int", args.jobs) or os.cpu_count() or 1,
+            infer_with=tuple(cast("list[str]", args.infer_with)),
+            infer_memory=_bytes(cast("float | None", args.infer_memory)),
         )
 
 
@@ -432,12 +558,22 @@ def _filter(parser: argparse.ArgumentParser, args: argparse.Namespace, mode: Mod
     return Filter(
         level=LEVELS[cast("str", args.level)],
         per_path=cast("dict[str, str]", getattr(args, "per_path_levels", {})),
-        select=[c.upper() for c in cast("list[str]", args.select)],
+        select=_select(args) + cast("list[str]", args.extend_select) if _select(args) else [],
         ignore=[c.upper() for c in cast("list[str]", args.ignore)],
         per_file_ignores=cast("dict[str, list[str]]", getattr(args, "per_file_ignores", {})),
         baseline_file=baseline_path,
         entries=entries,
     )
+
+
+def _select(args: argparse.Namespace) -> list[str]:
+    """Read `--select`.
+
+    Returns:
+      Its codes, upper-cased.
+
+    """
+    return [c.upper() for c in cast("list[str]", args.select)]
 
 
 def _mode(parser: argparse.ArgumentParser, args: argparse.Namespace) -> Mode:

@@ -101,7 +101,7 @@ def fix(raw: str, offences: Sequence[Offence]) -> tuple[str, list[Cell]]:
     by_cell: dict[int, list[Offence]] = {}
     o: Offence
     for o in offences:
-        if o.fix and o.cell is not None:
+        if o.edit is not None and o.cell is not None:
             by_cell.setdefault(o.cell, []).append(o)
     changed: list[Cell] = []
     number: int

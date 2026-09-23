@@ -1,37 +1,55 @@
 # SPDX-License-Identifier: MIT
-"""Cross-module `--fix`: the return types of the functions other checked files define.
+"""Cross-module `--fix`: the functions and classes other checked files define.
 
 `index` reads every file once for its module name, its top-level functions' declared return types
-(as `annotations.returns` picks them), and what each top-level name refers to. `calls` then gives a
-file the return type of each function it imports (`from m import f`, `import m as a` then `a.f()`),
-but only where every name in that type means the same thing in the file as where it was written:
-otherwise the fix would name something undefined, or something else.
+(as `annotations.returns` picks them), its classes' attributes and methods' returns (as `classes`
+and `method_returns` do), and what each top-level name refers to. `calls` then gives a file the
+return type of each function it imports (`from m import f`, `import m as a` then `a.f()`), and
+`imported` those and each imported class's attributes and methods, but only where every name in a
+type means the same thing in the file as where it was written: otherwise the fix would name
+something undefined, or something else.
 """
 
 import ast
 import bisect
 import builtins
 import itertools
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
+from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.rules.annotations import returns
+from constricter.fix.known import Classes
+from constricter.rules.annotations import classes, method_returns, returns
 
 _BUILTINS: Final = frozenset(dir(builtins))
 _PACKAGE: Final = "__init__"
 _SUFFIX: Final = ".py"
 _HOPS: Final = 5  # how many re-exports (`from .util import f` in an `__init__`) to follow
+_FUNCTION: Final = "function"
+_CLASS: Final = "class"
 # What a name refers to: a module and an attribute of it (`None`: the module itself).
 Origin: TypeAlias = tuple[str, str | None]
 
 
 class Module(NamedTuple):
-    """What one file offers and uses: its name, functions' return types, and names' origins."""
+    """What one file offers and uses: its name, functions' return types, names' origins, and classes'.
+
+    `classes` and `methods`: each class's attributes and its methods' returns (see `Classes`).
+    """
 
     name: str
     returns: dict[str, str]
     names: dict[str, Origin]
+    classes: Mapping[str, Mapping[str, str]] = MappingProxyType({})
+    methods: Mapping[str, Mapping[str, str]] = MappingProxyType({})
+
+
+class Imported(NamedTuple):
+    """What a file's imports from other checked files offer `--fix`, each keyed as the file spells it."""
+
+    calls: dict[str, str]
+    classes: Classes
 
 
 class Index(NamedTuple):
@@ -124,25 +142,43 @@ def _bound(stmt: ast.stmt) -> Iterator[str]:
             pass
 
 
-def index(paths: Sequence[Path]) -> Index:
+def index(
+    paths: Sequence[Path],
+    mapper: Callable[[Callable[[Path], Module | None], Sequence[Path]], Iterable[Module | None]] = map,
+) -> Index:
     """Read each `.py` file in `paths` (one that can't be read or parsed is left out).
+
+    `mapper` reads them (`map`, or a process pool's, to read them in parallel).
 
     Returns:
       Each module's name, mapped to what it offers and uses.
 
     """
-    modules: dict[str, Module] = {}
-    path: Path
-    for path in paths:
-        if path.suffix != _SUFFIX or not path.is_file():
-            continue
-        try:
-            tree: ast.Module = ast.parse(path.read_bytes(), str(path))
-        except (OSError, SyntaxError, ValueError):
-            continue
-        name: str = module_name(path)
-        modules[name] = Module(name, returns(tree), _names(tree, name, is_package=path.stem == _PACKAGE))
+    modules: dict[str, Module] = {module.name: module for module in mapper(read, paths) if module is not None}
     return Index(modules, sorted(modules))
+
+
+def read(path: Path) -> Module | None:
+    """Read what one `.py` file offers and uses.
+
+    Returns:
+      Its module, or `None` if it isn't a `.py` file, or can't be read or parsed.
+
+    """
+    if path.suffix != _SUFFIX or not path.is_file():
+        return None
+    try:
+        tree: ast.Module = ast.parse(path.read_bytes(), str(path))
+    except (OSError, SyntaxError, ValueError):
+        return None
+    name: str = module_name(path)
+    return Module(
+        name,
+        returns(tree),
+        _names(tree, name, is_package=path.stem == _PACKAGE),
+        classes(tree),
+        method_returns(tree),
+    )
 
 
 def _origin(module: Module, name: str) -> Origin | None:
@@ -165,20 +201,35 @@ def _roots(annotation: str) -> set[str]:
 
 
 def _function(modules: Mapping[str, Module], origin: Origin, hops: int = _HOPS) -> tuple[Module, str] | None:
-    """Follow `origin` (through re-exports) to the module that defines it.
+    """Follow `origin` (through re-exports) to the module that defines it as a function.
 
     Returns:
       That module and the function's name, or `None`.
+
+    """
+    return _defined(modules, origin, _FUNCTION, hops)
+
+
+def _defined(
+    modules: Mapping[str, Module],
+    origin: Origin,
+    kind: str,
+    hops: int = _HOPS,
+) -> tuple[Module, str] | None:
+    """Follow `origin` (through re-exports) to the module that defines it as a `kind` (function, class).
+
+    Returns:
+      That module and the name, or `None`.
 
     """
     module: Module | None = modules.get(origin[0])
     attribute: str | None = origin[1]
     if module is None or attribute is None or not hops:
         return None
-    if attribute in module.returns:
+    if attribute in (module.returns if kind == _FUNCTION else module.classes):
         return module, attribute
     onward: Origin | None = module.names.get(attribute)
-    return _function(modules, onward, hops - 1) if onward and onward[0] != module.name else None
+    return _defined(modules, onward, kind, hops - 1) if onward and onward[0] != module.name else None
 
 
 def _submodules(catalog: Index, prefix: str) -> Iterator[Module]:
@@ -252,3 +303,68 @@ def _same(target: Module, defined: Module, name: str) -> bool:
     """
     origin: Origin | None = _origin(target, name)
     return origin is not None and origin == _origin(defined, name)
+
+
+def imported(catalog: Index, path: Path) -> Imported:
+    """Return, for the file at `path`, what it imports from other checked files that it can name.
+
+    Each function's return type (`calls`), and each class's attributes and methods' returns, keyed as
+    the file spells the class (`Row`, `m.Row`); a type naming the class itself (a `Self` return) is
+    spelled that way too.
+
+    Returns:
+      Them; nothing for a file `catalog` doesn't have (a notebook, standard input).
+
+    """
+    name: str = module_name(path)
+    modules: dict[str, Module] = catalog.modules
+    attributes: dict[str, dict[str, str]] = {}
+    methods: dict[str, dict[str, str]] = {}
+    target: Module | None
+    if path.suffix != _SUFFIX or (target := modules.get(name)) is None:
+        return Imported({}, Classes(attributes, methods))
+    local: str
+    origin: Origin
+    for local, origin in target.names.items():
+        spelled: list[tuple[str, Origin]] = []
+        if origin[1] is not None and origin[0] != name:
+            spelled = [(local, origin)]
+        elif origin[1] is None:  # a module: `m.Row`, or `pkg.m.Row` after `import pkg.m`
+            spelled = [
+                (f"{local}{other.name.removeprefix(origin[0])}.{cls}", (other.name, cls))
+                for other in _submodules(catalog, origin[0])
+                for cls in other.classes
+            ]
+        key: str
+        where: Origin
+        for key, where in spelled:
+            defined: tuple[Module, str] | None
+            if (defined := _defined(modules, where, _CLASS)) is not None:
+                attributes[key] = _portable(target, defined, key, defined[0].classes[defined[1]])
+                methods[key] = _portable(target, defined, key, defined[0].methods.get(defined[1], {}))
+    return Imported(calls(catalog, path), Classes(attributes, methods))
+
+
+def _portable(
+    target: Module,
+    defined: tuple[Module, str],
+    key: str,
+    types: Mapping[str, str],
+) -> dict[str, str]:
+    """Keep the types a class's members have that `target` can write as they are (see `_same`).
+
+    One that is the class itself is written as `target` spells it (`key`).
+
+    Returns:
+      Each kept member's type.
+
+    """
+    kept: dict[str, str] = {}
+    member: str
+    annotation: str
+    for member, annotation in types.items():
+        if annotation == defined[1]:
+            kept[member] = key
+        elif all(_same(target, defined[0], root) for root in _roots(annotation)):
+            kept[member] = annotation
+    return kept

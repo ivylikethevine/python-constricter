@@ -1,14 +1,18 @@
 # SPDX-License-Identifier: MIT
 """The `constricter` command: file discovery, `# noqa`, output and exit status."""
 
+import hashlib
 import io
 import json
+import os
 import runpy
 import sys
 import textwrap
+import urllib.request
 from pathlib import Path
 from typing import Final, TypeAlias, cast
 
+import fastjsonschema
 import pytest
 
 from constricter.cli import command as cli
@@ -32,6 +36,16 @@ LOOP: Final = "for/match variable 'loop' is untyped; declare it before the state
 _Json: TypeAlias = "str | int | float | bool | list[_Json] | dict[str, _Json] | None"
 _JsonObject: TypeAlias = dict[str, _Json]
 _Sarif: TypeAlias = dict[str, list[dict[str, list[dict[str, _Json]]]]]
+# SARIF 2.1.0's JSON schema, from SchemaStore at a pinned commit, fetched once into `local/` (not
+# distributed here) and checked against its SHA-256.
+SARIF_SCHEMA: Final = Path(__file__).resolve().parents[2] / "local" / "sarif-2.1.0.json"
+SARIF_SCHEMA_URL: Final = (
+    "https://raw.githubusercontent.com/SchemaStore/schemastore/"
+    "2aded6096789c43a722556cf5019464ee747e495/src/schemas/json/sarif-2.1.0.json"
+)
+SARIF_SCHEMA_SHA256: Final = "c96eb2d311c37b0a38cbd18c52d79a68f778bbd2d831abed7412d9850740f785"
+FIXES: Final = "fixes"
+RULES_URL: Final = "https://github.com/ivylikethevine/python-constricter#rules"
 CLEAN: Final = """
 def clean() -> None:
     fine: int = 1
@@ -173,7 +187,7 @@ def test_json_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
         "severity": "error",
         "message": PLAIN,
         "cell": None,
-        "fix": {"annotation": "int", "reason": "a literal", "unsafe": False},
+        "fix": {"annotation": "int", "reason": "a literal", "unsafe": False, "kinds": ["literal"]},
     }
     assert [(r["code"], r["severity"]) for r in results] == [
         ("LVA001", "error"),
@@ -217,6 +231,74 @@ def test_sarif_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Non
             },
         },
     ]
+
+
+def _sarif_schema() -> bytes:
+    """Read the SARIF schema, fetching it the first time; offline, skip (never in CI).
+
+    Returns:
+      Its bytes, their SHA-256 checked.
+
+    Raises:
+      OSError: it can't be fetched, in CI.
+
+    """
+    if not SARIF_SCHEMA.exists():
+        SARIF_SCHEMA.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            _ = urllib.request.urlretrieve(SARIF_SCHEMA_URL, SARIF_SCHEMA)  # a pinned https URL
+        except OSError as error:  # URLError is one
+            if os.environ.get("CI"):
+                raise
+            pytest.skip(f"can't fetch the SARIF schema: {error}")
+    schema: bytes = SARIF_SCHEMA.read_bytes()
+    assert hashlib.sha256(schema).hexdigest() == SARIF_SCHEMA_SHA256
+    return schema
+
+
+def _replacement(result: dict[str, _Json]) -> tuple[_Json, _Json]:
+    fixes: list[_JsonObject] = cast("list[_JsonObject]", result[FIXES])
+    changes: list[_JsonObject] = cast("list[_JsonObject]", fixes[0]["artifactChanges"])
+    replacement: _JsonObject = cast("list[_JsonObject]", changes[0]["replacements"])[0]
+    return replacement["deletedRegion"], replacement["insertedContent"]
+
+
+def test_sarif_links_rules_and_offers_certain_fixes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Each SARIF rule links to its docs; each certain fix is a SARIF fix, and the log is valid."""
+    source: Path = _write(
+        tmp_path / "fixable.py",
+        """
+        def fixable(items: list[int]) -> None:
+            plain = 1
+            for loop in items:
+                pass
+            é = "x"; ü = 2
+            guess = Thing()
+        """,
+    )
+    assert cli.main(["--format=sarif", str(source)]) == cli.EXIT_FOUND
+    out: str = capsys.readouterr().out
+    schema: _JsonObject = cast("_JsonObject", json.loads(_sarif_schema()))
+    log: _JsonObject = cast("_JsonObject", json.loads(out))  # a copy: validating fills in defaults
+    valid: _JsonObject = cast("_JsonObject", fastjsonschema.validate(schema, log))
+    assert valid == log
+    sarif: _Sarif = cast("_Sarif", json.loads(out))
+    run: _JsonObject = cast("_JsonObject", sarif["runs"][0])
+    driver: _JsonObject = cast("_JsonObject", cast("_JsonObject", run["tool"])["driver"])
+    rules: list[_JsonObject] = cast("list[_JsonObject]", driver["rules"])
+    assert all(rule["helpUri"] == RULES_URL for rule in rules)
+    results: list[_JsonObject] = cast("list[_JsonObject]", run["results"])
+    assert [_replacement(r) for r in results[:4]] == [
+        ({"startLine": 3, "startColumn": 10, "endLine": 3, "endColumn": 10}, {"text": ": int"}),
+        ({"startLine": 4, "startColumn": 1, "endLine": 4, "endColumn": 1}, {"text": "    loop: int\n"}),
+        # Columns count characters (`columnKind`), where the offence's count UTF-8 bytes.
+        ({"startLine": 6, "startColumn": 6, "endLine": 6, "endColumn": 6}, {"text": ": str"}),
+        ({"startLine": 6, "startColumn": 15, "endLine": 6, "endColumn": 15}, {"text": ": int"}),
+    ]
+    assert FIXES not in results[4]  # a guess (`--unsafe-fixes`) isn't offered
 
 
 def _pyproject(directory: Path, text: str) -> None:
@@ -744,3 +826,23 @@ def test_rdjson_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> No
     end: dict[str, int] = {"line": 2, "column": 4}
     assert first["suggestions"] == [{"range": {"start": end, "end": end}, "text": ": int"}]
     assert set(report["diagnostics"][1]) == set(first) - {"suggestions"}  # `b = []` has no fix
+
+
+def test_rdjson_declares_a_loop_target_on_a_line_of_its_own(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A loop target's suggestion is a declaration before the loop, not `for x: T in ...`."""
+    loop: Path = _write(
+        tmp_path / "loop.py",
+        "def f(items: list[str]) -> None:\n    for x in items:\n        pass\n",
+    )
+    assert cli.main(["--format=rdjson", str(loop)]) == cli.EXIT_CLEAN
+    report: dict[str, list[_JsonObject]] = cast(
+        "dict[str, list[_JsonObject]]",
+        json.loads(capsys.readouterr().out),
+    )
+    start: dict[str, int] = {"line": 2, "column": 1}
+    assert report["diagnostics"][0]["suggestions"] == [
+        {"range": {"start": start, "end": start}, "text": "    x: str\n"},
+    ]

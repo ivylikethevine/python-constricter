@@ -4,12 +4,14 @@
 from typing import Final
 
 from constricter.offences import (
+    CAN_BE_FINAL,
     COMMENT_TYPED_TARGET,
     LONG_TUPLE,
     MESSAGES,
     MISMATCHED_TYPE,
     NARROWABLE_TYPE,
     NESTED_TYPE,
+    OPT_IN,
     REDUNDANT_TYPE,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
@@ -75,6 +77,11 @@ _WHY: Final = {
         "counting positions: what's `row[3]`? Name the fields instead, with a `NamedTuple` or a\n"
         "dataclass. `tuple[int, ...]` (any length) isn't a list of positions, so it's never counted."
     ),
+    CAN_BE_FINAL: (
+        "A local bound exactly once, by a plain `name = value` outside any loop, and never rebound\n"
+        "(not from a nested function either) could say so: `limit: Final = 10`. Off unless selected\n"
+        "by its full code (`--extend-select LVA012`): most locals are bound once."
+    ),
 }
 
 
@@ -92,4 +99,5 @@ def explain(code: str) -> str:
         if offence.is_reported(level)
     ]
     message: str = MESSAGES[code].format(name="`name`", detail="T")
-    return f"{code}: {message}\n\n{_WHY[code]}\n\n{', '.join(levels)}\n"
+    selected: str = " (only when selected)" if code in OPT_IN else ""
+    return f"{code}: {message}\n\n{_WHY[code]}\n\n{', '.join(levels)}{selected}\n"

@@ -14,10 +14,13 @@ from typing import TypeAlias, cast
 
 import pytest
 
-from constricter import check_source
+from constricter import check_source, check_tree
 from constricter.cli import command as cli
 from constricter.fix import fixes
-from constricter.fix.inference import Inference, Known, looped, unpacked
+from constricter.fix.inference import looped
+from constricter.fix.known import Inference, Known
+from constricter.fix.targets import unpacked
+from constricter.offences import COMMENT_TYPED_TARGET as COMMENT_TYPED
 from constricter.offences import Edit, Fix, Offence
 
 _NOTHING_KNOWN: Known = Known({}, frozenset(), {}, {})
@@ -142,12 +145,47 @@ def test_a_declared_loop_target_types_what_follows_in_the_same_pass() -> None:
     assert fixed in _fixed(source)
 
 
-def test_a_type_commented_loop_target_is_lva003_and_isnt_declared() -> None:
-    """`for x in y:  # type: int` is LVA003 and keeps its comment: no declaration is offered."""
-    offences: list[Offence] = check_source(
-        "def f() -> None:\n    for x in range(3):  # type: int\n        pass\n",
+def test_a_type_commented_loop_target_is_declared_from_its_comment(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """LVA003's fix declares the comment's type before the loop and drops the comment.
+
+    A tuple target takes the comment's parts; a comment after it stays; a header over several lines,
+    or a comment that isn't an annotation, gets no fix; a second pass has nothing left.
+    """
+    source: str = (
+        "def f(items: list[int]) -> None:\n"
+        "    for x in items:  # type: int\n"
+        "        pass\n"
+        "    for a, b in pairs():  # type: int, str  # noqa: E501\n"
+        "        pass\n"
+        "    for c in (\n"
+        "        items\n"
+        "    ):  # type: int\n"
+        "        pass\n"
+        "    for d in items:  # type: not an annotation(\n"
+        "        pass\n"
     )
-    assert [(o.code, o.fix) for o in offences] == [("LVA003", None)]
+    fixed: dict[str, str | None] = {o.name: o.fix for o in check_source(source) if o.code == COMMENT_TYPED}
+    assert fixed == {"x": "int", "a": "int", "b": "str", "c": None, "d": None}
+    path: Path = tmp_path / "loops.py"
+    _ = path.write_text(source, encoding="utf-8", newline="\n")
+    assert cli.main(["--fix", "-q", "--level=suffocate", str(path)]) == cli.EXIT_FOUND
+    assert path.read_text(encoding="utf-8").startswith(
+        (
+            "def f(items: list[int]) -> None:\n"
+            "    x: int\n"
+            "    for x in items:\n"
+            "        pass\n"
+            "    a: int\n"
+            "    b: str\n"
+            "    for a, b in pairs():  # noqa: E501\n"
+        ),
+    )
+    _ = capsys.readouterr()
+    assert cli.main(["--diff", "--level=suffocate", str(path)]) == cli.EXIT_CLEAN
+    assert not capsys.readouterr().out  # nothing left to fix
 
 
 def test_a_declaration_keeps_the_files_line_endings() -> None:
@@ -216,3 +254,19 @@ def test_a_chained_assignment_binds_only_its_names() -> None:
     assert [o.name for o in check_source("def f(o: object) -> None:\n    x = o.y = 1\n")] == ["x"]
     source: str = "def f(values: list[int]) -> None:\n    x = a, *rest = values\n"
     assert [o.name for o in check_source(source)] == ["x", "a", "rest"]
+
+
+def test_a_drop_left_unmade_where_it_cant_be() -> None:
+    """A drop whose columns split a character, or a comment not on the header's line, is no edit."""
+    split: Offence = Offence(1, 0, "x", edit=Fix("int", edit=Edit.DECLARE, span=(1, 0), drop=(1, 2)))
+    assert fixes.dropped(["é = 1\n"], split) is None
+    tree: ast.Module = ast.parse(
+        "def f(y: list[int]) -> None:\n    for x in y:  # type: int\n        pass\n",
+        type_comments=True,
+    )
+    lines: list[str] = [
+        "def f(y: list[int]) -> None:",
+        "    for x in y:",
+        "        pass",
+    ]  # no comment in them
+    assert [(o.code, o.edit) for o in check_tree(tree, lines=lines)] == [(COMMENT_TYPED, None)]

@@ -29,6 +29,7 @@ from constricter import (
     check_source,
     check_tree,
 )
+from constricter.rules.checker import value_flow
 
 EXEMPT: Final = """
 import os
@@ -256,8 +257,9 @@ def test_scopes(source: str, expected: list[Offence]) -> None:
 
 def test_its_own_source_follows_the_rule() -> None:
     """The package and its tests pass every code, module and class bodies included."""
-    package: Path = Path(__file__).resolve().parents[1] / "constricter"
-    sources: list[Path] = sorted(package.rglob("*.py")) + sorted(Path(__file__).parent.glob("*.py"))
+    root: Path = Path(__file__).resolve().parents[2]
+    package: Path = root / "constricter"
+    sources: list[Path] = sorted(package.rglob("*.py")) + sorted((root / "tests").rglob("*.py"))
     assert package / "rules" / "checker.py" in sources
     offences: list[str] = [
         f"{p}:{o.line}: {o.code} {o.name}"
@@ -692,3 +694,28 @@ def test_narrowing_codes_are_reported_from_constrict_and_error_at_suffocate(code
     offence: Offence = Offence(1, 0, "x", code)
     assert [offence.is_reported(level) for level in Level] == [False, False, True, True]
     assert [offence.is_error(level) for level in Level] == [False, False, False, True]
+
+
+REST: Final = "rest"
+BYTES_SOURCE: Final = """\
+def f(data: dict[str, int], items: list[int]) -> None:
+    match data:
+        case {"a": 1, **rest}:
+            count: int = "x"
+    total = 0
+"""
+
+
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-8-sig"])
+def test_every_entry_point_takes_bytes_as_it_takes_text(encoding: str) -> None:
+    """`check_source`, `annotation_coverage` and `value_flow` give bytes what they give the text.
+
+    A `**rest` capture reads the source's lines, to place it at its name.
+    """
+    data: bytes = BYTES_SOURCE.encode(encoding)
+    assert check_source(data) == check_source(BYTES_SOURCE)
+    assert [o.col for o in check_source(data) if o.name == REST] == [
+        BYTES_SOURCE.splitlines()[2].index("rest"),
+    ]
+    assert annotation_coverage(data) == annotation_coverage(BYTES_SOURCE)
+    assert value_flow(data) == value_flow(BYTES_SOURCE) != []

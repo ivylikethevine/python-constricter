@@ -4,6 +4,7 @@
 from constricter.offences import (
     COMMENT_TYPED_TARGET,
     DEFAULT_CHECKS,
+    FIX_KINDS,
     LEVELS,
     LONG_TUPLE,
     MAX_LENGTH,
@@ -18,6 +19,7 @@ from constricter.offences import (
     UNUSED_UNION_MEMBER,
     VAGUE_TYPE,
     Checks,
+    FixPolicy,
     Level,
     Offence,
 )
@@ -27,6 +29,7 @@ __version__ = "0.2.3"
 __all__ = [
     "COMMENT_TYPED_TARGET",
     "DEFAULT_CHECKS",
+    "FIX_KINDS",
     "LEVELS",
     "LONG_TUPLE",
     "MAX_LENGTH",
@@ -42,6 +45,7 @@ __all__ = [
     "VAGUE_TYPE",
     "Checks",
     "Coverage",
+    "FixPolicy",
     "Level",
     "Offence",
     "__version__",

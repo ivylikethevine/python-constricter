@@ -2,30 +2,33 @@
 """The rules: every local variable is typed where it's first bound (see README)."""
 
 import ast
-from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+import warnings
+from collections.abc import Iterator, Mapping, Sequence
+from dataclasses import replace
+from functools import lru_cache
 from typing import Final, NamedTuple, cast
 
-from constricter.fix.inference import (
+from constricter.fix import hinted, imports, returned, stdlib
+from constricter.fix.guesses import guessed
+from constricter.fix.inference import inference, looped
+from constricter.fix.known import (
+    Classes,
+    ClassSide,
     Inference,
     Known,
-    guessed,
-    inference,
-    inferred,
-    iterated,
-    looped,
-    unpacked,
+    LibraryNames,
+    Outside,
+    Returned,
 )
+from constricter.fix.opened import opened
+from constricter.fix.targets import iterated, unpacked
 from constricter.jsonc import as_text
 from constricter.offences import (
     COMMENT_TYPED_TARGET,
     DEFAULT_CHECKS,
-    LONG_TUPLE,
-    NESTED_TYPE,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
     UNTYPED_TARGET,
-    VAGUE_TYPE,
     Checks,
     Edit,
     Fix,
@@ -34,31 +37,40 @@ from constricter.offences import (
 )
 from constricter.rules.annotations import (
     awaited_returns,
-    classes,
-    depth,
+    casts,
+    class_attributes,
+    class_methods,
     factories,
     imported_from,
-    is_vague,
-    length,
     method_returns,
     node_name,
     returns,
 )
-from constricter.rules.flow import Finding, Hierarchy, Kind, Lifetime, augmented, findings, members
+from constricter.rules.annotations import classes as instance_attributes
+from constricter.rules.flow import Finding, Hierarchy, augmented
+from constricter.rules.narrowing import flow_offences
 from constricter.rules.redundant import redundant
+from constricter.rules.scope import Kind, Late, Scope, Settings, certain_type, rests_on
 from constricter.rules.syntax import (
+    FUNCTION_DEFS,
     FunctionDef,
     captures,
     child_statements,
     collect_functions,
+    comment_type,
     expressions,
     owners,
     python2_compatible,
     target_names,
+    type_comment_span,
 )
+from constricter.rules.walked import nodes
 
 # The node class of `type X = ...` statements, by name: Python 3.11's `ast` has no `TypeAlias`.
 _TYPE_ALIAS: Final = "TypeAlias"
+_CLASSMETHOD: Final = "classmethod"
+_ROUNDS: Final = 5  # how many times to re-check what calls an unannotated function, at most
+_COMMENT: Final = "comment"  # the fix kind of LVA003's declaration
 # Enum members mustn't be annotated: a base imported from here is one, however it's aliased.
 _ENUM_MODULES: Final = frozenset({"enum"})
 # The conventional name of an instance method's first parameter: typed as its class, for `--fix`.
@@ -66,50 +78,47 @@ _SELF: Final = "self"
 _TYPE_CHECKING: Final = "TYPE_CHECKING"
 
 
-@dataclass(frozen=True)
-class _Settings:
-    """One module's options, and its source lines (to place a `**rest` capture)."""
-
-    type_comments: bool
-    all_scopes: bool
-    nesting: int
-    max_length: int
-    lines: Sequence[str]
-    known: Known  # what the module declares that `--fix` infers types from
-    hierarchy: Hierarchy  # which types are narrower than which, for value flow
-    owners: dict[int, str]  # each method's class, by `id()`, to type its `self`, for `--fix`
-
-
 def check_source(
     source: str | bytes,
     filename: str = "<unknown>",
     checks: Checks = DEFAULT_CHECKS,
     *,
-    calls: Mapping[str, str] | None = None,
+    outside: Outside | None = None,
 ) -> list[Offence]:
     """Return the offences in `source`, sorted. Raises `SyntaxError`.
 
-    `calls` adds the return types of functions other modules define, for `--fix` (see `project.calls`).
+    `outside` adds what's known of it from other files and a type checker, for `--fix` (see `Outside`).
 
     Returns:
       Every offence; `# noqa` comments are the caller's to apply.
 
     """
     tree: ast.Module = _parse(source, filename)
-    return check_tree(tree, checks, lines=as_text(source).splitlines(), calls=calls)
+    return check_tree(
+        tree,
+        checks,
+        lines=as_text(source).splitlines(),
+        outside=outside,
+    )
 
 
 def _parse(source: str | bytes, filename: str) -> ast.Module:
     """Parse `source` with its `# type:` comments; without them if one is misplaced.
 
+    Python's warnings about the source (an invalid escape sequence in a string) are left unsaid: they're
+    about the code checked, not findings, and it's the checked project's to see them when it runs.
+
     Returns:
       The module. Raises `SyntaxError`.
 
     """
-    try:
-        return ast.parse(source, filename, type_comments=True)
-    except SyntaxError:  # a misplaced `# type:` comment, or a real error raised again here
-        return ast.parse(source, filename)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", SyntaxWarning)
+        warnings.simplefilter("ignore", DeprecationWarning)  # what Python 3.11 warns about them with
+        try:
+            return ast.parse(source, filename, type_comments=True)
+        except SyntaxError:  # a misplaced `# type:` comment, or a real error raised again here
+            return ast.parse(source, filename)
 
 
 def _settings(
@@ -117,16 +126,26 @@ def _settings(
     checks: Checks,
     lines: Sequence[str],
     calls: dict[str, str],
-) -> _Settings:
-    return _Settings(
-        checks.type_comments or python2_compatible(tree),
-        checks.all_scopes,
-        checks.nesting,
-        checks.max_length,
+    outside: Outside | None = None,
+) -> Settings:
+    imported: Classes | None = None if outside is None else outside.classes
+    return Settings(
+        checks._replace(type_comments=checks.type_comments or python2_compatible(tree)),
         lines,
-        Known(calls, factories(tree), classes(tree), method_returns(tree), awaited_returns(tree)),
+        Known(
+            calls,
+            factories(tree),
+            {**(imported.attributes if imported else {}), **instance_attributes(tree)},
+            {**(imported.methods if imported else {}), **method_returns(tree)},
+            awaited_returns(tree),
+            ClassSide(class_attributes(tree), class_methods(tree)),
+            LibraryNames(casts(tree), stdlib.origins(tree), imports.plan(tree)),
+            checks.max_length,
+        ),
         Hierarchy.for_module(tree, {name: frozenset(wider) for name, wider in checks.narrower}),
         owners(tree),
+        any(isinstance(node, ast.NamedExpr) for node in nodes(tree)),
+        () if outside is None else outside.hints,
     )
 
 
@@ -135,23 +154,29 @@ def check_tree(
     checks: Checks = DEFAULT_CHECKS,
     *,
     lines: Sequence[str] = (),
-    calls: Mapping[str, str] | None = None,
+    outside: Outside | None = None,
 ) -> list[Offence]:
     """Return the offences in a parsed module, sorted.
 
     `# type:` comments are seen only if it was parsed with `type_comments=True`; they count for `=`
     and `with` too in a module written to run on Python 2. With its source `lines`, a `**rest`
-    capture is reported at its name rather than at its pattern's start.
+    capture is reported at its name rather than at its pattern's start. `outside` adds what's known
+    of it from other files and a type checker, for `--fix` (see `Outside`).
 
     Returns:
       Every offence, in source order.
 
     """
-    settings: _Settings = _settings(tree, checks, lines, {**(calls or {}), **returns(tree)})
-    scopes: list[_Scope] = _scopes(tree, settings)
+    calls: Mapping[str, str] = {} if outside is None else outside.calls
+    settings: Settings = _settings(tree, checks, lines, {**calls, **returns(tree)}, outside)
+    scopes: list[Scope] = _scopes(tree, settings)
+    settings, scopes = _returned(tree, settings, scopes)
     # A finding's kind is the code that reports it (LVA008, LVA009, LVA010).
-    flow: list[Offence] = _flow_offences(_value_flow(tree, scopes))
-    return sorted([*(o for scope in scopes for o in scope.reported()), *redundant(tree), *flow])
+    _finished(tree, scopes)
+    flow: list[Offence] = flow_offences(_value_flow(tree, scopes), settings.checks.fixes)
+    finals: list[Offence] = [o for scope in scopes for o in scope.finals()] if checks.final else []
+    reported: list[Offence] = [o for scope in scopes for o in scope.reported()]
+    return sorted([*reported, *redundant(tree, settings.checks.fixes), *flow, *finals])
 
 
 class Coverage(NamedTuple):
@@ -170,7 +195,7 @@ class Coverage(NamedTuple):
 _UNTYPED: Final = frozenset({UNANNOTATED, UNTYPED_TARGET, UNANNOTATED_MEMBER})
 
 
-def annotation_coverage(source: str, checks: Checks = DEFAULT_CHECKS) -> Coverage:
+def annotation_coverage(source: str | bytes, checks: Checks = DEFAULT_CHECKS) -> Coverage:
     """Count the first bindings in `source` the rules cover, and how many are typed.
 
     Returns:
@@ -178,14 +203,14 @@ def annotation_coverage(source: str, checks: Checks = DEFAULT_CHECKS) -> Coverag
 
     """
     tree: ast.Module = _parse(source, "<unknown>")
-    settings: _Settings = _settings(tree, checks, source.splitlines(), {})
-    scopes: list[_Scope] = _scopes(tree, settings)
+    settings: Settings = _settings(tree, checks, as_text(source).splitlines(), {})
+    scopes: list[Scope] = _scopes(tree, settings)
     total: int = sum(len(scope.bound()) for scope in scopes)
     untyped: int = sum(o.code in _UNTYPED for scope in scopes for o in scope.reported())
     return Coverage(total - untyped, total)
 
 
-def _scopes(tree: ast.Module, settings: _Settings) -> list["_Scope"]:
+def _scopes(tree: ast.Module, settings: Settings) -> list["Scope"]:
     """Collect the scopes to check.
 
     Returns:
@@ -194,13 +219,13 @@ def _scopes(tree: ast.Module, settings: _Settings) -> list["_Scope"]:
     """
     functions: list[FunctionDef] = []
     collect_functions(tree.body, functions)
-    scopes: list[_Scope] = _function_scopes(functions, settings)
-    if settings.all_scopes:
+    scopes: list[Scope] = _function_scopes(functions, settings)
+    if settings.checks.all_scopes:
         scopes += _body_scopes(tree, settings)
     return scopes
 
 
-def _body_scopes(tree: ast.Module, settings: _Settings) -> list["_Scope"]:
+def _body_scopes(tree: ast.Module, settings: Settings) -> list["Scope"]:
     """Collect the module and class bodies (LVA004).
 
     Returns:
@@ -209,15 +234,13 @@ def _body_scopes(tree: ast.Module, settings: _Settings) -> list["_Scope"]:
     """
     imported: frozenset[str] = imported_from(tree, _ENUM_MODULES)
     class_bodies: list[list[ast.stmt]] = [
-        node.body
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ClassDef) and not _is_enum(node, imported)
+        node.body for node in nodes(tree) if isinstance(node, ast.ClassDef) and not _is_enum(node, imported)
     ]
-    scopes: list[_Scope] = []
+    scopes: list[Scope] = []
     body: list[ast.stmt]
     for body in (tree.body, *class_bodies):
         # A class body is never fixed: annotating a dataclass's variable makes it a field.
-        scope: _Scope = _Scope({"_"}, [], settings, unannotated=UNANNOTATED_MEMBER, fixable=body is tree.body)
+        scope: Scope = Scope({"_"}, [], settings, Kind(UNANNOTATED_MEMBER, fixable=body is tree.body))
         stmt: ast.stmt
         for stmt in body:
             _visit(scope, stmt)
@@ -238,190 +261,14 @@ def _is_enum(node: ast.ClassDef, imported: frozenset[str]) -> bool:
     )
 
 
-@dataclass
-class _Inferred:
-    """What `--fix` knows of a scope's names so far."""
-
-    types: dict[str, str] = field(default_factory=dict[str, str])  # each known type, for `x = y`'s
-    guesses: set[str] = field(default_factory=set[str])  # `types` from an unsafe fix: copies are too
-
-
-class _Scope:
-    """One function body: names bound so far and offences found."""
-
-    def __init__(
-        self,
-        declared: set[str],
-        nested: list[FunctionDef],
-        settings: _Settings,
-        *,
-        unannotated: str = UNANNOTATED,
-        fixable: bool = True,
-    ) -> None:
-        self.declared: set[str] = declared
-        self.nested: list[FunctionDef] = nested
-        self.settings: _Settings = settings
-        self.unannotated_code: str = unannotated
-        self.fixable: bool = fixable
-        self.offences: list[Offence] = []
-        self.first: list[str] = []  # each first binding the rules cover, typed or not
-        self.inferred: _Inferred = _Inferred()  # what `--fix` knows of the names bound so far
-        self.flow: dict[str, Lifetime] = {}  # every binding of each name, for value flow
-
-    def lifetime(self, name: str) -> Lifetime:
-        """Find `name`'s value-flow record, starting one if it has none.
-
-        Returns:
-          It.
-
-        """
-        return self.flow.setdefault(name, Lifetime())
-
-    def bind(self, name: str, where: tuple[int, int], code: str | None, fix: Fix | None = None) -> None:
-        """Bind `name` to a value value flow can't see; unless it's already bound, report `code`.
-
-        `code` is reported at `(line, col)` (`None` means typed), offering `fix` if there's one.
-        """
-        self.lifetime(name).bind(where, None)
-        self._first(name, where, code, fix)
-
-    def assign(self, target: ast.Name, code: str | None, value: ast.expr) -> None:
-        """Bind `target` to `value` (`name = value`), offering `--fix`'s annotation for it."""
-        name: str = target.id
-        fix: Inference | None = inference(value, self.settings.known, self.inferred.types)
-        unsafe: bool = guessed(
-            value,
-            self.settings.known,
-            frozenset(self.inferred.guesses),
-            self.inferred.types,
-        )
-        self.lifetime(name).bind(at(target), _certain(self, value))
-        self._first(name, at(target), code, None if fix is None else Fix(fix.annotation, fix.reason, unsafe))
-        if fix is not None and name not in self.inferred.types:
-            self.inferred.types[name] = fix.annotation
-            if unsafe:
-                self.inferred.guesses.add(name)
-
-    def _first(
-        self,
-        name: str,
-        where: tuple[int, int],
-        code: str | None,
-        fix: Fix | None,
-    ) -> None:
-        """Unless `name` is already bound, record its first binding, reporting `code` (`None`: typed).
-
-        The offence offers `fix`, unless this is a class body (a dataclass's annotation is a field).
-        """
-        if name not in self.declared:
-            self.declared.add(name)
-            self.first.append(name)
-            if code is not None:
-                self.offences.append(Offence(*where, name, code, fix if self.fixable else None))
-
-    def declare(self, name: str) -> None:
-        """Bind `name` by an annotation (`name: T`, `name: T = ...`): a typed first binding."""
-        # position is unused: `code` is `None`, so nothing is reported
-        self._first(name, (0, 0), None, None)
-
-    def opaque(self, names: Iterable[str]) -> None:
-        """Record bindings whose values value flow can't see: an import, a `def`, `except ... as`."""
-        name: str
-        for name in names:
-            self.lifetime(name).bind((0, 0), None)
-
-    def value_flow(self, escaped: frozenset[str], skipped: frozenset[str]) -> list[Finding]:
-        """Compare each name's values with its declared type.
-
-        `escaped` names are written elsewhere; `skipped` ones aren't compared at all.
-
-        Returns:
-          The findings, for names the rules cover.
-
-        """
-        name: str
-        # A module or class body's names are state anything can rebind out of its sight (an instance's
-        # `self.x = ...`, another module's `mod.X = ...`, `monkeypatch`, `globals().update(...)`).
-        body: bool = self.unannotated_code == UNANNOTATED_MEMBER
-        for name in self.flow.keys() if body else escaped & self.flow.keys():
-            self.flow[name].escaped = True
-        return [
-            found
-            for name, lifetime in self.flow.items()
-            if self._covered(name) and name not in skipped
-            for found in findings(name, lifetime, self.settings.hierarchy)
-        ]
-
-    def _covered(self, name: str) -> bool:
-        """Check whether the rules cover `name` here.
-
-        Returns:
-          Whether they do; a module or class body's dunder names are exempt.
-
-        """
-        return self.unannotated_code != UNANNOTATED_MEMBER or not (
-            name.startswith("__") and name.endswith("__")
-        )
-
-    def reported(self) -> list[Offence]:
-        """Filter the offences found.
-
-        Returns:
-          All but those for exempt names.
-
-        """
-        return [o for o in self.offences if self._covered(o.name)]
-
-    def bound(self) -> list[str]:
-        """List the first bindings the rules cover.
-
-        Returns:
-          Their names, typed or not.
-
-        """
-        return [name for name in self.first if self._covered(name)]
-
-    def annotation(self, name: str, annotation: ast.expr) -> None:
-        """Report a vague annotation (LVA005), too deep a one (LVA006), or too long a tuple (LVA011)."""
-        if is_vague(annotation):
-            self.offences.append(Offence(*at(annotation), name, VAGUE_TYPE))
-        if depth(annotation) >= self.settings.nesting:
-            self.offences.append(Offence(*at(annotation), name, NESTED_TYPE))
-        longest: int
-        if (longest := length(annotation)) > self.settings.max_length:
-            self.offences.append(Offence(*at(annotation), name, LONG_TUPLE, detail=str(longest)))
-
-    def walrus(self, node: ast.AST) -> None:
-        """Bind `:=` targets in an expression, comprehensions included, lambdas excluded."""
-        in_lambda: set[int] = {
-            id(inner)
-            for outer in ast.walk(node)
-            if isinstance(outer, ast.Lambda)
-            for inner in ast.walk(outer)
-        }
-        current: ast.AST
-        for current in ast.walk(node):
-            if isinstance(current, ast.NamedExpr) and id(current) not in in_lambda:
-                self.bind(current.target.id, at(current.target), self.unannotated_code)
-
-    def unannotated(self, type_comment: str | None) -> str | None:
-        """Decide the code for an `=` or `with` binding.
-
-        Returns:
-          The code, or `None` if a counted type comment types it.
-
-        """
-        return None if type_comment is not None and self.settings.type_comments else self.unannotated_code
-
-
-def _function_scopes(functions: list[FunctionDef], settings: _Settings) -> list["_Scope"]:
+def _function_scopes(functions: list[FunctionDef], settings: Settings) -> list["Scope"]:
     """Check `functions` and every function defined inside them.
 
     Returns:
       Their scopes.
 
     """
-    scopes: list[_Scope] = []
+    scopes: list[Scope] = []
     func: FunctionDef
     for func in functions:
         nested: list[FunctionDef] = []
@@ -430,8 +277,15 @@ def _function_scopes(functions: list[FunctionDef], settings: _Settings) -> list[
     return scopes
 
 
-def _function_scope(func: FunctionDef, functions: list[FunctionDef], settings: _Settings) -> "_Scope":
+def _function_scope(
+    func: FunctionDef,
+    functions: list[FunctionDef],
+    settings: Settings,
+    seed: Mapping[str, Late] | None = None,
+) -> "Scope":
     """Check one function; functions defined in it are collected into `functions`.
+
+    `seed`: names already known to be typed late (see `Inferred.late`), known from the start.
 
     Returns:
       Its scope.
@@ -442,7 +296,12 @@ def _function_scope(func: FunctionDef, functions: list[FunctionDef], settings: _
     params: set[str] = {a.arg for a in named}
     params.update(extra.arg for extra in (args.vararg, args.kwarg) if extra is not None)
     # `_` is a discard.
-    scope: _Scope = _Scope(params | {"_"}, functions, settings)
+    scope: Scope = Scope(
+        params | {"_"},
+        functions,
+        settings,
+        Kind(UNANNOTATED, fixable=True, function=func),
+    )
     # A copy of a plain, annotated parameter (`*args`/`**kwargs` aren't the type they're annotated
     # with) can be typed the same way, the moment it's assigned.
     scope.inferred.types.update(
@@ -451,6 +310,9 @@ def _function_scope(func: FunctionDef, functions: list[FunctionDef], settings: _
     owner: str | None = settings.owners.get(id(func))
     if owner is not None and named and named[0].arg == _SELF:
         _ = scope.inferred.types.setdefault(_SELF, owner)
+    # A classmethod's first parameter is its class (`type[C]`), whatever it's called.
+    if owner is not None and named and [node_name(d) for d in func.decorator_list] == [_CLASSMETHOD]:
+        _ = scope.inferred.types.setdefault(named[0].arg, f"type[{owner}]")
     arg: ast.arg
     for arg in named:
         # A parameter holds whatever its callers pass: its declared type, as far as value flow knows.
@@ -461,25 +323,41 @@ def _function_scope(func: FunctionDef, functions: list[FunctionDef], settings: _
             None if arg.annotation is None else ast.unparse(arg.annotation),
         )
     scope.opaque(extra.arg for extra in (args.vararg, args.kwarg) if extra is not None)
+    name: str
+    late: Late
+    for name, late in (seed or {}).items():
+        _ = scope.inferred.types.setdefault(name, late[0])
+        if late[1]:
+            scope.inferred.guesses.add(name)
+            scope.inferred.origins[name] = late[1]
+        scope.inferred.seeded[name] = late
     stmt: ast.stmt
     for stmt in func.body:
         _visit(scope, stmt)
     return scope
 
 
-def _visit(scope: _Scope, stmt: ast.stmt) -> None:
+def _visit(scope: Scope, stmt: ast.stmt) -> None:
     """Bind the names `stmt` binds, as Python would, then visit its nested statements."""
     part: ast.AST
     for part in expressions(stmt):
         scope.walrus(part)
     _declare(scope, stmt)
     _bind(scope, stmt)
+    if isinstance(stmt, ast.Return):
+        scope.inferred.returns.append(stmt.value)
+    # A loop's body runs again and again (not its `else`), for LVA012.
+    body: set[int] = (
+        {id(s) for s in stmt.body} if isinstance(stmt, ast.For | ast.AsyncFor | ast.While) else set()
+    )
     child: ast.stmt
     for child in child_statements(stmt):
+        scope.assignments.looping += id(child) in body
         _visit(scope, child)
+        scope.assignments.looping -= id(child) in body
 
 
-def _declare(scope: _Scope, stmt: ast.stmt) -> None:
+def _declare(scope: Scope, stmt: ast.stmt) -> None:
     """Bind the names `stmt` binds that need no annotation, or carry their own."""
     aliases: list[ast.alias]
     names: list[str]
@@ -508,7 +386,8 @@ def _declare(scope: _Scope, stmt: ast.stmt) -> None:
             _ = scope.inferred.types.setdefault(name, ast.unparse(annotation))
             scope.lifetime(name).declare(ast.unparse(annotation), at(target), _span(annotation, target))
             if stmt.value is not None:
-                scope.lifetime(name).bind(at(target), _certain(scope, stmt.value))
+                scope.lifetime(name).bind(at(target), certain_type(scope, stmt.value))
+                scope.assigned(name, at(target))
         case _ if type(stmt).__name__ == _TYPE_ALIAS:
             alias: ast.expr = cast("ast.expr", next(ast.iter_child_nodes(stmt)))  # its first field, the name
             scope.declared.update(name.id for name in target_names(alias))
@@ -531,63 +410,100 @@ def _span(annotation: ast.expr, target: ast.expr) -> tuple[int, int] | None:
     return (annotation.col_offset, annotation.end_col_offset or 0) if one_line else None
 
 
-def _flow_offences(found: list[Finding]) -> list[Offence]:
-    """Report value-flow findings as offences, a finding's kind as its code.
+def _returned(tree: ast.Module, settings: Settings, scopes: list[Scope]) -> tuple[Settings, list[Scope]]:
+    """Type calls to unannotated functions from their `return`s, and what follows from late types.
 
-    Each declaration LVA008 or LVA010 would narrow gets one fix, a guess (`--unsafe-fixes`: a
-    declared type can be wider on purpose): the LVA008 finding's narrowed type if there's one,
-    since it's already within the members the values use, else the union without its unused
-    members, on the first LVA010 finding. Two rewrites of one annotation can't both apply.
-
-    Returns:
-      The offences.
-
-    """
-    offences: list[Offence] = []
-    fixed: set[tuple[int, int]] = set()
-    finding: Finding
-    narrowed: set[tuple[int, int]] = {(f.line, f.col) for f in found if f.kind is Kind.NARROWABLE}
-    for finding in sorted(found, key=lambda f: f.kind is not Kind.NARROWABLE):
-        where: tuple[int, int] = (finding.line, finding.col)
-        edit: Fix | None = None
-        if (
-            finding.span
-            and finding.rewrite
-            and where not in fixed
-            and (finding.kind is Kind.NARROWABLE or where not in narrowed)
-        ):
-            fixed.add(where)
-            reason: str = (
-                "the values it's bound to"
-                if finding.kind is Kind.NARROWABLE
-                else "the members its values use"
-            )
-            edit = Fix(finding.rewrite, reason, unsafe=True, edit=Edit.REPLACE, span=finding.span)
-        offences.append(Offence(*where, finding.name, finding.kind.value, edit, detail=finding.detail))
-    return offences
-
-
-def _certain(scope: _Scope, value: ast.expr) -> str | None:
-    """Infer `value`'s type for value flow: only a certain `--fix` inference, never a guess.
-
-    `None` itself (which `--fix` never offers: `x: None = None` says nothing) is `"None"` here. A
-    copy of a name typed as a union is unknown: an `isinstance` or `is None` check before it may
-    have narrowed the name, which value flow (blind to control flow) can't see.
+    Each round finishes the scopes (so a container filled later, or `None` rebound, is typed), reads
+    what the unannotated functions return, and checks again only a function that calls one whose
+    type is new, or that has a late-typed name it didn't know from the start. Repeated until nothing
+    changes, so `--fix` finds in one run what it would over several.
 
     Returns:
-      The type as text, or `None` if it's unknown or only a guess.
+      The settings with what the functions return, and the scopes checked with them.
 
     """
-    if isinstance(value, ast.Constant) and value.value is None:
-        return "None"
-    if isinstance(value, ast.Name) and len(members(scope.inferred.types.get(value.id, "")) or ()) > 1:
-        return None
-    if guessed(value, scope.settings.known, frozenset(scope.inferred.guesses), scope.inferred.types):
-        return None
-    return inferred(value, scope.settings.known, scope.inferred.types)
+    found: Returned = Returned()
+    functions: list[tuple[Scope, FunctionDef]] = [
+        (scope, scope.kind.function) for scope in scopes if scope.kind.function is not None
+    ]
+    fresh: list[tuple[Scope, FunctionDef]] = functions  # checked this round: to finish and record
+    recorded: dict[int, list[returned.Recorded]] = {}
+    _round: int
+    for _round in range(_ROUNDS):
+        _finished(tree, [scope for scope, _ in fresh])
+        recorded.update(
+            (id(func), [_recorded(scope, value) for value in scope.inferred.returns]) for scope, func in fresh
+        )
+        latest: Returned = returned.returned(tree, recorded)
+        typed: bool
+        if typed := latest != found and returned.called(tree, tree, latest):  # even if only a body calls one
+            found = latest
+            settings = replace(settings, known=replace(settings.known, returned=found))
+        again: set[int] = {
+            id(scope)
+            for scope, func in functions
+            if (typed and returned.called(tree, func, found))
+            or scope.inferred.late.keys() - scope.inferred.seeded.keys()
+        }
+        if not again:
+            break
+        fresh = [
+            (_function_scope(func, [], settings, scope.inferred.late), func)
+            for scope, func in functions
+            if id(scope) in again
+        ]
+        renewed: dict[int, Scope] = {id(func): scope for scope, func in fresh}
+        functions = [(renewed.get(id(func), scope), func) for scope, func in functions]
+    bodies: list[Scope] = [scope for scope in scopes if scope.kind.function is None]
+    if bodies and any(returned.called(tree, stmt, found) for stmt in _body_statements(tree.body)):
+        bodies = _body_scopes(tree, settings)
+    return settings, [scope for scope, _ in functions] + bodies
 
 
-def _bind(scope: _Scope, stmt: ast.stmt) -> None:
+def _body_statements(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
+    """Walk a module's and its classes' own statements, not their functions'.
+
+    Yields:
+      Each statement (a function's definition too, but not what's inside it).
+
+    """
+    stmt: ast.stmt
+    for stmt in body:
+        yield stmt
+        if isinstance(stmt, ast.ClassDef):
+            yield from _body_statements(stmt.body)
+        elif not isinstance(stmt, FUNCTION_DEFS):
+            yield from _body_statements(child_statements(stmt))
+
+
+def _finished(tree: ast.Module, scopes: Sequence[Scope]) -> None:
+    """Finish `scopes` for their late fixes (`None` rebound, filled containers).
+
+    Those need the names written out of sight marked first. Safe to run again: marking is
+    idempotent, and neither fix redoes one it made.
+    """
+    scope: Scope
+    for scope in scopes:
+        scope.mark_escaped(_module_names(tree)[0])
+        scope.optionals()
+        scope.fills()
+
+
+def _recorded(scope: Scope, value: ast.expr | None) -> returned.Recorded:
+    """Record a `return` statement's value as its finished function's scope sees it.
+
+    Returns:
+      Its inference (`None` for a bare `return`, or an unknown value), and whether that's a guess.
+
+    """
+    if value is None:
+        return None, frozenset()
+    known: Known = scope.settings.known
+    unsafe: bool = guessed(value, known, frozenset(scope.inferred.guesses), scope.inferred.types)
+    return inference(value, known, scope.inferred.types), rests_on(scope, [value]) if unsafe else frozenset()
+
+
+def _bind(scope: Scope, stmt: ast.stmt) -> None:
     """Bind the names `stmt` binds that need typing, reporting the untyped ones."""
     targets: list[ast.expr]
     target: ast.expr
@@ -607,11 +523,7 @@ def _bind(scope: _Scope, stmt: ast.stmt) -> None:
         case ast.Assign(targets=targets, type_comment=comment):
             _bind_targets(scope, targets, scope.unannotated(comment))
         case ast.With(items=items, type_comment=comment) | ast.AsyncWith(items=items, type_comment=comment):
-            _bind_targets(
-                scope,
-                [i.optional_vars for i in items if i.optional_vars],
-                scope.unannotated(comment),
-            )
+            _bind_with(scope, stmt, items, scope.unannotated(comment))
         case (
             ast.For(target=target, iter=value, type_comment=None)
             | ast.AsyncFor(
@@ -622,18 +534,24 @@ def _bind(scope: _Scope, stmt: ast.stmt) -> None:
         ):
             typed = looped(value, scope.settings.known, scope.inferred.types)
             _bind_declared(scope, stmt, target, typed, iterated(value))
-        case ast.For(target=target) | ast.AsyncFor(target=target):
-            _bind_targets(scope, [target], COMMENT_TYPED_TARGET)
+        case (
+            ast.For(target=target, type_comment=str() as comment)
+            | ast.AsyncFor(
+                target=target,
+                type_comment=str() as comment,
+            )
+        ):
+            _bind_commented(scope, stmt, target, comment)
         case ast.Match(cases=cases):
             _bind_captures(scope, cases)
         case ast.AugAssign(target=ast.Name(id=name) as single, op=op, value=value):
-            scope.lifetime(name).bind(at(single), augmented(op, _certain(scope, value)))
+            scope.lifetime(name).bind(at(single), augmented(op, certain_type(scope, value)))
         case _:
             pass
 
 
 def _bind_declared(
-    scope: _Scope,
+    scope: Scope,
     stmt: ast.stmt,
     target: ast.expr,
     typed: Inference | None,
@@ -650,6 +568,9 @@ def _bind_declared(
     unsafe: bool = any(
         guessed(base, known, frozenset(scope.inferred.guesses), scope.inferred.types) for base in bases
     )
+    origins: frozenset[str] = rests_on(scope, bases) if unsafe else frozenset()
+    # An unpacking's names are split from the value's type; a loop's are what it iterates (`loop`).
+    split: frozenset[str] = frozenset() if isinstance(stmt, ast.For | ast.AsyncFor) else frozenset({"unpack"})
     code: str | None = (
         UNTYPED_TARGET
         if isinstance(stmt, ast.For | ast.AsyncFor)
@@ -658,18 +579,100 @@ def _bind_declared(
     name: ast.Name
     annotation: str | None
     for name, annotation in unpacked(target, None if typed is None else typed.annotation):
+        part: Inference | None = (
+            None
+            if typed is None or annotation is None
+            else Inference(annotation, typed.reason, typed.kinds | split)
+        )
+        _bind_declaration(scope, stmt, name, code, (part, unsafe, origins))
+
+
+def _bind_declaration(
+    scope: Scope,
+    stmt: ast.stmt,
+    name: ast.Name,
+    code: str | None,
+    typed: tuple[Inference | None, bool, frozenset[str]],
+) -> None:
+    """Bind one name a statement binds, offering to declare it before `stmt` as `typed` has it.
+
+    `typed`: its inference (`None`: unknown, when the type checker's hint is asked), whether that's a
+    guess, and what the guess rests on.
+    """
+    found: Inference | None
+    unsafe: bool
+    origins: frozenset[str]
+    found, unsafe, origins = typed
+    if found is None and (found := scope.hint(name)) is not None:
+        unsafe, origins = True, frozenset({hinted.KIND})
+    fix: Fix | None = None
+    if found is not None:
+        fix = scope.offer(
+            found,
+            origins,
+            unsafe=unsafe,
+            edit=Edit.DECLARE,
+            span=(stmt.lineno, stmt.col_offset),
+        )
+        # What the rest of the scope infers from `name` knows its type, as for `name = value`.
+        if name.id not in scope.inferred.types:
+            scope.inferred.types[name.id] = found.annotation
+            if unsafe:
+                scope.inferred.guesses.add(name.id)
+                scope.inferred.origins[name.id] = origins
+    scope.bind(name.id, at(name), code, fix)
+
+
+def _bind_commented(scope: Scope, stmt: ast.For | ast.AsyncFor, target: ast.expr, comment: str) -> None:
+    """Bind a loop's target typed only by its `# type:` comment (LVA003), offering to declare it instead.
+
+    The comment's type (`int`, or `int, str` for a tuple target) is split over the target's names as
+    an unpacking's is; each is declared before the loop, and the comment dropped, since a type checker
+    would see the name declared twice. Only for a loop whose header is on one line, where the comment
+    is found after its iterable.
+    """
+    drop: tuple[int, int] | None = type_comment_span(scope.settings.lines, stmt)
+    annotation: str | None = comment_type(comment) if drop is not None else None
+    name: ast.Name
+    part: str | None
+    for name, part in unpacked(target, annotation):
         fix: Fix | None = None
-        if typed is not None and annotation is not None:
-            fix = Fix(annotation, typed.reason, unsafe, Edit.DECLARE, (stmt.lineno, stmt.col_offset))
-            # What the rest of the scope infers from `name` knows its type, as for `name = value`.
-            if name.id not in scope.inferred.types:
-                scope.inferred.types[name.id] = annotation
-                if unsafe:
-                    scope.inferred.guesses.add(name.id)
-        scope.bind(name.id, at(name), code, fix)
+        if part is not None and drop is not None:
+            fix = scope.offer(
+                Inference(part, "its `# type:` comment", frozenset({_COMMENT})),
+                frozenset(),
+                unsafe=False,
+                edit=Edit.DECLARE,
+                span=(stmt.lineno, stmt.col_offset),
+            )
+            fix = None if fix is None else fix._replace(drop=drop)
+        scope.bind(name.id, at(name), COMMENT_TYPED_TARGET, fix)
 
 
-def _bind_targets(scope: _Scope, targets: list[ast.expr], code: str | None) -> None:
+def _bind_with(scope: Scope, stmt: ast.stmt, items: list[ast.withitem], code: str | None) -> None:
+    """Bind each `with` item's target, offering to declare `with open(path, mode) as f`'s `f` first.
+
+    The file object `open` gives is its context manager's own (`__enter__` returns `self`), typed by
+    its literal mode; any other item's names are bound untyped, as are an `async with`'s (a file
+    object isn't an asynchronous context manager).
+    """
+    item: ast.withitem
+    name: ast.Name
+    target: ast.expr
+    for item in items:
+        typed: Inference | None = (
+            opened(item.context_expr, scope.settings.known) if isinstance(stmt, ast.With) else None
+        )
+        match item.optional_vars:
+            case ast.Name() as name:
+                _bind_declaration(scope, stmt, name, code, (typed, False, frozenset()))
+            case None:
+                pass
+            case target:
+                _bind_targets(scope, [target], code)
+
+
+def _bind_targets(scope: Scope, targets: list[ast.expr], code: str | None) -> None:
     """Bind every name in `targets`, reporting `code` for each first binding."""
     target: ast.expr
     name: ast.Name
@@ -678,7 +681,7 @@ def _bind_targets(scope: _Scope, targets: list[ast.expr], code: str | None) -> N
             scope.bind(name.id, at(name), code)
 
 
-def _bind_captures(scope: _Scope, cases: list[ast.match_case]) -> None:
+def _bind_captures(scope: Scope, cases: list[ast.match_case]) -> None:
     """Bind every name the `case` patterns capture: LVA002 unless declared first."""
     case: ast.match_case
     name: str
@@ -702,26 +705,43 @@ def value_flow(
 
     """
     tree: ast.Module = _parse(source, filename)
-    return _value_flow(tree, _scopes(tree, _settings(tree, checks, (), returns(tree))))
+    # Its lines place a `**rest` capture at its name, as `check_source` does.
+    settings: Settings = _settings(tree, checks, as_text(source).splitlines(), returns(tree))
+    return _value_flow(tree, _scopes(tree, settings))
 
 
-def _value_flow(tree: ast.Module, scopes: list[_Scope]) -> list[Finding]:
+def _value_flow(tree: ast.Module, scopes: list[Scope]) -> list[Finding]:
     """Compare each name's values with its declared type, in each of `scopes`.
 
     Returns:
       Every finding, in source order.
 
     """
-    escaped: frozenset[str] = frozenset(
-        name for node in ast.walk(tree) if isinstance(node, ast.Global | ast.Nonlocal) for name in node.names
-    )
-    # Annotated only for type checkers (`if TYPE_CHECKING: x: str`): its runtime values may differ on
-    # purpose, set from elsewhere.
-    checking_only: frozenset[str] = frozenset(
-        stmt.target.id
-        for node in ast.walk(tree)
-        if isinstance(node, ast.If) and node_name(node.test) == _TYPE_CHECKING
-        for stmt in node.body
-        if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name)
-    )
+    escaped: frozenset[str]
+    checking_only: frozenset[str]
+    escaped, checking_only = _module_names(tree)
     return sorted(found for scope in scopes for found in scope.value_flow(escaped, checking_only))
+
+
+@lru_cache(maxsize=16)  # `_value_flow` runs once per round of `_returned`, on the same tree
+def _module_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
+    """Find the names value flow leaves alone in a module.
+
+    Returns:
+      Those a `global` or `nonlocal` writes from elsewhere, and those annotated only for type
+      checkers (`if TYPE_CHECKING: x: str`), whose runtime values may differ on purpose.
+
+    """
+    escaped: set[str] = set()
+    checking_only: set[str] = set()
+    node: ast.AST
+    for node in nodes(tree):
+        if isinstance(node, ast.Global | ast.Nonlocal):
+            escaped.update(node.names)
+        elif isinstance(node, ast.If) and node_name(node.test) == _TYPE_CHECKING:
+            checking_only.update(
+                stmt.target.id
+                for stmt in node.body
+                if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name)
+            )
+    return frozenset(escaped), frozenset(checking_only)

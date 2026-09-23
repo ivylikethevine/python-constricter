@@ -24,6 +24,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Final, TypeAlias
 
+from constricter.rules.walked import nodes
+
 # Each named type's directly wider types.
 Parents: TypeAlias = Mapping[str, frozenset[str]]
 # One project-declared type and the types it's narrower than (`Checks.narrower`, `parse_narrower`).
@@ -87,10 +89,15 @@ class Finding:
 
 @dataclass(frozen=True)
 class Binding:
-    """One binding of a name: where, and its value's type as text (`None`: unknown)."""
+    """One binding of a name: where, and its value's type as text (`None`: unknown).
+
+    `guess`: when the type isn't certain, `--fix`'s guess at it, and what that rests on (`FIX_KINDS`).
+    Value flow never compares a guess; `--fix` offers `T | None` from one, as a guess too.
+    """
 
     at: tuple[int, int]
     value: str | None
+    guess: tuple[str, frozenset[str]] | None = field(default=None, compare=False)
 
 
 @dataclass
@@ -110,9 +117,14 @@ class Lifetime:
             self.declared_at = at
             self.declared_span = span
 
-    def bind(self, at: tuple[int, int], value: str | None) -> None:
-        """Record a binding, with its value's type if known."""
-        self.bindings.append(Binding(at, value))
+    def bind(
+        self,
+        at: tuple[int, int],
+        value: str | None,
+        guess: tuple[str, frozenset[str]] | None = None,
+    ) -> None:
+        """Record a binding, with its value's type if known (or `--fix`'s guess at it, if not)."""
+        self.bindings.append(Binding(at, value, guess))
 
 
 class Hierarchy:
@@ -143,7 +155,7 @@ class Hierarchy:
         defined: dict[str, list[ast.expr]] = {}
         node: ast.AST
         bases: frozenset[str]
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             if isinstance(node, ast.ClassDef):
                 defined[node.name] = node.bases
                 if bases := frozenset(b.id for b in node.bases if isinstance(b, ast.Name)):

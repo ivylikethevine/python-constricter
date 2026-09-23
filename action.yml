@@ -11,6 +11,16 @@ inputs:
   python-version:
     description: The Python to run it with (3.11 or later).
     default: "3.13"
+  version:
+    description: A release to install from PyPI (`0.2.3`), with uv; empty installs the action's own checkout.
+    default: ""
+  summary:
+    description: Whether to add a table of the offences per code to the run's summary page.
+    default: "true"
+outputs:
+  sarif-file:
+    description: The same check as a SARIF 2.1.0 log (for github/codeql-action/upload-sarif), or empty if the arguments make no report (`--diff`, `--coverage`).
+    value: ${{ steps.sarif.outputs.sarif-file }}
 runs:
   using: composite
   steps:
@@ -19,14 +29,68 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
         update-environment: false
-    - shell: bash
+    - if: inputs.version != ''
+      uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      with:
+        version: "0.12.17"
+        enable-cache: false
+    - id: install
+      shell: bash
       env:
         PYTHON: ${{ steps.python.outputs.python-path }}
-        ARGS: ${{ inputs.args }}
+        VERSION: ${{ inputs.version }}
       run: |
         "$PYTHON" -m venv "$RUNNER_TEMP/constricter"
         bin="$RUNNER_TEMP/constricter/bin"
         [ -d "$bin" ] || bin="$RUNNER_TEMP/constricter/Scripts"
-        "$bin/python" -m pip install --quiet "$GITHUB_ACTION_PATH"
+        if [ -n "$VERSION" ]; then
+          uv pip install --quiet --python "$bin/python" "python-constricter==$VERSION"
+        else
+          "$bin/python" -m pip install --quiet "$GITHUB_ACTION_PATH"
+        fi
+        echo "bin=$bin" >> "$GITHUB_OUTPUT"
+    # The SARIF log and the summary first, never failing, so the check's own exit status is the action's.
+    - id: sarif
+      shell: bash
+      env:
+        BIN: ${{ steps.install.outputs.bin }}
+        ARGS: ${{ inputs.args }}
+        SUMMARY: ${{ inputs.summary }}
+      run: |
+        sarif="$RUNNER_TEMP/constricter.sarif"
+        rm -f "$sarif" # not an earlier run's, in the same job
         read -r -a args <<< "$ARGS"
-        "$bin/constricter" "${args[@]}"
+        "$BIN/constricter" "${args[@]}" --format=sarif --output-file="$sarif" --exit-zero > /dev/null 2>&1 || true
+        "$BIN/python" - "$sarif" "$SUMMARY" <<'PY'
+        import collections, json, os, sys
+
+        path, summary = sys.argv[1], sys.argv[2] == "true"
+        try:
+            with open(path, encoding="utf-8") as file:
+                run = json.load(file)["runs"][0]
+        except (OSError, ValueError, LookupError):  # no SARIF from these arguments
+            sys.exit()
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+            output.write(f"sarif-file={path}\n")
+        if not summary:
+            sys.exit()
+        rules = {rule["id"]: rule["shortDescription"]["text"] for rule in run["tool"]["driver"]["rules"]}
+        counts = collections.Counter((result["ruleId"], result["level"]) for result in run["results"])
+        lines = ["### constricter", ""]
+        if counts:
+            lines += ["| Code | Errors | Warnings | Rule |", "| ---- | -----: | -------: | ---- |"]
+            for code in sorted({code for code, _ in counts}):
+                rule = rules.get(code, "").replace("|", "\\|")
+                lines.append(f"| `{code}` | {counts[code, 'error']} | {counts[code, 'warning']} | {rule} |")
+        else:
+            lines.append("No offences.")
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as page:
+            page.write("\n".join(lines) + "\n\n")
+        PY
+    - shell: bash
+      env:
+        BIN: ${{ steps.install.outputs.bin }}
+        ARGS: ${{ inputs.args }}
+      run: |
+        read -r -a args <<< "$ARGS"
+        "$BIN/constricter" "${args[@]}"

@@ -2,6 +2,7 @@
 """`--fix`: which values decide an annotation, and which are only guesses (`--unsafe-fixes`)."""
 
 import textwrap
+from typing import Final
 
 import pytest
 
@@ -10,6 +11,8 @@ from constricter import (
     Offence,
     check_source,
 )
+
+ANY_LENGTH: Final = "tuple[int, ...]"
 
 
 @pytest.mark.parametrize(
@@ -72,7 +75,7 @@ def test_fixes_are_offered_only_for_a_single_plain_name() -> None:
     )
     assert [(o.name, o.fix) for o in check_source(source, checks=Checks(all_scopes=True))] == [
         ("LIMIT", "int"),
-        ("a", "int"),  # declared before the statement: see tests/test_declarations.py
+        ("a", "int"),  # declared before the statement: see tests/fix/test_declarations.py
         ("b", "int"),
         ("c", None),
         ("d", None),
@@ -312,3 +315,22 @@ def test_a_method_call_on_a_guessed_fix_is_not_offered() -> None:
     """A method call on an unsafely-fixed local (`Box` isn't `str`/`bytes`) offers nothing."""
     source: str = "def f() -> None:\n  a = Box('x')\n  b = a.strip()\n"
     assert [(o.name, o.fix) for o in check_source(source)] == [("a", "Box"), ("b", None)]
+
+
+def test_a_long_tuple_display_is_typed_by_its_element() -> None:
+    """Past `max-length`, a tuple is `tuple[T, ...]` if its elements agree, else untyped (LVA011's).
+
+    Found on pip's vendored chardet, whose frequency tables are tuples of thousands of `int`s.
+    """
+    source: str = (
+        "def f() -> None:\n    a = (1, 2, 3, 4)\n    b = (1, 2, 3, 4, 5)\n    c = (1, 'x', 3, 4, 5)\n"
+    )
+    assert {o.name: o.fix for o in check_source(source)} == {
+        "a": "tuple[int, int, int, int]",
+        "b": ANY_LENGTH,
+        "c": None,
+    }
+    shorter: dict[str, str | None] = {
+        o.name: o.fix for o in check_source(source, checks=Checks(max_length=2))
+    }
+    assert shorter["a"] == ANY_LENGTH

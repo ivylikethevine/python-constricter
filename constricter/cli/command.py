@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: MIT
 """The `constricter` command (see README)."""
 
+import codecs
 import contextlib
 import difflib
+import io
 import itertools
 import json
 import sys
+import tokenize
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field, replace
@@ -14,11 +17,12 @@ from pathlib import Path
 from typing import Final, NamedTuple, TextIO, TypeAlias, cast
 
 from constricter import notebook
-from constricter.cli import baseline
+from constricter.cli import baseline, hints
 from constricter.cli.options import Mode, Options, Output
 from constricter.cli.paths import STDIN, python_files
 from constricter.cli.report import Format, Result, fix_reasons, render, statistics
 from constricter.fix import fixes, project
+from constricter.fix.known import Hints, Outside
 from constricter.noqa import lines, unsuppressed
 from constricter.offences import (
     DEFAULT_CHECKS,
@@ -34,14 +38,30 @@ EXIT_ERROR: Final = 2
 _ALL: Final = 100  # percent
 
 
+def _encoding(path: Path, data: bytes) -> str:
+    """Find the encoding of `path`, whose bytes are `data`: a notebook's is UTF-8 (it's JSON).
+
+    Returns:
+      A module's, as Python finds it: a PEP 263 declaration (`# -*- coding: latin-1 -*-`), a BOM
+      (`utf-8-sig`), or UTF-8. Raises `SyntaxError` for an unknown or contradictory one.
+
+    """
+    return (
+        "utf-8" if path.suffix == notebook.SUFFIX else tokenize.detect_encoding(io.BytesIO(data).readline)[0]
+    )
+
+
 def _read(path: Path) -> str:
-    """Read `path`; `-` is standard input.
+    """Read `path`, in its encoding; `-` is standard input.
 
     Returns:
       Its text.
 
     """
-    return sys.stdin.read() if path == STDIN else path.read_bytes().decode("utf-8")
+    if path == STDIN:
+        return sys.stdin.read()
+    data: bytes = path.read_bytes()
+    return data.decode(_encoding(path, data))
 
 
 def _source(raw: str, name: Path) -> tuple[str, list[notebook.Line]]:
@@ -59,7 +79,7 @@ def check_text(
     name: Path,
     checks: Checks = DEFAULT_CHECKS,
     *,
-    calls: Mapping[str, str] | None = None,
+    outside: Outside | None = None,
 ) -> list[Offence]:
     """Return the offences in `raw`, the text of `name`, that no `# noqa` suppresses.
 
@@ -74,7 +94,7 @@ def check_text(
     where: list[notebook.Line]
     source, where = _source(raw, name)
     offences: list[Offence] = unsuppressed(
-        check_source(source, str(name), checks, calls=calls),
+        check_source(source, str(name), checks, outside=outside),
         lines(source),
     )
     return [_placed(o, where) for o in offences] if where else offences
@@ -84,11 +104,14 @@ def _placed(offence: Offence, where: list[notebook.Line]) -> Offence:
     """Place an offence from a notebook's joined module in its cell, its declaration's line too.
 
     Returns:
-      The offence, its `line` (and a `Edit.DECLARE` fix's statement line) counted in its `cell`.
+      The offence, its `line` (and a `Edit.DECLARE` fix's statement line) counted in its `cell`; a
+      fix that would add an import isn't offered.
 
     """
     line: notebook.Line = where[offence.line - 1]
     placed: Offence = replace(offence, line=line.line, cell=line.cell)
+    if offence.edit is not None and offence.edit.imports:  # a notebook's cells have no import block
+        return replace(placed, edit=None)
     if offence.edit is not None and offence.edit.edit is Edit.DECLARE:
         statement: int = where[offence.edit.span[0] - 1].line
         placed = replace(placed, edit=offence.edit._replace(span=(statement, offence.edit.span[1])))
@@ -134,16 +157,21 @@ def _diff(raw: str, name: Path, offences: Sequence[Offence]) -> str:
 
 
 def fix_file(path: Path, offences: Sequence[Offence]) -> int:
-    """Add each fixable offence's annotation to `path` (a notebook's, in its cells).
+    """Add each fixable offence's annotation to `path` (a notebook's, in its cells), in its encoding.
+
+    Raises `UnicodeEncodeError`, leaving the file as it was, when an annotation can't be written in
+    the file's encoding (a PEP 263 declaration's).
 
     Returns:
       How many offences were fixed.
 
     """
     count: int
-    if not (count := sum(1 for o in offences if o.fix)):
+    if not (count := sum(1 for o in offences if o.edit is not None)):
         return 0
-    _ = path.write_bytes(_fixed(_read(path), path, offences).text.encode())
+    data: bytes = path.read_bytes()
+    encoding: str = _encoding(path, data)
+    _ = path.write_bytes(_fixed(data.decode(encoding), path, offences).text.encode(encoding))
     return count
 
 
@@ -175,6 +203,7 @@ class _CoverageRun:
 
 
 _FileRun: TypeAlias = _CheckRun | _BaselineRun | _CoverageRun
+HINT_ROUNDS: Final = 4  # with `--fix --infer-with`: how many times each file is fixed, at most
 
 
 def _shown_lines(raw: str, name: Path) -> dict[tuple[int | None, int], str]:
@@ -193,7 +222,7 @@ def _shown_lines(raw: str, name: Path) -> dict[tuple[int | None, int], str]:
     }
 
 
-def _checked(path: Path, name: Path, checks: Checks, calls: Mapping[str, str]) -> tuple[str, list[Offence]]:
+def _checked(path: Path, name: Path, checks: Checks, outside: Outside) -> tuple[str, list[Offence]]:
     """Read `path` and check it as `name`; raises what reading or parsing it does.
 
     Returns:
@@ -201,14 +230,14 @@ def _checked(path: Path, name: Path, checks: Checks, calls: Mapping[str, str]) -
 
     """
     raw: str = _read(path)
-    return raw, check_text(raw, name, checks, calls=calls)
+    return raw, check_text(raw, name, checks, outside=outside)
 
 
 def _read_checked(
     path: Path,
     name: Path,
     checks: Checks,
-    calls: Mapping[str, str],
+    outside: Outside,
 ) -> tuple[str, list[Offence], str]:
     """Read and check `path`, turning a read or parse error into a message instead of raising.
 
@@ -219,14 +248,33 @@ def _read_checked(
     raw: str
     offences: list[Offence]
     try:
-        raw, offences = _checked(path, name, checks, calls)
+        raw, offences = _checked(path, name, checks, outside)
     except (OSError, ValueError, SyntaxError) as error:  # UnicodeDecodeError is a ValueError
         return "", [], f"{name}: error: {error}"
     return raw, offences, ""
 
 
-def _check_path(path: Path, calls: Mapping[str, str], options: Options) -> _CheckRun:
-    """Check (and fix, or diff) one file, given the imported functions' return types.
+def _results(raw: str, name: Path, offences: Sequence[Offence], options: Options) -> list[Result]:
+    """Turn the offences in `raw`, the text of `name`, into the results to report.
+
+    Returns:
+      Each one the options don't filter out, with its source line and its fix as a text edit.
+
+    """
+    shown: dict[tuple[int | None, int], str] = _shown_lines(raw, name)
+    # A notebook's cells have no file lines for an edit to point at.
+    text: list[str] = [] if name.suffix == notebook.SUFFIX else lines(raw)
+    return [
+        r._replace(
+            source=shown.get((r.offence.cell, r.offence.line), ""),
+            replacements=fixes.replacements(text, r.offence) if text else (),
+        )
+        for r in options.filter.results(name, offences)
+    ]
+
+
+def _check_path(path: Path, outside: Outside, options: Options) -> _CheckRun:
+    """Check (and fix, or diff) one file, given what's known of it from outside it.
 
     Returns:
       What it found; a file that can't be read or parsed is an error.
@@ -236,18 +284,16 @@ def _check_path(path: Path, calls: Mapping[str, str], options: Options) -> _Chec
     raw: str
     offences: list[Offence]
     error: str
-    raw, offences, error = _read_checked(path, name, options.checks, calls)
+    raw, offences, error = _read_checked(path, name, options.checks, outside)
     if error:
         return _CheckRun(error=error)
     baselined: int
     offences, baselined = options.filter.unbaselined(name, offences)
-    shown: dict[tuple[int | None, int], str] = _shown_lines(raw, name)
-    results: list[Result] = [
-        r._replace(source=shown.get((r.offence.cell, r.offence.line), ""))
-        for r in options.filter.results(name, offences)
-    ]
+    results: list[Result] = _results(raw, name, offences, options)
     unsafe: bool = options.unsafe_fixes
-    fixing: list[Offence] = [r.offence for r in results if r.offence.fix and (unsafe or not r.offence.unsafe)]
+    fixing: list[Offence] = [
+        r.offence for r in results if r.offence.edit is not None and (unsafe or not r.offence.unsafe)
+    ]
     if options.mode is Mode.DIFF:
         return _CheckRun(text=_diff(raw, name, fixing))
     if options.mode is not Mode.FIX:
@@ -255,10 +301,16 @@ def _check_path(path: Path, calls: Mapping[str, str], options: Options) -> _Chec
     left: list[Result] = [r for r in results if r.offence not in fixing]
     if path == STDIN:  # the fixed source goes to stdout
         return _CheckRun(left, baselined, len(fixing), _fixed(raw, name, fixing).text)
-    return _CheckRun(left, baselined, fix_file(path, fixing))
+    try:
+        return _CheckRun(left, baselined, fix_file(path, fixing))
+    except UnicodeEncodeError as failure:  # the file is left as it was, its offences unfixed
+        # Its canonical name: PyPy reports `latin1` where CPython says `latin-1`.
+        encoding: str = codecs.lookup(failure.encoding).name
+        message: str = f"an annotation can't be written in its encoding, {encoding}; left as it was"
+        return _CheckRun(results, baselined, error=f"{name}: error: {message}")
 
 
-def _baseline_path(path: Path, calls: Mapping[str, str], options: Options) -> _BaselineRun:
+def _baseline_path(path: Path, outside: Outside, options: Options) -> _BaselineRun:
     """Check one file, unfiltered, for --write-baseline.
 
     Returns:
@@ -268,11 +320,11 @@ def _baseline_path(path: Path, calls: Mapping[str, str], options: Options) -> _B
     name: Path = options.input.name(path)
     offences: list[Offence]
     error: str
-    _, offences, error = _read_checked(path, name, options.checks, calls)
+    _, offences, error = _read_checked(path, name, options.checks, outside)
     return _BaselineRun(error=error) if error else _BaselineRun(found=offences)
 
 
-def _cover_path(path: Path, _calls: Mapping[str, str], options: Options) -> _CoverageRun:
+def _cover_path(path: Path, _outside: Outside, options: Options) -> _CoverageRun:
     """Count one file's typed first bindings.
 
     Returns:
@@ -289,12 +341,18 @@ def _cover_path(path: Path, _calls: Mapping[str, str], options: Options) -> _Cov
 def _check_all(options: Options) -> tuple[list[Path], list[_FileRun]]:
     """Check every file (`--jobs` at a time), in order.
 
+    With `--infer-with`, the type checker's server runs throughout: it's asked for every file's
+    hints first, and with `--fix`, each file a round changed is asked again and checked again, as its
+    new annotations change what the checker infers, until a round changes nothing (at most
+    `HINT_ROUNDS`). A baseline records offences, and coverage counts annotations: hints change
+    neither, only what `--fix` offers.
+
     Returns:
       The names, and what each file found.
 
     """
     paths: list[Path] = list(python_files(options.input.paths, options.input.exclude))
-    check: Callable[[Path, Mapping[str, str]], _FileRun]
+    check: Callable[[Path, Outside], _FileRun]
     if options.mode is Mode.COVERAGE:
         check = partial(_cover_path, options=options)
     elif options.mode is Mode.WRITE_BASELINE:
@@ -302,14 +360,114 @@ def _check_all(options: Options) -> tuple[list[Path], list[_FileRun]]:
     else:
         check = partial(_check_path, options=options)
     names: list[Path] = [options.input.name(path) for path in paths]
-    # The functions each file imports from the others, for --fix (and its hints).
-    modules: project.Index = project.Index({}, []) if options.mode is Mode.COVERAGE else project.index(paths)
-    calls: list[dict[str, str]] = [project.calls(modules, path) for path in paths]
+    if not options.infer_with or options.mode in {Mode.COVERAGE, Mode.WRITE_BASELINE}:
+        return names, _checked_all(paths, check, options)[0]
+    session: hints.Session
+    with hints.Session(options.infer_with, Path.cwd(), options.jobs, options.infer_memory) as session:
+        runs: list[_FileRun]
+        modules: project.Index
+        runs, modules = _checked_all(paths, check, options, session)
+        # The files the last round changed: only their hints can have changed.
+        again: list[int] = [
+            index
+            for index, run in enumerate(runs)
+            if options.mode is Mode.FIX and isinstance(run, _CheckRun) and run.fixed and paths[index] != STDIN
+        ]
+        for _ in range(HINT_ROUNDS - 1):
+            if not again:
+                break
+            redone: list[_FileRun] = _checked_all(
+                [paths[i] for i in again],
+                check,
+                options,
+                session,
+                modules,
+            )[0]
+            index: int
+            run: _FileRun
+            for index, run in zip(again, redone, strict=True):
+                runs[index] = _merged(cast("_CheckRun", runs[index]), cast("_CheckRun", run))
+            again = [index for index, run in zip(again, redone, strict=True) if cast("_CheckRun", run).fixed]
+    return names, runs
+
+
+def _checked_all(
+    paths: Sequence[Path],
+    check: Callable[[Path, Outside], _FileRun],
+    options: Options,
+    session: hints.Session | None = None,
+    modules: project.Index | None = None,
+) -> tuple[list[_FileRun], project.Index]:
+    """Check `paths` (`--jobs` at a time), with the `session`'s hints, and `modules` (else indexed).
+
+    Returns:
+      What each file found, and the index of every file's module.
+
+    """
+    hinted: dict[Path, tuple[Hints, ...]] = {} if session is None else session.hints(_texts(paths))
+    coverage: bool = options.mode is Mode.COVERAGE  # needs nothing from the other files
     if options.jobs == 1 or len(paths) <= 1:
-        return names, list(itertools.starmap(check, zip(paths, calls, strict=True)))
+        if modules is None:
+            modules = project.Index({}, []) if coverage else project.index(paths)
+        return list(
+            itertools.starmap(check, zip(paths, _outside(modules, paths, hinted), strict=True)),
+        ), modules
     pool: ProcessPoolExecutor
     with ProcessPoolExecutor(max_workers=options.jobs) as pool:
-        return names, list(pool.map(check, paths, calls))
+        if modules is None:
+            # The index, as the checks, read one file per task.
+            modules = (
+                project.Index({}, []) if coverage else project.index(paths, partial(pool.map, chunksize=16))
+            )
+        return list(pool.map(check, paths, _outside(modules, paths, hinted))), modules
+
+
+def _merged(before: _CheckRun, after: _CheckRun) -> _CheckRun:
+    """Join a file's two `--fix` rounds: what's left is the later round's, what's fixed is both's.
+
+    Returns:
+      The joined run.
+
+    """
+    return replace(after, fixed=before.fixed + after.fixed)
+
+
+def _texts(paths: Sequence[Path]) -> dict[Path, str]:
+    """Read each file to ask the type checker about (not a notebook, or standard input).
+
+    A file that can't be read is left out: checking it reports that.
+
+    Returns:
+      Each file's text.
+
+    """
+    texts: dict[Path, str] = {}
+    path: Path
+    for path in paths:
+        if path != STDIN and path.suffix != notebook.SUFFIX:
+            # UnicodeDecodeError is a ValueError; a bad encoding declaration, a SyntaxError.
+            with contextlib.suppress(OSError, ValueError, SyntaxError):
+                texts[path] = _read(path)
+    return texts
+
+
+def _outside(
+    modules: project.Index,
+    paths: Sequence[Path],
+    hinted: Mapping[Path, tuple[Hints, ...]],
+) -> list[Outside]:
+    """Find what's known of each file from outside it: what it imports from the others, and its hints.
+
+    Returns:
+      Each file's, in order.
+
+    """
+    found: list[Outside] = []
+    path: Path
+    for path in paths:
+        imported: project.Imported = project.imported(modules, path)
+        found.append(Outside(imported.calls, imported.classes, hinted.get(path, ())))
+    return found
 
 
 def _report(options: Options, runs: Sequence[_FileRun], files: int) -> int:
@@ -336,7 +494,7 @@ def _report(options: Options, runs: Sequence[_FileRun], files: int) -> int:
         if options.mode is Mode.FIX:
             parts.append(f"fixed {sum(run.fixed for run in checked)}")
             guesses: int
-            if guesses := sum(r.offence.fix is not None for r in results):
+            if guesses := sum(r.offence.unsafe for r in results):
                 parts.append(f"{guesses} more with --unsafe-fixes")
         if options.filter.baseline_file is not None:
             parts.append(f"{sum(run.baselined for run in checked)} baselined")
@@ -388,7 +546,11 @@ def _run(options: Options) -> int:
     """
     names: list[Path]
     runs: list[_FileRun]
-    names, runs = _check_all(options)
+    try:
+        names, runs = _check_all(options)
+    except hints.HintError as error:
+        _ = sys.stderr.write(f"constricter: error: {error}\n")
+        return EXIT_ERROR
     _ = sys.stderr.write("".join(f"{run.error}\n" for run in runs if run.error))
     failed: bool = any(run.error for run in runs)
     status: int
