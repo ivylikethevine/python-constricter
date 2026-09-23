@@ -6,7 +6,7 @@ type is its label after its `:`; basedpyright is asked for variable types only.
 """
 
 import json
-from typing import IO, Final, TypeAlias, cast
+from typing import IO, Final, NamedTuple, TypeAlias, cast
 
 Json: TypeAlias = dict[str, "Json"] | list["Json"] | str | int | float | bool | None
 Object: TypeAlias = dict[str, Json]
@@ -23,6 +23,31 @@ _BASEDPYRIGHT: Final[Object] = {
         "genericTypes": False,
     },
 }
+
+
+class Server(NamedTuple):
+    """A checker's language server: how it's started, and how many are worth running at once.
+
+    Its executable, the arguments that start it over stdio, and the most of it to run (up to
+    `MAX_SERVERS`; one for a checker that works in parallel itself).
+    """
+
+    executable: str
+    args: tuple[str, ...]
+    most: int
+
+
+MAX_SERVERS: Final = 4  # a checker's, at most: each holds its own copy of the program it checks
+SERVERS: Final = {
+    # One thread each: more servers check more at once (sqlalchemy's hints: 10.8s with one, 7.2s with four).
+    "basedpyright": Server("basedpyright-langserver", ("--stdio",), MAX_SERVERS),
+    # Parallel already: more servers only repeat its work (sqlalchemy's: 0.9s with one, 0.7s with four).
+    "ty": Server("ty", ("server",), 1),
+}
+
+
+class HintError(Exception):
+    """The type checker couldn't be started, or failed to answer."""
 
 
 def write(stream: IO[bytes], data: bytes) -> None:

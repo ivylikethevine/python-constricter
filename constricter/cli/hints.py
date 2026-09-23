@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import IO, Final, NamedTuple, Self, TypeAlias, cast
 
 from constricter.cli import guard, protocol
+from constricter.cli.protocol import SERVERS, HintError, Server
 from constricter.fix.known import Hints
 
 _Json: TypeAlias = protocol.Json
@@ -40,25 +41,6 @@ _Found: TypeAlias = dict[Path, _FileHints]  # each file's
 _Task: TypeAlias = Callable[[], _Found]  # one server's work: the hints of each file it's asked about
 
 
-class Server(NamedTuple):
-    """A checker's language server: how it's started, and how many are worth running at once.
-
-    Its executable, the arguments that start it over stdio, and the most of it to run (up to
-    `MAX_SERVERS`; one for a checker that works in parallel itself).
-    """
-
-    executable: str
-    args: tuple[str, ...]
-    most: int
-
-
-MAX_SERVERS: Final = 4  # a checker's, at most: each holds its own copy of the program it checks
-SERVERS: Final = {
-    # One thread each: more servers check more at once (sqlalchemy's hints: 10.8s with one, 7.2s with four).
-    "basedpyright": Server("basedpyright-langserver", ("--stdio",), MAX_SERVERS),
-    # Parallel already: more servers only repeat its work (sqlalchemy's: 0.9s with one, 0.7s with four).
-    "ty": Server("ty", ("server",), 1),
-}
 _BATCH: Final = 8  # files a free server takes at a time: few, so none is left with the slow ones
 MEMORY: Final = 8 << 30  # the most a checker's servers use together, by default (`--infer-memory`)
 _SERVER_MEMORY: Final = 600 << 20  # a server's memory, before the files (basedpyright's, measured)
@@ -109,10 +91,6 @@ class _Asked(NamedTuple):
 
     numbers: dict[int, Path]
     lines: dict[Path, list[str]]
-
-
-class HintError(Exception):
-    """The type checker couldn't be started, or failed to answer."""
 
 
 class Session:

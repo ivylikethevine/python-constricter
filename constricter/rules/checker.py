@@ -8,7 +8,7 @@ from functools import lru_cache
 from typing import Final, NamedTuple, cast
 
 from constricter.fix import imports, returned, stdlib
-from constricter.fix.doubts import Facts, passed
+from constricter.fix.doubts import Facts, passed, tests
 from constricter.fix.inference import inference
 from constricter.fix.known import (
     Classes,
@@ -30,6 +30,7 @@ from constricter.offences import (
 )
 from constricter.rules import binding, parsed
 from constricter.rules.annotations import (
+    Tables,
     awaited_returns,
     casts,
     class_attributes,
@@ -39,12 +40,10 @@ from constricter.rules.annotations import (
     free_of_all,
     generic_classes,
     imported_from,
-    method_returns,
+    module_tables,
     node_name,
-    returns,
     self_returns,
 )
-from constricter.rules.annotations import classes as instance_attributes
 from constricter.rules.flow import Finding, Hierarchy
 from constricter.rules.narrowing import flow_offences
 from constricter.rules.redundant import redundant
@@ -53,9 +52,11 @@ from constricter.rules.syntax import (
     BRANCHING,
     FUNCTION_DEFS,
     FunctionDef,
+    Start,
     child_statements,
     collect_functions,
     expressions,
+    has_within,
     owners,
     python2_compatible,
     target_names,
@@ -88,33 +89,38 @@ def check_source(
       Every offence; `# noqa` comments are the caller's to apply.
 
     """
-    tree: ast.Module = _parse(source, filename)
+    tree: ast.Module
+    own: Tables | None
+    tree, own = _parse(source, filename)
     return check_tree(
         tree,
         checks,
         lines=as_text(source).splitlines(),
         outside=outside,
+        own=own,
     )
 
 
-def _parse(source: str | bytes, filename: str) -> ast.Module:
+def _parse(source: str | bytes, filename: str) -> tuple[ast.Module, Tables | None]:
     """Parse `source` (see `parsed.parse`), or take the tree the index kept for it (`parsed.take`).
 
     Returns:
-      The module. Raises `SyntaxError`.
+      The module, and the tables the index read from it if it was kept. Raises `SyntaxError`.
 
     """
-    kept: ast.Module | None = parsed.take(source) if isinstance(source, str) else None
-    return kept or parsed.parse(source, filename)
+    kept: parsed.Kept | None = parsed.take(source) if isinstance(source, str) else None
+    return kept or (parsed.parse(source, filename), None)
 
 
 def _settings(
     tree: ast.Module,
     checks: Checks,
     lines: Sequence[str],
-    calls: dict[str, str],
+    own: Tables,
     outside: Outside | None = None,
 ) -> Settings:
+    # The functions' declared returns: other checked files' (see `Outside`), then the module's own.
+    calls: dict[str, str] = {**({} if outside is None else outside.calls), **own.returns}
     imported: Classes | None = None if outside is None else outside.classes
     # The file's own types that mention a type variable it imports (`--fix` sees only its own).
     free: frozenset[str] = frozenset() if outside is None else outside.type_vars
@@ -124,8 +130,8 @@ def _settings(
         Known(
             free_of(calls, free),
             factories(tree),
-            {**(imported.attributes if imported else {}), **free_of_all(instance_attributes(tree), free)},
-            {**(imported.methods if imported else {}), **free_of_all(method_returns(tree), free)},
+            {**(imported.attributes if imported else {}), **free_of_all(own.classes, free)},
+            {**(imported.methods if imported else {}), **free_of_all(own.methods, free)},
             free_of(awaited_returns(tree), free),
             ClassSide(free_of_all(class_attributes(tree), free), free_of_all(class_methods(tree), free)),
             LibraryNames(casts(tree), stdlib.origins(tree), imports.plan(tree)),
@@ -133,9 +139,14 @@ def _settings(
         ),
         Hierarchy.for_module(tree, {name: frozenset(wider) for name, wider in checks.narrower}),
         owners(tree),
-        bool(of_type(tree, ast.NamedExpr)),
+        tuple(
+            sorted(
+                (node.lineno, node.col_offset)
+                for node in cast("list[ast.NamedExpr]", of_type(tree, ast.NamedExpr))
+            ),
+        ),
         () if outside is None else outside.hints,
-        Facts(self_returns(tree), generic_classes(tree), passed(tree)),
+        Facts(self_returns(tree), generic_classes(tree), passed(tree), tests(tree)),
     )
 
 
@@ -145,21 +156,23 @@ def check_tree(
     *,
     lines: Sequence[str] = (),
     outside: Outside | None = None,
+    own: Tables | None = None,
 ) -> list[Offence]:
     """Return the offences in a parsed module, sorted.
 
     `# type:` comments are seen only if it was parsed with `type_comments=True`; they count for `=`
     and `with` too in a module written to run on Python 2. With its source `lines`, a `**rest`
     capture is reported at its name rather than at its pattern's start. `outside` adds what's known
-    of it from other files and a type checker, for `--fix` (see `Outside`).
+    of it from other files and a type checker, for `--fix` (see `Outside`). `own`: the module's own
+    tables, if already read from this tree (see `parsed.keep`).
 
     Returns:
       Every offence, in source order.
 
     """
-    calls: Mapping[str, str] = {} if outside is None else outside.calls
+    own = own or module_tables(tree)
     table: returned.Table = returned.Table(tree)
-    settings: Settings = _settings(tree, checks, lines, {**calls, **returns(tree)}, outside)
+    settings: Settings = _settings(tree, checks, lines, own, outside)
     # The table, filled in as the functions are checked in call order, is what they all read.
     settings = replace(settings, known=replace(settings.known, returned=table.returned))
     scopes: list[Scope] = _scopes(tree, settings, table)
@@ -195,8 +208,8 @@ def annotation_coverage(source: str | bytes, checks: Checks = DEFAULT_CHECKS) ->
       The counts; `# noqa` comments don't make a binding typed. Raises `SyntaxError`.
 
     """
-    tree: ast.Module = _parse(source, "<unknown>")
-    settings: Settings = _settings(tree, checks, as_text(source).splitlines(), {})
+    tree: ast.Module = _parse(source, "<unknown>")[0]
+    settings: Settings = _settings(tree, checks, as_text(source).splitlines(), module_tables(tree))
     scopes: list[Scope] = _scopes(tree, settings)
     total: int = sum(len(scope.bound()) for scope in scopes)
     untyped: int = sum(o.code in _UNTYPED for scope in scopes for o in scope.reported())
@@ -349,9 +362,11 @@ def _function_scope(
 def _visit(scope: Scope, stmt: ast.stmt) -> None:
     """Bind the names `stmt` binds, as Python would, then visit its nested statements."""
     part: ast.AST
-    if scope.settings.walruses:  # most modules have no `:=`: none of their parts need a look
+    walruses: tuple[Start, ...]
+    if walruses := scope.settings.walruses:  # most modules have no `:=`: none of their parts need a look
         for part in expressions(stmt):
-            scope.walrus(part)
+            if has_within(walruses, part):  # a `:=` in it
+                scope.walrus(part)
     _declare(scope, stmt)
     binding.bind(scope, stmt)
     if isinstance(stmt, ast.Return):
@@ -662,9 +677,9 @@ def value_flow(
       Every finding, in source order.
 
     """
-    tree: ast.Module = _parse(source, filename)
+    tree: ast.Module = _parse(source, filename)[0]
     # Its lines place a `**rest` capture at its name, as `check_source` does.
-    settings: Settings = _settings(tree, checks, as_text(source).splitlines(), returns(tree))
+    settings: Settings = _settings(tree, checks, as_text(source).splitlines(), module_tables(tree))
     return _value_flow(tree, _scopes(tree, settings))
 
 

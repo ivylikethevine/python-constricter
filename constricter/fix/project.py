@@ -21,7 +21,7 @@ from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.known import Classes
 from constricter.rules import parsed
-from constricter.rules.annotations import classes, defined_type_vars, method_returns, returns
+from constricter.rules.annotations import Tables, defined_type_vars, module_tables
 
 _BUILTINS: Final = frozenset(dir(builtins))
 _PACKAGE: Final = "__init__"
@@ -215,14 +215,15 @@ def read(path: Path) -> Module | None:
         tree: ast.Module = parsed.parse(source, str(path))
     except (SyntaxError, ValueError):  # a null byte is a ValueError
         return None
-    parsed.keep(source, tree)  # for the check to take, rather than parse it again
+    own: Tables = module_tables(tree)
+    parsed.keep(source, (tree, own))  # for the check to take, rather than parse it and read it again
     name: str = module_name(path)
     return Module(
         name,
-        returns(tree),
+        own.returns,
         _names(tree, name, is_package=path.stem == _PACKAGE),
-        classes(tree),
-        method_returns(tree),
+        own.classes,
+        own.methods,
         defined_type_vars(tree),
         _guarded(tree, name, is_package=path.stem == _PACKAGE),
     )

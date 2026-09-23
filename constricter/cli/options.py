@@ -20,8 +20,8 @@ from constricter.cli.config import (
     unknown_fix_kinds,
 )
 from constricter.cli.explain import explain
-from constricter.cli.hints import SERVERS
 from constricter.cli.paths import STDIN, excluded
+from constricter.cli.protocol import SERVERS
 from constricter.cli.report import Format, Result
 from constricter.offences import (
     LEVELS,

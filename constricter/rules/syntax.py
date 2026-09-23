@@ -2,6 +2,7 @@
 """Walking the syntax the rules read: functions and methods, nested statements, binding targets."""
 
 import ast
+import bisect
 import re
 from collections.abc import Iterable, Iterator, Sequence
 from typing import Final, TypeAlias
@@ -21,6 +22,8 @@ FUNCTION_DEFS: tuple[type[ast.FunctionDef], type[ast.AsyncFunctionDef]] = (
 BRANCHING: Final = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.TryStar, ast.Match)
 # The nodes with a scope of their own: what's inside one isn't the enclosing function's.
 NESTED_SCOPES: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+_END: Final = 1 << 62  # past any line: a module's span has no end
+Start: TypeAlias = tuple[int, int]  # where a node starts: its line and column
 _FUTURE: Final = "__future__"
 # `from __future__` features only code that also runs on Python 2 imports: its type comments count.
 _PYTHON2_FUTURES: frozenset[str] = frozenset(
@@ -122,6 +125,44 @@ def import_bindings(body: Iterable[ast.stmt]) -> Iterator[tuple[str, str, str]]:
                     yield alias.asname or alias.name, f"{module}.{alias.name}", module
             case _:
                 pass
+
+
+def within(starts: Sequence[Start], node: ast.AST, begin: Start | None = None) -> slice:
+    """Find which of `starts` (in source order) are within `node`'s span of the source.
+
+    `begin`, if given, is where the span starts instead (a function's first decorator, say). A node
+    with no position (the module) spans everything.
+
+    Returns:
+      Their slice.
+
+    """
+    return slice(*_bounds(starts, node, begin))
+
+
+def has_within(starts: Sequence[Start], node: ast.AST) -> bool:
+    """Check whether any of `starts` (in source order) is within `node`'s span (see `within`).
+
+    Returns:
+      Whether one is.
+
+    """
+    first: int
+    stop: int
+    first, stop = _bounds(starts, node, None)
+    return stop > first
+
+
+def _bounds(starts: Sequence[Start], node: ast.AST, begin: Start | None) -> tuple[int, int]:
+    """Find where `node`'s span (from `begin`, if given) starts and stops among `starts`.
+
+    Returns:
+      The first index within it, and the first past it.
+
+    """
+    first: Start = begin or (getattr(node, "lineno", 0), getattr(node, "col_offset", 0))
+    end: Start = (getattr(node, "end_lineno", _END) or _END, getattr(node, "end_col_offset", 0) or 0)
+    return bisect.bisect_left(starts, first), bisect.bisect_left(starts, end)
 
 
 def own_nodes(found: Sequence[ast.AST], parents: dict[int, ast.AST] | None = None) -> Iterator[ast.AST]:

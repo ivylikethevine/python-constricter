@@ -9,7 +9,7 @@ import ast
 import re
 from collections.abc import Iterator, Mapping, Sequence
 from functools import lru_cache
-from typing import Final, cast
+from typing import Final, NamedTuple, cast
 
 from constricter.rules.syntax import child_statements
 
@@ -655,3 +655,24 @@ def _plain(func: ast.FunctionDef | ast.AsyncFunctionDef, decorators: frozenset[s
 
 def _words(annotation: str) -> list[str]:
     return [word for word in re.split(r"\W+", annotation) if word]
+
+
+class Tables(NamedTuple):
+    """A module's own tables `--fix` reads (see `returns`, `classes`, `method_returns`).
+
+    Its functions' declared returns, and its classes' attributes and methods' returns.
+    """
+
+    returns: dict[str, str]
+    classes: dict[str, dict[str, str]]
+    methods: dict[str, dict[str, str]]
+
+
+def module_tables(tree: ast.Module) -> Tables:
+    """Read the module's own tables, once for the cross-file index and the check (see `parsed.keep`).
+
+    Returns:
+      Them.
+
+    """
+    return Tables(returns(tree), classes(tree), method_returns(tree))
