@@ -17,12 +17,13 @@ Each runs isolated (`python -I`, from `local/corpus-table/`), so neither this ch
 For each corpus and version: a check at every level (with `--all-scopes`), counted per code at
 `suffocate` and as errors and warnings at each level, by that version's own rules and defaults;
 then `--fix` and `--fix --unsafe-fixes` on copies, counting what each fixed, what no longer
-compiles, and what a second pass would still fix. Each version's rows end in a total: each code's
-share of the offences, and what was fixed and guessed as a share of them. `--write` adds a section
-per version to docs/RUNS.md, or replaces a release's section if it's there; `dev` is recorded under this
-checkout's version, so record it right after bumping the version for a release (`--replace` to
-overwrite a section already there). Timings go to standard error, not
-the tables, so rerunning it on an unchanged tree changes nothing.
+compiles, and what a second pass would still fix; and the share of its bindings typed as released
+and after each (this checkout's `--coverage`, whatever the version). Each version's rows end in a
+total: each code's share of the offences, and what was fixed and guessed as a share of them.
+`--write` adds a section per version to docs/RUNS.md, or replaces a release's section if it's there;
+`dev` is recorded under this checkout's version, so record it right after bumping the version for a
+release (`--replace` to overwrite a section already there). Timings go to standard error, not the
+tables, so rerunning it on an unchanged tree changes nothing.
 """
 
 import importlib
@@ -56,13 +57,12 @@ PACKAGES: Final = (
     "django",
     "sqlalchemy",
     "pydantic",
-    "rich",
-    "sentry_sdk",
     "pandas",
 )
 _SOURCES: Final = Path(__file__).with_name("corpus_sources.py")
 _EVERYWHERE: Final = ("--all-scopes", "--jobs=0")
 _FIXED: Final = re.compile(r"fixed (\d+)")
+_TYPED: Final = re.compile(r"^Total: (\d+)/(\d+) typed", re.MULTILINE)  # `--coverage`'s summary
 _SECTION: Final = "## constricter "
 _WINDOWS: Final = "nt"
 _ERROR: Final = "error"
@@ -71,23 +71,11 @@ _WRITE_FLAG: Final = "--write"
 _REPLACE_FLAG: Final = "--replace"
 _LABEL_FLAG: Final = "--label"
 _PROSE_WIDTH: Final = 100  # .prettierrc.yaml's printWidth
-_GROWTH_NOTE: Final = (
-    "How much fixing grew the corpus's Python files: bytes and lines added (and their share), and "
-    "bytes per fix, by `--fix` and then by `--fix --unsafe-fixes` (certain fixes and guesses) on a "
-    "fresh copy:"
+_TYPED_NOTE: Final = (
+    "Annotation coverage (`--coverage` with `all-scopes`, counted by this checkout for every version): "
+    "the share of bindings typed as released, after `--fix`, and after `--fix --unsafe-fixes`, and "
+    "how much each raised it: in percentage points, and as a share of the bindings that were untyped:"
 )
-_GROWTH_HEADER: Final = [
-    "Corpus",
-    "constricter",
-    "Bytes",
-    "Lines",
-    "`--fix`: bytes",
-    "lines",
-    "per fix",
-    "`--unsafe-fixes`: bytes",
-    "lines",
-    "per fix",
-]
 _LEVELS_NOTE: Final = (
     "Errors / warnings at each level, by the version's own rules and defaults; what `--fix` fixed and "
     "what `--unsafe-fixes` guessed on top (each also as a share of the offences at `suffocate`), files "
@@ -110,6 +98,13 @@ class Corpus(NamedTuple):
     root: Path
 
 
+class Typed(NamedTuple):
+    """How many of a corpus's bindings are typed, of all of them (`--coverage`'s count)."""
+
+    typed: int
+    total: int
+
+
 class Measured(NamedTuple):
     """What one constricter version gave on one corpus."""
 
@@ -122,27 +117,9 @@ class Measured(NamedTuple):
     guessed: int | None  # fixed only with `--unsafe-fixes`, beyond `fixed`
     broken: int  # files that compiled before `--fix --unsafe-fixes` and don't after
     left: int  # what a second `--fix --unsafe-fixes` pass would still fix
-    size: "Size"  # the corpus's Python files, before any fix
-    fixed_size: "Size | None"  # after `--fix` (`None`: it crashed)
-    unsafe_size: "Size | None"  # after `--fix --unsafe-fixes`
-
-
-class Size(NamedTuple):
-    """How big a tree's Python files are, together."""
-
-    size: int  # bytes
-    lines: int
-
-
-def _size(root: Path) -> Size:
-    """Measure every Python file under `root`.
-
-    Returns:
-      Their bytes and lines, added up.
-
-    """
-    data: list[bytes] = [path.read_bytes() for path in paths.python_files([root])]
-    return Size(sum(len(chunk) for chunk in data), sum(chunk.count(b"\n") for chunk in data))
+    typed_fixed: Typed | None  # after `--fix`; `None`: it crashed
+    typed_guessed: Typed | None  # after `--fix --unsafe-fixes`
+    typed: Typed  # as released
 
 
 def corpora() -> list[Corpus]:
@@ -250,6 +227,21 @@ def _fixed_count(output: str) -> int | None:
     return int(found.group(1)) if found else None
 
 
+def _typed(root: Path) -> Typed:
+    """Count the bindings under `root` that are typed, with this checkout's `--coverage`.
+
+    Every version's corpus is counted the same way, whether or not that version has `--coverage`.
+
+    Returns:
+      The typed ones, and all of them (none, if it printed no summary).
+
+    """
+    found: re.Match[str] | None = _TYPED.search(
+        _run(interpreter(DEV), ["--coverage", *_EVERYWHERE, str(root)]),
+    )
+    return Typed(int(found.group(1)), int(found.group(2))) if found else Typed(0, 0)
+
+
 def _copy(corpus: Corpus, version: str) -> tuple[Path, list[Path]]:
     """Copy a corpus's Python files under `WORK`, fresh, for one version to fix.
 
@@ -300,29 +292,26 @@ class _Fixing(NamedTuple):
     guessed: int | None
     broken: int
     left: int
-    size: Size
-    fixed_size: Size | None
-    unsafe_size: Size | None
+    typed_fixed: Typed | None
+    typed_guessed: Typed | None
 
 
 def _fixes(python: str, corpus: Corpus, version: str) -> _Fixing:
-    """Fix copies of `corpus`: certain fixes only, then guesses too, measuring each copy.
+    """Fix copies of `corpus`: certain fixes only, then guesses too.
 
     Returns:
       How many certain fixes, how many more guesses, files the guesses broke, what a second pass
-      would still fix, and how big the files were before and after each.
+      would still fix, and how much of the copy was typed after each.
 
     """
     fixing: list[str] = ["--level=suffocate", *_EVERYWHERE]
     root: Path
     valid: list[Path]
     root, _ = _copy(corpus, version)
-    size: Size = _size(root)
     fixed: int | None = _fixed_count(_run(python, ["--fix", *fixing, str(root)]))
-    fixed_size: Size = _size(root)
+    typed_fixed: Typed | None = None if fixed is None else _typed(root)
     root, valid = _copy(corpus, version)
     both: int | None = _fixed_count(_run(python, ["--fix", "--unsafe-fixes", *fixing, str(root)]))
-    unsafe_size: Size = _size(root)
     broken: int = sum(not _compiles(path) for path in valid)
     left: int = _run(python, ["--diff", "--unsafe-fixes", *fixing, str(root)]).count("\n+")
     return _Fixing(
@@ -330,9 +319,8 @@ def _fixes(python: str, corpus: Corpus, version: str) -> _Fixing:
         None if fixed is None or both is None else both - fixed,
         broken,
         left,
-        size,
-        None if fixed is None else fixed_size,
-        None if both is None else unsafe_size,
+        typed_fixed,
+        None if both is None else _typed(root),
     )
 
 
@@ -352,7 +340,7 @@ def measure(corpus: Corpus, version: str, name: str = __version__) -> Measured:
     fixes: _Fixing = _fixes(python, corpus, version)
     seconds: float = time.perf_counter() - start
     _ = sys.stderr.write(f"{version} on {corpus.name}: {files} files in {seconds:.1f}s\n")
-    return Measured(corpus, label(version, name), files, codes, levels, *fixes)
+    return Measured(corpus, label(version, name), files, codes, levels, *fixes, _typed(corpus.root))
 
 
 def _table(rows: Sequence[Sequence[object]], right: int) -> list[str]:
@@ -472,12 +460,77 @@ def _level_rows(rows: Sequence[Measured]) -> list[list[str]]:
     return [*(row(m.corpus.name, [m]) for m in rows), row("**Total**", rows)]
 
 
+def _percent(typed: Typed | None) -> str:
+    """Write a share of typed bindings.
+
+    Returns:
+      It, as `61.2%`; a crash as `crashed`.
+
+    """
+    return "crashed" if typed is None else f"{typed.typed / typed.total:.1%}" if typed.total else "-"
+
+
+def _raised(before: Typed, after: Typed | None) -> str:
+    """Write how much `after`'s share of typed bindings is over `before`'s.
+
+    Returns:
+      It in percentage points, and as a share of the bindings `before` left untyped (a relative
+      change means little from a corpus that starts near 0%), as `+23.0 pts, 23.3% of untyped`.
+
+    """
+    if after is None or not before.total or not after.total:
+        return _percent(after) if after is None else "-"
+    was: float = before.typed / before.total
+    now: float = after.typed / after.total
+    untyped: str = f", {(now - was) / (1 - was):.1%} of untyped" if was < 1 else ""
+    return f"{(now - was) * 100:+.1f} pts{untyped}"
+
+
+def _added(counts: Iterable[Typed | None]) -> Typed | None:
+    """Add up a column of typed counts.
+
+    Returns:
+      Their total, or `None` (crashed) if any row's is.
+
+    """
+    known: list[Typed | None] = list(counts)
+    if None in known:
+        return None
+    return Typed(sum(t.typed for t in known if t), sum(t.total for t in known if t))
+
+
+def _typed_rows(rows: Sequence[Measured]) -> list[list[str]]:
+    """Lay out one version's rows of annotation coverage before and after fixing, then their total.
+
+    Returns:
+      A row per corpus, then a **Total** row over every corpus's bindings.
+
+    """
+
+    def row(name: str, m: Sequence[Measured]) -> list[str]:
+        before: Typed = cast("Typed", _added(one.typed for one in m))
+        fixed: Typed | None = _added(one.typed_fixed for one in m)
+        guessed: Typed | None = _added(one.typed_guessed for one in m)
+        return [
+            name,
+            m[0].version,
+            _percent(before),
+            _percent(fixed),
+            _percent(guessed),
+            _raised(before, fixed),
+            _raised(before, guessed),
+        ]
+
+    return [*(row(m.corpus.name, [m]) for m in rows), row("**Total**", rows)]
+
+
 def tables(measured: Sequence[Measured]) -> str:
     """Write the two tables as Markdown, a row per corpus and a total per version.
 
     Returns:
-      The offences per code at `suffocate` (every code a version reports), then each level's errors
-      and warnings and what `--fix` did, with a line naming the Python they came from.
+      The offences per code at `suffocate` (every code a version reports), each level's errors and
+      warnings and what `--fix` did, and how much of each corpus was typed before and after fixing,
+      with a line naming the Python they came from.
 
     """
     codes: list[str] = sorted({code for m in measured for code in m.codes})
@@ -507,6 +560,21 @@ def tables(measured: Sequence[Measured]) -> str:
         ],
         right=2,
     )
+    third: list[str] = _table(
+        [
+            [
+                "Corpus",
+                "constricter",
+                "Typed as released",
+                "After `--fix`",
+                "After `--unsafe-fixes`",
+                "Raised by `--fix`",
+                "Raised with guesses",
+            ],
+            *(row for rows in versions for row in _typed_rows(rows)),
+        ],
+        right=2,
+    )
     python: str = sys.version.split()[0]
     # Filled to 100 columns, as Prettier fills a paragraph, so CI's `prettier --check` passes.
     codes_note: str = textwrap.fill(
@@ -529,66 +597,10 @@ def tables(measured: Sequence[Measured]) -> str:
             "",
             *second,
             "",
-            textwrap.fill(_GROWTH_NOTE, width=_PROSE_WIDTH),
+            textwrap.fill(_TYPED_NOTE, width=_PROSE_WIDTH),
             "",
-            *_table([_GROWTH_HEADER, *(row for rows in versions for row in _growth_rows(rows))], right=2),
+            *third,
         ],
-    )
-
-
-def _grown(before: Size, after: Size | None, fixes: int | None) -> tuple[str, str, str]:
-    """Write how much fixing grew a tree: bytes, lines, and bytes per fix.
-
-    Returns:
-      The three cells (`crashed` if the fix did).
-
-    """
-    if after is None or fixes is None:
-        return "crashed", "crashed", "crashed"
-    grown: int = after.size - before.size
-    return (
-        _share(grown, before.size),
-        _share(after.lines - before.lines, before.lines),
-        f"{grown / fixes:.1f}" if fixes else "-",
-    )
-
-
-def _growth_rows(rows: Sequence[Measured]) -> list[list[str]]:
-    """Lay out one version's growth under `--fix`, a row per corpus, then their total.
-
-    Returns:
-      The rows: each corpus's size, then what `--fix` and `--fix --unsafe-fixes` added.
-
-    """
-
-    def row(name: str, m: Sequence[Measured]) -> list[str]:
-        before: Size = Size(sum(one.size.size for one in m), sum(one.size.lines for one in m))
-        fixed: int | None = _sum(one.fixed for one in m)
-        both: int | None = None if fixed is None else _sum(one.guessed for one in m)
-        after: Size | None = _added(one.fixed_size for one in m)
-        unsafe: Size | None = _added(one.unsafe_size for one in m)
-        return [
-            name,
-            m[0].version,
-            f"{before.size:,}",
-            f"{before.lines:,}",
-            *_grown(before, after, fixed),
-            *_grown(before, unsafe, None if both is None or fixed is None else fixed + both),
-        ]
-
-    return [*(row(m.corpus.name, [m]) for m in rows), row("**Total**", rows)]
-
-
-def _added(sizes: Iterable[Size | None]) -> Size | None:
-    """Add sizes up.
-
-    Returns:
-      Their total, or `None` (crashed) if any is.
-
-    """
-    known: list[Size | None] = list(sizes)
-    return (
-        None if None in known else Size(*(sum(part) for part in zip(*cast("list[Size]", known), strict=True)))
     )
 
 

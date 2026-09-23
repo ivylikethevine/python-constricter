@@ -191,12 +191,40 @@ def test_a_method_returning_a_guess_rests_on_both() -> None:
     assert [(o.fix, o.unsafe) for o in trusted] == [("Thing", False)]
 
 
-def test_a_long_chain_stops_after_its_rounds() -> None:
-    """Each round types one more link of a chain of unannotated calls; five rounds reach five links."""
-    links: str = "".join(f"def f{n}():\n    return f{n + 1}()\n\n\n" for n in range(7))
-    source: str = f"{links}def f7():\n    return 1\n\n\ndef use() -> None:\n    near = f5()\n    far = f0()\n"
+def test_a_long_chain_is_typed_in_call_order() -> None:
+    """Callees are checked before their callers: a chain of unannotated calls is typed whole, however long."""
+    links: str = "".join(f"def f{n}():\n    return f{n + 1}()\n\n\n" for n in range(30))
+    source: str = (
+        f"{links}def f30():\n    return 1\n\n\ndef use() -> None:\n    near = f25()\n    far = f0()\n"
+    )
     fixed: dict[str, str | None] = {o.name: o.fix for o in check_source(source)}
-    assert fixed == {"near": "int", "far": None}
+    assert fixed == {"near": "int", "far": "int"}
+
+
+def test_a_cycle_is_typed_in_rounds() -> None:
+    """Two functions calling each other: the one checked before the other was typed learns it in a round.
+
+    `first` returns what `second` does; `second` returns an `int` of its own, and calls `first` too:
+    whichever order the cycle is checked in, `first` is typed.
+    """
+    source: str = textwrap.dedent(
+        """
+        def first():
+            return second(False)
+
+
+        def second(again: bool):
+            if again:
+                first()
+            return 1
+
+
+        def use() -> None:
+            a = first()
+            b = second(True)
+        """,
+    )
+    assert {o.name: o.fix for o in check_source(source)} == {"a": "int", "b": "int"}
 
 
 def test_a_module_body_call_is_typed_with_all_scopes() -> None:
@@ -206,3 +234,46 @@ def test_a_module_body_call_is_typed_with_all_scopes() -> None:
         (o.name, o.fix) for o in check_source(source, checks=Checks(all_scopes=True))
     ]
     assert fixed == [("LIMIT", "int")]
+
+
+def test_a_late_typed_return_is_typed_in_a_round() -> None:
+    """A function typed only once finished (`None`, then `int`) types its calls in a round.
+
+    A module body's call to it, checked before that round, is checked again too.
+    """
+    source: str = textwrap.dedent(
+        """
+        def late(n: int):
+            x = None
+            if n:
+                x = n
+            return x
+
+
+        def use() -> None:
+            a = late(1)
+
+
+        b = late(2)
+        """,
+    )
+    everywhere: Checks = Checks(all_scopes=True)
+    fixed: dict[str, str | None] = {o.name: o.fix for o in check_source(source, checks=everywhere)}
+    assert fixed == {"x": "int | None", "a": "int | None", "b": "int | None"}
+    # The body's statements are looked through (a class's, an `if`'s, before any function), and
+    # without a call there, left alone.
+    elsewhere: str = "class C:\n    if True:\n        c = 1\n" + source.replace("b = late(2)", "")
+    assert {o.name: o.fix for o in check_source(elsewhere, checks=everywhere)} == {
+        "x": "int | None",
+        "a": "int | None",
+        "c": None,
+    }
+
+
+def test_a_chain_on_a_late_type_stops_after_its_rounds() -> None:
+    """Each round types one more link of a chain built on a late-typed return; five rounds reach five."""
+    base: str = "def f0(n: int):\n    x = None\n    if n:\n        x = n\n    return x\n\n\n"
+    links: str = "".join(f"def f{n}(k: int):\n    return f{n - 1}(k)\n\n\n" for n in range(1, 8))
+    source: str = f"{base}{links}def use() -> None:\n    near = f3(1)\n    far = f7(1)\n"
+    fixed: dict[str, str | None] = {o.name: o.fix for o in check_source(source)}
+    assert fixed == {"x": "int | None", "near": "int | None", "far": None}

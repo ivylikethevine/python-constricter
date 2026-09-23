@@ -239,3 +239,55 @@ def test_imported_classes_type_their_members(tmp_path: Path) -> None:
         "j": None,
     }
     assert project.imported(project.Index({}, []), main) == project.Imported({}, Classes({}, {}))
+
+
+TYPING: Final = """
+from typing import TypeVar
+
+T = TypeVar("T")
+"""
+GENERIC: Final = """
+from pkg._typing import T
+
+class Box:
+    def get(self, x: T) -> T:
+        return x
+
+def same(x: T) -> T:
+    return x
+
+def run(box: Box) -> None:
+    a = same(1)
+    b = box.get(1)
+"""
+USES_GENERIC: Final = """
+from pkg.generic import Box, same
+
+def run(box: Box) -> None:
+    c = same(1)
+    d = box.get(1)
+"""
+
+
+def test_an_imported_type_variable_is_never_a_calls_type(tmp_path: Path) -> None:
+    """A return naming a type variable its module imports depends on the arguments, in or out of it."""
+    _ = _write(tmp_path / "pkg" / "__init__.py", "")
+    _ = _write(tmp_path / "pkg" / "_typing.py", TYPING)
+    generic: Path = _write(tmp_path / "pkg" / "generic.py", GENERIC)
+    uses: Path = _write(tmp_path / "uses.py", USES_GENERIC)
+    catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
+    assert project.type_vars(catalog, generic) == {"T"}
+    assert project.type_vars(catalog, uses) == set()
+    assert project.type_vars(catalog, tmp_path / "missing.py") == set()
+    imported: project.Imported = project.imported(catalog, uses)
+    assert imported.calls == {}
+    assert imported.classes.methods == {"Box": {}}
+    inside: list[Offence] = check_source(
+        generic.read_text(encoding="utf-8"),
+        outside=Outside(type_vars=project.type_vars(catalog, generic)),
+    )
+    outside: list[Offence] = check_source(
+        uses.read_text(encoding="utf-8"),
+        outside=Outside(imported.calls, imported.classes),
+    )
+    assert {o.name: o.fix for o in (*inside, *outside)} == dict.fromkeys(("a", "b", "c", "d"))

@@ -139,6 +139,15 @@ class Known:
     max_length: int = MAX_LENGTH  # the longest tuple display typed element by element (LVA011's)
     returned: Returned = field(default_factory=Returned)
 
+    def is_builtin(self, name: str) -> bool:
+        """Check that `name` still means the builtin: nothing in the module binds it (a parameter, say).
+
+        Returns:
+          Whether it does; with no import plan (a module not read for one), whether it's a builtin.
+
+        """
+        return name in _BUILTINS and (self.names.plan is None or name not in self.names.plan.taken)
+
 
 class Hints(NamedTuple):
     """A type checker's inlay hints for one file (`--infer-with`): which checker, and each type.
@@ -157,12 +166,15 @@ class Outside(NamedTuple):
 
     `calls`: the return types of functions other checked files define, and `classes` their classes'
     attributes and methods' returns, as the file spells them (see `project.imported`); `hints`, a
-    type checker's types for what `--fix` can't type itself (`--infer-with`).
+    type checker's types for what `--fix` can't type itself (`--infer-with`); `type_vars`, the names
+    it imports that are type variables where they're defined (see `project.type_vars`), which a
+    type its own functions declare can't be written with outside them.
     """
 
     calls: Mapping[str, str] = {}
     classes: Classes | None = None
     hints: tuple[Hints, ...] = ()  # each checker's, in the order they were named
+    type_vars: frozenset[str] = frozenset()
 
 
 class Inference(NamedTuple):

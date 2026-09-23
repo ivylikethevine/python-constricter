@@ -7,7 +7,7 @@ methods' return types, its classes' attributes, and the factories it imports.
 
 import ast
 import re
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from functools import lru_cache
 from typing import Final, cast
 
@@ -68,6 +68,8 @@ GENERICS: Final = ABSTRACT | frozenset(
 )
 _TUPLES: Final = frozenset({"tuple", "Tuple"})  # the annotations that list one type per element
 _TYPE_VARS: Final = frozenset({"TypeVar", "ParamSpec", "TypeVarTuple"})
+_TYPING_MODULES: Final = frozenset({"typing", "typing_extensions"})
+_TYPING_VARS: Final = frozenset({"AnyStr"})  # the type variables `typing` itself defines
 # Modules `_FACTORIES`' names are imported from (so an aliased or re-exported import is still found).
 _FACTORY_MODULES: Final = frozenset({"enum", "typing", "typing_extensions"})
 # A method returning `Self` returns its receiver's own class.
@@ -158,13 +160,16 @@ def _statements(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
     assignment.
 
     Yields:
-      Each statement, before those inside it.
+      Each statement, before those inside it (depth first, in source order).
 
     """
+    # A stack, not a recursion: a nested generator passes each statement up through every level.
+    # `None` at its bottom ends it: popped, the walk's done.
+    waiting: list[ast.stmt | None] = [None, *reversed(body)]
     stmt: ast.stmt
-    for stmt in body:
+    for stmt in iter(waiting.pop, None):
         yield stmt
-        yield from _statements(_blocks(stmt))
+        waiting.extend(reversed(_blocks(stmt)))
 
 
 def _blocks(stmt: ast.stmt) -> list[ast.stmt]:
@@ -212,7 +217,7 @@ def class_attributes(tree: ast.Module) -> dict[str, dict[str, str]]:
       Each class's name, mapped to its class attributes' names and annotation text.
 
     """
-    type_vars: frozenset[str] = _type_vars(tree)
+    type_vars: frozenset[str] = defined_type_vars(tree)
     found: dict[str, dict[str, str]] = {}
     node: ast.AST
     stmt: ast.stmt
@@ -419,7 +424,7 @@ def returns(tree: ast.Module) -> dict[str, str]:
       Each such function's name, and its return annotation as source text.
 
     """
-    return _declared_returns(tree.body, _type_vars(tree))
+    return _declared_returns(tree.body, defined_type_vars(tree))
 
 
 def method_returns(tree: ast.Module) -> dict[str, dict[str, str]]:
@@ -448,7 +453,7 @@ def _class_returns(tree: ast.Module, decorators: frozenset[str]) -> dict[str, di
       Each class's name, mapped to those methods' names and return annotation text.
 
     """
-    type_vars: frozenset[str] = _type_vars(tree)
+    type_vars: frozenset[str] = defined_type_vars(tree)
     found: dict[str, dict[str, str]] = {}
     node: ast.ClassDef
     for node in _class_nodes(tree):
@@ -459,6 +464,38 @@ def _class_returns(tree: ast.Module, decorators: frozenset[str]) -> dict[str, di
                 if _is_self(annotation) or _SELF not in _words(annotation)
             }
     return found
+
+
+def self_returns(tree: ast.Module) -> dict[str, frozenset[str]]:
+    """Map each class to its methods (classmethods and staticmethods too) declared to return a bare `Self`.
+
+    `method_returns` types such a call as the class; but called on `self` or `cls` it's `Self`, which
+    a subclass's is too, so `--fix` writes that instead (see `constricter.fix.doubts`).
+
+    Returns:
+      Each class's name, and those methods' names.
+
+    """
+    return {
+        node.name: frozenset(
+            stmt.name
+            for stmt in node.body
+            if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef)
+            and stmt.returns is not None
+            and _is_self(ast.unparse(stmt.returns))
+        )
+        for node in _class_nodes(tree)
+    }
+
+
+def generic_classes(tree: ast.Module) -> frozenset[str]:
+    """Find the generic classes the module defines (see `_generic`).
+
+    Returns:
+      Their names: written bare, as `--fix` would write `self`'s type, each is missing its arguments.
+
+    """
+    return frozenset(node.name for node in _class_nodes(tree) if _generic(node))
 
 
 def _generic(node: ast.ClassDef) -> bool:
@@ -484,9 +521,32 @@ def _is_self(annotation: str) -> bool:
     return node_name(ast.parse(annotation, mode="eval").body) == _SELF
 
 
+def free_of(types: Mapping[str, str], type_vars: frozenset[str]) -> dict[str, str]:
+    """Drop the types that mention one of `type_vars` (a call's type then depends on its arguments).
+
+    Returns:
+      The others.
+
+    """
+    return {name: annotation for name, annotation in types.items() if not type_vars & set(_words(annotation))}
+
+
+def free_of_all(
+    tables: Mapping[str, Mapping[str, str]],
+    type_vars: frozenset[str],
+) -> dict[str, dict[str, str]]:
+    """Drop each class's member types that mention one of `type_vars` (see `free_of`).
+
+    Returns:
+      The others, per class.
+
+    """
+    return {owner: free_of(types, type_vars) for owner, types in tables.items()}
+
+
 @lru_cache(maxsize=16)  # each class table asks, for each module
-def _type_vars(tree: ast.Module) -> frozenset[str]:
-    """Find the module-level names bound to a `TypeVar`, `ParamSpec` or `TypeVarTuple`.
+def defined_type_vars(tree: ast.Module) -> frozenset[str]:
+    """Find the module-level names bound to a `TypeVar`, `ParamSpec` or `TypeVarTuple`, or `typing.AnyStr`.
 
     Returns:
       Those names.
@@ -496,12 +556,17 @@ def _type_vars(tree: ast.Module) -> frozenset[str]:
     stmt: ast.stmt
     name: str
     func: ast.expr
+    module: str
     for stmt in tree.body:
         match stmt:
             case ast.Assign(targets=[ast.Name(id=name)], value=ast.Call(func=func)) if (
                 node_name(func) in _TYPE_VARS
             ):
                 names.add(name)
+            case ast.ImportFrom(module=str() as module, level=0) if module in _TYPING_MODULES:
+                names.update(alias.asname or alias.name for alias in stmt.names if alias.name in _TYPING_VARS)
+            case ast.Import(names=[*_]) if any(alias.name in _TYPING_MODULES for alias in stmt.names):
+                names.update(_TYPING_VARS)  # `typing.AnyStr`: the word `AnyStr`
             case _:
                 pass
     return frozenset(names)
@@ -516,7 +581,7 @@ def awaited_returns(tree: ast.Module) -> dict[str, str]:
       Each such function's name, and its return annotation as source text.
 
     """
-    return _declared_returns(tree.body, _type_vars(tree), awaited=True)
+    return _declared_returns(tree.body, defined_type_vars(tree), awaited=True)
 
 
 def _declared_returns(

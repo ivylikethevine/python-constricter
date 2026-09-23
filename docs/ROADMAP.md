@@ -40,6 +40,16 @@
   11.5s before.
 - **Fix levels**: every mechanism has a stable id, shown by `--show-fixes` and in JSON;
   `fix-select`, `fix-ignore` and `unsafe-fix-select` choose which apply. Never changes a report.
+- **More fixed-return builtins, and methods on literals**: `any`, `hex`, `dir`, `range`, `bytearray`
+  and the rest with a fixed result, `str`/`bytes` methods on a literal (`", ".join(parts)`) and
+  `partition`; and a builtin's name the module rebinds (a parameter named `format`) is no longer
+  taken for the builtin. Not `slice` or `memoryview`, generic in recent typeshed.
+- **Members of any typed value**: `self.index.name`, `t.make().label()`, `rows[0].strip()`, however
+  deep, through one lookup (`constricter.fix.members.SOURCES`); a member of a guess is a guess, and
+  a call whose type is its callee's alone is certain whatever its arguments.
+- **Loop targets from `enumerate` and `zip`, one part at a time**: `for i, x in enumerate(xs)`
+  declares `i: int` whatever `xs` is, each part certain or a guess as its own type is, and the
+  keywords that don't change what they yield (`start=`, `strict=`, `sorted`'s `key=`) are allowed.
 - **Fixes for LVA003** (the loop's `# type:` comment becomes a declaration) and **LVA007** (the
   repeat's annotation is dropped).
 - **Type-checker-backed inference** (`--infer-with basedpyright,ty`): the checkers' language
@@ -53,6 +63,40 @@
   (`logging.getLogger()`, `datetime.now()`, `uuid4()`) are typed, and LVA012 offers `Final`. The
   name is spelled through an import the module has, or one added after its leading imports (never
   under `if TYPE_CHECKING:`, over a name the module binds, or over a builtin).
+- **Standard-library tables generated from typeshed** (`tests/typeshed/stdlib_tables.py`, checked in
+  CI): the stubs basedpyright bundles, read as Linux, macOS and Windows and Python 3.11 to 3.14 see
+  them (re-exports, `__all__`, overloads, method resolution order), keeping what they all agree on,
+  replace the curated tables: 894 functions with a builtin result, 38 `AnyStr` ones, 1,478 classes
+  and functions or classmethods returning one (`asyncio.Lock()` is certain, no longer a guess), and
+  810 classes' methods' returns and 713's attributes (`dt.astimezone()`, `parser.prog`). On the
+  corpora, 6,050 more fixes are certain and 3,708 fewer are guesses. `--types` finds one more error
+  than before, on sqlalchemy: `time.fromisoformat(v)`, newly typed, is later rebound to `None`, as
+  its `datetime` and `date` siblings already were (Medium 1's first-binding case). Left for later:
+  an overload that depends on its arguments (`parser.parse_args()`, `subprocess.run`, `os.listdir`),
+  a generic class, a class inside a builtin generic (`list[Path]`), and a function only some
+  platforms have (`os.getuid`).
+- **Faster checking**: the standard library's check, profiled (`tests/corpus/corpus_profile.py`, in
+  CI's Corpus job on every PR), from 227s to 52s over 0.2.4 and after: one shared walk of each
+  module, sorted by node type once, for every pass over all of it (`ast.walk` from 130s to about
+  20s), generation by generation over each node class's fields worked out once (`_by_type` 9.9s to
+  7.2s profiled, 1.6x unprofiled; not the 2x hoped for: the rest is list building); a function's
+  calls found by its span, not walked each round; a guess and what it rests on worked out in one
+  walk (13.5s to 7.2s); `:=` looked for only in a module with one (3.4s to 0.4s); value flow's types
+  taken from `--fix`'s own inference, not worked out twice; functions checked callees first (the
+  module's call graph, a cycle in rounds), so `_returned`'s rounds re-check 1.7% of functions (13.3s
+  to 2.0s); and each file parsed once, its tree kept from the cross-file index for the check, in the
+  same worker (`rules/parsed.py`; up to 40 MB of source, about 1 GB of trees, shared among the
+  workers), so `--jobs=0` on 16 cores went from 7.5s to 6.3s. Every corpus's fixes are unchanged.
+- **No new type errors**: `corpus_suite.py --types` runs pydantic's, sqlalchemy's and pandas's own
+  type checkers after `--fix`, which found 18, 61 and 117 errors they didn't have as released; now
+  none (with guesses: 20, 76 and 165, now 11, 41 and 97). A name bound again later is declared with
+  a type every value fits, or left untyped; after a rebinding it's what it was bound to; a read of
+  what a checker narrows (a union, or anything the function tests) is a guess, as is an ALL_CAPS
+  constant's literal passed to a call; `Self` is written where the method says `Self`; a generic
+  class isn't written bare; an imported type variable doesn't type a call; and `list[int,]`'s
+  element is `int` (see [FIXES.md](FIXES.md#what-a-type-checker-sees)). About a tenth of the certain
+  fixes became guesses (the standard library's 22,073 are 19,825), still offered with
+  `--unsafe-fixes`.
 - **Safe by construction**: it never touches class bodies, keeps line endings and a file's encoding
   (PEP 263 or a BOM; a fix the encoding can't hold leaves the file, exit 2), edits notebooks' cells
   in place, and converges in one pass on every corpus with nothing broken. `requests`', flask's and
@@ -85,21 +129,28 @@
 - **`tests/corpus/corpus.py`** (no crash) and **`tests/corpus/corpus_fix.py`** (nothing broken, one
   pass) on the standard library and pinned packages, in CI's Corpus job;
   **`tests/corpus/corpus_table.py`** records each version's results in [RUNS.md](RUNS.md), with
-  totals and percentages, how much `--fix` grows each corpus (0.4% in bytes and 0.2% in lines, about
-  9 bytes per fix; 0.9% with guesses), and `--label` for a pseudo-version (`0.2.4-rc.N`).
-- **`tests/corpus/corpus_suite.py`** clones a corpus package at its pinned tag, installs its locked
-  test dependencies, and runs its test suite as released, after `--fix`, and after
-  `--fix --unsafe-fixes`; flask (490 tests) and fastapi (3,341) came out identical, before they left
-  the corpus.
-- **Python 3**: `django` (the 5.2 LTS, for 3.11), `sqlalchemy`, `pydantic`, `rich` (chosen from 18
-  measured by hand; `requests`, `flask` and `fastapi` were dropped as small and alike) and `pandas`
+  totals and percentages, and `--label` for a pseudo-version (`0.2.4-rc.N`). (It measured how much
+  `--fix` grows each corpus too, until 0.2.4: 0.5% in bytes, 0.2% in lines, about 10 bytes a fix.)
+- **`tests/corpus/corpus_suite.py`** clones a corpus package at its pinned tag, installs its test
+  dependencies as its CI does, and runs its test suite as released, after `--fix`, and after
+  `--fix --unsafe-fixes`: pydantic, sqlalchemy, django and pandas come out identical (see
+  [RUNS.md](RUNS.md)), as flask and fastapi did before they left the corpus. `--types` runs each
+  one's own type checker the same way and traces each new error to its fix mechanism.
+- **Python 3**: `django` (the 5.2 LTS, for 3.11), `sqlalchemy`, `pydantic` (chosen from 18 measured
+  by hand; `requests`, `flask`, `fastapi` and `rich` were dropped as small and alike) and `pandas`
   3.0.6 (1,421 files with its tests; overloads, generics, `TYPE_CHECKING` imports; 30,140 fixed,
   nothing broken, one pass).
-- **Python 2**: `sentry-sdk` 1.45.1 (2/3-era `# type:` comments, installed), and Twisted 12.3.0
-  (pure Python 2, 147 of 819 files unparsable) and pip 20.3.4 (the most type comments in
-  `__future__` modules), hash-pinned sdists `tests/corpus/corpus_sources.py` fetches; chosen from 15
-  measured.
-- **What `--fix` still can't type** is measured in [NEXT-UP.md](NEXT-UP.md).
+- **Python 2**: Twisted 12.3.0 (pure Python 2, 147 of 819 files unparsable) and pip 20.3.4 (the most
+  type comments in `__future__` modules), hash-pinned sdists `tests/corpus/corpus_sources.py`
+  fetches; chosen from 15 measured (`sentry-sdk` 1.45.1's 2/3-era type comments were dropped as
+  pip's alike).
+- **What `--fix` still can't type**, by the statement that binds it and the shape of its value,
+  measured on every corpus (2026-09-23, after the typeshed tables, members of any receiver and no
+  new type errors): 251,848 untyped bindings, 168,727 with no fix at all, 77% of those in functions
+  with no annotations. The items under [Next](#next) are what reaches the rest. Left alone on
+  purpose: `getattr(...)` (1,268), a bound method's alias (`append = parts.append`), `dict.get` on a
+  `dict[str, Any]`, and `a or b` or a conditional whose sides differ (a union, better left to the
+  author).
 
 ### CI, security and releases
 
@@ -135,23 +186,60 @@ it's done.
 
 ### Small: a day or less
 
-Nothing queued.
+1. **Check in the census of what `--fix` can't type.** The numbers above come from
+   `local/infer-research/classify.py`, an untracked script: every LVA001/LVA002/LVA004 in a JSON
+   report, classified by binding, value shape, scope and whether its function is annotated. Move it
+   to `tests/corpus/corpus_untyped.py`, typed and linted like the other corpus scripts, printing the
+   table this roadmap quotes. Done when one command regenerates every number under Next.
+2. **Split `rules/checker.py` under 750 lines.** It's 808, the only module over the limit in
+   CONTRIBUTING. Move a cohesive part out (the `_bind_*` family that declares targets before a
+   statement is the obvious one), as `rebinding.py` and `parsed.py` were. Done when every module is
+   750 lines or fewer, with no behaviour change (every corpus's fixes identical).
 
 ### Medium: a few days
 
-1. **Run the remaining corpora's test suites, and their type checkers, after `--fix`.**
-   `tests/corpus/corpus_suite.py` ran flask's and fastapi's suites (and `requests`' by hand) before
-   and after `--fix` and `--fix --unsafe-fixes`, identically, before those left the corpus; it has
-   no suites now. Add pydantic, rich, sqlalchemy, django and pandas (whose 27% guesses make it the
-   most telling). A local's annotation is never evaluated at runtime, so a test suite catches a fix
-   that breaks the code, not a wrong type: also run each project's own type checker (mypy or
-   pyright, as its CI does) before and after, and count the new errors per fix mechanism. Done when
-   every Python 3 corpus's suite passes the same, and each new type error is traced to a mechanism
-   and that mechanism corrected or made a guess.
+1. **Instance attributes typed by their assignments.** `self.x` reads with no fix: 4,345 (630 in
+   annotated functions), and a `self.x.method()` chain stops there too (part of the 11,910
+   `self.method()` and 1,051 chained calls in annotated code). Type an unannotated attribute from
+   every `self.x = value` in its class, when each value's type is known and they agree (numbers
+   widening as `rebinding` widens them), as `returned` types an unannotated function from its
+   `return`s. A guess: a subclass or outside code can assign it too. Done when such attributes type
+   their reads and chains, and `--types` finds no new error with `--fix`.
+2. **Standard-library calls decided by their arguments.** 8,688 calls to a standard-library function
+   still have no fix: `os.path.join` (1,028, `AnyStr` with arguments whose types aren't known), `re`
+   (741: generic `Pattern`/`Match`), `os`, `asyncio`, `tempfile`, `struct`, `pickle`, `itertools`.
+   The typeshed tables leave out overloads that differ by argument (`subprocess.run`,
+   `parser.parse_args()`, `os.listdir`, `math.floor`), generic classes (`re.Pattern[str]`), a class
+   inside a builtin generic (`list[Path]`), and functions only some platforms have (`os.getuid`).
+   Pick the overload from the arguments' inferred types (and a literal's value, as `open` does), and
+   fill a generic's parameters from them. Done when those are generated from the stubs like the
+   rest, and every corpus converges with `--types` finding no new error.
+3. **Fewer guesses a type checker rejects.** `--fix` adds no type errors now, but
+   `--fix --unsafe-fixes` still adds 11 (pydantic), 42 (sqlalchemy) and 97 (pandas), mostly from
+   `constructor`, `subscript`, `returned` and `copy` guesses on a name bound again later. And "a
+   later value whose type isn't known makes the fix a guess" costs 115–133 certain fixes per corpus:
+   typing more of those later values (a call to an unannotated function, a subscript) makes them
+   certain again. Correct each mechanism with more than a handful of errors, or stop offering it.
+   Done when the unsafe runs' new errors are at most half today's.
 
 ### Large: a week or more
 
-Nothing queued.
+1. **Types from installed dependencies.** A call to a function or class imported from outside the
+   checked files is the largest group left: 16,529 bindings (1,732 in annotated code), plus 4,967
+   `module.func()` calls to third-party modules, mostly `np` (2,626) and `pd` (1,068). The CLI
+   already indexes the checked files' declared returns and classes (`project.Index`); do the same
+   for the installed packages they import, from their inline annotations (`py.typed`) or stubs
+   (`*-stubs`, typeshed's third-party stubs), resolved in the environment the code runs in (an
+   option naming it, else the active one), cached per package version. Done when a declared return
+   in an installed typed package types its calls as a checked file's does, and the corpora converge
+   with no new `--types` error.
+2. **Unannotated code, from its call sites.** 130,558 of the bindings with no fix (77%) are in
+   functions with no annotations: nothing anchors an unannotated parameter's type. `--infer-with`
+   reaches some of it through a type checker. Without one, type a parameter from its callers when
+   every call in the checked files passes the same known type (a guess: the function is public),
+   then everything computed from it. Needs the call graph `returned` builds, across modules. Done
+   when it measurably types unannotated code on the standard library and Twisted, as guesses, with
+   no new `--types` error.
 
 ## Ongoing
 

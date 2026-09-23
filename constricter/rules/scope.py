@@ -7,7 +7,17 @@ from dataclasses import dataclass, field, replace
 from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix import fills, hinted
-from constricter.fix.guesses import guess_origins, guessed
+from constricter.fix.doubts import (
+    Facts,
+    Owner,
+    corrected,
+    doubts,
+    is_constant,
+    says_self,
+    spelled_self,
+    tested,
+)
+from constricter.fix.guesses import guessed, guessing
 from constricter.fix.inference import inference, inferred
 from constricter.fix.known import Hints, ImportPlan, Inference, Known
 from constricter.offences import (
@@ -16,6 +26,7 @@ from constricter.offences import (
     NESTED_TYPE,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
+    UNTYPED_TARGET,
     VAGUE_TYPE,
     Checks,
     Edit,
@@ -31,12 +42,17 @@ from constricter.rules.annotations import (
     node_name,
 )
 from constricter.rules.flow import Binding, Finding, Hierarchy, Lifetime, findings, members
+from constricter.rules.rebinding import REBOUND, Refit, refit
 from constricter.rules.syntax import (
     FunctionDef,
 )
 
 _DISCARD: Final = "_"
+_SELF: Final = "self"
+_CLASSMETHOD: Final = "classmethod"
+_STATICMETHOD: Final = "staticmethod"
 _OPTIONAL: Final = "optional"  # the fix kind of a `None` default rebound to one type
+_DECLARING: Final = frozenset({UNANNOTATED, UNTYPED_TARGET})  # the codes whose fix declares a name's type
 _FILLED: Final = "filled"  # the fix kind (and guessing mechanism) of an empty container filled later
 _NONE: Final = "None"
 _FINAL: Final = "Final"
@@ -44,6 +60,7 @@ _FINAL_KIND: Final = "final"  # the fix kind of LVA012's `Final`
 _TYPING_FINAL: Final = "typing.Final"
 _FINALS: Final = frozenset({_TYPING_FINAL, "typing_extensions.Final"})
 _NO_ALIASES: Final = frozenset[str]()
+_READS: Final = (ast.Name, ast.Attribute, ast.Subscript)  # a read of a value a type checker may narrow
 
 
 @dataclass(frozen=True)
@@ -59,6 +76,7 @@ class Settings:
     walruses: bool  # whether the module has any `:=`: most don't, and needn't be looked through for one
     # Type checkers' types, for what `--fix` can't type (`--infer-with`): each checker's, in order.
     hints: tuple[Hints, ...] = ()
+    facts: Facts = field(default_factory=Facts)  # what a type checker sees otherwise (see `doubts`)
 
 
 class Kind(NamedTuple):
@@ -109,6 +127,37 @@ class Inferred:
     late: dict[str, Late] = field(default_factory=dict[str, "Late"])
     seeded: dict[str, Late] = field(default_factory=dict[str, "Late"])
 
+    def learn(self, name: str, annotation: str, origins: frozenset[str] | None) -> None:
+        """Record `name`'s type, the first time it's typed; `origins`: what it rests on, if it's a guess."""
+        if name in self.types:
+            return
+        self.types[name] = annotation
+        if origins is not None:
+            self.guess(name, origins)
+
+    def guess(self, name: str, origins: frozenset[str]) -> None:
+        """Take what's inferred from `name` from here on for a guess, resting on `origins`."""
+        self.guesses.add(name)
+        self.origins[name] = origins
+
+    def rebound(self, name: str, typed: str | None) -> None:
+        """Record `name` bound again, to a value of type `typed` (`None`: unknown).
+
+        A type checker narrows a name to what it's assigned: from here on it's `typed`, if known. That's
+        certain for a member of a declared union (`int | None`, then `1`), which every checker narrows;
+        otherwise (mypy narrows nothing else, and an unknown value may be anything) what's inferred
+        from it is a guess, resting on `rebound`.
+        """
+        current: str | None = self.types.get(name)
+        if current is None or typed == current:
+            return
+        if typed is not None:
+            self.types[name] = typed
+            if typed in (members(current) or ()) and len(members(current) or ()) > 1:
+                return
+        if name not in self.guesses:
+            self.guess(name, frozenset({REBOUND}))
+
 
 class Scope:
     """One function body: names bound so far and offences found."""
@@ -146,19 +195,30 @@ class Scope:
         `code` is reported at `(line, col)` (`None` means typed), offering `fix` if there's one.
         """
         self.lifetime(name).bind(where, None)
+        if name in self.declared:
+            self.inferred.rebound(name, None)
         self._first(name, where, code, fix)
 
     def assign(self, target: ast.Name, code: str | None, value: ast.expr) -> None:
         """Bind `target` to `value` (`name = value`), offering `--fix`'s annotation for it."""
         name: str = target.id
-        fix: Inference | None = inference(value, self.settings.known, self.inferred.types)
-        unsafe: bool = guessed(
-            value,
-            self.settings.known,
-            frozenset(self.inferred.guesses),
-            self.inferred.types,
-        )
-        origins: frozenset[str] = rests_on(self, [value]) if unsafe else frozenset()
+        again: bool = name in self.declared
+        facts: Facts = self.settings.facts
+        function: FunctionDef | None = self.kind.function
+        fix: Inference | None
+        if (fix := inference(value, self.settings.known, self.inferred.types)) is not None:
+            fix = corrected(value, fix, self._owner(), facts.generics, self.settings.known.names.plan)
+        unsafe: bool
+        origins: frozenset[str]
+        unsafe, origins = guesses_in(self, [value])
+        if fix is not None and not unsafe:
+            origins = doubts(
+                value,
+                fix,
+                constant=function is None and is_constant(name) and name in facts.passed,
+                narrowed=function is not None and ast.unparse(value) in tested(function),
+            )
+            unsafe = bool(origins)
         # Value flow's type is `--fix`'s own, if certain: worked out once, here, for both.
         certain: str | None = certain_type(self, value, (None if fix is None else fix.annotation, unsafe))
         if fix is None and (fix := self.hint(target)) is not None:
@@ -169,15 +229,39 @@ class Scope:
             (fix.annotation, origins) if fix is not None and unsafe else None,
         )
         self.assigned(name, at(target))
+        if again:
+            self.inferred.rebound(name, certain)
         kind: str | None
         if (kind := fills.empty(value)) is not None:
             _ = self.assignments.empty.setdefault(name, kind)
         self._first(name, at(target), code, None if fix is None else self.offer(fix, origins, unsafe=unsafe))
-        if fix is not None and name not in self.inferred.types:
-            self.inferred.types[name] = fix.annotation
-            if unsafe:
-                self.inferred.guesses.add(name)
-                self.inferred.origins[name] = origins
+        if fix is not None:
+            self.inferred.learn(name, fix.annotation, origins if unsafe else None)
+
+    def _owner(self) -> Owner | None:
+        """Find the class this scope is a method of, if its instance (or class) is a `Self` in it.
+
+        That's a method whose signature says `Self`: in any other, mypy takes `self` for its class.
+
+        Returns:
+          It, or `None` outside such a method, or in one whose first parameter isn't `self` or a
+          classmethod's.
+
+        """
+        function: FunctionDef | None = self.kind.function
+        owner: str | None = None if function is None else self.settings.owners.get(id(function))
+        if function is None or owner is None:
+            return None
+        args: list[ast.arg] = [*function.args.posonlyargs, *function.args.args]
+        decorators: list[str] = [node_name(d) for d in function.decorator_list]
+        if (
+            not args
+            or _STATICMETHOD in decorators
+            or not (args[0].arg == _SELF or decorators == [_CLASSMETHOD])
+            or not says_self(function)
+        ):
+            return None
+        return Owner(owner, args[0].arg, self.settings.facts.selfish.get(owner, frozenset()))
 
     def hint(self, target: ast.Name) -> Inference | None:
         """Type `target` by the type checkers' hints for it (`--infer-with`): the first the file can use.
@@ -334,6 +418,38 @@ class Scope:
             self.offences[index] = replace(o, edit=fix)
             self.inferred.late[o.name] = (f"{found} | None", origins)
 
+    def rebinds(self) -> None:
+        """Refit each first binding's fix to every value the name is bound to later (see `rebinding`).
+
+        A name something out of sight writes is left alone.
+        """
+        index: int
+        o: Offence
+        plan: ImportPlan | None = self.settings.known.names.plan
+        self_type: str | None = None if plan is None else spelled_self(plan)
+        for index, o in enumerate(self.offences):
+            lifetime: Lifetime | None = self.flow.get(o.name)
+            fix: Fix | None = o.edit
+            if o.code not in _DECLARING or fix is None or lifetime is None or lifetime.escaped:
+                continue
+            first: Binding
+            rest: list[Binding]
+            first, *rest = lifetime.bindings
+            if first.at != (o.line, o.col) or not rest:
+                continue
+            found: Refit | Fix | None = refit(o, fix, rest, self.settings.hierarchy, self_type)
+            refitted: Fix | None = self._offered(found) if isinstance(found, Refit) else found
+            self.offences[index] = replace(o, edit=refitted)
+
+    def _offered(self, found: Refit) -> Fix | None:
+        """Offer a refit fix, as the project's fix policy has it (see `offer`).
+
+        Returns:
+          The fix, or `None` if it isn't offered.
+
+        """
+        return self.offer(found.found, found.origins, unsafe=found.unsafe, edit=found.edit, span=found.span)
+
     def fills(self) -> None:
         """Offer an empty container, bound nowhere else, the type of what its function adds to it.
 
@@ -487,9 +603,10 @@ class Scope:
             self.offences.append(Offence(*at(annotation), name, LONG_TUPLE, detail=str(longest)))
 
     def walrus(self, node: ast.AST) -> None:
-        """Bind `:=` targets in an expression, comprehensions included, lambdas excluded."""
-        if not self.settings.walruses:
-            return
+        """Bind `:=` targets in an expression, comprehensions included, lambdas excluded.
+
+        Asked only in a module with one (`Settings.walruses`).
+        """
         in_lambda: set[int] = {
             id(inner)
             for outer in ast.walk(node)
@@ -525,24 +642,29 @@ def is_final(annotation: str, aliases: frozenset[str] = _NO_ALIASES) -> bool:
     return node_name(root.value if isinstance(root, ast.Subscript) else root) in aliases | {_FINAL}
 
 
-def rests_on(scope: Scope, values: Iterable[ast.expr]) -> frozenset[str]:
-    """Find what made a guess of `values` one: a call taken to construct its class, or a guessed local.
+def guesses_in(scope: Scope, values: Iterable[ast.expr]) -> tuple[bool, frozenset[str]]:
+    """Work out whether any of `values`' types is a guess, and what the guesses rest on (see `guessing`).
 
     Returns:
-      The guessing mechanisms (`FIX_KINDS`): `constructor` for a call only guessed at, and each
-      guessed local's own.
+      Whether one is, and the guessing mechanisms (`FIX_KINDS`) theirs rest on.
 
     """
-    known: Known = scope.settings.known
+    unsafe: bool = False
     found: set[str] = set()
     value: ast.expr
     for value in values:
-        found.update(guess_origins(value, known, scope.inferred.types))
-        node: ast.AST
-        for node in ast.walk(value):
-            if isinstance(node, ast.Name) and node.id in scope.inferred.origins:
-                found.update(scope.inferred.origins[node.id])
-    return frozenset(found)
+        guess: bool
+        origins: frozenset[str]
+        guess, origins = guessing(
+            value,
+            scope.settings.known,
+            frozenset(scope.inferred.guesses),
+            scope.inferred.origins,
+            scope.inferred.types,
+        )
+        unsafe = unsafe or guess
+        found.update(origins)
+    return unsafe, frozenset(found)
 
 
 def certain_type(
@@ -563,14 +685,14 @@ def certain_type(
     """
     if isinstance(value, ast.Constant) and value.value is None:
         return "None"
-    if isinstance(value, ast.Name) and len(members(scope.inferred.types.get(value.id, "")) or ()) > 1:
-        return None
     annotation: str | None
     unsafe: bool
     annotation, unsafe = worked_out or (
         inferred(value, scope.settings.known, scope.inferred.types),
         guessed(value, scope.settings.known, frozenset(scope.inferred.guesses), scope.inferred.types),
     )
+    if isinstance(value, _READS) and annotation is not None and len(members(annotation) or ()) > 1:
+        return None  # a read of a union is narrowed where the code checks it, which value flow can't see
     return None if unsafe else annotation
 
 

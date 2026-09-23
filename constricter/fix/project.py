@@ -14,13 +14,14 @@ import ast
 import bisect
 import builtins
 import itertools
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.known import Classes
-from constricter.rules.annotations import classes, method_returns, returns
+from constricter.rules import parsed
+from constricter.rules.annotations import classes, defined_type_vars, method_returns, returns
 
 _BUILTINS: Final = frozenset(dir(builtins))
 _PACKAGE: Final = "__init__"
@@ -28,6 +29,7 @@ _SUFFIX: Final = ".py"
 _HOPS: Final = 5  # how many re-exports (`from .util import f` in an `__init__`) to follow
 _FUNCTION: Final = "function"
 _CLASS: Final = "class"
+_TYPE_VAR: Final = "type variable"
 # What a name refers to: a module and an attribute of it (`None`: the module itself).
 Origin: TypeAlias = tuple[str, str | None]
 
@@ -43,6 +45,9 @@ class Module(NamedTuple):
     names: dict[str, Origin]
     classes: Mapping[str, Mapping[str, str]] = MappingProxyType({})
     methods: Mapping[str, Mapping[str, str]] = MappingProxyType({})
+    type_vars: frozenset[str] = frozenset()  # its module-level type variables
+    # What it imports under a top-level `if` or `try` (`if TYPE_CHECKING:`), for `type_vars` alone.
+    guarded: Mapping[str, Origin] = MappingProxyType({})
 
 
 class Imported(NamedTuple):
@@ -100,26 +105,57 @@ def _names(tree: ast.Module, name: str, *, is_package: bool) -> dict[str, Origin
     """
     names: dict[str, Origin] = {}
     stmt: ast.stmt
-    alias: ast.alias
-    module: str | None
-    level: int
     for stmt in tree.body:
         match stmt:
-            case ast.Import():
-                for alias in stmt.names:
-                    if alias.asname:
-                        names[alias.asname] = (alias.name, None)
-                    else:  # `import a.b` binds `a`
-                        names[alias.name.split(".")[0]] = (alias.name.split(".")[0], None)
-            case ast.ImportFrom(module=module, level=level):
-                for alias in stmt.names:
-                    names[alias.asname or alias.name] = (
-                        _absolute(name, module, level, is_package=is_package),
-                        alias.name,
-                    )
+            case ast.Import() | ast.ImportFrom():
+                names.update(_imported(stmt, name, is_package=is_package))
             case _:
                 names.update((bound, (name, bound)) for bound in _bound(stmt))
     return names
+
+
+def _imported(stmt: ast.Import | ast.ImportFrom, name: str, *, is_package: bool) -> dict[str, Origin]:
+    """Map the names one import in module `name` binds.
+
+    Returns:
+      What each refers to.
+
+    """
+    names: dict[str, Origin] = {}
+    alias: ast.alias
+    if isinstance(stmt, ast.Import):
+        for alias in stmt.names:
+            if alias.asname:
+                names[alias.asname] = (alias.name, None)
+            else:  # `import a.b` binds `a`
+                names[alias.name.split(".")[0]] = (alias.name.split(".")[0], None)
+        return names
+    for alias in stmt.names:
+        names[alias.asname or alias.name] = (
+            _absolute(name, stmt.module, stmt.level, is_package=is_package),
+            alias.name,
+        )
+    return names
+
+
+def _guarded(tree: ast.Module, name: str, *, is_package: bool) -> dict[str, Origin]:
+    """Map the names module `name` imports under a top-level `if` or `try` (`if TYPE_CHECKING:`).
+
+    Not what it binds at run time (`_names`): a type variable imported only for the checker is a type
+    variable all the same.
+
+    Returns:
+      What each refers to.
+
+    """
+    return {
+        bound: origin
+        for stmt in tree.body
+        if isinstance(stmt, ast.If | ast.Try | ast.TryStar)
+        for node in ast.walk(stmt)
+        if isinstance(node, ast.Import | ast.ImportFrom)
+        for bound, origin in _imported(node, name, is_package=is_package).items()
+    }
 
 
 def _bound(stmt: ast.stmt) -> Iterator[str]:
@@ -142,19 +178,24 @@ def _bound(stmt: ast.stmt) -> Iterator[str]:
             pass
 
 
-def index(
-    paths: Sequence[Path],
-    mapper: Callable[[Callable[[Path], Module | None], Sequence[Path]], Iterable[Module | None]] = map,
-) -> Index:
+def index(paths: Sequence[Path]) -> Index:
     """Read each `.py` file in `paths` (one that can't be read or parsed is left out).
-
-    `mapper` reads them (`map`, or a process pool's, to read them in parallel).
 
     Returns:
       Each module's name, mapped to what it offers and uses.
 
     """
-    modules: dict[str, Module] = {module.name: module for module in mapper(read, paths) if module is not None}
+    return indexed(read(path) for path in paths)
+
+
+def indexed(found: Iterable[Module | None]) -> Index:
+    """Index modules already read (`read`'s, in any process): `None`s, for files it couldn't, left out.
+
+    Returns:
+      Each module's name, mapped to what it offers and uses.
+
+    """
+    modules: dict[str, Module] = {module.name: module for module in found if module is not None}
     return Index(modules, sorted(modules))
 
 
@@ -167,10 +208,14 @@ def read(path: Path) -> Module | None:
     """
     if path.suffix != _SUFFIX or not path.is_file():
         return None
-    try:
-        tree: ast.Module = ast.parse(path.read_bytes(), str(path))
-    except (OSError, SyntaxError, ValueError):
+    source: str | None
+    if (source := _source(path)) is None:
         return None
+    try:
+        tree: ast.Module = parsed.parse(source, str(path))
+    except (SyntaxError, ValueError):  # a null byte is a ValueError
+        return None
+    parsed.keep(source, tree)  # for the check to take, rather than parse it again
     name: str = module_name(path)
     return Module(
         name,
@@ -178,7 +223,22 @@ def read(path: Path) -> Module | None:
         _names(tree, name, is_package=path.stem == _PACKAGE),
         classes(tree),
         method_returns(tree),
+        defined_type_vars(tree),
+        _guarded(tree, name, is_package=path.stem == _PACKAGE),
     )
+
+
+def _source(path: Path) -> str | None:
+    """Read a module's text.
+
+    Returns:
+      It, or `None` if it can't be read, or decoded (`SyntaxError`: an unknown encoding).
+
+    """
+    try:
+        return parsed.text(path.read_bytes())
+    except (OSError, SyntaxError, ValueError):  # UnicodeDecodeError is a ValueError
+        return None
 
 
 def _origin(module: Module, name: str) -> Origin | None:
@@ -226,10 +286,57 @@ def _defined(
     attribute: str | None = origin[1]
     if module is None or attribute is None or not hops:
         return None
-    if attribute in (module.returns if kind == _FUNCTION else module.classes):
+    if attribute in _kind(module, kind):
         return module, attribute
     onward: Origin | None = module.names.get(attribute)
     return _defined(modules, onward, kind, hops - 1) if onward and onward[0] != module.name else None
+
+
+def _kind(module: Module, kind: str) -> Iterable[str]:
+    """List what `module` defines of a `kind`: functions (whose return `--fix` uses), classes, type vars.
+
+    Returns:
+      Their names.
+
+    """
+    match kind:
+        case "function":
+            return module.returns
+        case "class":
+            return module.classes
+        case _:
+            return module.type_vars
+
+
+def type_vars(catalog: Index, path: Path) -> frozenset[str]:
+    """Find the names the file at `path` imports that are type variables where they're defined.
+
+    Followed through re-exports, as calls are; for the checker to leave alone the file's own
+    functions whose declared return mentions one (`def f(x: T) -> T`, with `from ._typing import T`).
+
+    Returns:
+      Them, as the file binds them; none for a file `catalog` doesn't have.
+
+    """
+    target: Module | None
+    if path.suffix != _SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
+        return frozenset()
+    return frozenset(
+        local for local in {*target.names, *target.guarded} if _is_type_var(catalog.modules, target, local)
+    )
+
+
+def _is_type_var(modules: Mapping[str, Module], module: Module, name: str) -> bool:
+    """Check whether `name` is a type variable in `module`: its own, or one it imports from a checked file.
+
+    Returns:
+      Whether it is.
+
+    """
+    origin: Origin | None = module.names.get(name) or module.guarded.get(name)
+    return name in module.type_vars or (
+        origin is not None and origin[0] != module.name and _defined(modules, origin, _TYPE_VAR) is not None
+    )
 
 
 def _submodules(catalog: Index, prefix: str) -> Iterator[Module]:
@@ -290,7 +397,10 @@ def _add(
     if (defined := _function(modules, origin)) is None:
         return
     annotation: str = defined[0].returns[defined[1]]
-    if all(_same(target, defined[0], root) for root in _roots(annotation)):
+    roots: set[str] = _roots(annotation)
+    if all(_same(target, defined[0], root) for root in roots) and not any(
+        _is_type_var(modules, defined[0], root) for root in roots
+    ):
         found[key] = annotation
 
 
@@ -340,12 +450,19 @@ def imported(catalog: Index, path: Path) -> Imported:
         for key, where in spelled:
             defined: tuple[Module, str] | None
             if (defined := _defined(modules, where, _CLASS)) is not None:
-                attributes[key] = _portable(target, defined, key, defined[0].classes[defined[1]])
-                methods[key] = _portable(target, defined, key, defined[0].methods.get(defined[1], {}))
+                attributes[key] = _portable(modules, target, defined, key, defined[0].classes[defined[1]])
+                methods[key] = _portable(
+                    modules,
+                    target,
+                    defined,
+                    key,
+                    defined[0].methods.get(defined[1], {}),
+                )
     return Imported(calls(catalog, path), Classes(attributes, methods))
 
 
 def _portable(
+    modules: Mapping[str, Module],
     target: Module,
     defined: tuple[Module, str],
     key: str,
@@ -353,7 +470,8 @@ def _portable(
 ) -> dict[str, str]:
     """Keep the types a class's members have that `target` can write as they are (see `_same`).
 
-    One that is the class itself is written as `target` spells it (`key`).
+    One that is the class itself is written as `target` spells it (`key`); one that mentions a type
+    variable (imported where the class is defined, see `_is_type_var`) is dropped.
 
     Returns:
       Each kept member's type.
@@ -365,6 +483,9 @@ def _portable(
     for member, annotation in types.items():
         if annotation == defined[1]:
             kept[member] = key
-        elif all(_same(target, defined[0], root) for root in _roots(annotation)):
+        elif all(
+            _same(target, defined[0], root) and not _is_type_var(modules, defined[0], root)
+            for root in _roots(annotation)
+        ):
             kept[member] = annotation
     return kept

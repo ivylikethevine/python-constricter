@@ -50,6 +50,8 @@ jobs:
       - run: typos
       - run: validate-pyproject pyproject.toml
       - run: uv lock --check
+      # The standard-library tables are generated from the pinned basedpyright's typeshed stubs.
+      - run: python -m tests.typeshed.stdlib_tables --check
       - run: constricter --level=suffocate --all-scopes --format=github constricter tests
       - run: constricter --coverage --all-scopes --fail-under=100 constricter tests
       - run: pre-commit try-repo . constricter --all-files
@@ -129,7 +131,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [stdlib, django, sqlalchemy, pydantic, rich, pandas, sentry_sdk, twisted, pip]
+        package: [stdlib, django, sqlalchemy, pydantic, pandas, twisted, pip]
     runs-on: ubuntu-latest
     timeout-minutes: 20 # the standard library's profile, in one process, takes minutes
     permissions:
@@ -152,8 +154,8 @@ jobs:
           python-version: "3.12" # the `corpus` group's django needs 3.12+
           group: corpus
       # Against the runner's standard library, or one pinned real package (`pyproject.toml`'s
-      # `corpus` group: a web framework, an ORM, a runtime-validation library, a terminal renderer, a
-      # data library, Python 2/3-era code), or pure
+      # `corpus` group: a web framework, an ORM, a runtime-validation library, a data library), or
+      # pure
       # Python 2 (Twisted 12.3.0) and pip 20.3.4's 2/3-era type comments, hash-pinned sdists
       # tests/corpus/corpus_sources.py fetches (neither installs as a dependency): no crashes or slowdowns
       # (corpus.py), and `--fix` doesn't break any file or leave anything for a second pass

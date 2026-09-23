@@ -3,19 +3,23 @@
 
 import ast
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, Final, TypeAlias
+from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
 from constricter.fix import stdlib
 from constricter.fix.known import ImportPlan, Inference, Known
+from constricter.fix.members import member, returned_method, subscripted
 from constricter.fix.opened import opened
-from constricter.fix.returns import BUILTIN_RETURNS, METHOD_RETURNS, method_return
+from constricter.fix.returns import BUILTIN_RETURNS
 from constricter.fix.targets import (
     DICT_VIEWS,
     ENUMERATE,
-    ITERATORS,
     RANGE,
     SAME_ELEMENTS,
+    ZIP,
+    counted,
     element_type,
+    iterated,
+    iterator_call,
     unpacked,
 )
 from constricter.offences import CONSTRUCTOR
@@ -51,8 +55,10 @@ _TEXT_NAMES: Final = frozenset({"str", "bytes"})
 _STDLIB: Final = "stdlib"  # the fix kind of a standard-library call
 RETURNED: Final = "returned"  # the fix kind of an unannotated function's `return`s
 _STR: Final = "str"
-_COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 _Comprehension: TypeAlias = ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp
+# One part of a loop target (see `looped_parts`): its inference, and the values it came from.
+LoopPart: TypeAlias = tuple[Inference | None, list[ast.expr]]
 _WITH_DEFAULT: Final = 2  # `os.environ.get(key, default)`'s arguments
 # Builtins that build a container of their argument's elements, and the type they build.
 CONTAINER_BUILDERS: Final = {
@@ -104,103 +110,76 @@ def inference(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
 
 
 def _from_local(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inference | None:
-    """Infer from another local this scope already typed: a copy, a subscript, an attribute, a method.
+    """Infer from what this scope already typed: a copy of a local, or a member of any typed value.
+
+    A member (an attribute, a method call, a subscript) has its receiver typed as any value is (a
+    local, `self.index`, `f()`, `x[0]`), and is looked up on it (see `members.member`); a method
+    typed only by its `return`s is a guess. What typed a receiver that isn't a plain local decided
+    the member too (its fix kinds).
 
     Returns:
       The inference, or `None`.
 
     """
     name: str
+    receiver: ast.expr
     attr: str
-    found: str | None
     match value:
         case ast.Name(id=name) if name in declared:
             return Inference(declared[name], f"a copy of `{name}`", frozenset({"copy"}))
-        case ast.Subscript(value=ast.Name(id=name)) if name in declared and (
-            found := _subscripted(declared[name], value)
+        case (
+            ast.Attribute(value=receiver, attr=attr) | ast.Call(func=ast.Attribute(value=receiver, attr=attr))
         ):
-            return Inference(
-                found,
-                f"a subscript of `{name}`, a `{declared[name]}`",
-                frozenset({"subscript"}),
-            )
-        case ast.Attribute(value=ast.Name(id=name), attr=attr) if name in declared and (
-            found := _attribute(declared[name], attr, known)
-        ):
-            return Inference(found, f"the annotation of `{declared[name]}.{attr}`", frozenset({"attribute"}))
-        case ast.Call(func=ast.Attribute(value=ast.Name(id=name), attr=attr)) if (
-            name in declared
-            and (found := known.returned.methods.get(declared[name], {}).get(attr))
-            and not typed_method(declared[name], value, attr, known)
-        ):
-            return Inference(found, f"`{declared[name]}.{attr}`'s `return`s", frozenset({RETURNED}))
-        case ast.Call(func=ast.Attribute(value=ast.Name(id=name), attr=attr)) if name in declared and (
-            found := typed_method(declared[name], value, attr, known)
-        ):
-            return Inference(
-                found,
-                _method_reason(declared[name], attr, known.methods),
-                frozenset({"method"}),
-            )
+            pass
+        case ast.Subscript(value=receiver):
+            attr = ""
         case _:
             return None
+    typed: Inference | None = inference(receiver, known, declared)
+    found: Inference | None = (
+        None if typed is None else _member_of(value, typed.annotation, attr, known, declared)
+    )
+    if typed is None or found is None:
+        return None
+    return found if isinstance(receiver, ast.Name) else found._replace(kinds=found.kinds | typed.kinds)
 
 
-def _class_of(receiver: str) -> str | None:
-    """Read the class a `type[C]` names (what `cls` is in a classmethod of `C`).
+def _member_of(
+    value: ast.expr,
+    receiver: str,
+    attr: str,
+    known: Known,
+    declared: Mapping[str, str],
+) -> Inference | None:
+    """Type `value`, a subscript, a method call or an attribute (`attr`) of a value typed `receiver`.
 
     Returns:
-      `C`, or `None` if `receiver` isn't a `type[...]` of a plain name.
+      The inference, or `None`.
 
     """
-    # `receiver` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
-    root: ast.expr = ast.parse(receiver, mode="eval").body
-    name: str
-    match root:
-        case ast.Subscript(value=ast.Name(id="type"), slice=ast.Name(id=name)):
-            return name
+    text: str | None
+    match value:
+        case ast.Subscript():
+            text = subscripted(receiver, value, inferred(value.slice, known, declared))
+            return (
+                None
+                if text is None
+                else Inference(
+                    text,
+                    f"a subscript of `{ast.unparse(value.value)}`, a `{receiver}`",
+                    frozenset({"subscript"}),
+                )
+            )
+        case ast.Call():
+            found: Inference | None = member(receiver, attr, value, known)
+            text = None if found is not None else returned_method(receiver, attr, known)
+            return (
+                found
+                if text is None
+                else Inference(text, f"`{receiver}.{attr}`'s `return`s", frozenset({RETURNED}))
+            )
         case _:
-            return None
-
-
-def _attribute(receiver: str, attr: str, known: Known) -> str | None:
-    """Look up `attr` on a value typed `receiver`: an instance's attribute or property, or a class's own.
-
-    Returns:
-      Its annotation as text, or `None` if it isn't known.
-
-    """
-    owner: str | None
-    if (owner := _class_of(receiver)) is not None:
-        return known.class_side.attributes.get(owner, {}).get(attr)
-    return known.classes.get(receiver, {}).get(attr)
-
-
-def typed_method(receiver: str, call: ast.Call, method: str, known: Known) -> str | None:
-    """Look up a `method` call's type on a value typed `receiver` (a `type[C]`: its class-side methods).
-
-    Returns:
-      Its annotation as text, or `None` if it isn't known (see `method_return`).
-
-    """
-    owner: str | None
-    if (owner := _class_of(receiver)) is not None:
-        return known.class_side.methods.get(owner, {}).get(method)
-    return method_return(receiver, call, method, known.methods)
-
-
-def _method_reason(receiver: str, method: str, known_methods: Mapping[str, Mapping[str, str]]) -> str:
-    """Say which of `method_return`'s sources typed a `method` call on a `receiver`.
-
-    Returns:
-      The reason.
-
-    """
-    if method in METHOD_RETURNS.get(receiver, {}):
-        return f"`{receiver}.{method}`'s fixed return type"
-    if method in known_methods.get(receiver, {}):
-        return f"`{receiver}.{method}`'s declared return type"
-    return f"`{receiver}.{method}` on its element types"
+            return member(receiver, attr, None, known)
 
 
 def _scalar_reason(value: ast.expr) -> str:
@@ -237,7 +216,7 @@ def _from_value(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
         or library_class(value, known)
         or _library(value, known, declared)
         or _returns(value, known)
-        or _called(value, known.calls, known.factories)
+        or _called(value, known)
     )
 
 
@@ -280,8 +259,9 @@ def library_class(value: ast.expr, known: Known) -> Inference | None:
 def _library(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inference | None:
     """Infer a call to a standard-library function the tables type (see `constricter.fix.stdlib`).
 
-    A fixed builtin result; an `AnyStr` function's, when every argument is a `str` (or every one a
-    `bytes`); an environment lookup's `str | None` (`str` with a `str` default).
+    A fixed builtin result, whatever the arguments; an `AnyStr` function's, when every argument is a
+    `str` (or every one a `bytes`), and an environment lookup's `str | None` (`str` with a `str`
+    default), passed positionally.
 
     Returns:
       The inference, or `None` for any other call, or arguments that don't decide it.
@@ -289,8 +269,9 @@ def _library(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Infe
     """
     func: ast.expr
     args: list[ast.expr]
+    keywords: list[ast.keyword]
     match value:
-        case ast.Call(func=func, args=args, keywords=[]):
+        case ast.Call(func=func, args=args, keywords=keywords):
             pass
         case _:
             return None
@@ -299,15 +280,25 @@ def _library(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Infe
     kinds: frozenset[str] = frozenset({_STDLIB})
     if name in stdlib.RETURNS:
         return Inference(stdlib.RETURNS[name], reason, kinds)
+    # The others are decided by their positional arguments' types, worked out only for them.
+    if keywords or name not in stdlib.BY_ARGUMENTS:
+        return None
     parts: list[Inference | None] = [inference(arg, known, declared) for arg in args]
     types: set[str | None] = {None if part is None else part.annotation for part in parts}
-    if name in stdlib.ANY_STR and len(types) == 1 and types <= _TEXT_NAMES:
-        return Inference(str(next(iter(types))), reason, _kinds(*parts, kind=_STDLIB))
-    if name in stdlib.ENVIRONMENT and len(args) == 1:
+    if name in stdlib.ANY_STR:
+        return (
+            Inference(str(next(iter(types))), reason, _kinds(*parts, kind=_STDLIB))
+            if len(types) == 1 and types <= _TEXT_NAMES
+            else None
+        )
+    if len(args) == 1:
         return Inference("str | None", reason, kinds)
-    if name in stdlib.ENVIRONMENT and len(args) == _WITH_DEFAULT and parts[1] and parts[1].annotation == _STR:
-        return Inference(_STR, reason, _kinds(parts[1], kind=_STDLIB))
-    return None
+    default: Inference | None = parts[1] if len(args) == _WITH_DEFAULT else None
+    return (
+        Inference(_STR, reason, _kinds(default, kind=_STDLIB))
+        if default and default.annotation == _STR
+        else None
+    )
 
 
 def _cast(value: ast.expr, spellings: frozenset[str]) -> Inference | None:
@@ -375,7 +366,9 @@ def _computed(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
             return _arithmetic(value, known, declared)
         case ast.ListComp() | ast.SetComp() | ast.DictComp():
             return _comprehension(value, known, declared)
-        case ast.Call(func=ast.Name(id=name), args=[first], keywords=[]) if name in CONTAINER_BUILDERS:
+        case ast.Call(func=ast.Name(id=name), args=[first], keywords=[]) if (
+            name in CONTAINER_BUILDERS and known.is_builtin(name)
+        ):
             found: Inference | None = looped(first, known, declared)
             built: str = CONTAINER_BUILDERS[name]
             return (
@@ -492,16 +485,31 @@ def comprehended(value: ast.expr, known: Known, declared: Mapping[str, str]) -> 
       `declared`, with the targets' types: `declared` itself, uncopied, where there's none (most values).
 
     """
-    comprehensions: list[_Comprehension] = [
-        node for node in ast.walk(value) if isinstance(node, _COMPREHENSIONS)
-    ]
+    return targets_typed(
+        [node for node in ast.walk(value) if isinstance(node, COMPREHENSIONS)],
+        known,
+        declared,
+    )
+
+
+def targets_typed(
+    comprehensions: Sequence[ast.AST],
+    known: Known,
+    declared: Mapping[str, str],
+) -> Mapping[str, str]:
+    """Type the targets of `comprehensions`, as a loop's are, over what's `declared` (see `comprehended`).
+
+    Returns:
+      `declared`, with the targets' types: `declared` itself, uncopied, where there are none.
+
+    """
     if not comprehensions:
         return declared
     inside: dict[str, str] = dict(declared)
-    node: _Comprehension
+    node: ast.AST
     generator: ast.comprehension
     for node in comprehensions:
-        for generator in node.generators:
+        for generator in cast("_Comprehension", node).generators:
             found: Inference | None = looped(generator.iter, known, inside)
             name: ast.Name
             part: str | None
@@ -603,58 +611,21 @@ def _uniform(parts: Sequence[Inference | None]) -> str | None:
     return next(iter(types)) if len(types) == 1 else None
 
 
-def _subscripted(container: str, node: ast.Subscript) -> str | None:
-    """Infer `container[...]`'s type, given `container`'s own type as text.
-
-    A slice (`x[1:2]`) of a `list`, `str` or `bytes` is the same type as `container` itself; a plain
-    index into one is its element type, as is any index into a `dict` (its value type) or a
-    homogeneous `tuple[T, ...]`. A fixed-length `tuple[T1, T2]`'s element only varies with the index,
-    which isn't worth resolving.
-
-    Returns:
-      The annotation as source text, or `None` if the subscript doesn't decide one.
-
-    """
-    # `container` is always `ast.unparse`'s own output (an annotation, or an earlier `inferred`),
-    # never user text, so it's always valid Python to parse back.
-    root: ast.expr = ast.parse(container, mode="eval").body
-    sliced: bool = isinstance(node.slice, ast.Slice)
-    element: ast.expr
-    last: ast.expr
-    match root:
-        case ast.Name(id="str" | "bytes"):
-            return container
-        case ast.Subscript(value=ast.Name(id="list" | "List"), slice=element):
-            return container if sliced else ast.unparse(element)
-        case ast.Subscript(
-            value=ast.Name(id="dict" | "Dict"),
-            slice=ast.Tuple(elts=[_, element]),
-        ) if not sliced:
-            return ast.unparse(element)
-        case ast.Subscript(
-            value=ast.Name(id="tuple" | "Tuple"),
-            slice=ast.Tuple(elts=[element, last]),
-        ) if not sliced and isinstance(last, ast.Constant) and last.value is Ellipsis:
-            return ast.unparse(element)
-        case _:
-            return None
-
-
-def _called(value: ast.expr, calls: Mapping[str, str], known_factories: frozenset[str]) -> Inference | None:
+def _called(value: ast.expr, known: Known) -> Inference | None:
     func: ast.expr
     name: str
     match value:
-        case ast.Call(func=ast.Name() | ast.Attribute() as func) if ast.unparse(func) in calls:
+        case ast.Call(func=ast.Name() | ast.Attribute() as func) if ast.unparse(func) in known.calls:
             return Inference(
-                calls[ast.unparse(func)],
+                known.calls[ast.unparse(func)],
                 f"`{ast.unparse(func)}`'s declared return type",
                 frozenset({"call"}),
             )
-        case ast.Call(func=ast.Name(id=name)) if name in BUILTIN_RETURNS:
+        case ast.Call(func=ast.Name(id=name)) if name in BUILTIN_RETURNS and known.is_builtin(name):
             return Inference(BUILTIN_RETURNS[name], f"`{name}`'s fixed return type", frozenset({"builtin"}))
         case ast.Call(func=ast.Name() | ast.Attribute() as func) if constructs(
             node_name(func),
-            known_factories,
+            known.factories,
         ):
             return Inference(
                 ast.unparse(func),
@@ -691,13 +662,12 @@ def looped(iterable: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
       The element's annotation as source text and its reason, or `None` if it isn't known.
 
     """
-    name: str
-    args: list[ast.expr]
+    call: tuple[str, list[ast.expr]] | None = iterator_call(iterable)
+    if call is not None and known.is_builtin(call[0]):
+        return _iterator(*call, known, declared)
     view: str
     receiver: ast.expr
     match iterable:
-        case ast.Call(func=ast.Name(id=name), args=args, keywords=[]) if name in ITERATORS and args:
-            return _iterator(name, args, known, declared)
         case ast.Call(func=ast.Attribute(value=receiver, attr=view), args=[]) if view in DICT_VIEWS:
             return dict_view(receiver, view, known, declared)
         case _:
@@ -724,13 +694,35 @@ def _iterator(name: str, args: list[ast.expr], known: Known, declared: Mapping[s
         return Inference("int", "`range`, which yields `int`s", frozenset({"loop"}))
     if name in SAME_ELEMENTS:
         return looped(args[0], known, declared)
-    counted: list[ast.expr] = args[:1] if name == ENUMERATE else args
-    parts: list[Inference | None] = [looped(arg, known, declared) for arg in counted]
+    parts: list[Inference | None] = [looped(arg, known, declared) for arg in counted(name, args)]
     found: list[Inference] = [part for part in parts if part is not None]
     if len(found) != len(parts):
         return None
     annotations: list[str] = ["int"] * (name == ENUMERATE) + [part.annotation for part in found]
     return Inference(f"tuple[{', '.join(annotations)}]", f"`{name}`'s tuples", _kinds(*found, kind="loop"))
+
+
+def looped_parts(
+    iterable: ast.expr,
+    known: Known,
+    declared: Mapping[str, str],
+) -> list[LoopPart] | None:
+    """Infer each part of the tuples `enumerate` or `zip` yields on its own, even if the others aren't known.
+
+    `enumerate`'s index is always an `int`, whatever it counts.
+
+    Returns:
+      Each part's inference (`None` if it isn't known), with the values it came from (to judge
+      whether it's a guess, see `iterated`); or `None` if `iterable` isn't such a call.
+
+    """
+    call: tuple[str, list[ast.expr]] | None = iterator_call(iterable)
+    if call is None or call[0] not in {ENUMERATE, ZIP} or not known.is_builtin(call[0]):
+        return None
+    index: list[LoopPart] = (
+        [(Inference("int", "`enumerate`'s index", frozenset({"loop"})), [])] if call[0] == ENUMERATE else []
+    )
+    return index + [(looped(arg, known, declared), iterated(arg)) for arg in counted(*call)]
 
 
 def dict_view(receiver: ast.expr, view: str, known: Known, declared: Mapping[str, str]) -> Inference | None:

@@ -2,26 +2,38 @@
 """Return types the language fixes: builtins', and `str`, `bytes`, `list`, `set` and `dict` methods'."""
 
 import ast
-from collections.abc import Mapping
 from typing import Final
+
+from constricter.fix.targets import sole
 
 # Builtins whose return type is fixed by the language, whatever their argument: safe to infer, not
 # a guess (unlike a capitalised call, which could really be a generic class or a factory function).
 BUILTIN_RETURNS: Final = {
+    "all": "bool",
+    "any": "bool",
+    "ascii": "str",
+    "bin": "str",
     "bool": "bool",
+    "bytearray": "bytearray",
     "bytes": "bytes",
     "callable": "bool",
     "chr": "str",
     "complex": "complex",
+    "dir": "list[str]",
     "float": "float",
+    "format": "str",
     "hasattr": "bool",
     "hash": "int",
+    "hex": "str",
     "id": "int",
+    "input": "str",
     "int": "int",
     "isinstance": "bool",
     "issubclass": "bool",
     "len": "int",
+    "oct": "str",
     "ord": "int",
+    "range": "range",
     "repr": "str",
     "str": "str",
 }
@@ -57,12 +69,14 @@ _STR_METHODS: Final = {
     "ljust": "str",
     "lower": "str",
     "lstrip": "str",
+    "partition": "tuple[str, str, str]",
     "removeprefix": "str",
     "removesuffix": "str",
     "replace": "str",
     "rfind": "int",
     "rindex": "int",
     "rjust": "str",
+    "rpartition": "tuple[str, str, str]",
     "rsplit": "list[str]",
     "rstrip": "str",
     "split": "list[str]",
@@ -99,12 +113,14 @@ _BYTES_METHODS: Final = {
     "ljust": "bytes",
     "lower": "bytes",
     "lstrip": "bytes",
+    "partition": "tuple[bytes, bytes, bytes]",
     "removeprefix": "bytes",
     "removesuffix": "bytes",
     "replace": "bytes",
     "rfind": "int",
     "rindex": "int",
     "rjust": "bytes",
+    "rpartition": "tuple[bytes, bytes, bytes]",
     "rsplit": "list[bytes]",
     "rstrip": "bytes",
     "split": "list[bytes]",
@@ -122,31 +138,10 @@ _BYTES_METHODS: Final = {
 METHOD_RETURNS: Final = {"str": _STR_METHODS, "bytes": _BYTES_METHODS}
 
 
-def method_return(
-    receiver: str,
-    call: ast.Call,
-    method: str,
-    known_methods: Mapping[str, Mapping[str, str]],
-) -> str | None:
-    """Look up the type of `call`, a `method` call on a receiver whose own type is `receiver`, as text.
-
-    A fixed-return `str`/`bytes` method (`METHOD_RETURNS`), a method of a class defined in the
-    module (`known_methods`, see `method_returns`), or a `list`/`set`/`dict` method whose return is the
-    receiver's own element type (`_element_method`).
-
-    Returns:
-      The annotation as source text, or `None` if none of those decides one.
-
-    """
-    return (
-        METHOD_RETURNS.get(receiver, {}).get(method)
-        or known_methods.get(receiver, {}).get(method)
-        or _element_method(receiver, call, method)
-    )
-
-
-def _element_method(receiver: str, call: ast.Call, method: str) -> str | None:
+def element_method(root: ast.expr, receiver: str, call: ast.Call, method: str) -> str | None:
     """Infer a `list`, `set` or `dict` method call's type from the receiver's own type parameters.
+
+    `receiver` is the receiver's type as text, and `root` that parsed.
 
     `copy()` is the receiver's type; `pop()` a `list`'s or `set`'s element (with an optional index
     for a `list`); `pop(key)`, `setdefault(key, value)` and `get(key)` a `dict`'s value (`get` as
@@ -157,8 +152,6 @@ def _element_method(receiver: str, call: ast.Call, method: str) -> str | None:
       The annotation as source text, or `None` if the call doesn't decide one.
 
     """
-    # `receiver` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
-    root: ast.expr = ast.parse(receiver, mode="eval").body
     call_shape: tuple[str, int | None] = (method, None if call.keywords else len(call.args))
     element: ast.expr
     key: ast.expr
@@ -171,9 +164,9 @@ def _element_method(receiver: str, call: ast.Call, method: str) -> str | None:
             ("pop", 0),
             ("pop", 1),
         }:
-            return ast.unparse(element)
+            return ast.unparse(sole(element))
         case ast.Subscript(value=ast.Name(id="set" | "Set"), slice=element) if call_shape == ("pop", 0):
-            return ast.unparse(element)
+            return ast.unparse(sole(element))
         case ast.Subscript(value=ast.Name(id="dict" | "Dict"), slice=ast.Tuple(elts=[key, element])):
             return _dict_method(call_shape, key, element)
         case _:

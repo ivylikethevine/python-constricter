@@ -13,9 +13,10 @@ import bisect
 import operator
 from collections.abc import Iterator, Mapping, Sequence
 from functools import lru_cache
-from typing import Final, TypeAlias
+from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.known import Inference, Returned
+from constricter.rules.syntax import FunctionDef
 from constricter.rules.walked import classes, of_type
 
 # A `return` statement as the checker saw it: its value's inference (`None`: none, or unknown), and
@@ -26,6 +27,11 @@ _END: Final = 1 << 62  # past any line: a module's span has no end
 # What a call calls: a name (`f()`), or an attribute (`x.m()`), the other `None`.
 _Callee: TypeAlias = tuple[str | None, str | None]
 _Call: TypeAlias = tuple[tuple[int, int], _Callee]  # where a call starts (line, column), and what it calls
+_Start: TypeAlias = tuple[int, int]  # where a node starts: its line and column
+# The functions by name: the module's (`[False]`), then the classes' methods (`[True]`).
+_Named: TypeAlias = tuple[dict[str, list[FunctionDef]], dict[str, list[FunctionDef]]]
+# One function to put in call order, and its callees still to put in before it.
+_Visit: TypeAlias = tuple[FunctionDef, Iterator[FunctionDef]]
 _SCOPES: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
 
 
@@ -67,17 +73,178 @@ def called(module: ast.Module, node: ast.AST, found: Returned) -> bool:
 
     """
     methods: set[str] = {name for methods in found.methods.values() for name in methods}
-    starts: list[tuple[int, int]]
+    return any(name in found.calls or attr in methods for name, attr in _callees_in(module, node))
+
+
+def _callees_in(module: ast.Module, node: ast.AST) -> Sequence[_Callee]:
+    """Find what `node` (the module, a function, or a statement in it) calls, by its span of the source.
+
+    Returns:
+      Each call's callee: a name (`f()`) or an attribute (`x.m()`).
+
+    """
+    starts: list[_Start]
     callees: list[_Callee]
     starts, callees = _calls(module)
-    span: slice = slice(
-        bisect.bisect_left(starts, (getattr(node, "lineno", 0), getattr(node, "col_offset", 0))),
-        bisect.bisect_left(
-            starts,
-            (getattr(node, "end_lineno", _END) or _END, getattr(node, "end_col_offset", 0) or 0),
-        ),
-    )
-    return any(name in found.calls or attr in methods for name, attr in callees[span])
+    begin: _Start = (getattr(node, "lineno", 0), getattr(node, "col_offset", 0))
+    end: _Start = (getattr(node, "end_lineno", _END) or _END, getattr(node, "end_col_offset", 0) or 0)
+    span: slice = slice(bisect.bisect_left(starts, begin), bisect.bisect_left(starts, end))
+    return callees[span]
+
+
+class Slot(NamedTuple):
+    """Where a function's return type goes in the table: its class (`None`: the module's), and its name."""
+
+    owner: str | None
+    name: str
+
+
+@lru_cache(maxsize=4)
+def slots(module: ast.Module) -> dict[int, Slot]:
+    """Find the functions whose `return`s can type their calls: plain, directly in the module or a class.
+
+    As `_typed` finds them: a `def` (not `async`) whose name nothing else in the same body defines.
+
+    Returns:
+      Each one's slot, by the function's `id()`.
+
+    """
+    found: dict[int, Slot] = {}
+    owner: str | None
+    body: list[ast.stmt]
+    for owner, body in ((None, module.body), *((node.name, node.body) for node in classes(module))):
+        counts: dict[str, int] = {}
+        stmt: ast.stmt
+        for stmt in body:
+            if isinstance(stmt, _FUNCTIONS):
+                counts[stmt.name] = counts.get(stmt.name, 0) + 1
+        for stmt in body:
+            if isinstance(stmt, ast.FunctionDef) and counts[stmt.name] == 1:
+                found[id(stmt)] = Slot(owner, stmt.name)
+    return found
+
+
+def in_call_order(module: ast.Module, functions: Sequence[FunctionDef]) -> list[FunctionDef]:
+    """Order `functions` so that each comes after the functions it calls (a cycle's, in any order).
+
+    Its callees: the module's functions it calls by name, and every method named as it calls one
+    (`x.m()`: any class's `m`), as `called` counts them.
+
+    Returns:
+      Them, callees first; otherwise in their own order.
+
+    """
+    named: _Named = ({}, {})
+    func: FunctionDef
+    for func in functions:
+        slot: Slot | None
+        if (slot := slots(module).get(id(func))) is not None:
+            named[slot.owner is not None].setdefault(slot.name, []).append(func)
+    ordered: list[FunctionDef] = []
+    seen: set[int] = set()
+    for func in functions:
+        if id(func) not in seen:
+            seen.add(id(func))
+            _after_callees(module, func, named, (ordered, seen))
+    return ordered
+
+
+def _after_callees(
+    module: ast.Module,
+    func: FunctionDef,
+    named: "_Named",
+    into: tuple[list[FunctionDef], set[int]],
+) -> None:
+    """Put `func` in the order after its callees, depth first, with a stack: a call chain can be long."""
+    ordered: list[FunctionDef]
+    seen: set[int]
+    ordered, seen = into
+    # Each entry: a function, and its callees still to put in before it; `None` at the bottom ends it.
+    waiting: list[_Visit | None] = [None, (func, _callees(module, func, named))]
+    entry: _Visit
+    for entry in iter(waiting.pop, None):
+        callee: FunctionDef | None
+        if (callee := next((one for one in entry[1] if id(one) not in seen), None)) is None:
+            ordered.append(entry[0])
+        else:
+            seen.add(id(callee))
+            waiting.extend([entry, (callee, _callees(module, callee, named))])
+
+
+def _callees(module: ast.Module, func: FunctionDef, named: "_Named") -> Iterator[FunctionDef]:
+    """Find the functions of `named` that `func` calls: the module's by name, methods by attribute.
+
+    Yields:
+      Each, in the order of its calls.
+
+    """
+    name: str | None
+    attr: str | None
+    for name, attr in _callees_in(module, func):
+        yield from named[False].get(name, []) if name is not None else named[True].get(attr or "", [])
+
+
+class Table:
+    """What the module's unannotated functions return, filled in as each is checked, in call order.
+
+    `returned` is the live table, for the check to read as it goes. Each function's stamp is how
+    many entries the table had when it was checked: one checked before a callee of its was typed
+    (in a cycle) is `stale`, and checked again.
+    """
+
+    def __init__(self, module: ast.Module) -> None:
+        """Start an empty table for `module`."""
+        self.module: ast.Module = module
+        self.recorded: dict[int, list[Recorded]] = {}
+        self.calls: dict[str, str] = {}
+        self.methods: dict[str, dict[str, str]] = {}
+        self.guesses: dict[str, frozenset[str]] = {}
+        self.returned: Returned = Returned(self.calls, self.methods, self.guesses)
+        self.entries: list[tuple[Slot, str]] = []
+        self.stamps: dict[int, int] = {}
+
+    def checked(self, func: FunctionDef, returns: list[Recorded]) -> None:
+        """Record a checked function's `return`s, and its return type, if they decide one."""
+        self.stamps[id(func)] = len(self.entries)
+        self.recorded[id(func)] = returns
+        slot: Slot | None = slots(self.module).get(id(func))
+        found: tuple[str, frozenset[str]] | None
+        if (
+            slot is None
+            or not isinstance(func, ast.FunctionDef)
+            or (found := _return_type(func, returns)) is None
+        ):
+            return
+        annotation: str
+        origins: frozenset[str]
+        annotation, origins = found
+        if slot.owner is None:
+            self.calls[slot.name] = annotation
+        else:
+            self.methods.setdefault(slot.owner, {})[slot.name] = annotation
+        if origins:
+            self.guesses[slot.name if slot.owner is None else f"{slot.owner}.{slot.name}"] = origins
+        self.entries.append((slot, annotation))
+
+    def stale(self, func: FunctionDef) -> bool:
+        """Check whether `func` calls a function whose type the table gained after `func` was checked.
+
+        Returns:
+          Whether it does: checking it again, knowing that, could type more.
+
+        """
+        since: slice = slice(self.stamps.get(id(func), 0), None)
+        newer: list[tuple[Slot, str]] = self.entries[since]
+        calls: dict[str, str] = {}
+        methods: dict[str, dict[str, str]] = {}
+        slot: Slot
+        annotation: str
+        for slot, annotation in newer:
+            if slot.owner is None:
+                calls[slot.name] = annotation
+            else:
+                methods.setdefault(slot.owner, {})[slot.name] = annotation
+        return bool(newer) and called(self.module, func, Returned(calls, methods))
 
 
 @lru_cache(maxsize=4)  # asked of the same module's functions, each round
