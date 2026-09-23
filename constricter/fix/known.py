@@ -101,11 +101,15 @@ class Returned(NamedTuple):
     `calls`: the module's functions', by name (certain); `methods`: its classes' methods', by class
     (guesses: a subclass may override one). `guesses`: for a function (by name) or method (`C.m`)
     whose `return`s are themselves guesses, what they rest on (`FIX_KINDS`), which its calls do too.
+    `attributes`: its classes' unannotated instance attributes typed by their every `self.x = value`,
+    by class (guesses: a subclass or outside code may assign one too); a guessed value's origins are
+    in `guesses` as `C.x`.
     """
 
     calls: Mapping[str, str] = MappingProxyType({})
     methods: Mapping[str, Mapping[str, str]] = MappingProxyType({})
     guesses: Mapping[str, frozenset[str]] = MappingProxyType({})
+    attributes: Mapping[str, Mapping[str, str]] = MappingProxyType({})
 
 
 class ClassSide(NamedTuple):

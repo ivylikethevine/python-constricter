@@ -49,3 +49,34 @@ def python_files(paths: Sequence[Path], exclude: Sequence[str] = ()) -> Iterator
                 continue
             if not excluded(found, exclude):
                 yield found
+
+
+def shares(paths: Sequence[Path], workers: int) -> list[list[int]]:
+    """Share the files among the workers, the biggest first to the least loaded: a check's time goes by size.
+
+    Returns:
+      Each worker's files, by their place in `paths` (no more workers than files).
+
+    """
+    loads: list[int] = [0] * min(workers, len(paths))
+    found: list[list[int]] = [[] for _ in loads]
+    sizes: list[int] = [_size(path) for path in paths]
+    index: int
+    for index in sorted(range(len(paths)), key=lambda at: -sizes[at]):
+        least: int = loads.index(min(loads))
+        found[least].append(index)
+        loads[least] += sizes[index] or 1
+    return [sorted(share) for share in found if share]
+
+
+def _size(path: Path) -> int:
+    """Find a file's size, to balance the workers by.
+
+    Returns:
+      It, or 0 if it can't be read (checking it reports that).
+
+    """
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0

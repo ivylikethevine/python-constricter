@@ -20,9 +20,53 @@ defaults:
     shell: bash
 
 jobs:
+  # CI already passed on this exact tree (a merge to main with nothing else in it, or the release
+  # tag on that merge): every job below is skipped, which a required check counts as passing. Only
+  # this repository's own successful runs of this workflow count: a fork's pull request runs its own
+  # copy of it. Any change at all, to the code, the tests or this file, is a new tree.
+  reuse:
+    name: Reuse
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read # find an earlier run's tested-tree artifact
+      contents: read # read the commit's tree
+    outputs:
+      tested: ${{ steps.find.outputs.tested }}
+      tree: ${{ steps.find.outputs.tree }}
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+      - id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REPO_ID: ${{ github.repository_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          tree=$(gh api "repos/$REPO/git/commits/$SHA" --jq .tree.sha)
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+          tested=false
+          runs=$(gh api "repos/$REPO/actions/artifacts?name=tested-tree-$tree&per_page=20" \
+            --jq ".artifacts[] | select(.expired | not) | select(.workflow_run.head_repository_id == $REPO_ID) | .workflow_run.id" || true)
+          for run in $runs; do
+            if gh api "repos/$REPO/actions/runs/$run" \
+              --jq '.conclusion == "success" and .path == ".github/workflows/ci.yml"' | grep -qx true; then
+              tested=true
+              echo "CI passed on tree $tree in run $run: reusing it." >> "$GITHUB_STEP_SUMMARY"
+              break
+            fi
+          done
+          echo "tested=$tested" >> "$GITHUB_OUTPUT"
+
   lint:
     name: Lint
-    if: github.event.pull_request.draft != true
+    needs: reuse
+    if: github.event.pull_request.draft != true && needs.reuse.outputs.tested != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -58,7 +102,8 @@ jobs:
 
   docs:
     name: Docs
-    if: github.event.pull_request.draft != true
+    needs: reuse
+    if: github.event.pull_request.draft != true && needs.reuse.outputs.tested != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -91,7 +136,8 @@ jobs:
 
   action:
     name: Action
-    if: github.event.pull_request.draft != true
+    needs: reuse
+    if: github.event.pull_request.draft != true && needs.reuse.outputs.tested != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -127,7 +173,8 @@ jobs:
 
   corpus:
     name: Corpus (${{ matrix.package }})
-    if: github.event.pull_request.draft != true
+    needs: reuse
+    if: github.event.pull_request.draft != true && needs.reuse.outputs.tested != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -192,7 +239,8 @@ jobs:
 
   test:
     name: Test (${{ matrix.os }}, ${{ matrix.python }})
-    if: github.event.pull_request.draft != true
+    needs: reuse
+    if: github.event.pull_request.draft != true && needs.reuse.outputs.tested != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -263,4 +311,28 @@ jobs:
         with:
           name: ci-dist # release.yml's build uploads `dist`
           path: dist/
+          if-no-files-found: error
+
+  # Everything passed on this tree: record it, for a later run on the same tree to reuse.
+  tested:
+    name: Tested
+    needs: [reuse, lint, docs, action, corpus, test, build]
+    if: needs.reuse.outputs.tested != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+      - env:
+          TREE: ${{ needs.reuse.outputs.tree }}
+        run: echo "$TREE" > tested-tree.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tested-tree-${{ needs.reuse.outputs.tree }}
+          path: tested-tree.txt
+          retention-days: 90
           if-no-files-found: error

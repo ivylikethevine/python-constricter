@@ -10,11 +10,12 @@ function that sees it) leaves it alone.
 """
 
 import ast
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from typing import Final, NamedTuple
 
 from constricter.fix.inference import inference
 from constricter.fix.known import Inference, Known
+from constricter.rules.syntax import NESTED_SCOPES, own_nodes
 
 _LIST: Final = "list"
 _DICT: Final = "dict"
@@ -37,7 +38,6 @@ _PURE: Final = frozenset(
     | {"sum", "min", "max", "zip", "iter", "bool", "str", "repr", "dict"},
 )
 _JOIN: Final = "join"
-_SCOPES: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
 
 
 class _Fill(NamedTuple):
@@ -83,8 +83,8 @@ def filled(
     fills: list[_Fill] = []
     parents: dict[int, ast.AST] = {}
     node: ast.AST
-    for node in _walk(body, parents):
-        if isinstance(node, _SCOPES) and any(
+    for node in own_nodes(body, parents):
+        if isinstance(node, NESTED_SCOPES) and any(
             isinstance(inner, ast.Name) and inner.id == name for inner in ast.walk(node)
         ):
             return None  # a nested scope sees it: out of this function's sight
@@ -95,33 +95,6 @@ def filled(
             if isinstance(fill, _Fill):
                 fills.append(fill)
     return _typed(fills, kind, known, declared) if fills else None
-
-
-def _walk(body: Sequence[ast.stmt], parents: dict[int, ast.AST]) -> Iterator[ast.AST]:
-    """Walk `body`, recording each node's parent, without entering a nested function or class.
-
-    Yields:
-      Each node, a nested scope's own too (but not what's inside it).
-
-    """
-    node: ast.AST
-    for node in body:
-        yield from _descend(node, parents)
-
-
-def _descend(node: ast.AST, parents: dict[int, ast.AST]) -> Iterator[ast.AST]:
-    """Walk one node's tree for `_walk`.
-
-    Yields:
-      It, then its descendants, stopping at a nested function or class.
-
-    """
-    yield node
-    if not isinstance(node, _SCOPES):
-        child: ast.AST
-        for child in ast.iter_child_nodes(node):
-            parents[id(child)] = node
-            yield from _descend(child, parents)
 
 
 def _use(node: ast.Name, kind: str, parents: Mapping[int, ast.AST]) -> _Fill | bool:

@@ -2,8 +2,9 @@
 """Walking the syntax the rules read: functions and methods, nested statements, binding targets."""
 
 import ast
+import bisect
 import re
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from typing import Final, TypeAlias
 
 from constricter.offences import at
@@ -17,6 +18,12 @@ FUNCTION_DEFS: tuple[type[ast.FunctionDef], type[ast.AsyncFunctionDef]] = (
     ast.FunctionDef,
     ast.AsyncFunctionDef,
 )
+# Statements whose nested statements may not all run (or not only once).
+BRANCHING: Final = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.TryStar, ast.Match)
+# The nodes with a scope of their own: what's inside one isn't the enclosing function's.
+NESTED_SCOPES: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+_END: Final = 1 << 62  # past any line: a module's span has no end
+Start: TypeAlias = tuple[int, int]  # where a node starts: its line and column
 _FUTURE: Final = "__future__"
 # `from __future__` features only code that also runs on Python 2 imports: its type comments count.
 _PYTHON2_FUTURES: frozenset[str] = frozenset(
@@ -90,6 +97,93 @@ def _direct_methods(body: list[ast.stmt], into: list[FunctionDef]) -> None:
             into.append(stmt)
         elif not isinstance(stmt, ast.ClassDef):
             _direct_methods(child_statements(stmt), into)
+
+
+def import_bindings(body: Iterable[ast.stmt]) -> Iterator[tuple[str, str, str]]:
+    """Walk the absolute imports among `body`, and what each name they bind is.
+
+    `import os` binds `os` to `os` (and `import os.path` binds `os` too); `import os.path as p`
+    binds `p` to `os.path`; `from os import getpid as pid` binds `pid` to `os.getpid`. A relative
+    import names no module here.
+
+    Yields:
+      Each bound name, its dotted origin, and the module it comes from: an `import`'s top-level
+      package, a `from` import's module.
+
+    """
+    stmt: ast.stmt
+    module: str
+    alias: ast.alias
+    for stmt in body:
+        match stmt:
+            case ast.Import():
+                for alias in stmt.names:
+                    top: str = alias.name.split(".", 1)[0]
+                    yield alias.asname or top, alias.name if alias.asname else top, top
+            case ast.ImportFrom(module=str() as module, level=0):
+                for alias in stmt.names:
+                    yield alias.asname or alias.name, f"{module}.{alias.name}", module
+            case _:
+                pass
+
+
+def within(starts: Sequence[Start], node: ast.AST, begin: Start | None = None) -> slice:
+    """Find which of `starts` (in source order) are within `node`'s span of the source.
+
+    `begin`, if given, is where the span starts instead (a function's first decorator, say). A node
+    with no position (the module) spans everything.
+
+    Returns:
+      Their slice.
+
+    """
+    return slice(*_bounds(starts, node, begin))
+
+
+def has_within(starts: Sequence[Start], node: ast.AST) -> bool:
+    """Check whether any of `starts` (in source order) is within `node`'s span (see `within`).
+
+    Returns:
+      Whether one is.
+
+    """
+    first: int
+    stop: int
+    first, stop = _bounds(starts, node, None)
+    return stop > first
+
+
+def _bounds(starts: Sequence[Start], node: ast.AST, begin: Start | None) -> tuple[int, int]:
+    """Find where `node`'s span (from `begin`, if given) starts and stops among `starts`.
+
+    Returns:
+      The first index within it, and the first past it.
+
+    """
+    first: Start = begin or (getattr(node, "lineno", 0), getattr(node, "col_offset", 0))
+    end: Start = (getattr(node, "end_lineno", _END) or _END, getattr(node, "end_col_offset", 0) or 0)
+    return bisect.bisect_left(starts, first), bisect.bisect_left(starts, end)
+
+
+def own_nodes(found: Sequence[ast.AST], parents: dict[int, ast.AST] | None = None) -> Iterator[ast.AST]:
+    """Walk `found`, depth first in source order, without entering a nested function, lambda or class.
+
+    `parents`, if given, records each node's parent (by `id()`) before the node is yielded.
+
+    Yields:
+      Each node, a nested scope's own too (but not what's inside it).
+
+    """
+    # A stack, not a recursion: a nested generator passes each node up through every level above it.
+    waiting: list[ast.AST | None] = [None, *reversed(found)]  # `None` at its bottom ends it
+    node: ast.AST
+    for node in iter(waiting.pop, None):
+        yield node
+        if not isinstance(node, NESTED_SCOPES):
+            children: list[ast.AST] = list(ast.iter_child_nodes(node))
+            if parents is not None:
+                parents.update((id(child), node) for child in children)
+            waiting.extend(reversed(children))
 
 
 def child_statements(stmt: ast.stmt) -> list[ast.stmt]:

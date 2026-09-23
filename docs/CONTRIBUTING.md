@@ -37,8 +37,11 @@ typeshed stubs with `local/.venv/bin/python -m tests.typeshed.stdlib_tables` (CI
 `local/.venv/bin/python tests/ci_local.py` runs them all at once, as CI does: it reads the Lint,
 Docs and Test jobs' steps from `.github/workflows/ci.yml` (so it can't fall behind it), fails a step
 by its exit status alone (pylint still rates a run with one finding 10.00/10), and prints each
-failing step's output in full. Name jobs to run only those (`tests/ci_local.py lint docs`), and add
-`--install-hook` once to run it before every `git push`.
+failing step's output in full. It also runs the tests on each other Python in the Test job's matrix
+(PyPy and free-threaded builds included), each in its own `local/.venv-<python>` that uv creates, so
+what only one interpreter breaks fails before CI. Name jobs to run only those
+(`tests/ci_local.py lint docs interpreters`), and add `--install-hook` once to run it before every
+`git push`.
 
 After editing a dependency group, run `uv lock` (CI fails until you do). Dependabot updates
 `uv.lock`, the npm lock and the actions weekly.
@@ -72,6 +75,12 @@ section per version in [`docs/RUNS.md`](RUNS.md): offences per code, errors and 
 level, fixes, guesses, anything a fix broke, and the share of bindings typed before and after fixing
 (by this checkout's `--coverage`). It needs the `corpus` group
 (`uv sync --group dev --group corpus`) and `uv`; see its docstring for the options.
+
+`local/.venv/bin/python -m tests.corpus.corpus_untyped` counts what `--fix` still can't type on the
+same corpora, and why: each untyped binding by the statement that binds it and the shape of its
+value, in annotated functions or not, and each call through an import by where it comes from. It
+prints the tables [ROADMAP.md](ROADMAP.md) sizes its items by; `--rows FILE` also writes every
+binding, as JSON lines.
 
 CI also runs the tests on PyPy 3.11 and free-threaded Python 3.14, which install only the `test`
 dependency group: every dev tool doesn't have wheels for them, and the tests don't need them all.

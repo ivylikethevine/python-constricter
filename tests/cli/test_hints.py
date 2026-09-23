@@ -21,7 +21,7 @@ import pytest
 
 from constricter import check_source
 from constricter.cli import command as cli
-from constricter.cli import guard, hints
+from constricter.cli import guard, hints, protocol
 from constricter.cli.options import Options
 from constricter.fix.known import Hints
 
@@ -118,7 +118,7 @@ def test_a_failing_server_stops_the_run(
     """An error, an exit or no answer at all is an error: silently hinting nothing would mislead."""
     _fake(monkeypatch, behaviour)
     monkeypatch.setattr(hints, "_TIMEOUT", 0.5)
-    with pytest.raises(hints.HintError, match=message):
+    with pytest.raises(protocol.HintError, match=message):
         _ = _session_hints(tmp_path, "x = 1  # hint: int\n")
 
 
@@ -138,16 +138,19 @@ def test_a_server_that_cant_start_is_an_error(monkeypatch: pytest.MonkeyPatch, t
     patched: pytest.MonkeyPatch
     with monkeypatch.context() as patched:
         patched.setattr(shutil, "which", nowhere)
-        with pytest.raises(hints.HintError, match="needs `basedpyright-langserver`, which isn't installed"):
+        with pytest.raises(
+            protocol.HintError,
+            match="needs `basedpyright-langserver`, which isn't installed",
+        ):
             _ = hints.Session([_CHECKER], tmp_path)
     monkeypatch.setattr(hints, "command", _runs(str(tmp_path / "missing")))
-    with pytest.raises(hints.HintError, match="couldn't be started"):
+    with pytest.raises(protocol.HintError, match="couldn't be started"):
         _ = _session_hints(tmp_path, "x = 1\n")
     _fake(monkeypatch, "crash")
-    with pytest.raises(hints.HintError, match="exited while answering `initialize`"):
+    with pytest.raises(protocol.HintError, match="exited while answering `initialize`"):
         _ = _session_hints(tmp_path, "x = 1\n")
     _fake(monkeypatch, "deaf")
-    with pytest.raises(hints.HintError, match="exited while answering `initialize`"):
+    with pytest.raises(protocol.HintError, match="exited while answering `initialize`"):
         _ = _session_hints(tmp_path, "x = 1\n")
 
 
@@ -160,7 +163,7 @@ def test_a_server_that_closes_its_input_is_an_error(monkeypatch: pytest.MonkeyPa
         running: hints.Connection = session.checkers[0].servers[0]
         running.process.kill()
         _ = running.process.wait()
-        with pytest.raises(hints.HintError, match="exited"):
+        with pytest.raises(protocol.HintError, match="exited"):
             running.notify("exit", None)
 
 

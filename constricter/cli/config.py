@@ -7,7 +7,7 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, TypeAlias
 
-from constricter.cli.hints import SERVERS
+from constricter.cli.protocol import SERVERS
 from constricter.jsonc import is_int
 from constricter.offences import FIX_KINDS, LEVELS, MESSAGES
 
@@ -165,24 +165,17 @@ def _levels(value: _Toml) -> dict[str, str] | None:
     return None if None in levels.values() else {glob: str(level) for glob, level in levels.items()}
 
 
-def _ignores(value: _Toml) -> dict[str, list[str]] | None:
-    if not isinstance(value, dict):
-        return None
-    ignores: dict[str, list[str] | None] = {glob: _codes(codes) for glob, codes in value.items()}
-    return None if None in ignores.values() else {glob: list(codes or []) for glob, codes in ignores.items()}
-
-
-def _narrower(value: _Toml) -> dict[str, list[str]] | None:
-    """Read a type hierarchy: each type, and the list of types it's narrower than.
+def _lists(value: _Toml, read: Callable[[_Toml], list[str] | None]) -> dict[str, list[str]] | None:
+    """Read a table of lists, each as `read` reads one: `per-file-ignores`' codes, `narrower`'s types.
 
     Returns:
-      It, or `None` if `value` isn't a table of string lists.
+      It, or `None` if `value` isn't a table, or `read` can't read one of its values.
 
     """
     if not isinstance(value, dict):
         return None
-    wider: dict[str, list[str] | None] = {name: _strings(types) for name, types in value.items()}
-    return None if None in wider.values() else {name: list(types or []) for name, types in wider.items()}
+    lists: dict[str, list[str] | None] = {key: read(item) for key, item in value.items()}
+    return None if None in lists.values() else {key: list(item or []) for key, item in lists.items()}
 
 
 def _baseline(value: _Toml, root: Path) -> str | None:
@@ -211,8 +204,8 @@ _READERS: dict[str, Callable[[_Toml], Default | None]] = {
     "type-comments": _flag,
     "all-scopes": _flag,
     "per-path-levels": _levels,
-    "per-file-ignores": _ignores,
-    "narrower": _narrower,
+    "per-file-ignores": partial(_lists, read=_codes),
+    "narrower": partial(_lists, read=_strings),  # a type hierarchy: each type, and those it's narrower than
     "infer-with": _checkers,
     "infer-memory": _gigabytes,
 }

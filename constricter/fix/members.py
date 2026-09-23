@@ -154,6 +154,16 @@ def returned_method(receiver: str, name: str, known: Known) -> str | None:
     return known.returned.methods.get(receiver, {}).get(name)
 
 
+def assigned_attribute(receiver: str, name: str, known: Known) -> str | None:
+    """Look up an attribute of a value typed `receiver` typed by its assignments alone (see `Returned`).
+
+    Returns:
+      Its type, or `None` if it isn't one (a certain source is asked first, see `member`).
+
+    """
+    return known.returned.attributes.get(receiver, {}).get(name)
+
+
 def subscripted(container: str, node: ast.Subscript, index: str | None) -> str | None:
     """Infer `container[...]`'s type, given `container`'s own type as text, and the index's (`index`).
 

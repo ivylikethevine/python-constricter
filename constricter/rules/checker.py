@@ -7,35 +7,30 @@ from dataclasses import replace
 from functools import lru_cache
 from typing import Final, NamedTuple, cast
 
-from constricter.fix import hinted, imports, returned, stdlib
-from constricter.fix.doubts import Facts, passed
-from constricter.fix.inference import LoopPart, inference, looped, looped_parts
+from constricter.fix import imports, returned, stdlib
+from constricter.fix.doubts import Facts, passed, tests
+from constricter.fix.inference import inference
 from constricter.fix.known import (
     Classes,
     ClassSide,
-    Inference,
     Known,
     LibraryNames,
     Outside,
     Returned,
 )
-from constricter.fix.opened import opened
-from constricter.fix.targets import iterated, unpacked
 from constricter.jsonc import as_text
 from constricter.offences import (
-    COMMENT_TYPED_TARGET,
     DEFAULT_CHECKS,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
     UNTYPED_TARGET,
     Checks,
-    Edit,
-    Fix,
     Offence,
     at,
 )
-from constricter.rules import parsed
+from constricter.rules import binding, parsed
 from constricter.rules.annotations import (
+    Tables,
     awaited_returns,
     casts,
     class_attributes,
@@ -45,28 +40,26 @@ from constricter.rules.annotations import (
     free_of_all,
     generic_classes,
     imported_from,
-    method_returns,
+    module_tables,
     node_name,
-    returns,
     self_returns,
 )
-from constricter.rules.annotations import classes as instance_attributes
-from constricter.rules.flow import Finding, Hierarchy, augmented
+from constricter.rules.flow import Finding, Hierarchy
 from constricter.rules.narrowing import flow_offences
 from constricter.rules.redundant import redundant
 from constricter.rules.scope import Kind, Late, Scope, Settings, certain_type, guesses_in
 from constricter.rules.syntax import (
+    BRANCHING,
     FUNCTION_DEFS,
     FunctionDef,
-    captures,
+    Start,
     child_statements,
     collect_functions,
-    comment_type,
     expressions,
+    has_within,
     owners,
     python2_compatible,
     target_names,
-    type_comment_span,
 )
 from constricter.rules.walked import classes, of_type
 
@@ -74,7 +67,6 @@ from constricter.rules.walked import classes, of_type
 _TYPE_ALIAS: Final = "TypeAlias"
 _CLASSMETHOD: Final = "classmethod"
 _ROUNDS: Final = 5  # how many times to re-check what calls an unannotated function, at most
-_COMMENT: Final = "comment"  # the fix kind of LVA003's declaration
 # Enum members mustn't be annotated: a base imported from here is one, however it's aliased.
 _ENUM_MODULES: Final = frozenset({"enum"})
 # The conventional name of an instance method's first parameter: typed as its class, for `--fix`.
@@ -97,33 +89,38 @@ def check_source(
       Every offence; `# noqa` comments are the caller's to apply.
 
     """
-    tree: ast.Module = _parse(source, filename)
+    tree: ast.Module
+    own: Tables | None
+    tree, own = _parse(source, filename)
     return check_tree(
         tree,
         checks,
         lines=as_text(source).splitlines(),
         outside=outside,
+        own=own,
     )
 
 
-def _parse(source: str | bytes, filename: str) -> ast.Module:
+def _parse(source: str | bytes, filename: str) -> tuple[ast.Module, Tables | None]:
     """Parse `source` (see `parsed.parse`), or take the tree the index kept for it (`parsed.take`).
 
     Returns:
-      The module. Raises `SyntaxError`.
+      The module, and the tables the index read from it if it was kept. Raises `SyntaxError`.
 
     """
-    kept: ast.Module | None = parsed.take(source) if isinstance(source, str) else None
-    return kept or parsed.parse(source, filename)
+    kept: parsed.Kept | None = parsed.take(source) if isinstance(source, str) else None
+    return kept or (parsed.parse(source, filename), None)
 
 
 def _settings(
     tree: ast.Module,
     checks: Checks,
     lines: Sequence[str],
-    calls: dict[str, str],
+    own: Tables,
     outside: Outside | None = None,
 ) -> Settings:
+    # The functions' declared returns: other checked files' (see `Outside`), then the module's own.
+    calls: dict[str, str] = {**({} if outside is None else outside.calls), **own.returns}
     imported: Classes | None = None if outside is None else outside.classes
     # The file's own types that mention a type variable it imports (`--fix` sees only its own).
     free: frozenset[str] = frozenset() if outside is None else outside.type_vars
@@ -133,8 +130,8 @@ def _settings(
         Known(
             free_of(calls, free),
             factories(tree),
-            {**(imported.attributes if imported else {}), **free_of_all(instance_attributes(tree), free)},
-            {**(imported.methods if imported else {}), **free_of_all(method_returns(tree), free)},
+            {**(imported.attributes if imported else {}), **free_of_all(own.classes, free)},
+            {**(imported.methods if imported else {}), **free_of_all(own.methods, free)},
             free_of(awaited_returns(tree), free),
             ClassSide(free_of_all(class_attributes(tree), free), free_of_all(class_methods(tree), free)),
             LibraryNames(casts(tree), stdlib.origins(tree), imports.plan(tree)),
@@ -142,9 +139,14 @@ def _settings(
         ),
         Hierarchy.for_module(tree, {name: frozenset(wider) for name, wider in checks.narrower}),
         owners(tree),
-        bool(of_type(tree, ast.NamedExpr)),
+        tuple(
+            sorted(
+                (node.lineno, node.col_offset)
+                for node in cast("list[ast.NamedExpr]", of_type(tree, ast.NamedExpr))
+            ),
+        ),
         () if outside is None else outside.hints,
-        Facts(self_returns(tree), generic_classes(tree), passed(tree)),
+        Facts(self_returns(tree), generic_classes(tree), passed(tree), tests(tree)),
     )
 
 
@@ -154,21 +156,23 @@ def check_tree(
     *,
     lines: Sequence[str] = (),
     outside: Outside | None = None,
+    own: Tables | None = None,
 ) -> list[Offence]:
     """Return the offences in a parsed module, sorted.
 
     `# type:` comments are seen only if it was parsed with `type_comments=True`; they count for `=`
     and `with` too in a module written to run on Python 2. With its source `lines`, a `**rest`
     capture is reported at its name rather than at its pattern's start. `outside` adds what's known
-    of it from other files and a type checker, for `--fix` (see `Outside`).
+    of it from other files and a type checker, for `--fix` (see `Outside`). `own`: the module's own
+    tables, if already read from this tree (see `parsed.keep`).
 
     Returns:
       Every offence, in source order.
 
     """
-    calls: Mapping[str, str] = {} if outside is None else outside.calls
+    own = own or module_tables(tree)
     table: returned.Table = returned.Table(tree)
-    settings: Settings = _settings(tree, checks, lines, {**calls, **returns(tree)}, outside)
+    settings: Settings = _settings(tree, checks, lines, own, outside)
     # The table, filled in as the functions are checked in call order, is what they all read.
     settings = replace(settings, known=replace(settings.known, returned=table.returned))
     scopes: list[Scope] = _scopes(tree, settings, table)
@@ -204,8 +208,8 @@ def annotation_coverage(source: str | bytes, checks: Checks = DEFAULT_CHECKS) ->
       The counts; `# noqa` comments don't make a binding typed. Raises `SyntaxError`.
 
     """
-    tree: ast.Module = _parse(source, "<unknown>")
-    settings: Settings = _settings(tree, checks, as_text(source).splitlines(), {})
+    tree: ast.Module = _parse(source, "<unknown>")[0]
+    settings: Settings = _settings(tree, checks, as_text(source).splitlines(), module_tables(tree))
     scopes: list[Scope] = _scopes(tree, settings)
     total: int = sum(len(scope.bound()) for scope in scopes)
     untyped: int = sum(o.code in _UNTYPED for scope in scopes for o in scope.reported())
@@ -292,6 +296,7 @@ def _function_scopes(
             table.checked(
                 func,
                 [_recorded(scope, value) for value in scope.inferred.returns] if settled else [],
+                _assigned(scope) if settled else [],
             )
         scopes += _function_scopes(nested, settings, table)
     return scopes
@@ -357,22 +362,35 @@ def _function_scope(
 def _visit(scope: Scope, stmt: ast.stmt) -> None:
     """Bind the names `stmt` binds, as Python would, then visit its nested statements."""
     part: ast.AST
-    if scope.settings.walruses:  # most modules have no `:=`: none of their parts need a look
+    walruses: tuple[Start, ...]
+    if walruses := scope.settings.walruses:  # most modules have no `:=`: none of their parts need a look
         for part in expressions(stmt):
-            scope.walrus(part)
+            if has_within(walruses, part):  # a `:=` in it
+                scope.walrus(part)
     _declare(scope, stmt)
-    _bind(scope, stmt)
+    binding.bind(scope, stmt)
     if isinstance(stmt, ast.Return):
         scope.inferred.returns.append(stmt.value)
+    elif isinstance(stmt, ast.Assign):
+        scope.inferred.assigned.extend(
+            (target.attr, stmt.value)
+            for target in stmt.targets
+            if isinstance(target, ast.Attribute)
+            and isinstance(target.value, ast.Name)
+            and target.value.id == _SELF
+        )
     # A loop's body runs again and again (not its `else`), for LVA012.
     body: set[int] = (
         {id(s) for s in stmt.body} if isinstance(stmt, ast.For | ast.AsyncFor | ast.While) else set()
     )
+    before: dict[str, str] | None = dict(scope.inferred.types) if isinstance(stmt, BRANCHING) else None
     child: ast.stmt
     for child in child_statements(stmt):
         scope.assignments.looping += id(child) in body
         _visit(scope, child)
         scope.assignments.looping -= id(child) in body
+    if before is not None:
+        scope.inferred.rejoined(before)
 
 
 def _declare(scope: Scope, stmt: ast.stmt) -> None:
@@ -446,51 +464,133 @@ def _returned(
       The settings with what the functions return, and the scopes checked with them.
 
     """
-    found: Returned = returned.returned(tree, table.recorded)
+    found: Returned = returned.returned(tree, table.recorded, table.assigned)
     settings = replace(settings, known=replace(settings.known, returned=found))
     functions: list[tuple[Scope, FunctionDef]] = [
         (scope, scope.kind.function) for scope in scopes if scope.kind.function is not None
     ]
-    recorded: dict[int, list[returned.Recorded]] = table.recorded
+    # The first pass knew no attribute's type: they're read once every method is checked.
     again: set[int] = {
         id(scope)
         for scope, func in functions
-        if table.stale(func) or scope.inferred.late.keys() - scope.inferred.seeded.keys()
+        if table.stale(func)
+        or scope.inferred.late.keys() - scope.inferred.seeded.keys()
+        or _reads_own(tree, func, settings.owners, found)
     }
     changed: bool = False
+    retyped: set[str] = set()  # the attributes the rounds typed anew
     _round: int
     for _round in range(_ROUNDS):
         if not again:
             break
-        fresh: list[tuple[Scope, FunctionDef]] = [
-            (_function_scope(func, [], settings, scope.inferred.late), func)
-            for scope, func in functions
-            if id(scope) in again
-        ]
-        renewed: dict[int, Scope] = {id(func): scope for scope, func in fresh}
-        functions = [(renewed.get(id(func), scope), func) for scope, func in functions]
-        _finished(tree, [scope for scope, _ in fresh])
-        recorded.update(
-            (id(func), [_recorded(scope, value) for value in scope.inferred.returns]) for scope, func in fresh
-        )
-        latest: Returned = returned.returned(tree, recorded)
-        typed: bool
-        if typed := latest != found and returned.called(tree, tree, latest):  # even if only a body calls one
+        functions = _checked_again(tree, functions, again, settings, table)
+        latest: Returned = returned.returned(tree, table.recorded, table.assigned)
+        typed: bool = latest != found and returned.called(tree, tree, latest)  # even if only a body calls one
+        # Attributes typed anew: what reads one, of any value, may be typed now.
+        newly: set[str] = _retyped(found, latest)
+        if typed or newly:
             found = latest
             settings = replace(settings, known=replace(settings.known, returned=found))
-            changed = True
+            changed = changed or typed
+            retyped |= newly
         again = {
             id(scope)
             for scope, func in functions
             if (typed and returned.called(tree, func, found))
+            or returned.reads(tree, func, newly, anywhere=True)
             or scope.inferred.late.keys() - scope.inferred.seeded.keys()
         }
-    bodies: list[Scope] = [scope for scope in scopes if scope.kind.function is None]
-    # The bodies were checked after every function, knowing the first pass's types: only what the
-    # rounds typed since is news to them.
-    if changed and bodies and any(returned.called(tree, stmt, found) for stmt in _body_statements(tree.body)):
-        bodies = _body_scopes(tree, settings)
-    return settings, [scope for scope, _ in functions] + bodies
+    return settings, [scope for scope, _ in functions] + _bodies(
+        tree,
+        settings,
+        [scope for scope in scopes if scope.kind.function is None],
+        retyped if changed or retyped else None,
+    )
+
+
+def _checked_again(
+    tree: ast.Module,
+    functions: list[tuple[Scope, FunctionDef]],
+    again: set[int],
+    settings: Settings,
+    table: returned.Table,
+) -> list[tuple[Scope, FunctionDef]]:
+    """Check the functions whose scopes are in `again` once more, recording their `return`s and assignments.
+
+    Returns:
+      Every function, with its latest scope.
+
+    """
+    fresh: list[tuple[Scope, FunctionDef]] = [
+        (_function_scope(func, [], settings, scope.inferred.late), func)
+        for scope, func in functions
+        if id(scope) in again
+    ]
+    renewed: dict[int, Scope] = {id(func): scope for scope, func in fresh}
+    _finished(tree, [scope for scope, _ in fresh])
+    table.recorded.update(
+        (id(func), [_recorded(scope, value) for value in scope.inferred.returns]) for scope, func in fresh
+    )
+    table.assigned.update((id(func), _assigned(scope)) for scope, func in fresh)
+    return [(renewed.get(id(func), scope), func) for scope, func in functions]
+
+
+def _bodies(
+    tree: ast.Module,
+    settings: Settings,
+    bodies: list[Scope],
+    retyped: set[str] | None,
+) -> list[Scope]:
+    """Check the module and class bodies again, if the rounds typed anything they use.
+
+    They were checked after every function, knowing the first pass's types: only what the rounds
+    typed since (`retyped`: the attributes; `None`: nothing at all) is news to them.
+
+    Returns:
+      Their scopes, checked again or as they were.
+
+    """
+    if (
+        retyped is not None
+        and bodies
+        and any(
+            returned.called(tree, stmt, settings.known.returned)
+            or returned.reads(tree, stmt, retyped, anywhere=True)
+            for stmt in _body_statements(tree.body)
+        )
+    ):
+        return _body_scopes(tree, settings)
+    return bodies
+
+
+def _reads_own(tree: ast.Module, func: FunctionDef, classes_of: Mapping[int, str], found: Returned) -> bool:
+    """Check whether a method reads an attribute of its own class's (`self.a`) that `found` types.
+
+    `classes_of`: each method's class, by the method's `id()`.
+
+    Returns:
+      Whether it does: checking it again could type more.
+
+    """
+    owner: str | None
+    if (owner := classes_of.get(id(func))) is None:
+        return False
+    return returned.reads(tree, func, found.attributes.get(owner, {}).keys())
+
+
+def _retyped(before: Returned, after: Returned) -> set[str]:
+    """Name the attributes, of any class, that `after` types and `before` didn't, or typed otherwise.
+
+    Returns:
+      Their names.
+
+    """
+    return {
+        attr
+        for owner, attributes in after.attributes.items()
+        for attr, annotation in attributes.items()
+        if before.attributes.get(owner, {}).get(attr) != annotation
+    }
 
 
 def _body_statements(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
@@ -535,221 +635,33 @@ def _recorded(scope: Scope, value: ast.expr | None) -> returned.Recorded:
     return inference(value, scope.settings.known, scope.inferred.types), guesses_in(scope, [value])[1]
 
 
-def _bind(scope: Scope, stmt: ast.stmt) -> None:
-    """Bind the names `stmt` binds that need typing, reporting the untyped ones."""
-    targets: list[ast.expr]
-    target: ast.expr
-    items: list[ast.withitem]
-    comment: str | None
-    name: str
-    single: ast.Name
-    value: ast.expr
-    cases: list[ast.match_case]
-    op: ast.operator
-    match stmt:
-        case ast.Assign(targets=[ast.Name() as single], value=value, type_comment=comment):
-            scope.assign(single, scope.unannotated(comment), value)
-        case ast.Assign(targets=[ast.Tuple() | ast.List() as target], value=value, type_comment=comment):
-            typed: Inference | None = inference(value, scope.settings.known, scope.inferred.types)
-            _bind_declared(scope, stmt, target, typed, [value])
-        case ast.Assign(targets=targets, type_comment=comment):
-            _bind_targets(scope, targets, scope.unannotated(comment))
-        case ast.With(items=items, type_comment=comment) | ast.AsyncWith(items=items, type_comment=comment):
-            _bind_with(scope, stmt, items, scope.unannotated(comment))
-        case (
-            ast.For(target=target, iter=value, type_comment=None)
-            | ast.AsyncFor(
-                target=target,
-                iter=value,
-                type_comment=None,
-            )
-        ):
-            _bind_loop(scope, stmt, target, value)
-        case (
-            ast.For(target=target, type_comment=str() as comment)
-            | ast.AsyncFor(
-                target=target,
-                type_comment=str() as comment,
-            )
-        ):
-            _bind_commented(scope, stmt, target, comment)
-        case ast.Match(cases=cases):
-            _bind_captures(scope, cases)
-        case ast.AugAssign(target=ast.Name(id=name) as single, op=op, value=value):
-            own: str | None = None if name in scope.inferred.guesses else scope.inferred.types.get(name)
-            bound: str | None = augmented(op, certain_type(scope, value), own)
-            scope.lifetime(name).bind(at(single), bound)
-            scope.inferred.rebound(name, bound)
-        case _:
-            pass
+def _assigned(scope: Scope) -> list[returned.Assigned]:
+    """Record a finished function's `self.x = value` assignments, each value as `_recorded` does a `return`'s.
 
+    But a value reading a local bound more than once is unknown: the scope's type for it is its last
+    binding's, not what reaches the assignment (`x = None`, `if c: x = 1`, then `self.x = x`).
 
-def _bind_loop(scope: Scope, stmt: ast.For | ast.AsyncFor, target: ast.expr, value: ast.expr) -> None:
-    """Bind a loop's target (see `_bind_declared`), over `enumerate` or `zip` one part at a time.
+    Returns:
+      Each attribute, and its value's inference and guesses.
 
-    `for i, x in enumerate(xs)` declares `i: int` even when `xs`'s elements aren't known, and a
-    guess about them makes only `x`'s fix one.
     """
-    parts: list[LoopPart] | None = looped_parts(
-        value,
-        scope.settings.known,
-        scope.inferred.types,
+    return [
+        (attr, (None, frozenset()) if _rebound_in(scope, value) else _recorded(scope, value))
+        for attr, value in scope.inferred.assigned
+    ]
+
+
+def _rebound_in(scope: Scope, value: ast.expr) -> bool:
+    """Check whether `value` reads a local of `scope` bound more than once.
+
+    Returns:
+      Whether it does.
+
+    """
+    return any(
+        isinstance(node, ast.Name) and node.id in scope.flow and len(scope.flow[node.id].bindings) > 1
+        for node in ast.walk(value)
     )
-    elements: list[ast.expr]
-    match target:
-        case ast.Tuple(elts=elements) | ast.List(elts=elements) if (
-            parts is not None
-            and len(elements) == len(parts)
-            and not any(isinstance(element, ast.Starred) for element in elements)
-        ):
-            element: ast.expr
-            typed: Inference | None
-            bases: list[ast.expr]
-            for element, (typed, bases) in zip(elements, parts, strict=True):
-                _bind_declared(scope, stmt, element, typed, bases)
-        case _:
-            _bind_declared(
-                scope,
-                stmt,
-                target,
-                looped(value, scope.settings.known, scope.inferred.types),
-                iterated(value),
-            )
-
-
-def _bind_declared(
-    scope: Scope,
-    stmt: ast.stmt,
-    target: ast.expr,
-    typed: Inference | None,
-    bases: list[ast.expr],
-) -> None:
-    """Bind each name in `target` (a loop's, or an unpacking's), offering to declare each before `stmt`.
-
-    `typed` is what the whole target gets (a loop's element, an unpacked value's type), split over
-    its names (see `unpacked`); a name whose part isn't known gets no fix. The fixes are guesses if
-    any of `bases`, the values `typed` came from, is. A loop's untyped target is LVA002, an
-    unpacking's LVA001 (or LVA004), unless a type comment types it.
-    """
-    unsafe: bool
-    origins: frozenset[str]
-    unsafe, origins = guesses_in(scope, bases)
-    # An unpacking's names are split from the value's type; a loop's are what it iterates (`loop`).
-    split: frozenset[str] = frozenset() if isinstance(stmt, ast.For | ast.AsyncFor) else frozenset({"unpack"})
-    code: str | None = (
-        UNTYPED_TARGET
-        if isinstance(stmt, ast.For | ast.AsyncFor)
-        else scope.unannotated(cast("ast.Assign", stmt).type_comment)
-    )
-    name: ast.Name
-    annotation: str | None
-    for name, annotation in unpacked(target, None if typed is None else typed.annotation):
-        part: Inference | None = (
-            None
-            if typed is None or annotation is None
-            else Inference(annotation, typed.reason, typed.kinds | split)
-        )
-        _bind_declaration(scope, stmt, name, code, (part, unsafe, origins))
-
-
-def _bind_declaration(
-    scope: Scope,
-    stmt: ast.stmt,
-    name: ast.Name,
-    code: str | None,
-    typed: tuple[Inference | None, bool, frozenset[str]],
-) -> None:
-    """Bind one name a statement binds, offering to declare it before `stmt` as `typed` has it.
-
-    `typed`: its inference (`None`: unknown, when the type checker's hint is asked), whether that's a
-    guess, and what the guess rests on.
-    """
-    found: Inference | None
-    unsafe: bool
-    origins: frozenset[str]
-    found, unsafe, origins = typed
-    if found is None and (found := scope.hint(name)) is not None:
-        unsafe, origins = True, frozenset({hinted.KIND})
-    fix: Fix | None = None
-    if found is not None:
-        fix = scope.offer(
-            found,
-            origins,
-            unsafe=unsafe,
-            edit=Edit.DECLARE,
-            span=(stmt.lineno, stmt.col_offset),
-        )
-        # What the rest of the scope infers from `name` knows its type, as for `name = value`.
-        scope.inferred.learn(name.id, found.annotation, origins if unsafe else None)
-    scope.bind(name.id, at(name), code, fix)
-
-
-def _bind_commented(scope: Scope, stmt: ast.For | ast.AsyncFor, target: ast.expr, comment: str) -> None:
-    """Bind a loop's target typed only by its `# type:` comment (LVA003), offering to declare it instead.
-
-    The comment's type (`int`, or `int, str` for a tuple target) is split over the target's names as
-    an unpacking's is; each is declared before the loop, and the comment dropped, since a type checker
-    would see the name declared twice. Only for a loop whose header is on one line, where the comment
-    is found after its iterable.
-    """
-    drop: tuple[int, int] | None = type_comment_span(scope.settings.lines, stmt)
-    annotation: str | None = comment_type(comment) if drop is not None else None
-    name: ast.Name
-    part: str | None
-    for name, part in unpacked(target, annotation):
-        fix: Fix | None = None
-        if part is not None and drop is not None:
-            fix = scope.offer(
-                Inference(part, "its `# type:` comment", frozenset({_COMMENT})),
-                frozenset(),
-                unsafe=False,
-                edit=Edit.DECLARE,
-                span=(stmt.lineno, stmt.col_offset),
-            )
-            fix = None if fix is None else fix._replace(drop=drop)
-        scope.bind(name.id, at(name), COMMENT_TYPED_TARGET, fix)
-
-
-def _bind_with(scope: Scope, stmt: ast.stmt, items: list[ast.withitem], code: str | None) -> None:
-    """Bind each `with` item's target, offering to declare `with open(path, mode) as f`'s `f` first.
-
-    The file object `open` gives is its context manager's own (`__enter__` returns `self`), typed by
-    its literal mode; any other item's names are bound untyped, as are an `async with`'s (a file
-    object isn't an asynchronous context manager).
-    """
-    item: ast.withitem
-    name: ast.Name
-    target: ast.expr
-    for item in items:
-        typed: Inference | None = (
-            opened(item.context_expr, scope.settings.known) if isinstance(stmt, ast.With) else None
-        )
-        match item.optional_vars:
-            case ast.Name() as name:
-                _bind_declaration(scope, stmt, name, code, (typed, False, frozenset()))
-            case None:
-                pass
-            case target:
-                _bind_targets(scope, [target], code)
-
-
-def _bind_targets(scope: Scope, targets: list[ast.expr], code: str | None) -> None:
-    """Bind every name in `targets`, reporting `code` for each first binding."""
-    target: ast.expr
-    name: ast.Name
-    for target in targets:
-        for name in target_names(target):
-            scope.bind(name.id, at(name), code)
-
-
-def _bind_captures(scope: Scope, cases: list[ast.match_case]) -> None:
-    """Bind every name the `case` patterns capture: LVA002 unless declared first."""
-    case: ast.match_case
-    name: str
-    where: tuple[int, int]
-    for case in cases:
-        for name, where in captures(case.pattern, scope.settings.lines):
-            scope.bind(name, where, UNTYPED_TARGET)
 
 
 def value_flow(
@@ -765,9 +677,9 @@ def value_flow(
       Every finding, in source order.
 
     """
-    tree: ast.Module = _parse(source, filename)
+    tree: ast.Module = _parse(source, filename)[0]
     # Its lines place a `**rest` capture at its name, as `check_source` does.
-    settings: Settings = _settings(tree, checks, as_text(source).splitlines(), returns(tree))
+    settings: Settings = _settings(tree, checks, as_text(source).splitlines(), module_tables(tree))
     return _value_flow(tree, _scopes(tree, settings))
 
 

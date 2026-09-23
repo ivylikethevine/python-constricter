@@ -15,6 +15,7 @@
 
 import ast
 from collections.abc import Mapping
+from dataclasses import dataclass
 from functools import lru_cache
 from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
@@ -22,7 +23,7 @@ from typing import Final, NamedTuple, TypeAlias, cast
 from constricter.fix.known import ImportPlan, Inference
 from constricter.rules.annotations import node_name
 from constricter.rules.flow import members
-from constricter.rules.syntax import FunctionDef
+from constricter.rules.syntax import FunctionDef, Start, within
 from constricter.rules.walked import of_type
 
 # What a copy, an attribute and a subscript of a narrowable union rest on, as guesses.
@@ -43,6 +44,14 @@ _SELF_ORIGINS: Final = frozenset({"typing.Self", "typing_extensions.Self"})
 _TYPING: Final = frozenset({"typing", "typing_extensions"})
 
 
+@dataclass(frozen=True, eq=False)  # hashed by identity: a module's, cached with each function
+class Tests:
+    """What a module's tests (see `_TESTS`) read, where a type checker may narrow it (see `tests`)."""
+
+    starts: tuple[Start, ...] = ()  # where each read's test starts, in source order
+    texts: tuple[str, ...] = ()  # each read, as source text
+
+
 class Facts(NamedTuple):
     """What of a module decides what a type checker sees otherwise than `--fix` infers.
 
@@ -53,6 +62,7 @@ class Facts(NamedTuple):
     selfish: Mapping[str, frozenset[str]] = MappingProxyType({})
     generics: frozenset[str] = frozenset()
     passed: frozenset[str] = frozenset()
+    tests: Tests = Tests()  # what its tests read (see `tests`)
 
 
 class Owner(NamedTuple):
@@ -84,22 +94,41 @@ def doubts(value: ast.expr, found: Inference, *, constant: bool, narrowed: bool)
     return frozenset()
 
 
+def tests(tree: ast.Module) -> Tests:
+    """Find what the module's tests read, once for all its functions (see `tested`).
+
+    Returns:
+      Each name, attribute and subscript in a test (an `if`'s condition, a comprehension's, a
+      `match`'s subject), as source text, by where its test starts.
+
+    """
+    found: list[tuple[Start, str]] = sorted(
+        ((test.lineno, test.col_offset), ast.unparse(read))
+        for node in of_type(tree, *_TESTS)
+        for test in _tested_parts(node)
+        for read in ast.walk(test)
+        if isinstance(read, ast.Name | ast.Attribute | ast.Subscript)
+    )
+    return Tests(tuple(start for start, _ in found), tuple(text for _, text in found))
+
+
 @lru_cache(maxsize=64)  # asked by each assignment in the function's scope
-def tested(function: FunctionDef) -> frozenset[str]:
-    """List what a function tests (see `_TESTS`), where a type checker may narrow it: `x`, `self.x`, `d[k]`.
+def tested(function: FunctionDef, found: Tests) -> frozenset[str]:
+    """List what a function tests, where a type checker may narrow it: `x`, `self.x`, `d[k]`.
+
+    Its own tests and those of the functions inside it, its decorators' too; from the module's
+    (`found`, see `tests`), by the function's span of the source.
 
     Returns:
       Each name, attribute and subscript in a test, as source text.
 
     """
-    return frozenset(
-        ast.unparse(read)
-        for node in ast.walk(function)
-        if isinstance(node, _TESTS)
-        for test in _tested_parts(node)
-        for read in ast.walk(test)
-        if isinstance(read, ast.Name | ast.Attribute | ast.Subscript)
+    begin: Start | None = (
+        (function.decorator_list[0].lineno, function.decorator_list[0].col_offset)
+        if function.decorator_list
+        else None
     )
+    return frozenset(found.texts[within(found.starts, function, begin)])
 
 
 def _tested_parts(node: ast.AST) -> list[ast.expr]:

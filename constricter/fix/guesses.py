@@ -16,7 +16,7 @@ from constricter.fix.inference import (
     targets_typed,
 )
 from constricter.fix.known import Known
-from constricter.fix.members import member, returned_method
+from constricter.fix.members import assigned_attribute, member, returned_method
 from constricter.fix.opened import opened
 from constricter.fix.returns import BUILTIN_RETURNS
 from constricter.fix.targets import DICT_VIEWS, ITERATORS
@@ -130,6 +130,8 @@ def guessing(
             unsafe = True
             if isinstance(node, ast.Call):
                 found.update(_guessed_by(node, known, inside))
+            elif isinstance(node, ast.Attribute):
+                found.update(_assigned_origins(node, known, inside) or ())
         if isinstance(node, ast.Name) and node.id in origins:
             found.update(origins[node.id])
     return unsafe, frozenset(found) if unsafe else frozenset()
@@ -181,6 +183,30 @@ def _guessed_by(call: ast.Call, known: Known, declared: Mapping[str, str]) -> fr
             return frozenset({CONSTRUCTOR})
 
 
+def _assigned_origins(
+    node: ast.Attribute,
+    known: Known,
+    declared: Mapping[str, str],
+) -> frozenset[str] | None:
+    """Name what an attribute typed only by its assignments (see `Returned.attributes`) rests on.
+
+    Returns:
+      `assigned`, and what its values' guesses rest on; or `None` if it isn't one (a certain source
+      types it, or nothing does).
+
+    """
+    if not any(node.attr in attributes for attributes in known.returned.attributes.values()):
+        return None  # most attributes: no receiver to type
+    typed: str | None = inferred(node.value, known, declared)
+    if (
+        typed is None
+        or member(typed, node.attr, None, known) is not None
+        or assigned_attribute(typed, node.attr, known) is None
+    ):
+        return None
+    return known.returned.guesses[f"{typed}.{node.attr}"]
+
+
 def _is_guess(
     node: ast.AST,
     known: Known,
@@ -207,5 +233,7 @@ def _is_guess(
             return ast.unparse(func) not in known.calls
         case ast.Name(id=name):
             return name in guesses
+        case ast.Attribute():
+            return _assigned_origins(node, known, declared) is not None
         case _:
             return False

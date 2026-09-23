@@ -3,6 +3,7 @@
 
   local/.venv/bin/python tests/ci_local.py                 # the Lint, Docs and Test jobs' checks
   local/.venv/bin/python tests/ci_local.py lint docs       # just these jobs
+  local/.venv/bin/python tests/ci_local.py interpreters    # the tests on the Test job's other Pythons
   local/.venv/bin/python tests/ci_local.py --install-hook  # and run it before every `git push`
 
 Each job's `run:` steps are taken from the workflow, so the list can't drift from CI's, and run in
@@ -11,6 +12,11 @@ parallel with `local/.venv/bin` first on `PATH`. A step fails by its exit status
 in full at the end; the command exits 1 if any failed. What only makes sense on a runner is
 adapted: `npm ci` runs only when `.github/node_modules` is missing, lychee is the one on `PATH`
 (the step is skipped without it), and the Test job's `COVERAGE` is `--cov`.
+
+`interpreters` runs the tests on each Python in the Test job's matrix (PyPy and free-threaded builds
+included) but the one `local/.venv` has: each in its own `local/.venv-<python>`, with the dependency
+group its matrix entry installs. uv downloads an interpreter it doesn't find. Operating systems aren't
+covered: only CI runs macOS and Windows.
 """
 
 import argparse
@@ -18,6 +24,7 @@ import os
 import shutil
 import subprocess  # runs each step's shell command, as the runner does
 import sys
+import sysconfig
 import time
 from collections.abc import Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
@@ -29,7 +36,9 @@ import yaml
 _ROOT: Final = Path(__file__).resolve().parent.parent
 _WORKFLOW: Final = _ROOT / ".github" / "workflows" / "ci.yml"
 _VENV_BIN: Final = _ROOT / "local" / ".venv" / "bin"
-_JOBS: Final = ("lint", "docs", "test")
+_JOBS: Final = ("lint", "docs", "test", "interpreters")
+_INTERPRETERS: Final = "interpreters"  # not a workflow job: the Test job's matrix, by Python
+_PYPY: Final = "pypy"  # `sys.implementation.name`, and the prefix of its matrix names
 _RUN: Final = "run"  # a step's shell command
 _EXPRESSION: Final = "${{"  # the start of a GitHub Actions expression
 _NPM_CI: Final = "npm ci --prefix .github"
@@ -38,7 +47,7 @@ _LYCHEE: Final = '"$RUNNER_TEMP/bin/lychee"'
 _LOCAL_ENV: Final = {"COVERAGE": "--cov"}
 _HOOK: Final = """\
 #!/bin/sh
-# Installed by tests/ci_local.py: CI's Lint, Docs and Test checks, before every push.
+# Installed by tests/ci_local.py: CI's Lint, Docs and Test checks, on every Python, before every push.
 exec local/.venv/bin/python tests/ci_local.py
 """
 _Yaml: TypeAlias = "str | int | bool | list[_Yaml] | dict[str, _Yaml] | None"
@@ -68,14 +77,13 @@ def steps(jobs: Sequence[str]) -> list[Step]:
       Them, in the workflow's order.
 
     """
-    workflow: dict[str, _Yaml] = cast(
-        "dict[str, _Yaml]",
-        yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8")),  # type: ignore[no-untyped-call]
-    )
-    defined: dict[str, _Yaml] = cast("dict[str, _Yaml]", workflow["jobs"])
+    defined: dict[str, _Yaml] = _defined()
     found: list[Step] = []
     job: str
     for job in jobs:
+        if job == _INTERPRETERS:
+            found.extend(_interpreter_steps(defined))
+            continue
         raw: _Yaml
         for raw in cast("list[_Yaml]", cast("dict[str, _Yaml]", defined[job])["steps"]):
             step: dict[str, _Yaml] = cast("dict[str, _Yaml]", raw)
@@ -86,6 +94,63 @@ def steps(jobs: Sequence[str]) -> list[Step]:
                 for name, value in cast("dict[str, _Yaml]", step.get("env", {})).items()
             }
             found.append(Step(job, str(step[_RUN]).strip(), env))
+    return found
+
+
+def _defined() -> dict[str, _Yaml]:
+    """Read the workflow's jobs.
+
+    Returns:
+      Them, by id.
+
+    """
+    workflow: dict[str, _Yaml] = cast(
+        "dict[str, _Yaml]",
+        yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8")),  # type: ignore[no-untyped-call]
+    )
+    return cast("dict[str, _Yaml]", workflow["jobs"])
+
+
+def _this_python() -> str:
+    """Name the running interpreter as the workflow's matrix does (`3.14`, `3.14t`, `pypy3.11`).
+
+    Returns:
+      Its name.
+
+    """
+    version: str = f"{sys.version_info.major}.{sys.version_info.minor}"
+    if sys.implementation.name == _PYPY:
+        return f"{_PYPY}{version}"
+    return f"{version}t" if sysconfig.get_config_var("Py_GIL_DISABLED") else version
+
+
+def _interpreter_steps(defined: Mapping[str, _Yaml]) -> list[Step]:
+    """List a step per Python in the Test job's matrix but this one: install its group, run the tests.
+
+    Returns:
+      Them, in the matrix's order.
+
+    """
+    test: dict[str, _Yaml] = cast("dict[str, _Yaml]", defined["test"])
+    matrix: dict[str, _Yaml] = cast("dict[str, _Yaml]", cast("dict[str, _Yaml]", test["strategy"])["matrix"])
+    group: str = str(cast("list[_Yaml]", matrix["group"])[0])
+    groups: dict[str, str] = {str(python): group for python in cast("list[_Yaml]", matrix["python"])}
+    raw: _Yaml
+    for raw in cast("list[_Yaml]", matrix.get("include", [])):
+        entry: dict[str, _Yaml] = cast("dict[str, _Yaml]", raw)
+        groups[str(entry["python"])] = str(entry.get("group", group))
+    found: list[Step] = []
+    python: str
+    for python, group in groups.items():
+        if python == _this_python():
+            continue  # the Test job's own steps run the tests on it
+        venv: str = f"local/.venv-{python}"
+        command: str = (
+            f"uv sync -q --locked --no-install-project --no-build --python {python} --only-group {group}\n"
+            f"uv pip install -q --python {venv} --no-deps --no-build-isolation -e .\n"
+            f"{venv}/bin/python -m pytest -q -o cache_dir=local/.pytest_cache-{python}"
+        )
+        found.append(Step(_INTERPRETERS, command, {"UV_PROJECT_ENVIRONMENT": venv}))
     return found
 
 
@@ -142,7 +207,8 @@ def run(jobs: Sequence[str]) -> int:
         future: Future[Outcome]
         for future in as_completed(futures):
             outcome: Outcome = future.result()
-            label: str = f"{outcome.step.job}: {outcome.step.command.splitlines()[0]}"
+            lines: list[str] = outcome.step.command.splitlines()
+            label: str = f"{outcome.step.job}: {lines[-1] if outcome.step.job == _INTERPRETERS else lines[0]}"
             if outcome.status is None:
                 _say(f"skip          {label}")
             elif outcome.status:

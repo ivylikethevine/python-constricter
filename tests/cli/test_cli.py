@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 """The `constricter` command: file discovery, `# noqa`, output and exit status."""
 
+import concurrent.futures
 import hashlib
 import io
 import json
@@ -16,8 +17,8 @@ from typing import Final, TypeAlias, cast
 import fastjsonschema
 import pytest
 
+from constricter.cli import collecting, config, paths
 from constricter.cli import command as cli
-from constricter.cli import config, paths
 
 BROKEN: Final = """
 def broken(items: list[int]) -> None:
@@ -570,7 +571,8 @@ def test_jobs_workers_index_and_check_their_own_shares(
     (tmp_path / "gone.py").symlink_to(tmp_path / "nowhere.py")  # no size to share it out by
     assert cli.main(["--jobs=1", "--diff", str(tmp_path)]) == cli.EXIT_ERROR
     serial: tuple[str, str] = capsys.readouterr()
-    monkeypatch.setattr(cli, "ProcessPoolExecutor", ThreadPoolExecutor)
+    monkeypatch.setattr(concurrent.futures, "ProcessPoolExecutor", ThreadPoolExecutor)
+    monkeypatch.setattr(collecting, "sweep", lambda: None)  # PyPy can't collect in two threads at once
     assert cli.main(["--jobs=2", "--diff", str(tmp_path)]) == cli.EXIT_ERROR
     assert capsys.readouterr() == serial
 

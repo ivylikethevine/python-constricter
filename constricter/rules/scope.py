@@ -2,7 +2,7 @@
 """One scope being checked: what it binds and reports, what `--fix` knows of it, and its late fixes."""
 
 import ast
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Final, NamedTuple, TypeAlias
 
@@ -43,9 +43,7 @@ from constricter.rules.annotations import (
 )
 from constricter.rules.flow import Binding, Finding, Hierarchy, Lifetime, findings, members
 from constricter.rules.rebinding import REBOUND, Refit, refit
-from constricter.rules.syntax import (
-    FunctionDef,
-)
+from constricter.rules.syntax import FunctionDef, Start
 
 _DISCARD: Final = "_"
 _SELF: Final = "self"
@@ -73,7 +71,9 @@ class Settings:
     known: Known  # what the module declares that `--fix` infers types from
     hierarchy: Hierarchy  # which types are narrower than which, for value flow
     owners: dict[int, str]  # each method's class, by `id()`, to type its `self`, for `--fix`
-    walruses: bool  # whether the module has any `:=`: most don't, and needn't be looked through for one
+    # Where each of the module's `:=` starts, in source order: most modules have none, and needn't be
+    # looked through for one; a statement's part without one needn't be either.
+    walruses: tuple[Start, ...]
     # Type checkers' types, for what `--fix` can't type (`--infer-with`): each checker's, in order.
     hints: tuple[Hints, ...] = ()
     facts: Facts = field(default_factory=Facts)  # what a type checker sees otherwise (see `doubts`)
@@ -122,6 +122,8 @@ class Inferred:
     # Each guess's guessing mechanisms (`FIX_KINDS`), for `unsafe-fix-select` to trust or not.
     origins: dict[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
     returns: list[ast.expr | None] = field(default_factory=list[ast.expr | None])  # its `return`s' values
+    # Its `self.x = value` assignments: each attribute, and its value.
+    assigned: list[tuple[str, ast.expr]] = field(default_factory=list[tuple[str, ast.expr]])
     # Names typed only once the whole scope was seen (a container filled later, `None` rebound): the
     # type, and what it rests on if a guess; and those it was checked again knowing.
     late: dict[str, Late] = field(default_factory=dict[str, "Late"])
@@ -157,6 +159,18 @@ class Inferred:
                 return
         if name not in self.guesses:
             self.guess(name, frozenset({REBOUND}))
+
+    def rejoined(self, before: Mapping[str, str]) -> None:
+        """Take each name a branch (`if`, a loop, `try`, `match`) retyped back to its type `before` it.
+
+        The branch may not have run: past it, a name is what it was, or what the branch made it. That's
+        its type before, certainly, if that's a union the branch's type is a member of (`int | None`,
+        narrowed to `int` inside `if`); otherwise `rebound` already made it a guess.
+        """
+        name: str
+        annotation: str
+        for name, annotation in before.items():
+            self.types[name] = annotation
 
 
 class Scope:
@@ -216,7 +230,7 @@ class Scope:
                 value,
                 fix,
                 constant=function is None and is_constant(name) and name in facts.passed,
-                narrowed=function is not None and ast.unparse(value) in tested(function),
+                narrowed=function is not None and ast.unparse(value) in tested(function, facts.tests),
             )
             unsafe = bool(origins)
         # Value flow's type is `--fix`'s own, if certain: worked out once, here, for both.

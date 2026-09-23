@@ -4,22 +4,23 @@
 import codecs
 import contextlib
 import difflib
+import gc
+import importlib
 import io
-import itertools
 import json
 import sys
 import tokenize
 from collections.abc import Callable, Mapping, Sequence
-from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
-from typing import Final, NamedTuple, Self, TextIO, TypeAlias, cast
+from typing import TYPE_CHECKING, Final, NamedTuple, Self, TextIO, TypeAlias, cast
 
 from constricter import notebook
-from constricter.cli import baseline, hints
+from constricter.cli import baseline, collecting
 from constricter.cli.options import Mode, Options, Output
-from constricter.cli.paths import STDIN, python_files
+from constricter.cli.paths import STDIN, python_files, shares
+from constricter.cli.protocol import HintError
 from constricter.cli.report import Format, Result, fix_reasons, render, statistics
 from constricter.fix import fixes, project
 from constricter.fix.known import Hints, Outside
@@ -32,6 +33,11 @@ from constricter.offences import (
 )
 from constricter.rules import parsed
 from constricter.rules.checker import Coverage, annotation_coverage, check_source
+
+if TYPE_CHECKING:  # both slow to import, and only needed for many files, or `--infer-with`
+    from concurrent.futures import Future, ProcessPoolExecutor
+
+    from constricter.cli import hints
 
 EXIT_CLEAN: Final = 0
 EXIT_FOUND: Final = 1
@@ -206,8 +212,8 @@ class _CoverageRun:
 _FileRun: TypeAlias = _CheckRun | _BaselineRun | _CoverageRun
 _Check: TypeAlias = Callable[[Path, Outside], _FileRun]  # check (or count, or baseline) one file
 # A worker's answers, one per file of its share: what it read (to index), and what it found.
-_Reading: TypeAlias = Future[list[project.Module | None]]
-_Checking: TypeAlias = Future[list[_FileRun]]
+_Reading: TypeAlias = "Future[list[project.Module | None]]"
+_Checking: TypeAlias = "Future[list[_FileRun]]"
 HINT_ROUNDS: Final = 4  # with `--fix --infer-with`: how many times each file is fixed, at most
 
 
@@ -368,7 +374,13 @@ def _check_all(options: Options) -> tuple[list[Path], list[_FileRun]]:
     if not options.infer_with or options.mode in {Mode.COVERAGE, Mode.WRITE_BASELINE}:
         return names, _checked_all(paths, check, options)[0]
     session: hints.Session
-    with hints.Session(options.infer_with, Path.cwd(), options.jobs, options.infer_memory) as session:
+    # Imported only for `--infer-with`: it's slow to import, for every run's start.
+    with cast("type[hints.Session]", importlib.import_module("constricter.cli.hints").Session)(
+        options.infer_with,
+        Path.cwd(),
+        options.jobs,
+        options.infer_memory,
+    ) as session:
         runs: list[_FileRun]
         modules: project.Index
         runs, modules = _checked_all(paths, check, options, session)
@@ -400,7 +412,7 @@ def _checked_all(
     paths: Sequence[Path],
     check: Callable[[Path, Outside], _FileRun],
     options: Options,
-    session: hints.Session | None = None,
+    session: "hints.Session | None" = None,
     modules: project.Index | None = None,
 ) -> tuple[list[_FileRun], project.Index]:
     """Check `paths` (`--jobs` at a time), with the `session`'s hints, and `modules` (else indexed).
@@ -414,9 +426,8 @@ def _checked_all(
     if options.jobs == 1 or len(paths) <= 1:
         if modules is None:
             modules = project.Index({}, []) if coverage else project.index(paths)
-        return list(
-            itertools.starmap(check, zip(paths, _outside(modules, paths, hinted), strict=True)),
-        ), modules
+            collecting.indexed()
+        return _check_share(check, list(zip(paths, _outside(modules, paths, hinted), strict=True))), modules
     workers: _Workers
     with _Workers(paths, options.jobs) as workers:
         if modules is None:
@@ -432,11 +443,11 @@ class _Workers:
     """
 
     def __init__(self, paths: Sequence[Path], jobs: int) -> None:
-        """Share `paths` out among up to `jobs` workers (see `_shares`)."""
+        """Share `paths` out among up to `jobs` workers (see `paths.shares`)."""
         self.paths: Sequence[Path] = paths
-        self.shares: list[list[int]] = _shares(paths, jobs)
+        self.shares: list[list[int]] = shares(paths, jobs)
         self.stack: contextlib.ExitStack = contextlib.ExitStack()
-        self.pools: list[ProcessPoolExecutor] = []
+        self.pools: list[ProcessPoolExecutor] = []  # started by `__enter__`
 
     def __enter__(self) -> Self:
         """Start the workers, one process each, each with its part of the budget.
@@ -447,7 +458,14 @@ class _Workers:
         """
         self.pools = [
             self.stack.enter_context(
-                ProcessPoolExecutor(max_workers=1, initializer=parsed.budget, initargs=(len(self.shares),)),
+                cast(
+                    "type[ProcessPoolExecutor]",
+                    importlib.import_module("concurrent.futures").ProcessPoolExecutor,
+                )(
+                    max_workers=1,
+                    initializer=_started,
+                    initargs=(len(self.shares),),
+                ),
             )
             for _ in self.shares
         ]
@@ -494,35 +512,10 @@ class _Workers:
         return [found[at] for at in range(len(self.paths))]
 
 
-def _shares(paths: Sequence[Path], workers: int) -> list[list[int]]:
-    """Share the files among the workers, the biggest first to the least loaded: a check's time goes by size.
-
-    Returns:
-      Each worker's files, by their place in `paths` (no more workers than files).
-
-    """
-    loads: list[int] = [0] * min(workers, len(paths))
-    shares: list[list[int]] = [[] for _ in loads]
-    sizes: list[int] = [_size(path) for path in paths]
-    index: int
-    for index in sorted(range(len(paths)), key=lambda at: -sizes[at]):
-        least: int = loads.index(min(loads))
-        shares[least].append(index)
-        loads[least] += sizes[index] or 1
-    return [sorted(share) for share in shares if share]
-
-
-def _size(path: Path) -> int:
-    """Find a file's size, to balance the workers by.
-
-    Returns:
-      It, or 0 if it can't be read (checking it reports that).
-
-    """
-    try:
-        return path.stat().st_size
-    except OSError:
-        return 0
+def _started(processes: int) -> None:
+    """Start a worker: its share of the kept trees' budget, and the collector off (see `collecting`)."""
+    parsed.budget(processes)
+    gc.disable()
 
 
 def _read_share(paths: Sequence[Path]) -> list[project.Module | None]:
@@ -532,7 +525,9 @@ def _read_share(paths: Sequence[Path]) -> list[project.Module | None]:
       Each file's module, or `None`.
 
     """
-    return [project.read(path) for path in paths]
+    found: list[project.Module | None] = [project.read(path) for path in paths]
+    collecting.indexed()
+    return found
 
 
 def _check_share(
@@ -545,7 +540,13 @@ def _check_share(
       What each found.
 
     """
-    return list(itertools.starmap(check, files))
+    found: list[_FileRun] = []
+    path: Path
+    outside: Outside
+    for path, outside in files:
+        found.append(check(path, outside))
+        collecting.sweep()
+    return found
 
 
 def _merged(before: _CheckRun, after: _CheckRun) -> _CheckRun:
@@ -674,11 +675,12 @@ def _run(options: Options) -> int:
     """
     names: list[Path]
     runs: list[_FileRun]
-    try:
-        names, runs = _check_all(options)
-    except hints.HintError as error:
-        _ = sys.stderr.write(f"constricter: error: {error}\n")
-        return EXIT_ERROR
+    with collecting.by_hand():
+        try:
+            names, runs = _check_all(options)
+        except HintError as error:
+            _ = sys.stderr.write(f"constricter: error: {error}\n")
+            return EXIT_ERROR
     _ = sys.stderr.write("".join(f"{run.error}\n" for run in runs if run.error))
     failed: bool = any(run.error for run in runs)
     status: int

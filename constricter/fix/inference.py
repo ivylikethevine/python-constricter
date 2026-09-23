@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
 from constricter.fix import stdlib
 from constricter.fix.known import ImportPlan, Inference, Known
-from constricter.fix.members import member, returned_method, subscripted
+from constricter.fix.members import assigned_attribute, member, returned_method, subscripted
 from constricter.fix.opened import opened
 from constricter.fix.returns import BUILTIN_RETURNS
 from constricter.fix.targets import (
@@ -54,6 +54,7 @@ _INTEGER_NAMES: Final = frozenset({"bool", "int"})
 _TEXT_NAMES: Final = frozenset({"str", "bytes"})
 _STDLIB: Final = "stdlib"  # the fix kind of a standard-library call
 RETURNED: Final = "returned"  # the fix kind of an unannotated function's `return`s
+ASSIGNED: Final = "assigned"  # the fix kind of an instance attribute typed by its assignments
 _STR: Final = "str"
 COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 _Comprehension: TypeAlias = ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp
@@ -179,7 +180,13 @@ def _member_of(
                 else Inference(text, f"`{receiver}.{attr}`'s `return`s", frozenset({RETURNED}))
             )
         case _:
-            return member(receiver, attr, None, known)
+            found = member(receiver, attr, None, known)
+            text = None if found is not None else assigned_attribute(receiver, attr, known)
+            return (
+                found
+                if text is None
+                else Inference(text, f"`{receiver}.{attr}`'s assignments", frozenset({ASSIGNED}))
+            )
 
 
 def _scalar_reason(value: ast.expr) -> str:

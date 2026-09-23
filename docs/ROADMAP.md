@@ -50,6 +50,12 @@
 - **Loop targets from `enumerate` and `zip`, one part at a time**: `for i, x in enumerate(xs)`
   declares `i: int` whatever `xs` is, each part certain or a guess as its own type is, and the
   keywords that don't change what they yield (`start=`, `strict=`, `sorted`'s `key=`) are allowed.
+- **Instance attributes typed by their assignments** (`assigned`, a guess): an unannotated attribute
+  every one of whose `self.x = value`s in its class's own methods gives one known type (numbers
+  widened) types its reads and chains (`self.name.upper()`, `box.name`); stored any other way, bound
+  in the class body, or assigned a local bound more than once, it's left alone. 456 more guesses on
+  the standard library, where most such values are unannotated parameters or `None` first; the check
+  takes about 12% longer (30.3s to 34.0s, `--jobs=1`), left for an optimization pass.
 - **Fixes for LVA003** (the loop's `# type:` comment becomes a declaration) and **LVA007** (the
   repeat's annotation is dropped).
 - **Type-checker-backed inference** (`--infer-with basedpyright,ty`): the checkers' language
@@ -144,11 +150,14 @@
   type comments in `__future__` modules), hash-pinned sdists `tests/corpus/corpus_sources.py`
   fetches; chosen from 15 measured (`sentry-sdk` 1.45.1's 2/3-era type comments were dropped as
   pip's alike).
-- **What `--fix` still can't type**, by the statement that binds it and the shape of its value,
-  measured on every corpus (2026-09-23, after the typeshed tables, members of any receiver and no
-  new type errors): 251,848 untyped bindings, 168,727 with no fix at all, 77% of those in functions
-  with no annotations. The items under [Next](#next) are what reaches the rest. Left alone on
-  purpose: `getattr(...)` (1,268), a bound method's alias (`append = parts.append`), `dict.get` on a
+- **What `--fix` still can't type**, counted by **`tests/corpus/corpus_untyped.py`**
+  (`python -m tests.corpus.corpus_untyped`; `--rows` writes every binding as JSON lines): each
+  untyped binding, classified by the statement that binds it, the shape of its value, its scope,
+  whether its function is annotated, and what a call through an import resolves to and where from.
+  On every corpus (2026-09-23, after the typeshed tables, members of any receiver and no new type
+  errors): 251,848 untyped bindings, 168,727 with no fix at all, 77% of those in functions with no
+  annotations. The items under [Next](#next) are what reaches the rest. Left alone on purpose:
+  `getattr(...)` (1,268), a bound method's alias (`append = parts.append`), `dict.get` on a
   `dict[str, Any]`, and `a or b` or a conditional whose sides differ (a union, better left to the
   author).
 
@@ -158,7 +167,9 @@
   hook, Markdown, tests on Linux, macOS and Windows × Python 3.11–3.14 plus PyPy 3.11 and
   free-threaded 3.14 (100% branch coverage), the build and a wheel smoke test, the Action, and the
   corpus. The project's own code passes `--level=suffocate --all-scopes` at 100% annotation
-  coverage.
+  coverage. A tree CI already passed (the merge to `main` after its pull request, the release tag on
+  it) isn't tested again: a `tested-tree` artifact records each passing tree, and the next run on it
+  skips every job.
 - **Security** (`security.yml`, weekly too): CodeQL, zizmor (pedantic), actionlint, pip-audit,
   dependency review, and gitleaks over the whole history; OpenSSF Scorecard; lychee on links.
 - **Pinning**: actions by SHA, Python dependencies by hash (`uv.lock`, checked in CI), npm by
@@ -176,8 +187,10 @@
   add a runtime dependency (`tomli`) for a month, and 3.6–3.9 would mean dropping `match` from the
   checker. Code for any Python 3 version can still be checked.
 - **Layout**: a flat `constricter/` in `rules/`, `fix/`, `cli/` and `plugins/`, no module over 750
-  lines; docs in `docs/` (changelog, contributing, security, integrations, fixes, runs), release
-  notes grouped by `.github/release.yml`, issue and PR templates, CODEOWNERS.
+  lines (`checker.py`'s statement binding moved to `rules/binding.py`, and `hints.py`'s
+  language-server wire format to `cli/protocol.py`, with every corpus's report unchanged); docs in
+  `docs/` (changelog, contributing, security, integrations, fixes, runs), release notes grouped by
+  `.github/release.yml`, issue and PR templates, CODEOWNERS.
 
 ## Next
 
@@ -186,34 +199,31 @@ it's done.
 
 ### Small: a day or less
 
-1. **Check in the census of what `--fix` can't type.** The numbers above come from
-   `local/infer-research/classify.py`, an untracked script: every LVA001/LVA002/LVA004 in a JSON
-   report, classified by binding, value shape, scope and whether its function is annotated. Move it
-   to `tests/corpus/corpus_untyped.py`, typed and linted like the other corpus scripts, printing the
-   table this roadmap quotes. Done when one command regenerates every number under Next.
-2. **Split `rules/checker.py` under 750 lines.** It's 808, the only module over the limit in
-   CONTRIBUTING. Move a cohesive part out (the `_bind_*` family that declares targets before a
-   statement is the obvious one), as `rebinding.py` and `parsed.py` were. Done when every module is
-   750 lines or fewer, with no behaviour change (every corpus's fixes identical).
+Nothing queued.
 
 ### Medium: a few days
 
-1. **Instance attributes typed by their assignments.** `self.x` reads with no fix: 4,345 (630 in
-   annotated functions), and a `self.x.method()` chain stops there too (part of the 11,910
-   `self.method()` and 1,051 chained calls in annotated code). Type an unannotated attribute from
-   every `self.x = value` in its class, when each value's type is known and they agree (numbers
-   widening as `rebinding` widens them), as `returned` types an unannotated function from its
-   `return`s. A guess: a subclass or outside code can assign it too. Done when such attributes type
-   their reads and chains, and `--types` finds no new error with `--fix`.
-2. **Standard-library calls decided by their arguments.** 8,688 calls to a standard-library function
-   still have no fix: `os.path.join` (1,028, `AnyStr` with arguments whose types aren't known), `re`
-   (741: generic `Pattern`/`Match`), `os`, `asyncio`, `tempfile`, `struct`, `pickle`, `itertools`.
-   The typeshed tables leave out overloads that differ by argument (`subprocess.run`,
-   `parser.parse_args()`, `os.listdir`, `math.floor`), generic classes (`re.Pattern[str]`), a class
-   inside a builtin generic (`list[Path]`), and functions only some platforms have (`os.getuid`).
-   Pick the overload from the arguments' inferred types (and a literal's value, as `open` does), and
-   fill a generic's parameters from them. Done when those are generated from the stubs like the
-   rest, and every corpus converges with `--types` finding no new error.
+1. **Unannotated functions' returns across files.** Of the 16,529 calls to an imported name with no
+   fix, 10,193 go to the corpus's own package, and 1,567 more `module.func()` calls do: mostly to
+   functions another checked file defines without a return annotation. Within a module, `returned`
+   already types those from their `return` statements (callees first, a guess for a method); the
+   CLI's cross-file index (`project.Index`) carries only declared returns. Put the returned types in
+   the index too, worked out callees first across the files' import graph (a cycle in rounds, as
+   within a module), with each one's guess and what it rests on, so a call through
+   `from pkg.util import f` types as a same-file call does. Done when those calls are typed, the
+   standard library's check takes no more than 10% longer, and every corpus converges with no new
+   `--types` error.
+2. **Standard-library calls decided by their arguments.** 8,672 calls through a standard-library
+   module still have no fix (and 6,014 to a name imported from one, mostly the standard library's
+   own test helpers): `os.path` (1,516; `os.path.join` alone 1,043, `AnyStr` with arguments whose
+   types aren't known), `re` (744: generic `Pattern`/`Match`), `os`, `asyncio`, `tempfile`,
+   `struct`, `itertools`, `pickle`. The typeshed tables leave out overloads that differ by argument
+   (`subprocess.run`, `parser.parse_args()`, `os.listdir`, `math.floor`), generic classes
+   (`re.Pattern[str]`), a class inside a builtin generic (`list[Path]`), and functions only some
+   platforms have (`os.getuid`). Pick the overload from the arguments' inferred types (and a
+   literal's value, as `open` does), and fill a generic's parameters from them. Done when those are
+   generated from the stubs like the rest, and every corpus converges with `--types` finding no new
+   error.
 3. **Fewer guesses a type checker rejects.** `--fix` adds no type errors now, but
    `--fix --unsafe-fixes` still adds 11 (pydantic), 42 (sqlalchemy) and 97 (pandas), mostly from
    `constructor`, `subscript`, `returned` and `copy` guesses on a name bound again later. And "a
@@ -224,15 +234,17 @@ it's done.
 
 ### Large: a week or more
 
-1. **Types from installed dependencies.** A call to a function or class imported from outside the
-   checked files is the largest group left: 16,529 bindings (1,732 in annotated code), plus 4,967
-   `module.func()` calls to third-party modules, mostly `np` (2,626) and `pd` (1,068). The CLI
-   already indexes the checked files' declared returns and classes (`project.Index`); do the same
-   for the installed packages they import, from their inline annotations (`py.typed`) or stubs
-   (`*-stubs`, typeshed's third-party stubs), resolved in the environment the code runs in (an
-   option naming it, else the active one), cached per package version. Done when a declared return
-   in an installed typed package types its calls as a checked file's does, and the corpora converge
-   with no new `--types` error.
+1. **Types from installed dependencies.** Calls into third-party packages with no fix: 3,421 through
+   a module (`numpy` 2,682, `pytest` 463, `pyarrow` 131) and 322 to a name imported from one
+   (`zope`, `pydantic_core`, `typing_extensions`, ...). Most calls through an import stay in the
+   corpus's own package (10,193 to an imported name, 1,567 through a module, pandas's own `pd.`
+   among them): its unannotated functions, whose `return`s type their calls only in their own
+   module. The CLI already indexes the checked files' declared returns and classes
+   (`project.Index`); do the same for the installed packages they import, from their inline
+   annotations (`py.typed`) or stubs (`*-stubs`, typeshed's third-party stubs), resolved in the
+   environment the code runs in (an option naming it, else the active one), cached per package
+   version. Done when a declared return in an installed typed package types its calls as a checked
+   file's does, and the corpora converge with no new `--types` error.
 2. **Unannotated code, from its call sites.** 130,558 of the bindings with no fix (77%) are in
    functions with no annotations: nothing anchors an unannotated parameter's type. `--infer-with`
    reaches some of it through a type checker. Without one, type a parameter from its callers when

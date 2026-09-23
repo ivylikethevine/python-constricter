@@ -12,16 +12,21 @@ import io
 import tokenize
 import warnings
 from dataclasses import dataclass, field
-from typing import Final
+from typing import TYPE_CHECKING, Final, TypeAlias
+
+if TYPE_CHECKING:
+    from constricter.rules.annotations import Tables
 
 BUDGET: Final = 40 << 20  # bytes of source whose trees a run keeps, over all its processes (about 1 GB)
+# A kept tree, and the module's own tables the index read from it (the check reads the same).
+Kept: TypeAlias = "tuple[ast.Module, Tables]"
 
 
 @dataclass
 class _Kept:
     """The trees kept in this process, by their source's text, and what's left of its share."""
 
-    trees: dict[str, ast.Module] = field(default_factory=dict)
+    trees: dict[str, Kept] = field(default_factory=dict)
     left: int = BUDGET
 
 
@@ -64,21 +69,23 @@ def text(data: bytes) -> str:
     return data.decode(tokenize.detect_encoding(io.BytesIO(data).readline)[0])
 
 
-def keep(source: str, tree: ast.Module) -> None:
-    """Keep `source`'s tree for the check to take, if this process's share of the budget allows it."""
+def keep(source: str, kept: Kept) -> None:
+    """Keep `source`'s tree and tables for the check to take, if this process's share of the budget allows."""
     if len(source) <= _KEPT.left and source not in _KEPT.trees:
-        _KEPT.trees[source] = tree
+        _KEPT.trees[source] = kept
         _KEPT.left -= len(source)
 
 
-def take(source: str) -> ast.Module | None:
-    """Take the tree kept for `source`, freeing it (two files alike in every byte share one).
+def take(source: str) -> "Kept | None":
+    """Take the tree and tables kept for `source`, freeing them (two files alike in every byte share them).
+
+    Only for exactly the text they were read from: a file `--fix` has changed since is parsed again.
 
     Returns:
-      It, or `None` if none was kept.
+      Them, or `None` if none were kept.
 
     """
-    tree: ast.Module | None
-    if (tree := _KEPT.trees.pop(source, None)) is not None:
+    kept: Kept | None
+    if (kept := _KEPT.trees.pop(source, None)) is not None:
         _KEPT.left += len(source)
-    return tree
+    return kept

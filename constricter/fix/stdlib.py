@@ -12,13 +12,14 @@ getpid`, are the same call, and a `getpid` from anywhere else isn't.
 """
 
 import ast
+import json
 from collections.abc import Iterable, Mapping
 from functools import lru_cache
 from pathlib import Path
 from typing import Final, TypeAlias, TypedDict, cast
 
 from constricter.fix.known import ImportPlan, Inference, Known
-from constricter.jsonc import loads
+from constricter.rules.syntax import import_bindings
 
 _Members: TypeAlias = Mapping[str, Mapping[str, str]]  # each class's members' annotations, by name
 
@@ -34,7 +35,8 @@ class _Tables(TypedDict):
     attributes: dict[str, dict[str, str]]
 
 
-_TABLES: Final = cast("_Tables", loads(Path(__file__).with_name("stdlib.json").read_bytes()))
+# Plain JSON, as generated: `jsonc`'s comment stripping took 20 ms of every run's start, for nothing.
+_TABLES: Final = cast("_Tables", json.loads(Path(__file__).with_name("stdlib.json").read_bytes()))
 RETURNS: Final = _TABLES["returns"]
 ANY_STR: Final = frozenset(_TABLES["any_str"])
 # Classes, and functions (constructors, classmethods) returning one: typed by that class's dotted
@@ -79,24 +81,7 @@ def _imported(body: Iterable[ast.stmt]) -> dict[str, str]:
       Each bound name, mapped to its dotted origin.
 
     """
-    found: dict[str, str] = {}
-    stmt: ast.stmt
-    module: str
-    alias: ast.alias
-    for stmt in body:
-        match stmt:
-            case ast.Import():
-                for alias in stmt.names:
-                    if alias.name.split(".", 1)[0] in _TABLE_MODULES:
-                        found[alias.asname or alias.name.split(".", 1)[0]] = (
-                            alias.name if alias.asname else alias.name.split(".", 1)[0]
-                        )
-            case ast.ImportFrom(module=str() as module, level=0) if module in _TABLE_MODULES:
-                for alias in stmt.names:
-                    found[alias.asname or alias.name] = f"{module}.{alias.name}"
-            case _:
-                pass
-    return found
+    return {name: origin for name, origin, module in import_bindings(body) if module in _TABLE_MODULES}
 
 
 def resolved(func: ast.expr, bound: Mapping[str, str]) -> str | None:
