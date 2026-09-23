@@ -58,7 +58,11 @@ A loop's target (LVA002) and an unpacking's names (LVA001) are declared instead,
 own before the statement: `for k, v in ages.items():` with `ages: dict[str, int]` gets `k: str` and
 `v: int` above it. The target's type comes from what's iterated: a `range`, `enumerate` and `zip` of
 known things, a `dict`'s `.keys()`/`.values()`/`.items()`, or any container whose type is known; an
-unpacking splits a tuple type (`a, b = pair`, `pair: tuple[int, str]`) over its names.
+unpacking splits a tuple type (`a, b = pair`, `pair: tuple[int, str]`) over its names. `enumerate`
+and `zip` type each part of the target on its own: `for i, x in enumerate(xs)` declares `i: int`
+whatever `xs` is, and a guess about `xs` makes only `x`'s fix one. Keywords that don't change what
+they yield are allowed (`enumerate`'s `start=`, `zip`'s `strict=`, `sorted`'s `key=` and
+`reverse=`); a starred argument (`zip(*rows)`) isn't.
 
 `with open(path, "rb") as f:` declares `f: io.BufferedReader` before the statement, the file object
 being its own context manager.

@@ -6,6 +6,10 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types a loop over `enumerate` or `zip` one part at a time: `for i, x in enumerate(xs)`
+  declares `i: int` even when `xs`'s elements aren't known, and a guess about one part no longer
+  makes the others guesses. `enumerate(xs, start=1)`, `zip(a, b, strict=True)` and
+  `sorted(xs, key=f)` are typed too.
 - `--fix` types more builtins' calls (`any`, `all`, `ascii`, `bin`, `bytearray`, `dir`, `format`,
   `hex`, `input`, `oct`, `range`), `str`/`bytes` methods on a literal (`", ".join(parts)`), and
   `partition`/`rpartition`. A builtin's name the module binds itself (a parameter named `repr`, a

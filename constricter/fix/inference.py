@@ -12,10 +12,13 @@ from constricter.fix.returns import BUILTIN_RETURNS, METHOD_RETURNS, method_retu
 from constricter.fix.targets import (
     DICT_VIEWS,
     ENUMERATE,
-    ITERATORS,
     RANGE,
     SAME_ELEMENTS,
+    ZIP,
+    counted,
     element_type,
+    iterated,
+    iterator_call,
     unpacked,
 )
 from constricter.offences import CONSTRUCTOR
@@ -53,6 +56,8 @@ RETURNED: Final = "returned"  # the fix kind of an unannotated function's `retur
 _STR: Final = "str"
 COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 _Comprehension: TypeAlias = ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp
+# One part of a loop target (see `looped_parts`): its inference, and the values it came from.
+LoopPart: TypeAlias = tuple[Inference | None, list[ast.expr]]
 _WITH_DEFAULT: Final = 2  # `os.environ.get(key, default)`'s arguments
 # Builtins that build a container of their argument's elements, and the type they build.
 CONTAINER_BUILDERS: Final = {
@@ -741,15 +746,12 @@ def looped(iterable: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
       The element's annotation as source text and its reason, or `None` if it isn't known.
 
     """
-    name: str
-    args: list[ast.expr]
+    call: tuple[str, list[ast.expr]] | None = iterator_call(iterable)
+    if call is not None and known.is_builtin(call[0]):
+        return _iterator(*call, known, declared)
     view: str
     receiver: ast.expr
     match iterable:
-        case ast.Call(func=ast.Name(id=name), args=args, keywords=[]) if (
-            name in ITERATORS and args and known.is_builtin(name)
-        ):
-            return _iterator(name, args, known, declared)
         case ast.Call(func=ast.Attribute(value=receiver, attr=view), args=[]) if view in DICT_VIEWS:
             return dict_view(receiver, view, known, declared)
         case _:
@@ -776,13 +778,35 @@ def _iterator(name: str, args: list[ast.expr], known: Known, declared: Mapping[s
         return Inference("int", "`range`, which yields `int`s", frozenset({"loop"}))
     if name in SAME_ELEMENTS:
         return looped(args[0], known, declared)
-    counted: list[ast.expr] = args[:1] if name == ENUMERATE else args
-    parts: list[Inference | None] = [looped(arg, known, declared) for arg in counted]
+    parts: list[Inference | None] = [looped(arg, known, declared) for arg in counted(name, args)]
     found: list[Inference] = [part for part in parts if part is not None]
     if len(found) != len(parts):
         return None
     annotations: list[str] = ["int"] * (name == ENUMERATE) + [part.annotation for part in found]
     return Inference(f"tuple[{', '.join(annotations)}]", f"`{name}`'s tuples", _kinds(*found, kind="loop"))
+
+
+def looped_parts(
+    iterable: ast.expr,
+    known: Known,
+    declared: Mapping[str, str],
+) -> list[LoopPart] | None:
+    """Infer each part of the tuples `enumerate` or `zip` yields on its own, even if the others aren't known.
+
+    `enumerate`'s index is always an `int`, whatever it counts.
+
+    Returns:
+      Each part's inference (`None` if it isn't known), with the values it came from (to judge
+      whether it's a guess, see `iterated`); or `None` if `iterable` isn't such a call.
+
+    """
+    call: tuple[str, list[ast.expr]] | None = iterator_call(iterable)
+    if call is None or call[0] not in {ENUMERATE, ZIP} or not known.is_builtin(call[0]):
+        return None
+    index: list[LoopPart] = (
+        [(Inference("int", "`enumerate`'s index", frozenset({"loop"})), [])] if call[0] == ENUMERATE else []
+    )
+    return index + [(looped(arg, known, declared), iterated(arg)) for arg in counted(*call)]
 
 
 def dict_view(receiver: ast.expr, view: str, known: Known, declared: Mapping[str, str]) -> Inference | None:

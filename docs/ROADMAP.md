@@ -44,6 +44,9 @@
   and the rest with a fixed result, `str`/`bytes` methods on a literal (`", ".join(parts)`) and
   `partition`; and a builtin's name the module rebinds (a parameter named `format`) is no longer
   taken for the builtin. Not `slice` or `memoryview`, generic in recent typeshed.
+- **Loop targets from `enumerate` and `zip`, one part at a time**: `for i, x in enumerate(xs)`
+  declares `i: int` whatever `xs` is, each part certain or a guess as its own type is, and the
+  keywords that don't change what they yield (`start=`, `strict=`, `sorted`'s `key=`) are allowed.
 - **Fixes for LVA003** (the loop's `# type:` comment becomes a declaration) and **LVA007** (the
   repeat's annotation is dropped).
 - **Type-checker-backed inference** (`--infer-with basedpyright,ty`): the checkers' language
@@ -152,13 +155,7 @@ it's done.
 
 ### Small: a day or less
 
-1. **Loop targets from `enumerate` and `zip`, one part at a time.** `for i, x in enumerate(xs)`
-   types nothing when `xs`'s element type is unknown, though `i` is always `int`; and `zip`'s parts
-   are typed only all together. Type each part that's known on its own, and accept the keywords that
-   don't change the parts (`strict=`, `start=`; today's `keywords=[]` patterns reject them). An
-   `int` index is certain whatever `enumerate`'s argument is: it's never a guess for the argument
-   being a call. Measured: 668 bindings (562 certain, 207 in annotated code). Done when each known
-   part is typed, certain as its own type is.
+Nothing queued.
 
 ### Medium: a few days
 

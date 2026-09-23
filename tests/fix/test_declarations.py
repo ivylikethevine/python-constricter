@@ -60,6 +60,11 @@ def _fixed(source: str, *, unsafe: bool = False) -> str:
         ("enumerate(names)", {"names": "list[str]"}, "tuple[int, str]"),
         ("zip(names, ages)", {"names": "list[str]", "ages": "dict[str, int]"}, "tuple[str, str]"),
         ("zip(names, other)", {"names": "list[str]"}, None),  # `other` isn't known
+        ("enumerate(names, start=1)", {"names": "list[str]"}, "tuple[int, str]"),
+        ("zip(names, names, strict=True)", {"names": "list[str]"}, "tuple[str, str]"),
+        ("sorted(names, key=len, reverse=True)", {"names": "list[str]"}, "str"),
+        ("sorted(names, cmp=None)", {"names": "list[str]"}, None),  # not a keyword `sorted` takes
+        ("zip(*names)", {"names": "list[str]"}, None),  # as many parts as `names` has
         ("sorted(names)", {"names": "set[str]"}, "str"),
         ("reversed(names)", {"names": "list[str]"}, "str"),
         ("unknown()", {}, None),
@@ -115,6 +120,32 @@ def test_loops_and_unpackings_are_declared_before_their_statement() -> None:
         first, second = pair
     """,
     )
+
+
+def test_enumerate_and_zip_type_each_known_part_on_its_own() -> None:
+    """`enumerate`'s index is an `int` whatever it counts; a guess makes only its own part one."""
+    source: str = """
+    def f(xs, names: list[str]) -> None:
+        for i, x in enumerate(xs):
+            pass
+        for a, b in zip(names, xs):
+            pass
+        for j, box in enumerate([Box()]):
+            pass
+        for c, *d in zip(names, names):
+            pass
+    """
+    offences: list[Offence] = check_source(textwrap.dedent(source))
+    assert [(o.name, o.fix, o.unsafe) for o in offences] == [
+        ("i", "int", False),
+        ("x", None, False),
+        ("a", "str", False),
+        ("b", None, False),
+        ("j", "int", False),
+        ("box", "Box", True),
+        ("c", "str", False),  # a starred target: split as a whole, `zip`'s tuple
+        ("d", None, False),
+    ]
 
 
 def test_a_loop_over_a_guess_is_declared_only_with_unsafe_fixes() -> None:

@@ -13,7 +13,14 @@ DICT_VIEWS: Final = frozenset({"keys", "values", "items"})
 _ONE_ELEMENT_TYPE: Final = frozenset({"list", "List", "set", "Set", "frozenset", "FrozenSet"})
 RANGE: Final = "range"
 ENUMERATE: Final = "enumerate"
-ITERATORS: Final = frozenset({RANGE, ENUMERATE, "zip", *SAME_ELEMENTS})
+ZIP: Final = "zip"
+ITERATORS: Final = frozenset({RANGE, ENUMERATE, ZIP, *SAME_ELEMENTS})
+# The keywords each of `ITERATORS` takes that don't change what it yields (`sorted`'s only its order).
+_ITERATOR_KEYWORDS: Final = {
+    ENUMERATE: frozenset({"start"}),
+    ZIP: frozenset({"strict"}),
+    "sorted": frozenset({"key", "reverse"}),
+}
 # `tuple[T, ...]`'s two parts: the element type and the ellipsis.
 _ANY_LENGTH: Final = 2
 
@@ -46,6 +53,16 @@ def element_type(container: str, reason: str, kinds: frozenset[str]) -> Inferenc
             return Inference(ast.unparse(item), reason, kinds)
         case _:
             return None
+
+
+def counted(name: str, args: list[ast.expr]) -> list[ast.expr]:
+    """Pick the arguments whose elements one of `ITERATORS` yields: `enumerate`'s first, others' all.
+
+    Returns:
+      Them.
+
+    """
+    return args[:1] if name == ENUMERATE else args
 
 
 def _is_ellipsis(node: ast.expr) -> bool:
@@ -103,6 +120,30 @@ def _parts(annotation: str | None, count: int) -> list[str | None]:
             return unknown
 
 
+def iterator_call(iterable: ast.expr) -> tuple[str, list[ast.expr]] | None:
+    """Read a call to one of `ITERATORS` whose elements its positional arguments decide.
+
+    Its keywords must be ones that don't change what it yields (`enumerate`'s `start`, `zip`'s
+    `strict`, ...), and no argument starred: `zip(*rows)` yields as many parts as `rows` has.
+
+    Returns:
+      The iterator's name and its positional arguments, or `None` if `iterable` isn't such a call.
+
+    """
+    name: str
+    args: list[ast.expr]
+    keywords: list[ast.keyword]
+    match iterable:
+        case ast.Call(func=ast.Name(id=name), args=[_, *_] as args, keywords=keywords) if (
+            name in ITERATORS
+            and not any(isinstance(arg, ast.Starred) for arg in args)
+            and all(keyword.arg in _ITERATOR_KEYWORDS.get(name, ()) for keyword in keywords)
+        ):
+            return name, args
+        case _:
+            return None
+
+
 def iterated(iterable: ast.expr) -> list[ast.expr]:
     """Find the values `looped` typed a loop over `iterable` from, to judge whether it guessed.
 
@@ -113,15 +154,12 @@ def iterated(iterable: ast.expr) -> list[ast.expr]:
       Those values.
 
     """
-    name: str
-    args: list[ast.expr]
+    call: tuple[str, list[ast.expr]] | None = iterator_call(iterable)
+    if call is not None:
+        return [] if call[0] == RANGE else [part for arg in counted(*call) for part in iterated(arg)]
     receiver: ast.expr
     view: str
     match iterable:
-        case ast.Call(func=ast.Name(id=name), args=args, keywords=[]) if name in ITERATORS and args:
-            if name == RANGE:
-                return []
-            return [part for arg in (args[:1] if name == ENUMERATE else args) for part in iterated(arg)]
         case ast.Call(func=ast.Attribute(value=receiver, attr=view), args=[]) if view in DICT_VIEWS:
             return [receiver]
         case _:

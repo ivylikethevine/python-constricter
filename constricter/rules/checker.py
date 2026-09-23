@@ -8,7 +8,7 @@ from functools import lru_cache
 from typing import Final, NamedTuple, cast
 
 from constricter.fix import hinted, imports, returned, stdlib
-from constricter.fix.inference import inference, looped
+from constricter.fix.inference import LoopPart, inference, looped, looped_parts
 from constricter.fix.known import (
     Classes,
     ClassSide,
@@ -558,8 +558,7 @@ def _bind(scope: Scope, stmt: ast.stmt) -> None:
                 type_comment=None,
             )
         ):
-            typed = looped(value, scope.settings.known, scope.inferred.types)
-            _bind_declared(scope, stmt, target, typed, iterated(value))
+            _bind_loop(scope, stmt, target, value)
         case (
             ast.For(target=target, type_comment=str() as comment)
             | ast.AsyncFor(
@@ -574,6 +573,39 @@ def _bind(scope: Scope, stmt: ast.stmt) -> None:
             scope.lifetime(name).bind(at(single), augmented(op, certain_type(scope, value)))
         case _:
             pass
+
+
+def _bind_loop(scope: Scope, stmt: ast.For | ast.AsyncFor, target: ast.expr, value: ast.expr) -> None:
+    """Bind a loop's target (see `_bind_declared`), over `enumerate` or `zip` one part at a time.
+
+    `for i, x in enumerate(xs)` declares `i: int` even when `xs`'s elements aren't known, and a
+    guess about them makes only `x`'s fix one.
+    """
+    parts: list[LoopPart] | None = looped_parts(
+        value,
+        scope.settings.known,
+        scope.inferred.types,
+    )
+    elements: list[ast.expr]
+    match target:
+        case ast.Tuple(elts=elements) | ast.List(elts=elements) if (
+            parts is not None
+            and len(elements) == len(parts)
+            and not any(isinstance(element, ast.Starred) for element in elements)
+        ):
+            element: ast.expr
+            typed: Inference | None
+            bases: list[ast.expr]
+            for element, (typed, bases) in zip(elements, parts, strict=True):
+                _bind_declared(scope, stmt, element, typed, bases)
+        case _:
+            _bind_declared(
+                scope,
+                stmt,
+                target,
+                looped(value, scope.settings.known, scope.inferred.types),
+                iterated(value),
+            )
 
 
 def _bind_declared(
