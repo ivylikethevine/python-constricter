@@ -6,6 +6,9 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `tests/corpus/corpus_table.py` also records each corpus's annotation coverage as released, after
+  `--fix` and after `--fix --unsafe-fixes`, and how much each raised it; `docs/RUNS.md` keeps only
+  the corpora measured today in every version's rows and totals.
 - `tests/ci_local.py` runs CI's Lint, Docs and Test checks locally, in parallel, straight from
   `ci.yml`, and `--install-hook` makes it a `pre-push` hook.
 - `--fix` types a member of any value whose type it knows, not just of a local: `self.index.name`,

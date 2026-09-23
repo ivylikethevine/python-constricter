@@ -69,7 +69,8 @@ compiler, Rust and the network.
 `tests/corpus/corpus_table.py` measures every corpus with released constricter versions and this
 checkout (each isolated in its own environment), at every level, checked and fixed, and records a
 section per version in [`docs/RUNS.md`](RUNS.md): offences per code, errors and warnings at each
-level, fixes, guesses, and anything a fix broke. It needs the `corpus` group
+level, fixes, guesses, anything a fix broke, and the share of bindings typed before and after fixing
+(by this checkout's `--coverage`). It needs the `corpus` group
 (`uv sync --group dev --group corpus`) and `uv`; see its docstring for the options.
 
 CI also runs the tests on PyPy 3.11 and free-threaded Python 3.14, which install only the `test`

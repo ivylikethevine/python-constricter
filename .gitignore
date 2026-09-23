@@ -11,3 +11,6 @@ __pycache__/
 
 # Claude Code's agent worktrees: other checkouts of this repository.
 .claude/worktrees/
+
+# Backups merge tools leave next to a conflicted file.
+*.orig
