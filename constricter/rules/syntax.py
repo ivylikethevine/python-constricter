@@ -17,6 +17,8 @@ FUNCTION_DEFS: tuple[type[ast.FunctionDef], type[ast.AsyncFunctionDef]] = (
     ast.FunctionDef,
     ast.AsyncFunctionDef,
 )
+# Statements whose nested statements may not all run (or not only once).
+BRANCHING: Final = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.TryStar, ast.Match)
 _FUTURE: Final = "__future__"
 # `from __future__` features only code that also runs on Python 2 imports: its type comments count.
 _PYTHON2_FUTURES: frozenset[str] = frozenset(

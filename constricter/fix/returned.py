@@ -297,11 +297,11 @@ def _uses(module: ast.Module) -> tuple[_Uses, _Uses, _Uses]:
     kind: _Listed
     for kind in found:
         kind.sort()
-    self_reads: _Uses
-    reads: _Uses
-    stores: _Uses
-    self_reads, reads, stores = (([start for start, _ in kind], [attr for _, attr in kind]) for kind in found)
-    return self_reads, reads, stores
+    of_self: _Uses
+    of_any: _Uses
+    stored: _Uses
+    of_self, of_any, stored = (([start for start, _ in kind], [attr for _, attr in kind]) for kind in found)
+    return of_self, of_any, stored
 
 
 class Slot(NamedTuple):
@@ -396,6 +396,15 @@ def _callees(module: ast.Module, func: FunctionDef, named: "_Named") -> Iterator
         yield from named[False].get(name, []) if name is not None else named[True].get(attr or "", [])
 
 
+class _Tables(NamedTuple):
+    """The live tables a `Table` fills in, as `Returned` holds them."""
+
+    calls: dict[str, str]
+    methods: dict[str, dict[str, str]]
+    guesses: dict[str, frozenset[str]]
+    attributes: dict[str, dict[str, str]]
+
+
 class Table:
     """What the module's unannotated functions return, filled in as each is checked, in call order.
 
@@ -410,11 +419,8 @@ class Table:
         self.module: ast.Module = module
         self.recorded: dict[int, list[Recorded]] = {}
         self.assigned: dict[int, list[Assigned]] = {}  # each checked function's `self.x = value`s
-        self.calls: dict[str, str] = {}
-        self.methods: dict[str, dict[str, str]] = {}
-        self.guesses: dict[str, frozenset[str]] = {}
-        self.attributes: dict[str, dict[str, str]] = {}
-        self.returned: Returned = Returned(self.calls, self.methods, self.guesses, self.attributes)
+        self.tables: _Tables = _Tables({}, {}, {}, {})
+        self.returned: Returned = Returned(*self.tables)
         self.entries: list[tuple[Slot, str]] = []
         self.stamps: dict[int, int] = {}
 
@@ -436,11 +442,11 @@ class Table:
         origins: frozenset[str]
         annotation, origins = found
         if slot.owner is None:
-            self.calls[slot.name] = annotation
+            self.tables.calls[slot.name] = annotation
         else:
-            self.methods.setdefault(slot.owner, {})[slot.name] = annotation
+            self.tables.methods.setdefault(slot.owner, {})[slot.name] = annotation
         if origins:
-            self.guesses[slot.name if slot.owner is None else f"{slot.owner}.{slot.name}"] = origins
+            self.tables.guesses[slot.name if slot.owner is None else f"{slot.owner}.{slot.name}"] = origins
         self.entries.append((slot, annotation))
 
     def _completed(self, func: FunctionDef) -> None:
@@ -456,8 +462,8 @@ class Table:
         annotation: str
         origins: frozenset[str]
         for name, annotation, origins in _attributes(self.module, node, self.assigned):
-            self.attributes.setdefault(node.name, {})[name] = annotation
-            self.guesses[f"{node.name}.{name}"] = origins
+            self.tables.attributes.setdefault(node.name, {})[name] = annotation
+            self.tables.guesses[f"{node.name}.{name}"] = origins
 
     def stale(self, func: FunctionDef) -> bool:
         """Check whether `func` calls a function whose type the table gained after `func` was checked.

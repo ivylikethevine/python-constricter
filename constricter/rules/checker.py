@@ -50,6 +50,7 @@ from constricter.rules.narrowing import flow_offences
 from constricter.rules.redundant import redundant
 from constricter.rules.scope import Kind, Late, Scope, Settings, certain_type, guesses_in
 from constricter.rules.syntax import (
+    BRANCHING,
     FUNCTION_DEFS,
     FunctionDef,
     child_statements,
@@ -70,16 +71,6 @@ _ENUM_MODULES: Final = frozenset({"enum"})
 # The conventional name of an instance method's first parameter: typed as its class, for `--fix`.
 _SELF: Final = "self"
 _TYPE_CHECKING: Final = "TYPE_CHECKING"
-# Statements whose nested statements may not all run: what one rebinds a name to may not reach past it.
-_BRANCHING: Final = (
-    ast.If,
-    ast.For,
-    ast.AsyncFor,
-    ast.While,
-    ast.Try,
-    ast.TryStar,
-    ast.Match,
-)
 
 
 def check_source(
@@ -377,7 +368,7 @@ def _visit(scope: Scope, stmt: ast.stmt) -> None:
     body: set[int] = (
         {id(s) for s in stmt.body} if isinstance(stmt, ast.For | ast.AsyncFor | ast.While) else set()
     )
-    before: dict[str, str] | None = dict(scope.inferred.types) if isinstance(stmt, _BRANCHING) else None
+    before: dict[str, str] | None = dict(scope.inferred.types) if isinstance(stmt, BRANCHING) else None
     child: ast.stmt
     for child in child_statements(stmt):
         scope.assignments.looping += id(child) in body
@@ -458,21 +449,18 @@ def _returned(
       The settings with what the functions return, and the scopes checked with them.
 
     """
-    recorded: dict[int, list[returned.Recorded]] = table.recorded
-    assigned: dict[int, list[returned.Assigned]] = table.assigned
-    found: Returned = returned.returned(tree, recorded, assigned)
+    found: Returned = returned.returned(tree, table.recorded, table.assigned)
     settings = replace(settings, known=replace(settings.known, returned=found))
     functions: list[tuple[Scope, FunctionDef]] = [
         (scope, scope.kind.function) for scope in scopes if scope.kind.function is not None
     ]
-    owners: Mapping[int, str] = settings.owners
     # The first pass knew no attribute's type: they're read once every method is checked.
     again: set[int] = {
         id(scope)
         for scope, func in functions
         if table.stale(func)
         or scope.inferred.late.keys() - scope.inferred.seeded.keys()
-        or _reads_new(tree, func, owners, (Returned(), found))
+        or _reads_own(tree, func, settings.owners, found)
     }
     changed: bool = False
     retyped: set[str] = set()  # the attributes the rounds typed anew
@@ -480,19 +468,8 @@ def _returned(
     for _round in range(_ROUNDS):
         if not again:
             break
-        fresh: list[tuple[Scope, FunctionDef]] = [
-            (_function_scope(func, [], settings, scope.inferred.late), func)
-            for scope, func in functions
-            if id(scope) in again
-        ]
-        renewed: dict[int, Scope] = {id(func): scope for scope, func in fresh}
-        functions = [(renewed.get(id(func), scope), func) for scope, func in functions]
-        _finished(tree, [scope for scope, _ in fresh])
-        recorded.update(
-            (id(func), [_recorded(scope, value) for value in scope.inferred.returns]) for scope, func in fresh
-        )
-        assigned.update((id(func), _assigned(scope)) for scope, func in fresh)
-        latest: Returned = returned.returned(tree, recorded, assigned)
+        functions = _checked_again(tree, functions, again, settings, table)
+        latest: Returned = returned.returned(tree, table.recorded, table.assigned)
         typed: bool = latest != found and returned.called(tree, tree, latest)  # even if only a body calls one
         # Attributes typed anew: what reads one, of any value, may be typed now.
         newly: set[str] = _retyped(found, latest)
@@ -508,43 +485,82 @@ def _returned(
             or returned.reads(tree, func, newly, anywhere=True)
             or scope.inferred.late.keys() - scope.inferred.seeded.keys()
         }
-    bodies: list[Scope] = [scope for scope in scopes if scope.kind.function is None]
-    # The bodies were checked after every function, knowing the first pass's types: only what the
-    # rounds typed since is news to them.
+    return settings, [scope for scope, _ in functions] + _bodies(
+        tree,
+        settings,
+        [scope for scope in scopes if scope.kind.function is None],
+        retyped if changed or retyped else None,
+    )
+
+
+def _checked_again(
+    tree: ast.Module,
+    functions: list[tuple[Scope, FunctionDef]],
+    again: set[int],
+    settings: Settings,
+    table: returned.Table,
+) -> list[tuple[Scope, FunctionDef]]:
+    """Check the functions whose scopes are in `again` once more, recording their `return`s and assignments.
+
+    Returns:
+      Every function, with its latest scope.
+
+    """
+    fresh: list[tuple[Scope, FunctionDef]] = [
+        (_function_scope(func, [], settings, scope.inferred.late), func)
+        for scope, func in functions
+        if id(scope) in again
+    ]
+    renewed: dict[int, Scope] = {id(func): scope for scope, func in fresh}
+    _finished(tree, [scope for scope, _ in fresh])
+    table.recorded.update(
+        (id(func), [_recorded(scope, value) for value in scope.inferred.returns]) for scope, func in fresh
+    )
+    table.assigned.update((id(func), _assigned(scope)) for scope, func in fresh)
+    return [(renewed.get(id(func), scope), func) for scope, func in functions]
+
+
+def _bodies(
+    tree: ast.Module,
+    settings: Settings,
+    bodies: list[Scope],
+    retyped: set[str] | None,
+) -> list[Scope]:
+    """Check the module and class bodies again, if the rounds typed anything they use.
+
+    They were checked after every function, knowing the first pass's types: only what the rounds
+    typed since (`retyped`: the attributes; `None`: nothing at all) is news to them.
+
+    Returns:
+      Their scopes, checked again or as they were.
+
+    """
     if (
-        (changed or retyped)
+        retyped is not None
         and bodies
         and any(
-            returned.called(tree, stmt, found) or returned.reads(tree, stmt, retyped, anywhere=True)
+            returned.called(tree, stmt, settings.known.returned)
+            or returned.reads(tree, stmt, retyped, anywhere=True)
             for stmt in _body_statements(tree.body)
         )
     ):
-        bodies = _body_scopes(tree, settings)
-    return settings, [scope for scope, _ in functions] + bodies
+        return _body_scopes(tree, settings)
+    return bodies
 
 
-def _reads_new(
-    tree: ast.Module,
-    func: FunctionDef,
-    owners: Mapping[int, str],
-    tables: tuple[Returned, Returned],
-) -> bool:
-    """Check whether a method reads an attribute of its own class's that `tables`' later one types anew.
+def _reads_own(tree: ast.Module, func: FunctionDef, classes_of: Mapping[int, str], found: Returned) -> bool:
+    """Check whether a method reads an attribute of its own class's (`self.a`) that `found` types.
+
+    `classes_of`: each method's class, by the method's `id()`.
 
     Returns:
-      Whether it does (`self.a`, typed differently, or only now): checking it again could type more.
+      Whether it does: checking it again could type more.
 
     """
-    owner: str | None = owners.get(id(func))
-    if owner is None:
+    owner: str | None
+    if (owner := classes_of.get(id(func))) is None:
         return False
-    old: Mapping[str, str] = tables[0].attributes.get(owner, {})
-    new: Mapping[str, str] = tables[1].attributes.get(owner, {})
-    return returned.reads(
-        tree,
-        func,
-        {attr for attr, annotation in new.items() if old.get(attr) != annotation},
-    )
+    return returned.reads(tree, func, found.attributes.get(owner, {}).keys())
 
 
 def _retyped(before: Returned, after: Returned) -> set[str]:

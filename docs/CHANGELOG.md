@@ -7,9 +7,9 @@ Notable changes, newest first. Each release's full notes are generated from its 
 ## Unreleased
 
 - A name narrowed inside a branch that may not run (`x = None`, then `x = n` under `if`) is no
-  longer taken past the branch as the narrowed type: a call to `def late(n, flag)` returning `x`
-  was typed a certain `int`, and is now `int | None`. A name rebound in a branch to a type outside
-  its earlier one is a guess past it (`rebound`).
+  longer taken past the branch as the narrowed type: a call to `def late(n, flag)` returning `x` was
+  typed a certain `int`, and is now `int | None`. A name rebound in a branch to a type outside its
+  earlier one is a guess past it (`rebound`).
 - `--fix --unsafe-fixes` types an unannotated instance attribute from its assignments (fix kind
   `assigned`): when every `self.x = value` in the class's own methods gives one known type (or
   numbers, widened to the widest), reads of `self.x`, and of `x` on any value typed as the class,

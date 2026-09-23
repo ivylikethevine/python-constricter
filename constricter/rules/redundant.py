@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterator
 from typing import Final, cast
 
 from constricter.offences import REDUNDANT_TYPE, Edit, Fix, FixPolicy, Offence, at
-from constricter.rules.syntax import child_statements
+from constricter.rules.syntax import BRANCHING, child_statements
 from constricter.rules.walked import classes, of_type
 
 _KINDS: Final = frozenset({"redundant"})
@@ -18,13 +18,7 @@ _BLOCKED: Final = (
     ast.ClassDef,
     ast.With,
     ast.AsyncWith,
-    ast.If,
-    ast.For,
-    ast.AsyncFor,
-    ast.While,
-    ast.Try,
-    ast.TryStar,
-    ast.Match,
+    *BRANCHING,
 )
 
 

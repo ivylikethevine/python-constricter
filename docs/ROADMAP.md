@@ -50,13 +50,12 @@
 - **Loop targets from `enumerate` and `zip`, one part at a time**: `for i, x in enumerate(xs)`
   declares `i: int` whatever `xs` is, each part certain or a guess as its own type is, and the
   keywords that don't change what they yield (`start=`, `strict=`, `sorted`'s `key=`) are allowed.
-- **Instance attributes typed by their assignments** (`assigned`, a guess): an unannotated
-  attribute every one of whose `self.x = value`s in its class's own methods gives one known type
-  (numbers widened) types its reads and chains (`self.name.upper()`, `box.name`); stored any other
-  way, bound in the class body, or assigned a local bound more than once, it's left alone. 456
-  more guesses on the standard library, where most such values are unannotated parameters or
-  `None` first; the check takes about 12% longer (30.3s to 34.0s, `--jobs=1`), left for an
-  optimization pass.
+- **Instance attributes typed by their assignments** (`assigned`, a guess): an unannotated attribute
+  every one of whose `self.x = value`s in its class's own methods gives one known type (numbers
+  widened) types its reads and chains (`self.name.upper()`, `box.name`); stored any other way, bound
+  in the class body, or assigned a local bound more than once, it's left alone. 456 more guesses on
+  the standard library, where most such values are unannotated parameters or `None` first; the check
+  takes about 12% longer (30.3s to 34.0s, `--jobs=1`), left for an optimization pass.
 - **Fixes for LVA003** (the loop's `# type:` comment becomes a declaration) and **LVA007** (the
   repeat's annotation is dropped).
 - **Type-checker-backed inference** (`--infer-with basedpyright,ty`): the checkers' language
