@@ -6,6 +6,16 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` adds the import a type needs: `open(path, mode)` is typed by its literal mode
+  (`io.TextIOWrapper`, `io.BufferedReader`, `io.BufferedWriter`, `io.BufferedRandom`; fix kind
+  `open`), and `with open(...) as f` declares `f` before the statement; standard-library classes and
+  functions returning one (`logging.getLogger()` → `logging.Logger`, `datetime.now()`, `uuid4()`,
+  `Path.cwd()`, `argparse.ArgumentParser(...)`) are typed (fix kind `stdlib`); and LVA012 offers
+  `Final` (`Final[T]` around its annotation or LVA001's type, a bare `Final` without one; fix kind
+  `final`). An existing import is reused (`import io` gives `io.BufferedReader`); otherwise one is
+  added after the module's docstring and leading imports, never under `if TYPE_CHECKING:`, over a
+  name the module binds, or over a builtin. In a notebook, a fix that needs an import is reported
+  but not applied.
 - `--fix` types calls to the module's unannotated functions from their `return`s (fix kind
   `returned`; a method's is a guess), uses of classes other checked files define (their attributes,
   properties and methods), and, as a guess, an empty container from what the function then adds to

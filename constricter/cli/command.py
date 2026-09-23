@@ -105,11 +105,14 @@ def _placed(offence: Offence, where: list[notebook.Line]) -> Offence:
     """Place an offence from a notebook's joined module in its cell, its declaration's line too.
 
     Returns:
-      The offence, its `line` (and a `Edit.DECLARE` fix's statement line) counted in its `cell`.
+      The offence, its `line` (and a `Edit.DECLARE` fix's statement line) counted in its `cell`; a
+      fix that would add an import isn't offered.
 
     """
     line: notebook.Line = where[offence.line - 1]
     placed: Offence = replace(offence, line=line.line, cell=line.cell)
+    if offence.edit is not None and offence.edit.imports:  # a notebook's cells have no import block
+        return replace(placed, edit=None)
     if offence.edit is not None and offence.edit.edit is Edit.DECLARE:
         statement: int = where[offence.edit.span[0] - 1].line
         placed = replace(placed, edit=offence.edit._replace(span=(statement, offence.edit.span[1])))

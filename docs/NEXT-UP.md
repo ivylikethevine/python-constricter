@@ -63,7 +63,7 @@ inference, a Large item).
    5,434, of which those with a builtin, non-generic result are roughly 900. Small: a curated table,
    as `str` methods have. `AnyStr` functions (`os.path.join`, `re.escape`) only when their
    arguments' types are known.
-6. **Fixes that add an import.** Many results need a name the file doesn't import:
+6. **Done: fixes that add an import.** Many results need a name the file doesn't import:
    `with open(path, "rb") as f` is an `io.BufferedReader` (813 `open` calls with a literal mode, 125
    more with none), `logging.getLogger()` a `logging.Logger`, `datetime(...)` a `datetime`, and
    LVA012's fix would be `Final`. Adding (or extending) an import safely enables all of them.

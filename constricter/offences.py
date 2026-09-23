@@ -53,10 +53,12 @@ FIX_KINDS: dict[str, str] = {
     "builder": "`sorted`, `list`, `set`, `frozenset` or `tuple` of known elements",
     "await": "`await` of the module's `async def`",
     "cast": "`typing.cast(T, x)`: its `T`",
-    "stdlib": "a standard-library function with a builtin result (`time.time`, `os.path.join`)",
+    "stdlib": "a standard-library function with a builtin result or class (`time.time`, `uuid4`)",
     "optional": "`x = None`, then only ever a value of one known type `T`: `T | None`",
     "filled": "an empty container, then only what the function adds to it (a guess)",
     "returned": "an unannotated function's own `return`s (a method's: a guess)",
+    "final": "LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)",
+    "open": "`open(path, mode)`'s file object, by its literal mode (`io.TextIOWrapper`, ...)",
     "loop": "what a loop (or `sorted`, `list`, ...) iterates over",
     "unpack": "an unpacking, split over its names",
     "narrow": "LVA008's or LVA010's narrower annotation (a guess)",
@@ -123,6 +125,8 @@ class Fix(NamedTuple):
     kinds: frozenset[str] = frozenset()  # every `FIX_KINDS` mechanism that decided it
     # With `Edit.DECLARE`: the columns to delete on the statement's line too (the type comment it replaces).
     drop: tuple[int, int] | None = None
+    imports: tuple[str, ...] = ()  # statements the annotation needs added (`from io import BytesIO`)
+    after: int = 0  # the line they go after (see `fix.imports.plan`)
 
 
 class FixPolicy(NamedTuple):

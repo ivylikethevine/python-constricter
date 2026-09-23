@@ -2,10 +2,14 @@
 """`--fix`: write the annotations offences offer, to a file's lines or a notebook cell's."""
 
 import contextlib
+import re
 from collections.abc import Sequence
-from typing import NamedTuple
+from typing import Final, NamedTuple
 
 from constricter.offences import Edit, Fix, Offence
+
+_HEADER: Final = 2  # a file's shebang and coding lines come first, if it has them
+_HEADER_LINE: Final = re.compile(r"#!|#.*coding[:=]")
 
 
 class Replacement(NamedTuple):
@@ -83,13 +87,54 @@ def dropped(lines: Sequence[str], offence: Offence) -> Replacement | None:
 
 
 def replacements(lines: Sequence[str], offence: Offence) -> tuple[Replacement, ...]:
-    """Turn `offence`'s fix into its text edits: `replacement`'s, then `dropped`'s.
+    """Turn `offence`'s fix into its text edits: `replacement`'s, `dropped`'s, then its imports'.
 
     Returns:
       Them; none without a fix.
 
     """
-    return tuple(edit for edit in (replacement(lines, offence), dropped(lines, offence)) if edit is not None)
+    edits: list[Replacement | None] = [replacement(lines, offence), dropped(lines, offence)]
+    added: list[str]
+    if offence.edit is not None and (added := _missing(lines, offence.edit.imports)):
+        line: int = _import_line(lines, offence.edit.after)
+        edits.append(
+            Replacement(line + 1, "", "", "".join(f"{statement}{_ending(lines)}" for statement in added)),
+        )
+    return tuple(edit for edit in edits if edit is not None)
+
+
+def _missing(lines: Sequence[str], statements: Sequence[str]) -> list[str]:
+    """Find the import statements `lines` doesn't have yet (as a line of their own).
+
+    Returns:
+      Them, in order.
+
+    """
+    present: set[str] = {line.strip() for line in lines}
+    return [statement for statement in statements if statement not in present]
+
+
+def _import_line(lines: Sequence[str], after: int) -> int:
+    """Place added imports after line `after` (from 1), or at the top below a shebang or coding line.
+
+    Returns:
+      The number of lines before them.
+
+    """
+    if after:
+        return after
+    header: Sequence[str] = lines[:_HEADER]
+    return next((index for index, line in enumerate(header) if not _HEADER_LINE.match(line)), len(header))
+
+
+def _ending(lines: Sequence[str]) -> str:
+    """Find the file's line ending, from its first line.
+
+    Returns:
+      It (a newline for an empty file).
+
+    """
+    return next((line.removeprefix(line.rstrip("\r\n")) for line in lines[:1]), "") or "\n"
 
 
 def apply(lines: Sequence[str], offences: Sequence[Offence]) -> list[str]:
@@ -122,6 +167,11 @@ def apply(lines: Sequence[str], offences: Sequence[Offence]) -> list[str]:
             continue
         end: int = edit.columns[1]
         text[edit.line - 1] = edit.prefix + edit.text + text[edit.line - 1][end:]
+    # Last, above every other edit: the imports the fixes need, each once.
+    statements: list[str] = _missing(text, sorted({s for o in offences if o.edit for s in o.edit.imports}))
+    after: int = next((o.edit.after for o in offences if o.edit and o.edit.imports), 0)
+    line: int = _import_line(text, after)
+    text[line:line] = [f"{statement}{_ending(text)}" for statement in statements]
     return text
 
 

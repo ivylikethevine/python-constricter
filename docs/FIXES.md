@@ -24,7 +24,13 @@ in a function or module body:
 - a standard-library function with a builtin result, resolved through the imports (`import m`,
   `import m as a`, `from m import f`): `time.time()` is a `float`, `textwrap.dedent(...)` a `str`,
   `os.environ.get(k)` a `str | None` (a `str` with a `str` default), and an `AnyStr` function
-  (`os.path.join`, `re.escape`) the type all its arguments share;
+  (`os.path.join`, `re.escape`) the type all its arguments share; a standard-library class, or a
+  function returning one: `logging.getLogger()` is a `logging.Logger`, `datetime.now()` a
+  `datetime.datetime`, `uuid4()` a `uuid.UUID`, `argparse.ArgumentParser(...)` itself;
+- `open(path, mode)` (or `io.open`), by its literal mode (`r` when there's none): a text mode gives
+  an `io.TextIOWrapper`, a binary one an `io.BufferedReader` to read, an `io.BufferedWriter` to
+  write, and an `io.BufferedRandom` for both (`+`). Not unbuffered (`buffering`, which gives an
+  `io.FileIO`), with an `opener`, or when the module binds `open` itself;
 - `x = None`, when every later binding of `x` in the function has one certain type `T` (and nothing
   else writes it): `T | None`;
 - a call to an unannotated function (or method) of the module, when every `return` it has gives one
@@ -48,6 +54,21 @@ own before the statement: `for k, v in ages.items():` with `ages: dict[str, int]
 `v: int` above it. The target's type comes from what's iterated: a `range`, `enumerate` and `zip` of
 known things, a `dict`'s `.keys()`/`.values()`/`.items()`, or any container whose type is known; an
 unpacking splits a tuple type (`a, b = pair`, `pair: tuple[int, str]`) over its names.
+
+`with open(path, "rb") as f:` declares `f: io.BufferedReader` before the statement, the file object
+being its own context manager.
+
+A type the module can't name yet gets an import. One it already has is reused (with `import io`,
+`io.BufferedReader`); otherwise `from io import BufferedReader` is added after the module's
+docstring and its leading imports (below a shebang or coding line when it has neither), or
+`import io` if `BufferedReader` is a name the module binds. It never goes under `if TYPE_CHECKING:`
+(a module-level annotation is evaluated), and never binds a name the module binds anywhere, or a
+builtin's; with no name free, there's no fix. In a notebook, which has no import block, such a fix
+is reported but not applied.
+
+LVA012 (opt-in) offers `Final`: around the annotation there (`x: int = 1` becomes
+`x: Final[int] = 1`), with LVA001's type for an unannotated name (whose own fix it then replaces),
+or bare (`x: Final = f()`) when there's none.
 
 A loop whose target is typed only by `# type: T` (LVA003) gets `name: T` declared before it and the
 comment dropped (a type checker would see the name declared twice), when its header is on one line.
@@ -100,7 +121,9 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `cast`          | `typing.cast(T, x)`: its `T`                                                        |
 | `comment`       | LVA003: the loop's own `# type:` comment, as a declaration                          |
 | `redundant`     | LVA007: the repeated annotation, dropped                                            |
-| `stdlib`        | a standard-library function with a builtin result (`time.time`, `os.path.join`)     |
+| `stdlib`        | a standard-library function with a builtin result or class (`time.time`, `uuid4`)   |
+| `open`          | `open(path, mode)`'s file object, by its literal mode (`io.TextIOWrapper`, ...)     |
+| `final`         | LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)       |
 | `optional`      | `x = None`, then only ever a value of one known type `T`: `T \| None`               |
 | `filled`        | an empty container, then only what the function adds to it (a guess)                |
 | `returned`      | an unannotated function's own `return`s (a method's: a guess)                       |

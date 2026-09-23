@@ -7,7 +7,7 @@ from dataclasses import replace
 from functools import lru_cache
 from typing import Final, NamedTuple, cast
 
-from constricter.fix import returned, stdlib
+from constricter.fix import imports, returned, stdlib
 from constricter.fix.inference import (
     guessed,
     inference,
@@ -16,6 +16,7 @@ from constricter.fix.inference import (
     unpacked,
 )
 from constricter.fix.known import Classes, ClassSide, Inference, Known, LibraryNames, Returned
+from constricter.fix.opened import opened
 from constricter.jsonc import as_text
 from constricter.offences import (
     COMMENT_TYPED_TARGET,
@@ -125,7 +126,7 @@ def _settings(
             {**(imported.methods if imported else {}), **method_returns(tree)},
             awaited_returns(tree),
             ClassSide(class_attributes(tree), class_methods(tree)),
-            LibraryNames(casts(tree), stdlib.origins(tree)),
+            LibraryNames(casts(tree), stdlib.origins(tree), imports.plan(tree)),
             checks.max_length,
         ),
         Hierarchy.for_module(tree, {name: frozenset(wider) for name, wider in checks.narrower}),
@@ -509,11 +510,7 @@ def _bind(scope: Scope, stmt: ast.stmt) -> None:
         case ast.Assign(targets=targets, type_comment=comment):
             _bind_targets(scope, targets, scope.unannotated(comment))
         case ast.With(items=items, type_comment=comment) | ast.AsyncWith(items=items, type_comment=comment):
-            _bind_targets(
-                scope,
-                [i.optional_vars for i in items if i.optional_vars],
-                scope.unannotated(comment),
-            )
+            _bind_with(scope, stmt, items, scope.unannotated(comment))
         case (
             ast.For(target=target, iter=value, type_comment=None)
             | ast.AsyncFor(
@@ -611,6 +608,38 @@ def _bind_commented(scope: Scope, stmt: ast.For | ast.AsyncFor, target: ast.expr
             )
             fix = None if fix is None else fix._replace(drop=drop)
         scope.bind(name.id, at(name), COMMENT_TYPED_TARGET, fix)
+
+
+def _bind_with(scope: Scope, stmt: ast.stmt, items: list[ast.withitem], code: str | None) -> None:
+    """Bind each `with` item's target, offering to declare `with open(path, mode) as f`'s `f` first.
+
+    The file object `open` gives is its context manager's own (`__enter__` returns `self`), typed by
+    its literal mode; any other item's names are bound untyped, as are an `async with`'s (a file
+    object isn't an asynchronous context manager).
+    """
+    item: ast.withitem
+    name: ast.Name
+    target: ast.expr
+    for item in items:
+        typed: Inference | None = (
+            opened(item.context_expr, scope.settings.known) if isinstance(stmt, ast.With) else None
+        )
+        match item.optional_vars:
+            case ast.Name() as name if typed is not None:
+                fix: Fix | None = scope.offer(
+                    typed,
+                    frozenset(),
+                    unsafe=False,
+                    edit=Edit.DECLARE,
+                    span=(stmt.lineno, stmt.col_offset),
+                )
+                if name.id not in scope.inferred.types:
+                    scope.inferred.types[name.id] = typed.annotation
+                scope.bind(name.id, at(name), code, fix)
+            case None:
+                pass
+            case target:
+                _bind_targets(scope, [target], code)
 
 
 def _bind_targets(scope: Scope, targets: list[ast.expr], code: str | None) -> None:

@@ -2,11 +2,12 @@
 """What `--fix` infers a value's type from: literals, calls, and the locals a scope already typed."""
 
 import ast
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from typing import TYPE_CHECKING, Final
 
 from constricter.fix import stdlib
-from constricter.fix.known import Inference, Known
+from constricter.fix.known import ImportPlan, Inference, Known
+from constricter.fix.opened import opened
 from constricter.fix.returns import BUILTIN_RETURNS, METHOD_RETURNS, method_return
 from constricter.offences import CONSTRUCTOR
 from constricter.rules.annotations import GENERICS, is_vague, node_name
@@ -221,6 +222,8 @@ def _from_value(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
         _container(value, known, declared)
         or _computed(value, known, declared)
         or _cast(value, known.names.casts)
+        or opened(value, known)
+        or _library_class(value, known)
         or _library(value, known, declared)
         or _returns(value, known)
         or _called(value, known.calls, known.factories)
@@ -240,6 +243,27 @@ def _returns(value: ast.expr, known: Known) -> Inference | None:
             return Inference(known.returned.calls[name], f"`{name}`'s `return`s", frozenset({_RETURNED}))
         case _:
             return None
+
+
+def _library_class(value: ast.expr, known: Known) -> Inference | None:
+    """Infer a call to a standard-library class, or a function returning one (`stdlib.CLASSES`).
+
+    Returns:
+      The class, spelled (and imported, if it must be) as the module can; or `None`.
+
+    """
+    func: ast.expr
+    match value:
+        case ast.Call(func=func):
+            pass
+        case _:
+            return None
+    name: str | None = stdlib.resolved(func, known.names.stdlib)
+    plan: ImportPlan | None = known.names.plan
+    spelled: str | None = (
+        None if name not in stdlib.CLASSES or plan is None else plan.spell(stdlib.CLASSES[name])
+    )
+    return None if spelled is None else Inference(spelled, f"`{name}`'s return type", frozenset({_STDLIB}))
 
 
 def _library(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inference | None:
@@ -646,7 +670,24 @@ def guessed(
 
     """
     inside: dict[str, str] = comprehended(value, known, declared)
-    return any(_is_guess(node, known, guesses, inside) for node in ast.walk(value))
+    return any(_is_guess(node, known, guesses, inside) for node in _deciding(value, known))
+
+
+def _deciding(value: ast.AST, known: Known) -> Iterator[ast.AST]:
+    """Walk what decides `value`'s type: all of it, but not the arguments of a call they can't change.
+
+    `open(path, "rb")` is a file object by its mode, `logging.getLogger(name)` a `Logger`, whatever
+    `path` or `name` are: a guess there doesn't make the call's type one.
+
+    Yields:
+      Each node.
+
+    """
+    yield value
+    if not (isinstance(value, ast.Call) and (opened(value, known) or _library_class(value, known))):
+        child: ast.AST
+        for child in ast.iter_child_nodes(value):
+            yield from _deciding(child, known)
 
 
 def guess_origins(value: ast.expr, known: Known, declared: Mapping[str, str]) -> frozenset[str]:
@@ -659,7 +700,7 @@ def guess_origins(value: ast.expr, known: Known, declared: Mapping[str, str]) ->
     inside: dict[str, str] = comprehended(value, known, declared)
     found: set[str] = set()
     node: ast.AST
-    for node in ast.walk(value):
+    for node in _deciding(value, known):
         if isinstance(node, ast.Call) and _is_guess(node, known, frozenset(), inside):
             found.update(_guessed_by(node, known, inside))
     return frozenset(found)
@@ -729,8 +770,10 @@ def _is_guess(
             or (name in known.returned.calls and name not in known.returned.guesses)
         ):
             return False
-        case ast.Call(func=func) if ast.unparse(func) in known.names.casts or (
-            stdlib.resolved(func, known.names.stdlib) in stdlib.KNOWN
+        case ast.Call(func=func) if (
+            ast.unparse(func) in known.names.casts
+            or stdlib.resolved(func, known.names.stdlib) in stdlib.KNOWN
+            or opened(node, known) is not None
         ):
             return False
         case ast.Call(func=ast.Attribute(value=ast.Name(id=receiver) as owner, attr=method)) as call if (

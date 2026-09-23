@@ -42,6 +42,11 @@
   `fix-select`, `fix-ignore` and `unsafe-fix-select` choose which apply. Never changes a report.
 - **Fixes for LVA003** (the loop's `# type:` comment becomes a declaration) and **LVA007** (the
   repeat's annotation is dropped).
+- **Fixes that add an import**: `open(p, "rb")` is an `io.BufferedReader` by its literal mode (and
+  `with open(...) as f` declares `f` first), standard-library classes and what returns them
+  (`logging.getLogger()`, `datetime.now()`, `uuid4()`) are typed, and LVA012 offers `Final`. The
+  name is spelled through an import the module has, or one added after its leading imports (never
+  under `if TYPE_CHECKING:`, over a name the module binds, or over a builtin).
 - **Safe by construction**: it never touches class bodies, keeps line endings and a file's encoding
   (PEP 263 or a BOM; a fix the encoding can't hold leaves the file, exit 2), edits notebooks' cells
   in place, and converges in one pass on every corpus with nothing broken. `requests`', flask's and
@@ -126,13 +131,7 @@ Nothing queued.
 
 ### Medium: a few days
 
-1. **† Fixes that add an import.** Many inferred types need a name the file doesn't import:
-   `with open(p, "rb") as f` is an `io.BufferedReader` (938 `open` calls), `logging.getLogger()` a
-   `logging.Logger`, and LVA012's fix would be `Final`. Add or extend an import safely (after
-   `from __future__`, not inside `TYPE_CHECKING`, never over a name already taken), then type
-   `open()` by its literal mode and give LVA012 a fix. Done when those fixes add a correct import
-   and a second `--fix` pass is a no-op.
-2. **Run the remaining corpora's test suites, and their type checkers, after `--fix`.**
+1. **Run the remaining corpora's test suites, and their type checkers, after `--fix`.**
    `tests/corpus/corpus_suite.py` runs flask's and fastapi's suites (and `requests`' was run by
    hand) before and after `--fix` and `--fix --unsafe-fixes`, identically. Add pydantic, rich,
    sqlalchemy, django and pandas (whose 27% guesses make it the most telling). A local's annotation

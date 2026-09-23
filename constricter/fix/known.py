@@ -1,12 +1,16 @@
 # SPDX-License-Identifier: MIT
 """What `--fix` knows: a module's declarations it infers from (`Known`), and what it infers (`Inference`)."""
 
+import builtins
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import NamedTuple
+from typing import Final, NamedTuple
 
 from constricter.offences import MAX_LENGTH
+
+_BUILTINS: Final = frozenset(dir(builtins))
+_DOT: Final = "."
 
 
 class Classes(NamedTuple):
@@ -20,6 +24,64 @@ class Classes(NamedTuple):
     methods: Mapping[str, Mapping[str, str]]
 
 
+@dataclass
+class ImportPlan:
+    """How a module can name a library type, and the imports that takes (see `fix.imports.plan`).
+
+    `bound`: each name its imports bind, and what that is (`io`, `io.BytesIO`); `taken`: every name
+    bound anywhere in it; `after`: the line added imports go after; `added`: each name an added
+    import binds, and that import's statement, as `spell` chose them.
+    """
+
+    bound: Mapping[str, str]
+    taken: frozenset[str]
+    after: int
+    added: dict[str, str] = field(default_factory=dict[str, str])
+
+    def spell(self, qualified: str) -> str | None:
+        """Name `qualified` (`io.BufferedReader`) in this module, adding an import if it has to.
+
+        Through an import it has (`io.BufferedReader` after `import io`, `BufferedReader` after
+        `from io import BufferedReader`), else a new `from io import BufferedReader`, else a new
+        `import io`, but only binding a name nothing in the module binds.
+
+        Returns:
+          The name, or `None` if every way to write it is taken.
+
+        """
+        module: str
+        name: str
+        module, _, name = qualified.rpartition(".")
+        bound: str
+        origin: str
+        for bound, origin in self.bound.items():
+            if origin == qualified:
+                return bound
+        for bound, origin in self.bound.items():
+            if origin == module:
+                return f"{bound}.{name}"
+        statement: str = f"from {module} import {name}"
+        if self._free(name, statement):
+            self.added[name] = statement
+            return name
+        statement = f"import {module}"
+        if _DOT not in module and self._free(module, statement):
+            self.added[module] = statement
+            return qualified
+        return None
+
+    def _free(self, name: str, statement: str) -> bool:
+        """Check that `statement` may bind `name`: it already does, or nothing (not a builtin) does.
+
+        Returns:
+          Whether it may.
+
+        """
+        if name in self.added:
+            return self.added[name] == statement
+        return name not in self.taken and name not in _BUILTINS
+
+
 class LibraryNames(NamedTuple):
     """How the module names the library functions `--fix` knows.
 
@@ -28,6 +90,7 @@ class LibraryNames(NamedTuple):
 
     casts: frozenset[str] = frozenset()
     stdlib: Mapping[str, str] = MappingProxyType({})
+    plan: ImportPlan | None = None  # how to name a type the module doesn't import yet
 
 
 class Returned(NamedTuple):

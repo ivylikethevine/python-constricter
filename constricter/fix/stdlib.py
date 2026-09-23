@@ -144,13 +144,63 @@ ANY_STR: Final = frozenset(
         "re.escape",
     },
 )
+# Functions (and classes' constructors and classmethods) returning a standard-library class, not a
+# generic one: typed by that class, spelled (and imported, if it must be) the way the module can.
+_SELF_TYPED: Final = (
+    "argparse.ArgumentParser",
+    "argparse.Namespace",
+    "datetime.date",
+    "datetime.datetime",
+    "datetime.time",
+    "datetime.timedelta",
+    "datetime.timezone",
+    "decimal.Decimal",
+    "fractions.Fraction",
+    "io.BytesIO",
+    "io.StringIO",
+    "pathlib.Path",
+    "pathlib.PurePath",
+    "socket.socket",
+    "threading.Condition",
+    "threading.Event",
+    "threading.Semaphore",
+    "uuid.UUID",
+)
+CLASSES: Final = {
+    **{name: name for name in _SELF_TYPED},
+    "logging.getLogger": "logging.Logger",
+    "inspect.signature": "inspect.Signature",
+    **dict.fromkeys(["uuid.uuid1", "uuid.uuid3", "uuid.uuid4", "uuid.uuid5"], "uuid.UUID"),
+    **dict.fromkeys(
+        [
+            "datetime.datetime.now",
+            "datetime.datetime.utcnow",
+            "datetime.datetime.today",
+            "datetime.datetime.fromtimestamp",
+            "datetime.datetime.utcfromtimestamp",
+            "datetime.datetime.fromisoformat",
+            "datetime.datetime.strptime",
+            "datetime.datetime.combine",
+        ],
+        "datetime.datetime",
+    ),
+    **dict.fromkeys(
+        [
+            "datetime.date.today",
+            "datetime.date.fromisoformat",
+            "datetime.date.fromtimestamp",
+            "datetime.date.fromordinal",
+        ],
+        "datetime.date",
+    ),
+    **dict.fromkeys(["pathlib.Path.cwd", "pathlib.Path.home"], "pathlib.Path"),
+}
 # An environment lookup: `os.environ.get(k)` or `os.getenv(k)` is `str | None`, with a `str` default
 # it's `str`.
 ENVIRONMENT: Final = frozenset({"os.environ.get", "os.getenv"})
-KNOWN: Final = frozenset({*RETURNS, *ANY_STR, *ENVIRONMENT})  # every function the tables type
+KNOWN: Final = frozenset({*RETURNS, *ANY_STR, *ENVIRONMENT, *CLASSES})  # every function the tables type
 _TABLE_MODULES: Final = frozenset(
-    {name.rsplit(".", 1)[0] for name in {*RETURNS, *ANY_STR, *ENVIRONMENT}}
-    | {name.split(".", 1)[0] for name in {*RETURNS, *ANY_STR, *ENVIRONMENT}},
+    {name.rsplit(".", 1)[0] for name in KNOWN} | {name.split(".", 1)[0] for name in KNOWN},
 )
 
 

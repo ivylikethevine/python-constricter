@@ -13,7 +13,7 @@ from constricter.fix.inference import (
     inference,
     inferred,
 )
-from constricter.fix.known import Inference, Known
+from constricter.fix.known import ImportPlan, Inference, Known
 from constricter.offences import (
     CAN_BE_FINAL,
     LONG_TUPLE,
@@ -43,6 +43,10 @@ _OPTIONAL: Final = "optional"  # the fix kind of a `None` default rebound to one
 _FILLED: Final = "filled"  # the fix kind (and guessing mechanism) of an empty container filled later
 _NONE: Final = "None"
 _FINAL: Final = "Final"
+_FINAL_KIND: Final = "final"  # the fix kind of LVA012's `Final`
+_TYPING_FINAL: Final = "typing.Final"
+_FINALS: Final = frozenset({_TYPING_FINAL, "typing_extensions.Final"})
+_NO_ALIASES: Final = frozenset[str]()
 
 
 @dataclass(frozen=True)
@@ -189,7 +193,18 @@ class Scope:
         if not policy.allows(fix.kinds):
             return None
         certain: bool = not unsafe or policy.trusts(origins)
-        return Fix(fix.annotation, fix.reason, not certain, edit, span, fix.kinds)
+        plan: ImportPlan | None = self.settings.known.names.plan
+        added: tuple[str, ...] = () if plan is None else _imports(fix.annotation, plan)
+        return Fix(
+            fix.annotation,
+            fix.reason,
+            not certain,
+            edit,
+            span,
+            fix.kinds,
+            imports=added,
+            after=0 if plan is None else plan.after,
+        )
 
     def _first(
         self,
@@ -316,10 +331,16 @@ class Scope:
 
         Returns:
           An offence for each name bound exactly once, by a plain assignment outside any loop, and not
-          declared apart from it or already `Final`, nor written from another scope.
+          declared apart from it or already `Final`, nor written from another scope; with a fix
+          (see `_final`) where one is offered.
 
         """
         found: list[Offence] = []
+        plan: ImportPlan | None = self.settings.known.names.plan
+        # What else the module calls `Final`: `from typing import Final as F`.
+        aliases: frozenset[str] = frozenset(
+            () if plan is None else (name for name, origin in plan.bound.items() if origin in _FINALS),
+        )
         name: str
         lifetime: Lifetime
         for name, lifetime in self.flow.items():
@@ -333,10 +354,55 @@ class Scope:
             where: tuple[int, int] = lifetime.bindings[0].at
             if self.assignments.found.get(name) == [(where, False)] and (
                 lifetime.declared is None
-                or (lifetime.declared_at == where and not is_final(lifetime.declared))
+                or (lifetime.declared_at == where and not is_final(lifetime.declared, aliases))
             ):
-                found.append(Offence(*where, name, CAN_BE_FINAL))
+                found.append(Offence(*where, name, CAN_BE_FINAL, self._final(name, lifetime)))
         return found
+
+    def _final(self, name: str, lifetime: Lifetime) -> Fix | None:
+        """Offer LVA012's `Final`: around the annotation there (`Final[int]`), or as one (`: Final`).
+
+        An unannotated name LVA001 would annotate gets `Final[T]` with LVA001's type instead, and
+        LVA001's own fix is dropped: both write where the name is bound, and this one does for both.
+
+        Returns:
+          The fix, or `None` where the scope isn't fixed, the `final` kind isn't selected, an
+          annotation spans lines, or the module can't name `Final`.
+
+        """
+        plan: ImportPlan | None = self.settings.known.names.plan
+        spelled: str | None = None if plan is None else plan.spell(_TYPING_FINAL)
+        kinds: frozenset[str] = frozenset({_FINAL_KIND})
+        if plan is None or spelled is None or not self.kind.fixable or not self.settings.fixes.allows(kinds):
+            return None
+        reason: str = "bound once, and never rebound"
+        if lifetime.declared is not None:
+            if lifetime.declared_span is None:
+                return None
+            line: int = lifetime.declared_at[0]
+            start: int
+            end: int
+            start, end = lifetime.declared_span
+            text: str = self.settings.lines[line - 1].encode()[start:end].decode()
+            return _final_fix(
+                Fix(f"{spelled}[{text}]", reason, edit=Edit.REPLACE, span=(start, end), kinds=kinds),
+                plan,
+            )
+        index: int
+        o: Offence
+        for index, o in enumerate(self.offences):
+            if (
+                o.name == name
+                and o.code == UNANNOTATED
+                and o.edit is not None
+                and o.edit.edit == Edit.ANNOTATE
+            ):
+                self.offences[index] = replace(o, edit=None)
+                return _final_fix(
+                    o.edit._replace(annotation=f"{spelled}[{o.edit.annotation}]", kinds=o.edit.kinds | kinds),
+                    plan,
+                )
+        return _final_fix(Fix(spelled, reason, kinds=kinds), plan)
 
     def _covered(self, name: str) -> bool:
         """Check whether the rules cover `name` here.
@@ -400,8 +466,8 @@ class Scope:
         return None if type_comment is not None and self.settings.type_comments else self.kind.unannotated
 
 
-def is_final(annotation: str) -> bool:
-    """Check whether an annotation is `Final` (`Final[T]`, `typing.Final`, ...).
+def is_final(annotation: str, aliases: frozenset[str] = _NO_ALIASES) -> bool:
+    """Check whether an annotation is `Final` (`Final[T]`, `typing.Final`, ...), or one of `aliases` for it.
 
     Returns:
       Whether it is.
@@ -409,7 +475,7 @@ def is_final(annotation: str) -> bool:
     """
     # `annotation` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
     root: ast.expr = ast.parse(annotation, mode="eval").body
-    return node_name(root.value if isinstance(root, ast.Subscript) else root) == _FINAL
+    return node_name(root.value if isinstance(root, ast.Subscript) else root) in aliases | {_FINAL}
 
 
 def rests_on(scope: Scope, values: Iterable[ast.expr]) -> frozenset[str]:
@@ -450,3 +516,27 @@ def certain_type(scope: Scope, value: ast.expr) -> str | None:
     if guessed(value, scope.settings.known, frozenset(scope.inferred.guesses), scope.inferred.types):
         return None
     return inferred(value, scope.settings.known, scope.inferred.types)
+
+
+def _imports(annotation: str, plan: ImportPlan) -> tuple[str, ...]:
+    """Find the imports `annotation` needs: those `plan` added for a name it's written with.
+
+    Returns:
+      Their statements, sorted.
+
+    """
+    # `annotation` is always `ast.unparse`'s own output (or a name `plan` spelled), so it parses.
+    roots: set[str] = {
+        node.id for node in ast.walk(ast.parse(annotation, mode="eval")) if isinstance(node, ast.Name)
+    }
+    return tuple(sorted({plan.added[root] for root in roots if root in plan.added}))
+
+
+def _final_fix(fix: Fix, plan: ImportPlan) -> Fix:
+    """Give a `Final` fix the imports its annotation needs.
+
+    Returns:
+      It, with them.
+
+    """
+    return fix._replace(imports=_imports(fix.annotation, plan), after=plan.after)
