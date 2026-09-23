@@ -184,6 +184,7 @@ def test_files_are_shared_among_servers_and_stay_with_theirs(
     `ty` works in parallel itself: it gets one server, whatever `--jobs` says.
     """
     _fake(monkeypatch)
+    monkeypatch.setattr(hints, "available_memory", lambda: 64 << 30)  # plenty, whatever the machine has
     files: dict[Path, str] = {tmp_path / f"m{n}.py": f"x{n} = 1  # hint: int\n" * (n + 1) for n in range(40)}
     session: hints.Session
     with hints.Session([_CHECKER, "ty"], tmp_path, servers=8) as session:
@@ -571,6 +572,7 @@ def test_a_checkers_memory_is_asked_for_or_a_sensible_share(
 
 def test_servers_are_as_many_as_fit_in_memory(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Big files take more memory a server: fewer of them fit, but one always does."""
+    _fake(monkeypatch)  # no checker needs installing to count its servers
     monkeypatch.setattr(hints, "available_memory", lambda: 64 << 30)
     small: dict[Path, str] = {tmp_path / f"m{n}.py": "x = 1\n" for n in range(200)}
     big: dict[Path, str] = {tmp_path / f"m{n}.py": "x" * (1 << 20) for n in range(200)}  # 200 MB of files

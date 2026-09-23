@@ -7,6 +7,7 @@ from functools import lru_cache
 from typing import Final
 
 from constricter.fix.known import ImportPlan
+from constricter.rules.walked import nodes
 
 _TYPE_CHECKING: Final = "TYPE_CHECKING"
 
@@ -121,7 +122,7 @@ def _taken(tree: ast.Module) -> frozenset[str]:
     node: ast.AST
     name: str
     asname: str | None
-    for node in ast.walk(tree):
+    for node in nodes(tree):
         match node:
             case ast.Name(id=name, ctx=ast.Store()) | ast.arg(arg=name):
                 names.add(name)

@@ -63,6 +63,7 @@ from constricter.rules.syntax import (
     target_names,
     type_comment_span,
 )
+from constricter.rules.walked import nodes
 
 # The node class of `type X = ...` statements, by name: Python 3.11's `ast` has no `TypeAlias`.
 _TYPE_ALIAS: Final = "TypeAlias"
@@ -228,9 +229,7 @@ def _body_scopes(tree: ast.Module, settings: Settings) -> list["Scope"]:
     """
     imported: frozenset[str] = imported_from(tree, _ENUM_MODULES)
     class_bodies: list[list[ast.stmt]] = [
-        node.body
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ClassDef) and not _is_enum(node, imported)
+        node.body for node in nodes(tree) if isinstance(node, ast.ClassDef) and not _is_enum(node, imported)
     ]
     scopes: list[Scope] = []
     body: list[ast.stmt]
@@ -731,7 +730,7 @@ def _module_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
     escaped: set[str] = set()
     checking_only: set[str] = set()
     node: ast.AST
-    for node in ast.walk(tree):
+    for node in nodes(tree):
         if isinstance(node, ast.Global | ast.Nonlocal):
             escaped.update(node.names)
         elif isinstance(node, ast.If) and node_name(node.test) == _TYPE_CHECKING:

@@ -24,6 +24,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Final, TypeAlias
 
+from constricter.rules.walked import nodes
+
 # Each named type's directly wider types.
 Parents: TypeAlias = Mapping[str, frozenset[str]]
 # One project-declared type and the types it's narrower than (`Checks.narrower`, `parse_narrower`).
@@ -153,7 +155,7 @@ class Hierarchy:
         defined: dict[str, list[ast.expr]] = {}
         node: ast.AST
         bases: frozenset[str]
-        for node in ast.walk(tree):
+        for node in nodes(tree):
             if isinstance(node, ast.ClassDef):
                 defined[node.name] = node.bases
                 if bases := frozenset(b.id for b in node.bases if isinstance(b, ast.Name)):

@@ -14,6 +14,7 @@ from functools import lru_cache
 from typing import Final, TypeAlias
 
 from constricter.fix.known import Inference, Returned
+from constricter.rules.walked import nodes
 
 # A `return` statement as the checker saw it: its value's inference (`None`: none, or unknown), and
 # what that rests on if it's a guess (`FIX_KINDS`; empty: certain).
@@ -80,7 +81,8 @@ def _callees(tree: ast.AST) -> tuple[frozenset[str], frozenset[str]]:
     node: ast.AST
     name: str
     attr: str
-    for node in ast.walk(tree):
+    # A module's whole walk is shared (`nodes`); a function's is its own, read once.
+    for node in nodes(tree) if isinstance(tree, ast.Module) else ast.walk(tree):
         match node:
             case ast.Call(func=ast.Name(id=name)):
                 names.add(name)
@@ -146,7 +148,7 @@ def _classes(tree: ast.Module) -> tuple[ast.ClassDef, ...]:
       Them.
 
     """
-    return tuple(node for node in ast.walk(tree) if isinstance(node, ast.ClassDef))
+    return tuple(node for node in nodes(tree) if isinstance(node, ast.ClassDef))
 
 
 @lru_cache(maxsize=4096)  # asked of the same functions once per round
@@ -160,15 +162,15 @@ def _generator(func: ast.FunctionDef) -> bool:
     return any(isinstance(node, ast.Yield | ast.YieldFrom) for node in _own(func.body))
 
 
-def _own(nodes: Sequence[ast.AST]) -> Iterator[ast.AST]:
-    """Walk `nodes` without entering a nested function, lambda or class.
+def _own(found: Sequence[ast.AST]) -> Iterator[ast.AST]:
+    """Walk `found` without entering a nested function, lambda or class.
 
     Yields:
       Each node.
 
     """
     node: ast.AST
-    for node in nodes:
+    for node in found:
         yield node
         if not isinstance(node, _SCOPES):
             yield from _own(list(ast.iter_child_nodes(node)))
