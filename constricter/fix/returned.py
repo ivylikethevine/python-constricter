@@ -17,7 +17,7 @@ from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.inference import ASSIGNED
 from constricter.fix.known import Inference, Returned
-from constricter.rules.syntax import FunctionDef
+from constricter.rules.syntax import FunctionDef, own_nodes
 from constricter.rules.walked import classes, of_type
 
 # A `return` statement as the checker saw it: its value's inference (`None`: none, or unknown), and
@@ -40,7 +40,6 @@ _Listed: TypeAlias = list[tuple[_Start, str]]  # attributes used, each where it 
 _Named: TypeAlias = tuple[dict[str, list[FunctionDef]], dict[str, list[FunctionDef]]]
 # One function to put in call order, and its callees still to put in before it.
 _Visit: TypeAlias = tuple[FunctionDef, Iterator[FunctionDef]]
-_SCOPES: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
 
 
 def returned(
@@ -70,7 +69,7 @@ def returned(
             guesses[name] = origins
     attributes: dict[str, dict[str, str]] = {}
     node: ast.ClassDef
-    for node in _classes(tree):
+    for node in classes(tree):
         for name, annotation, origins in _typed(node.body, recorded):
             methods.setdefault(node.name, {})[name] = annotation
             if origins:
@@ -92,7 +91,7 @@ def _class_names(tree: ast.Module) -> Mapping[str, int]:
     """
     counts: dict[str, int] = {}
     node: ast.ClassDef
-    for node in _classes(tree):
+    for node in classes(tree):
         counts[node.name] = counts.get(node.name, 0) + 1
     return counts
 
@@ -162,7 +161,7 @@ def _owners(module: ast.Module) -> dict[int, ast.ClassDef]:
       Each one's class.
 
     """
-    return {id(method): node for node in _classes(module) for method in _methods(node)}
+    return {id(method): node for node in classes(module) for method in _methods(node)}
 
 
 @lru_cache(maxsize=1024)  # asked of the same classes once per round
@@ -315,25 +314,32 @@ class Slot(NamedTuple):
 def slots(module: ast.Module) -> dict[int, Slot]:
     """Find the functions whose `return`s can type their calls: plain, directly in the module or a class.
 
-    As `_typed` finds them: a `def` (not `async`) whose name nothing else in the same body defines.
+    As `_typed` finds them (see `_plain`).
 
     Returns:
       Each one's slot, by the function's `id()`.
 
     """
-    found: dict[int, Slot] = {}
-    owner: str | None
-    body: list[ast.stmt]
-    for owner, body in ((None, module.body), *((node.name, node.body) for node in classes(module))):
-        counts: dict[str, int] = {}
-        stmt: ast.stmt
-        for stmt in body:
-            if isinstance(stmt, _FUNCTIONS):
-                counts[stmt.name] = counts.get(stmt.name, 0) + 1
-        for stmt in body:
-            if isinstance(stmt, ast.FunctionDef) and counts[stmt.name] == 1:
-                found[id(stmt)] = Slot(owner, stmt.name)
-    return found
+    return {
+        id(func): Slot(owner, func.name)
+        for owner, body in ((None, module.body), *((node.name, node.body) for node in classes(module)))
+        for func in _plain(body)
+    }
+
+
+def _plain(body: Sequence[ast.stmt]) -> list[ast.FunctionDef]:
+    """Find the plain functions directly in `body`: a `def` (not `async`) no other there shares a name with.
+
+    Returns:
+      Them, in source order.
+
+    """
+    counts: dict[str, int] = {}
+    stmt: ast.stmt
+    for stmt in body:
+        if isinstance(stmt, _FUNCTIONS):
+            counts[stmt.name] = counts.get(stmt.name, 0) + 1
+    return [stmt for stmt in body if isinstance(stmt, ast.FunctionDef) and counts[stmt.name] == 1]
 
 
 def in_call_order(module: ast.Module, functions: Sequence[FunctionDef]) -> list[FunctionDef]:
@@ -524,19 +530,11 @@ def _typed(
       Each one's name, return type, and what that rests on if it's a guess.
 
     """
-    counts: dict[str, int] = {}
-    stmt: ast.stmt
-    for stmt in body:
-        if isinstance(stmt, _FUNCTIONS):
-            counts[stmt.name] = counts.get(stmt.name, 0) + 1
-    for stmt in body:
+    func: ast.FunctionDef
+    for func in _plain(body):
         found: tuple[str, frozenset[str]] | None
-        if (
-            isinstance(stmt, ast.FunctionDef)
-            and counts[stmt.name] == 1
-            and (found := _return_type(stmt, recorded.get(id(stmt), ()))) is not None
-        ):
-            yield stmt.name, *found
+        if (found := _return_type(func, recorded.get(id(func), ()))) is not None:
+            yield func.name, *found
 
 
 def _return_type(func: ast.FunctionDef, returns: Sequence[Recorded]) -> tuple[str, frozenset[str]] | None:
@@ -561,17 +559,6 @@ def _return_type(func: ast.FunctionDef, returns: Sequence[Recorded]) -> tuple[st
     return None if found is None else (found, frozenset[str]().union(*(origins for _, origins in returns)))
 
 
-@lru_cache(maxsize=16)  # read once per round, of the same module
-def _classes(tree: ast.Module) -> tuple[ast.ClassDef, ...]:
-    """Find every class the module defines, however deep.
-
-    Returns:
-      Them.
-
-    """
-    return tuple(classes(tree))
-
-
 @lru_cache(maxsize=4096)  # asked of the same functions once per round
 def _generator(func: ast.FunctionDef) -> bool:
     """Check whether `func` is a generator: a `yield` in its own body (not a nested function's).
@@ -580,21 +567,7 @@ def _generator(func: ast.FunctionDef) -> bool:
       Whether it is.
 
     """
-    return any(isinstance(node, ast.Yield | ast.YieldFrom) for node in _own(func.body))
-
-
-def _own(found: Sequence[ast.AST]) -> Iterator[ast.AST]:
-    """Walk `found` without entering a nested function, lambda or class.
-
-    Yields:
-      Each node.
-
-    """
-    node: ast.AST
-    for node in found:
-        yield node
-        if not isinstance(node, _SCOPES):
-            yield from _own(list(ast.iter_child_nodes(node)))
+    return any(isinstance(node, ast.Yield | ast.YieldFrom) for node in own_nodes(func.body))
 
 
 def terminates(body: Sequence[ast.stmt]) -> bool:

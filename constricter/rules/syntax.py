@@ -3,7 +3,7 @@
 
 import ast
 import re
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from typing import Final, TypeAlias
 
 from constricter.offences import at
@@ -19,6 +19,8 @@ FUNCTION_DEFS: tuple[type[ast.FunctionDef], type[ast.AsyncFunctionDef]] = (
 )
 # Statements whose nested statements may not all run (or not only once).
 BRANCHING: Final = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.TryStar, ast.Match)
+# The nodes with a scope of their own: what's inside one isn't the enclosing function's.
+NESTED_SCOPES: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
 _FUTURE: Final = "__future__"
 # `from __future__` features only code that also runs on Python 2 imports: its type comments count.
 _PYTHON2_FUTURES: frozenset[str] = frozenset(
@@ -92,6 +94,55 @@ def _direct_methods(body: list[ast.stmt], into: list[FunctionDef]) -> None:
             into.append(stmt)
         elif not isinstance(stmt, ast.ClassDef):
             _direct_methods(child_statements(stmt), into)
+
+
+def import_bindings(body: Iterable[ast.stmt]) -> Iterator[tuple[str, str, str]]:
+    """Walk the absolute imports among `body`, and what each name they bind is.
+
+    `import os` binds `os` to `os` (and `import os.path` binds `os` too); `import os.path as p`
+    binds `p` to `os.path`; `from os import getpid as pid` binds `pid` to `os.getpid`. A relative
+    import names no module here.
+
+    Yields:
+      Each bound name, its dotted origin, and the module it comes from: an `import`'s top-level
+      package, a `from` import's module.
+
+    """
+    stmt: ast.stmt
+    module: str
+    alias: ast.alias
+    for stmt in body:
+        match stmt:
+            case ast.Import():
+                for alias in stmt.names:
+                    top: str = alias.name.split(".", 1)[0]
+                    yield alias.asname or top, alias.name if alias.asname else top, top
+            case ast.ImportFrom(module=str() as module, level=0):
+                for alias in stmt.names:
+                    yield alias.asname or alias.name, f"{module}.{alias.name}", module
+            case _:
+                pass
+
+
+def own_nodes(found: Sequence[ast.AST], parents: dict[int, ast.AST] | None = None) -> Iterator[ast.AST]:
+    """Walk `found`, depth first in source order, without entering a nested function, lambda or class.
+
+    `parents`, if given, records each node's parent (by `id()`) before the node is yielded.
+
+    Yields:
+      Each node, a nested scope's own too (but not what's inside it).
+
+    """
+    # A stack, not a recursion: a nested generator passes each node up through every level above it.
+    waiting: list[ast.AST | None] = [None, *reversed(found)]  # `None` at its bottom ends it
+    node: ast.AST
+    for node in iter(waiting.pop, None):
+        yield node
+        if not isinstance(node, NESTED_SCOPES):
+            children: list[ast.AST] = list(ast.iter_child_nodes(node))
+            if parents is not None:
+                parents.update((id(child), node) for child in children)
+            waiting.extend(reversed(children))
 
 
 def child_statements(stmt: ast.stmt) -> list[ast.stmt]:

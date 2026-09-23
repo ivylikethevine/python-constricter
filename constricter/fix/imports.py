@@ -7,6 +7,7 @@ from functools import lru_cache
 from typing import Final
 
 from constricter.fix.known import ImportPlan
+from constricter.rules.syntax import import_bindings
 from constricter.rules.walked import of_type
 
 _TYPE_CHECKING: Final = "TYPE_CHECKING"
@@ -45,22 +46,7 @@ def _bound(tree: ast.Module) -> dict[str, str]:
       `os.path` for `import os.path as p`, `io.BytesIO` for `from io import BytesIO`.
 
     """
-    found: dict[str, str] = {}
-    stmt: ast.stmt
-    module: str
-    alias: ast.alias
-    for stmt in _running(tree.body):
-        match stmt:
-            case ast.Import():
-                for alias in stmt.names:
-                    found[alias.asname or alias.name.split(".", 1)[0]] = (
-                        alias.name if alias.asname else alias.name.split(".", 1)[0]
-                    )
-            case ast.ImportFrom(module=str() as module, level=0):
-                found.update((alias.asname or alias.name, f"{module}.{alias.name}") for alias in stmt.names)
-            case _:
-                pass
-    return found
+    return {name: origin for name, origin, _ in import_bindings(_running(tree.body))}
 
 
 def _defined(tree: ast.Module) -> dict[str, int]:
