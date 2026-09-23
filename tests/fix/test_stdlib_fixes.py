@@ -16,6 +16,7 @@ from constricter.fix.known import ImportPlan, Inference, Known, LibraryNames
 
 UNANNOTATED: Final = "LVA001"
 PYPY: Final = "pypy"
+LINUX: Final = "linux"
 SOURCE: Final = """
 import os
 import os.path as osp
@@ -75,14 +76,18 @@ def test_a_table_function_is_typed_however_it_is_imported() -> None:
 
 @pytest.mark.parametrize("name", sorted(stdlib.KNOWN))
 def test_every_table_function_exists(name: str) -> None:
-    """Each table entry names a real standard-library function, on every platform CI runs.
+    """Each table entry names a real standard-library function, as Linux CPython has it.
 
-    PyPy lacks some of CPython's own (`tracemalloc`, `gc.get_count`): typed for CPython, where
-    they're there, they're skipped on PyPy when they aren't.
+    The tables are what each minor release's latest patch release has, on every platform typeshed
+    covers. CI's Linux jobs run those patch releases, so they must have every entry. Elsewhere an
+    entry may be missing, and is skipped: PyPy lacks some of CPython's own (`tracemalloc`,
+    `gc.get_count`), Windows has no `curses`, and macOS and Windows stop at the last patch release
+    with an installer (3.11.9, 3.12.10), before security releases' additions like
+    `tarfile.LinkFallbackError`. What's there must still be callable.
     """
     found: bool | None = _callable(name)
-    if found is None and sys.implementation.name == PYPY:
-        pytest.skip("CPython's own")
+    if found is None and (sys.implementation.name == PYPY or sys.platform != LINUX):
+        pytest.skip("not in this platform's build")
     assert found
 
 
