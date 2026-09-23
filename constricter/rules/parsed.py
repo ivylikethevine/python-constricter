@@ -76,7 +76,7 @@ def keep(source: str, kept: Kept) -> None:
         _KEPT.left -= len(source)
 
 
-def take(source: str) -> Kept | None:
+def take(source: str) -> "Kept | None":
     """Take the tree and tables kept for `source`, freeing them (two files alike in every byte share them).
 
     Only for exactly the text they were read from: a file `--fix` has changed since is parsed again.
