@@ -207,7 +207,7 @@ def comment_type(comment: str) -> str | None:
       It, or `None` if it doesn't parse as one.
 
     """
-    text: str = comment.split("#", 1)[0].strip()  # a comment after it (`# noqa`) isn't part of it
+    text: str = comment.split("#", 1)[0].strip()  # a trailing comment (a noqa one, say) isn't part of it
     try:
         parsed: ast.expr = ast.parse(text, mode="eval").body
     except SyntaxError:

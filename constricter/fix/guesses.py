@@ -3,6 +3,7 @@
 
 import ast
 from collections.abc import Iterator, Mapping
+from typing import Final
 
 from constricter.fix import stdlib
 from constricter.fix.inference import (
@@ -11,6 +12,7 @@ from constricter.fix.inference import (
     RETURNED,
     dict_view,
     library_class,
+    literal_method,
     targets_typed,
     typed_method,
 )
@@ -19,6 +21,9 @@ from constricter.fix.opened import opened
 from constricter.fix.returns import BUILTIN_RETURNS
 from constricter.fix.targets import DICT_VIEWS, ITERATORS
 from constricter.offences import CONSTRUCTOR
+
+# Builtins whose call is certain (when the module doesn't rebind the name): see `_is_guess`.
+_CERTAIN_BUILTINS: Final = frozenset(BUILTIN_RETURNS.keys() | CONTAINER_BUILDERS.keys() | ITERATORS)
 
 
 def guessed(
@@ -162,9 +167,7 @@ def _is_guess(
     owner: ast.Name
     match node:
         case ast.Call(func=ast.Name(id=name)) if (
-            name in BUILTIN_RETURNS
-            or name in CONTAINER_BUILDERS
-            or name in ITERATORS
+            (name in _CERTAIN_BUILTINS and known.is_builtin(name))
             or name in known.awaits
             or (name in known.returned.calls and name not in known.returned.guesses)
         ):
@@ -173,6 +176,7 @@ def _is_guess(
             ast.unparse(func) in known.names.casts
             or stdlib.resolved(func, known.names.stdlib) in stdlib.KNOWN
             or opened(node, known) is not None
+            or literal_method(node) is not None
         ):
             return False
         case ast.Call(func=ast.Attribute(value=ast.Name(id=receiver) as owner, attr=method)) as call if (

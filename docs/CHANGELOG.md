@@ -6,6 +6,10 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types more builtins' calls (`any`, `all`, `ascii`, `bin`, `bytearray`, `dir`, `format`,
+  `hex`, `input`, `oct`, `range`), `str`/`bytes` methods on a literal (`", ".join(parts)`), and
+  `partition`/`rpartition`. A builtin's name the module binds itself (a parameter named `repr`, a
+  local `sorted`) is no longer taken for the builtin: `def f(repr): a = repr(1)` gave `a: str`.
 - Faster checking (the standard library's, profiled, 63s to 52s): a module's functions are checked
   callees first, so few are checked again for a callee's return type; each file is parsed once, the
   cross-file index's tree kept for its check in the same worker; and the shared walk reads only each

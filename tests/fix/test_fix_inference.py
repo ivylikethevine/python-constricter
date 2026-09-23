@@ -32,6 +32,17 @@ ANY_LENGTH: Final = "tuple[int, ...]"
         ("ast.Name('x')", "ast.Name"),
         ("len([1])", "int"),
         ("isinstance(1, int)", "bool"),
+        ("any([1])", "bool"),
+        ("hex(1)", "str"),
+        ("dir()", "list[str]"),
+        ("range(3)", "range"),
+        ("bytearray(2)", "bytearray"),
+        ("', '.join([])", "str"),
+        ("b''.join([])", "bytes"),
+        ("f'{0}'.upper()", "str"),
+        ("'a=b'.partition('=')", "tuple[str, str, str]"),
+        ("b'a'.rpartition(b'=')", "tuple[bytes, bytes, bytes]"),
+        ("(1).bit_length()", None),
         ("TypeVar('T')", None),
         ("Counter()", None),
         ("path()", None),
@@ -334,3 +345,34 @@ def test_a_long_tuple_display_is_typed_by_its_element() -> None:
         o.name: o.fix for o in check_source(source, checks=Checks(max_length=2))
     }
     assert shorter["a"] == ANY_LENGTH
+
+
+def test_a_builtin_the_module_rebinds_is_not_typed_as_the_builtin() -> None:
+    """A parameter, local or definition named like a builtin means that, not the builtin, anywhere."""
+    source: str = textwrap.dedent(
+        """\
+        def f(format, sorted):
+            a = format(1)
+            b = sorted([1])
+            for c in sorted([1]):
+                pass
+            d = len([])
+        def g():
+            e = format(2)
+        """,
+    )
+    offences: list[Offence] = check_source(source)
+    assert [(o.name, o.fix) for o in offences] == [
+        ("a", None),
+        ("b", None),
+        ("c", None),
+        ("d", "int"),
+        ("e", None),
+    ]
+
+
+def test_a_fixed_return_method_on_a_literal_is_certain() -> None:
+    """`", ".join(xs)` is a `str` whatever `xs` is, but `"{}".format(Box())` rests on the guess."""
+    source: str = "def f(xs: list[str]) -> None:\n  a = ', '.join(xs)\n  b = '{}'.format(Box())\n"
+    offences: list[Offence] = check_source(source)
+    assert [(o.name, o.fix, o.unsafe) for o in offences] == [("a", "str", False), ("b", "str", True)]

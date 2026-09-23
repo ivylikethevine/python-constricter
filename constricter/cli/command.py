@@ -206,8 +206,8 @@ class _CoverageRun:
 _FileRun: TypeAlias = _CheckRun | _BaselineRun | _CoverageRun
 _Check: TypeAlias = Callable[[Path, Outside], _FileRun]  # check (or count, or baseline) one file
 # A worker's answers, one per file of its share: what it read (to index), and what it found.
-_Reading: TypeAlias = "Future[list[project.Module | None]]"
-_Checking: TypeAlias = "Future[list[_FileRun]]"
+_Reading: TypeAlias = Future[list[project.Module | None]]
+_Checking: TypeAlias = Future[list[_FileRun]]
 HINT_ROUNDS: Final = 4  # with `--fix --infer-with`: how many times each file is fixed, at most
 
 

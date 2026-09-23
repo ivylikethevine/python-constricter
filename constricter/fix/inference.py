@@ -237,8 +237,41 @@ def _from_value(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
         or library_class(value, known)
         or _library(value, known, declared)
         or _returns(value, known)
-        or _called(value, known.calls, known.factories)
+        or _called(value, known)
+        or _literal_method(value)
     )
+
+
+def literal_method(call: ast.expr) -> str | None:
+    """Look up the type of a fixed-return method called on a literal: `", ".join(parts)` is a `str`.
+
+    Returns:
+      The annotation as source text, or `None` if `call` isn't one.
+
+    """
+    receiver: ast.expr
+    method: str
+    match call:
+        case ast.Call(func=ast.Attribute(value=receiver, attr=method)):
+            return METHOD_RETURNS.get(_scalar(receiver) or "", {}).get(method)
+        case _:
+            return None
+
+
+def _literal_method(value: ast.expr) -> Inference | None:
+    """Infer a fixed-return method called on a literal (see `literal_method`).
+
+    Returns:
+      The inference, or `None`.
+
+    """
+    func: ast.expr
+    found: str | None
+    match value:
+        case ast.Call(func=func) if (found := literal_method(value)) is not None:
+            return Inference(found, f"`{ast.unparse(func)}`'s fixed return type", frozenset({"method"}))
+        case _:
+            return None
 
 
 def _returns(value: ast.expr, known: Known) -> Inference | None:
@@ -375,7 +408,9 @@ def _computed(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
             return _arithmetic(value, known, declared)
         case ast.ListComp() | ast.SetComp() | ast.DictComp():
             return _comprehension(value, known, declared)
-        case ast.Call(func=ast.Name(id=name), args=[first], keywords=[]) if name in CONTAINER_BUILDERS:
+        case ast.Call(func=ast.Name(id=name), args=[first], keywords=[]) if (
+            name in CONTAINER_BUILDERS and known.is_builtin(name)
+        ):
             found: Inference | None = looped(first, known, declared)
             built: str = CONTAINER_BUILDERS[name]
             return (
@@ -655,21 +690,21 @@ def _subscripted(container: str, node: ast.Subscript) -> str | None:
             return None
 
 
-def _called(value: ast.expr, calls: Mapping[str, str], known_factories: frozenset[str]) -> Inference | None:
+def _called(value: ast.expr, known: Known) -> Inference | None:
     func: ast.expr
     name: str
     match value:
-        case ast.Call(func=ast.Name() | ast.Attribute() as func) if ast.unparse(func) in calls:
+        case ast.Call(func=ast.Name() | ast.Attribute() as func) if ast.unparse(func) in known.calls:
             return Inference(
-                calls[ast.unparse(func)],
+                known.calls[ast.unparse(func)],
                 f"`{ast.unparse(func)}`'s declared return type",
                 frozenset({"call"}),
             )
-        case ast.Call(func=ast.Name(id=name)) if name in BUILTIN_RETURNS:
+        case ast.Call(func=ast.Name(id=name)) if name in BUILTIN_RETURNS and known.is_builtin(name):
             return Inference(BUILTIN_RETURNS[name], f"`{name}`'s fixed return type", frozenset({"builtin"}))
         case ast.Call(func=ast.Name() | ast.Attribute() as func) if constructs(
             node_name(func),
-            known_factories,
+            known.factories,
         ):
             return Inference(
                 ast.unparse(func),
@@ -711,7 +746,9 @@ def looped(iterable: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
     view: str
     receiver: ast.expr
     match iterable:
-        case ast.Call(func=ast.Name(id=name), args=args, keywords=[]) if name in ITERATORS and args:
+        case ast.Call(func=ast.Name(id=name), args=args, keywords=[]) if (
+            name in ITERATORS and args and known.is_builtin(name)
+        ):
             return _iterator(name, args, known, declared)
         case ast.Call(func=ast.Attribute(value=receiver, attr=view), args=[]) if view in DICT_VIEWS:
             return dict_view(receiver, view, known, declared)

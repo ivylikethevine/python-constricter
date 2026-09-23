@@ -13,6 +13,11 @@ in a function or module body:
   `None`, `Any` or one that uses a `TypeVar`), in the same module or, with the CLI, in another file
   it's checking: `from pkg.util import f`, `import pkg.util as u` then `u.f()`, relative imports and
   re-exports all work, as long as every name in the type already means the same thing in the file;
+- a builtin with a fixed result: `len(x)` is an `int`, `hex(n)` a `str`, `any(xs)` a `bool`, `dir()`
+  a `list[str]`, `range(n)` a `range`, and so on; but not where the module binds the name itself (a
+  parameter named `format`, a local `input`, its own `def dir()`), anywhere in it;
+- a fixed-return `str`/`bytes` method on a literal: `", ".join(parts)` is a `str`,
+  `"k=v".partition("=")` a `tuple[str, str, str]`;
 - a local whose type is already known (annotated, a parameter, or fixed earlier in the same scope):
   a plain copy (`y = x`), a subscript (`nums[0]`), an attribute (an annotated one, or a `@property`
   declaring its return) or method call of a class defined in the same module (`p.x`, `p.norm()`), a
@@ -152,7 +157,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `copy`          | a copy of a local whose type is known                                               |
 | `subscript`     | a subscript of a known container                                                    |
 | `attribute`     | an attribute of a class the module defines                                          |
-| `method`        | a method with a fixed or declared return type, on a known local                     |
+| `method`        | a method with a fixed or declared return type, on a known local or a literal        |
 | `builtin`       | a builtin with a fixed return type (`len`, `str`, ...)                              |
 | `call`          | a function that declares its return type (this module's, or another checked file's) |
 | `constructor`   | a call to a capitalised name, taken to construct one (a guess)                      |

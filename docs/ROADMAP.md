@@ -40,6 +40,10 @@
   11.5s before.
 - **Fix levels**: every mechanism has a stable id, shown by `--show-fixes` and in JSON;
   `fix-select`, `fix-ignore` and `unsafe-fix-select` choose which apply. Never changes a report.
+- **More fixed-return builtins, and methods on literals**: `any`, `hex`, `dir`, `range`, `bytearray`
+  and the rest with a fixed result, `str`/`bytes` methods on a literal (`", ".join(parts)`) and
+  `partition`; and a builtin's name the module rebinds (a parameter named `format`) is no longer
+  taken for the builtin. Not `slice` or `memoryview`, generic in recent typeshed.
 - **Fixes for LVA003** (the loop's `# type:` comment becomes a declaration) and **LVA007** (the
   repeat's annotation is dropped).
 - **Type-checker-backed inference** (`--infer-with basedpyright,ty`): the checkers' language
@@ -148,15 +152,7 @@ it's done.
 
 ### Small: a day or less
 
-1. **More fixed-return builtins, and methods on literals.** `", ".join(x)`, `"{}".format(x)` and
-   `b"".join(...)` are untyped: `_from_local` takes a method's receiver only as a local name. Type a
-   literal receiver by its literal (`str`, `bytes`, ...), and add the builtins with a fixed result
-   to `BUILTIN_RETURNS`: `bytearray()`, `range()`, `slice()`, `any`/`all` (`bool`), `dir()`
-   (`list[str]`), `input()`, `format`/`hex`/`ascii` (`str`), and `str.partition`
-   (`tuple[str, str, str]`). Not `memoryview`, generic in recent typeshed. Measured: about 1,640
-   bindings directly, 2,300 with what they type in turn, mostly certain (264 in annotated code).
-   Done when they're typed, and every corpus still converges with nothing broken.
-2. **Loop targets from `enumerate` and `zip`, one part at a time.** `for i, x in enumerate(xs)`
+1. **Loop targets from `enumerate` and `zip`, one part at a time.** `for i, x in enumerate(xs)`
    types nothing when `xs`'s element type is unknown, though `i` is always `int`; and `zip`'s parts
    are typed only all together. Type each part that's known on its own, and accept the keywords that
    don't change the parts (`strict=`, `start=`; today's `keywords=[]` patterns reject them). An

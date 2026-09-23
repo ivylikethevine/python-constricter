@@ -139,6 +139,15 @@ class Known:
     max_length: int = MAX_LENGTH  # the longest tuple display typed element by element (LVA011's)
     returned: Returned = field(default_factory=Returned)
 
+    def is_builtin(self, name: str) -> bool:
+        """Check that `name` still means the builtin: nothing in the module binds it (a parameter, say).
+
+        Returns:
+          Whether it does; with no import plan (a module not read for one), whether it's a builtin.
+
+        """
+        return name in _BUILTINS and (self.names.plan is None or name not in self.names.plan.taken)
+
 
 class Hints(NamedTuple):
     """A type checker's inlay hints for one file (`--infer-with`): which checker, and each type.
