@@ -73,6 +73,12 @@ level, fixes, guesses, anything a fix broke, and the share of bindings typed bef
 (by this checkout's `--coverage`). It needs the `corpus` group
 (`uv sync --group dev --group corpus`) and `uv`; see its docstring for the options.
 
+`local/.venv/bin/python -m tests.corpus.corpus_untyped` counts what `--fix` still can't type on the
+same corpora, and why: each untyped binding by the statement that binds it and the shape of its
+value, in annotated functions or not, and each call through an import by where it comes from. It
+prints the tables [ROADMAP.md](ROADMAP.md) sizes its items by; `--rows FILE` also writes every
+binding, as JSON lines.
+
 CI also runs the tests on PyPy 3.11 and free-threaded Python 3.14, which install only the `test`
 dependency group: every dev tool doesn't have wheels for them, and the tests don't need them all.
 

@@ -116,6 +116,8 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 # `--infer-with`'s tests start its guard and a fake server, and a constricter to kill.
 "tests/cli/test_hints.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 "tests/corpus/corpus_suite.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
+# The census of what `--fix` can't type runs this checkout's constricter on each corpus.
+"tests/corpus/corpus_untyped.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The local CI runner runs the workflow's own steps (and git) as subprocesses.
 "tests/ci_local.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
 # `--infer-with` starts the type checker's language server, from a fixed table of commands.

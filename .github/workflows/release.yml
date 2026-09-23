@@ -69,8 +69,10 @@ jobs:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: block
-          # The artifact download, then `gh release create` and its asset uploads.
+          # The README's checkout, the artifact download, then `gh release create` and its asset
+          # uploads.
           allowed-endpoints: >
+            github.com:443
             api.github.com:443
             uploads.github.com:443
             *.actions.githubusercontent.com:443
@@ -79,9 +81,26 @@ jobs:
           pattern: "{dist,attestation}"
           path: assets
           merge-multiple: true
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: README.md
+          sparse-checkout-cone-mode: false
+      # The README's badges head the release page, above the generated notes: the block of them
+      # under its title, each relative link (a file, or a heading's #anchor) made absolute at this
+      # tag, since a release page resolves none.
+      - name: Take the README's badges
+        run: |
+          awk '/^\[!\[/ { print; seen = 1; next } seen { exit }' README.md | sed -E \
+            -e "s#\]\(\#([^)]*)\)#](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/README.md\#\1)#g" \
+            -e "s#\]\(([^):\#][^):]*)\)#](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/\1)#g" \
+            > badges.md
+          test -s badges.md
+      # Notes passed with --generate-notes go above the generated ones.
       - name: Create the release from the tag
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release create "$GITHUB_REF_NAME" assets/*
-          --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+          --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes-file badges.md --generate-notes
+          --verify-tag

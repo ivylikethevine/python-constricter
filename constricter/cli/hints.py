@@ -30,11 +30,11 @@ from functools import partial
 from pathlib import Path
 from typing import IO, Final, NamedTuple, Self, TypeAlias, cast
 
-from constricter.cli import guard
+from constricter.cli import guard, protocol
 from constricter.fix.known import Hints
 
-_Json: TypeAlias = dict[str, "_Json"] | list["_Json"] | str | int | float | bool | None
-_Object: TypeAlias = dict[str, _Json]
+_Json: TypeAlias = protocol.Json
+_Object: TypeAlias = protocol.Object
 _FileHints: TypeAlias = dict[tuple[int, int], str]  # a file's hints' texts, by where each name ends
 _Found: TypeAlias = dict[Path, _FileHints]  # each file's
 _Task: TypeAlias = Callable[[], _Found]  # one server's work: the hints of each file it's asked about
@@ -74,27 +74,14 @@ _POLL: Final = 1.0  # seconds between looks at how long it's been silent, while 
 _GUARD_PYTHON: Final = str(getattr(sys, "_base_executable", "") or sys.executable)
 _SILENCE: Final[_Object] = {}  # no message yet, while waiting for one (compared by identity)
 _LINE_BREAK: Final = re.compile(r"\r\n|\r|\n")  # the lines positions count, as the protocol has them
-_HEADER_END: Final = b"\r\n"
-_LENGTH: Final = "content-length"
 _UTF16: Final = "utf-16"
 _UTF8: Final = "utf-8"
-_TYPE_HINT: Final = 1  # `InlayHintKind.Type`
 _METHOD_NOT_FOUND: Final = -32601
 _ID: Final = "id"
 _METHOD: Final = "method"
 _ERROR: Final = "error"
 _CONFIGURATION: Final = "workspace/configuration"
 _UTF16_UNITS: Final = "utf-16-le"  # UTF-16's code units, two bytes each, without a byte-order mark
-# Only variable types: argument names and return types are hints too, but nothing here.
-_BASEDPYRIGHT_SECTION: Final = "basedpyright.analysis"
-_BASEDPYRIGHT: Final[_Object] = {
-    "inlayHints": {
-        "variableTypes": True,
-        "callArgumentNames": False,
-        "functionReturnTypes": False,
-        "genericTypes": False,
-    },
-}
 
 
 @dataclass
@@ -542,7 +529,7 @@ class Connection:
         for hint in cast("list[_Json]", answer or []):
             where: tuple[int, int] | None
             label: str | None
-            if (label := _label(cast("_Object", hint))) is not None and (
+            if (label := protocol.label(cast("_Object", hint))) is not None and (
                 where := self._where(cast("_Object", cast("_Object", hint)["position"]), lines)
             ) is not None:
                 _ = found.setdefault(where, label)
@@ -683,8 +670,9 @@ class Connection:
         reads anything more, while a batch of requests is still being written to it. The rest are
         queued for the requests waiting on them.
         """
+        stdout: IO[bytes] = cast("IO[bytes]", self.process.stdout)
         message: _Object
-        for message in iter(partial(_message, cast("IO[bytes]", self.process.stdout)), None):
+        for message in iter(partial(protocol.message, stdout), None):
             self.inbox.heard = time.monotonic()  # a word, of any kind: it's working
             if _METHOD in message and _ID in message:
                 with contextlib.suppress(HintError):  # it has gone: its output ends next
@@ -699,7 +687,7 @@ class Connection:
         reply: _Object = {"jsonrpc": "2.0", _ID: message[_ID]}
         if method == _CONFIGURATION:
             items: list[_Json] = cast("list[_Json]", cast("_Object", message["params"])["items"])
-            reply["result"] = [_settings(cast("_Object", item).get("section")) for item in items]
+            reply["result"] = [protocol.settings(cast("_Object", item).get("section")) for item in items]
         elif method in {"client/registerCapability", "window/workDoneProgress/create"}:
             reply["result"] = None
         else:
@@ -720,70 +708,10 @@ class Connection:
         body: bytes = json.dumps(message).encode()
         with self.writing:  # one message at a time: the reader answers the server's own meanwhile
             try:
-                _write(
+                protocol.write(
                     cast("IO[bytes]", self.process.stdin),
                     f"Content-Length: {len(body)}\r\n\r\n".encode() + body,
                 )
             except OSError as error:
                 failure: str = f"{self.name} exited: {error}"
                 raise HintError(failure) from error
-
-
-def _write(stream: IO[bytes], data: bytes) -> None:
-    """Write `data` to `stream`, and flush it: the server reads it now."""
-    _ = stream.write(data)
-    stream.flush()
-
-
-def _settings(section: _Json) -> _Json:
-    """Answer a `workspace/configuration` item: only basedpyright's inlay hints are set.
-
-    Returns:
-      The section's settings, or `None` for the server's defaults.
-
-    """
-    return _BASEDPYRIGHT if section == _BASEDPYRIGHT_SECTION else None
-
-
-def _label(hint: _Object) -> str | None:
-    """Read a variable-type hint's type: its label (a string, or parts joined) after its `:`.
-
-    Returns:
-      The type's text, or `None` for any other hint (a parameter's name, a return type).
-
-    """
-    label: _Json = hint.get("label")
-    text: str = (
-        label
-        if isinstance(label, str)
-        else "".join(str(cast("_Object", part).get("value", "")) for part in cast("list[_Json]", label or []))
-    )
-    if hint.get("kind", _TYPE_HINT) != _TYPE_HINT or not text.startswith(":"):
-        return None
-    return text[1:].strip() or None
-
-
-def _message(stream: IO[bytes]) -> _Object | None:
-    """Read one framed message: headers, a blank line, then `Content-Length` bytes of JSON.
-
-    Returns:
-      It, or `None` at the end of the stream (or a frame without a length).
-
-    """
-    headers: dict[str, str] = {}
-    line: bytes
-    for line in iter(stream.readline, b""):
-        if line == _HEADER_END:
-            break
-        name: str
-        _separator: str
-        value: str
-        name, _separator, value = line.decode("ascii").partition(":")
-        headers[name.strip().lower()] = value.strip()
-    if _LENGTH not in headers:
-        return None
-    body: bytes = stream.read(int(headers[_LENGTH]))
-    try:
-        return cast("_Object", json.loads(body))
-    except ValueError:  # cut off: the server died in the middle of it
-        return None

@@ -6,6 +6,15 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A GitHub release page starts with the README's badges (their relative links made absolute at the
+  release's tag), above the generated notes.
+- CI skips a tree it already passed, byte for byte: the push to `main` after a pull request's merge,
+  and the release tag on it, reuse the pull request's run instead of running everything again.
+- `constricter.rules.binding` binds each statement's names (moved out of
+  `constricter.rules.checker`), and `constricter.cli.protocol` holds the language server wire format
+  `--infer-with` speaks (out of `constricter.cli.hints`): no module is over 750 lines.
+- `tests/corpus/corpus_untyped.py` (`python -m tests.corpus.corpus_untyped`) counts what `--fix`
+  still can't type on every corpus, and why, as the tables the roadmap is sized by.
 - `tests/corpus/corpus_table.py` also records each corpus's annotation coverage as released, after
   `--fix` and after `--fix --unsafe-fixes`, and how much each raised it; `docs/RUNS.md` keeps only
   the corpora measured today in every version's rows and totals.

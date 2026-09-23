@@ -7,34 +7,28 @@ from dataclasses import replace
 from functools import lru_cache
 from typing import Final, NamedTuple, cast
 
-from constricter.fix import hinted, imports, returned, stdlib
+from constricter.fix import imports, returned, stdlib
 from constricter.fix.doubts import Facts, passed
-from constricter.fix.inference import LoopPart, inference, looped, looped_parts
+from constricter.fix.inference import inference
 from constricter.fix.known import (
     Classes,
     ClassSide,
-    Inference,
     Known,
     LibraryNames,
     Outside,
     Returned,
 )
-from constricter.fix.opened import opened
-from constricter.fix.targets import iterated, unpacked
 from constricter.jsonc import as_text
 from constricter.offences import (
-    COMMENT_TYPED_TARGET,
     DEFAULT_CHECKS,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
     UNTYPED_TARGET,
     Checks,
-    Edit,
-    Fix,
     Offence,
     at,
 )
-from constricter.rules import parsed
+from constricter.rules import binding, parsed
 from constricter.rules.annotations import (
     awaited_returns,
     casts,
@@ -51,22 +45,19 @@ from constricter.rules.annotations import (
     self_returns,
 )
 from constricter.rules.annotations import classes as instance_attributes
-from constricter.rules.flow import Finding, Hierarchy, augmented
+from constricter.rules.flow import Finding, Hierarchy
 from constricter.rules.narrowing import flow_offences
 from constricter.rules.redundant import redundant
 from constricter.rules.scope import Kind, Late, Scope, Settings, certain_type, guesses_in
 from constricter.rules.syntax import (
     FUNCTION_DEFS,
     FunctionDef,
-    captures,
     child_statements,
     collect_functions,
-    comment_type,
     expressions,
     owners,
     python2_compatible,
     target_names,
-    type_comment_span,
 )
 from constricter.rules.walked import classes, of_type
 
@@ -74,7 +65,6 @@ from constricter.rules.walked import classes, of_type
 _TYPE_ALIAS: Final = "TypeAlias"
 _CLASSMETHOD: Final = "classmethod"
 _ROUNDS: Final = 5  # how many times to re-check what calls an unannotated function, at most
-_COMMENT: Final = "comment"  # the fix kind of LVA003's declaration
 # Enum members mustn't be annotated: a base imported from here is one, however it's aliased.
 _ENUM_MODULES: Final = frozenset({"enum"})
 # The conventional name of an instance method's first parameter: typed as its class, for `--fix`.
@@ -361,7 +351,7 @@ def _visit(scope: Scope, stmt: ast.stmt) -> None:
         for part in expressions(stmt):
             scope.walrus(part)
     _declare(scope, stmt)
-    _bind(scope, stmt)
+    binding.bind(scope, stmt)
     if isinstance(stmt, ast.Return):
         scope.inferred.returns.append(stmt.value)
     # A loop's body runs again and again (not its `else`), for LVA012.
@@ -533,223 +523,6 @@ def _recorded(scope: Scope, value: ast.expr | None) -> returned.Recorded:
     if value is None:
         return None, frozenset()
     return inference(value, scope.settings.known, scope.inferred.types), guesses_in(scope, [value])[1]
-
-
-def _bind(scope: Scope, stmt: ast.stmt) -> None:
-    """Bind the names `stmt` binds that need typing, reporting the untyped ones."""
-    targets: list[ast.expr]
-    target: ast.expr
-    items: list[ast.withitem]
-    comment: str | None
-    name: str
-    single: ast.Name
-    value: ast.expr
-    cases: list[ast.match_case]
-    op: ast.operator
-    match stmt:
-        case ast.Assign(targets=[ast.Name() as single], value=value, type_comment=comment):
-            scope.assign(single, scope.unannotated(comment), value)
-        case ast.Assign(targets=[ast.Tuple() | ast.List() as target], value=value, type_comment=comment):
-            typed: Inference | None = inference(value, scope.settings.known, scope.inferred.types)
-            _bind_declared(scope, stmt, target, typed, [value])
-        case ast.Assign(targets=targets, type_comment=comment):
-            _bind_targets(scope, targets, scope.unannotated(comment))
-        case ast.With(items=items, type_comment=comment) | ast.AsyncWith(items=items, type_comment=comment):
-            _bind_with(scope, stmt, items, scope.unannotated(comment))
-        case (
-            ast.For(target=target, iter=value, type_comment=None)
-            | ast.AsyncFor(
-                target=target,
-                iter=value,
-                type_comment=None,
-            )
-        ):
-            _bind_loop(scope, stmt, target, value)
-        case (
-            ast.For(target=target, type_comment=str() as comment)
-            | ast.AsyncFor(
-                target=target,
-                type_comment=str() as comment,
-            )
-        ):
-            _bind_commented(scope, stmt, target, comment)
-        case ast.Match(cases=cases):
-            _bind_captures(scope, cases)
-        case ast.AugAssign(target=ast.Name(id=name) as single, op=op, value=value):
-            own: str | None = None if name in scope.inferred.guesses else scope.inferred.types.get(name)
-            bound: str | None = augmented(op, certain_type(scope, value), own)
-            scope.lifetime(name).bind(at(single), bound)
-            scope.inferred.rebound(name, bound)
-        case _:
-            pass
-
-
-def _bind_loop(scope: Scope, stmt: ast.For | ast.AsyncFor, target: ast.expr, value: ast.expr) -> None:
-    """Bind a loop's target (see `_bind_declared`), over `enumerate` or `zip` one part at a time.
-
-    `for i, x in enumerate(xs)` declares `i: int` even when `xs`'s elements aren't known, and a
-    guess about them makes only `x`'s fix one.
-    """
-    parts: list[LoopPart] | None = looped_parts(
-        value,
-        scope.settings.known,
-        scope.inferred.types,
-    )
-    elements: list[ast.expr]
-    match target:
-        case ast.Tuple(elts=elements) | ast.List(elts=elements) if (
-            parts is not None
-            and len(elements) == len(parts)
-            and not any(isinstance(element, ast.Starred) for element in elements)
-        ):
-            element: ast.expr
-            typed: Inference | None
-            bases: list[ast.expr]
-            for element, (typed, bases) in zip(elements, parts, strict=True):
-                _bind_declared(scope, stmt, element, typed, bases)
-        case _:
-            _bind_declared(
-                scope,
-                stmt,
-                target,
-                looped(value, scope.settings.known, scope.inferred.types),
-                iterated(value),
-            )
-
-
-def _bind_declared(
-    scope: Scope,
-    stmt: ast.stmt,
-    target: ast.expr,
-    typed: Inference | None,
-    bases: list[ast.expr],
-) -> None:
-    """Bind each name in `target` (a loop's, or an unpacking's), offering to declare each before `stmt`.
-
-    `typed` is what the whole target gets (a loop's element, an unpacked value's type), split over
-    its names (see `unpacked`); a name whose part isn't known gets no fix. The fixes are guesses if
-    any of `bases`, the values `typed` came from, is. A loop's untyped target is LVA002, an
-    unpacking's LVA001 (or LVA004), unless a type comment types it.
-    """
-    unsafe: bool
-    origins: frozenset[str]
-    unsafe, origins = guesses_in(scope, bases)
-    # An unpacking's names are split from the value's type; a loop's are what it iterates (`loop`).
-    split: frozenset[str] = frozenset() if isinstance(stmt, ast.For | ast.AsyncFor) else frozenset({"unpack"})
-    code: str | None = (
-        UNTYPED_TARGET
-        if isinstance(stmt, ast.For | ast.AsyncFor)
-        else scope.unannotated(cast("ast.Assign", stmt).type_comment)
-    )
-    name: ast.Name
-    annotation: str | None
-    for name, annotation in unpacked(target, None if typed is None else typed.annotation):
-        part: Inference | None = (
-            None
-            if typed is None or annotation is None
-            else Inference(annotation, typed.reason, typed.kinds | split)
-        )
-        _bind_declaration(scope, stmt, name, code, (part, unsafe, origins))
-
-
-def _bind_declaration(
-    scope: Scope,
-    stmt: ast.stmt,
-    name: ast.Name,
-    code: str | None,
-    typed: tuple[Inference | None, bool, frozenset[str]],
-) -> None:
-    """Bind one name a statement binds, offering to declare it before `stmt` as `typed` has it.
-
-    `typed`: its inference (`None`: unknown, when the type checker's hint is asked), whether that's a
-    guess, and what the guess rests on.
-    """
-    found: Inference | None
-    unsafe: bool
-    origins: frozenset[str]
-    found, unsafe, origins = typed
-    if found is None and (found := scope.hint(name)) is not None:
-        unsafe, origins = True, frozenset({hinted.KIND})
-    fix: Fix | None = None
-    if found is not None:
-        fix = scope.offer(
-            found,
-            origins,
-            unsafe=unsafe,
-            edit=Edit.DECLARE,
-            span=(stmt.lineno, stmt.col_offset),
-        )
-        # What the rest of the scope infers from `name` knows its type, as for `name = value`.
-        scope.inferred.learn(name.id, found.annotation, origins if unsafe else None)
-    scope.bind(name.id, at(name), code, fix)
-
-
-def _bind_commented(scope: Scope, stmt: ast.For | ast.AsyncFor, target: ast.expr, comment: str) -> None:
-    """Bind a loop's target typed only by its `# type:` comment (LVA003), offering to declare it instead.
-
-    The comment's type (`int`, or `int, str` for a tuple target) is split over the target's names as
-    an unpacking's is; each is declared before the loop, and the comment dropped, since a type checker
-    would see the name declared twice. Only for a loop whose header is on one line, where the comment
-    is found after its iterable.
-    """
-    drop: tuple[int, int] | None = type_comment_span(scope.settings.lines, stmt)
-    annotation: str | None = comment_type(comment) if drop is not None else None
-    name: ast.Name
-    part: str | None
-    for name, part in unpacked(target, annotation):
-        fix: Fix | None = None
-        if part is not None and drop is not None:
-            fix = scope.offer(
-                Inference(part, "its `# type:` comment", frozenset({_COMMENT})),
-                frozenset(),
-                unsafe=False,
-                edit=Edit.DECLARE,
-                span=(stmt.lineno, stmt.col_offset),
-            )
-            fix = None if fix is None else fix._replace(drop=drop)
-        scope.bind(name.id, at(name), COMMENT_TYPED_TARGET, fix)
-
-
-def _bind_with(scope: Scope, stmt: ast.stmt, items: list[ast.withitem], code: str | None) -> None:
-    """Bind each `with` item's target, offering to declare `with open(path, mode) as f`'s `f` first.
-
-    The file object `open` gives is its context manager's own (`__enter__` returns `self`), typed by
-    its literal mode; any other item's names are bound untyped, as are an `async with`'s (a file
-    object isn't an asynchronous context manager).
-    """
-    item: ast.withitem
-    name: ast.Name
-    target: ast.expr
-    for item in items:
-        typed: Inference | None = (
-            opened(item.context_expr, scope.settings.known) if isinstance(stmt, ast.With) else None
-        )
-        match item.optional_vars:
-            case ast.Name() as name:
-                _bind_declaration(scope, stmt, name, code, (typed, False, frozenset()))
-            case None:
-                pass
-            case target:
-                _bind_targets(scope, [target], code)
-
-
-def _bind_targets(scope: Scope, targets: list[ast.expr], code: str | None) -> None:
-    """Bind every name in `targets`, reporting `code` for each first binding."""
-    target: ast.expr
-    name: ast.Name
-    for target in targets:
-        for name in target_names(target):
-            scope.bind(name.id, at(name), code)
-
-
-def _bind_captures(scope: Scope, cases: list[ast.match_case]) -> None:
-    """Bind every name the `case` patterns capture: LVA002 unless declared first."""
-    case: ast.match_case
-    name: str
-    where: tuple[int, int]
-    for case in cases:
-        for name, where in captures(case.pattern, scope.settings.lines):
-            scope.bind(name, where, UNTYPED_TARGET)
 
 
 def value_flow(
