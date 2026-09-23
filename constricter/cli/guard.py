@@ -21,10 +21,13 @@ import subprocess  # the language server
 import sys
 import threading
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import IO, Final, cast
 
 GRACE: Final = 5.0  # seconds a server has to exit once its input ends, by default
 _CHUNK: Final = 1 << 16
+# Windows' own `taskkill`, by its full path: never one earlier on `PATH`.
+_TASKKILL: Final = str(Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32" / "taskkill.exe")
 
 
 def main(argv: Sequence[str], stdin: IO[bytes] | None = None, stdout: IO[bytes] | None = None) -> int:
@@ -85,9 +88,19 @@ def relay_to(source: IO[bytes], server: "subprocess.Popen[bytes]", grace: float)
 
 
 def kill(server: "subprocess.Popen[bytes]") -> None:
-    """Kill the server and everything it started: its process group (POSIX), else the server itself."""
+    """Kill the server and everything it started: its process group (POSIX), or its tree (Windows).
+
+    A Windows console script (`basedpyright-langserver.exe`) is a launcher that starts Python, which
+    starts `node`: `taskkill /T` ends them all, and if it can't be run, the server itself is killed.
+    """
     killpg: Callable[[int, int], None] | None
-    if (killpg := getattr(os, "killpg", None)) is None:  # Windows: only what's started directly
+    if (killpg := getattr(os, "killpg", None)) is None:
+        with contextlib.suppress(OSError):  # no `taskkill`: only the server itself goes
+            _ = subprocess.run(
+                [_TASKKILL, "/F", "/T", "/PID", str(server.pid)],
+                capture_output=True,
+                check=False,
+            )
         server.kill()
         return
     with contextlib.suppress(ProcessLookupError):  # it has gone, with all it started

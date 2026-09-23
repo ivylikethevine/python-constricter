@@ -110,6 +110,8 @@ def _missing(lines: Sequence[str], statements: Sequence[str]) -> list[str]:
       Them, in order.
 
     """
+    if not statements:  # most fixes add none: the file's lines needn't be read for them
+        return []
     present: set[str] = {line.strip() for line in lines}
     return [statement for statement in statements if statement not in present]
 

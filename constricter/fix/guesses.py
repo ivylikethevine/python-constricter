@@ -39,7 +39,7 @@ def guessed(
       it copies such a guess.
 
     """
-    inside: dict[str, str] = comprehended(value, known, declared)
+    inside: Mapping[str, str] = comprehended(value, known, declared)
     return any(_is_guess(node, known, guesses, inside) for node in _deciding(value, known))
 
 
@@ -67,7 +67,7 @@ def guess_origins(value: ast.expr, known: Known, declared: Mapping[str, str]) ->
       `returned` for a method typed only by its `return`s, `constructor` for any other guessed call.
 
     """
-    inside: dict[str, str] = comprehended(value, known, declared)
+    inside: Mapping[str, str] = comprehended(value, known, declared)
     found: set[str] = set()
     node: ast.AST
     for node in _deciding(value, known):

@@ -3,7 +3,7 @@
 
 import ast
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, TypeAlias
 
 from constricter.fix import stdlib
 from constricter.fix.known import ImportPlan, Inference, Known
@@ -51,6 +51,8 @@ _TEXT_NAMES: Final = frozenset({"str", "bytes"})
 _STDLIB: Final = "stdlib"  # the fix kind of a standard-library call
 RETURNED: Final = "returned"  # the fix kind of an unannotated function's `return`s
 _STR: Final = "str"
+_COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+_Comprehension: TypeAlias = ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp
 _WITH_DEFAULT: Final = 2  # `os.environ.get(key, default)`'s arguments
 # Builtins that build a container of their argument's elements, and the type they build.
 CONTAINER_BUILDERS: Final = {
@@ -450,7 +452,7 @@ def _comprehension(
       The inference, or `None` if an element's type isn't known.
 
     """
-    inside: dict[str, str] = comprehended(value, known, declared)
+    inside: Mapping[str, str] = comprehended(value, known, declared)
     reason: str = "a comprehension's elements"
     # What the targets iterate over decided them too.
     loops: list[Inference | None] = [looped(g.iter, known, inside) for g in value.generators]
@@ -481,29 +483,33 @@ def _comprehension(
             )
 
 
-def comprehended(value: ast.expr, known: Known, declared: Mapping[str, str]) -> dict[str, str]:
+def comprehended(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Mapping[str, str]:
     """Type the targets of every comprehension in `value`, as a loop's are, over what's `declared`.
 
     A target whose type isn't known is dropped (it shadows any outer name of the same name).
 
     Returns:
-      `declared`, with the targets' types.
+      `declared`, with the targets' types: `declared` itself, uncopied, where there's none (most values).
 
     """
+    comprehensions: list[_Comprehension] = [
+        node for node in ast.walk(value) if isinstance(node, _COMPREHENSIONS)
+    ]
+    if not comprehensions:
+        return declared
     inside: dict[str, str] = dict(declared)
-    node: ast.AST
+    node: _Comprehension
     generator: ast.comprehension
-    for node in ast.walk(value):
-        if isinstance(node, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp):
-            for generator in node.generators:
-                found: Inference | None = looped(generator.iter, known, inside)
-                name: ast.Name
-                part: str | None
-                for name, part in unpacked(generator.target, None if found is None else found.annotation):
-                    if part is None:
-                        _ = inside.pop(name.id, None)
-                    else:
-                        inside[name.id] = part
+    for node in comprehensions:
+        for generator in node.generators:
+            found: Inference | None = looped(generator.iter, known, inside)
+            name: ast.Name
+            part: str | None
+            for name, part in unpacked(generator.target, None if found is None else found.annotation):
+                if part is None:
+                    _ = inside.pop(name.id, None)
+                else:
+                    inside[name.id] = part
     return inside
 
 

@@ -69,6 +69,9 @@ _FILES_PER_SERVER: Final = 32  # fewer files than this each don't pay for anothe
 # first answer took basedpyright 410s, but it reports its progress (`$/progress`) all the while.
 _TIMEOUT: Final = 120.0
 _POLL: Final = 1.0  # seconds between looks at how long it's been silent, while waiting
+# The guard's interpreter: the one a venv's is made from, if it's one. A Windows venv's `python.exe`
+# is a launcher that starts that one as a child, which then outlives a kill of the launcher.
+_GUARD_PYTHON: Final = str(getattr(sys, "_base_executable", "") or sys.executable)
 _SILENCE: Final[_Object] = {}  # no message yet, while waiting for one (compared by identity)
 _LINE_BREAK: Final = re.compile(r"\r\n|\r|\n")  # the lines positions count, as the protocol has them
 _HEADER_END: Final = b"\r\n"
@@ -388,7 +391,7 @@ class Connection:
         # able to import constricter from the server's working directory.
         self.process: subprocess.Popen[bytes] = self.stack.enter_context(
             subprocess.Popen(
-                [sys.executable, guard.__file__, str(guard.GRACE), *argv],
+                [_GUARD_PYTHON, guard.__file__, str(guard.GRACE), *argv],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,

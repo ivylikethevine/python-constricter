@@ -12,12 +12,14 @@ import subprocess
 import sys
 import textwrap
 import time
+import warnings
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import IO, Final, TypeAlias, cast
 
 import pytest
 
+from constricter import check_source
 from constricter.cli import command as cli
 from constricter.cli import guard, hints
 from constricter.cli.options import Options
@@ -651,3 +653,28 @@ def test_infer_memory_is_an_option_and_a_setting(tmp_path: Path, monkeypatch: py
         _ = pyproject.write_text(f"[tool.constricter]\ninfer-memory = {wrong}\n", encoding="utf-8")
         with pytest.raises(SystemExit):
             _ = Options.parse([])
+
+
+def test_a_process_group_is_killed_where_there_are_groups(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Where there are process groups (POSIX), the server's is killed; one already gone is fine."""
+    killed: list[tuple[int, int]] = []
+
+    def killpg(group: int, number: int) -> None:
+        killed.append((group, number))
+        raise ProcessLookupError
+
+    monkeypatch.setattr(os, "killpg", killpg, raising=False)
+    monkeypatch.setattr(signal, "SIGKILL", 9, raising=False)
+    server: subprocess.Popen[bytes]
+    with subprocess.Popen([sys.executable, "-c", "pass"]) as server:
+        _ = server.wait()
+        guard.kill(server)
+    assert killed == [(server.pid, 9)]
+
+
+def test_parsing_says_nothing_about_the_codes_escapes(capsys: pytest.CaptureFixture[str]) -> None:
+    """An invalid escape sequence in the checked code is its own business: no warning is printed."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        _ = check_source('def f() -> None:\n    x = "\\d"\n')
+    assert not capsys.readouterr().err

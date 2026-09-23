@@ -2,6 +2,7 @@
 """The rules: every local variable is typed where it's first bound (see README)."""
 
 import ast
+import warnings
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
 from functools import lru_cache
@@ -104,14 +105,20 @@ def check_source(
 def _parse(source: str | bytes, filename: str) -> ast.Module:
     """Parse `source` with its `# type:` comments; without them if one is misplaced.
 
+    Python's warnings about the source (an invalid escape sequence in a string) are left unsaid: they're
+    about the code checked, not findings, and it's the checked project's to see them when it runs.
+
     Returns:
       The module. Raises `SyntaxError`.
 
     """
-    try:
-        return ast.parse(source, filename, type_comments=True)
-    except SyntaxError:  # a misplaced `# type:` comment, or a real error raised again here
-        return ast.parse(source, filename)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", SyntaxWarning)
+        warnings.simplefilter("ignore", DeprecationWarning)  # what Python 3.11 warns about them with
+        try:
+            return ast.parse(source, filename, type_comments=True)
+        except SyntaxError:  # a misplaced `# type:` comment, or a real error raised again here
+            return ast.parse(source, filename)
 
 
 def _settings(
