@@ -103,7 +103,7 @@ UNTYPED_W: Final = "    w = v\n"
 
 def _write(root: Path, name: str, source: str) -> Path:
     path: Path = root / name
-    _ = path.write_text(textwrap.dedent(source), encoding="utf-8")
+    _ = path.write_text(textwrap.dedent(source), encoding="utf-8", newline="\n")
     return path
 
 

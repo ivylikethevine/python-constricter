@@ -64,7 +64,7 @@ def _site(root: Path, files: dict[str, str]) -> Path:
     for name, text in files.items():
         path: Path = site / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        _ = path.write_text(textwrap.dedent(text), encoding="utf-8")
+        _ = path.write_text(textwrap.dedent(text), encoding="utf-8", newline="\n")
     return site
 
 
@@ -77,7 +77,7 @@ def test_calls_into_typed_installed_packages_are_typed(
     monkeypatch.setattr(sys, "path", [str(site), *sys.path])
     main: Path = tmp_path / "project" / "main.py"
     main.parent.mkdir()
-    _ = main.write_text(textwrap.dedent(MAIN), encoding="utf-8")
+    _ = main.write_text(textwrap.dedent(MAIN), encoding="utf-8", newline="\n")
     assert cli.main(["--fix", "-q", str(main)]) == cli.EXIT_FOUND
     fixed: str = main.read_text(encoding="utf-8")
     assert all(line in fixed for line in FIXED), fixed
@@ -131,7 +131,7 @@ def test_a_read_is_cached_until_its_file_changes(tmp_path: Path, monkeypatch: py
     first: project.Module | None = installed.cached(stub, "lone")
     assert installed.cached(stub, "lone") == first
     assert len(reads) == 1
-    _ = stub.write_text("def k() -> str: ...\n", encoding="utf-8")
+    _ = stub.write_text("def k() -> str: ...\n", encoding="utf-8", newline="\n")
     assert installed.cached(stub, "lone") != first
     entry: Path = next(installed.cache_directory().glob("*.pickle"))
     _ = entry.write_bytes(b"not a pickle")

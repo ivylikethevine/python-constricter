@@ -29,6 +29,9 @@ from constricter.rules.annotations import GENERICS, dotted, is_vague, node_name
 if TYPE_CHECKING:
     from types import EllipsisType
 
+# Comparisons whose result is always a real `bool`, whatever the operands: `in` converts `__contains__`'s
+# result, and identity can't be overridden (`==` and `<` can return anything, as numpy's do).
+_BOOLEAN_TESTS: Final = (ast.In, ast.NotIn, ast.Is, ast.IsNot)
 # Calls that return a class or a special form, not an instance of what they're named.
 _FACTORIES: Final = frozenset(
     {
@@ -211,6 +214,8 @@ def _scalar_reason(value: ast.expr) -> str:
             return "an f-string"
         case ast.UnaryOp(op=ast.Not()):
             return "`not`, always a `bool`"
+        case ast.Compare():
+            return "`in` or `is`, always a `bool`"
         case _:
             return "a literal"
 
@@ -481,6 +486,7 @@ def targets_typed(
 
 def _scalar(value: ast.expr) -> str | None:
     constant: str | bytes | bool | int | float | complex | EllipsisType | None
+    ops: list[ast.cmpop]
     match value:
         case ast.Constant(value=bool() | int() | float() | complex() | str() | bytes() as constant):
             return type(constant).__name__
@@ -490,6 +496,8 @@ def _scalar(value: ast.expr) -> str | None:
         ) and not isinstance(constant, bool):
             return type(constant).__name__
         case ast.UnaryOp(op=ast.Not()):  # `not x` always yields a real `bool`, unlike a comparison
+            return "bool"
+        case ast.Compare(ops=ops) if all(isinstance(op, _BOOLEAN_TESTS) for op in ops):
             return "bool"
         case ast.JoinedStr():
             return "str"

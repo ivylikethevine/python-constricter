@@ -38,7 +38,7 @@ MESSAGES: dict[str, str] = {
 OPT_IN: Final = frozenset({CAN_BE_FINAL})
 # Each way `--fix` can decide an annotation, by its stable id (`--show-fixes`, `fix-select`).
 FIX_KINDS: dict[str, str] = {
-    "literal": "a literal, an f-string, or `not x`",
+    "literal": "a literal, an f-string, `not x`, or `x in y` or `x is y`",
     "container": "a list, set, tuple or dict display whose elements' types agree",
     "copy": "a copy of a local whose type is known",
     "subscript": "a subscript of a known container",

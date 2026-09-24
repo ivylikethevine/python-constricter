@@ -24,6 +24,10 @@ ANY_LENGTH: Final = "tuple[int, ...]"
         ("True", "bool"),
         ("-True", None),
         ("not y", "bool"),
+        ("'r' in y", "bool"),  # `in` and `is` are always a real `bool`
+        ("y is not None", "bool"),
+        ("y == 1", None),  # `==` and `<` may return anything (numpy's arrays)
+        ("1 < y in z", None),
         ("1j", "complex"),
         ("'text'", "str"),
         ("b'raw'", "bytes"),

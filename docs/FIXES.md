@@ -4,7 +4,9 @@ The [README](../README.md#use) has the options (`--fix`, `--diff` to preview, `-
 `--show-fixes`). `--fix` adds the annotation where the value decides it, for a plain `name = value`
 in a function or module body:
 
-- a literal: `count = 0` becomes `count: int = 0`;
+- a literal: `count = 0` becomes `count: int = 0`; and `not x`, or a comparison by `in`, `not in`,
+  `is` and `is not` alone (`"r" in mode`), always a `bool` whatever it compares (`==` and `<` may
+  return anything, as numpy's arrays do);
 - a container whose elements agree: `[1, 2]` gives `list[int]`, `{"a": (1, "b")}` gives
   `dict[str, tuple[int, str]]`; a tuple longer than `max-length` (4) is `tuple[T, ...]` if its
   elements agree, and untyped if not (it would be LVA011's);
@@ -270,7 +272,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 
 | Id              | Decided by                                                                          |
 | --------------- | ----------------------------------------------------------------------------------- |
-| `literal`       | a literal, an f-string, or `not x`                                                  |
+| `literal`       | a literal, an f-string, `not x`, or `x in y` or `x is y`                            |
 | `container`     | a list, set, tuple or dict display whose elements' types agree                      |
 | `copy`          | a copy of a local whose type is known                                               |
 | `subscript`     | a subscript of a container whose type is known                                      |

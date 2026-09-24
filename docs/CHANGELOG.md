@@ -6,6 +6,9 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types a comparison by `in`, `not in`, `is` and `is not` alone as a `bool`
+  (`writing = "w" in mode`), as `not x` is: always a real `bool`, whatever the operands. 234 more
+  fixes on the corpora.
 - `--fix --unsafe-fixes` types what's computed from an unannotated parameter of a plain top-level
   function when every call in the checked files passes it an argument of one builtin type
   (`callers`, a guess): `def greet(name)` called only as `greet("a")` types `line = name.upper()` as

@@ -55,9 +55,10 @@
 - **Guesses** apply only with `--unsafe-fixes`: a capitalised call taken to construct its class,
   LVA008's and LVA010's narrowing, an empty container typed by what's added to it, a method typed by
   its `return`s, an instance attribute by its assignments (`assigned`), an unannotated parameter by
-  what every call in the checked files passes it (`callers`, builtin types alone), and what rests on
-  any of these. **Fix levels**: every mechanism has a stable id (`--show-fixes`, JSON), and
-  `fix-select`, `fix-ignore` and `unsafe-fix-select` choose which apply.
+  what every call in the checked files passes it (`callers`, builtin types alone: callers' classes
+  too would add 10 fixes on the corpora), and what rests on any of these. **Fix levels**: every
+  mechanism has a stable id (`--show-fixes`, JSON), and `fix-select`, `fix-ignore` and
+  `unsafe-fix-select` choose which apply.
 - **Type-checker-backed inference** (`--infer-with basedpyright,ty`): the checkers' inlay hints type
   what `--fix` can't, as guesses, widened, checked and imported; with basedpyright it about doubles
   what `--fix --unsafe-fixes` types on the annotated corpora.
@@ -177,13 +178,6 @@ it's done.
    (cached with the module), and bind a type variable to a class argument (`type[_SCT]`). Done when
    `np.empty(n, dtype=np.float64)` is an `npt.NDArray[np.float64]` and pandas's `--types` finds no
    new error.
-
-2. **Callers' classes, not only builtins.** An unannotated parameter is typed by its callers only
-   when their arguments' types are builtins alone (96 more fixes on the corpora): a class the caller
-   names may mean nothing, or something else, in the callee's module. Respell a caller's type in the
-   callee's module as a declared return's is (`project`'s respelling, imported under
-   `if TYPE_CHECKING:`), and join numbers as `rebound` does (`int` and `float`: `float`). Done when
-   a parameter every caller passes a `Box` is a `Box` in its function, with no new `--types` error.
 
 ### Large: a week or more
 
