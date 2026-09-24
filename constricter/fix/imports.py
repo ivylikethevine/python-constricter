@@ -37,13 +37,17 @@ def plan(tree: ast.Module) -> ImportPlan:
       A fresh plan for the module's fixes.
 
     """
+    taken: frozenset[str]
+    values: frozenset[str]
+    taken, values = _taken(tree)
     return ImportPlan(
         _bound(tree),
-        _taken(tree),
+        taken,
         _after(tree),
         _defined(tree),
         block=_block(tree),
         postponed=_postponed(tree),
+        values=values,
     )
 
 
@@ -161,30 +165,38 @@ def _running(body: list[ast.stmt]) -> Iterator[ast.stmt]:
 
 
 @lru_cache(maxsize=16)
-def _taken(tree: ast.Module) -> frozenset[str]:
+def _taken(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
     """Find every name bound anywhere in the module: its own, a function's, a class's, a parameter's.
 
     Returns:
-      Them all.
+      Them all; and those bound by anything but an import or a class statement (an assignment, a
+      parameter, a `def`), which name a value, not a class or module, somewhere.
 
     """
     names: set[str] = set()
+    values: set[str] = set()
     node: ast.AST
     name: str
     asname: str | None
     for node in of_type(tree, *_BINDERS):
         match node:
-            case ast.Name(id=name, ctx=ast.Store()) | ast.arg(arg=name):
-                names.add(name)
-            case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) | ast.ClassDef(name=name):
+            case ast.ClassDef(name=name):
                 names.add(name)
             case ast.alias(name=name, asname=asname):
                 names.add(asname or name.split(".", 1)[0])
-            case ast.ExceptHandler(name=str() as name) | ast.MatchAs(name=str() as name):
+            case (
+                ast.Name(id=name, ctx=ast.Store())
+                | ast.arg(arg=name)
+                | ast.FunctionDef(name=name)
+                | ast.AsyncFunctionDef(name=name)
+                | ast.ExceptHandler(name=str() as name)
+                | ast.MatchAs(name=str() as name)
+            ):
                 names.add(name)
+                values.add(name)
             case _:
                 pass
-    return frozenset(names)
+    return frozenset(names), frozenset(values)
 
 
 def _after(tree: ast.Module) -> int:

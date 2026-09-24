@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
 from constricter.fix import overloads, stdlib
-from constricter.fix.known import Inference, Known
+from constricter.fix.known import ImportPlan, Inference, Known
 from constricter.fix.library import library_call, library_class
 from constricter.fix.members import assigned_attribute, member, returned_method, subscripted
 from constricter.fix.opened import opened
@@ -584,7 +584,7 @@ def _called(value: ast.expr, known: Known) -> Inference | None:
         case ast.Call(func=ast.Name() | ast.Attribute() as func) if constructs(
             node_name(func),
             known.factories,
-        ):
+        ) and _type_expression(func, known):
             return Inference(
                 ast.unparse(func),
                 f"a call to `{ast.unparse(func)}`, taken to construct one",
@@ -592,6 +592,22 @@ def _called(value: ast.expr, known: Known) -> Inference | None:
             )
         case _:
             return None
+
+
+def _type_expression(func: ast.Name | ast.Attribute, known: Known) -> bool:
+    """Check that a callee can be written as a type: a (dotted) name starting with a class or module.
+
+    Not a call's attribute (`_tables().Filters`), nor through a name the module binds as a value
+    somewhere (`Klass = ...`, `jinja2 = import_optional_dependency("jinja2")`, `self`): a type
+    checker rejects a variable in a type.
+
+    Returns:
+      Whether it can.
+
+    """
+    path: str | None = dotted(func)
+    plan: ImportPlan | None = known.names.plan
+    return path is not None and (plan is None or path.partition(".")[0] not in plan.values)
 
 
 def constructs(name: str, known_factories: frozenset[str]) -> bool:

@@ -20,6 +20,7 @@ from constricter.fix.doubts import (
 from constricter.fix.guesses import guessed, guessing
 from constricter.fix.inference import inference, inferred
 from constricter.fix.known import Hints, ImportPlan, Inference, Known
+from constricter.fix.narrowed import narrowed_at
 from constricter.offences import (
     LONG_TUPLE,
     NESTED_TYPE,
@@ -215,7 +216,10 @@ class Scope:
         fix: Inference | None
         if (fix := inference(value, self.settings.known, self.inferred.types)) is not None:
             fix = corrected(value, fix, self._owner(), facts.generics, self.settings.known.names.plan)
-        if fix is not None and narrowed_first(value, fix):
+        if fix is not None and (
+            narrowed_first(value, fix)
+            or narrowed_at(facts.narrowed, value, target.lineno, union=len(members(fix.annotation) or ()) > 1)
+        ):
             fix = None
         unsafe: bool
         origins: frozenset[str]

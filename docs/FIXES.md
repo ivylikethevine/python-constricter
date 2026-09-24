@@ -8,12 +8,14 @@ in a function or module body:
 - a container whose elements agree: `[1, 2]` gives `list[int]`, `{"a": (1, "b")}` gives
   `dict[str, tuple[int, str]]`; a tuple longer than `max-length` (4) is `tuple[T, ...]` if its
   elements agree, and untyped if not (it would be LVA011's);
-- a call to a capitalised name (`path = Path(...)` gives `Path`), or to a plain function that
-  declares its return type (not a decorated, generic, async or redefined one, and not a return of
-  `None`, `Any` or one that uses a `TypeVar`), in the same module or, with the CLI, in another file
-  it's checking: `from pkg.util import f`, `import pkg.util as u` or `from pkg import util` then
-  `u.f()`, relative imports and re-exports all work. A name in the type the file doesn't import is
-  imported for type checking alone (see below);
+- a call to a capitalised name (`path = Path(...)` gives `Path`, a guess), if it can be written as a
+  type: a name or dotted name whose first name the module binds only by an import or a class
+  statement (not `Klass = ...`, `self.api.X()`, `make().X()`); or to a plain function that declares
+  its return type (not a decorated, generic, async or redefined one, and not a return of `None`,
+  `Any` or one that uses a `TypeVar`), in the same module or, with the CLI, in another file it's
+  checking: `from pkg.util import f`, `import pkg.util as u` or `from pkg import util` then `u.f()`,
+  relative imports and re-exports all work. A name in the type the file doesn't import is imported
+  for type checking alone (see below);
 - a builtin with a fixed result: `len(x)` is an `int`, `hex(n)` a `str`, `any(xs)` a `bool`, `dir()`
   a `list[str]`, `range(n)` a `range`, and so on; but not where the module binds the name itself (a
   parameter named `format`, a local `input`, its own `def dir()`), anywhere in it;
@@ -143,7 +145,11 @@ than the fix says, the fix is changed, made a guess, or not offered:
   `x is None`, `is_c(x)`, an `assert`, a `match`), may be narrowed where it's read: a guess; so is a
   comprehension of a union with a condition (`[c for c in cs if isinstance(c, Column)]`). One of an
   `X | None` (or a filtered comprehension over one) isn't offered at all: code nearly always checks
-  it for `None` first, and a checker then takes it for the `X`; nor is a bare `None`;
+  it for `None` first, and a checker then takes it for the `X`; nor is a bare `None`; nor is a read
+  where a test around it narrows it: in an `if`'s or `while`'s branch, a `match` case, or the rest
+  of a block after an `assert` or an `if` that always leaves (`return`, `raise`, ...), for a check
+  (`isinstance`, a `TypeGuard`, a `match`) whatever its type, and for a truth test or comparison
+  when it's a union;
 - an ALL_CAPS module-level name bound to a literal is a constant to pyright, which keeps its
   `Literal` type: `MODE = "r"`'s `str` would widen it. Passed to a call (where a parameter may take
   only some values), it's declared `MODE: Final = "r"`, which keeps the `Literal`: a guess, as

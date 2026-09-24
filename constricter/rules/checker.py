@@ -6,8 +6,8 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
 from typing import Final, NamedTuple, cast
 
-from constricter.fix import imports, returned, stdlib
-from constricter.fix.doubts import Facts, passed, tests
+from constricter.fix import imports, narrowed, returned, stdlib
+from constricter.fix.doubts import Facts, inner_starts, passed, tests
 from constricter.fix.inference import inference
 from constricter.fix.known import (
     Classes,
@@ -169,6 +169,8 @@ def _settings(
             | (frozenset() if outside is None else outside.generics),
             passed(tree),
             tests(tree),
+            narrowed.regions(tree),
+            inner_starts(tree),
         ),
     )
 

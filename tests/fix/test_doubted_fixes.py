@@ -61,7 +61,10 @@ def test_a_read_of_a_union_may_be_narrowed_where_it_is_so_is_a_guess() -> None:
 
 
 def test_a_read_of_what_the_function_tests_may_be_narrowed_so_is_a_guess() -> None:
-    """`isinstance`, a `TypeGuard`, an `assert`, a `match`: a read of what's tested is a guess."""
+    """`isinstance`, a `TypeGuard`, an `assert`, a `match`: a read of what's tested is a guess.
+
+    Inside the branch a check governs, it isn't offered at all: it's the narrowed type there.
+    """
     source: str = """
     class C:
         x: object
@@ -83,10 +86,10 @@ def test_a_read_of_what_the_function_tests_may_be_narrowed_so_is_a_guess() -> No
         k = s
     """
     assert {name: fix for name, fix in _found(source).items() if len(name) == 1} == {
-        "a": ("object", True),
+        "a": (None, False),  # inside the `isinstance`'s branch: an `int` there
         "b": (None, False),
-        "d": ("object", True),
-        "e": ("object", True),
+        "d": ("object", True),  # a truth test narrows only a union
+        "e": (None, False),  # inside the `match` case
         "g": ("list[object]", False),
         "h": ("object", False),  # `r`'s test is on the comprehension's `i`, not on `r`
         "k": ("object", False),
@@ -301,4 +304,44 @@ def test_a_chained_read_of_a_union_or_of_what_is_tested_is_a_guess() -> None:
                 b = self.inner.y
             d = self.inner.z
     """
-    assert _found(source) == {"a": (None, False), "b": ("object", True), "d": ("int", False)}
+    assert _found(source) == {"a": (None, False), "b": (None, False), "d": ("int", False)}
+
+
+CALLEES: Final = """
+import pathlib
+from collections import OrderedDict as Ordered
+from decimal import Decimal as Dec
+
+Klass = pathlib.Path
+jinja2 = __import__("jinja2")
+
+
+class Box:
+    pass
+
+
+def f(self, make) -> None:
+    a = Box()
+    b = pathlib.Path()
+    c = Klass()
+    d = jinja2.ChoiceLoader()
+    e = self.api.ParquetFile()
+    g = make().Filters()
+    h = Ordered()
+    i = Dec()
+"""
+
+
+def test_a_constructor_guess_is_only_a_callee_a_type_can_name() -> None:
+    """A class or a module's class, by an import or a class statement; not a variable holding one."""
+    found: dict[str, tuple[str | None, bool]] = _found(CALLEES)
+    assert {name: fix for name, (fix, _) in found.items()} == {
+        "a": "Box",
+        "b": "pathlib.Path",
+        "c": None,
+        "d": None,
+        "e": None,
+        "g": None,
+        "h": None,  # generic: never bare
+        "i": "Dec",
+    }

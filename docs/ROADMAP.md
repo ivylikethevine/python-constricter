@@ -54,9 +54,10 @@
   value otherwise, the fix is changed, made a guess, or not offered (see
   [FIXES.md](FIXES.md#what-a-type-checker-sees)): a name bound again takes every value; a read of a
   union, or of what the function tests, is a guess, and one of an `X | None` isn't offered; an
-  ALL_CAPS constant passed to a call is `Final`; `Self` where the method says so; no generic class
-  written bare, the standard library's included. The unsafe runs' new errors went from 20, 76 and
-  165 (0.2.4) to 2, 21 and 84.
+  ALL_CAPS constant passed to a call is `Final`; a read a test around it narrows isn't offered its
+  declared type; `Self` where the method says so; no generic class written bare, the standard
+  library's included; and a constructor guessed only where its callee is a type. The unsafe runs'
+  new errors went from 20, 76 and 165 (0.2.4) to 2, 5 and 36.
 - **Safe by construction**: never touches class bodies, keeps line endings and encodings, edits
   notebooks' cells in place, converges in one pass on every corpus with nothing broken, and the
   corpus packages' own test suites pass identically before and after.
@@ -151,20 +152,15 @@ it's done.
 
 ### Medium: a few days
 
-1. **Fewer guesses a type checker rejects, the rest.** The unsafe runs' new errors are 2, 21 and 84
-   (from 11, 42 and 97). What's left is mostly a read inside a branch that narrows it
-   (`if isinstance(x, C): y = x`, a `TypeGuard`), declared the wider type; and a later value whose
-   type isn't known makes a fix a guess, costing certain fixes (typing more such values makes them
-   certain again). Type such a read by where it is (the test's branch) or don't offer it. Done when
-   pandas's are at most half of 97 too.
-2. **Standard-library generics the overloads miss.** A return through a generic protocol
-   (`math.floor(x)` is `_SupportsFloor[_T]`'s `_T`), a generic class's constructor
-   (`collections.defaultdict(list)`, `functools.partial(f, x)`, `itertools.count()`), a generic
-   class's attributes (`m.string`), and a type variable inside an argument's type (`list[T]`) leave
-   calls untyped. Solve the protocol's method return, the constructor's `__init__`/`__new__`
-   overloads, and bind type variables through builtin containers. Done when those are typed on the
-   standard library with `--types` finding no new error.
-3. **Faster checking.** The profile's remaining hot spots: deciding a guess walks each value again
+1. **Standard-library generics the overloads miss.** A few hundred calls on the corpora: a return
+   through a generic protocol (`math.floor(x)` is `_SupportsFloor[_T]`'s `_T`), a type variable
+   bound through a container argument (`os.walk(path)`, `itertools.zip_longest(a, b)`,
+   `functools.partial(f, x)`: `Iterable[_T]` given `list[str]`), and a generic class's attributes
+   (`m.string`). A generic class's constructor (`defaultdict(list)`, `Counter()`) mostly can't be
+   written from the call alone: its parameters come from later use, as `fills` types an empty
+   container. Solve the protocol's method return and bind type variables through builtin containers.
+   Done when those are typed on the standard library with `--types` finding no new error.
+2. **Faster checking.** The profile's remaining hot spots: deciding a guess walks each value again
    after inference (`guesses._deciding`, 2.6s profiled), and `ast.unparse` of the same callees (208k
    calls, 1s). Decide guesses during inference, and cache callee spellings by node. Done when the
    standard library's unprofiled check is measurably faster with every corpus's fixes unchanged.

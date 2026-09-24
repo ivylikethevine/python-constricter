@@ -14,6 +14,7 @@
 """
 
 import ast
+import bisect
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
@@ -21,6 +22,7 @@ from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.known import ImportPlan, Inference
+from constricter.fix.narrowed import Regions
 from constricter.rules.annotations import node_name
 from constricter.rules.flow import members
 from constricter.rules.syntax import FunctionDef, Start, within
@@ -65,6 +67,8 @@ class Facts(NamedTuple):
     generics: frozenset[str] = frozenset()
     passed: frozenset[str] = frozenset()
     tests: Tests = Tests()  # what its tests read (see `tests`)
+    narrowed: Regions = MappingProxyType({})  # where each value is narrowed (see `narrowed.regions`)
+    inner: tuple[int, ...] = ()  # the lines functions and lambdas start on, sorted (see `inner_starts`)
 
 
 class Owner(NamedTuple):
@@ -127,6 +131,34 @@ def _has_none(annotation: str) -> bool:
         (isinstance(node, ast.Constant) and node.value is None)
         or (isinstance(node, ast.Name | ast.Attribute) and node_name(node) == _OPTIONAL)
         for node in ast.walk(ast.parse(annotation, mode="eval"))
+    )
+
+
+def inner_starts(tree: ast.Module) -> tuple[int, ...]:
+    """List the lines the module's functions and lambdas start on, for `contains_inner` to look up.
+
+    Returns:
+      Them, sorted.
+
+    """
+    inner: list[FunctionDef | ast.Lambda] = cast(
+        "list[FunctionDef | ast.Lambda]",
+        of_type(tree, ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda),
+    )
+    return tuple(sorted(node.lineno for node in inner))
+
+
+def contains_inner(function: FunctionDef, starts: tuple[int, ...]) -> bool:
+    """Check whether a function has a function or lambda inside it, by the lines they start on.
+
+    Returns:
+      Whether one starts after its own line and by its last: most functions have none, and needn't
+      be walked for one.
+
+    """
+    return bisect.bisect_right(starts, function.lineno) < bisect.bisect_right(
+        starts,
+        function.end_lineno or function.lineno,
     )
 
 

@@ -6,6 +6,11 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- Fewer guesses a type checker rejects, again: a read a test around it narrows (inside an
+  `isinstance` branch, a `match` case, after an `assert` or an early `return`) isn't offered its
+  declared type; and a capitalised call is guessed to construct its class only where the callee is a
+  type (not a variable holding a class, `self.api.X()`, or `make().X()`). pandas's
+  `--fix --unsafe-fixes` new type errors went from 84 to 36 (sqlalchemy's from 10 to 5).
 - The standard-library tables write each class's members apart from its public ancestors
   (`bases.json`), which `--fix` resolves them through: 908 KB to 688 KB, the generator checking
   every class resolves to exactly its full table. `lib2to3.pygram`'s `python_symbols` and

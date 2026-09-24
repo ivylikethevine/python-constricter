@@ -8,11 +8,11 @@ empty container typed by what's added to it), and `finals` (LVA012's `Final`).
 import ast
 from collections.abc import Sequence
 from dataclasses import replace
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from constricter.fix import fills as filling
 from constricter.fix import hinted
-from constricter.fix.doubts import spelled_self
+from constricter.fix.doubts import contains_inner, spelled_self
 from constricter.fix.known import ImportPlan, Inference
 from constricter.offences import (
     CAN_BE_FINAL,
@@ -27,6 +27,9 @@ from constricter.rules.annotations import node_name
 from constricter.rules.flow import Binding, Lifetime, members
 from constricter.rules.rebinding import Refit, refit
 from constricter.rules.scope import FINAL_KIND, Late, Scope, imports_of
+
+if TYPE_CHECKING:
+    from constricter.rules.syntax import FunctionDef
 
 _DISCARD: Final = "_"
 _OPTIONAL: Final = "optional"  # the fix kind of a `None` default rebound to one type
@@ -56,7 +59,9 @@ def optionals(scope: Scope) -> None:
         if o.code != UNANNOTATED or _fixed(o) or lifetime is None or lifetime.escaped:
             continue
         if enclosed is None:
-            enclosed = _enclosed_reads(scope.kind.body())
+            function: FunctionDef | None = scope.kind.function
+            inside: bool = function is not None and contains_inner(function, scope.settings.facts.inner)
+            enclosed = _enclosed_reads(scope.kind.body()) if inside else frozenset()
         if o.name in enclosed:
             continue
         first: Binding

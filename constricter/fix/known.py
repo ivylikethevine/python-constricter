@@ -59,6 +59,7 @@ class ImportPlan:
     guarded: Mapping[str, Guarded] = field(default_factory=dict[str, Guarded])
     block: tuple[int, int] = (0, 0)
     postponed: bool = False
+    values: frozenset[str] = frozenset()  # names it binds as values somewhere (see `imports._taken`)
 
     def spell(self, qualified: str) -> str | None:
         """Name `qualified` (`io.BufferedReader`) in this module, adding an import if it has to.
