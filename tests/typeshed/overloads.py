@@ -662,10 +662,14 @@ class Overloads:
         args: list[ast.expr] = list(expr.slice.elts) if isinstance(expr.slice, ast.Tuple) else [expr.slice]
         if found is None:
             return None
-        if found.module in _TYPING and found.name not in TYPING_GENERICS:
+        typing_class: bool = isinstance(found.binding, Klass) and found.name not in TYPING_GENERICS
+        if found.module in _TYPING and found.name not in TYPING_GENERICS and not typing_class:
             return self._special(found.name, args, module, hops)
+        # `typing`'s own generic classes (`Iterator`) by their public path (`collections.abc.Iterator`).
         base: str | None = (
-            TYPING_GENERICS.get(found.name) if found.module in _TYPING else self._generic_base(found)
+            TYPING_GENERICS.get(found.name)
+            if found.module in _TYPING and not typing_class
+            else self._generic_base(found)
         )
         inner: list[str | None] = [
             "..."

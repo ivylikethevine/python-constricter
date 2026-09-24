@@ -27,6 +27,7 @@ from constricter.rules.annotations import node_name
 from constricter.rules.flow import Binding, Lifetime, members
 from constricter.rules.rebinding import Refit, refit
 from constricter.rules.scope import FINAL_KIND, Late, Scope, imports_of
+from constricter.rules.walked import walk
 
 if TYPE_CHECKING:
     from constricter.rules.syntax import FunctionDef
@@ -132,6 +133,7 @@ def fills(scope: Scope) -> None:
     """
     index: int
     o: Offence
+    body: filling.Uses | None = None  # read once, for the first container to judge
     for index, o in enumerate(scope.offences):
         lifetime: Lifetime | None = scope.flow.get(o.name)
         kind: str | None = scope.assignments.empty.get(o.name)
@@ -139,10 +141,11 @@ def fills(scope: Scope) -> None:
             continue
         if lifetime is None or lifetime.escaped or len(lifetime.bindings) != 1:
             continue
+        body = body or filling.uses(scope.kind.body())
         found: Inference | None
         if (
             found := filling.filled(
-                scope.kind.body(),
+                body,
                 o.name,
                 kind,
                 scope.settings.known,
@@ -268,9 +271,9 @@ def _enclosed_reads(body: Sequence[ast.stmt]) -> frozenset[str]:
     return frozenset(
         node.id
         for stmt in body
-        for inner in ast.walk(stmt)
+        for inner in walk(stmt)
         if isinstance(inner, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda)
-        for node in ast.walk(inner)
+        for node in walk(inner)
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
     )
 

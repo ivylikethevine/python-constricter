@@ -122,7 +122,7 @@ def _bind_declared(
     """
     unsafe: bool
     origins: frozenset[str]
-    unsafe, origins = guesses_in(scope, bases)
+    unsafe, origins = (False, frozenset()) if typed is None else guesses_in(scope, bases)
     # An unpacking's names are split from the value's type; a loop's are what it iterates (`loop`).
     split: frozenset[str] = frozenset() if isinstance(stmt, ast.For | ast.AsyncFor) else frozenset({"unpack"})
     code: str | None = (

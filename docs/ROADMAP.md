@@ -61,10 +61,12 @@
 - **Safe by construction**: never touches class bodies, keeps line endings and encodings, edits
   notebooks' cells in place, converges in one pass on every corpus with nothing broken, and the
   corpus packages' own test suites pass identically before and after.
-- **Fast enough**: the standard library checks in about 8.5s with `--jobs=1` and 1.5s with
-  `--jobs=0` on 16 cores (from 227s profiled at 0.2.4): one shared walk of each module, kept with
-  its tree from the cross-file index to the check; functions checked callees first; files in
-  `order.plan`'s order, each as soon as the modules it calls into are done.
+- **Fast enough**: the standard library checks in about 8s with `--jobs=1` and 1.5s with `--jobs=0`
+  on 16 cores (from 227s profiled at 0.2.4): one shared walk of each module, kept with its tree from
+  the cross-file index to the check, and a node's children listed without `ast`'s generators;
+  whether a fix is a guess worked out only where there is a fix; each function's body indexed once
+  for its empty containers; functions checked callees first; files in `order.plan`'s order, each as
+  soon as the modules it calls into are done.
 
 ### Command and output
 
@@ -152,18 +154,17 @@ it's done.
 
 ### Medium: a few days
 
-1. **Standard-library generics the overloads miss.** A few hundred calls on the corpora: a return
-   through a generic protocol (`math.floor(x)` is `_SupportsFloor[_T]`'s `_T`), a type variable
-   bound through a container argument (`os.walk(path)`, `itertools.zip_longest(a, b)`,
-   `functools.partial(f, x)`: `Iterable[_T]` given `list[str]`), and a generic class's attributes
-   (`m.string`). A generic class's constructor (`defaultdict(list)`, `Counter()`) mostly can't be
+1. **Standard-library generics the overloads miss.** A few hundred calls on the corpora: a type
+   variable bound through a container argument (`itertools.zip_longest(a, b)`,
+   `functools.partial(f, x)`: `Iterable[_T]` given `list[str]`), a generic class's constructor whose
+   arguments decide its parameters (`itertools.chain(a, b)` is an `itertools.chain[str]`), a return
+   through a generic protocol (`math.floor(x)` is `_SupportsFloor[_T]`'s `_T`), and a generic
+   class's attributes (`m.string`). A constructor like `defaultdict(list)` or `Counter()` can't be
    written from the call alone: its parameters come from later use, as `fills` types an empty
-   container. Solve the protocol's method return and bind type variables through builtin containers.
-   Done when those are typed on the standard library with `--types` finding no new error.
-2. **Faster checking.** The profile's remaining hot spots: deciding a guess walks each value again
-   after inference (`guesses._deciding`, 2.6s profiled), and `ast.unparse` of the same callees (208k
-   calls, 1s). Decide guesses during inference, and cache callee spellings by node. Done when the
-   standard library's unprofiled check is measurably faster with every corpus's fixes unchanged.
+   container. Give the tables' verdicts columns for builtin containers and bind a parameter's type
+   variable to a container argument's element; read generic classes' `__new__`/`__init__` overloads
+   as constructors. Done when those are typed on the standard library with `--types` finding no new
+   error.
 
 ### Large: a week or more
 

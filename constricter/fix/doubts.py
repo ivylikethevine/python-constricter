@@ -26,7 +26,7 @@ from constricter.fix.narrowed import Regions
 from constricter.rules.annotations import node_name
 from constricter.rules.flow import members
 from constricter.rules.syntax import FunctionDef, Start, within
-from constricter.rules.walked import of_type
+from constricter.rules.walked import of_type, walk
 
 # What a copy, an attribute and a subscript of a narrowable union rest on, as guesses.
 _Read: TypeAlias = type[ast.expr]
@@ -174,7 +174,7 @@ def tests(tree: ast.Module) -> Tests:
         ((test.lineno, test.col_offset), ast.unparse(read))
         for node in of_type(tree, *_TESTS)
         for test in _tested_parts(node)
-        for read in ast.walk(test)
+        for read in walk(test)
         if isinstance(read, ast.Name | ast.Attribute | ast.Subscript)
     )
     return Tests(tuple(start for start, _ in found), tuple(text for _, text in found))
@@ -347,11 +347,11 @@ def _bare(annotation: str, generics: frozenset[str]) -> bool:
     # `annotation` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
     tree: ast.expr = ast.parse(annotation, mode="eval").body
     inner: set[int] = {
-        id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Subscript | ast.Attribute)
+        id(node.value) for node in walk(tree) if isinstance(node, ast.Subscript | ast.Attribute)
     }
     return any(
         isinstance(node, ast.Name | ast.Attribute) and id(node) not in inner and ast.unparse(node) in generics
-        for node in ast.walk(tree)
+        for node in walk(tree)
     )
 
 

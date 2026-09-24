@@ -16,6 +16,7 @@ from typing import Final, NamedTuple
 from constricter.fix.inference import inference
 from constricter.fix.known import Inference, Known
 from constricter.rules.syntax import NESTED_SCOPES, own_nodes
+from constricter.rules.walked import walk
 
 _LIST: Final = "list"
 _DICT: Final = "dict"
@@ -66,34 +67,62 @@ def empty(value: ast.expr) -> str | None:
             return None
 
 
+class Uses(NamedTuple):
+    """A function body's names as `filled` judges them, read once for all its empty containers.
+
+    `names`: each name's uses (not its bindings) outside nested scopes; `parents`: each node's parent,
+    by `id()`; `nested`: every name a nested function, lambda or class uses.
+    """
+
+    names: Mapping[str, list[ast.Name]]
+    parents: Mapping[int, ast.AST]
+    nested: frozenset[str]
+
+
+def uses(body: Sequence[ast.stmt]) -> Uses:
+    """Read a function body's names for `filled`.
+
+    Returns:
+      Them.
+
+    """
+    names: dict[str, list[ast.Name]] = {}
+    parents: dict[int, ast.AST] = {}
+    nested: set[str] = set()
+    node: ast.AST
+    for node in own_nodes(body, parents):
+        if isinstance(node, NESTED_SCOPES):
+            nested.update(inner.id for inner in walk(node) if isinstance(inner, ast.Name))
+        elif isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Store):
+            names.setdefault(node.id, []).append(node)
+    return Uses(names, parents, frozenset(nested))
+
+
 def filled(
-    body: Sequence[ast.stmt],
+    found: Uses,
     name: str,
     kind: str,
     known: Known,
     declared: Mapping[str, str],
 ) -> Inference | None:
-    """Type an empty container `name` of `kind` from what `body` (its function's) adds to it.
+    """Type an empty container `name` of `kind` from what its function's body (`found`) adds to it.
 
     Returns:
-      `list[T]`, `set[T]` or `dict[K, V]`, or `None` if a use could add something unseen, nothing
-      is added, or what's added isn't typed alike.
+      `list[T]`, `set[T]` or `dict[K, V]`, or `None` if a use could add something unseen (a nested
+      scope sees it, out of this function's sight), nothing is added, or what's added isn't typed
+      alike.
 
     """
+    if name in found.nested:
+        return None
     fills: list[_Fill] = []
-    parents: dict[int, ast.AST] = {}
-    node: ast.AST
-    for node in own_nodes(body, parents):
-        if isinstance(node, NESTED_SCOPES) and any(
-            isinstance(inner, ast.Name) and inner.id == name for inner in ast.walk(node)
-        ):
-            return None  # a nested scope sees it: out of this function's sight
-        if isinstance(node, ast.Name) and node.id == name and not isinstance(node.ctx, ast.Store):
-            fill: _Fill | bool
-            if (fill := _use(node, kind, parents)) is False:
-                return None
-            if isinstance(fill, _Fill):
-                fills.append(fill)
+    node: ast.Name
+    for node in found.names.get(name, []):
+        fill: _Fill | bool
+        if (fill := _use(node, kind, found.parents)) is False:
+            return None
+        if isinstance(fill, _Fill):
+            fills.append(fill)
     return _typed(fills, kind, known, declared) if fills else None
 
 

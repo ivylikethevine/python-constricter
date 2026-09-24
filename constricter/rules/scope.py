@@ -223,7 +223,8 @@ class Scope:
             fix = None
         unsafe: bool
         origins: frozenset[str]
-        unsafe, origins = guesses_in(self, [value])
+        # Whether a fix is a guess, worked out only for one: untyped, it's the same either way.
+        unsafe, origins = (False, frozenset()) if fix is None else guesses_in(self, [value])
         constant: bool = function is None and is_constant(name) and name in facts.passed
         if fix is not None and not unsafe:
             origins = doubts(

@@ -13,6 +13,7 @@ from constricter.fix.known import (
     Classes,
     ClassSide,
     Guarded,
+    Inference,
     Known,
     LibraryNames,
     Outside,
@@ -63,7 +64,7 @@ from constricter.rules.syntax import (
     python2_compatible,
     target_names,
 )
-from constricter.rules.walked import classes, of_type
+from constricter.rules.walked import classes, of_type, walk
 
 # The node class of `type X = ...` statements, by name: Python 3.11's `ast` has no `TypeAlias`.
 _TYPE_ALIAS: Final = "TypeAlias"
@@ -680,7 +681,9 @@ def _recorded(scope: Scope, value: ast.expr | None) -> returned.Recorded:
     """
     if value is None:
         return None, frozenset()
-    return inference(value, scope.settings.known, scope.inferred.types), guesses_in(scope, [value])[1]
+    found: Inference | None = inference(value, scope.settings.known, scope.inferred.types)
+    # What it rests on counts only for a typed value (see `returned`).
+    return found, frozenset() if found is None else guesses_in(scope, [value])[1]
 
 
 def _assigned(scope: Scope) -> list[returned.Assigned]:
@@ -708,7 +711,7 @@ def _rebound_in(scope: Scope, value: ast.expr) -> bool:
     """
     return any(
         isinstance(node, ast.Name) and node.id in scope.flow and len(scope.flow[node.id].bindings) > 1
-        for node in ast.walk(value)
+        for node in walk(value)
     )
 
 

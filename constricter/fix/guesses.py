@@ -22,6 +22,7 @@ from constricter.fix.returns import BUILTIN_RETURNS
 from constricter.fix.targets import DICT_VIEWS, ITERATORS
 from constricter.offences import CONSTRUCTOR
 from constricter.rules.annotations import dotted
+from constricter.rules.walked import children
 
 # Builtins whose call is certain (when the module doesn't rebind the name): see `_is_guess`.
 _CERTAIN_BUILTINS: Final = frozenset(BUILTIN_RETURNS.keys() | CONTAINER_BUILDERS.keys() | ITERATORS)
@@ -77,7 +78,7 @@ def _deciding(value: ast.AST, known: Known, declared: Mapping[str, str]) -> Iter
         if isinstance(node, ast.Call) and _fixed_by_callee(node, known, declared):
             waiting.append(node.func)
         else:
-            waiting.extend(reversed(list(ast.iter_child_nodes(node))))
+            waiting.extend(reversed(children(node)))
 
 
 def _fixed_by_callee(call: ast.Call, known: Known, declared: Mapping[str, str]) -> bool:

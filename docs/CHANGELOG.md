@@ -6,6 +6,11 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- Checking is about 10% faster (the standard library, `--jobs=1`: 9.0s to 8.1s), every fix the same:
+  whether a fix is a guess is worked out only where there's a fix, a function's body is read once
+  for all its empty containers, and a node's children are listed without `ast`'s generators.
+- A standard-library return may name one of `typing`'s generic classes, written by its public path
+  (`tokenize.generate_tokens(f)` is a `collections.abc.Generator[tokenize.TokenInfo]`).
 - Fewer guesses a type checker rejects, again: a read a test around it narrows (inside an
   `isinstance` branch, a `match` case, after an `assert` or an early `return`) isn't offered its
   declared type; and a capitalised call is guessed to construct its class only where the callee is a
