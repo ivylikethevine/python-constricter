@@ -23,7 +23,7 @@ from constricter.fix.targets import (
     unpacked,
 )
 from constricter.offences import CONSTRUCTOR
-from constricter.rules.annotations import GENERICS, is_vague, node_name
+from constricter.rules.annotations import GENERICS, dotted, is_vague, node_name
 
 if TYPE_CHECKING:
     from types import EllipsisType
@@ -228,16 +228,23 @@ def _from_value(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
 
 
 def _returns(value: ast.expr, known: Known) -> Inference | None:
-    """Infer a call to one of the module's unannotated functions whose `return`s decide its type.
+    """Infer a call to an unannotated function (the module's, or imported) whose `return`s decide its type.
 
     Returns:
       The inference, or `None`.
 
     """
-    name: str
+    func: ast.expr
+    callee: str | None
     match value:
-        case ast.Call(func=ast.Name(id=name)) if name in known.returned.calls and name not in known.calls:
-            return Inference(known.returned.calls[name], f"`{name}`'s `return`s", frozenset({RETURNED}))
+        case ast.Call(func=ast.Name() | ast.Attribute() as func) if (
+            callee := dotted(func)
+        ) in known.returned.calls and callee not in known.calls:
+            return Inference(
+                known.returned.calls[callee or ""],
+                f"`{callee}`'s `return`s",
+                frozenset({RETURNED}),
+            )
         case _:
             return None
 

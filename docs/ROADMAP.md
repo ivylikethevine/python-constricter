@@ -93,6 +93,17 @@
   to 2.0s); and each file parsed once, its tree kept from the cross-file index for the check, in the
   same worker (`rules/parsed.py`; up to 40 MB of source, about 1 GB of trees, shared among the
   workers), so `--jobs=0` on 16 cores went from 7.5s to 6.3s. Every corpus's fixes are unchanged.
+- **Unannotated functions' returns across files**: a call to another checked file's unannotated
+  function is typed by its `return`s as a same-file call is (`returned`, a guess where they are).
+  The CLI checks files callees first (`order.plan`: the modules whose unannotated functions each
+  calls, in strongly connected components), each as soon as those are done (`cli/schedule.py`), and
+  checks files calling each other's functions again, up to 3 more times, while that types more;
+  `from pkg import util` then `util.f()` resolves `pkg.util`, for declared returns and classes too.
+  227 more bindings typed on the corpora, few because most such calls' types name something the
+  calling file doesn't import (Medium 1); every corpus converges, `--types` finds no new error with
+  `--fix`, and one more with `--unsafe-fixes` (pandas: a copy of a newly typed `int | None` inside
+  `if size is not None:`, already a guess). The standard library's check takes 5% longer with
+  `--jobs=1`, 18% with `--jobs=0` on 16 cores.
 - **No new type errors**: `corpus_suite.py --types` runs pydantic's, sqlalchemy's and pandas's own
   type checkers after `--fix`, which found 18, 61 and 117 errors they didn't have as released; now
   none (with guesses: 20, 76 and 165, now 11, 41 and 97). A name bound again later is declared with
@@ -208,16 +219,14 @@ it's done.
 
 ### Medium: a few days
 
-1. **Unannotated functions' returns across files.** Of the 16,529 calls to an imported name with no
-   fix, 10,193 go to the corpus's own package, and 1,567 more `module.func()` calls do: mostly to
-   functions another checked file defines without a return annotation. Within a module, `returned`
-   already types those from their `return` statements (callees first, a guess for a method); the
-   CLI's cross-file index (`project.Index`) carries only declared returns. Put the returned types in
-   the index too, worked out callees first across the files' import graph (a cycle in rounds, as
-   within a module), with each one's guess and what it rests on, so a call through
-   `from pkg.util import f` types as a same-file call does. Done when those calls are typed, the
-   standard library's check takes no more than 10% longer, and every corpus converges with no new
-   `--types` error.
+1. **Cross-file types the importing file doesn't name yet.** Of the corpora's calls into their own
+   package with no fix, 4,730 go to a function that declares its return (4,706 in pandas:
+   `get_handle()` returns `IOHandles[str]`), and 330 more to one its `return`s type (`succeed()` a
+   `Deferred`, `timezone.now()` a `datetime`), whose type names something the calling file doesn't
+   import. The standard library's types are imported when a fix needs one (`ImportPlan.spell`); do
+   the same for another checked file's, under `if TYPE_CHECKING:` with the annotation quoted, so the
+   added import can't create an import cycle at run time. Done when those calls are typed, and every
+   corpus converges with no new `--types` error.
 2. **Standard-library calls decided by their arguments.** 8,672 calls through a standard-library
    module still have no fix (and 6,014 to a name imported from one, mostly the standard library's
    own test helpers): `os.path` (1,516; `os.path.join` alone 1,043, `AnyStr` with arguments whose
@@ -242,14 +251,13 @@ it's done.
 1. **Types from installed dependencies.** Calls into third-party packages with no fix: 3,421 through
    a module (`numpy` 2,682, `pytest` 463, `pyarrow` 131) and 322 to a name imported from one
    (`zope`, `pydantic_core`, `typing_extensions`, ...). Most calls through an import stay in the
-   corpus's own package (10,193 to an imported name, 1,567 through a module, pandas's own `pd.`
-   among them): its unannotated functions, whose `return`s type their calls only in their own
-   module. The CLI already indexes the checked files' declared returns and classes
-   (`project.Index`); do the same for the installed packages they import, from their inline
-   annotations (`py.typed`) or stubs (`*-stubs`, typeshed's third-party stubs), resolved in the
-   environment the code runs in (an option naming it, else the active one), cached per package
-   version. Done when a declared return in an installed typed package types its calls as a checked
-   file's does, and the corpora converge with no new `--types` error.
+   corpus's own package (see Medium 1 for those). The CLI already indexes the checked files'
+   declared returns, `return`s and classes (`project.Index`); do the same for the installed packages
+   they import, from their inline annotations (`py.typed`) or stubs (`*-stubs`, typeshed's
+   third-party stubs), resolved in the environment the code runs in (an option naming it, else the
+   active one), cached per package version. Done when a declared return in an installed typed
+   package types its calls as a checked file's does, and the corpora converge with no new `--types`
+   error.
 2. **Unannotated code, from its call sites.** 130,558 of the bindings with no fix (77%) are in
    functions with no annotations: nothing anchors an unannotated parameter's type. `--infer-with`
    reaches some of it through a type checker. Without one, type a parameter from its callers when

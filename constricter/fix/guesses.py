@@ -21,6 +21,7 @@ from constricter.fix.opened import opened
 from constricter.fix.returns import BUILTIN_RETURNS
 from constricter.fix.targets import DICT_VIEWS, ITERATORS
 from constricter.offences import CONSTRUCTOR
+from constricter.rules.annotations import dotted
 
 # Builtins whose call is certain (when the module doesn't rebind the name): see `_is_guess`.
 _CERTAIN_BUILTINS: Final = frozenset(BUILTIN_RETURNS.keys() | CONTAINER_BUILDERS.keys() | ITERATORS)
@@ -168,13 +169,16 @@ def _guessed_by(call: ast.Call, known: Known, declared: Mapping[str, str]) -> fr
       `return`s are guesses: what they rest on; anything else: `constructor`.
 
     """
-    name: str
+    func: ast.expr
+    callee: str | None
     receiver: ast.expr
     method: str
     typed: str | None
     match call:
-        case ast.Call(func=ast.Name(id=name)) if name in known.returned.guesses:
-            return known.returned.guesses[name]
+        case ast.Call(func=ast.Name() | ast.Attribute() as func) if (
+            callee := dotted(func)
+        ) in known.returned.guesses:
+            return known.returned.guesses[callee or ""]
         case ast.Call(func=ast.Attribute(value=receiver, attr=method)) if (
             typed := inferred(receiver, known, declared)
         ) is not None and returned_method(typed, method, known) is not None:
@@ -217,13 +221,12 @@ def _is_guess(
     func: ast.expr
     match node:
         case ast.Call(func=ast.Name(id=name)) if (
-            (name in _CERTAIN_BUILTINS and known.is_builtin(name))
-            or name in known.awaits
-            or (name in known.returned.calls and name not in known.returned.guesses)
-        ):
+            name in _CERTAIN_BUILTINS and known.is_builtin(name)
+        ) or name in known.awaits:
             return False
         case ast.Call(func=func) if (
-            ast.unparse(func) in known.names.casts
+            _returned_certainly(func, known)
+            or ast.unparse(func) in known.names.casts
             or stdlib.resolved(func, known.names.stdlib) in stdlib.KNOWN
             or opened(node, known) is not None
             or certain_method(node, known, declared)
@@ -237,3 +240,14 @@ def _is_guess(
             return _assigned_origins(node, known, declared) is not None
         case _:
             return False
+
+
+def _returned_certainly(func: ast.expr, known: Known) -> bool:
+    """Check whether `func` is an unannotated function (own or imported) certain of its `return`s' type.
+
+    Returns:
+      Whether it is.
+
+    """
+    callee: str | None = dotted(func)
+    return callee in known.returned.calls and callee not in known.returned.guesses

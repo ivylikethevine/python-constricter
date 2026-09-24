@@ -11,8 +11,9 @@ in a function or module body:
 - a call to a capitalised name (`path = Path(...)` gives `Path`), or to a plain function that
   declares its return type (not a decorated, generic, async or redefined one, and not a return of
   `None`, `Any` or one that uses a `TypeVar`), in the same module or, with the CLI, in another file
-  it's checking: `from pkg.util import f`, `import pkg.util as u` then `u.f()`, relative imports and
-  re-exports all work, as long as every name in the type already means the same thing in the file;
+  it's checking: `from pkg.util import f`, `import pkg.util as u` or `from pkg import util` then
+  `u.f()`, relative imports and re-exports all work, as long as every name in the type already means
+  the same thing in the file;
 - a builtin with a fixed result: `len(x)` is an `int`, `hex(n)` a `str`, `any(xs)` a `bool`, `dir()`
   a `list[str]`, `range(n)` a `range`, and so on; but not where the module binds the name itself (a
   parameter named `format`, a local `input`, its own `def dir()`), anywhere in it;
@@ -50,7 +51,10 @@ in a function or module body:
 - a call to an unannotated function (or method) of the module, when every `return` it has gives one
   type and it can't fall off its end: that type, certain for a function and a guess for a method (a
   subclass may override it); a function whose `return`s are themselves guesses makes its calls
-  guesses too. Chains (`f` returns `g()`) are followed, a few links deep;
+  guesses too. Chains (`f` returns `g()`) are followed, a few links deep. With the CLI, a module
+  function in another checked file types its calls the same way, imported as a declared one is (and
+  as long as the file can name its type): the files are checked callees first, and files calling
+  each other's functions are checked again, up to 3 more times, while that types more;
 - with `--unsafe-fixes`, an unannotated instance attribute (`self.x`, or `x` on any value typed as
   its class), when every `self.x = value` in the class's own methods gives one known type (numbers
   widen to the widest: `int`, then `float`): that type. A guess, since a subclass or outside code

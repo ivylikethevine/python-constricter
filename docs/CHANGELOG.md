@@ -6,6 +6,15 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types a call to an unannotated function another checked file defines by its `return`s, as
+  it already did within a module (`returned`; a guess where they are): the CLI checks the files
+  callees first, each once the modules whose functions it calls are done, and checks files calling
+  each other's functions again while that types more. `from pkg import util` then `util.f()` now
+  resolves `pkg.util` as `import pkg.util as util` does, for declared returns and classes too. On
+  the corpora, 227 more bindings are typed; the standard library's check takes 5% longer with
+  `--jobs=1` and 18% with `--jobs=0` on 16 cores.
+- `tests/corpus/corpus_fix.py` copies a package into a folder of its own name, so its absolute
+  imports resolve across files, as they do in place.
 - A name narrowed inside a branch that may not run (`x = None`, then `x = n` under `if`) is no
   longer taken past the branch as the narrowed type: a call to `def late(n, flag)` returning `x` was
   typed a certain `int`, and is now `int | None`. A name rebound in a branch to a type outside its

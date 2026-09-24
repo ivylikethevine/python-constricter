@@ -339,6 +339,25 @@ def node_name(node: ast.AST) -> str:
             return ""
 
 
+def dotted(node: ast.expr) -> str | None:
+    """Spell a name, or a chain of attributes on one (`pkg.util.f`), as written.
+
+    Returns:
+      It, or `None` if `node` is anything else (`f().g`, `x[0].g`).
+
+    """
+    name: str
+    value: ast.expr
+    base: str | None
+    match node:
+        case ast.Name(id=name):
+            return name
+        case ast.Attribute(value=value, attr=name) if (base := dotted(value)) is not None:
+            return f"{base}.{name}"
+        case _:
+            return None
+
+
 def is_vague(annotation: ast.expr) -> bool:
     """Check an annotation for vague types.
 

@@ -204,12 +204,13 @@ ignore = ["LVA003"]
 
 `--fix` adds the annotation where the value decides it: a literal (`count = 0` becomes
 `count: int = 0`), a container whose elements agree, a constructor or a function that declares its
-return type (in another checked file too), a copy, subscript, attribute or method call of a local
-whose type is known, and values computed from those; a loop's target or an unpacking's names get a
-declaration on the line before. `--unsafe-fixes` adds guesses, and `--show-fixes` lists each fix and
-how its value decided it. `--infer-with basedpyright` (or `ty`, or `basedpyright,ty`, installed
-alongside) asks those type checkers for what `--fix` can't type itself, as guesses. The full list is
-in [docs/FIXES.md](https://github.com/ivylikethevine/python-constricter/blob/main/docs/FIXES.md).
+return type or whose `return`s agree (in another checked file too), a copy, subscript, attribute or
+method call of a local whose type is known, and values computed from those; a loop's target or an
+unpacking's names get a declaration on the line before. `--unsafe-fixes` adds guesses, and
+`--show-fixes` lists each fix and how its value decided it. `--infer-with basedpyright` (or `ty`, or
+`basedpyright,ty`, installed alongside) asks those type checkers for what `--fix` can't type itself,
+as guesses. The full list is in
+[docs/FIXES.md](https://github.com/ivylikethevine/python-constricter/blob/main/docs/FIXES.md).
 
 ### Installing and running
 

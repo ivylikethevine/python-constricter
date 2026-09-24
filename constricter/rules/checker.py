@@ -17,6 +17,7 @@ from constricter.fix.known import (
     LibraryNames,
     Outside,
     Returned,
+    Returns,
 )
 from constricter.jsonc import as_text
 from constricter.offences import (
@@ -89,16 +90,26 @@ def check_source(
       Every offence; `# noqa` comments are the caller's to apply.
 
     """
+    return checked_source(source, filename, checks, outside=outside).offences
+
+
+def checked_source(
+    source: str | bytes,
+    filename: str = "<unknown>",
+    checks: Checks = DEFAULT_CHECKS,
+    *,
+    outside: Outside | None = None,
+) -> "Checked":
+    """Check `source`, as `check_source` does.
+
+    Returns:
+      Its offences, and what its functions return (see `Checked`).
+
+    """
     tree: ast.Module
     own: Tables | None
     tree, own = _parse(source, filename)
-    return check_tree(
-        tree,
-        checks,
-        lines=as_text(source).splitlines(),
-        outside=outside,
-        own=own,
-    )
+    return checked_tree(tree, checks, lines=as_text(source).splitlines(), outside=outside, own=own)
 
 
 def _parse(source: str | bytes, filename: str) -> tuple[ast.Module, Tables | None]:
@@ -170,19 +181,48 @@ def check_tree(
       Every offence, in source order.
 
     """
+    return checked_tree(tree, checks, lines=lines, outside=outside, own=own).offences
+
+
+class Checked(NamedTuple):
+    """A module's offences, and what its own unannotated functions return (for the files importing them)."""
+
+    offences: list[Offence]
+    returned: Returns
+
+
+def checked_tree(
+    tree: ast.Module,
+    checks: Checks = DEFAULT_CHECKS,
+    *,
+    lines: Sequence[str] = (),
+    outside: Outside | None = None,
+    own: Tables | None = None,
+) -> Checked:
+    """Check a parsed module, as `check_tree` does.
+
+    Returns:
+      Its offences, in source order, and what its functions return (see `returned.exported`).
+
+    """
     own = own or module_tables(tree)
-    table: returned.Table = returned.Table(tree)
+    imported: Returns = Returns() if outside is None else outside.returned
+    table: returned.Table = returned.Table(tree, imported)
     settings: Settings = _settings(tree, checks, lines, own, outside)
     # The table, filled in as the functions are checked in call order, is what they all read.
     settings = replace(settings, known=replace(settings.known, returned=table.returned))
     scopes: list[Scope] = _scopes(tree, settings, table)
-    settings, scopes = _returned(tree, settings, scopes, table)
+    found: Returned
+    settings, scopes, found = _returned(tree, settings, scopes, table, imported)
     # A finding's kind is the code that reports it (LVA008, LVA009, LVA010).
     _finished(tree, scopes)
     flow: list[Offence] = flow_offences(_value_flow(tree, scopes), settings.checks.fixes)
     finals: list[Offence] = [o for scope in scopes for o in scope.finals()] if checks.final else []
     reported: list[Offence] = [o for scope in scopes for o in scope.reported()]
-    return sorted([*reported, *redundant(tree, settings.checks.fixes), *flow, *finals])
+    return Checked(
+        sorted([*reported, *redundant(tree, settings.checks.fixes), *flow, *finals]),
+        returned.exported(found),
+    )
 
 
 class Coverage(NamedTuple):
@@ -451,7 +491,8 @@ def _returned(
     settings: Settings,
     scopes: list[Scope],
     table: returned.Table,
-) -> tuple[Settings, list[Scope]]:
+    imported: Returns,
+) -> tuple[Settings, list[Scope], Returned]:
     """Check again what the first pass, in call order, couldn't type the first time.
 
     That pass typed each function knowing its callees' returns (see `_scopes`); what's left is a
@@ -461,11 +502,12 @@ def _returned(
     nothing changes, so `--fix` finds in one run what it would over several.
 
     Returns:
-      The settings with what the functions return, and the scopes checked with them.
+      The settings with what the functions return (those it imports, `imported`, too), the scopes
+      checked with them, and what its own return.
 
     """
     found: Returned = returned.returned(tree, table.recorded, table.assigned)
-    settings = replace(settings, known=replace(settings.known, returned=found))
+    settings = replace(settings, known=replace(settings.known, returned=returned.joined(imported, found)))
     functions: list[tuple[Scope, FunctionDef]] = [
         (scope, scope.kind.function) for scope in scopes if scope.kind.function is not None
     ]
@@ -475,7 +517,7 @@ def _returned(
         for scope, func in functions
         if table.stale(func)
         or scope.inferred.late.keys() - scope.inferred.seeded.keys()
-        or _reads_own(tree, func, settings.owners, found)
+        or returned.reads_own(tree, func, settings.owners, found)
     }
     changed: bool = False
     retyped: set[str] = set()  # the attributes the rounds typed anew
@@ -487,10 +529,13 @@ def _returned(
         latest: Returned = returned.returned(tree, table.recorded, table.assigned)
         typed: bool = latest != found and returned.called(tree, tree, latest)  # even if only a body calls one
         # Attributes typed anew: what reads one, of any value, may be typed now.
-        newly: set[str] = _retyped(found, latest)
+        newly: set[str] = returned.retyped(found, latest)
         if typed or newly:
             found = latest
-            settings = replace(settings, known=replace(settings.known, returned=found))
+            settings = replace(
+                settings,
+                known=replace(settings.known, returned=returned.joined(imported, found)),
+            )
             changed = changed or typed
             retyped |= newly
         again = {
@@ -500,11 +545,16 @@ def _returned(
             or returned.reads(tree, func, newly, anywhere=True)
             or scope.inferred.late.keys() - scope.inferred.seeded.keys()
         }
-    return settings, [scope for scope, _ in functions] + _bodies(
-        tree,
+    return (
         settings,
-        [scope for scope in scopes if scope.kind.function is None],
-        retyped if changed or retyped else None,
+        [scope for scope, _ in functions]
+        + _bodies(
+            tree,
+            settings,
+            [scope for scope in scopes if scope.kind.function is None],
+            (retyped if changed or retyped else None, found),
+        ),
+        found,
     )
 
 
@@ -539,58 +589,31 @@ def _bodies(
     tree: ast.Module,
     settings: Settings,
     bodies: list[Scope],
-    retyped: set[str] | None,
+    news: tuple[set[str] | None, Returned],
 ) -> list[Scope]:
     """Check the module and class bodies again, if the rounds typed anything they use.
 
     They were checked after every function, knowing the first pass's types: only what the rounds
-    typed since (`retyped`: the attributes; `None`: nothing at all) is news to them.
+    typed since is news to them (`news`: the attributes they typed, `None` if nothing at all; and
+    what the module's own functions return).
 
     Returns:
       Their scopes, checked again or as they were.
 
     """
+    retyped: set[str] | None
+    own: Returned
+    retyped, own = news
     if (
         retyped is not None
         and bodies
         and any(
-            returned.called(tree, stmt, settings.known.returned)
-            or returned.reads(tree, stmt, retyped, anywhere=True)
+            returned.called(tree, stmt, own) or returned.reads(tree, stmt, retyped, anywhere=True)
             for stmt in _body_statements(tree.body)
         )
     ):
         return _body_scopes(tree, settings)
     return bodies
-
-
-def _reads_own(tree: ast.Module, func: FunctionDef, classes_of: Mapping[int, str], found: Returned) -> bool:
-    """Check whether a method reads an attribute of its own class's (`self.a`) that `found` types.
-
-    `classes_of`: each method's class, by the method's `id()`.
-
-    Returns:
-      Whether it does: checking it again could type more.
-
-    """
-    owner: str | None
-    if (owner := classes_of.get(id(func))) is None:
-        return False
-    return returned.reads(tree, func, found.attributes.get(owner, {}).keys())
-
-
-def _retyped(before: Returned, after: Returned) -> set[str]:
-    """Name the attributes, of any class, that `after` types and `before` didn't, or typed otherwise.
-
-    Returns:
-      Their names.
-
-    """
-    return {
-        attr
-        for owner, attributes in after.attributes.items()
-        for attr, annotation in attributes.items()
-        if before.attributes.get(owner, {}).get(attr) != annotation
-    }
 
 
 def _body_statements(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:

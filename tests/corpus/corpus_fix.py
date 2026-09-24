@@ -6,9 +6,10 @@ one:
 
   local/.venv/bin/python tests/corpus/corpus_fix.py [PATH] [OPTION ...]   # default: the standard library
 
-It copies PATH's Python files to local/corpus-fix/, runs `--fix --unsafe-fixes --all-scopes` on the
-copy, then compiles every file that compiled before and checks a second `--diff` has nothing left
-to change. It prints what broke, if anything, and exits 1 then.
+It copies PATH's Python files to local/corpus-fix/ (a package into a folder of its name, so its
+absolute imports resolve across files), runs `--fix --unsafe-fixes --all-scopes` on the copy, then
+compiles every file that compiled before and checks a second `--diff` has nothing left to change.
+It prints what broke, if anything, and exits 1 then.
 """
 
 import contextlib
@@ -64,10 +65,11 @@ def main(argv: Sequence[str]) -> int:
     extra: list[str] = [arg for arg in argv if arg.startswith("-")]  # e.g. `--infer-with=basedpyright`
     root: Path = Path(named[0]) if named else Path(sysconfig.get_paths()["stdlib"])
     shutil.rmtree(COPY, ignore_errors=True)
+    into: Path = COPY / root.name if (root / "__init__.py").is_file() else COPY
     valid: list[Path] = []
     source: Path
     for source in paths.python_files([root]):
-        copy: Path = COPY / source.relative_to(root)
+        copy: Path = into / source.relative_to(root)
         copy.parent.mkdir(parents=True, exist_ok=True)
         _ = shutil.copyfile(source, copy)
         if _compiles(copy):

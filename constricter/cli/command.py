@@ -4,26 +4,27 @@
 import codecs
 import contextlib
 import difflib
-import gc
 import importlib
 import io
 import json
 import sys
 import tokenize
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field, replace
+from collections.abc import Callable, Sequence
+from dataclasses import replace
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, NamedTuple, Self, TextIO, TypeAlias, cast
+from typing import TYPE_CHECKING, Final, NamedTuple, TextIO, TypeAlias, cast
 
 from constricter import notebook
-from constricter.cli import baseline, collecting
+from constricter.cli import baseline, collecting, schedule
 from constricter.cli.options import Mode, Options, Output
-from constricter.cli.paths import STDIN, python_files, shares
+from constricter.cli.paths import STDIN, python_files
 from constricter.cli.protocol import HintError
 from constricter.cli.report import Format, Result, fix_reasons, render, statistics
+from constricter.cli.runs import BaselineRun, CheckRun, CoverageRun, FileRun
+from constricter.cli.workers import Workers
 from constricter.fix import fixes, project
-from constricter.fix.known import Hints, Outside
+from constricter.fix.known import Hints, Outside, Returns
 from constricter.noqa import lines, unsuppressed
 from constricter.offences import (
     DEFAULT_CHECKS,
@@ -31,12 +32,9 @@ from constricter.offences import (
     Edit,
     Offence,
 )
-from constricter.rules import parsed
-from constricter.rules.checker import Coverage, annotation_coverage, check_source
+from constricter.rules.checker import Checked, Coverage, annotation_coverage, checked_source
 
-if TYPE_CHECKING:  # both slow to import, and only needed for many files, or `--infer-with`
-    from concurrent.futures import Future, ProcessPoolExecutor
-
+if TYPE_CHECKING:  # slow to import, and only needed for `--infer-with`
     from constricter.cli import hints
 
 EXIT_CLEAN: Final = 0
@@ -81,30 +79,29 @@ def _source(raw: str, name: Path) -> tuple[str, list[notebook.Line]]:
     return notebook.parse(raw, str(name)) if name.suffix == notebook.SUFFIX else (raw, [])
 
 
-def check_text(
+def checked_text(
     raw: str,
     name: Path,
     checks: Checks = DEFAULT_CHECKS,
     *,
     outside: Outside | None = None,
-) -> list[Offence]:
-    """Return the offences in `raw`, the text of `name`, that no `# noqa` suppresses.
+) -> Checked:
+    """Check `raw`, the text of `name`: the offences no `# noqa` suppresses.
 
     A notebook's code cells are checked as one module, and each offence placed in its cell.
     Raises `ValueError` for a `.ipynb` that isn't a notebook.
 
     Returns:
-      The unsuppressed offences, a notebook's placed in their cells.
+      The unsuppressed offences, a notebook's placed in their cells, and what its functions return
+      (see `Checked`).
 
     """
     source: str
     where: list[notebook.Line]
     source, where = _source(raw, name)
-    offences: list[Offence] = unsuppressed(
-        check_source(source, str(name), checks, outside=outside),
-        lines(source),
-    )
-    return [_placed(o, where) for o in offences] if where else offences
+    checked: Checked = checked_source(source, str(name), checks, outside=outside)
+    offences: list[Offence] = unsuppressed(checked.offences, lines(source))
+    return checked._replace(offences=[_placed(o, where) for o in offences] if where else offences)
 
 
 def _placed(offence: Offence, where: list[notebook.Line]) -> Offence:
@@ -182,38 +179,6 @@ def fix_file(path: Path, offences: Sequence[Offence]) -> int:
     return count
 
 
-@dataclass(frozen=True)
-class _CheckRun:
-    """What checking one file found (and fixed, or would fix), in check/fix/diff mode."""
-
-    results: list[Result] = field(default_factory=list[Result])
-    baselined: int = 0
-    fixed: int = 0  # --fix: how many offences it fixed
-    text: str = ""  # --diff: the diff; --fix on standard input: the fixed source
-    error: str = ""
-
-
-@dataclass(frozen=True)
-class _BaselineRun:
-    """One file's offences, unfiltered, for --write-baseline."""
-
-    found: list[Offence] = field(default_factory=list[Offence])
-    error: str = ""
-
-
-@dataclass(frozen=True)
-class _CoverageRun:
-    """One file's annotation coverage, for --coverage."""
-
-    coverage: Coverage | None = None
-    error: str = ""
-
-
-_FileRun: TypeAlias = _CheckRun | _BaselineRun | _CoverageRun
-_Check: TypeAlias = Callable[[Path, Outside], _FileRun]  # check (or count, or baseline) one file
-# A worker's answers, one per file of its share: what it read (to index), and what it found.
-_Reading: TypeAlias = "Future[list[project.Module | None]]"
-_Checking: TypeAlias = "Future[list[_FileRun]]"
 HINT_ROUNDS: Final = 4  # with `--fix --infer-with`: how many times each file is fixed, at most
 
 
@@ -233,15 +198,15 @@ def _shown_lines(raw: str, name: Path) -> dict[tuple[int | None, int], str]:
     }
 
 
-def _checked(path: Path, name: Path, checks: Checks, outside: Outside) -> tuple[str, list[Offence]]:
+def _checked(path: Path, name: Path, checks: Checks, outside: Outside) -> tuple[str, Checked]:
     """Read `path` and check it as `name`; raises what reading or parsing it does.
 
     Returns:
-      Its text, and its offences.
+      Its text, and what checking it found.
 
     """
     raw: str = _read(path)
-    return raw, check_text(raw, name, checks, outside=outside)
+    return raw, checked_text(raw, name, checks, outside=outside)
 
 
 def _read_checked(
@@ -249,20 +214,20 @@ def _read_checked(
     name: Path,
     checks: Checks,
     outside: Outside,
-) -> tuple[str, list[Offence], str]:
+) -> tuple[str, Checked, str]:
     """Read and check `path`, turning a read or parse error into a message instead of raising.
 
     Returns:
-      Its text and offences (empty on error), and the error message (empty on success).
+      Its text and what checking it found (nothing on error), and the error message (empty on success).
 
     """
     raw: str
-    offences: list[Offence]
+    checked: Checked
     try:
-        raw, offences = _checked(path, name, checks, outside)
+        raw, checked = _checked(path, name, checks, outside)
     except (OSError, ValueError, SyntaxError) as error:  # UnicodeDecodeError is a ValueError
-        return "", [], f"{name}: error: {error}"
-    return raw, offences, ""
+        return "", Checked([], Returns()), f"{name}: error: {error}"
+    return raw, checked, ""
 
 
 def _results(raw: str, name: Path, offences: Sequence[Offence], options: Options) -> list[Result]:
@@ -284,7 +249,7 @@ def _results(raw: str, name: Path, offences: Sequence[Offence], options: Options
     ]
 
 
-def _check_path(path: Path, outside: Outside, options: Options) -> _CheckRun:
+def _check_path(path: Path, outside: Outside, options: Options) -> CheckRun:
     """Check (and fix, or diff) one file, given what's known of it from outside it.
 
     Returns:
@@ -293,11 +258,24 @@ def _check_path(path: Path, outside: Outside, options: Options) -> _CheckRun:
     """
     name: Path = options.input.name(path)
     raw: str
-    offences: list[Offence]
+    checked: Checked
     error: str
-    raw, offences, error = _read_checked(path, name, options.checks, outside)
+    raw, checked, error = _read_checked(path, name, options.checks, outside)
     if error:
-        return _CheckRun(error=error)
+        return CheckRun(error=error)
+    return replace(_handled(path, (raw, name), checked.offences, options), returned=checked.returned)
+
+
+def _handled(path: Path, text: tuple[str, Path], offences: list[Offence], options: Options) -> CheckRun:
+    """Report, fix or diff the offences found in `path` (`text`: its text, and its name).
+
+    Returns:
+      What was found, and fixed.
+
+    """
+    raw: str
+    name: Path
+    raw, name = text
     baselined: int
     offences, baselined = options.filter.unbaselined(name, offences)
     results: list[Result] = _results(raw, name, offences, options)
@@ -306,22 +284,22 @@ def _check_path(path: Path, outside: Outside, options: Options) -> _CheckRun:
         r.offence for r in results if r.offence.edit is not None and (unsafe or not r.offence.unsafe)
     ]
     if options.mode is Mode.DIFF:
-        return _CheckRun(text=_diff(raw, name, fixing))
+        return CheckRun(text=_diff(raw, name, fixing))
     if options.mode is not Mode.FIX:
-        return _CheckRun(results, baselined)
+        return CheckRun(results, baselined)
     left: list[Result] = [r for r in results if r.offence not in fixing]
     if path == STDIN:  # the fixed source goes to stdout
-        return _CheckRun(left, baselined, len(fixing), _fixed(raw, name, fixing).text)
+        return CheckRun(left, baselined, len(fixing), _fixed(raw, name, fixing).text)
     try:
-        return _CheckRun(left, baselined, fix_file(path, fixing))
+        return CheckRun(left, baselined, fix_file(path, fixing))
     except UnicodeEncodeError as failure:  # the file is left as it was, its offences unfixed
         # Its canonical name: PyPy reports `latin1` where CPython says `latin-1`.
         encoding: str = codecs.lookup(failure.encoding).name
         message: str = f"an annotation can't be written in its encoding, {encoding}; left as it was"
-        return _CheckRun(results, baselined, error=f"{name}: error: {message}")
+        return CheckRun(results, baselined, error=f"{name}: error: {message}")
 
 
-def _baseline_path(path: Path, outside: Outside, options: Options) -> _BaselineRun:
+def _baseline_path(path: Path, outside: Outside, options: Options) -> BaselineRun:
     """Check one file, unfiltered, for --write-baseline.
 
     Returns:
@@ -329,13 +307,13 @@ def _baseline_path(path: Path, outside: Outside, options: Options) -> _BaselineR
 
     """
     name: Path = options.input.name(path)
-    offences: list[Offence]
+    checked: Checked
     error: str
-    _, offences, error = _read_checked(path, name, options.checks, outside)
-    return _BaselineRun(error=error) if error else _BaselineRun(found=offences)
+    _, checked, error = _read_checked(path, name, options.checks, outside)
+    return BaselineRun(error=error) if error else BaselineRun(checked.offences, returned=checked.returned)
 
 
-def _cover_path(path: Path, _outside: Outside, options: Options) -> _CoverageRun:
+def _cover_path(path: Path, _outside: Outside, options: Options) -> CoverageRun:
     """Count one file's typed first bindings.
 
     Returns:
@@ -344,12 +322,12 @@ def _cover_path(path: Path, _outside: Outside, options: Options) -> _CoverageRun
     """
     name: Path = options.input.name(path)
     try:
-        return _CoverageRun(annotation_coverage(_source(_read(path), name)[0], options.checks))
+        return CoverageRun(annotation_coverage(_source(_read(path), name)[0], options.checks))
     except (OSError, ValueError, SyntaxError) as error:
-        return _CoverageRun(error=f"{name}: error: {error}")
+        return CoverageRun(error=f"{name}: error: {error}")
 
 
-def _check_all(options: Options) -> tuple[list[Path], list[_FileRun]]:
+def _check_all(options: Options) -> tuple[list[Path], list[FileRun]]:
     """Check every file (`--jobs` at a time), in order.
 
     With `--infer-with`, the type checker's server runs throughout: it's asked for every file's
@@ -363,7 +341,7 @@ def _check_all(options: Options) -> tuple[list[Path], list[_FileRun]]:
 
     """
     paths: list[Path] = list(python_files(options.input.paths, options.input.exclude))
-    check: Callable[[Path, Outside], _FileRun]
+    check: Callable[[Path, Outside], FileRun]
     if options.mode is Mode.COVERAGE:
         check = partial(_cover_path, options=options)
     elif options.mode is Mode.WRITE_BASELINE:
@@ -381,19 +359,19 @@ def _check_all(options: Options) -> tuple[list[Path], list[_FileRun]]:
         options.jobs,
         options.infer_memory,
     ) as session:
-        runs: list[_FileRun]
+        runs: list[FileRun]
         modules: project.Index
         runs, modules = _checked_all(paths, check, options, session)
         # The files the last round changed: only their hints can have changed.
         again: list[int] = [
             index
             for index, run in enumerate(runs)
-            if options.mode is Mode.FIX and isinstance(run, _CheckRun) and run.fixed and paths[index] != STDIN
+            if options.mode is Mode.FIX and isinstance(run, CheckRun) and run.fixed and paths[index] != STDIN
         ]
         for _ in range(HINT_ROUNDS - 1):
             if not again:
                 break
-            redone: list[_FileRun] = _checked_all(
+            redone: list[FileRun] = _checked_all(
                 [paths[i] for i in again],
                 check,
                 options,
@@ -401,20 +379,20 @@ def _check_all(options: Options) -> tuple[list[Path], list[_FileRun]]:
                 modules,
             )[0]
             index: int
-            run: _FileRun
+            run: FileRun
             for index, run in zip(again, redone, strict=True):
-                runs[index] = _merged(cast("_CheckRun", runs[index]), cast("_CheckRun", run))
-            again = [index for index, run in zip(again, redone, strict=True) if cast("_CheckRun", run).fixed]
+                runs[index] = _merged(runs[index], run)
+            again = [index for index, run in zip(again, redone, strict=True) if cast("CheckRun", run).fixed]
     return names, runs
 
 
 def _checked_all(
     paths: Sequence[Path],
-    check: Callable[[Path, Outside], _FileRun],
+    check: Callable[[Path, Outside], FileRun],
     options: Options,
     session: "hints.Session | None" = None,
     modules: project.Index | None = None,
-) -> tuple[list[_FileRun], project.Index]:
+) -> tuple[list[FileRun], project.Index]:
     """Check `paths` (`--jobs` at a time), with the `session`'s hints, and `modules` (else indexed).
 
     Returns:
@@ -423,140 +401,35 @@ def _checked_all(
     """
     hinted: dict[Path, tuple[Hints, ...]] = {} if session is None else session.hints(_texts(paths))
     coverage: bool = options.mode is Mode.COVERAGE  # needs nothing from the other files
-    if options.jobs == 1 or len(paths) <= 1:
-        if modules is None:
+    stack: contextlib.ExitStack
+    with contextlib.ExitStack() as stack:
+        pool: Workers | None = None
+        if options.jobs != 1 and len(paths) > 1:
+            pool = stack.enter_context(Workers(paths, options.jobs))
+        if modules is None and pool:
+            modules = project.Index({}, []) if coverage else pool.index()
+        elif modules is None:
             modules = project.Index({}, []) if coverage else project.index(paths)
             collecting.indexed()
-        return _check_share(check, list(zip(paths, _outside(modules, paths, hinted), strict=True))), modules
-    workers: _Workers
-    with _Workers(paths, options.jobs) as workers:
-        if modules is None:
-            modules = project.Index({}, []) if coverage else workers.index()
-        return workers.check(check, _outside(modules, paths, hinted)), modules
+        return schedule.checked(
+            paths,
+            check,
+            pool,
+            (modules, hinted),
+            _merged if options.mode is Mode.FIX else None,
+        )
 
 
-class _Workers:
-    """Worker processes, each with its own share of the files, which it indexes and then checks.
-
-    The trees a worker parsed to index its files are still there to check (`parsed.keep`), within its
-    part of the budget: sharing the files out anew for the check (a pool's way) would parse them again.
-    """
-
-    def __init__(self, paths: Sequence[Path], jobs: int) -> None:
-        """Share `paths` out among up to `jobs` workers (see `paths.shares`)."""
-        self.paths: Sequence[Path] = paths
-        self.shares: list[list[int]] = shares(paths, jobs)
-        self.stack: contextlib.ExitStack = contextlib.ExitStack()
-        self.pools: list[ProcessPoolExecutor] = []  # started by `__enter__`
-
-    def __enter__(self) -> Self:
-        """Start the workers, one process each, each with its part of the budget.
-
-        Returns:
-          Them.
-
-        """
-        self.pools = [
-            self.stack.enter_context(
-                cast(
-                    "type[ProcessPoolExecutor]",
-                    importlib.import_module("concurrent.futures").ProcessPoolExecutor,
-                )(
-                    max_workers=1,
-                    initializer=_started,
-                    initargs=(len(self.shares),),
-                ),
-            )
-            for _ in self.shares
-        ]
-        return self
-
-    def __exit__(self, *_details: object) -> None:
-        """Stop the workers."""
-        self.stack.close()
-
-    def index(self) -> project.Index:
-        """Index every file, each worker its share.
-
-        Returns:
-          The index, as one process would build it.
-
-        """
-        read: list[_Reading] = [
-            pool.submit(_read_share, [self.paths[at] for at in share])
-            for pool, share in zip(self.pools, self.shares, strict=True)
-        ]
-        found: dict[int, project.Module | None] = {}
-        share: list[int]
-        future: _Reading
-        for share, future in zip(self.shares, read, strict=True):
-            found.update(zip(share, future.result(), strict=True))
-        return project.indexed(found[at] for at in range(len(self.paths)))  # in their order, as one at a time
-
-    def check(self, check: _Check, outside: Sequence[Outside]) -> list[_FileRun]:
-        """Check every file, each worker the share it indexed.
-
-        Returns:
-          What each file found, in their order.
-
-        """
-        checked: list[_Checking] = [
-            pool.submit(_check_share, check, [(self.paths[at], outside[at]) for at in share])
-            for pool, share in zip(self.pools, self.shares, strict=True)
-        ]
-        found: dict[int, _FileRun] = {}
-        share: list[int]
-        future: _Checking
-        for share, future in zip(self.shares, checked, strict=True):
-            found.update(zip(share, future.result(), strict=True))
-        return [found[at] for at in range(len(self.paths))]
-
-
-def _started(processes: int) -> None:
-    """Start a worker: its share of the kept trees' budget, and the collector off (see `collecting`)."""
-    parsed.budget(processes)
-    gc.disable()
-
-
-def _read_share(paths: Sequence[Path]) -> list[project.Module | None]:
-    """Index a worker's share of the files (see `project.read`).
-
-    Returns:
-      Each file's module, or `None`.
-
-    """
-    found: list[project.Module | None] = [project.read(path) for path in paths]
-    collecting.indexed()
-    return found
-
-
-def _check_share(
-    check: _Check,
-    files: Sequence[tuple[Path, Outside]],
-) -> list[_FileRun]:
-    """Check a worker's share of the files.
-
-    Returns:
-      What each found.
-
-    """
-    found: list[_FileRun] = []
-    path: Path
-    outside: Outside
-    for path, outside in files:
-        found.append(check(path, outside))
-        collecting.sweep()
-    return found
-
-
-def _merged(before: _CheckRun, after: _CheckRun) -> _CheckRun:
-    """Join a file's two `--fix` rounds: what's left is the later round's, what's fixed is both's.
+def _merged(before: FileRun, after: FileRun) -> FileRun:
+    """Join a file's two `--fix` rounds' `CheckRun`s: what's left is the later's, what's fixed is both's.
 
     Returns:
       The joined run.
 
     """
-    return replace(after, fixed=before.fixed + after.fixed)
+    first: CheckRun = cast("CheckRun", before)
+    later: CheckRun = cast("CheckRun", after)
+    return replace(later, fixed=first.fixed + later.fixed)
 
 
 def _texts(paths: Sequence[Path]) -> dict[Path, str]:
@@ -578,35 +451,14 @@ def _texts(paths: Sequence[Path]) -> dict[Path, str]:
     return texts
 
 
-def _outside(
-    modules: project.Index,
-    paths: Sequence[Path],
-    hinted: Mapping[Path, tuple[Hints, ...]],
-) -> list[Outside]:
-    """Find what's known of each file from outside it: what it imports from the others, and its hints.
-
-    Returns:
-      Each file's, in order.
-
-    """
-    found: list[Outside] = []
-    path: Path
-    for path in paths:
-        imported: project.Imported = project.imported(modules, path)
-        found.append(
-            Outside(imported.calls, imported.classes, hinted.get(path, ()), project.type_vars(modules, path)),
-        )
-    return found
-
-
-def _report(options: Options, runs: Sequence[_FileRun], files: int) -> int:
+def _report(options: Options, runs: Sequence[FileRun], files: int) -> int:
     """Print the results (`runs` is check/fix/diff mode's: every other mode has its own printing).
 
     Returns:
       The exit status.
 
     """
-    checked: Sequence[_CheckRun] = cast("Sequence[_CheckRun]", runs)
+    checked: Sequence[CheckRun] = cast("Sequence[CheckRun]", runs)
     results: list[Result] = [result for run in checked for result in run.results]
     output: Output = options.output
     text: bool = output.fmt in {Format.TEXT, Format.FULL}
@@ -631,14 +483,14 @@ def _report(options: Options, runs: Sequence[_FileRun], files: int) -> int:
     return EXIT_FOUND if errors else EXIT_CLEAN
 
 
-def _coverage(options: Options, paths: Sequence[Path], runs: Sequence[_FileRun]) -> int:
+def _coverage(options: Options, paths: Sequence[Path], runs: Sequence[FileRun]) -> int:
     """Print each file's and the total annotation coverage (`runs` is --coverage mode's).
 
     Returns:
       The exit status.
 
     """
-    covered: Sequence[_CoverageRun] = cast("Sequence[_CoverageRun]", runs)
+    covered: Sequence[CoverageRun] = cast("Sequence[CoverageRun]", runs)
     counted: list[tuple[Path, Coverage]] = [
         (path, run.coverage) for path, run in zip(paths, covered, strict=True) if run.coverage is not None
     ]
@@ -674,7 +526,7 @@ def _run(options: Options) -> int:
 
     """
     names: list[Path]
-    runs: list[_FileRun]
+    runs: list[FileRun]
     with collecting.by_hand():
         try:
             names, runs = _check_all(options)
@@ -686,7 +538,7 @@ def _run(options: Options) -> int:
     status: int
     if options.mode is Mode.WRITE_BASELINE and options.filter.baseline_file is not None:
         file: Path = options.filter.baseline_file
-        baselined: Sequence[_BaselineRun] = cast("Sequence[_BaselineRun]", runs)
+        baselined: Sequence[BaselineRun] = cast("Sequence[BaselineRun]", runs)
         found: dict[str, list[Offence]] = {
             baseline.key(n, file): run.found for n, run in zip(names, baselined, strict=True)
         }
@@ -695,12 +547,12 @@ def _run(options: Options) -> int:
     elif options.mode is Mode.COVERAGE:
         status = _coverage(options, names, runs)
     elif options.mode is Mode.DIFF:
-        checked: Sequence[_CheckRun] = cast("Sequence[_CheckRun]", runs)
+        checked: Sequence[CheckRun] = cast("Sequence[CheckRun]", runs)
         diffs: str = "".join(run.text for run in checked)
         _ = sys.stdout.write(diffs)
         status = EXIT_FOUND if diffs else EXIT_CLEAN
     elif options.mode is Mode.FIX and options.input.paths == [STDIN] and runs and not failed:
-        fixed: _CheckRun = cast("_CheckRun", runs[0])
+        fixed: CheckRun = cast("CheckRun", runs[0])
         _ = sys.stdout.write(fixed.text)  # standard input, fixed, is the whole output
         status = EXIT_FOUND if any(r.offence.is_error(r.level) for r in fixed.results) else EXIT_CLEAN
     else:

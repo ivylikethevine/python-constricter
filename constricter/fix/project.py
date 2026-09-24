@@ -8,6 +8,10 @@ return type of each function it imports (`from m import f`, `import m as a` then
 `imported` those and each imported class's attributes and methods, but only where every name in a
 type means the same thing in the file as where it was written: otherwise the fix would name
 something undefined, or something else.
+
+What a module's unannotated functions return is known only once it's checked: the CLI checks the
+files in `order.plan`'s order, each after those whose unannotated functions it calls (`needs`), and
+adds each module's (`with_returned`) to the index for the files after it.
 """
 
 import ast
@@ -17,11 +21,13 @@ import itertools
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
-from typing import Final, NamedTuple, TypeAlias
+from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter.fix.known import Classes
+from constricter.fix.known import Classes, Returns
+from constricter.fix.returned import unannotated
 from constricter.rules import parsed
-from constricter.rules.annotations import Tables, defined_type_vars, module_tables
+from constricter.rules.annotations import Tables, defined_type_vars, dotted, module_tables
+from constricter.rules.walked import of_type
 
 _BUILTINS: Final = frozenset(dir(builtins))
 _PACKAGE: Final = "__init__"
@@ -30,6 +36,8 @@ _HOPS: Final = 5  # how many re-exports (`from .util import f` in an `__init__`)
 _FUNCTION: Final = "function"
 _CLASS: Final = "class"
 _TYPE_VAR: Final = "type variable"
+_RETURNED: Final = "returned"  # an unannotated function its `return`s type
+_UNANNOTATED: Final = "unannotated"  # an unannotated function, typed or not
 # What a name refers to: a module and an attribute of it (`None`: the module itself).
 Origin: TypeAlias = tuple[str, str | None]
 
@@ -48,6 +56,9 @@ class Module(NamedTuple):
     type_vars: frozenset[str] = frozenset()  # its module-level type variables
     # What it imports under a top-level `if` or `try` (`if TYPE_CHECKING:`), for `type_vars` alone.
     guarded: Mapping[str, Origin] = MappingProxyType({})
+    unannotated: frozenset[str] = frozenset()  # its functions a `return` could type (`returned`)
+    called: frozenset[str] = frozenset()  # what it calls through its top-level names (`f`, `u.f`)
+    returned: Returns = Returns()  # what they return, once it's checked
 
 
 class Imported(NamedTuple):
@@ -55,6 +66,7 @@ class Imported(NamedTuple):
 
     calls: dict[str, str]
     classes: Classes
+    returned: Returns = Returns()
 
 
 class Index(NamedTuple):
@@ -218,15 +230,31 @@ def read(path: Path) -> Module | None:
     own: Tables = module_tables(tree)
     parsed.keep(source, (tree, own))  # for the check to take, rather than parse it and read it again
     name: str = module_name(path)
+    names: dict[str, Origin] = _names(tree, name, is_package=path.stem == _PACKAGE)
     return Module(
         name,
         own.returns,
-        _names(tree, name, is_package=path.stem == _PACKAGE),
+        names,
         own.classes,
         own.methods,
         defined_type_vars(tree),
         _guarded(tree, name, is_package=path.stem == _PACKAGE),
+        unannotated(tree.body),
+        _called(tree, names),
     )
+
+
+def _called(tree: ast.Module, names: Mapping[str, Origin]) -> frozenset[str]:
+    """Find what the module calls through its top-level names: `f()`, `u.f()`, `pkg.util.f()`.
+
+    Returns:
+      Each callee, as written.
+
+    """
+    callees: Iterator[str | None] = (
+        dotted(node.func) for node in cast("list[ast.Call]", of_type(tree, ast.Call))
+    )
+    return frozenset(callee for callee in callees if callee is not None and callee.partition(".")[0] in names)
 
 
 def _source(path: Path) -> str | None:
@@ -261,16 +289,6 @@ def _roots(annotation: str) -> set[str]:
     return {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
 
 
-def _function(modules: Mapping[str, Module], origin: Origin, hops: int = _HOPS) -> tuple[Module, str] | None:
-    """Follow `origin` (through re-exports) to the module that defines it as a function.
-
-    Returns:
-      That module and the function's name, or `None`.
-
-    """
-    return _defined(modules, origin, _FUNCTION, hops)
-
-
 def _defined(
     modules: Mapping[str, Module],
     origin: Origin,
@@ -294,7 +312,7 @@ def _defined(
 
 
 def _kind(module: Module, kind: str) -> Iterable[str]:
-    """List what `module` defines of a `kind`: functions (whose return `--fix` uses), classes, type vars.
+    """List what `module` defines of a `kind`: functions (declared or typed by their `return`s), classes...
 
     Returns:
       Their names.
@@ -305,6 +323,10 @@ def _kind(module: Module, kind: str) -> Iterable[str]:
             return module.returns
         case "class":
             return module.classes
+        case "returned":
+            return module.returned.calls
+        case "unannotated":
+            return module.unannotated
         case _:
             return module.type_vars
 
@@ -365,44 +387,124 @@ def calls(catalog: Index, path: Path) -> dict[str, str]:
       for a file `catalog` doesn't have (a notebook, standard input).
 
     """
+    return {key: annotation for key, annotation, _ in _typed_calls(catalog, path, _FUNCTION)}
+
+
+def returned(catalog: Index, path: Path) -> Returns:
+    """Return, for the file at `path`, what the unannotated functions it imports return, as `calls` does.
+
+    Only those of modules already checked (`Module.returned`), each with what it rests on if a guess.
+
+    Returns:
+      Each call's type, and a guessed one's origins; nothing for a file `catalog` doesn't have.
+
+    """
+    types: dict[str, str] = {}
+    guesses: dict[str, frozenset[str]] = {}
+    key: str
+    annotation: str
+    defined: tuple[Module, str]
+    for key, annotation, defined in _typed_calls(catalog, path, _RETURNED):
+        types[key] = annotation
+        if defined[1] in defined[0].returned.guesses:
+            guesses[key] = defined[0].returned.guesses[defined[1]]
+    return Returns(types, guesses)
+
+
+def _typed_calls(catalog: Index, path: Path, kind: str) -> Iterator[tuple[str, str, tuple[Module, str]]]:
+    """Find the functions of a `kind` (declared or `returned`) the file at `path` imports, typed.
+
+    Yields:
+      Each call's name as written, its type, and the module and name that define it, for each whose
+      type means the same in the file (see `_portable_call`).
+
+    """
     name: str = module_name(path)
     modules: dict[str, Module] = catalog.modules
     target: Module | None
     if path.suffix != _SUFFIX or (target := modules.get(name)) is None:
-        return {}
-    found: dict[str, str] = {}
+        return
+    key: str
+    origin: Origin
+    for key, origin in _spelled(catalog, target, kind):
+        found: tuple[str, tuple[Module, str]] | None
+        # Only what it calls: the modules `plan` put it after, whatever else is checked by then.
+        if (kind != _RETURNED or key in target.called) and (
+            found := _portable_call(modules, target, origin, kind)
+        ) is not None:
+            yield key, *found
+
+
+def _spelled(catalog: Index, target: Module, kind: str) -> Iterator[tuple[str, Origin]]:
+    """Find what `target` imports that other modules may define as a `kind`, as it spells each call.
+
+    Yields:
+      Each name as written (`helper`, `u.helper`, `pkg.util.helper`), and where it's from.
+
+    """
     local: str
     origin: Origin
-    for local, origin in target.names.items():
-        if origin[1] is not None and origin[0] != name:
-            _add(found, modules, target, local, origin)
+    for local, origin in _resolved(catalog, target.names):
+        if origin[1] is not None and origin[0] != target.name:
+            yield local, origin
         elif origin[1] is None:  # a module: `u.f()`, or `pkg.util.f()` after `import pkg.util`
             other: Module
             for other in _submodules(catalog, origin[0]):
                 prefix: str = local + other.name.removeprefix(origin[0])
-                function: str
-                for function in other.returns:
-                    _add(found, modules, target, f"{prefix}.{function}", (other.name, function))
-    return found
+                yield from (
+                    (f"{prefix}.{function}", (other.name, function)) for function in _kind(other, kind)
+                )
 
 
-def _add(
-    found: dict[str, str],
+def _resolved(catalog: Index, names: Mapping[str, Origin]) -> Iterator[tuple[str, Origin]]:
+    """Take each name imported from a package that is its submodule (`from pkg import util`) as that module.
+
+    Unless the package itself defines the name (a function, class or type).
+
+    Yields:
+      Each name, and what it refers to.
+
+    """
+    local: str
+    origin: Origin
+    for local, origin in names.items():
+        package: Module | None
+        submodule: str = f"{origin[0]}.{origin[1]}" if origin[0] else origin[1] or ""
+        if (
+            origin[1] is not None
+            and submodule in catalog.modules
+            and not (
+                (package := catalog.modules.get(origin[0])) is not None
+                and any(origin[1] in _kind(package, kind) for kind in (_FUNCTION, _UNANNOTATED, _CLASS))
+            )
+        ):
+            yield local, (submodule, None)
+        else:
+            yield local, origin
+
+
+def _portable_call(
     modules: Mapping[str, Module],
     target: Module,
-    key: str,
     origin: Origin,
-) -> None:
-    """Record `key`'s return type in `found` if every name in it means the same in `target`."""
+    kind: str,
+) -> tuple[str, tuple[Module, str]] | None:
+    """Type a call to `origin`, a function of a `kind`, if every name in its type means the same in `target`.
+
+    Returns:
+      Its type, and the module and name that define it; or `None`.
+
+    """
     defined: tuple[Module, str] | None
-    if (defined := _function(modules, origin)) is None:
-        return
-    annotation: str = defined[0].returns[defined[1]]
+    if (defined := _defined(modules, origin, kind)) is None:
+        return None
+    annotation: str = (defined[0].returns if kind == _FUNCTION else defined[0].returned.calls)[defined[1]]
     roots: set[str] = _roots(annotation)
     if all(_same(target, defined[0], root) for root in roots) and not any(
         _is_type_var(modules, defined[0], root) for root in roots
     ):
-        found[key] = annotation
+        return annotation, defined
+    return None
 
 
 def _same(target: Module, defined: Module, name: str) -> bool:
@@ -436,7 +538,7 @@ def imported(catalog: Index, path: Path) -> Imported:
         return Imported({}, Classes(attributes, methods))
     local: str
     origin: Origin
-    for local, origin in target.names.items():
+    for local, origin in _resolved(catalog, target.names):
         spelled: list[tuple[str, Origin]] = []
         if origin[1] is not None and origin[0] != name:
             spelled = [(local, origin)]
@@ -459,7 +561,7 @@ def imported(catalog: Index, path: Path) -> Imported:
                     key,
                     defined[0].methods.get(defined[1], {}),
                 )
-    return Imported(calls(catalog, path), Classes(attributes, methods))
+    return Imported(calls(catalog, path), Classes(attributes, methods), returned(catalog, path))
 
 
 def _portable(
@@ -490,3 +592,37 @@ def _portable(
         ):
             kept[member] = annotation
     return kept
+
+
+def with_returned(catalog: Index, found: Mapping[str, Returns]) -> Index:
+    """Record what checked modules' unannotated functions return (`found`, by module name).
+
+    Returns:
+      The index, with them.
+
+    """
+    modules: dict[str, Module] = dict(catalog.modules)
+    name: str
+    returns: Returns
+    for name, returns in found.items():
+        if name in modules:
+            modules[name] = modules[name]._replace(returned=returns)
+    return Index(modules, catalog.names)
+
+
+def needs(catalog: Index, module: Module) -> set[str]:
+    """Find the other modules whose unannotated functions `module` calls (see `_spelled`).
+
+    Returns:
+      Their names.
+
+    """
+    found: set[str] = set()
+    key: str
+    origin: Origin
+    for key, origin in _spelled(catalog, module, _UNANNOTATED):
+        defined: tuple[Module, str] | None
+        if key in module.called and (defined := _defined(catalog.modules, origin, _UNANNOTATED)) is not None:
+            found.add(defined[0].name)
+    found.discard(module.name)
+    return found

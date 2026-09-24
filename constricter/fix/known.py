@@ -153,6 +153,18 @@ class Known:
         return name in _BUILTINS and (self.names.plan is None or name not in self.names.plan.taken)
 
 
+class Returns(NamedTuple):
+    """What a module's unannotated functions return (`Returned.calls`), for the files importing them.
+
+    `calls`: each function's type, by its name (or, imported, as the importing file spells it: `f`,
+    `u.f`); `guesses`: for one whose `return`s are guesses, what they rest on (`FIX_KINDS`).
+    """
+
+    # Plain `dict`s, not `MappingProxyType`s: the CLI's worker processes are sent them, pickled.
+    calls: Mapping[str, str] = {}
+    guesses: Mapping[str, frozenset[str]] = {}
+
+
 class Hints(NamedTuple):
     """A type checker's inlay hints for one file (`--infer-with`): which checker, and each type.
 
@@ -168,8 +180,9 @@ class Hints(NamedTuple):
 class Outside(NamedTuple):
     """What the CLI knows of a file from outside it, for `--fix`.
 
-    `calls`: the return types of functions other checked files define, and `classes` their classes'
-    attributes and methods' returns, as the file spells them (see `project.imported`); `hints`, a
+    `calls`: the return types of functions other checked files define, `returned` those of their
+    unannotated functions (see `Returns`), and `classes` their classes' attributes and methods'
+    returns, as the file spells them (see `project.imported`); `hints`, a
     type checker's types for what `--fix` can't type itself (`--infer-with`); `type_vars`, the names
     it imports that are type variables where they're defined (see `project.type_vars`), which a
     type its own functions declare can't be written with outside them.
@@ -179,6 +192,7 @@ class Outside(NamedTuple):
     classes: Classes | None = None
     hints: tuple[Hints, ...] = ()  # each checker's, in the order they were named
     type_vars: frozenset[str] = frozenset()
+    returned: Returns = Returns()
 
 
 class Inference(NamedTuple):
