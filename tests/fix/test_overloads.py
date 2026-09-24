@@ -313,3 +313,53 @@ def test_generic_protocols_callables_and_attributes_bind_type_variables() -> Non
         "o": None,
         "q": None,
     }
+
+
+VARIABLES: Final = """
+import ctypes
+import os
+import sys
+from sys import argv
+
+
+def f():
+    g = ctypes.pythonapi
+    a = sys.path
+    b = sys.platform == "darwin"
+    c = os.sep
+    d = argv
+    e = sys.stdout
+"""
+SHADOWING: Final = """
+import sys
+from os import getpid
+from sys import argv
+
+
+def f(argv, getpid):
+    a = argv
+    b = getpid()
+
+    def g():
+        c = argv
+        d = sys.path
+
+    return g
+"""
+
+
+def test_a_module_variable_is_typed_by_its_annotation() -> None:
+    """`sys.path` is a `list[str]`; `sys.stdout`, typeshed's `TextIO | Any`, is too vague to write."""
+    assert _fixes(VARIABLES) == {
+        "g": "ctypes.PyDLL",
+        "a": "list[str]",
+        "b": "bool",
+        "c": "str",
+        "d": "list[str]",
+        "e": None,
+    }
+
+
+def test_a_name_the_function_binds_isnt_the_modules_import() -> None:
+    """A parameter `getpid` isn't `os.getpid`, in the function or those inside it."""
+    assert _fixes(SHADOWING) == {"a": None, "b": None, "c": None, "d": "list[str]"}

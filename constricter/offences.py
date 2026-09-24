@@ -49,6 +49,7 @@ FIX_KINDS: dict[str, str] = {
     "constructor": "a call to a capitalised name, taken to construct one (a guess)",
     "conditional": "both sides of `a if c else b`",
     "arithmetic": "arithmetic on builtin scalars",
+    "compare": "a comparison of builtin values (`n < 3`), always a `bool`",
     "comprehension": "a list, set or dict comprehension's elements",
     "builder": "`sorted`, `list`, `set`, `frozenset` or `tuple` of known elements",
     "await": "`await` of the module's `async def`",

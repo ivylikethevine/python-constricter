@@ -39,6 +39,27 @@ def library_class(value: ast.expr, known: Known) -> Inference | None:
     return None if spelled is None else Inference(spelled, f"`{name}`'s return type", frozenset({_STDLIB}))
 
 
+def library_variable(value: ast.expr, known: Known) -> Inference | None:
+    """Infer a standard-library module's variable (`sys.path`, `os.sep`, `from sys import argv`).
+
+    Returns:
+      Its type, a class spelled (and imported, if it must be) as the module can; or `None`.
+
+    """
+    name: str | None = (
+        stdlib.resolved(value, known.names.stdlib) if isinstance(value, ast.Name | ast.Attribute) else None
+    )
+    found: str | None = None if name is None else stdlib.VARIABLES.get(name)
+    plan: ImportPlan | None = known.names.plan
+    if found is not None and stdlib.is_class(found):
+        found = None if plan is None else plan.spell(found)
+    return (
+        None
+        if found is None
+        else Inference(found, f"`{name}`'s annotation in typeshed", frozenset({_STDLIB}))
+    )
+
+
 def library_call(
     value: ast.expr,
     known: Known,

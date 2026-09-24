@@ -6,6 +6,13 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types a comparison of builtin values (`n < 3`, `len(xs) == 0`) as a `bool`; a
+  standard-library module's variable by its annotation in typeshed (`sys.path`: `list[str]`,
+  `os.sep`: `str`, from a new `variables` table); and a chained assignment's names (`i = j = 0`) by
+  declarations before it (`i: int`). A parameter or local named like a standard-library import
+  (`def f(getpid)`, with `from os import getpid`) is no longer typed as the import: a bug for calls
+  too. 1,019 more fixes on the corpora (809 on the standard library), none a type checker rejects; a
+  chained name's late fix (`None`, then `str`: `str | None`) is declared too.
 - `--fix` types a comparison by `in`, `not in`, `is` and `is not` alone as a `bool`
   (`writing = "w" in mode`), as `not x` is: always a real `bool`, whatever the operands. 234 more
   fixes on the corpora.

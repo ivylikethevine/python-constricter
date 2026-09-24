@@ -25,9 +25,11 @@
   or another checked file; fixed-return builtins and `str`/`bytes` methods; members of any typed
   value (`self.index.name`, `rows[0].strip()`, however deep, through `constricter.fix.members`);
   `cls` in a classmethod as `type[C]`; computed values (conditionals, arithmetic on builtin scalars,
-  comprehensions, `sorted`/`list`/..., `await`); `typing.cast`; `x = None` later rebound to one type
-  as `T | None`; loop targets (`enumerate` and `zip` part by part) and unpackings, declared before
-  the statement; fixes for LVA003 and LVA007. A tuple longer than `max-length` is `tuple[T, ...]`.
+  comprehensions, `sorted`/`list`/..., `await`), comparisons by `in` and `is`, or of builtin values
+  (a `bool`); standard-library module variables (`sys.path`); chained assignments' names, declared
+  before them (`i = j = 0`); `typing.cast`; `x = None` later rebound to one type as `T | None`; loop
+  targets (`enumerate` and `zip` part by part) and unpackings, declared before the statement; fixes
+  for LVA003 and LVA007. A tuple longer than `max-length` is `tuple[T, ...]`.
 - **The standard library, from typeshed**: tables generated from the stubs basedpyright bundles
   (`tests/typeshed/`, checked in CI), read as Linux, macOS and Windows and Python 3.11 to 3.14 see
   them, into `constricter/fix/tables/` (one JSON file a table, an entry a line; each class's members

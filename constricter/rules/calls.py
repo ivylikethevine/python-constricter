@@ -13,15 +13,16 @@ A name the calling function binds itself isn't the module's function, whatever i
 import ast
 import builtins
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from typing import Final
 
 from constricter.fix import callers
 from constricter.fix.guesses import guessing
 from constricter.fix.inference import inference
-from constricter.fix.known import Call, Callee, Inference, Known, Observed, Passed, Seeds
+from constricter.fix.known import Call, Callee, Inference, Known, LibraryNames, Observed, Passed, Seeds
 from constricter.rules.annotations import dotted
 from constricter.rules.flow import members
-from constricter.rules.scope import Scope, guesses_in
+from constricter.rules.scope import Scope, Settings, guesses_in
 from constricter.rules.syntax import FunctionDef, own_nodes
 
 _BUILTINS: Final = frozenset(dir(builtins))
@@ -190,3 +191,21 @@ def seed_parameters(scope: Scope, func: FunctionDef, named: Sequence[ast.arg]) -
             and plain(given[0], scope.settings.known)
         ):
             scope.inferred.learn(arg.arg, given[0], frozenset({callers.KIND}) | given[1])
+
+
+def unshadowed(settings: Settings, function: FunctionDef) -> Settings:
+    """Drop the standard-library names a function binds itself from what it's checked knowing.
+
+    A parameter, local, import or nested definition named `getpid` isn't `os.getpid`, whatever the
+    module imports; the functions inside it are checked knowing the same.
+
+    Returns:
+      The settings, less those names; the same settings if it binds none of them.
+
+    """
+    names: LibraryNames = settings.known.names
+    bound: frozenset[str]
+    if not (bound := _bound(function, list(own_nodes(function.body))) & names.stdlib.keys()):
+        return settings
+    stdlib: dict[str, str] = {name: origin for name, origin in names.stdlib.items() if name not in bound}
+    return replace(settings, known=replace(settings.known, names=names._replace(stdlib=stdlib)))

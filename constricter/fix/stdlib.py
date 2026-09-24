@@ -132,9 +132,11 @@ _KIND: Final = "stdlib"  # the fix kind of what the tables type
 _BUILTIN_NAMES: Final = frozenset({*dir(builtins), "None"})
 _DOT: Final = "."
 KNOWN: Final = frozenset({*RETURNS, *OVERLOADS, ENVIRONMENT, *CLASSES})  # every function the tables type
+# Module-level variables' types (`sys.path`: `list[str]`): builtin annotations, or classes' paths.
+VARIABLES: Final = cast("dict[str, str]", _table("variables"))
 _TABLE_MODULES: Final = frozenset(
     name.rsplit(".", count)[0]
-    for name in (*KNOWN, *_ALIASES, *_METHODS, *_ATTRIBUTES, *_BASES)
+    for name in (*KNOWN, *_ALIASES, *_METHODS, *_ATTRIBUTES, *_BASES, *VARIABLES)
     for count in range(1, name.count(".") + 1)
 )
 
@@ -201,7 +203,7 @@ def library_member(receiver: str, name: str, call: ast.Call | None, known: Known
         None if path is None else _member(_ATTRIBUTES if call is None else _METHODS, path, name)
     )
     plan: ImportPlan | None = known.names.plan
-    if found is not None and _is_class(found):
+    if found is not None and is_class(found):
         found = None if plan is None else plan.spell(found)
     what: str = "annotation" if call is None else "return type"
     return (
@@ -398,7 +400,7 @@ def _parsed(annotation: str) -> ast.expr:
     return ast.parse(annotation, mode="eval").body
 
 
-def _is_class(annotation: str) -> bool:
+def is_class(annotation: str) -> bool:
     """Check whether a table's annotation is a class's dotted path (`io.BytesIO`), not a builtin one.
 
     Returns:

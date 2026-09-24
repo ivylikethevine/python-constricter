@@ -6,7 +6,8 @@ in a function or module body:
 
 - a literal: `count = 0` becomes `count: int = 0`; and `not x`, or a comparison by `in`, `not in`,
   `is` and `is not` alone (`"r" in mode`), always a `bool` whatever it compares (`==` and `<` may
-  return anything, as numpy's arrays do);
+  return anything, as numpy's arrays do), and any comparison of builtin values (`n < 3`,
+  `len(xs) == 0`, `name != "x"`), a `bool` too;
 - a container whose elements agree: `[1, 2]` gives `list[int]`, `{"a": (1, "b")}` gives
   `dict[str, tuple[int, str]]`; a tuple longer than `max-length` (4) is `tuple[T, ...]` if its
   elements agree, and untyped if not (it would be LVA011's);
@@ -71,6 +72,9 @@ in a function or module body:
   `from __future__ import annotations`;
 - a generic standard-library class's own attribute or property, by the receiver's type arguments:
   `m.string` on an `re.Match[str]` is a `str`, `p.pattern` on an `re.Pattern[bytes]` a `bytes`;
+- a standard-library module's variable, by its annotation in typeshed: `sys.path` is a `list[str]`,
+  `os.sep` a `str` (not `sys.stdout`, typeshed's `TextIO | Any`); a name a function binds itself (a
+  parameter `getpid`) isn't the module's import;
 - `open(path, mode)` (or `io.open`), by its literal mode (`r` when there's none): a text mode gives
   an `io.TextIOWrapper`, a binary one an `io.BufferedReader` to read, an `io.BufferedWriter` to
   write, and an `io.BufferedRandom` for both (`+`). Not unbuffered (`buffering`, which gives an
@@ -147,6 +151,9 @@ run time. A name the file already imports, under any name and even for type chec
 reused; a module-level annotation using one imported for type checking alone is quoted
 (`top: "IOHandles[str]" = get_handle()`), unless the module has
 `from __future__ import annotations`. A generic class another file defines is never written bare.
+
+A chained assignment's names (`i = j = 0`), which can't be annotated where they're bound, are each
+declared before it (`i: int`), as an unpacking's are; not as `Final`, which needs its value.
 
 An added import never binds a name the module binds anywhere, or a builtin's; with no name free,
 there's no fix. In a notebook, which has no import block, such a fix is reported but not applied.
@@ -282,6 +289,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `call`          | a function that declares its return type (this module's, or another checked file's) |
 | `constructor`   | a call to a capitalised name, taken to construct one (a guess)                      |
 | `conditional`   | both sides of `a if c else b`                                                       |
+| `compare`       | a comparison of builtin values (`n < 3`), always a `bool`                           |
 | `arithmetic`    | arithmetic on builtin scalars                                                       |
 | `comprehension` | a list, set or dict comprehension's elements                                        |
 | `builder`       | `sorted`, `list`, `set`, `frozenset` or `tuple` of known elements                   |

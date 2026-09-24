@@ -99,11 +99,16 @@ Placed: TypeAlias = tuple[tuple[int, int], bool]
 
 @dataclass
 class Assignments:
-    """A scope's plain `name = value` (or `name: T = value`) bindings, for LVA012."""
+    """A scope's plain `name = value` (or `name: T = value`) bindings, for LVA012 and `--fix`.
+
+    `chained`: where each name a chained assignment binds first (`a = b = 0`) starts; its fix,
+    whenever it's made (`optional`, `filled`), declares it there, as it can't annotate it.
+    """
 
     found: dict[str, list[Placed]] = field(default_factory=dict[str, list[Placed]])  # each name's
     looping: int = 0  # how many loops deep the statement being visited is
     empty: dict[str, str] = field(default_factory=dict[str, str])  # names first bound empty: their kind
+    chained: dict[str, tuple[int, int]] = field(default_factory=dict[str, tuple[int, int]])
 
 
 # A name typed late: its type, and what that rests on if it's a guess (`FIX_KINDS`).
@@ -210,8 +215,18 @@ class Scope:
             self.inferred.rebound(name, None)
         self._first(name, where, code, fix)
 
-    def assign(self, target: ast.Name, code: str | None, value: ast.expr) -> None:
-        """Bind `target` to `value` (`name = value`), offering `--fix`'s annotation for it."""
+    def assign(
+        self,
+        target: ast.Name,
+        code: str | None,
+        value: ast.expr,
+        chained: ast.stmt | None = None,
+    ) -> None:
+        """Bind `target` to `value` (`name = value`), offering `--fix`'s annotation for it.
+
+        One of a `chained` assignment's names (`a = b = 0`), which can't be annotated where it's bound,
+        is offered a declaration before it instead (`a: int`); not a `Final` one, which needs its value.
+        """
         name: str = target.id
         again: bool = name in self.declared
         facts: Facts = self.settings.facts
@@ -228,7 +243,7 @@ class Scope:
         origins: frozenset[str]
         # Whether a fix is a guess, worked out only for one: untyped, it's the same either way.
         unsafe, origins = (False, frozenset()) if fix is None else guesses_in(self, [value])
-        constant: bool = function is None and is_constant(name) and name in facts.passed
+        constant: bool = function is None and is_constant(name) and name in facts.passed and chained is None
         if fix is not None and not unsafe:
             origins = doubts(
                 value,
@@ -254,7 +269,14 @@ class Scope:
         kind: str | None
         if (kind := fills.empty(value)) is not None:
             _ = self.assignments.empty.setdefault(name, kind)
-        self._first(name, at(target), code, None if fix is None else self.offer(fix, origins, unsafe=unsafe))
+        if chained is not None and not again:
+            _ = self.assignments.chained.setdefault(name, (chained.lineno, chained.col_offset))
+        self._first(
+            name,
+            at(target),
+            code,
+            None if fix is None else self.placed(name, fix, origins, unsafe=unsafe),
+        )
         if fix is not None:
             self.inferred.learn(name, fix.annotation, origins if unsafe else None)
 
@@ -329,6 +351,18 @@ class Scope:
             ):
                 return typed
         return None
+
+    def placed(self, name: str, fix: Inference, origins: frozenset[str], *, unsafe: bool) -> Fix | None:
+        """Offer `name`'s fix where it can go: at its binding, or declared before a chained assignment.
+
+        Returns:
+          The fix (see `offer`).
+
+        """
+        span: tuple[int, int] | None
+        if (span := self.assignments.chained.get(name)) is None:
+            return self.offer(fix, origins, unsafe=unsafe)
+        return self.offer(fix, origins, unsafe=unsafe, edit=Edit.DECLARE, span=span)
 
     def offer(
         self,

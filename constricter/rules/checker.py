@@ -46,7 +46,7 @@ from constricter.rules.annotations import (
     node_name,
     self_returns,
 )
-from constricter.rules.calls import keyed, observed, seed_parameters
+from constricter.rules.calls import keyed, observed, seed_parameters, unshadowed
 from constricter.rules.flow import Finding, Hierarchy
 from constricter.rules.narrowing import flow_offences, module_flow, module_names
 from constricter.rules.redundant import redundant
@@ -367,7 +367,7 @@ def _function_scopes(
                 [_recorded(scope, value) for value in scope.inferred.returns] if settled else [],
                 _assigned(scope) if settled else [],
             )
-        scopes += _function_scopes(nested, settings, table)
+        scopes += _function_scopes(nested, scope.settings, table)
     return scopes
 
 
@@ -385,6 +385,7 @@ def _function_scope(
       Its scope.
 
     """
+    settings = unshadowed(settings, func)
     args: ast.arguments = func.args
     named: tuple[ast.arg, ...] = (*args.posonlyargs, *args.args, *args.kwonlyargs)
     params: set[str] = {a.arg for a in named}
