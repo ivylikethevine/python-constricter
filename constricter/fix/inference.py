@@ -5,7 +5,7 @@ import ast
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
-from constricter.fix import stdlib
+from constricter.fix import overloads, stdlib
 from constricter.fix.known import ImportPlan, Inference, Known
 from constricter.fix.members import assigned_attribute, member, returned_method, subscripted
 from constricter.fix.opened import opened
@@ -173,6 +173,15 @@ def _member_of(
             )
         case ast.Call():
             found: Inference | None = member(receiver, attr, value, known)
+            method: stdlib.Method | None
+            if found is None and (method := stdlib.overloaded_method(receiver, attr, known)) is not None:
+                found = overloads.chosen(
+                    method.entry,
+                    value,
+                    known,
+                    lambda arg: inference(arg, known, declared),
+                    method,
+                )
             text = None if found is not None else returned_method(receiver, attr, known)
             return (
                 found
@@ -273,38 +282,33 @@ def library_class(value: ast.expr, known: Known) -> Inference | None:
 def _library(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inference | None:
     """Infer a call to a standard-library function the tables type (see `constricter.fix.stdlib`).
 
-    A fixed builtin result, whatever the arguments; an `AnyStr` function's, when every argument is a
-    `str` (or every one a `bytes`), and an environment lookup's `str | None` (`str` with a `str`
-    default), passed positionally.
+    A fixed builtin result, whatever the arguments; the signature its arguments certainly match, for
+    one whose overloads or type variables they decide (see `constricter.fix.overloads`); and
+    `os.environ.get`'s `str | None` (`str` with a `str` default), passed positionally.
 
     Returns:
       The inference, or `None` for any other call, or arguments that don't decide it.
 
     """
-    func: ast.expr
+    call: ast.Call
     args: list[ast.expr]
     keywords: list[ast.keyword]
     match value:
-        case ast.Call(func=func, args=args, keywords=keywords):
+        case ast.Call(args=args, keywords=keywords) as call:
             pass
         case _:
             return None
-    name: str | None = stdlib.resolved(func, known.names.stdlib)
+    name: str | None = stdlib.resolved(call.func, known.names.stdlib)
     reason: str = f"`{name}`'s return type"
     kinds: frozenset[str] = frozenset({_STDLIB})
     if name in stdlib.RETURNS:
         return Inference(stdlib.RETURNS[name], reason, kinds)
-    # The others are decided by their positional arguments' types, worked out only for them.
-    if keywords or name not in stdlib.BY_ARGUMENTS:
+    if name is not None and name in stdlib.OVERLOADS:
+        return overloads.chosen(name, call, known, lambda arg: inference(arg, known, declared))
+    # `os.environ.get`, decided by its positional arguments' types, worked out only for it.
+    if keywords or name != stdlib.ENVIRONMENT:
         return None
     parts: list[Inference | None] = [inference(arg, known, declared) for arg in args]
-    types: set[str | None] = {None if part is None else part.annotation for part in parts}
-    if name in stdlib.ANY_STR:
-        return (
-            Inference(str(next(iter(types))), reason, _kinds(*parts, kind=_STDLIB))
-            if len(types) == 1 and types <= _TEXT_NAMES
-            else None
-        )
     if len(args) == 1:
         return Inference("str | None", reason, kinds)
     default: Inference | None = parts[1] if len(args) == _WITH_DEFAULT else None

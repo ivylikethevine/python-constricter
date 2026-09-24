@@ -161,6 +161,25 @@ def certain_method(call: ast.expr, known: Known, declared: Mapping[str, str]) ->
             return False
 
 
+def _overloaded_method(call: ast.Call, known: Known, declared: Mapping[str, str]) -> bool:
+    """Check whether `call` calls a standard-library method its arguments type (`stdlib.overloaded_method`).
+
+    Its arguments are walked as its parts: a guessed one makes it a guess.
+
+    Returns:
+      Whether it does.
+
+    """
+    receiver: ast.expr
+    method: str
+    match call:
+        case ast.Call(func=ast.Attribute(value=receiver, attr=method)):
+            typed: str | None = inferred(receiver, known, declared)
+            return typed is not None and stdlib.overloaded_method(typed, method, known) is not None
+        case _:
+            return False
+
+
 def _guessed_by(call: ast.Call, known: Known, declared: Mapping[str, str]) -> frozenset[str]:
     """Name what makes one guessed call a guess.
 
@@ -230,6 +249,7 @@ def _is_guess(
             or stdlib.resolved(func, known.names.stdlib) in stdlib.KNOWN
             or opened(node, known) is not None
             or certain_method(node, known, declared)
+            or _overloaded_method(node, known, declared)
         ):
             return False
         case ast.Call(func=func):

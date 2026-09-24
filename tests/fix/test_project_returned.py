@@ -65,7 +65,7 @@ def run():
     g: int = base()
     return a, b, c, d, e, f, g
 """
-GUESSED: Final = "    e: Row = row(1)\n    f = hidden()\n"
+GUESSED: Final = "    e: Row = row(1)\n    f: Local = hidden()\n"
 SHOWN: Final = (
     "fix 'e': `Row`, from `row`'s `return`s [returned] (a guess: --unsafe-fixes)\n",
     "fix 'b': `str`, from `util.helper`'s `return`s [returned]\n",
@@ -113,7 +113,7 @@ def _package(root: Path) -> Path:
 
 @pytest.mark.parametrize("jobs", ["1", "2"])
 def test_calls_to_other_files_unannotated_functions_are_typed(tmp_path: Path, jobs: str) -> None:
-    """A chain over three files types in one run; a guess stays one; a type `main` can't name is left.
+    """A chain over three files types in one run; a guess stays one, its type imported if it must be.
 
     `main` calls both `pkg.util` and `pkg.deep`: it waits for both.
     """
@@ -121,7 +121,7 @@ def test_calls_to_other_files_unannotated_functions_are_typed(tmp_path: Path, jo
     assert cli.main(["--fix", "-q", f"--jobs={jobs}", str(tmp_path)]) == cli.EXIT_FOUND
     assert main.read_text(encoding="utf-8") == FIXED
     main = _package(tmp_path)
-    assert cli.main(["--fix", "--unsafe-fixes", "-q", f"--jobs={jobs}", str(tmp_path)]) == cli.EXIT_FOUND
+    assert cli.main(["--fix", "--unsafe-fixes", "-q", f"--jobs={jobs}", str(tmp_path)]) == cli.EXIT_CLEAN
     assert GUESSED in main.read_text(encoding="utf-8")
 
 

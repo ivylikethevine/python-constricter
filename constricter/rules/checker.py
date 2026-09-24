@@ -13,6 +13,7 @@ from constricter.fix.inference import inference
 from constricter.fix.known import (
     Classes,
     ClassSide,
+    Guarded,
     Known,
     LibraryNames,
     Outside,
@@ -43,6 +44,7 @@ from constricter.rules.annotations import (
     imported_from,
     module_tables,
     node_name,
+    roots,
     self_returns,
 )
 from constricter.rules.flow import Finding, Hierarchy
@@ -145,7 +147,11 @@ def _settings(
             {**(imported.methods if imported else {}), **free_of_all(own.methods, free)},
             free_of(awaited_returns(tree), free),
             ClassSide(free_of_all(class_attributes(tree), free), free_of_all(class_methods(tree), free)),
-            LibraryNames(casts(tree), stdlib.origins(tree), imports.plan(tree)),
+            LibraryNames(
+                casts(tree),
+                stdlib.origins(tree),
+                replace(imports.plan(tree), guarded={} if outside is None else outside.guarded),
+            ),
             checks.max_length,
         ),
         Hierarchy.for_module(tree, {name: frozenset(wider) for name, wider in checks.narrower}),
@@ -206,6 +212,7 @@ def checked_tree(
 
     """
     own = own or module_tables(tree)
+    outside = None if outside is None else _usable(outside, imports.plan(tree).taken)
     imported: Returns = Returns() if outside is None else outside.returned
     table: returned.Table = returned.Table(tree, imported)
     settings: Settings = _settings(tree, checks, lines, own, outside)
@@ -219,9 +226,44 @@ def checked_tree(
     flow: list[Offence] = flow_offences(_value_flow(tree, scopes), settings.checks.fixes)
     finals: list[Offence] = [o for scope in scopes for o in scope.finals()] if checks.final else []
     reported: list[Offence] = [o for scope in scopes for o in scope.reported()]
+    exported: Returns = returned.exported(found)
+    guarded: Mapping[str, Guarded] = {} if outside is None else outside.guarded
     return Checked(
         sorted([*reported, *redundant(tree, settings.checks.fixes), *flow, *finals]),
-        returned.exported(found),
+        exported._replace(
+            names={
+                name: guarded[name].origin
+                for annotation in exported.calls.values()
+                for name in roots(annotation)
+                if name in guarded
+            },
+        ),
+    )
+
+
+def _usable(outside: Outside, taken: frozenset[str]) -> Outside:
+    """Drop what other files offer whose type needs a name imported that the module binds already.
+
+    That's a name to import under `if TYPE_CHECKING:` (see `Guarded`) that the module binds anywhere
+    else, a function's local or parameter included: the import would shadow it, or it the import.
+
+    Returns:
+      What's left.
+
+    """
+    clashing: frozenset[str] = frozenset(
+        name for name, found in outside.guarded.items() if found.statement is not None and name in taken
+    )
+    if not clashing:
+        return outside
+    members: Classes | None = outside.classes
+    return outside._replace(
+        calls=free_of(outside.calls, clashing),
+        classes=None
+        if members is None
+        else Classes(free_of_all(members.attributes, clashing), free_of_all(members.methods, clashing)),
+        returned=outside.returned._replace(calls=free_of(outside.returned.calls, clashing)),
+        guarded={name: found for name, found in outside.guarded.items() if name not in clashing},
     )
 
 

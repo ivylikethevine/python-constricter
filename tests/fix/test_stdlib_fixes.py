@@ -2,11 +2,13 @@
 """`--fix` for the standard library, from tables generated from typeshed, resolved through the imports."""
 
 import ast
+import json
 import pkgutil
 import sys
 import textwrap
 import warnings
-from typing import Final, cast
+from pathlib import Path
+from typing import Final, TypeAlias, cast
 
 import pytest
 
@@ -16,6 +18,12 @@ from constricter.fix.known import ImportPlan, Inference, Known, LibraryNames
 
 UNANNOTATED: Final = "LVA001"
 PYPY: Final = "pypy"
+Configs: TypeAlias = list[str]  # platforms and Python versions: `linux-3.12`
+# Where each entry only some platforms and Python versions have is (see `stdlib_tables.PARTIAL`).
+PARTIAL: Final = cast(
+    "dict[str, Configs]",
+    json.loads((Path(__file__).parents[1] / "typeshed" / "partial.json").read_text(encoding="utf-8")),
+)
 LINUX: Final = "linux"
 SOURCE: Final = """
 import os
@@ -49,7 +57,7 @@ def test_a_table_function_is_typed_however_it_is_imported() -> None:
     """`import m`, `import m as a` and `from m import f` all resolve; a same-named function doesn't.
 
     An `AnyStr` function is typed only when its arguments agree on `str` or `bytes`; an environment
-    lookup is `str | None`, or `str` with a `str` default.
+    lookup is `str | None`, or `str` with a `str` default (`os.getenv`'s, the default's type).
     """
     found: list[Offence] = check_source(textwrap.dedent(SOURCE))
     fixed: dict[str, tuple[str | None, bool]] = {
@@ -61,13 +69,13 @@ def test_a_table_function_is_typed_however_it_is_imported() -> None:
         "c": ("str", False),
         "d": ("str", False),
         "e": ("bytes", False),
-        "g": (None, False),
+        "g": ("str", False),  # only the `str` signature takes `name`
         "h": ("str | None", False),
         "i": ("str", False),
-        "j": (None, False),
+        "j": ("str | int", False),
         "k": (None, False),
         "m": ("int", False),
-        "n": (None, False),  # a keyword argument decides nothing
+        "n": ("str", False),
         "r": ("int", False),  # but not a fixed return's
         "p": (None, False),  # `str` and `bytes` together: no `AnyStr`
         "q": (None, False),
@@ -78,16 +86,19 @@ def test_a_table_function_is_typed_however_it_is_imported() -> None:
 def test_every_table_function_exists(name: str) -> None:
     """Each table entry names a real standard-library function, as Linux CPython has it.
 
-    The tables are what each minor release's latest patch release has, on every platform typeshed
-    covers. CI's Linux jobs run those patch releases, so they must have every entry. Elsewhere an
-    entry may be missing, and is skipped: PyPy lacks some of CPython's own (`tracemalloc`,
-    `gc.get_count`), Windows has no `curses`, and macOS and Windows stop at the last patch release
-    with an installer (3.11.9, 3.12.10), before security releases' additions like
-    `tarfile.LinkFallbackError`. What's there must still be callable.
+    The tables are what each minor release's latest patch release has, on the platforms typeshed
+    covers: `tests/typeshed/partial.json` lists an entry only some have. CI's Linux jobs run those
+    patch releases, so they must have every entry listed for them. Elsewhere an entry may be missing, and
+    is skipped: PyPy lacks some of CPython's own (`tracemalloc`, `gc.get_count`), and macOS and
+    Windows stop at the last patch release with an installer (3.11.9, 3.12.10), before security
+    releases' additions like `tarfile.LinkFallbackError`. What's there must still be callable.
     """
     found: bool | None = _callable(name)
+    here: str = f"{sys.platform}-{sys.version_info.major}.{sys.version_info.minor}"
     if found is None and (sys.implementation.name == PYPY or sys.platform != LINUX):
         pytest.skip("not in this platform's build")
+    if name in PARTIAL and here not in PARTIAL[name]:
+        pytest.skip("not in the stubs for this platform and version")
     assert found
 
 

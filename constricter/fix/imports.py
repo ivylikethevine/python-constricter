@@ -11,6 +11,8 @@ from constricter.rules.syntax import import_bindings
 from constricter.rules.walked import of_type
 
 _TYPE_CHECKING: Final = "TYPE_CHECKING"
+_FUTURE: Final = "__future__"
+_ANNOTATIONS: Final = "annotations"  # `from __future__ import annotations` postpones them all
 # The nodes that bind a name: all `_taken` needs look at.
 _BINDERS: Final = (
     ast.Name,
@@ -35,7 +37,58 @@ def plan(tree: ast.Module) -> ImportPlan:
       A fresh plan for the module's fixes.
 
     """
-    return ImportPlan(_bound(tree), _taken(tree), _after(tree), _defined(tree))
+    return ImportPlan(
+        _bound(tree),
+        _taken(tree),
+        _after(tree),
+        _defined(tree),
+        block=_block(tree),
+        postponed=_postponed(tree),
+    )
+
+
+def _is_checking(test: ast.expr) -> bool:
+    """Check whether an `if`'s test is `TYPE_CHECKING` (or `typing.TYPE_CHECKING`).
+
+    Returns:
+      Whether it is.
+
+    """
+    return (isinstance(test, ast.Name) and test.id == _TYPE_CHECKING) or (
+        isinstance(test, ast.Attribute) and test.attr == _TYPE_CHECKING
+    )
+
+
+def _block(tree: ast.Module) -> tuple[int, int]:
+    """Find the body of the module's first top-level `if TYPE_CHECKING:` with no `else`.
+
+    Returns:
+      Its first and last line (from 1), or zeros.
+
+    """
+    return next(
+        (
+            (stmt.body[0].lineno, stmt.end_lineno or stmt.lineno)
+            for stmt in tree.body
+            if isinstance(stmt, ast.If) and _is_checking(stmt.test) and not stmt.orelse
+        ),
+        (0, 0),
+    )
+
+
+def _postponed(tree: ast.Module) -> bool:
+    """Check whether the module has `from __future__ import annotations`.
+
+    Returns:
+      Whether it has.
+
+    """
+    return any(
+        isinstance(stmt, ast.ImportFrom)
+        and stmt.module == _FUTURE
+        and any(alias.name == _ANNOTATIONS for alias in stmt.names)
+        for stmt in tree.body
+    )
 
 
 def _bound(tree: ast.Module) -> dict[str, str]:
@@ -99,7 +152,7 @@ def _running(body: list[ast.stmt]) -> Iterator[ast.stmt]:
     for stmt in body:
         yield stmt
         match stmt:
-            case ast.If(test=test) if not (isinstance(test, ast.Name) and test.id == _TYPE_CHECKING):
+            case ast.If(test=test) if not _is_checking(test):
                 yield from _running(stmt.body + stmt.orelse)
             case ast.Try() | ast.TryStar():
                 yield from _running(stmt.body + [s for h in stmt.handlers for s in h.body] + stmt.orelse)

@@ -29,7 +29,7 @@ Checks (as CI runs them): `ruff check .` (every rule, preview included), `ruff f
 `flake8 constricter tests`, `typos`, `validate-pyproject pyproject.toml`, `uv lock --check`,
 `constricter --level=suffocate --all-scopes constricter tests`,
 `constricter --coverage --all-scopes --fail-under=100 constricter tests`, `pytest --cov` (100%
-branch coverage). Everything generated goes in `local/`, but `constricter/fix/stdlib.json`, the
+branch coverage). Everything generated goes in `local/`, but `constricter/fix/tables/`, the
 standard-library tables `--fix` reads: after the pinned basedpyright changes, regenerate it from its
 typeshed stubs with `local/.venv/bin/python -m tests.typeshed.stdlib_tables` (CI checks it with
 `--check`). Python is indented with 4 spaces.
@@ -114,7 +114,7 @@ Everything else is on. Some of these may be revisited.
 | ruff (`tests/`)    | `assert` (S101)                                                                    | pytest works through `assert`.                                                                                        |
 | mypy, basedpyright | astroid's and fastjsonschema's untyped calls and missing stubs                     | Neither astroid (pylint's parser) nor fastjsonschema (the SARIF test's validator) ships type information.             |
 | typos              | the word `astroid`                                                                 | A real package name.                                                                                                  |
-| typos              | `constricter/fix/stdlib.json`                                                      | Generated from typeshed: the standard library's own names, which typos takes for misspellings.                        |
+| typos              | `constricter/fix/tables/*.json`                                                    | Generated from typeshed: the standard library's own names, which typos takes for misspellings.                        |
 | harden-runner      | `egress-policy: audit` on macOS and Windows, and in the weekly external-link check | harden-runner supports only audit on GitHub's macOS and Windows runners; external links can go anywhere.              |
 | reuse              | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)            | No recent release ships a wheel for Python 3.11+, so installing it builds from source with an unpinned `poetry-core`. |
 | zizmor             | `self-repository` (`.github/zizmor.yml`)                                           | Scorecard reads the `$/` form it wants as an unpinned third-party action, so local actions stay `./`.                 |

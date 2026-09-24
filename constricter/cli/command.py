@@ -114,7 +114,8 @@ def _placed(offence: Offence, where: list[notebook.Line]) -> Offence:
     """
     line: notebook.Line = where[offence.line - 1]
     placed: Offence = replace(offence, line=line.line, cell=line.cell)
-    if offence.edit is not None and offence.edit.imports:  # a notebook's cells have no import block
+    # A notebook's cells have no import block.
+    if offence.edit is not None and (offence.edit.imports or offence.edit.guarded):
         return replace(placed, edit=None)
     if offence.edit is not None and offence.edit.edit is Edit.DECLARE:
         statement: int = where[offence.edit.span[0] - 1].line

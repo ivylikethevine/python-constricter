@@ -12,7 +12,8 @@ extend-ignore-re = [
 extend-exclude = [
   # Generated from typeshed: the standard library's own names (`os.spawnve`,
   # `smtplib.SMTP.helo`), not prose.
-  "constricter/fix/stdlib.json",
+  "constricter/fix/tables/*.json",
+  "tests/typeshed/partial.json",
 ]
 
 [default.extend-words]

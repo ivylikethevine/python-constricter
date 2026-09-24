@@ -676,6 +676,20 @@ def _words(annotation: str) -> list[str]:
     return [word for word in re.split(r"\W+", annotation) if word]
 
 
+@lru_cache(maxsize=4096)  # asked of each fix's annotation several times: a few thousand distinct
+def roots(annotation: str) -> frozenset[str]:
+    """Find the names an annotation (maybe a string one) is written with.
+
+    Returns:
+      The names: `m.Row` gives `m`.
+
+    """
+    tree: ast.expr = ast.parse(annotation, mode="eval").body
+    if isinstance(tree, ast.Constant) and isinstance(tree.value, str):
+        tree = ast.parse(tree.value, mode="eval").body
+    return frozenset(node.id for node in ast.walk(tree) if isinstance(node, ast.Name))
+
+
 class Tables(NamedTuple):
     """A module's own tables `--fix` reads (see `returns`, `classes`, `method_returns`).
 

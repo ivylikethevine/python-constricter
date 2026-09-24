@@ -2,7 +2,7 @@
 """One scope being checked: what it binds and reports, what `--fix` knows of it, and its late fixes."""
 
 import ast
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Final, NamedTuple, TypeAlias
 
@@ -40,6 +40,7 @@ from constricter.rules.annotations import (
     is_vague,
     length,
     node_name,
+    roots,
 )
 from constricter.rules.flow import Binding, Finding, Hierarchy, Lifetime, findings, members
 from constricter.rules.rebinding import REBOUND, Refit, refit
@@ -56,6 +57,7 @@ _NONE: Final = "None"
 _FINAL: Final = "Final"
 _FINAL_KIND: Final = "final"  # the fix kind of LVA012's `Final`
 _TYPING_FINAL: Final = "typing.Final"
+_TYPE_CHECKING: Final = "typing.TYPE_CHECKING"
 _FINALS: Final = frozenset({_TYPING_FINAL, "typing_extensions.Final"})
 _NO_ALIASES: Final = frozenset[str]()
 _READS: Final = (ast.Name, ast.Attribute, ast.Subscript)  # a read of a value a type checker may narrow
@@ -324,8 +326,11 @@ class Scope:
         if not policy.allows(fix.kinds):
             return None
         certain: bool = not unsafe or policy.trusts(origins)
-        plan: ImportPlan | None = self.settings.known.names.plan
-        added: tuple[str, ...] = () if plan is None else _imports(fix.annotation, plan)
+        plan: ImportPlan = self.settings.known.names.plan or ImportPlan({}, frozenset(), 0)
+        guarded: tuple[str, ...] = _guarded_imports(fix.annotation, plan)
+        guard: str | None = ""
+        if guarded and plan.block == (0, 0) and (guard := plan.spell(_TYPE_CHECKING)) is None:
+            return None  # nothing can be `TYPE_CHECKING` to import them under
         return Fix(
             fix.annotation,
             fix.reason,
@@ -333,8 +338,12 @@ class Scope:
             edit,
             span,
             fix.kinds,
-            imports=added,
-            after=0 if plan is None else plan.after,
+            # With the import `TYPE_CHECKING` takes, for a new block.
+            imports=_imports(f"{fix.annotation} | {guard}" if guard else fix.annotation, plan),
+            after=plan.after,
+            guarded=guarded,
+            guard=guard or "",
+            block=plan.block,
         )
 
     def _first(
@@ -525,7 +534,29 @@ class Scope:
                 or (lifetime.declared_at == where and not is_final(lifetime.declared, aliases))
             ):
                 found.append(Offence(*where, name, CAN_BE_FINAL, self._final(name, lifetime)))
-        return found
+        return [self._evaluated(o) for o in found]
+
+    def _evaluated(self, offence: Offence) -> Offence:
+        """Quote a module body's fix whose type names what the module imports for type checking alone.
+
+        A module's annotations are evaluated when it runs (unless it postpones them), and those
+        names aren't bound then.
+
+        Returns:
+          The offence, its fix quoted if it must be.
+
+        """
+        plan: ImportPlan | None = self.settings.known.names.plan
+        fix: Fix | None = offence.edit
+        if (
+            fix is None
+            or plan is None
+            or plan.postponed
+            or self.kind.function is not None
+            or not roots(fix.annotation) & plan.guarded.keys()
+        ):
+            return offence
+        return replace(offence, edit=fix._replace(annotation=_quoted(fix.annotation)))
 
     def _final(self, name: str, lifetime: Lifetime) -> Fix | None:
         """Offer LVA012's `Final`: around the annotation there (`Final[int]`), or as one (`: Final`).
@@ -595,7 +626,7 @@ class Scope:
           All but those for exempt names.
 
         """
-        return [o for o in self.offences if self._covered(o.name)]
+        return [self._evaluated(o) for o in self.offences if self._covered(o.name)]
 
     def bound(self) -> list[str]:
         """List the first bindings the rules cover.
@@ -718,10 +749,31 @@ def _imports(annotation: str, plan: ImportPlan) -> tuple[str, ...]:
 
     """
     # `annotation` is always `ast.unparse`'s own output (or a name `plan` spelled), so it parses.
-    roots: set[str] = {
-        node.id for node in ast.walk(ast.parse(annotation, mode="eval")) if isinstance(node, ast.Name)
-    }
-    return tuple(sorted({plan.added[root] for root in roots if root in plan.added}))
+    return tuple(sorted({plan.added[root] for root in roots(annotation) if root in plan.added}))
+
+
+def _guarded_imports(annotation: str, plan: ImportPlan) -> tuple[str, ...]:
+    """Find the imports under `if TYPE_CHECKING:` `annotation` needs (see `Guarded`).
+
+    Returns:
+      Their statements, sorted.
+
+    """
+    statements: Iterator[str | None] = (
+        plan.guarded[root].statement for root in roots(annotation) if root in plan.guarded
+    )
+    return tuple(sorted({statement for statement in statements if statement is not None}))
+
+
+def _quoted(annotation: str) -> str:
+    """Quote an annotation: in double quotes, unless it has one or a backslash (a `Literal`'s string).
+
+    Returns:
+      It, as a string literal.
+
+    """
+    plain: bool = not {'"', "\\"} & set(annotation)
+    return f'"{annotation}"' if plain else ast.unparse(ast.Constant(annotation))
 
 
 def _final_fix(fix: Fix, plan: ImportPlan) -> Fix:
