@@ -79,7 +79,8 @@ def optionals(scope: Scope) -> None:
             continue
         origins: frozenset[str] = frozenset[str]().union(*(rests for _, rests in guesses))
         reason: str = f"`None`, then only `{found}`"
-        fix: Fix | None = scope.offer(
+        fix: Fix | None = scope.placed(
+            o.name,
             Inference(f"{found} | None", reason, frozenset({_OPTIONAL}) | origins),
             origins,
             unsafe=bool(guesses),
@@ -153,7 +154,7 @@ def fills(scope: Scope) -> None:
             )
         ) is None:
             continue
-        fix: Fix | None = scope.offer(found, frozenset({_FILLED}), unsafe=True)
+        fix: Fix | None = scope.placed(o.name, found, frozenset({_FILLED}), unsafe=True)
         scope.offences[index] = replace(o, edit=fix)
         # What the scope infers from it (its `return`s) knows its type, a guess.
         scope.inferred.late[o.name] = (found.annotation, frozenset({_FILLED}))

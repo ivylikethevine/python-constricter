@@ -30,6 +30,7 @@ _Found: TypeAlias = dict[Path, tuple[Hints, ...]]
 _Asks: TypeAlias = Callable[[hints.Session, Mapping[Path, str]], _Found]
 _CHECKER: Final = "basedpyright"
 _STATUS: Final = 3  # a server's exit status, passed on
+_TY: Final = "ty"
 _WINDOWS: Final = "win32"
 _READY: Final = b"ready\n"
 _ZOMBIE: Final = "zombie"
@@ -107,6 +108,7 @@ def test_a_file_asked_about_again_is_changed(monkeypatch: pytest.MonkeyPatch, tm
         ("exit", "exited while answering `textDocument/inlayHint`"),
         ("silent", "said nothing for 0s while answering `textDocument/inlayHint`"),
         ("truncate", "exited while answering `textDocument/inlayHint`"),
+        ("always-modified", "failed `textDocument/inlayHint`: content modified, 6 times"),
     ],
 )
 def test_a_failing_server_stops_the_run(
@@ -120,6 +122,12 @@ def test_a_failing_server_stops_the_run(
     monkeypatch.setattr(hints, "_TIMEOUT", 0.5)
     with pytest.raises(protocol.HintError, match=message):
         _ = _session_hints(tmp_path, "x = 1  # hint: int\n")
+
+
+def test_a_request_the_server_dropped_is_asked_again(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A "content modified" answer (ty's, while later files open) is asked again, as the protocol says."""
+    _fake(monkeypatch, "modified")
+    assert _session_hints(tmp_path, "x = 1  # hint: int\n").types == {(1, 1): "int"}
 
 
 def test_a_server_that_wont_stop_is_killed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -681,3 +689,64 @@ def test_parsing_says_nothing_about_the_codes_escapes(capsys: pytest.CaptureFixt
         warnings.simplefilter("error")
         _ = check_source('def f() -> None:\n    x = "\\d"\n')
     assert not capsys.readouterr().err
+
+
+def test_a_checker_that_runs_is_preferred(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A shim found first that can't run (126) gives way to one that does; with none running, the first."""
+    shim: str = str(tmp_path / "shim")
+    real: str = sys.executable
+
+    def found(_name: str, path: str | None = None) -> str:
+        return shim if path is None else real
+
+    def ran(argv: list[str], **_options: object) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(argv, 126 if argv[0] == shim else 1)
+
+    monkeypatch.setattr(shutil, "which", found)
+    monkeypatch.setattr(subprocess, "run", ran)
+    assert protocol.executable("ty") == real
+    assert protocol.runs("ty")
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "python"))
+    real = shim
+    assert protocol.executable("ty") == shim
+    assert not protocol.runs("ty")
+
+
+def test_a_checker_that_cant_be_started_or_hangs_doesnt_run(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Not installed, not executable, or no answer to `--version` within the time allowed."""
+    where: list[str | None] = [None]
+
+    def found(_name: str, path: str | None = None) -> str | None:
+        return where[0] if path is None else None
+
+    monkeypatch.setattr(shutil, "which", found)
+    assert protocol.executable("basedpyright") is None
+    assert not protocol.runs("basedpyright")
+    where[0] = str(tmp_path / "missing")
+    assert not protocol.runs("basedpyright")
+
+    def hangs(argv: list[str], **_options: object) -> subprocess.CompletedProcess[bytes]:
+        raise subprocess.TimeoutExpired(argv, 0)
+
+    where[0] = sys.executable
+    monkeypatch.setattr(subprocess, "run", hangs)
+    assert not protocol.runs("basedpyright")
+
+
+def test_max_fix_fixes_everything_with_every_checker_that_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--max-fix`: `--max`, `--fix --unsafe-fixes`, and each checker that runs after those named."""
+
+    def runs(checker: str) -> bool:
+        return checker == _TY
+
+    monkeypatch.setattr("constricter.cli.options.runs", runs)
+    options: Options = Options.parse(["--max-fix", "x.py"])
+    assert (options.mode.name, options.unsafe_fixes, options.infer_with) == ("FIX", True, (_TY,))
+    assert options.checks.all_scopes
+    assert Options.parse(["--max-fix", "--infer-with=ty,basedpyright", "x.py"]).infer_with == (
+        "ty",
+        "basedpyright",
+    )

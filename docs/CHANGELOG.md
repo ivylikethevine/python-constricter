@@ -6,6 +6,57 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types a comparison of builtin values (`n < 3`, `len(xs) == 0`) as a `bool`; a
+  standard-library module's variable by its annotation in typeshed (`sys.path`: `list[str]`,
+  `os.sep`: `str`, from a new `variables` table); and a chained assignment's names (`i = j = 0`) by
+  declarations before it (`i: int`). A parameter or local named like a standard-library import
+  (`def f(getpid)`, with `from os import getpid`) is no longer typed as the import: a bug for calls
+  too. 1,019 more fixes on the corpora (809 on the standard library), none a type checker rejects; a
+  chained name's late fix (`None`, then `str`: `str | None`) is declared too.
+- `--fix` types a comparison by `in`, `not in`, `is` and `is not` alone as a `bool`
+  (`writing = "w" in mode`), as `not x` is: always a real `bool`, whatever the operands. 234 more
+  fixes on the corpora.
+- `--fix --unsafe-fixes` types what's computed from an unannotated parameter of a plain top-level
+  function when every call in the checked files passes it an argument of one builtin type
+  (`callers`, a guess): `def greet(name)` called only as `greet("a")` types `line = name.upper()` as
+  `str`. A function used any way but called, or a call that leaves the parameter to its default or
+  unpacks its arguments, types nothing. The defining files are checked again knowing the types, then
+  the files calling them: 96 more fixes on the corpora (64 on the standard library, 14 on Twisted),
+  every corpus still converging in one pass.
+- `--fix` types calls into installed packages that declare their types (`py.typed`, a stub package,
+  a lone stub module) by their declared returns, as it does another checked file's
+  (`pydantic_core.to_json(x)` is a `bytes`): found as the import system would on this Python's path
+  and the active virtual environment's, read but never fixed. A type is imported from a public
+  module that re-exports it, not a private one, and an installed generic class isn't written bare:
+  pandas loses 181 fixes that wrote numpy's generic `np.ndarray` bare, and gains 6; pydantic
+  gains 66.
+- `--max-fix` (command line only) applies every fix: `--max`, `--fix --unsafe-fixes`, and
+  `--infer-with` each of basedpyright and ty that's installed and runs. A checker's executable is
+  the first found that runs (`--version`): a version manager's shim that can't run in the directory
+  is passed over for the one beside this Python.
+- `--infer-with=ty` no longer stops with `ty failed textDocument/inlayHint: content modified`: a
+  hint request the server drops while later files open is asked again, up to five times.
+- `--max` (command line only) runs the strictest check: `suffocate` for every path, over any
+  `per-path-levels`, with `--all-scopes` and the opt-in `LVA012`.
+- `--fix` types standard-library generic classes' constructors by what their arguments bind:
+  `collections.deque(names)` is a `collections.deque[str]`, `itertools.product(a, b)` an
+  `itertools.product[tuple[str, int]]`, `array.array("i")` an `array.array[int]`, `weakref.ref(obj)`
+  a `weakref.ReferenceType[Foo]`. A type variable binds to any argument's type where the parameter
+  is nothing but it (`copy.copy(obj)` is a `Foo`), to a builtin container's element where it's a
+  generic of one (`Iterable[_T]` given a `list[str]`, a `dict`'s keys, a `str`), to a scalar's
+  method's return through a generic protocol (`math.floor(x)` is an `int` for a `float`), and to a
+  function's declared return where it's a `Callable[..., _T]` (`functools.partial(helper, 1)`); a
+  parameter every overload shares is now read for it too. A generic class's own attributes are typed
+  by the receiver's type arguments (`m.string` on an `re.Match[str]` is a `str`). 512 more fixes on
+  the corpora (387 on the standard library), with no new type-checker error after `--fix`. A read
+  the function tests makes a type it binds a guess (`deque([x])` inside `if is_union(x):`, which
+  sqlalchemy's `TypeGuard` narrows: 6 of its `--fix --unsafe-fixes` new errors). At module level, a
+  class some supported Python can't subscript at run time is quoted (`"itertools.count[int]"`).
+- `--fix` converges in one pass on the standard library again (0.2.6 left 911 fixes for a second): a
+  call to another checked file's unannotated function returning a library type its module didn't
+  import yet (`test.support.import_helper.import_module`, a `types.ModuleType`) is typed on the
+  first pass, by the import that module's own fixes add. CI's Corpus job runs on Python 3.14, whose
+  standard library showed it.
 - Checking is about 10% faster (the standard library, `--jobs=1`: 9.0s to 8.1s), every fix the same:
   whether a fix is a guess is worked out only where there's a fix, a function's body is read once
   for all its empty containers, and a node's children are listed without `ast`'s generators.

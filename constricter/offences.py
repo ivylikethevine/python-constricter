@@ -38,7 +38,7 @@ MESSAGES: dict[str, str] = {
 OPT_IN: Final = frozenset({CAN_BE_FINAL})
 # Each way `--fix` can decide an annotation, by its stable id (`--show-fixes`, `fix-select`).
 FIX_KINDS: dict[str, str] = {
-    "literal": "a literal, an f-string, or `not x`",
+    "literal": "a literal, an f-string, `not x`, or `x in y` or `x is y`",
     "container": "a list, set, tuple or dict display whose elements' types agree",
     "copy": "a copy of a local whose type is known",
     "subscript": "a subscript of a known container",
@@ -49,6 +49,7 @@ FIX_KINDS: dict[str, str] = {
     "constructor": "a call to a capitalised name, taken to construct one (a guess)",
     "conditional": "both sides of `a if c else b`",
     "arithmetic": "arithmetic on builtin scalars",
+    "compare": "a comparison of builtin values (`n < 3`), always a `bool`",
     "comprehension": "a list, set or dict comprehension's elements",
     "builder": "`sorted`, `list`, `set`, `frozenset` or `tuple` of known elements",
     "await": "`await` of the module's `async def`",
@@ -59,6 +60,7 @@ FIX_KINDS: dict[str, str] = {
     "filled": "an empty container, then only what the function adds to it (a guess)",
     "returned": "an unannotated function's own `return`s (a method's: a guess)",
     "assigned": "an unannotated instance attribute's every `self.x = value` in its class (a guess)",
+    "callers": "an unannotated parameter every call in the checked files passes one type (a guess)",
     "final": "LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)",
     "checker": "a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)",
     "open": "`open(path, mode)`'s file object, by its literal mode (`io.TextIOWrapper`, ...)",

@@ -59,6 +59,12 @@ _LINE_BREAK: Final = re.compile(r"\r\n|\r|\n")  # the lines positions count, as 
 _UTF16: Final = "utf-16"
 _UTF8: Final = "utf-8"
 _METHOD_NOT_FOUND: Final = -32601
+# A request the server dropped because a document changed under it (ty, as later files open): the
+# client is to ask again.
+_CONTENT_MODIFIED: Final = -32801
+_ASK_AGAIN: Final = 5  # how many times a hint request is asked again after that, at most
+_HINTS: Final = "textDocument/inlayHint"
+_MODIFIED: Final[_Object] = {}  # a hint request's answer, when it's to be asked again (by identity)
 _ID: Final = "id"
 _METHOD: Final = "method"
 _ERROR: Final = "error"
@@ -325,14 +331,14 @@ def command(checker: str) -> list[str]:
 
     """
     server: Server = SERVERS[checker]
-    name: str = server.executable
-    executable: str | None = shutil.which(name) or shutil.which(name, path=str(Path(sys.executable).parent))
-    if executable is None:
+    found: str | None
+    if (found := protocol.executable(checker)) is None:
+        install: str = f"`pip install {checker}`"
         message: str = (
-            f"--infer-with={checker} needs `{name}`, which isn't installed (`pip install {checker}`)"
+            f"--infer-with={checker} needs `{server.executable}`, which isn't installed ({install})"
         )
         raise HintError(message)
-    return [executable, *server.args]
+    return [found, *server.args]
 
 
 class Connection:
@@ -450,32 +456,51 @@ class Connection:
         text: str
         for path, text in files.items():
             self._opened(path.resolve().as_uri(), text)
-        asked: dict[int, Path] = {
-            self._ask(
-                "textDocument/inlayHint",
-                {
-                    "textDocument": {"uri": path.resolve().as_uri()},
-                    "range": {
-                        "start": {"line": 0, "character": 0},
-                        "end": {"line": len(lines[path]), "character": 0},
-                    },
-                },
-            ): path
-            for path in files
-        }
-        return _Asked(asked, lines)
+        return _Asked({self._ask_hints(path, lines[path]): path for path in files}, lines)
+
+    def _ask_hints(self, path: Path, lines: Sequence[str]) -> int:
+        """Ask for an open file's hints over the whole of it, without waiting for them.
+
+        Returns:
+          The request's number.
+
+        """
+        return self._ask(
+            _HINTS,
+            {
+                "textDocument": {"uri": path.resolve().as_uri()},
+                "range": {"start": {"line": 0, "character": 0}, "end": {"line": len(lines), "character": 0}},
+            },
+        )
 
     def answers(self, asked: "_Asked") -> _Found:
-        """Wait for the answers to hint requests `ask` sent.
+        """Wait for the answers to hint requests `ask` sent, asking again for those the server dropped.
 
         Returns:
           Each file's variable-type hints' texts, by where the name each types ends.
 
+        Raises:
+          HintError: The server dropped one `_ASK_AGAIN` times more (see `_CONTENT_MODIFIED`).
+
         """
-        answers: dict[int, _Json] = self._collect(set(asked.numbers), "textDocument/inlayHint")
-        return {
-            path: self._found(answers[number], asked.lines[path]) for number, path in asked.numbers.items()
-        }
+        found: _Found = {}
+        waiting: dict[int, Path] = asked.numbers
+        for _ in range(_ASK_AGAIN + 1):
+            answers: dict[int, _Json] = self._collect(set(waiting), _HINTS)
+            found.update(
+                (path, self._found(answers[number], asked.lines[path]))
+                for number, path in waiting.items()
+                if answers[number] is not _MODIFIED
+            )
+            waiting = {
+                self._ask_hints(path, asked.lines[path]): path
+                for number, path in waiting.items()
+                if answers[number] is _MODIFIED
+            }
+            if not waiting:
+                return found
+        error: str = f"{self.name} failed `{_HINTS}`: content modified, {_ASK_AGAIN + 1} times"
+        raise HintError(error)
 
     def _opened(self, uri: str, text: str) -> None:
         """Send a file's text: opening it, or (open already) replacing its whole text, if it's changed."""
@@ -586,6 +611,8 @@ class Connection:
         )
         if _ERROR in answer:
             failure: _Object = cast("_Object", answer[_ERROR])
+            if method == _HINTS and failure.get("code") == _CONTENT_MODIFIED:
+                return cast("int", answer[_ID]), _MODIFIED
             error: str = f"{self.name} failed `{method}`: {failure.get('message')}"
             raise HintError(error)
         return cast("int", answer[_ID]), answer.get("result")

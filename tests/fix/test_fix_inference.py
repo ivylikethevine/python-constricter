@@ -24,6 +24,14 @@ ANY_LENGTH: Final = "tuple[int, ...]"
         ("True", "bool"),
         ("-True", None),
         ("not y", "bool"),
+        ("'r' in y", "bool"),  # `in` and `is` are always a real `bool`
+        ("y is not None", "bool"),
+        ("y == 1", None),  # `==` and `<` may return anything (numpy's arrays)
+        ("1 < y in z", None),
+        ("len([1]) == 0", "bool"),  # but not a builtin's
+        ("0 <= 1.5 < 2", "bool"),
+        ("'a' != b'a'", "bool"),
+        ("[1] == (1, 2)", "bool"),
         ("1j", "complex"),
         ("'text'", "str"),
         ("b'raw'", "bytes"),
@@ -67,7 +75,7 @@ def test_fixes_are_offered_only_where_the_value_decides_the_type(value: str, fix
 
 
 def test_fixes_are_offered_only_for_a_single_plain_name() -> None:
-    """Chained `=`, `:=` and class bodies are never fixed; module bodies are, and so is unpacking."""
+    """`:=` and class bodies are never fixed; module bodies are, unpacking and chained `=` by declarations."""
     source: str = textwrap.dedent(
         """
     LIMIT = 3
@@ -88,8 +96,8 @@ def test_fixes_are_offered_only_for_a_single_plain_name() -> None:
         ("LIMIT", "int"),
         ("a", "int"),  # declared before the statement: see tests/fix/test_declarations.py
         ("b", "int"),
-        ("c", None),
-        ("d", None),
+        ("c", "int"),  # declared before it too
+        ("d", "int"),
         ("e", None),
         ("size", None),
     ]

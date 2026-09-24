@@ -15,7 +15,14 @@ keeps what comes out the same for all twelve:
   shortest (`unittest.TestLoader`, not `unittest.loader.TestLoader`), then its own module's;
 - `methods` and `attributes`: what each such class's public methods return, and its attributes and
   properties hold, inherited ones included (in their method resolution order), by that path;
-- `aliases`: the class's other public paths.
+- `aliases`: the class's other public paths;
+- `overloads`: functions whose arguments decide their return, and generic classes' constructors,
+  each signature as `tests/typeshed/overloads.py` reads it;
+- `type_parameters` and `subscriptable`: each generic class's type parameters, and whether every
+  Python can subscript it at run time; `generic_attributes`: its own attributes and properties, as
+  templates its instance's type arguments bind;
+- `variables`: module-level variables' types (`sys.path`, `os.sep`), as `returns` and `classes` hold
+  a function's.
 
 A return that names a `TypeVar` (but `AnyStr`), `Any`, or anything else vague, differs between
 overloads, or is spelled with a class inside a generic (`list[Path]`), is left out; so is `typing`
@@ -54,6 +61,7 @@ from tests.typeshed.stubs import (
     Klass,
     Namespace,
     Stubs,
+    Variable,
     private,
 )
 
@@ -82,6 +90,7 @@ _RUNTIME: Final = frozenset(
     },
 )
 _CHECK: Final = "--check"
+_YES: Final = "y"
 
 
 # Each signature of a function whose return its arguments decide (see `overloads.Overloads.entry`).
@@ -109,6 +118,9 @@ class _Tables(NamedTuple):
     method_signatures: dict[str, list[Signatures]]  # as `overloads`, by where they're defined
     type_parameters: Table  # each generic class's, in order, comma-separated (`_T=`: with a default)
     bases: Table  # each class's public ancestors in the tables, nearest first, comma-separated
+    subscriptable: Table  # each generic class's: `y` if it can be subscripted at run time, else `n`
+    generic_attributes: dict[str, Table]  # each generic class's own attributes, as templates
+    variables: Table  # module-level variables' types: builtin annotations, or classes' paths
 
 
 def _paths(stubs: Stubs, config: Config) -> dict[str, Found]:
@@ -155,7 +167,7 @@ def _read(stubs: Stubs, config: Config) -> _Tables:
     canonical: dict[ClassRef, str] = {
         klass: path for klass, path in every.items() if not reading.generic(klass)
     }
-    tables: _Tables = _Tables({}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+    tables: _Tables = _Tables({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
     reader: _Reader = _Reader(reading, Overloads(reading, every), canonical)
     for path, found in paths.items():
         _enter(tables, reader, path, found)
@@ -198,6 +210,10 @@ def _enter_generic(tables: _Tables, reader: _Reader, klass: ClassRef, path: str)
     if klass in reader.canonical or not (params := reader.overloads.type_parameters(klass)):
         return
     tables.type_parameters[path] = ",".join(params)
+    tables.subscriptable[path] = _YES if reader.reading.subscriptable(klass) else "n"
+    attributes: Table
+    if attributes := reader.overloads.attributes(klass):
+        tables.generic_attributes[path] = attributes
     name: str
     method: str
     signatures: list[Signature]
@@ -225,29 +241,76 @@ def _enter(tables: _Tables, reader: _Reader, path: str, found: Found) -> None:
     defs: tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]
     value: ast.expr
     klass: ClassRef = ClassRef(found.module, found.name)
-    reading: Reading = reader.reading
-    canonical: dict[ClassRef, str] = reader.canonical
     match found.binding:
         case _ if path in _RUNTIME:
             pass
         case Function(defs=defs):
             _function(tables, reader, path, found.module, defs)
         case Alias(value=value):
-            _entry(tables, path, reading.bound_method(value, found.module), canonical)
-        case Klass() if klass in canonical:
-            if canonical[klass] != path:
-                tables.aliases[path] = canonical[klass]
-            if reading.constructs(klass):
-                tables.classes[path] = canonical[klass]
-            name: str
-            member: Member
-            # Only those its own module's classes define: typeshed makes some classes subclass an
-            # abstract class they're only registered with at runtime (`importlib.abc`'s).
-            for name, member in reading.members(klass).items():
-                if member.kind == CLASSMETHOD and member.module == found.module:
-                    _entry(tables, f"{path}.{name}", member.form, canonical)
+            _enter_alias(tables, reader, path, value, found.module)
+        case Variable(annotation=value):  # `sys.path`, `os.sep`
+            _enter_variable(tables, reader, path, value, found.module)
+        case Klass() if klass in reader.canonical:
+            _enter_named(tables, reader, path, found)
+        case Klass():  # a generic class, typed by what binds its parameters
+            _enter_constructor(tables, reader, path, klass)
         case _:
             pass
+
+
+def _enter_alias(tables: _Tables, reader: _Reader, path: str, value: "ast.expr", module: str) -> None:
+    """Enter an alias: a generic class's constructor (`ref = ReferenceType`), or a bound method's return."""
+    aliased: ClassRef | None
+    if (aliased := _aliased(reader, value, module)) is not None:
+        _enter_constructor(tables, reader, path, aliased)
+    else:
+        _entry(tables, path, reader.reading.bound_method(value, module), reader.canonical)
+
+
+def _enter_variable(tables: _Tables, reader: _Reader, path: str, annotation: "ast.expr", module: str) -> None:
+    """Enter a module-level variable's type (`sys.path`: `list[str]`), if the tables can hold it."""
+    form: Form | None = reader.reading.form(annotation, module, None)
+    value: str | None
+    if (value := None if form is None else _value(form, reader.canonical)) is not None:
+        tables.variables[path] = value
+
+
+def _enter_named(tables: _Tables, reader: _Reader, path: str, found: Found) -> None:
+    """Enter a non-generic class under one of its paths: its alias, what constructs it, its classmethods."""
+    klass: ClassRef = ClassRef(found.module, found.name)
+    canonical: dict[ClassRef, str] = reader.canonical
+    if canonical[klass] != path:
+        tables.aliases[path] = canonical[klass]
+    if reader.reading.constructs(klass):
+        tables.classes[path] = canonical[klass]
+    name: str
+    member: Member
+    # Only those its own module's classes define: typeshed makes some classes subclass an abstract
+    # class they're only registered with at runtime (`importlib.abc`'s).
+    for name, member in reader.reading.members(klass).items():
+        if member.kind == CLASSMETHOD and member.module == found.module:
+            _entry(tables, f"{path}.{name}", member.form, canonical)
+
+
+def _aliased(reader: _Reader, value: "ast.expr", module: str) -> ClassRef | None:
+    """Find the generic class an alias names (`ref = ReferenceType`), if it is one.
+
+    Returns:
+      It, or `None`.
+
+    """
+    target: Found | None = reader.reading.ref(value, module)
+    if target is None or not isinstance(target.binding, Klass):
+        return None
+    klass: ClassRef = ClassRef(target.module, target.name)
+    return None if klass in reader.canonical else klass
+
+
+def _enter_constructor(tables: _Tables, reader: _Reader, path: str, klass: ClassRef) -> None:
+    """Enter a generic class's constructor, under a path naming it (see `Overloads.constructor`)."""
+    signatures: Signatures | None
+    if (signatures := reader.overloads.constructor(klass)) is not None:
+        tables.overloads[path] = [signatures]
 
 
 def _function(tables: _Tables, reader: _Reader, path: str, module: str, defs: Defs) -> None:
@@ -374,6 +437,9 @@ def _agreed(tables: list[_Tables]) -> _Tables:
         _variants([one.method_signatures for one in tables]),
         _common([one.type_parameters for one in tables]),
         _common([one.bases for one in tables]),
+        _common([one.subscriptable for one in tables]),
+        _common_by_class([one.generic_attributes for one in tables]),
+        _common([one.variables for one in tables]),
     )
 
 
@@ -404,6 +470,10 @@ def generate(typeshed: Path = TYPESHED) -> dict[Path, str]:
         "method_overloads": inherited(tables.method_overloads, tables.bases),
         "method_signatures": tables.method_signatures,
         "type_parameters": tables.type_parameters,
+        # Where Pythons differ (`array.array`, 3.12+), the entry is left out: not subscriptable.
+        "subscriptable": {path: value for path, value in tables.subscriptable.items() if value == _YES},
+        "generic_attributes": tables.generic_attributes,
+        "variables": tables.variables,
     }
     files: dict[Path, str] = {OUTPUT / f"{name}.json": write(table) for name, table in document.items()}
     files[PARTIAL] = write(_partial(each))

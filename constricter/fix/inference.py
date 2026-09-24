@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
 from constricter.fix import overloads, stdlib
 from constricter.fix.known import ImportPlan, Inference, Known
-from constricter.fix.library import library_call, library_class
+from constricter.fix.library import library_call, library_class, library_variable
 from constricter.fix.members import assigned_attribute, member, returned_method, subscripted
 from constricter.fix.opened import opened
 from constricter.fix.returns import BUILTIN_RETURNS
@@ -25,10 +25,14 @@ from constricter.fix.targets import (
 )
 from constricter.offences import CONSTRUCTOR
 from constricter.rules.annotations import GENERICS, dotted, is_vague, node_name
+from constricter.rules.flow import members
 
 if TYPE_CHECKING:
     from types import EllipsisType
 
+# Comparisons whose result is always a real `bool`, whatever the operands: `in` converts `__contains__`'s
+# result, and identity can't be overridden (`==` and `<` can return anything, as numpy's do).
+_BOOLEAN_TESTS: Final = (ast.In, ast.NotIn, ast.Is, ast.IsNot)
 # Calls that return a class or a special form, not an instance of what they're named.
 _FACTORIES: Final = frozenset(
     {
@@ -53,6 +57,25 @@ _FLOAT: Final = "float"
 _NUMBER_NAMES: Final = frozenset({"bool", "int", _FLOAT})
 _INTEGER_NAMES: Final = frozenset({"bool", "int"})
 _TEXT_NAMES: Final = frozenset({"str", "bytes"})
+# The builtin classes whose comparisons (`==`, `<`, ...) give a real `bool` (`None`'s, by identity).
+_COMPARABLE: Final = frozenset(
+    {
+        "bool",
+        "int",
+        "float",
+        "complex",
+        "str",
+        "bytes",
+        "bytearray",
+        "list",
+        "tuple",
+        "dict",
+        "set",
+        "frozenset",
+        "range",
+        "None",
+    },
+)
 _STDLIB: Final = "stdlib"  # the fix kind of a standard-library call
 RETURNED: Final = "returned"  # the fix kind of an unannotated function's `return`s
 ASSIGNED: Final = "assigned"  # the fix kind of an instance attribute typed by its assignments
@@ -211,6 +234,8 @@ def _scalar_reason(value: ast.expr) -> str:
             return "an f-string"
         case ast.UnaryOp(op=ast.Not()):
             return "`not`, always a `bool`"
+        case ast.Compare():
+            return "`in` or `is`, always a `bool`"
         case _:
             return "a literal"
 
@@ -231,6 +256,7 @@ def _from_value(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
         or _cast(value, known.names.casts)
         or opened(value, known)
         or library_class(value, known)
+        or library_variable(value, known)
         or library_call(value, known, lambda arg: inference(arg, known, declared))
         or _returns(value, known)
         or _called(value, known)
@@ -320,8 +346,12 @@ def _computed(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
                 if sides[0] and sides[1] and sides[0].annotation == sides[1].annotation
                 else None
             )
-        case ast.BinOp():
-            return _arithmetic(value, known, declared)
+        case ast.BinOp() | ast.Compare():
+            return (
+                _arithmetic(value, known, declared)
+                if isinstance(value, ast.BinOp)
+                else _compared(value, known, declared)
+            )
         case ast.ListComp() | ast.SetComp() | ast.DictComp():
             return _comprehension(value, known, declared)
         case ast.Call(func=ast.Name(id=name), args=[first], keywords=[]) if (
@@ -376,6 +406,44 @@ def _arithmetic(value: ast.BinOp, known: Known, declared: Mapping[str, str]) -> 
         return None
     text: str | None = left if left in _TEXT_NAMES else None
     return Inference(text, reason, kinds) if text is not None and _keeps_text(op, text, right) else None
+
+
+def _compared(value: ast.Compare, known: Known, declared: Mapping[str, str]) -> Inference | None:
+    """Infer a comparison of builtin values: `n < 3`, `len(xs) == 0`, `name != "x"`.
+
+    Each builtin's own comparison gives a real `bool`, or declines for the other side's to (and one
+    both decline is `is`/`is not`, a `bool` too); a class's may give anything (numpy's arrays).
+
+    Returns:
+      `bool`, if every operand's type (each member of a union's) is a builtin class; else `None`.
+
+    """
+    parts: list[Inference | None] = [
+        inference(part, known, declared) for part in (value.left, *value.comparators)
+    ]
+    builtin: bool = all(
+        part is not None
+        and all(
+            _root(member) in _COMPARABLE and known.is_builtin(_root(member))
+            for member in members(part.annotation) or ()
+        )
+        for part in parts
+    )
+    return (
+        Inference("bool", "a comparison of builtin values", _kinds(*parts, kind="compare"))
+        if builtin
+        else None
+    )
+
+
+def _root(annotation: str) -> str:
+    """Name an annotation's outer type (`list` for `list[int]`).
+
+    Returns:
+      Its text before any `[`.
+
+    """
+    return annotation.partition("[")[0]
 
 
 def _keeps_text(op: ast.operator, text: str, right: str | None) -> bool:
@@ -481,6 +549,7 @@ def targets_typed(
 
 def _scalar(value: ast.expr) -> str | None:
     constant: str | bytes | bool | int | float | complex | EllipsisType | None
+    ops: list[ast.cmpop]
     match value:
         case ast.Constant(value=bool() | int() | float() | complex() | str() | bytes() as constant):
             return type(constant).__name__
@@ -490,6 +559,8 @@ def _scalar(value: ast.expr) -> str | None:
         ) and not isinstance(constant, bool):
             return type(constant).__name__
         case ast.UnaryOp(op=ast.Not()):  # `not x` always yields a real `bool`, unlike a comparison
+            return "bool"
+        case ast.Compare(ops=ops) if all(isinstance(op, _BOOLEAN_TESTS) for op in ops):
             return "bool"
         case ast.JoinedStr():
             return "str"

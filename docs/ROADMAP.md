@@ -25,9 +25,11 @@
   or another checked file; fixed-return builtins and `str`/`bytes` methods; members of any typed
   value (`self.index.name`, `rows[0].strip()`, however deep, through `constricter.fix.members`);
   `cls` in a classmethod as `type[C]`; computed values (conditionals, arithmetic on builtin scalars,
-  comprehensions, `sorted`/`list`/..., `await`); `typing.cast`; `x = None` later rebound to one type
-  as `T | None`; loop targets (`enumerate` and `zip` part by part) and unpackings, declared before
-  the statement; fixes for LVA003 and LVA007. A tuple longer than `max-length` is `tuple[T, ...]`.
+  comprehensions, `sorted`/`list`/..., `await`), comparisons by `in` and `is`, or of builtin values
+  (a `bool`); standard-library module variables (`sys.path`); chained assignments' names, declared
+  before them (`i = j = 0`); `typing.cast`; `x = None` later rebound to one type as `T | None`; loop
+  targets (`enumerate` and `zip` part by part) and unpackings, declared before the statement; fixes
+  for LVA003 and LVA007. A tuple longer than `max-length` is `tuple[T, ...]`.
 - **The standard library, from typeshed**: tables generated from the stubs basedpyright bundles
   (`tests/typeshed/`, checked in CI), read as Linux, macOS and Windows and Python 3.11 to 3.14 see
   them, into `constricter/fix/tables/` (one JSON file a table, an entry a line; each class's members
@@ -35,17 +37,30 @@
   `logging.getLogger()`), their attributes and methods; and functions and methods whose arguments
   decide their type, by the signature a call matches as a type checker picks among overloads, with
   type variables bound by the arguments (`re.compile("x")` is a `re.Pattern[str]`) and generic
-  classes' by the receiver (`pat.match(s)`). What only some platforms or versions have is kept
-  (`os.getuid()`).
+  classes' by the receiver (`pat.match(s)`). A type variable binds to any argument's type where the
+  parameter is nothing but it (`copy.copy(obj)`), and to a builtin container's element where it's a
+  generic of one (`Iterable[_T]` given `list[str]`), to a scalar's method's return through a generic
+  protocol (`math.floor(x)`), and to a function's declared return (`functools.partial(f, x)`);
+  generic classes' own attributes are bound by the receiver's (`m.string`). `defaultdict(list)` and
+  `Counter()` stay untyped: their parameters come from later use. Generic classes' constructors are
+  read from their `__new__` or `__init__` (`collections.deque(names)` is a `collections.deque[str]`,
+  `array.array("i")` an `array.array[int]`); at module level, one some Python can't subscript at run
+  time is quoted. What only some platforms or versions have is kept (`os.getuid()`).
+- **Installed packages**: calls into an installed package that declares its types (`py.typed`, a
+  stub package, a lone stub module) are typed by their declared returns as a checked file's are,
+  found as the import system would on this Python's path and `VIRTUAL_ENV`'s; types are imported
+  from a public module that re-exports them.
 - **Fixes that add an import**: `open(p, "rb")` by its literal mode, standard-library classes, and
   `Final`, through an import the module has or one added after its leading imports; another checked
   file's type the module doesn't import, under `if TYPE_CHECKING:` (no import cycle at run time),
   quoted where a module-level annotation is evaluated.
 - **Guesses** apply only with `--unsafe-fixes`: a capitalised call taken to construct its class,
   LVA008's and LVA010's narrowing, an empty container typed by what's added to it, a method typed by
-  its `return`s, an instance attribute by its assignments (`assigned`), and what rests on any of
-  these. **Fix levels**: every mechanism has a stable id (`--show-fixes`, JSON), and `fix-select`,
-  `fix-ignore` and `unsafe-fix-select` choose which apply.
+  its `return`s, an instance attribute by its assignments (`assigned`), an unannotated parameter by
+  what every call in the checked files passes it (`callers`, builtin types alone: callers' classes
+  too would add 10 fixes on the corpora), and what rests on any of these. **Fix levels**: every
+  mechanism has a stable id (`--show-fixes`, JSON), and `fix-select`, `fix-ignore` and
+  `unsafe-fix-select` choose which apply.
 - **Type-checker-backed inference** (`--infer-with basedpyright,ty`): the checkers' inlay hints type
   what `--fix` can't, as guesses, widened, checked and imported; with basedpyright it about doubles
   what `--fix --unsafe-fixes` types on the annotated corpora.
@@ -60,8 +75,9 @@
   new errors went from 20, 76 and 165 (0.2.4) to 2, 5 and 36.
 - **Safe by construction**: never touches class bodies, keeps line endings and encodings, edits
   notebooks' cells in place, nothing broken on any corpus, and the corpus packages' own test suites
-  pass identically before and after. One pass converges on every corpus but the standard library's
-  tests (see [Next](#next)).
+  pass identically before and after. One pass converges on every corpus, the standard library's
+  tests included: a library type a callee's module doesn't import yet is named for its callers by
+  the import its own fixes add.
 - **Fast enough**: the standard library checks in about 8s with `--jobs=1` and 1.5s with `--jobs=0`
   on 16 cores (from 227s profiled at 0.2.4): one shared walk of each module, kept with its tree from
   the cross-file index to the check, and a node's children listed without `ast`'s generators;
@@ -93,7 +109,7 @@
 ### Corpus
 
 - **`tests/corpus/corpus.py`** (no crash) and **`tests/corpus/corpus_fix.py`** (nothing broken, one
-  pass) on the standard library and pinned packages, in CI's Corpus job;
+  pass) on the standard library and pinned packages, in CI's Corpus job (Python 3.14);
   **`tests/corpus/corpus_table.py`** records each version's results in [RUNS.md](RUNS.md), with
   totals and percentages, and `--label` for a pseudo-version (`0.2.4-rc.N`).
 - **`tests/corpus/corpus_suite.py`** clones a corpus package at its pinned tag, installs its test
@@ -153,46 +169,21 @@
 By scope (smallest first) and, within each, by value. Each item says what it is, why, how, and when
 it's done.
 
-### Small: a day or less
-
-1. **`--fix` converges in one pass on the standard library again.** 0.2.6 leaves 911 fixes for a
-   second pass there ([RUNS.md](RUNS.md), the "Left" column), where 0.2.5 left none; the other
-   corpora, and the standard library without its `test/` package (662 files, as Arch's `python`
-   ships it), still converge. Find the files with `tests/corpus/corpus_fix.py` on a standard library
-   that has `test/`, and fix the mechanism whose output enables another fix. Check that CI's Corpus
-   job's standard library has `test/`, or it can't catch this. Done when the standard library's
-   "Left" is 0.
-
 ### Medium: a few days
 
-1. **Standard-library generics the overloads miss.** A few hundred calls on the corpora: a type
-   variable bound through a container argument (`itertools.zip_longest(a, b)`,
-   `functools.partial(f, x)`: `Iterable[_T]` given `list[str]`), a generic class's constructor whose
-   arguments decide its parameters (`itertools.chain(a, b)` is an `itertools.chain[str]`), a return
-   through a generic protocol (`math.floor(x)` is `_SupportsFloor[_T]`'s `_T`), and a generic
-   class's attributes (`m.string`). A constructor like `defaultdict(list)` or `Counter()` can't be
-   written from the call alone: its parameters come from later use, as `fills` types an empty
-   container. Give the tables' verdicts columns for builtin containers and bind a parameter's type
-   variable to a container argument's element; read generic classes' `__new__`/`__init__` overloads
-   as constructors. Done when those are typed on the standard library with `--types` finding no new
-   error.
+1. **Installed functions' overloads.** Calls into installed packages are typed by declared returns
+   alone; their overloads aren't read. On the corpora, 898 untyped numpy calls pass only literals,
+   but the commonest (`np.array([1, 2])`) matches an overload returning `NDArray[Any]`, too vague to
+   write, and most of the rest need a class argument to bind a type variable
+   (`np.empty(n, dtype=np.float64)`: `_DTypeLike[_SCT]` given `np.float64`). Move the stub reading
+   in `tests/typeshed/` into the package, read an installed stub's overloads as the tables' are
+   (cached with the module), and bind a type variable to a class argument (`type[_SCT]`). Done when
+   `np.empty(n, dtype=np.float64)` is an `npt.NDArray[np.float64]` and pandas's `--types` finds no
+   new error.
 
 ### Large: a week or more
 
-1. **Types from installed dependencies.** Calls into third-party packages with no fix (`numpy`,
-   `pytest`, `pyarrow`, `zope`, `pydantic_core`, ...). The CLI indexes the checked files' declared
-   returns, `return`s and classes (`project.Index`); do the same for the installed packages they
-   import, from their inline annotations (`py.typed`) or stubs (`*-stubs`, typeshed's third-party
-   stubs), resolved in the environment the code runs in, cached per package version. Done when a
-   declared return in an installed typed package types its calls as a checked file's does, and the
-   corpora converge with no new `--types` error.
-2. **Unannotated code, from its call sites.** Most bindings with no fix are in functions with no
-   annotations: nothing anchors an unannotated parameter's type. Type a parameter from its callers
-   when every call in the checked files passes the same known type (a guess: the function is
-   public), then everything computed from it, over the call graph `returned` builds. Done when it
-   measurably types unannotated code on the standard library and Twisted, as guesses, with no new
-   `--types` error.
-3. **Tables generated at build time.** The standard-library tables could leave git and be generated
+1. **Tables generated at build time.** The standard-library tables could leave git and be generated
    (and compressed) when the package is built, but the pre-commit hooks and the Action install
    straight from a checkout, and `flit_core` has no build hooks: it takes a build backend with one
    (hatchling), the generator out of `tests/`, and typeshed's stubs at build time, pinned with

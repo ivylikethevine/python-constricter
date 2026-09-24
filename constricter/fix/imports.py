@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from functools import lru_cache
 from typing import Final
 
-from constricter.fix.known import ImportPlan
+from constricter.fix.known import ImportPlan, Origin
 from constricter.rules.syntax import import_bindings
 from constricter.rules.walked import of_type
 
@@ -49,6 +49,19 @@ def plan(tree: ast.Module) -> ImportPlan:
         postponed=_postponed(tree),
         values=values,
     )
+
+
+def added_origin(statement: str) -> Origin:
+    """Read what an import `ImportPlan.spell` added binds: `from m import T`, or `import m`.
+
+    Returns:
+      Its origin: `("m", "T")`, or `("m", None)`.
+
+    """
+    module: str
+    name: str
+    module, _, name = statement.removeprefix("from ").removeprefix("import ").partition(" import ")
+    return module, name or None
 
 
 def _is_checking(test: ast.expr) -> bool:

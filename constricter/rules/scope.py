@@ -6,7 +6,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix import fills, hinted
+from constricter.fix import fills, hinted, stdlib
 from constricter.fix.doubts import (
     Facts,
     Owner,
@@ -19,7 +19,7 @@ from constricter.fix.doubts import (
 )
 from constricter.fix.guesses import guessed, guessing
 from constricter.fix.inference import inference, inferred
-from constricter.fix.known import Hints, ImportPlan, Inference, Known
+from constricter.fix.known import Hints, ImportPlan, Inference, Known, Passed
 from constricter.fix.narrowed import narrowed_at
 from constricter.offences import (
     LONG_TUPLE,
@@ -71,6 +71,9 @@ class Settings:
     # Type checkers' types, for what `--fix` can't type (`--infer-with`): each checker's, in order.
     hints: tuple[Hints, ...] = ()
     facts: Facts = field(default_factory=Facts)  # what a type checker sees otherwise (see `doubts`)
+    # What every call passes each unannotated parameter of its top-level functions, by `id()` (see
+    # `constricter.fix.callers`): guesses, for what's computed from them.
+    parameters: Mapping[int, Mapping[str, Passed]] = field(default_factory=dict[int, Mapping[str, Passed]])
 
 
 class Kind(NamedTuple):
@@ -96,11 +99,16 @@ Placed: TypeAlias = tuple[tuple[int, int], bool]
 
 @dataclass
 class Assignments:
-    """A scope's plain `name = value` (or `name: T = value`) bindings, for LVA012."""
+    """A scope's plain `name = value` (or `name: T = value`) bindings, for LVA012 and `--fix`.
+
+    `chained`: where each name a chained assignment binds first (`a = b = 0`) starts; its fix,
+    whenever it's made (`optional`, `filled`), declares it there, as it can't annotate it.
+    """
 
     found: dict[str, list[Placed]] = field(default_factory=dict[str, list[Placed]])  # each name's
     looping: int = 0  # how many loops deep the statement being visited is
     empty: dict[str, str] = field(default_factory=dict[str, str])  # names first bound empty: their kind
+    chained: dict[str, tuple[int, int]] = field(default_factory=dict[str, tuple[int, int]])
 
 
 # A name typed late: its type, and what that rests on if it's a guess (`FIX_KINDS`).
@@ -207,8 +215,18 @@ class Scope:
             self.inferred.rebound(name, None)
         self._first(name, where, code, fix)
 
-    def assign(self, target: ast.Name, code: str | None, value: ast.expr) -> None:
-        """Bind `target` to `value` (`name = value`), offering `--fix`'s annotation for it."""
+    def assign(
+        self,
+        target: ast.Name,
+        code: str | None,
+        value: ast.expr,
+        chained: ast.stmt | None = None,
+    ) -> None:
+        """Bind `target` to `value` (`name = value`), offering `--fix`'s annotation for it.
+
+        One of a `chained` assignment's names (`a = b = 0`), which can't be annotated where it's bound,
+        is offered a declaration before it instead (`a: int`); not a `Final` one, which needs its value.
+        """
         name: str = target.id
         again: bool = name in self.declared
         facts: Facts = self.settings.facts
@@ -225,13 +243,13 @@ class Scope:
         origins: frozenset[str]
         # Whether a fix is a guess, worked out only for one: untyped, it's the same either way.
         unsafe, origins = (False, frozenset()) if fix is None else guesses_in(self, [value])
-        constant: bool = function is None and is_constant(name) and name in facts.passed
+        constant: bool = function is None and is_constant(name) and name in facts.passed and chained is None
         if fix is not None and not unsafe:
             origins = doubts(
                 value,
                 fix,
                 constant=constant,
-                narrowed=function is not None and ast.unparse(value) in tested(function, facts.tests),
+                narrowed=frozenset() if function is None else tested(function, facts.tests),
             )
             unsafe = bool(origins)
         if fix is not None and constant and origins == _LITERAL_DOUBT:
@@ -251,7 +269,14 @@ class Scope:
         kind: str | None
         if (kind := fills.empty(value)) is not None:
             _ = self.assignments.empty.setdefault(name, kind)
-        self._first(name, at(target), code, None if fix is None else self.offer(fix, origins, unsafe=unsafe))
+        if chained is not None and not again:
+            _ = self.assignments.chained.setdefault(name, (chained.lineno, chained.col_offset))
+        self._first(
+            name,
+            at(target),
+            code,
+            None if fix is None else self.placed(name, fix, origins, unsafe=unsafe),
+        )
         if fix is not None:
             self.inferred.learn(name, fix.annotation, origins if unsafe else None)
 
@@ -326,6 +351,18 @@ class Scope:
             ):
                 return typed
         return None
+
+    def placed(self, name: str, fix: Inference, origins: frozenset[str], *, unsafe: bool) -> Fix | None:
+        """Offer `name`'s fix where it can go: at its binding, or declared before a chained assignment.
+
+        Returns:
+          The fix (see `offer`).
+
+        """
+        span: tuple[int, int] | None
+        if (span := self.assignments.chained.get(name)) is None:
+            return self.offer(fix, origins, unsafe=unsafe)
+        return self.offer(fix, origins, unsafe=unsafe, edit=Edit.DECLARE, span=span)
 
     def offer(
         self,
@@ -427,10 +464,10 @@ class Scope:
         self.assignments.found.setdefault(name, []).append((where, self.assignments.looping > 0))
 
     def evaluated(self, offence: Offence) -> Offence:
-        """Quote a module body's fix whose type names what the module imports for type checking alone.
+        """Quote a module body's fix that can't be evaluated when the module runs (unless it postpones them).
 
-        A module's annotations are evaluated when it runs (unless it postpones them), and those
-        names aren't bound then.
+        One whose type names what the module imports for type checking alone (unbound then), or
+        subscripts a standard-library class that can't be at run time (`itertools.count[int]`).
 
         Returns:
           The offence, its fix quoted if it must be.
@@ -438,13 +475,10 @@ class Scope:
         """
         plan: ImportPlan | None = self.settings.known.names.plan
         fix: Fix | None = offence.edit
-        if (
-            fix is None
-            or plan is None
-            or plan.postponed
-            or self.kind.function is not None
-            or not roots(fix.annotation) & plan.guarded.keys()
-        ):
+        if fix is None or plan is None or plan.postponed or self.kind.function is not None:
+            return offence
+        guarded: bool = bool(roots(fix.annotation) & plan.guarded.keys())
+        if not guarded and stdlib.evaluable(fix.annotation, self.settings.known):
             return offence
         return replace(offence, edit=fix._replace(annotation=_quoted(fix.annotation)))
 

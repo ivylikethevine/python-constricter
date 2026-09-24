@@ -12,7 +12,7 @@ from collections.abc import Callable
 from functools import lru_cache
 from typing import Final, TypeAlias
 
-from constricter.fix import stdlib
+from constricter.fix import overloads, stdlib
 from constricter.fix.known import Inference, Known
 from constricter.fix.returns import METHOD_RETURNS, element_method
 from constricter.fix.targets import sole
@@ -126,7 +126,14 @@ def _elements(receiver: str, name: str, call: ast.Call | None, _known: Known) ->
 
 
 # Where a member's type can come from, in the order they're asked: the one place to add another.
-SOURCES: Final[tuple[MemberSource, ...]] = (_class_side, _fixed, _declared, _elements, stdlib.library_member)
+SOURCES: Final[tuple[MemberSource, ...]] = (
+    _class_side,
+    _fixed,
+    _declared,
+    _elements,
+    stdlib.library_member,
+    overloads.generic_member,
+)
 
 
 def member(receiver: str, name: str, call: ast.Call | None, known: Known) -> Inference | None:

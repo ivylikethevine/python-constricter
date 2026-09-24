@@ -18,8 +18,9 @@ initialize), `deaf` (asked to initialize, it stops reading, asks for its setting
 `silent` (it never answers the hint request), `stubborn` (it ignores `shutdown` and `exit`),
 `clingy` (it stays, whatever it's told, even once its input ends), `truncate` (asked for hints, it
 writes half an answer and exits), `swap` (it answers each pair of hint requests second first),
-`slow` (it reports its progress for a second before each answer). With `FAKE_SERVER_PID` set, it
-writes its process id to that file first.
+`slow` (it reports its progress for a second before each answer), `modified` (it drops each file's
+first hint request as ty does, "content modified"), `always-modified` (it drops every one). With
+`FAKE_SERVER_PID` set, it writes its process id to that file first.
 """
 
 import json
@@ -57,6 +58,9 @@ _EXIT: Final = "exit"
 _FAIL: Final = "fail"
 _SILENT: Final = "silent"
 _STUBBORN: Final = "stubborn"
+_MODIFIED: Final = "modified"
+_ALWAYS_MODIFIED: Final = "always-modified"
+_CONTENT_MODIFIED: Final = -32801
 
 
 @dataclass
@@ -66,6 +70,7 @@ class _Documents:
     texts: dict[str, str] = field(default_factory=dict[str, str])
     versions: dict[str, int] = field(default_factory=dict[str, int])
     held: _Object | None = None  # `swap`'s answer, held for the next
+    dropped: set[str] = field(default_factory=set[str])  # the files a `modified` server dropped a request for
 
 
 def _receive(stream: IO[bytes]) -> _Object | None:
@@ -206,8 +211,14 @@ def _hinted(message: _Object, documents: _Documents) -> bool:
             time.sleep(0.1)
     uri: str = str(cast("_Object", cast("_Object", message["params"])["textDocument"])["uri"])
     reply: _Object = {"jsonrpc": "2.0", "id": message["id"]}
+    modified: bool = _ALWAYS_MODIFIED in _BEHAVIOURS or (
+        _MODIFIED in _BEHAVIOURS and uri not in documents.dropped
+    )
+    documents.dropped.add(uri)
     if _FAIL in _BEHAVIOURS:
         reply["error"] = {"code": -32603, "message": "it broke"}
+    elif modified:
+        reply["error"] = {"code": _CONTENT_MODIFIED, "message": "content modified"}
     else:
         reply["result"] = _hints(documents.texts[uri], documents.versions[uri])
     if _SWAP in _BEHAVIOURS and documents.held is None:

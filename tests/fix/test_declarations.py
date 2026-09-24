@@ -10,7 +10,7 @@ import ast
 import json
 import textwrap
 from pathlib import Path
-from typing import TypeAlias, cast
+from typing import Final, TypeAlias, cast
 
 import pytest
 
@@ -323,3 +323,72 @@ def test_a_type_argument_with_a_trailing_comma_is_still_the_element() -> None:
         "last": "int",
         "name": "str",
     }
+
+
+CHAINED: Final = """
+LEFT = RIGHT = None
+SIZE = WIDTH = 3
+
+
+def f():
+    i = j = 0
+    first = last = ""
+    return i, j, first, last
+"""
+CHAINED_FIXED: Final = """
+LEFT = RIGHT = None
+SIZE: int
+WIDTH: int
+SIZE = WIDTH = 3
+
+
+def f():
+    i: int
+    j: int
+    i = j = 0
+    first: str
+    last: str
+    first = last = ""
+    return i, j, first, last
+"""
+
+
+def test_a_chained_assignments_names_are_declared_before_it(tmp_path: Path) -> None:
+    """`a = b = 0` can't be annotated: each name is declared before it; `None` still says nothing."""
+    path: Path = tmp_path / "chained.py"
+    _ = path.write_text(CHAINED, encoding="utf-8", newline="\n")
+    _ = cli.main(["--fix", "-q", "--all-scopes", str(path)])
+    assert path.read_text(encoding="utf-8") == CHAINED_FIXED
+
+
+CHAINED_LATE: Final = """
+def f(flag):
+    first = last = None
+    if flag:
+        first = last = "x"
+    other = None
+    if flag:
+        other = spare = 1
+    return first, last, other, spare
+"""
+CHAINED_LATE_FIXED: Final = """
+def f(flag):
+    first: str | None
+    last: str | None
+    first = last = None
+    if flag:
+        first = last = "x"
+    other: int | None = None
+    if flag:
+        spare: int
+        other = spare = 1
+    return first, last, other, spare
+"""
+
+
+def test_a_late_fix_for_a_chained_name_is_declared_before_its_first_binding(tmp_path: Path) -> None:
+    """`None`, then only `str`: `str | None`, declared; a name bound first elsewhere is fixed there."""
+    path: Path = tmp_path / "late.py"
+    _ = path.write_text(CHAINED_LATE, encoding="utf-8", newline="\n")
+    _ = cli.main(["--fix", "-q", str(path)])
+    assert path.read_text(encoding="utf-8") == CHAINED_LATE_FIXED

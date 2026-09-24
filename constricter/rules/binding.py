@@ -26,7 +26,6 @@ _COMMENT: Final = "comment"  # the fix kind of LVA003's declaration
 
 def bind(scope: Scope, stmt: ast.stmt) -> None:
     """Bind the names `stmt` binds that need typing, reporting the untyped ones."""
-    targets: list[ast.expr]
     target: ast.expr
     items: list[ast.withitem]
     comment: str | None
@@ -41,8 +40,8 @@ def bind(scope: Scope, stmt: ast.stmt) -> None:
         case ast.Assign(targets=[ast.Tuple() | ast.List() as target], value=value, type_comment=comment):
             typed: Inference | None = inference(value, scope.settings.known, scope.inferred.types)
             _bind_declared(scope, stmt, target, typed, [value])
-        case ast.Assign(targets=targets, type_comment=comment):
-            _bind_targets(scope, targets, scope.unannotated(comment))
+        case ast.Assign():
+            _bind_assigned(scope, stmt)
         case ast.With(items=items, type_comment=comment) | ast.AsyncWith(items=items, type_comment=comment):
             _bind_with(scope, stmt, items, scope.unannotated(comment))
         case (
@@ -71,6 +70,17 @@ def bind(scope: Scope, stmt: ast.stmt) -> None:
             scope.inferred.rebound(name, bound)
         case _:
             pass
+
+
+def _bind_assigned(scope: Scope, stmt: ast.Assign) -> None:
+    """Bind a chained assignment's names (`a = b = 0`), each offered a declaration before it, or others'."""
+    code: str | None = scope.unannotated(stmt.type_comment)
+    if not all(isinstance(target, ast.Name) for target in stmt.targets):
+        _bind_targets(scope, stmt.targets, code)
+        return
+    target: ast.expr
+    for target in stmt.targets:
+        scope.assign(cast("ast.Name", target), code, stmt.value, stmt)
 
 
 def _bind_loop(scope: Scope, stmt: ast.For | ast.AsyncFor, target: ast.expr, value: ast.expr) -> None:

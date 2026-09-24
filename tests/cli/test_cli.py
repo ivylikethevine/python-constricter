@@ -542,6 +542,29 @@ def test_per_path_levels(
     assert capsys.readouterr().out.splitlines()[:2] == ["    2  LVA001  error", "    1  LVA002  error"]
 
 
+MAXED: Final = "X = 1\n\n\ndef f():\n    y = 2\n    return y\n"
+
+
+def test_max_is_the_strictest_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`--max`: `suffocate` over `per-path-levels`, every scope, the opt-in LVA012; not in pyproject."""
+    _pyproject(tmp_path, '[tool.constricter.per-path-levels]\n"*.py" = "relaxed"\n')
+    _ = _write(tmp_path / "demo.py", MAXED)
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["--statistics", "--max", "demo.py"]) == cli.EXIT_FOUND
+    assert set(capsys.readouterr().out.splitlines()[:3]) == {
+        "    1  LVA001  error",
+        "    1  LVA004  error",
+        "    1  LVA012  error",
+    }
+    _pyproject(tmp_path, "[tool.constricter]\nmax = true\n")
+    with pytest.raises(SystemExit):
+        _ = cli.main(["demo.py"])
+
+
 @pytest.mark.parametrize("jobs", ["2", "0"])
 def test_jobs_check_files_in_parallel_in_order(
     tmp_path: Path,

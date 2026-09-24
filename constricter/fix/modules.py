@@ -12,9 +12,9 @@ import itertools
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
-from typing import Final, NamedTuple, cast
+from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter.fix.known import Origin, Returns
+from constricter.fix.known import Origin, Passed, Returns
 from constricter.fix.returned import unannotated
 from constricter.rules import parsed
 from constricter.rules.annotations import (
@@ -28,6 +28,15 @@ from constricter.rules.walked import of_type
 
 _PACKAGE: Final = "__init__"
 SUFFIX: Final = ".py"
+STUB: Final = ".pyi"
+
+
+# A function's parameter: its name, kind (`p` positional only, `e` either, `k` keyword only), and
+# whether it has a default and an annotation.
+Param: TypeAlias = tuple[str, str, bool, bool]
+_POSITIONAL: Final = "p"
+_EITHER: Final = "e"
+_KEYWORD: Final = "k"
 
 
 class Module(NamedTuple):
@@ -48,6 +57,12 @@ class Module(NamedTuple):
     called: frozenset[str] = frozenset()  # what it calls through its top-level names (`f`, `u.f`)
     returned: Returns = Returns()  # what they return, once it's checked
     generics: frozenset[str] = frozenset()  # its generic classes, which a type mustn't write bare
+    installed: bool = False  # an installed package's, read for its types alone (see `installed`)
+    # Its plain top-level functions with a parameter left unannotated (see `open_functions`), and
+    # what every call passes each such parameter, once they're all seen (see `callers`). Plain
+    # `dict`s: the CLI's worker processes send modules back, pickled.
+    open: Mapping[str, tuple[Param, ...]] = {}
+    parameters: Mapping[str, Mapping[str, Passed]] = {}  # see `Seeds`
 
 
 class Index(NamedTuple):
@@ -192,14 +207,17 @@ def indexed(found: Iterable[Module | None]) -> Index:
     return Index(modules, sorted(modules))
 
 
-def read(path: Path) -> Module | None:
+def read(path: Path, name: str | None = None) -> Module | None:
     """Read what one `.py` file offers and uses.
+
+    With `name`, an installed package's module (see `installed`): a stub (`.pyi`) too, named that,
+    and not kept for a check.
 
     Returns:
       Its module, or `None` if it isn't a `.py` file, or can't be read or parsed.
 
     """
-    if path.suffix != SUFFIX or not path.is_file():
+    if path.suffix not in ({SUFFIX} if name is None else {SUFFIX, STUB}) or not path.is_file():
         return None
     source: str | None
     if (source := _source(path)) is None:
@@ -209,20 +227,89 @@ def read(path: Path) -> Module | None:
     except (SyntaxError, ValueError):  # a null byte is a ValueError
         return None
     own: Tables = module_tables(tree)
-    parsed.keep(source, (tree, own))  # for the check to take, rather than parse it and read it again
-    name: str = module_name(path)
-    names: dict[str, Origin] = _names(tree, name, is_package=path.stem == _PACKAGE)
+    if name is None:
+        parsed.keep(source, (tree, own))  # for the check to take, rather than parse it and read it again
+    named: str = name or module_name(path)
+    names: dict[str, Origin] = _names(tree, named, is_package=path.stem == _PACKAGE)
     return Module(
-        name,
+        named,
         own.returns,
         names,
         own.classes,
         own.methods,
         defined_type_vars(tree),
-        _guarded(tree, name, is_package=path.stem == _PACKAGE),
+        _guarded(tree, named, is_package=path.stem == _PACKAGE),
         unannotated(tree.body),
         _called(tree, names),
         generics=generic_classes(tree),
+        installed=name is not None,
+        open=open_functions(tree),
+    )
+
+
+def open_functions(tree: ast.Module) -> dict[str, tuple[Param, ...]]:
+    """Find a module's plain top-level functions with a parameter left unannotated.
+
+    Plain: not decorated (a decorator may change how it's called), without `*args` or `**kwargs`
+    (whose arguments can't be matched), and defined once.
+
+    Returns:
+      Each one's parameters, by its name.
+
+    """
+    counts: dict[str, int] = {}
+    stmt: ast.stmt
+    for stmt in tree.body:
+        if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            counts[stmt.name] = counts.get(stmt.name, 0) + 1
+    return {
+        stmt.name: _params(stmt.args)
+        for stmt in tree.body
+        if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef)
+        and counts[stmt.name] == 1
+        and _plain(stmt)
+    }
+
+
+def _plain(function: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Check a function is undecorated, without `*args` or `**kwargs`, and has an unannotated parameter.
+
+    Returns:
+      Whether it is.
+
+    """
+    args: ast.arguments = function.args
+    return (
+        not function.decorator_list
+        and args.vararg is None
+        and args.kwarg is None
+        and any(arg.annotation is None for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs))
+    )
+
+
+def _params(args: ast.arguments) -> tuple[Param, ...]:
+    """Read a function's parameters (see `Param`).
+
+    Returns:
+      Them, in order.
+
+    """
+    positional: list[ast.arg] = [*args.posonlyargs, *args.args]
+    first_default: int = len(positional) - len(args.defaults)
+    return (
+        *(
+            (
+                arg.arg,
+                _POSITIONAL if at < len(args.posonlyargs) else _EITHER,
+                at >= first_default,
+                arg.annotation is not None,
+            )
+            for at, arg in enumerate(positional)
+        ),
+        *(
+            (arg.arg, _KEYWORD, default is not None, arg.annotation is not None)
+            for arg, default in zip(args.kwonlyargs, args.kw_defaults, strict=True)
+        ),
     )
 
 

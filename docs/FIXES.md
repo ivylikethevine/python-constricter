@@ -4,7 +4,10 @@ The [README](../README.md#use) has the options (`--fix`, `--diff` to preview, `-
 `--show-fixes`). `--fix` adds the annotation where the value decides it, for a plain `name = value`
 in a function or module body:
 
-- a literal: `count = 0` becomes `count: int = 0`;
+- a literal: `count = 0` becomes `count: int = 0`; and `not x`, or a comparison by `in`, `not in`,
+  `is` and `is not` alone (`"r" in mode`), always a `bool` whatever it compares (`==` and `<` may
+  return anything, as numpy's arrays do), and any comparison of builtin values (`n < 3`,
+  `len(xs) == 0`, `name != "x"`), a `bool` too;
 - a container whose elements agree: `[1, 2]` gives `list[int]`, `{"a": (1, "b")}` gives
   `dict[str, tuple[int, str]]`; a tuple longer than `max-length` (4) is `tuple[T, ...]` if its
   elements agree, and untyped if not (it would be LVA011's);
@@ -48,10 +51,30 @@ in a function or module body:
   `os.getenv("X", 3)` a `str | int`, `re.compile("x")` a `re.Pattern[str]` (its type variable bound
   by the argument), `parser.parse_args()` an `argparse.Namespace`, and on a `re.Pattern[str]`,
   `pat.match(s)` a `re.Match[str] | None` (the class's type parameter bound by the receiver's type).
-  Only when that's certain: every signature that may be the one (not certainly refusing the
-  arguments, up to the first that certainly takes them) gives the same type, on every platform and
-  version. An argument's type counts only if it's a builtin scalar (`str`, `bytes`, `int`, a
-  literal, `None`, ...); a call unpacking `*args` or `**kwargs` isn't typed;
+  A generic class's constructor is read the same way, from its `__new__` or `__init__`:
+  `collections.deque(names)` with `names: list[str]` is a `collections.deque[str]`,
+  `itertools.product(a, b)` an `itertools.product[tuple[str, int]]`, `array.array("i")` an
+  `array.array[int]`, `weakref.ref(obj)` a `weakref.ReferenceType[Foo]`. Only when that's certain:
+  every signature that may be the one (not certainly refusing the arguments, up to the first that
+  certainly takes them) gives the same type, on every platform and version, with every type variable
+  bound (`collections.deque()` isn't typed). An argument binds a type variable by its type: a
+  builtin scalar (`str`, `bytes`, `int`, a literal, `None`, ...) wherever the parameter takes it;
+  any other type only where the parameter is nothing but an unbounded type variable
+  (`copy.copy(obj)` is a `Foo`); a builtin container (`list[str]`, `dict[str, int]`'s keys,
+  `tuple[str, ...]`) or a `str` by its element, where the parameter is a generic class of one
+  (`Iterable[_T]`); a scalar by its method's return, where the parameter is a generic protocol
+  (`math.floor(x)` is an `int` for a `float`, by `float.__floor__`); and a function by its declared
+  return, where the parameter is a `Callable[..., _T]` (`functools.partial(helper, 1)` is a
+  `functools.partial[str]`). Two arguments binding one differently leave the call alone
+  (`itertools.chain(names, ids)`), as does unpacking `*args` or `**kwargs`. At module level, where
+  an annotation is evaluated when the module runs, a class some supported Python can't subscript at
+  run time is quoted (`counter: "itertools.count[int]"`), unless the module has
+  `from __future__ import annotations`;
+- a generic standard-library class's own attribute or property, by the receiver's type arguments:
+  `m.string` on an `re.Match[str]` is a `str`, `p.pattern` on an `re.Pattern[bytes]` a `bytes`;
+- a standard-library module's variable, by its annotation in typeshed: `sys.path` is a `list[str]`,
+  `os.sep` a `str` (not `sys.stdout`, typeshed's `TextIO | Any`); a name a function binds itself (a
+  parameter `getpid`) isn't the module's import;
 - `open(path, mode)` (or `io.open`), by its literal mode (`r` when there's none): a text mode gives
   an `io.TextIOWrapper`, a binary one an `io.BufferedReader` to read, an `io.BufferedWriter` to
   write, and an `io.BufferedRandom` for both (`+`). Not unbuffered (`buffering`, which gives an
@@ -74,6 +97,15 @@ in a function or module body:
   alone;
 - an attribute, property or method of a class another checked file defines, its type imported as a
   declared return's is (the CLI only: the plugins see one file at a time);
+- with `--unsafe-fixes` (the CLI only), what's computed from an unannotated parameter of a plain
+  top-level function (undecorated, without `*args` or `**kwargs`) when every call in the checked
+  files passes it an argument of the same type made of builtins alone (`int`, `list[str]`; not a
+  union, nor a class another module may not name): `def greet(name)` called only as `greet("a")`
+  types `line = name.upper()` as `str`. A guess (`callers`), since a caller outside the checked
+  files may pass anything; never for a function used any way but called (a callback), one a call
+  leaves a parameter to its default, can't be matched to, or unpacks its arguments for, nor a
+  parameter the function binds again. The files defining such functions are checked again knowing
+  those types, then the files calling them, knowing what they now return;
 - with `--unsafe-fixes`, an empty container (`[]`, `{}`, `set()`, `list()`, `dict()`) the function
   then only adds to, every addition typed alike (`append`, `insert`, `add`, `setdefault`,
   `x[k] = v`): `list[T]`, `set[T]` or `dict[K, V]`. A guess, since something else could add to it;
@@ -103,6 +135,14 @@ docstring and its leading imports (below a shebang or coding line when it has ne
 `import io` if `BufferedReader` is a name the module binds. A standard-library type's import never
 goes under `if TYPE_CHECKING:`.
 
+An installed package that declares its types (a `py.typed` package, its stubs first; a stub package,
+`pkg-stubs`; a lone `mod.pyi`) is read the same way for the calls into it, and never fixed: found on
+this Python's path and the active virtual environment's (`VIRTUAL_ENV`), as the import system would
+(an untyped copy earlier on the path shadows a typed one later), with the modules it re-exports
+from. `pydantic_core.to_json(x)` is a `bytes`. A type it names is imported from a public module that
+re-exports it (`from typed import Thing`, not `typed._types`), or not written; and one of its
+generic classes is never written bare (`np.ndarray`).
+
 A type another checked file declares (`get_handle() -> IOHandles[str]`) names what that file imports
 or defines; a name the calling file doesn't have is imported where the type's file has it from,
 under `if TYPE_CHECKING:` (into the module's first top-level one, or a new one after its imports,
@@ -111,6 +151,9 @@ run time. A name the file already imports, under any name and even for type chec
 reused; a module-level annotation using one imported for type checking alone is quoted
 (`top: "IOHandles[str]" = get_handle()`), unless the module has
 `from __future__ import annotations`. A generic class another file defines is never written bare.
+
+A chained assignment's names (`i = j = 0`), which can't be annotated where they're bound, are each
+declared before it (`i: int`), as an unpacking's are; not as `Final`, which needs its value.
 
 An added import never binds a name the module binds anywhere, or a builtin's; with no name free,
 there's no fix. In a notebook, which has no import block, such a fix is reported but not applied.
@@ -236,7 +279,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 
 | Id              | Decided by                                                                          |
 | --------------- | ----------------------------------------------------------------------------------- |
-| `literal`       | a literal, an f-string, or `not x`                                                  |
+| `literal`       | a literal, an f-string, `not x`, or `x in y` or `x is y`                            |
 | `container`     | a list, set, tuple or dict display whose elements' types agree                      |
 | `copy`          | a copy of a local whose type is known                                               |
 | `subscript`     | a subscript of a container whose type is known                                      |
@@ -246,6 +289,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `call`          | a function that declares its return type (this module's, or another checked file's) |
 | `constructor`   | a call to a capitalised name, taken to construct one (a guess)                      |
 | `conditional`   | both sides of `a if c else b`                                                       |
+| `compare`       | a comparison of builtin values (`n < 3`), always a `bool`                           |
 | `arithmetic`    | arithmetic on builtin scalars                                                       |
 | `comprehension` | a list, set or dict comprehension's elements                                        |
 | `builder`       | `sorted`, `list`, `set`, `frozenset` or `tuple` of known elements                   |
@@ -265,6 +309,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `filled`        | an empty container, then only what the function adds to it (a guess)                |
 | `returned`      | an unannotated function's own `return`s (a method's: a guess)                       |
 | `assigned`      | an unannotated instance attribute's every `self.x = value` in its class (a guess)   |
+| `callers`       | an unannotated parameter every call in the checked files passes one type (a guess)  |
 
 A project chooses which apply, in `[tool.constricter]` or on the command line:
 

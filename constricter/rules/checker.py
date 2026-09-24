@@ -12,10 +12,10 @@ from constricter.fix.inference import inference
 from constricter.fix.known import (
     Classes,
     ClassSide,
-    Guarded,
     Inference,
     Known,
     LibraryNames,
+    Observed,
     Outside,
     Returned,
     Returns,
@@ -44,9 +44,9 @@ from constricter.rules.annotations import (
     imported_from,
     module_tables,
     node_name,
-    roots,
     self_returns,
 )
+from constricter.rules.calls import keyed, observed, seed_parameters, unshadowed
 from constricter.rules.flow import Finding, Hierarchy
 from constricter.rules.narrowing import flow_offences, module_flow, module_names
 from constricter.rules.redundant import redundant
@@ -173,6 +173,7 @@ def _settings(
             narrowed.regions(tree),
             inner_starts(tree),
         ),
+        keyed(tree, {} if outside is None else outside.parameters),
     )
 
 
@@ -200,10 +201,14 @@ def check_tree(
 
 
 class Checked(NamedTuple):
-    """A module's offences, and what its own unannotated functions return (for the files importing them)."""
+    """A module's offences, what its unannotated functions return, and what it passes others' functions.
+
+    What they return is for the files importing them; what it passes, for `fix.callers`.
+    """
 
     offences: list[Offence]
     returned: Returns
+    calls: Observed = Observed()
 
 
 def checked_tree(
@@ -236,17 +241,16 @@ def checked_tree(
     finals: list[Offence] = [o for scope in scopes for o in late.finals(scope)] if checks.final else []
     reported: list[Offence] = [o for scope in scopes for o in scope.reported()]
     exported: Returns = returned.exported(found)
-    guarded: Mapping[str, Guarded] = {} if outside is None else outside.guarded
     return Checked(
         sorted([*reported, *redundant(tree, settings.checks.fixes), *flow, *finals]),
         exported._replace(
-            names={
-                name: guarded[name].origin
-                for annotation in exported.calls.values()
-                for name in roots(annotation)
-                if name in guarded
-            },
+            names=returned.exported_names(
+                exported,
+                {} if outside is None else outside.guarded,
+                (settings.known.names.plan or imports.plan(tree)).added,
+            ),
         ),
+        observed(tree, scopes, settings.known, {} if outside is None else outside.callees),
     )
 
 
@@ -363,7 +367,7 @@ def _function_scopes(
                 [_recorded(scope, value) for value in scope.inferred.returns] if settled else [],
                 _assigned(scope) if settled else [],
             )
-        scopes += _function_scopes(nested, settings, table)
+        scopes += _function_scopes(nested, scope.settings, table)
     return scopes
 
 
@@ -381,6 +385,7 @@ def _function_scope(
       Its scope.
 
     """
+    settings = unshadowed(settings, func)
     args: ast.arguments = func.args
     named: tuple[ast.arg, ...] = (*args.posonlyargs, *args.args, *args.kwonlyargs)
     params: set[str] = {a.arg for a in named}
@@ -403,6 +408,7 @@ def _function_scope(
     # A classmethod's first parameter is its class (`type[C]`), whatever it's called.
     if owner is not None and named and [node_name(d) for d in func.decorator_list] == [_CLASSMETHOD]:
         _ = scope.inferred.types.setdefault(named[0].arg, f"type[{owner}]")
+    seed_parameters(scope, func, named)
     arg: ast.arg
     for arg in named:
         # A parameter holds whatever its callers pass: its declared type, as far as value flow knows.

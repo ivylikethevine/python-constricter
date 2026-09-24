@@ -18,6 +18,8 @@ import bisect
 import builtins
 import sys
 from collections.abc import Iterable, Iterator, Mapping
+from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Final, NamedTuple
 
@@ -44,6 +46,7 @@ _CLASS: Final = "class"
 _TYPE_VAR: Final = "type variable"
 _RETURNED: Final = "returned"  # an unannotated function its `return`s type
 _UNANNOTATED: Final = "unannotated"  # an unannotated function, typed or not
+OPEN: Final = "open"  # a function with a parameter left unannotated (see `modules.open_functions`)
 
 
 class Imported(NamedTuple):
@@ -62,7 +65,7 @@ def _origin(module: Module, name: str) -> Origin | None:
     return (_BUILTINS_MODULE, name) if name in _BUILTINS else None
 
 
-def _defined(
+def definition(
     modules: Mapping[str, Module],
     origin: Origin,
     kind: str,
@@ -81,7 +84,7 @@ def _defined(
     if attribute in _kind(module, kind):
         return module, attribute
     onward: Origin | None = module.names.get(attribute)
-    return _defined(modules, onward, kind, hops - 1) if onward and onward[0] != module.name else None
+    return definition(modules, onward, kind, hops - 1) if onward and onward[0] != module.name else None
 
 
 def _kind(module: Module, kind: str) -> Iterable[str]:
@@ -100,6 +103,8 @@ def _kind(module: Module, kind: str) -> Iterable[str]:
             return module.returned.calls
         case "unannotated":
             return module.unannotated
+        case "open":
+            return module.open
         case _:
             return module.type_vars
 
@@ -131,7 +136,7 @@ def _is_type_var(modules: Mapping[str, Module], module: Module, name: str) -> bo
     """
     origin: Origin | None = module.names.get(name) or module.guarded.get(name)
     return name in module.type_vars or (
-        origin is not None and origin[0] != module.name and _defined(modules, origin, _TYPE_VAR) is not None
+        origin is not None and origin[0] != module.name and definition(modules, origin, _TYPE_VAR) is not None
     )
 
 
@@ -205,7 +210,7 @@ def _typed_calls(
         return
     key: str
     origin: Origin
-    for key, origin in _spelled(catalog, target, kind):
+    for key, origin in spellings(catalog, target, kind):
         found: tuple[str, tuple[Module, str]] | None
         # Only what it calls: the modules `plan` put it after, whatever else is checked by then.
         if (kind != _RETURNED or key in target.called) and (
@@ -214,7 +219,7 @@ def _typed_calls(
             yield key, *found
 
 
-def _spelled(catalog: Index, target: Module, kind: str) -> Iterator[tuple[str, Origin]]:
+def spellings(catalog: Index, target: Module, kind: str) -> Iterator[tuple[str, Origin]]:
     """Find what `target` imports that other modules may define as a `kind`, as it spells each call.
 
     Yields:
@@ -276,7 +281,7 @@ def _portable_call(
 
     """
     defined: tuple[Module, str] | None
-    if (defined := _defined(modules, origin, kind)) is None:
+    if (defined := definition(modules, origin, kind)) is None:
         return None
     annotation: str = (defined[0].returns if kind == _FUNCTION else defined[0].returned.calls)[defined[1]]
     respelled: str | None = _respelled(modules, target, defined[0], annotation, guarded)
@@ -314,6 +319,7 @@ def _respelled(
     root: str
     for root in {root for root in names if not _same(target, defined, root)}:
         origin: Origin | None = _where(defined, root)
+        origin = None if origin is None else _public(modules, origin)
         name: str | None
         if (
             origin is None
@@ -337,22 +343,33 @@ def _bare(modules: Mapping[str, Module], defined: Module, annotation: str) -> bo
       Whether it does: the class's arguments are missing.
 
     """
+    return any(_is_generic(modules, _where(defined, bare)) for bare in _unsubscripted(annotation))
+
+
+def _is_generic(modules: Mapping[str, Module], origin: Origin | None) -> bool:
+    """Check whether `origin` is (through re-exports) an indexed module's generic class.
+
+    Returns:
+      Whether it is.
+
+    """
+    found: Origin | None = None if origin is None else _canonical(modules, origin)
+    return found is not None and found[0] in modules and found[1] in modules[found[0]].generics
+
+
+@lru_cache(maxsize=4096)
+def _unsubscripted(annotation: str) -> tuple[str, ...]:
+    """Name the names an annotation writes without type arguments (`Box` in `list[Box]`, not `list`).
+
+    Returns:
+      Them, in order.
+
+    """
     tree: ast.expr = _unquoted(annotation)
     subscripted: set[int] = {id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Subscript)}
-    node: ast.AST
-    for node in ast.walk(tree):
-        origin: Origin | None
-        if (
-            isinstance(node, ast.Name)
-            and id(node) not in subscripted
-            and (origin := _where(defined, node.id)) is not None
-        ):
-            module: str
-            name: str | None
-            module, name = _canonical(modules, origin)
-            if module in modules and name in modules[module].generics:
-                return True
-    return False
+    return tuple(
+        node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and id(node) not in subscripted
+    )
 
 
 def _where(module: Module, name: str) -> Origin | None:
@@ -367,18 +384,60 @@ def _where(module: Module, name: str) -> Origin | None:
     return module.guarded.get(name) or module.returned.names.get(name) or _origin(module, name)
 
 
-def _canonical(modules: Mapping[str, Module], origin: Origin, hops: int = _HOPS) -> Origin:
+@dataclass
+class _Memo:
+    """What `_canonical` and `_public` found, for the index they were last asked about.
+
+    Each file's `imported` asks them about the same origins again (every member of every class it
+    imports): with installed packages indexed too, that was most of a run's time.
+    """
+
+    modules: Mapping[str, Module] | None = None
+    canonical: dict[Origin, Origin] = field(default_factory=dict[Origin, Origin])
+    public: dict[Origin, Origin] = field(default_factory=dict[Origin, Origin])
+
+    def of(self, modules: Mapping[str, Module]) -> "_Memo":
+        """Keep what's found for `modules` alone (an index changes as files are checked).
+
+        Returns:
+          This memo, emptied if it was another index's.
+
+        """
+        if modules is not self.modules:
+            self.modules = modules
+            self.canonical = {}
+            self.public = {}
+        return self
+
+
+_MEMO: Final = _Memo()
+
+
+def _canonical(modules: Mapping[str, Module], origin: Origin) -> Origin:
     """Follow `origin` through checked modules' re-exports to where it's defined.
 
     Returns:
       That origin, or `origin` itself when it isn't a re-export of a checked module.
 
     """
+    found: dict[Origin, Origin] = _MEMO.of(modules).canonical
+    if origin not in found:
+        found[origin] = _followed(modules, origin, _HOPS)
+    return found[origin]
+
+
+def _followed(modules: Mapping[str, Module], origin: Origin, hops: int) -> Origin:
+    """Follow `origin` through up to `hops` re-exports (see `_canonical`).
+
+    Returns:
+      Where it leads.
+
+    """
     module: Module | None = modules.get(origin[0])
     if module is None or origin[1] is None or not hops:
         return origin
     onward: Origin | None = module.names.get(origin[1]) or module.guarded.get(origin[1])
-    return _canonical(modules, onward, hops - 1) if onward and onward[0] != module.name else origin
+    return _followed(modules, onward, hops - 1) if onward and onward[0] != module.name else origin
 
 
 def _named(
@@ -390,8 +449,9 @@ def _named(
 ) -> str | None:
     """Name `origin` in `target`: as an import it has names it (preferring `name`), else `name` if free.
 
-    A new import only from a module certain to resolve: a checked file's, or the standard library's
-    (a third-party one the type's file imports may not be installed where the type checker runs).
+    A new import only from a module certain to resolve: a checked file's, an installed package's public
+    one (not `numpy._typing`), or the standard library's (a third-party one the type's file imports
+    may not be installed where the type checker runs).
 
     Returns:
       The name, or `None` if `target` imports nothing for it and binds `name` to something else, or
@@ -406,8 +466,64 @@ def _named(
     )
     if matches:
         return matches[0]
-    resolves: bool = origin[0] in modules or origin[0].partition(".")[0] in _STDLIB
+    module: Module | None = modules.get(origin[0])
+    public: bool = module is not None and not (module.installed and _private(origin[0]))
+    resolves: bool = public or origin[0].partition(".")[0] in _STDLIB
     return None if name in known or name in _BUILTINS or not resolves else name
+
+
+def _public(modules: Mapping[str, Module], origin: Origin) -> Origin:
+    """Find where an installed package's public module re-exports what `origin` names from a private one.
+
+    `numpy._core.multiarray`'s `ndarray` as `numpy`'s: its shortest public module binding the name to
+    the same thing.
+
+    Returns:
+      That origin; `origin` itself if it isn't in an installed package's private module, or no
+      public one re-exports it.
+
+    """
+    module: Module | None = modules.get(origin[0])
+    if module is None or not module.installed or origin[1] is None or not _private(origin[0]):
+        return origin
+    found: dict[Origin, Origin] = _MEMO.of(modules).public
+    if origin not in found:
+        found[origin] = _reexported(modules, origin)
+    return found[origin]
+
+
+def _reexported(modules: Mapping[str, Module], origin: Origin) -> Origin:
+    """Find the shortest public module of an installed package re-exporting `origin` (see `_public`).
+
+    Returns:
+      Its origin, or `origin` itself if there's none.
+
+    """
+    wanted: Origin = _canonical(modules, origin)
+    top: str = origin[0].partition(".")[0]
+    found: list[str] = sorted(
+        (
+            name
+            for name, other in modules.items()
+            if other.installed
+            and name.partition(".")[0] == top
+            and not _private(name)
+            and origin[1] in other.names
+            and _canonical(modules, other.names[origin[1]]) == wanted
+        ),
+        key=lambda name: (name.count("."), name),
+    )
+    return (found[0], origin[1]) if found else origin
+
+
+def _private(module: str) -> bool:
+    """Check whether a module's path has a private part (`numpy._typing`).
+
+    Returns:
+      Whether it has.
+
+    """
+    return any(part.startswith("_") for part in module.split("."))
 
 
 def _statement(origin: Origin, name: str) -> str:
@@ -502,7 +618,7 @@ def imported(catalog: Index, path: Path) -> Imported:
         where: Origin
         for key, where in spelled:
             defined: tuple[Module, str] | None
-            if (defined := _defined(modules, where, _CLASS)) is not None:
+            if (defined := definition(modules, where, _CLASS)) is not None:
                 if defined[1] in defined[0].generics:
                     generics.add(key)
                 attributes[key] = _portable(
@@ -545,7 +661,7 @@ def _reexported_generics(modules: Mapping[str, Module], local: str, name: str) -
         if (
             origin[1] is not None
             and origin[0] != name
-            and (defined := _defined(modules, origin, _CLASS)) is not None
+            and (defined := definition(modules, origin, _CLASS)) is not None
             and defined[1] in defined[0].generics
         ):
             yield f"{local}.{reexported}"
@@ -607,9 +723,12 @@ def needs(catalog: Index, module: Module) -> set[str]:
     found: set[str] = set()
     key: str
     origin: Origin
-    for key, origin in _spelled(catalog, module, _UNANNOTATED):
+    for key, origin in spellings(catalog, module, _UNANNOTATED):
         defined: tuple[Module, str] | None
-        if key in module.called and (defined := _defined(catalog.modules, origin, _UNANNOTATED)) is not None:
+        if (
+            key in module.called
+            and (defined := definition(catalog.modules, origin, _UNANNOTATED)) is not None
+        ):
             found.add(defined[0].name)
     found.discard(module.name)
     return found

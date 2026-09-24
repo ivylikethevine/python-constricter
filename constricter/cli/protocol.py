@@ -6,6 +6,10 @@ type is its label after its `:`; basedpyright is asked for variable types only.
 """
 
 import json
+import shutil
+import subprocess  # asks a checker whether it runs
+import sys
+from pathlib import Path
 from typing import IO, Final, NamedTuple, TypeAlias, cast
 
 Json: TypeAlias = dict[str, "Json"] | list["Json"] | str | int | float | bool | None
@@ -44,6 +48,59 @@ SERVERS: Final = {
     # Parallel already: more servers only repeat its work (sqlalchemy's: 0.9s with one, 0.7s with four).
     "ty": Server("ty", ("server",), 1),
 }
+_PROBE: Final = "--version"  # quick for both; basedpyright-langserver's exits 1 all the same
+_PROBE_TIMEOUT: Final = 10.0  # seconds it may take
+_CANT_RUN: Final = frozenset({126, 127})  # the shell's "can't execute" and "not found": a broken shim's
+
+
+def executable(checker: str) -> str | None:
+    """Find `checker`'s language server: on `PATH`, or beside this Python (an unactivated venv).
+
+    The first that runs (a version manager's shim can be found, and not run), else the first found.
+
+    Returns:
+      Its path, or `None` if it isn't installed.
+
+    """
+    name: str = SERVERS[checker].executable
+    found: list[str] = list(
+        dict.fromkeys(
+            path
+            for path in (shutil.which(name), shutil.which(name, path=str(Path(sys.executable).parent)))
+            if path is not None
+        ),
+    )
+    return next((path for path in found if _runs(path)), found[0] if found else None)
+
+
+def runs(checker: str) -> bool:
+    """Check that `checker` is installed, and runs.
+
+    Returns:
+      Whether it does.
+
+    """
+    found: str | None = executable(checker)
+    return found is not None and _runs(found)
+
+
+def _runs(path: str) -> bool:
+    """Check that an executable runs: its `--version` starts, whatever it answers.
+
+    Returns:
+      Whether it does.
+
+    """
+    try:
+        done: subprocess.CompletedProcess[bytes] = subprocess.run(
+            [path, _PROBE],
+            capture_output=True,
+            timeout=_PROBE_TIMEOUT,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return done.returncode not in _CANT_RUN
 
 
 class HintError(Exception):
