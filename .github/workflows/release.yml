@@ -15,6 +15,7 @@ jobs:
     name: CI
     uses: ./.github/workflows/ci.yml
     permissions:
+      actions: read # ci.yml's reuse job: an earlier run's tested-tree artifact
       contents: read
 
   build:
