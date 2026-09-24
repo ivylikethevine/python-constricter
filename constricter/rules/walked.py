@@ -3,19 +3,24 @@
 
 import ast
 from collections.abc import Sequence
-from functools import lru_cache
 from typing import Final, TypeAlias, cast
+from weakref import WeakKeyDictionary
 
 _CTX: Final = "ctx"
 # What a node's field holds, as far as the walk cares: a node, a list (of nodes, or of names), or else.
 _Value: TypeAlias = ast.AST | list[ast.AST | str] | str | int | None
 
 
+_Walk: TypeAlias = dict[type[ast.AST], list[ast.AST]]  # a module's nodes, by their type
 # Each node class's fields, but its `ctx` (only ever `Load`, `Store` or `Del`: no pass looks at them).
 _FIELDS: dict[type[ast.AST], tuple[str, ...]] = {}
 
 
-@lru_cache(maxsize=4)  # the module being checked: every pass over all of it reads this one walk
+# Each module's walk, for as long as its tree lives: the cross-file index's walk of a file is the
+# check's too, when the index kept its tree (`parsed.keep`), however many files came between.
+_WALKS: Final[WeakKeyDictionary[ast.Module, "_Walk"]] = WeakKeyDictionary()
+
+
 def _by_type(tree: ast.Module) -> dict[type[ast.AST], list[ast.AST]]:
     """Walk a whole module once, sorting its nodes by type, for every pass that looks at all of it.
 
@@ -27,7 +32,10 @@ def _by_type(tree: ast.Module) -> dict[type[ast.AST], list[ast.AST]]:
       Each type's nodes, in `ast.walk`'s order (all but the `Load`, `Store` and `Del` markers).
 
     """
-    found: dict[type[ast.AST], list[ast.AST]] = {}
+    found: dict[type[ast.AST], list[ast.AST]] | None
+    if (found := _WALKS.get(tree)) is not None:
+        return found
+    found = _WALKS[tree] = {}
     # A generation at a time (a breadth-first queue's order): each built from the one before.
     # `None` at the bottom ends it: a generation with no children adds none to follow it.
     generations: list[list[ast.AST] | None] = [None, [tree]]
@@ -38,11 +46,8 @@ def _by_type(tree: ast.Module) -> dict[type[ast.AST], list[ast.AST]]:
         for node in generation:
             kind: type[ast.AST] = type(node)
             found.setdefault(kind, []).append(node)
-            fields: tuple[str, ...] | None
-            if (fields := _FIELDS.get(kind)) is None:
-                fields = _FIELDS[kind] = tuple(field for field in kind._fields if field != _CTX)
             field: str
-            for field in fields:
+            for field in _fields_of(kind):
                 value: _Value = cast("_Value", getattr(node, field, None))
                 if isinstance(value, list):
                     # A list, not a generator: none's resumed for each item (and it's inlined, 3.12+).
@@ -73,3 +78,50 @@ def classes(tree: ast.Module) -> Sequence[ast.ClassDef]:
 
     """
     return cast("list[ast.ClassDef]", _by_type(tree).get(ast.ClassDef, []))
+
+
+def children(node: ast.AST) -> list[ast.AST]:
+    """List a node's children, as `ast.iter_child_nodes` does but for their `ctx`, and without its generator.
+
+    Returns:
+      Them, in their fields' order.
+
+    """
+    found: list[ast.AST] = []
+    field: str
+    for field in _fields_of(type(node)):
+        value: _Value = cast("_Value", getattr(node, field, None))
+        if isinstance(value, list):
+            found.extend([item for item in value if isinstance(item, ast.AST)])
+        elif isinstance(value, ast.AST):
+            found.append(value)
+    return found
+
+
+def walk(node: ast.AST) -> list[ast.AST]:
+    """List a node and everything under it (but `ctx` markers), for a pass that needn't their order.
+
+    Returns:
+      Them, depth first (not `ast.walk`'s breadth first order).
+
+    """
+    found: list[ast.AST] = []
+    waiting: list[ast.AST | None] = [None, node]  # `None` at its bottom ends it
+    item: ast.AST
+    for item in iter(waiting.pop, None):
+        found.append(item)
+        waiting.extend(children(item))
+    return found
+
+
+def _fields_of(kind: type[ast.AST]) -> tuple[str, ...]:
+    """Name a node class's fields but its `ctx`, worked out once per class.
+
+    Returns:
+      Them.
+
+    """
+    fields: tuple[str, ...] | None
+    if (fields := _FIELDS.get(kind)) is None:
+        fields = _FIELDS[kind] = tuple(field for field in kind._fields if field != _CTX)
+    return fields

@@ -1,53 +1,49 @@
 # SPDX-License-Identifier: MIT
 """Cross-module `--fix`: the functions and classes other checked files define.
 
-`index` reads every file once for its module name, its top-level functions' declared return types
-(as `annotations.returns` picks them), its classes' attributes and methods' returns (as `classes`
-and `method_returns` do), and what each top-level name refers to. `calls` then gives a file the
+`index` reads every file once (see `constricter.fix.modules`). `calls` then gives a file the
 return type of each function it imports (`from m import f`, `import m as a` then `a.f()`), and
 `imported` those and each imported class's attributes and methods, but only where every name in a
 type means the same thing in the file as where it was written: otherwise the fix would name
-something undefined, or something else.
+something undefined, or something else. A name the file doesn't bind that way is imported where
+the type is written from under `if TYPE_CHECKING:` (`Guarded`): that import can't make a cycle.
+
+What a module's unannotated functions return is known only once it's checked: the CLI checks the
+files in `order.plan`'s order, each after those whose unannotated functions it calls (`needs`), and
+adds each module's (`with_returned`) to the index for the files after it.
 """
 
 import ast
 import bisect
 import builtins
-import itertools
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+import sys
+from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
-from types import MappingProxyType
-from typing import Final, NamedTuple, TypeAlias
+from typing import Final, NamedTuple
 
-from constricter.fix.known import Classes
-from constricter.rules import parsed
-from constricter.rules.annotations import Tables, defined_type_vars, module_tables
+from constricter.fix.known import Classes, Guarded, Origin, Returns
+from constricter.fix.modules import SUFFIX, Index, Module, index, indexed, module_name, read
+from constricter.rules.annotations import roots
+
+__all__ = [
+    "Imported",
+    "Index",
+    "Module",
+    "index",
+    "indexed",
+    "module_name",
+    "read",
+]  # the index's, re-exported
 
 _BUILTINS: Final = frozenset(dir(builtins))
-_PACKAGE: Final = "__init__"
-_SUFFIX: Final = ".py"
+_STDLIB: Final = sys.stdlib_module_names
+_BUILTINS_MODULE: Final = "builtins"
 _HOPS: Final = 5  # how many re-exports (`from .util import f` in an `__init__`) to follow
 _FUNCTION: Final = "function"
 _CLASS: Final = "class"
 _TYPE_VAR: Final = "type variable"
-# What a name refers to: a module and an attribute of it (`None`: the module itself).
-Origin: TypeAlias = tuple[str, str | None]
-
-
-class Module(NamedTuple):
-    """What one file offers and uses: its name, functions' return types, names' origins, and classes'.
-
-    `classes` and `methods`: each class's attributes and its methods' returns (see `Classes`).
-    """
-
-    name: str
-    returns: dict[str, str]
-    names: dict[str, Origin]
-    classes: Mapping[str, Mapping[str, str]] = MappingProxyType({})
-    methods: Mapping[str, Mapping[str, str]] = MappingProxyType({})
-    type_vars: frozenset[str] = frozenset()  # its module-level type variables
-    # What it imports under a top-level `if` or `try` (`if TYPE_CHECKING:`), for `type_vars` alone.
-    guarded: Mapping[str, Origin] = MappingProxyType({})
+_RETURNED: Final = "returned"  # an unannotated function its `return`s type
+_UNANNOTATED: Final = "unannotated"  # an unannotated function, typed or not
 
 
 class Imported(NamedTuple):
@@ -55,220 +51,15 @@ class Imported(NamedTuple):
 
     calls: dict[str, str]
     classes: Classes
-
-
-class Index(NamedTuple):
-    """Every checked file's module, and their names sorted for a module/submodule lookup."""
-
-    modules: dict[str, Module]
-    names: list[str]  # modules, sorted by name
-
-
-def module_name(path: Path) -> str:
-    """Name `path`'s module: its package folders (those with an `__init__.py`), then it.
-
-    Returns:
-      The dotted module name.
-
-    """
-    packages: list[Path] = list(
-        itertools.takewhile(
-            lambda folder: (folder / f"{_PACKAGE}{_SUFFIX}").is_file(),
-            path.resolve().parents,
-        ),
-    )
-    return ".".join(
-        [*(folder.name for folder in reversed(packages)), *([] if path.stem == _PACKAGE else [path.stem])],
-    )
-
-
-def _absolute(name: str, module: str | None, level: int, *, is_package: bool) -> str:
-    """Resolve `from <.level><module> import ...` in module `name`.
-
-    Returns:
-      The absolute module name.
-
-    """
-    if not level:
-        return module or ""
-    package: list[str] = name.split(".") if is_package else name.split(".")[:-1]
-    base: list[str] = package[: len(package) - (level - 1)] if level > 1 else package
-    return ".".join([*base, *([module] if module else [])])
-
-
-def _names(tree: ast.Module, name: str, *, is_package: bool) -> dict[str, Origin]:
-    """Map module `name`'s top-level names (the last binding wins).
-
-    Returns:
-      What each refers to.
-
-    """
-    names: dict[str, Origin] = {}
-    stmt: ast.stmt
-    for stmt in tree.body:
-        match stmt:
-            case ast.Import() | ast.ImportFrom():
-                names.update(_imported(stmt, name, is_package=is_package))
-            case _:
-                names.update((bound, (name, bound)) for bound in _bound(stmt))
-    return names
-
-
-def _imported(stmt: ast.Import | ast.ImportFrom, name: str, *, is_package: bool) -> dict[str, Origin]:
-    """Map the names one import in module `name` binds.
-
-    Returns:
-      What each refers to.
-
-    """
-    names: dict[str, Origin] = {}
-    alias: ast.alias
-    if isinstance(stmt, ast.Import):
-        for alias in stmt.names:
-            if alias.asname:
-                names[alias.asname] = (alias.name, None)
-            else:  # `import a.b` binds `a`
-                names[alias.name.split(".")[0]] = (alias.name.split(".")[0], None)
-        return names
-    for alias in stmt.names:
-        names[alias.asname or alias.name] = (
-            _absolute(name, stmt.module, stmt.level, is_package=is_package),
-            alias.name,
-        )
-    return names
-
-
-def _guarded(tree: ast.Module, name: str, *, is_package: bool) -> dict[str, Origin]:
-    """Map the names module `name` imports under a top-level `if` or `try` (`if TYPE_CHECKING:`).
-
-    Not what it binds at run time (`_names`): a type variable imported only for the checker is a type
-    variable all the same.
-
-    Returns:
-      What each refers to.
-
-    """
-    return {
-        bound: origin
-        for stmt in tree.body
-        if isinstance(stmt, ast.If | ast.Try | ast.TryStar)
-        for node in ast.walk(stmt)
-        if isinstance(node, ast.Import | ast.ImportFrom)
-        for bound, origin in _imported(node, name, is_package=is_package).items()
-    }
-
-
-def _bound(stmt: ast.stmt) -> Iterator[str]:
-    """Walk a top-level statement other than an import.
-
-    Yields:
-      Each name it binds.
-
-    """
-    node: ast.AST
-    match stmt:
-        case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
-            yield stmt.name
-        case ast.Assign() | ast.AnnAssign() | ast.AugAssign():
-            targets: list[ast.expr] = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
-            for node in (n for target in targets for n in ast.walk(target)):
-                if isinstance(node, ast.Name):
-                    yield node.id
-        case _:
-            pass
-
-
-def index(paths: Sequence[Path]) -> Index:
-    """Read each `.py` file in `paths` (one that can't be read or parsed is left out).
-
-    Returns:
-      Each module's name, mapped to what it offers and uses.
-
-    """
-    return indexed(read(path) for path in paths)
-
-
-def indexed(found: Iterable[Module | None]) -> Index:
-    """Index modules already read (`read`'s, in any process): `None`s, for files it couldn't, left out.
-
-    Returns:
-      Each module's name, mapped to what it offers and uses.
-
-    """
-    modules: dict[str, Module] = {module.name: module for module in found if module is not None}
-    return Index(modules, sorted(modules))
-
-
-def read(path: Path) -> Module | None:
-    """Read what one `.py` file offers and uses.
-
-    Returns:
-      Its module, or `None` if it isn't a `.py` file, or can't be read or parsed.
-
-    """
-    if path.suffix != _SUFFIX or not path.is_file():
-        return None
-    source: str | None
-    if (source := _source(path)) is None:
-        return None
-    try:
-        tree: ast.Module = parsed.parse(source, str(path))
-    except (SyntaxError, ValueError):  # a null byte is a ValueError
-        return None
-    own: Tables = module_tables(tree)
-    parsed.keep(source, (tree, own))  # for the check to take, rather than parse it and read it again
-    name: str = module_name(path)
-    return Module(
-        name,
-        own.returns,
-        _names(tree, name, is_package=path.stem == _PACKAGE),
-        own.classes,
-        own.methods,
-        defined_type_vars(tree),
-        _guarded(tree, name, is_package=path.stem == _PACKAGE),
-    )
-
-
-def _source(path: Path) -> str | None:
-    """Read a module's text.
-
-    Returns:
-      It, or `None` if it can't be read, or decoded (`SyntaxError`: an unknown encoding).
-
-    """
-    try:
-        return parsed.text(path.read_bytes())
-    except (OSError, SyntaxError, ValueError):  # UnicodeDecodeError is a ValueError
-        return None
+    returned: Returns = Returns()
+    guarded: Mapping[str, Guarded] = {}  # names their types need imported to type check (pickled: a `dict`)
+    generics: frozenset[str] = frozenset()  # its generic classes, as the file spells them
 
 
 def _origin(module: Module, name: str) -> Origin | None:
     if name in module.names:
         return module.names[name]
-    return ("builtins", name) if name in _BUILTINS else None
-
-
-def _roots(annotation: str) -> set[str]:
-    """Find the names an annotation (maybe a string one) starts from.
-
-    Returns:
-      The names: `m.Row` gives `m`.
-
-    """
-    tree: ast.expr = ast.parse(annotation, mode="eval").body
-    if isinstance(tree, ast.Constant) and isinstance(tree.value, str):
-        tree = ast.parse(tree.value, mode="eval").body
-    return {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
-
-
-def _function(modules: Mapping[str, Module], origin: Origin, hops: int = _HOPS) -> tuple[Module, str] | None:
-    """Follow `origin` (through re-exports) to the module that defines it as a function.
-
-    Returns:
-      That module and the function's name, or `None`.
-
-    """
-    return _defined(modules, origin, _FUNCTION, hops)
+    return (_BUILTINS_MODULE, name) if name in _BUILTINS else None
 
 
 def _defined(
@@ -294,7 +85,7 @@ def _defined(
 
 
 def _kind(module: Module, kind: str) -> Iterable[str]:
-    """List what `module` defines of a `kind`: functions (whose return `--fix` uses), classes, type vars.
+    """List what `module` defines of a `kind`: functions (declared or typed by their `return`s), classes...
 
     Returns:
       Their names.
@@ -305,6 +96,10 @@ def _kind(module: Module, kind: str) -> Iterable[str]:
             return module.returns
         case "class":
             return module.classes
+        case "returned":
+            return module.returned.calls
+        case "unannotated":
+            return module.unannotated
         case _:
             return module.type_vars
 
@@ -320,7 +115,7 @@ def type_vars(catalog: Index, path: Path) -> frozenset[str]:
 
     """
     target: Module | None
-    if path.suffix != _SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
+    if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
         return frozenset()
     return frozenset(
         local for local in {*target.names, *target.guarded} if _is_type_var(catalog.modules, target, local)
@@ -357,52 +152,305 @@ def _submodules(catalog: Index, prefix: str) -> Iterator[Module]:
         yield catalog.modules[name]
 
 
-def calls(catalog: Index, path: Path) -> dict[str, str]:
+def calls(catalog: Index, path: Path, guarded: dict[str, Guarded] | None = None) -> dict[str, str]:
     """Return, for the file at `path`, the return type of each function it imports whose type it can name.
 
     Returns:
       Each call's name as written (`helper`, `u.helper`, `pkg.util.helper`), mapped to its type; nothing
-      for a file `catalog` doesn't have (a notebook, standard input).
+      for a file `catalog` doesn't have (a notebook, standard input). Without `guarded` to record the
+      names its types need imported for type checking (see `Guarded`), only types needing none.
+
+    """
+    return {key: annotation for key, annotation, _ in _typed_calls(catalog, path, _FUNCTION, guarded)}
+
+
+def returned(catalog: Index, path: Path, guarded: dict[str, Guarded] | None = None) -> Returns:
+    """Return, for the file at `path`, what the unannotated functions it imports return, as `calls` does.
+
+    Only those of modules already checked (`Module.returned`), each with what it rests on if a guess.
+
+    Returns:
+      Each call's type, and a guessed one's origins; nothing for a file `catalog` doesn't have.
+
+    """
+    types: dict[str, str] = {}
+    guesses: dict[str, frozenset[str]] = {}
+    key: str
+    annotation: str
+    defined: tuple[Module, str]
+    for key, annotation, defined in _typed_calls(catalog, path, _RETURNED, guarded):
+        types[key] = annotation
+        if defined[1] in defined[0].returned.guesses:
+            guesses[key] = defined[0].returned.guesses[defined[1]]
+    return Returns(types, guesses)
+
+
+def _typed_calls(
+    catalog: Index,
+    path: Path,
+    kind: str,
+    guarded: dict[str, Guarded] | None,
+) -> Iterator[tuple[str, str, tuple[Module, str]]]:
+    """Find the functions of a `kind` (declared or `returned`) the file at `path` imports, typed.
+
+    Yields:
+      Each call's name as written, its type, and the module and name that define it, for each whose
+      type the file can write (see `_portable_call`).
 
     """
     name: str = module_name(path)
     modules: dict[str, Module] = catalog.modules
     target: Module | None
-    if path.suffix != _SUFFIX or (target := modules.get(name)) is None:
-        return {}
-    found: dict[str, str] = {}
+    if path.suffix != SUFFIX or (target := modules.get(name)) is None:
+        return
+    key: str
+    origin: Origin
+    for key, origin in _spelled(catalog, target, kind):
+        found: tuple[str, tuple[Module, str]] | None
+        # Only what it calls: the modules `plan` put it after, whatever else is checked by then.
+        if (kind != _RETURNED or key in target.called) and (
+            found := _portable_call(modules, target, origin, kind, guarded)
+        ) is not None:
+            yield key, *found
+
+
+def _spelled(catalog: Index, target: Module, kind: str) -> Iterator[tuple[str, Origin]]:
+    """Find what `target` imports that other modules may define as a `kind`, as it spells each call.
+
+    Yields:
+      Each name as written (`helper`, `u.helper`, `pkg.util.helper`), and where it's from.
+
+    """
     local: str
     origin: Origin
-    for local, origin in target.names.items():
-        if origin[1] is not None and origin[0] != name:
-            _add(found, modules, target, local, origin)
+    for local, origin in _resolved(catalog, target.names):
+        if origin[1] is not None and origin[0] != target.name:
+            yield local, origin
         elif origin[1] is None:  # a module: `u.f()`, or `pkg.util.f()` after `import pkg.util`
             other: Module
             for other in _submodules(catalog, origin[0]):
                 prefix: str = local + other.name.removeprefix(origin[0])
-                function: str
-                for function in other.returns:
-                    _add(found, modules, target, f"{prefix}.{function}", (other.name, function))
-    return found
+                yield from (
+                    (f"{prefix}.{function}", (other.name, function)) for function in _kind(other, kind)
+                )
 
 
-def _add(
-    found: dict[str, str],
+def _resolved(catalog: Index, names: Mapping[str, Origin]) -> Iterator[tuple[str, Origin]]:
+    """Take each name imported from a package that is its submodule (`from pkg import util`) as that module.
+
+    Unless the package itself defines the name (a function, class or type).
+
+    Yields:
+      Each name, and what it refers to.
+
+    """
+    local: str
+    origin: Origin
+    for local, origin in names.items():
+        package: Module | None
+        submodule: str = f"{origin[0]}.{origin[1]}" if origin[0] else origin[1] or ""
+        if (
+            origin[1] is not None
+            and submodule in catalog.modules
+            and not (
+                (package := catalog.modules.get(origin[0])) is not None
+                and any(origin[1] in _kind(package, kind) for kind in (_FUNCTION, _UNANNOTATED, _CLASS))
+            )
+        ):
+            yield local, (submodule, None)
+        else:
+            yield local, origin
+
+
+def _portable_call(
     modules: Mapping[str, Module],
     target: Module,
-    key: str,
     origin: Origin,
-) -> None:
-    """Record `key`'s return type in `found` if every name in it means the same in `target`."""
+    kind: str,
+    guarded: dict[str, Guarded] | None,
+) -> tuple[str, tuple[Module, str]] | None:
+    """Type a call to `origin`, a function of a `kind`, if `target` can write its type (see `_respelled`).
+
+    Returns:
+      Its type, as `target` writes it, and the module and name that define it; or `None`.
+
+    """
     defined: tuple[Module, str] | None
-    if (defined := _function(modules, origin)) is None:
-        return
-    annotation: str = defined[0].returns[defined[1]]
-    roots: set[str] = _roots(annotation)
-    if all(_same(target, defined[0], root) for root in roots) and not any(
-        _is_type_var(modules, defined[0], root) for root in roots
-    ):
-        found[key] = annotation
+    if (defined := _defined(modules, origin, kind)) is None:
+        return None
+    annotation: str = (defined[0].returns if kind == _FUNCTION else defined[0].returned.calls)[defined[1]]
+    respelled: str | None = _respelled(modules, target, defined[0], annotation, guarded)
+    return None if respelled is None else (respelled, defined)
+
+
+def _respelled(
+    modules: Mapping[str, Module],
+    target: Module,
+    defined: Module,
+    annotation: str,
+    guarded: dict[str, Guarded] | None,
+) -> str | None:
+    """Write a type from module `defined` in `target`.
+
+    As it is, if every name in it means the same in both; else, with `guarded` to record them in,
+    each other name as `target` imports what it refers to (under any name), or by an import to add
+    under `if TYPE_CHECKING:` (see `Guarded`), if nothing else in `target` has that name. Never one
+    naming a type variable (see `_is_type_var`), a builtin `target` rebinds, what `defined` doesn't
+    import at its top level (nor define), or a checked file's generic class without its arguments.
+
+    Returns:
+      The type, or `None`.
+
+    """
+    names: frozenset[str] = roots(annotation)
+    if any(_is_type_var(modules, defined, root) for root in names) or _bare(modules, defined, annotation):
+        return None
+    if all(_same(target, defined, root) for root in names):
+        return annotation
+    if guarded is None:
+        return None
+    renamed: dict[str, str] = {}
+    found: dict[str, Guarded] = {}
+    root: str
+    for root in {root for root in names if not _same(target, defined, root)}:
+        origin: Origin | None = _where(defined, root)
+        name: str | None
+        if (
+            origin is None
+            or origin[0] == _BUILTINS_MODULE
+            or (name := _named(modules, target, origin, root, {**guarded, **found})) is None
+        ):
+            return None
+        renamed[root] = name
+        if name in target.guarded:
+            found[name] = Guarded(target.guarded[name], None)
+        elif name not in target.names:
+            found[name] = guarded.get(name) or found.get(name) or Guarded(origin, _statement(origin, name))
+    guarded.update(found)
+    return _renamed(annotation, renamed)
+
+
+def _bare(modules: Mapping[str, Module], defined: Module, annotation: str) -> bool:
+    """Check whether a type from module `defined` names a checked file's generic class unsubscripted.
+
+    Returns:
+      Whether it does: the class's arguments are missing.
+
+    """
+    tree: ast.expr = _unquoted(annotation)
+    subscripted: set[int] = {id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Subscript)}
+    node: ast.AST
+    for node in ast.walk(tree):
+        origin: Origin | None
+        if (
+            isinstance(node, ast.Name)
+            and id(node) not in subscripted
+            and (origin := _where(defined, node.id)) is not None
+        ):
+            module: str
+            name: str | None
+            module, name = _canonical(modules, origin)
+            if module in modules and name in modules[module].generics:
+                return True
+    return False
+
+
+def _where(module: Module, name: str) -> Origin | None:
+    """Find what `name` refers to in `module`: at run time, for type checking alone, or a builtin.
+
+    Returns:
+      Its origin, or `None`.
+
+    """
+    if name in module.names:
+        return module.names[name]
+    return module.guarded.get(name) or module.returned.names.get(name) or _origin(module, name)
+
+
+def _canonical(modules: Mapping[str, Module], origin: Origin, hops: int = _HOPS) -> Origin:
+    """Follow `origin` through checked modules' re-exports to where it's defined.
+
+    Returns:
+      That origin, or `origin` itself when it isn't a re-export of a checked module.
+
+    """
+    module: Module | None = modules.get(origin[0])
+    if module is None or origin[1] is None or not hops:
+        return origin
+    onward: Origin | None = module.names.get(origin[1]) or module.guarded.get(origin[1])
+    return _canonical(modules, onward, hops - 1) if onward and onward[0] != module.name else origin
+
+
+def _named(
+    modules: Mapping[str, Module],
+    target: Module,
+    origin: Origin,
+    name: str,
+    guarded: Mapping[str, Guarded],
+) -> str | None:
+    """Name `origin` in `target`: as an import it has names it (preferring `name`), else `name` if free.
+
+    A new import only from a module certain to resolve: a checked file's, or the standard library's
+    (a third-party one the type's file imports may not be installed where the type checker runs).
+
+    Returns:
+      The name, or `None` if `target` imports nothing for it and binds `name` to something else, or
+      what it's from may not resolve.
+
+    """
+    wanted: Origin = _canonical(modules, origin)
+    known: dict[str, Origin] = {**target.guarded, **{n: g.origin for n, g in guarded.items()}, **target.names}
+    matches: list[str] = sorted(
+        (local for local, where in known.items() if _canonical(modules, where) == wanted),
+        key=lambda local: local != name,
+    )
+    if matches:
+        return matches[0]
+    resolves: bool = origin[0] in modules or origin[0].partition(".")[0] in _STDLIB
+    return None if name in known or name in _BUILTINS or not resolves else name
+
+
+def _statement(origin: Origin, name: str) -> str:
+    """Write the import that binds `name` to `origin`.
+
+    Returns:
+      It: `from m import T`, `from m import T as U`, `import m`, `import m as n`.
+
+    """
+    module: str
+    attribute: str | None
+    module, attribute = origin
+    if attribute is None:
+        return f"import {module}" + ("" if module == name else f" as {name}")
+    return f"from {module} import {attribute}" + ("" if attribute == name else f" as {name}")
+
+
+def _renamed(annotation: str, names: Mapping[str, str]) -> str:
+    """Rename names in an annotation (maybe a string one, which comes back unquoted).
+
+    Returns:
+      The annotation.
+
+    """
+    tree: ast.expr = _unquoted(annotation)
+    node: ast.AST
+    for node in ast.walk(tree):  # a fresh tree: renamed in place
+        if isinstance(node, ast.Name):
+            node.id = names.get(node.id, node.id)
+    return ast.unparse(tree)
+
+
+def _unquoted(annotation: str) -> ast.expr:
+    """Parse an annotation, and a string one's text.
+
+    Returns:
+      Its expression.
+
+    """
+    tree: ast.expr = ast.parse(annotation, mode="eval").body
+    if isinstance(tree, ast.Constant) and isinstance(tree.value, str):
+        return ast.parse(tree.value, mode="eval").body
+    return tree
 
 
 def _same(target: Module, defined: Module, name: str) -> bool:
@@ -424,19 +472,22 @@ def imported(catalog: Index, path: Path) -> Imported:
     spelled that way too.
 
     Returns:
-      Them; nothing for a file `catalog` doesn't have (a notebook, standard input).
+      Them, and the names their types need imported for type checking alone (see `Guarded`); nothing
+      for a file `catalog` doesn't have (a notebook, standard input).
 
     """
     name: str = module_name(path)
     modules: dict[str, Module] = catalog.modules
     attributes: dict[str, dict[str, str]] = {}
     methods: dict[str, dict[str, str]] = {}
+    guarded: dict[str, Guarded] = {}
+    generics: set[str] = set()
     target: Module | None
-    if path.suffix != _SUFFIX or (target := modules.get(name)) is None:
+    if path.suffix != SUFFIX or (target := modules.get(name)) is None:
         return Imported({}, Classes(attributes, methods))
     local: str
     origin: Origin
-    for local, origin in target.names.items():
+    for local, origin in _resolved(catalog, target.names):
         spelled: list[tuple[str, Origin]] = []
         if origin[1] is not None and origin[0] != name:
             spelled = [(local, origin)]
@@ -446,47 +497,119 @@ def imported(catalog: Index, path: Path) -> Imported:
                 for other in _submodules(catalog, origin[0])
                 for cls in other.classes
             ]
+            generics.update(_reexported_generics(modules, local, origin[0]))
         key: str
         where: Origin
         for key, where in spelled:
             defined: tuple[Module, str] | None
             if (defined := _defined(modules, where, _CLASS)) is not None:
-                attributes[key] = _portable(modules, target, defined, key, defined[0].classes[defined[1]])
+                if defined[1] in defined[0].generics:
+                    generics.add(key)
+                attributes[key] = _portable(
+                    modules,
+                    (target, defined),
+                    key,
+                    defined[0].classes[defined[1]],
+                    guarded,
+                )
                 methods[key] = _portable(
                     modules,
-                    target,
-                    defined,
+                    (target, defined),
                     key,
                     defined[0].methods.get(defined[1], {}),
+                    guarded,
                 )
-    return Imported(calls(catalog, path), Classes(attributes, methods))
+    return Imported(
+        calls(catalog, path, guarded),
+        Classes(attributes, methods),
+        returned(catalog, path, guarded),
+        guarded,
+        frozenset(generics),
+    )
+
+
+def _reexported_generics(modules: Mapping[str, Module], local: str, name: str) -> Iterator[str]:
+    """Spell the generic classes module `name` re-exports (`from ._c import OrderedSet`) as `local.C`.
+
+    Only its own names, not its submodules': a package's `__init__` is where they're re-exported.
+
+    Yields:
+      Each spelling.
+
+    """
+    module: Module | None = modules.get(name)
+    reexported: str
+    origin: Origin
+    for reexported, origin in ({} if module is None else module.names).items():
+        defined: tuple[Module, str] | None
+        if (
+            origin[1] is not None
+            and origin[0] != name
+            and (defined := _defined(modules, origin, _CLASS)) is not None
+            and defined[1] in defined[0].generics
+        ):
+            yield f"{local}.{reexported}"
 
 
 def _portable(
     modules: Mapping[str, Module],
-    target: Module,
-    defined: tuple[Module, str],
+    where: tuple[Module, tuple[Module, str]],
     key: str,
     types: Mapping[str, str],
+    guarded: dict[str, Guarded],
 ) -> dict[str, str]:
-    """Keep the types a class's members have that `target` can write as they are (see `_same`).
+    """Keep the types a class's members have that the file (`where[0]`) can write (see `_respelled`).
 
-    One that is the class itself is written as `target` spells it (`key`); one that mentions a type
-    variable (imported where the class is defined, see `_is_type_var`) is dropped.
+    One that is the class itself (`where[1]`) is written as the file spells it (`key`).
 
     Returns:
       Each kept member's type.
 
     """
+    target: Module
+    defined: tuple[Module, str]
+    target, defined = where
     kept: dict[str, str] = {}
     member: str
     annotation: str
     for member, annotation in types.items():
+        respelled: str | None
         if annotation == defined[1]:
             kept[member] = key
-        elif all(
-            _same(target, defined[0], root) and not _is_type_var(modules, defined[0], root)
-            for root in _roots(annotation)
-        ):
-            kept[member] = annotation
+        elif (respelled := _respelled(modules, target, defined[0], annotation, guarded)) is not None:
+            kept[member] = respelled
     return kept
+
+
+def with_returned(catalog: Index, found: Mapping[str, Returns]) -> Index:
+    """Record what checked modules' unannotated functions return (`found`, by module name).
+
+    Returns:
+      The index, with them.
+
+    """
+    modules: dict[str, Module] = dict(catalog.modules)
+    name: str
+    returns: Returns
+    for name, returns in found.items():
+        if name in modules:
+            modules[name] = modules[name]._replace(returned=returns)
+    return Index(modules, catalog.names)
+
+
+def needs(catalog: Index, module: Module) -> set[str]:
+    """Find the other modules whose unannotated functions `module` calls (see `_spelled`).
+
+    Returns:
+      Their names.
+
+    """
+    found: set[str] = set()
+    key: str
+    origin: Origin
+    for key, origin in _spelled(catalog, module, _UNANNOTATED):
+        defined: tuple[Module, str] | None
+        if key in module.called and (defined := _defined(catalog.modules, origin, _UNANNOTATED)) is not None:
+            found.add(defined[0].name)
+    found.discard(module.name)
+    return found

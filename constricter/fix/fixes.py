@@ -3,13 +3,19 @@
 
 import contextlib
 import re
+import sys
 from collections.abc import Sequence
-from typing import Final, NamedTuple
+from operator import itemgetter
+from typing import Final, NamedTuple, TypeAlias
 
 from constricter.offences import Edit, Fix, Offence
 
 _HEADER: Final = 2  # a file's shebang and coding lines come first, if it has them
 _HEADER_LINE: Final = re.compile(r"#!|#.*coding[:=]")
+# Lines to insert, and the number of lines before them.
+_Run: TypeAlias = tuple[int, list[str]]
+# An edit's place, and its offence (`None`: a run of imports).
+_Placed: TypeAlias = tuple[tuple[int, int], Offence | None]
 
 
 class Replacement(NamedTuple):
@@ -94,13 +100,41 @@ def replacements(lines: Sequence[str], offence: Offence) -> tuple[Replacement, .
 
     """
     edits: list[Replacement | None] = [replacement(lines, offence), dropped(lines, offence)]
+    line: int
     added: list[str]
-    if offence.edit is not None and (added := _missing(lines, offence.edit.imports)):
-        line: int = _import_line(lines, offence.edit.after)
-        edits.append(
-            Replacement(line + 1, "", "", "".join(f"{statement}{_ending(lines)}" for statement in added)),
-        )
+    for line, added in _imported(lines, [offence]):
+        edits.append(Replacement(line + 1, "", "", "".join(added)))
     return tuple(edit for edit in edits if edit is not None)
+
+
+def _imported(lines: Sequence[str], offences: Sequence[Offence]) -> list["_Run"]:
+    """Place the imports `offences`' fixes need that `lines` doesn't have yet, each once.
+
+    Those for type checking alone go at the end of the body of the module's `if TYPE_CHECKING:`,
+    or, with none, in a new one after the others.
+
+    Returns:
+      Each run of lines to insert, with the number of lines before it, the last run first.
+
+    """
+    fixes: list[Fix]
+    if not (fixes := [o.edit for o in offences if o.edit and (o.edit.imports or o.edit.guarded)]):
+        return []
+    ending: str = _ending(lines)
+    statements: list[str] = _missing(lines, sorted({s for fix in fixes for s in fix.imports}))
+    guarded: list[str] = _missing(lines, sorted({s for fix in fixes for s in fix.guarded}))
+    line: int = _import_line(lines, next((fix.after for fix in fixes if fix.imports), fixes[0].after))
+    runs: list[_Run] = []
+    block: tuple[int, int] = fixes[0].block
+    if guarded and block != (0, 0):
+        indent: str = lines[block[0] - 1][: len(lines[block[0] - 1]) - len(lines[block[0] - 1].lstrip())]
+        runs.append((block[1], [f"{indent}{statement}{ending}" for statement in guarded]))
+    elif guarded:
+        guard: str = next(fix.guard for fix in fixes if fix.guarded)
+        statements += [f"if {guard}:", *(f"    {statement}" for statement in guarded)]
+    if statements:
+        runs.append((line, [f"{statement}{ending}" for statement in statements]))
+    return runs
 
 
 def _missing(lines: Sequence[str], statements: Sequence[str]) -> list[str]:
@@ -143,9 +177,10 @@ def apply(lines: Sequence[str], offences: Sequence[Offence]) -> list[str]:
     """Return `lines` with each fixable offence's edit made (see `replacement`).
 
     The drops go first: each deletes the end of a statement's line (its type comment), so moves no
-    other edit, and one statement's is made once however many of its names declare. The rest are
-    made from the last to the first, so no edit moves one still to be made (and two declarations
-    before one statement keep their order); one `replacement` can't make is left unmade.
+    other edit, and one statement's is made once however many of its names declare. The rest, and
+    the imports the fixes need (each once, see `_imported`), are made from the last to the first, so
+    no edit moves one still to be made (and two declarations before one statement keep their
+    order); one `replacement` can't make is left unmade.
 
     Returns:
       New lines; `lines` is left as it was. An offence's `line` indexes `lines` from 1.
@@ -161,19 +196,24 @@ def apply(lines: Sequence[str], offences: Sequence[Offence]) -> list[str]:
     for edit in (drops[key] for key in sorted(drops, reverse=True)):
         kept: int = edit.columns[1]
         text[edit.line - 1] = edit.prefix + text[edit.line - 1][kept:]
-    for o in sorted((o for o in offences if o.edit), key=_position, reverse=True):
-        if (edit := replacement(text, o)) is None:
+    # Each run of imports goes after its line: before any edit on that line, in this order.
+    runs: dict[tuple[int, int], list[str]] = {
+        (line, sys.maxsize): run for line, run in _imported(text, offences)
+    }
+    edits: list[_Placed] = [(_position(o), o) for o in offences if o.edit]
+    placed: tuple[int, int]
+    fixed: Offence | None
+    for placed, fixed in sorted([*edits, *((key, None) for key in runs)], key=itemgetter(0), reverse=True):
+        if fixed is None:
+            after: int = placed[0]
+            text[after:after] = runs[placed]
+        elif (edit := replacement(text, fixed)) is None:
             continue
-        if o.edit and o.edit.edit is Edit.DECLARE:
+        elif fixed.edit and fixed.edit.edit is Edit.DECLARE:
             text.insert(edit.line - 1, edit.text)  # a declaration: a line of its own
-            continue
-        end: int = edit.columns[1]
-        text[edit.line - 1] = edit.prefix + edit.text + text[edit.line - 1][end:]
-    # Last, above every other edit: the imports the fixes need, each once.
-    statements: list[str] = _missing(text, sorted({s for o in offences if o.edit for s in o.edit.imports}))
-    after: int = next((o.edit.after for o in offences if o.edit and o.edit.imports), 0)
-    line: int = _import_line(text, after)
-    text[line:line] = [f"{statement}{_ending(text)}" for statement in statements]
+        else:
+            end: int = edit.columns[1]
+            text[edit.line - 1] = edit.prefix + edit.text + text[edit.line - 1][end:]
     return text
 
 

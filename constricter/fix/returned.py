@@ -15,7 +15,7 @@ from functools import lru_cache
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.inference import ASSIGNED
-from constricter.fix.known import Inference, Returned
+from constricter.fix.known import Inference, Returned, Returns
 from constricter.rules.syntax import FunctionDef, Start, has_within, own_nodes, within
 from constricter.rules.walked import classes, of_type
 
@@ -76,6 +76,38 @@ def returned(
                 attributes.setdefault(node.name, {})[name] = annotation
                 guesses[f"{node.name}.{name}"] = origins
     return Returned(calls, methods, guesses, attributes)
+
+
+def joined(imported: Returns, own: Returned) -> Returned:
+    """Add what the functions a module imports return to what its own return (its own first).
+
+    Returns:
+      Both.
+
+    """
+    if not imported.calls:
+        return own
+    return own._replace(calls={**imported.calls, **own.calls}, guesses={**imported.guesses, **own.guesses})
+
+
+def exported(own: Returned) -> Returns:
+    """Pick out what the module's own functions return (not its methods), for the files importing them.
+
+    Returns:
+      Their types, and their guesses' origins.
+
+    """
+    return Returns(dict(own.calls), {name: own.guesses[name] for name in own.calls if name in own.guesses})
+
+
+def unannotated(body: Sequence[ast.stmt]) -> frozenset[str]:
+    """Name the functions in `body` whose `return`s could type their calls (see `_return_type`).
+
+    Returns:
+      Each plain function's name that has no decorator or declared return.
+
+    """
+    return frozenset(func.name for func in _plain(body) if not func.decorator_list and func.returns is None)
 
 
 @lru_cache(maxsize=4)  # asked once per round, of the same module
@@ -239,6 +271,36 @@ def reads(module: ast.Module, node: ast.AST, attributes: Collection[str], *, any
     found: list[str]
     starts, found = _uses(module)[1 if anywhere else 0]
     return bool(attributes) and any(attr in attributes for attr in found[within(starts, node)])
+
+
+def reads_own(tree: ast.Module, func: FunctionDef, classes_of: Mapping[int, str], found: Returned) -> bool:
+    """Check whether a method reads an attribute of its own class's (`self.a`) that `found` types.
+
+    `classes_of`: each method's class, by the method's `id()`.
+
+    Returns:
+      Whether it does: checking it again could type more.
+
+    """
+    owner: str | None
+    if (owner := classes_of.get(id(func))) is None:
+        return False
+    return reads(tree, func, found.attributes.get(owner, {}).keys())
+
+
+def retyped(before: Returned, after: Returned) -> set[str]:
+    """Name the attributes, of any class, that `after` types and `before` didn't, or typed otherwise.
+
+    Returns:
+      Their names.
+
+    """
+    return {
+        attr
+        for owner, attributes in after.attributes.items()
+        for attr, annotation in attributes.items()
+        if before.attributes.get(owner, {}).get(attr) != annotation
+    }
 
 
 def _callees_in(module: ast.Module, node: ast.AST) -> Sequence[_Callee]:
@@ -405,12 +467,13 @@ class Table:
     are checked: what reads them later knows them the first time.
     """
 
-    def __init__(self, module: ast.Module) -> None:
-        """Start an empty table for `module`."""
+    def __init__(self, module: ast.Module, imported: Returns | None = None) -> None:
+        """Start a table for `module`, with what the functions it imports from other files return."""
+        imported = imported or Returns()
         self.module: ast.Module = module
         self.recorded: dict[int, list[Recorded]] = {}
         self.assigned: dict[int, list[Assigned]] = {}  # each checked function's `self.x = value`s
-        self.tables: _Tables = _Tables({}, {}, {}, {})
+        self.tables: _Tables = _Tables(dict(imported.calls), {}, dict(imported.guesses), {})
         self.returned: Returned = Returned(*self.tables)
         self.entries: list[tuple[Slot, str]] = []
         self.stamps: dict[int, int] = {}

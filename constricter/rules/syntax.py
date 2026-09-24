@@ -8,6 +8,7 @@ from collections.abc import Iterable, Iterator, Sequence
 from typing import Final, TypeAlias
 
 from constricter.offences import at
+from constricter.rules.walked import children as child_nodes
 from constricter.rules.walked import classes
 
 # A `# type:` comment, as a loop header writes one (LVA003).
@@ -180,10 +181,10 @@ def own_nodes(found: Sequence[ast.AST], parents: dict[int, ast.AST] | None = Non
     for node in iter(waiting.pop, None):
         yield node
         if not isinstance(node, NESTED_SCOPES):
-            children: list[ast.AST] = list(ast.iter_child_nodes(node))
+            below: list[ast.AST] = child_nodes(node)
             if parents is not None:
-                parents.update((id(child), node) for child in children)
-            waiting.extend(reversed(children))
+                parents.update((id(child), node) for child in below)
+            waiting.extend(reversed(below))
 
 
 def child_statements(stmt: ast.stmt) -> list[ast.stmt]:
@@ -222,9 +223,9 @@ def expressions(stmt: ast.stmt) -> Iterator[ast.AST]:
 
     """
     child: ast.AST
-    for child in ast.iter_child_nodes(stmt):
+    for child in child_nodes(stmt):
         if isinstance(child, ast.match_case | ast.ExceptHandler):
-            yield from (part for part in ast.iter_child_nodes(child) if not isinstance(part, ast.stmt))
+            yield from (part for part in child_nodes(child) if not isinstance(part, ast.stmt))
         elif not isinstance(child, ast.stmt):
             yield child
 

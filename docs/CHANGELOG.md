@@ -6,6 +6,65 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- Checking is about 10% faster (the standard library, `--jobs=1`: 9.0s to 8.1s), every fix the same:
+  whether a fix is a guess is worked out only where there's a fix, a function's body is read once
+  for all its empty containers, and a node's children are listed without `ast`'s generators.
+- A standard-library return may name one of `typing`'s generic classes, written by its public path
+  (`tokenize.generate_tokens(f)` is a `collections.abc.Generator[tokenize.TokenInfo]`).
+- Fewer guesses a type checker rejects, again: a read a test around it narrows (inside an
+  `isinstance` branch, a `match` case, after an `assert` or an early `return`) isn't offered its
+  declared type; and a capitalised call is guessed to construct its class only where the callee is a
+  type (not a variable holding a class, `self.api.X()`, or `make().X()`). pandas's
+  `--fix --unsafe-fixes` new type errors went from 84 to 36 (sqlalchemy's from 10 to 5).
+- The standard-library tables write each class's members apart from its public ancestors
+  (`bases.json`), which `--fix` resolves them through: 908 KB to 688 KB, the generator checking
+  every class resolves to exactly its full table. `lib2to3.pygram`'s `python_symbols` and
+  `pattern_symbols`, instances at run time though typeshed declares them classes, are left out; the
+  existence test skips a module a Python was built without (`nis`, `dbm.gnu`), which failed CI's
+  3.11 and 3.12 jobs.
+- `--fix` types a call to another checked file's function, and its classes' members, whose type
+  names something the calling file doesn't import: the name is imported where that file has it from,
+  under `if TYPE_CHECKING:` (the module's own block, or a new one), so no import cycle can follow at
+  run time; a module-level annotation using it is quoted, unless annotations are postponed. Another
+  file's generic class is never written bare.
+- `--fix` types a standard-library call whose arguments decide its type, by the signature they match
+  among its overloads, as a type checker picks (`os.listdir(data)`, `ast.parse(s, mode="eval")`,
+  `os.getenv("X", 3)`), with type variables bound by the arguments (`re.compile("x")` is a
+  `re.Pattern[str]`) and generic classes' by the receiver (`pat.match(s)`, a
+  `re.Match[str] | None`); and methods decided the same way (`parser.parse_args()`). The tables are
+  generated from typeshed's overloads, replacing the hand-picked `AnyStr` and `os.getenv` rules, and
+  now keep what only some platforms or Python versions have (`os.getuid()`).
+- Fewer guesses a type checker rejects: an ALL_CAPS module constant bound to a literal and passed to
+  a call is declared `Final` (which keeps its `Literal` type) rather than `str`; a read of an
+  `X | None` (and a filtered comprehension over one) and a bare `None` aren't offered, as code
+  nearly always narrows them first; a generic class is never written bare, whoever defines it (the
+  standard library's too, unless its type parameters have defaults); and `x = None` then `x = T`
+  isn't declared `T | None` where a nested function or lambda reads `x`.
+- A function whose `return`s are typed only once its whole body is seen (a container it fills, a
+  `None` rebound) types its calls from other files too, though nothing in its own module calls it:
+  pip no longer needed a second `--fix` pass once another file could import the type.
+- A GitHub release page lists each merged pull request's `## Release note` section under "What
+  changed", between the README's badges and GitHub's generated list.
+- `constricter.fix.modules` reads the cross-file index (out of `constricter.fix.project`),
+  `constricter.rules.late` holds a scope's late fixes (out of `constricter.rules.scope`), and
+  `constricter.fix.library` types standard-library calls (out of `constricter.fix.inference`): no
+  module is over 750 lines.
+- The standard-library tables are one JSON file each, an entry a line, in `constricter/fix/tables/`
+  (was `constricter/fix/stdlib.json`); the tests' list of which platforms have what is
+  `tests/typeshed/partial.json`, outside the package; a parameter every overload has alike is
+  written as `"name kind="`.
+- Each module is walked once for the cross-file index and the check (the index's walk was dropped
+  before the check could reuse it).
+
+- `--fix` types a call to an unannotated function another checked file defines by its `return`s, as
+  it already did within a module (`returned`; a guess where they are): the CLI checks the files
+  callees first, each once the modules whose functions it calls are done, and checks files calling
+  each other's functions again while that types more. `from pkg import util` then `util.f()` now
+  resolves `pkg.util` as `import pkg.util as util` does, for declared returns and classes too. On
+  the corpora, 227 more bindings are typed; the standard library's check takes 5% longer with
+  `--jobs=1` and 18% with `--jobs=0` on 16 cores.
+- `tests/corpus/corpus_fix.py` copies a package into a folder of its own name, so its absolute
+  imports resolve across files, as they do in place.
 - A name narrowed inside a branch that may not run (`x = None`, then `x = n` under `if`) is no
   longer taken past the branch as the narrowed type: a call to `def late(n, flag)` returning `x` was
   typed a certain `int`, and is now `int | None`. A name rebound in a branch to a type outside its

@@ -4,19 +4,21 @@
 import ast
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
-from functools import lru_cache
 from typing import Final, NamedTuple, cast
 
-from constricter.fix import imports, returned, stdlib
-from constricter.fix.doubts import Facts, passed, tests
+from constricter.fix import imports, narrowed, returned, stdlib
+from constricter.fix.doubts import Facts, inner_starts, passed, tests
 from constricter.fix.inference import inference
 from constricter.fix.known import (
     Classes,
     ClassSide,
+    Guarded,
+    Inference,
     Known,
     LibraryNames,
     Outside,
     Returned,
+    Returns,
 )
 from constricter.jsonc import as_text
 from constricter.offences import (
@@ -28,7 +30,7 @@ from constricter.offences import (
     Offence,
     at,
 )
-from constricter.rules import binding, parsed
+from constricter.rules import binding, late, parsed
 from constricter.rules.annotations import (
     Tables,
     awaited_returns,
@@ -42,10 +44,11 @@ from constricter.rules.annotations import (
     imported_from,
     module_tables,
     node_name,
+    roots,
     self_returns,
 )
 from constricter.rules.flow import Finding, Hierarchy
-from constricter.rules.narrowing import flow_offences
+from constricter.rules.narrowing import flow_offences, module_flow, module_names
 from constricter.rules.redundant import redundant
 from constricter.rules.scope import Kind, Late, Scope, Settings, certain_type, guesses_in
 from constricter.rules.syntax import (
@@ -61,7 +64,7 @@ from constricter.rules.syntax import (
     python2_compatible,
     target_names,
 )
-from constricter.rules.walked import classes, of_type
+from constricter.rules.walked import classes, of_type, walk
 
 # The node class of `type X = ...` statements, by name: Python 3.11's `ast` has no `TypeAlias`.
 _TYPE_ALIAS: Final = "TypeAlias"
@@ -89,16 +92,26 @@ def check_source(
       Every offence; `# noqa` comments are the caller's to apply.
 
     """
+    return checked_source(source, filename, checks, outside=outside).offences
+
+
+def checked_source(
+    source: str | bytes,
+    filename: str = "<unknown>",
+    checks: Checks = DEFAULT_CHECKS,
+    *,
+    outside: Outside | None = None,
+) -> "Checked":
+    """Check `source`, as `check_source` does.
+
+    Returns:
+      Its offences, and what its functions return (see `Checked`).
+
+    """
     tree: ast.Module
     own: Tables | None
     tree, own = _parse(source, filename)
-    return check_tree(
-        tree,
-        checks,
-        lines=as_text(source).splitlines(),
-        outside=outside,
-        own=own,
-    )
+    return checked_tree(tree, checks, lines=as_text(source).splitlines(), outside=outside, own=own)
 
 
 def _parse(source: str | bytes, filename: str) -> tuple[ast.Module, Tables | None]:
@@ -134,7 +147,11 @@ def _settings(
             {**(imported.methods if imported else {}), **free_of_all(own.methods, free)},
             free_of(awaited_returns(tree), free),
             ClassSide(free_of_all(class_attributes(tree), free), free_of_all(class_methods(tree), free)),
-            LibraryNames(casts(tree), stdlib.origins(tree), imports.plan(tree)),
+            LibraryNames(
+                casts(tree),
+                stdlib.origins(tree),
+                replace(imports.plan(tree), guarded={} if outside is None else outside.guarded),
+            ),
             checks.max_length,
         ),
         Hierarchy.for_module(tree, {name: frozenset(wider) for name, wider in checks.narrower}),
@@ -146,7 +163,16 @@ def _settings(
             ),
         ),
         () if outside is None else outside.hints,
-        Facts(self_returns(tree), generic_classes(tree), passed(tree), tests(tree)),
+        Facts(
+            self_returns(tree),
+            generic_classes(tree)
+            | stdlib.generics(stdlib.origins(tree))
+            | (frozenset() if outside is None else outside.generics),
+            passed(tree),
+            tests(tree),
+            narrowed.regions(tree),
+            inner_starts(tree),
+        ),
     )
 
 
@@ -170,19 +196,58 @@ def check_tree(
       Every offence, in source order.
 
     """
+    return checked_tree(tree, checks, lines=lines, outside=outside, own=own).offences
+
+
+class Checked(NamedTuple):
+    """A module's offences, and what its own unannotated functions return (for the files importing them)."""
+
+    offences: list[Offence]
+    returned: Returns
+
+
+def checked_tree(
+    tree: ast.Module,
+    checks: Checks = DEFAULT_CHECKS,
+    *,
+    lines: Sequence[str] = (),
+    outside: Outside | None = None,
+    own: Tables | None = None,
+) -> Checked:
+    """Check a parsed module, as `check_tree` does.
+
+    Returns:
+      Its offences, in source order, and what its functions return (see `returned.exported`).
+
+    """
     own = own or module_tables(tree)
-    table: returned.Table = returned.Table(tree)
+    outside = None if outside is None else outside.usable(imports.plan(tree).taken)
+    imported: Returns = Returns() if outside is None else outside.returned
+    table: returned.Table = returned.Table(tree, imported)
     settings: Settings = _settings(tree, checks, lines, own, outside)
     # The table, filled in as the functions are checked in call order, is what they all read.
     settings = replace(settings, known=replace(settings.known, returned=table.returned))
     scopes: list[Scope] = _scopes(tree, settings, table)
-    settings, scopes = _returned(tree, settings, scopes, table)
+    found: Returned
+    settings, scopes, found = _returned(tree, settings, scopes, table, imported)
     # A finding's kind is the code that reports it (LVA008, LVA009, LVA010).
     _finished(tree, scopes)
-    flow: list[Offence] = flow_offences(_value_flow(tree, scopes), settings.checks.fixes)
-    finals: list[Offence] = [o for scope in scopes for o in scope.finals()] if checks.final else []
+    flow: list[Offence] = flow_offences(module_flow(tree, scopes), settings.checks.fixes)
+    finals: list[Offence] = [o for scope in scopes for o in late.finals(scope)] if checks.final else []
     reported: list[Offence] = [o for scope in scopes for o in scope.reported()]
-    return sorted([*reported, *redundant(tree, settings.checks.fixes), *flow, *finals])
+    exported: Returns = returned.exported(found)
+    guarded: Mapping[str, Guarded] = {} if outside is None else outside.guarded
+    return Checked(
+        sorted([*reported, *redundant(tree, settings.checks.fixes), *flow, *finals]),
+        exported._replace(
+            names={
+                name: guarded[name].origin
+                for annotation in exported.calls.values()
+                for name in roots(annotation)
+                if name in guarded
+            },
+        ),
+    )
 
 
 class Coverage(NamedTuple):
@@ -349,10 +414,10 @@ def _function_scope(
         )
     scope.opaque(extra.arg for extra in (args.vararg, args.kwarg) if extra is not None)
     name: str
-    late: Late
-    for name, late in (seed or {}).items():
-        scope.inferred.seeded[name] = late
-        scope.inferred.learn(name, late[0], late[1] or None)
+    typed: Late
+    for name, typed in (seed or {}).items():
+        scope.inferred.seeded[name] = typed
+        scope.inferred.learn(name, typed[0], typed[1] or None)
     stmt: ast.stmt
     for stmt in func.body:
         _visit(scope, stmt)
@@ -451,7 +516,8 @@ def _returned(
     settings: Settings,
     scopes: list[Scope],
     table: returned.Table,
-) -> tuple[Settings, list[Scope]]:
+    imported: Returns,
+) -> tuple[Settings, list[Scope], Returned]:
     """Check again what the first pass, in call order, couldn't type the first time.
 
     That pass typed each function knowing its callees' returns (see `_scopes`); what's left is a
@@ -461,11 +527,12 @@ def _returned(
     nothing changes, so `--fix` finds in one run what it would over several.
 
     Returns:
-      The settings with what the functions return, and the scopes checked with them.
+      The settings with what the functions return (those it imports, `imported`, too), the scopes
+      checked with them, and what its own return.
 
     """
     found: Returned = returned.returned(tree, table.recorded, table.assigned)
-    settings = replace(settings, known=replace(settings.known, returned=found))
+    settings = replace(settings, known=replace(settings.known, returned=returned.joined(imported, found)))
     functions: list[tuple[Scope, FunctionDef]] = [
         (scope, scope.kind.function) for scope in scopes if scope.kind.function is not None
     ]
@@ -475,7 +542,7 @@ def _returned(
         for scope, func in functions
         if table.stale(func)
         or scope.inferred.late.keys() - scope.inferred.seeded.keys()
-        or _reads_own(tree, func, settings.owners, found)
+        or returned.reads_own(tree, func, settings.owners, found)
     }
     changed: bool = False
     retyped: set[str] = set()  # the attributes the rounds typed anew
@@ -487,10 +554,14 @@ def _returned(
         latest: Returned = returned.returned(tree, table.recorded, table.assigned)
         typed: bool = latest != found and returned.called(tree, tree, latest)  # even if only a body calls one
         # Attributes typed anew: what reads one, of any value, may be typed now.
-        newly: set[str] = _retyped(found, latest)
-        if typed or newly:
+        newly: set[str] = returned.retyped(found, latest)
+        # Kept even when nothing here calls it: other files import what the module's functions return.
+        if latest != found:
             found = latest
-            settings = replace(settings, known=replace(settings.known, returned=found))
+            settings = replace(
+                settings,
+                known=replace(settings.known, returned=returned.joined(imported, found)),
+            )
             changed = changed or typed
             retyped |= newly
         again = {
@@ -500,11 +571,16 @@ def _returned(
             or returned.reads(tree, func, newly, anywhere=True)
             or scope.inferred.late.keys() - scope.inferred.seeded.keys()
         }
-    return settings, [scope for scope, _ in functions] + _bodies(
-        tree,
+    return (
         settings,
-        [scope for scope in scopes if scope.kind.function is None],
-        retyped if changed or retyped else None,
+        [scope for scope, _ in functions]
+        + _bodies(
+            tree,
+            settings,
+            [scope for scope in scopes if scope.kind.function is None],
+            (retyped if changed or retyped else None, found),
+        ),
+        found,
     )
 
 
@@ -539,58 +615,31 @@ def _bodies(
     tree: ast.Module,
     settings: Settings,
     bodies: list[Scope],
-    retyped: set[str] | None,
+    news: tuple[set[str] | None, Returned],
 ) -> list[Scope]:
     """Check the module and class bodies again, if the rounds typed anything they use.
 
     They were checked after every function, knowing the first pass's types: only what the rounds
-    typed since (`retyped`: the attributes; `None`: nothing at all) is news to them.
+    typed since is news to them (`news`: the attributes they typed, `None` if nothing at all; and
+    what the module's own functions return).
 
     Returns:
       Their scopes, checked again or as they were.
 
     """
+    retyped: set[str] | None
+    own: Returned
+    retyped, own = news
     if (
         retyped is not None
         and bodies
         and any(
-            returned.called(tree, stmt, settings.known.returned)
-            or returned.reads(tree, stmt, retyped, anywhere=True)
+            returned.called(tree, stmt, own) or returned.reads(tree, stmt, retyped, anywhere=True)
             for stmt in _body_statements(tree.body)
         )
     ):
         return _body_scopes(tree, settings)
     return bodies
-
-
-def _reads_own(tree: ast.Module, func: FunctionDef, classes_of: Mapping[int, str], found: Returned) -> bool:
-    """Check whether a method reads an attribute of its own class's (`self.a`) that `found` types.
-
-    `classes_of`: each method's class, by the method's `id()`.
-
-    Returns:
-      Whether it does: checking it again could type more.
-
-    """
-    owner: str | None
-    if (owner := classes_of.get(id(func))) is None:
-        return False
-    return returned.reads(tree, func, found.attributes.get(owner, {}).keys())
-
-
-def _retyped(before: Returned, after: Returned) -> set[str]:
-    """Name the attributes, of any class, that `after` types and `before` didn't, or typed otherwise.
-
-    Returns:
-      Their names.
-
-    """
-    return {
-        attr
-        for owner, attributes in after.attributes.items()
-        for attr, annotation in attributes.items()
-        if before.attributes.get(owner, {}).get(attr) != annotation
-    }
 
 
 def _body_statements(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
@@ -617,10 +666,10 @@ def _finished(tree: ast.Module, scopes: Sequence[Scope]) -> None:
     """
     scope: Scope
     for scope in scopes:
-        scope.mark_escaped(_module_names(tree)[0])
-        scope.optionals()
-        scope.rebinds()
-        scope.fills()
+        scope.mark_escaped(module_names(tree)[0])
+        late.optionals(scope)
+        late.rebinds(scope)
+        late.fills(scope)
 
 
 def _recorded(scope: Scope, value: ast.expr | None) -> returned.Recorded:
@@ -632,7 +681,9 @@ def _recorded(scope: Scope, value: ast.expr | None) -> returned.Recorded:
     """
     if value is None:
         return None, frozenset()
-    return inference(value, scope.settings.known, scope.inferred.types), guesses_in(scope, [value])[1]
+    found: Inference | None = inference(value, scope.settings.known, scope.inferred.types)
+    # What it rests on counts only for a typed value (see `returned`).
+    return found, frozenset() if found is None else guesses_in(scope, [value])[1]
 
 
 def _assigned(scope: Scope) -> list[returned.Assigned]:
@@ -660,7 +711,7 @@ def _rebound_in(scope: Scope, value: ast.expr) -> bool:
     """
     return any(
         isinstance(node, ast.Name) and node.id in scope.flow and len(scope.flow[node.id].bindings) > 1
-        for node in ast.walk(value)
+        for node in walk(value)
     )
 
 
@@ -680,41 +731,4 @@ def value_flow(
     tree: ast.Module = _parse(source, filename)[0]
     # Its lines place a `**rest` capture at its name, as `check_source` does.
     settings: Settings = _settings(tree, checks, as_text(source).splitlines(), module_tables(tree))
-    return _value_flow(tree, _scopes(tree, settings))
-
-
-def _value_flow(tree: ast.Module, scopes: list[Scope]) -> list[Finding]:
-    """Compare each name's values with its declared type, in each of `scopes`.
-
-    Returns:
-      Every finding, in source order.
-
-    """
-    escaped: frozenset[str]
-    checking_only: frozenset[str]
-    escaped, checking_only = _module_names(tree)
-    return sorted(found for scope in scopes for found in scope.value_flow(escaped, checking_only))
-
-
-@lru_cache(maxsize=16)  # `_value_flow` runs once per round of `_returned`, on the same tree
-def _module_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
-    """Find the names value flow leaves alone in a module.
-
-    Returns:
-      Those a `global` or `nonlocal` writes from elsewhere, and those annotated only for type
-      checkers (`if TYPE_CHECKING: x: str`), whose runtime values may differ on purpose.
-
-    """
-    escaped: set[str] = set()
-    checking_only: set[str] = set()
-    node: ast.AST
-    for node in of_type(tree, ast.Global, ast.Nonlocal, ast.If):
-        if isinstance(node, ast.Global | ast.Nonlocal):
-            escaped.update(node.names)
-        elif isinstance(node, ast.If) and node_name(node.test) == _TYPE_CHECKING:  # the only other kind
-            checking_only.update(
-                stmt.target.id
-                for stmt in node.body
-                if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name)
-            )
-    return frozenset(escaped), frozenset(checking_only)
+    return module_flow(tree, _scopes(tree, settings))

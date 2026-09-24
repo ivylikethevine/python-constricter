@@ -5,8 +5,9 @@ import ast
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
-from constricter.fix import stdlib
+from constricter.fix import overloads, stdlib
 from constricter.fix.known import ImportPlan, Inference, Known
+from constricter.fix.library import library_call, library_class
 from constricter.fix.members import assigned_attribute, member, returned_method, subscripted
 from constricter.fix.opened import opened
 from constricter.fix.returns import BUILTIN_RETURNS
@@ -23,7 +24,7 @@ from constricter.fix.targets import (
     unpacked,
 )
 from constricter.offences import CONSTRUCTOR
-from constricter.rules.annotations import GENERICS, is_vague, node_name
+from constricter.rules.annotations import GENERICS, dotted, is_vague, node_name
 
 if TYPE_CHECKING:
     from types import EllipsisType
@@ -173,6 +174,15 @@ def _member_of(
             )
         case ast.Call():
             found: Inference | None = member(receiver, attr, value, known)
+            method: stdlib.Method | None
+            if found is None and (method := stdlib.overloaded_method(receiver, attr, known)) is not None:
+                found = overloads.chosen(
+                    method.entry,
+                    value,
+                    known,
+                    lambda arg: inference(arg, known, declared),
+                    method,
+                )
             text = None if found is not None else returned_method(receiver, attr, known)
             return (
                 found
@@ -221,91 +231,32 @@ def _from_value(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
         or _cast(value, known.names.casts)
         or opened(value, known)
         or library_class(value, known)
-        or _library(value, known, declared)
+        or library_call(value, known, lambda arg: inference(arg, known, declared))
         or _returns(value, known)
         or _called(value, known)
     )
 
 
 def _returns(value: ast.expr, known: Known) -> Inference | None:
-    """Infer a call to one of the module's unannotated functions whose `return`s decide its type.
+    """Infer a call to an unannotated function (the module's, or imported) whose `return`s decide its type.
 
     Returns:
       The inference, or `None`.
 
     """
-    name: str
-    match value:
-        case ast.Call(func=ast.Name(id=name)) if name in known.returned.calls and name not in known.calls:
-            return Inference(known.returned.calls[name], f"`{name}`'s `return`s", frozenset({RETURNED}))
-        case _:
-            return None
-
-
-def library_class(value: ast.expr, known: Known) -> Inference | None:
-    """Infer a call to a standard-library class, or a function returning one (`stdlib.CLASSES`).
-
-    Returns:
-      The class, spelled (and imported, if it must be) as the module can; or `None`.
-
-    """
     func: ast.expr
+    callee: str | None
     match value:
-        case ast.Call(func=func):
-            pass
+        case ast.Call(func=ast.Name() | ast.Attribute() as func) if (
+            callee := dotted(func)
+        ) in known.returned.calls and callee not in known.calls:
+            return Inference(
+                known.returned.calls[callee or ""],
+                f"`{callee}`'s `return`s",
+                frozenset({RETURNED}),
+            )
         case _:
             return None
-    name: str | None = stdlib.resolved(func, known.names.stdlib)
-    plan: ImportPlan | None = known.names.plan
-    spelled: str | None = (
-        None if name not in stdlib.CLASSES or plan is None else plan.spell(stdlib.CLASSES[name])
-    )
-    return None if spelled is None else Inference(spelled, f"`{name}`'s return type", frozenset({_STDLIB}))
-
-
-def _library(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inference | None:
-    """Infer a call to a standard-library function the tables type (see `constricter.fix.stdlib`).
-
-    A fixed builtin result, whatever the arguments; an `AnyStr` function's, when every argument is a
-    `str` (or every one a `bytes`), and an environment lookup's `str | None` (`str` with a `str`
-    default), passed positionally.
-
-    Returns:
-      The inference, or `None` for any other call, or arguments that don't decide it.
-
-    """
-    func: ast.expr
-    args: list[ast.expr]
-    keywords: list[ast.keyword]
-    match value:
-        case ast.Call(func=func, args=args, keywords=keywords):
-            pass
-        case _:
-            return None
-    name: str | None = stdlib.resolved(func, known.names.stdlib)
-    reason: str = f"`{name}`'s return type"
-    kinds: frozenset[str] = frozenset({_STDLIB})
-    if name in stdlib.RETURNS:
-        return Inference(stdlib.RETURNS[name], reason, kinds)
-    # The others are decided by their positional arguments' types, worked out only for them.
-    if keywords or name not in stdlib.BY_ARGUMENTS:
-        return None
-    parts: list[Inference | None] = [inference(arg, known, declared) for arg in args]
-    types: set[str | None] = {None if part is None else part.annotation for part in parts}
-    if name in stdlib.ANY_STR:
-        return (
-            Inference(str(next(iter(types))), reason, _kinds(*parts, kind=_STDLIB))
-            if len(types) == 1 and types <= _TEXT_NAMES
-            else None
-        )
-    if len(args) == 1:
-        return Inference("str | None", reason, kinds)
-    default: Inference | None = parts[1] if len(args) == _WITH_DEFAULT else None
-    return (
-        Inference(_STR, reason, _kinds(default, kind=_STDLIB))
-        if default and default.annotation == _STR
-        else None
-    )
 
 
 def _cast(value: ast.expr, spellings: frozenset[str]) -> Inference | None:
@@ -633,7 +584,7 @@ def _called(value: ast.expr, known: Known) -> Inference | None:
         case ast.Call(func=ast.Name() | ast.Attribute() as func) if constructs(
             node_name(func),
             known.factories,
-        ):
+        ) and _type_expression(func, known):
             return Inference(
                 ast.unparse(func),
                 f"a call to `{ast.unparse(func)}`, taken to construct one",
@@ -641,6 +592,22 @@ def _called(value: ast.expr, known: Known) -> Inference | None:
             )
         case _:
             return None
+
+
+def _type_expression(func: ast.Name | ast.Attribute, known: Known) -> bool:
+    """Check that a callee can be written as a type: a (dotted) name starting with a class or module.
+
+    Not a call's attribute (`_tables().Filters`), nor through a name the module binds as a value
+    somewhere (`Klass = ...`, `jinja2 = import_optional_dependency("jinja2")`, `self`): a type
+    checker rejects a variable in a type.
+
+    Returns:
+      Whether it can.
+
+    """
+    path: str | None = dotted(func)
+    plan: ImportPlan | None = known.names.plan
+    return path is not None and (plan is None or path.partition(".")[0] not in plan.values)
 
 
 def constructs(name: str, known_factories: frozenset[str]) -> bool:

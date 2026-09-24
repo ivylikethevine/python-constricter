@@ -339,6 +339,25 @@ def node_name(node: ast.AST) -> str:
             return ""
 
 
+def dotted(node: ast.expr) -> str | None:
+    """Spell a name, or a chain of attributes on one (`pkg.util.f`), as written.
+
+    Returns:
+      It, or `None` if `node` is anything else (`f().g`, `x[0].g`).
+
+    """
+    name: str
+    value: ast.expr
+    base: str | None
+    match node:
+        case ast.Name(id=name):
+            return name
+        case ast.Attribute(value=value, attr=name) if (base := dotted(value)) is not None:
+            return f"{base}.{name}"
+        case _:
+            return None
+
+
 def is_vague(annotation: ast.expr) -> bool:
     """Check an annotation for vague types.
 
@@ -655,6 +674,20 @@ def _plain(func: ast.FunctionDef | ast.AsyncFunctionDef, decorators: frozenset[s
 
 def _words(annotation: str) -> list[str]:
     return [word for word in re.split(r"\W+", annotation) if word]
+
+
+@lru_cache(maxsize=4096)  # asked of each fix's annotation several times: a few thousand distinct
+def roots(annotation: str) -> frozenset[str]:
+    """Find the names an annotation (maybe a string one) is written with.
+
+    Returns:
+      The names: `m.Row` gives `m`.
+
+    """
+    tree: ast.expr = ast.parse(annotation, mode="eval").body
+    if isinstance(tree, ast.Constant) and isinstance(tree.value, str):
+        tree = ast.parse(tree.value, mode="eval").body
+    return frozenset(node.id for node in ast.walk(tree) if isinstance(node, ast.Name))
 
 
 class Tables(NamedTuple):

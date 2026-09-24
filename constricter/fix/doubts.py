@@ -14,6 +14,7 @@
 """
 
 import ast
+import bisect
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
@@ -21,10 +22,11 @@ from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.known import ImportPlan, Inference
+from constricter.fix.narrowed import Regions
 from constricter.rules.annotations import node_name
 from constricter.rules.flow import members
 from constricter.rules.syntax import FunctionDef, Start, within
-from constricter.rules.walked import of_type
+from constricter.rules.walked import of_type, walk
 
 # What a copy, an attribute and a subscript of a narrowable union rest on, as guesses.
 _Read: TypeAlias = type[ast.expr]
@@ -38,6 +40,8 @@ _TESTS: Final = (ast.If, ast.While, ast.Assert, ast.IfExp, ast.comprehension, as
 _SELF: Final = "Self"
 _COMPREHENSION: Final = "comprehension"
 _LITERAL: Final = "literal"
+_NONE: Final = "None"
+_OPTIONAL: Final = "Optional"
 _COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 _UNIONS: Final = frozenset({"Optional", "Union"})
 _SELF_ORIGINS: Final = frozenset({"typing.Self", "typing_extensions.Self"})
@@ -63,6 +67,8 @@ class Facts(NamedTuple):
     generics: frozenset[str] = frozenset()
     passed: frozenset[str] = frozenset()
     tests: Tests = Tests()  # what its tests read (see `tests`)
+    narrowed: Regions = MappingProxyType({})  # where each value is narrowed (see `narrowed.regions`)
+    inner: tuple[int, ...] = ()  # the lines functions and lambdas start on, sorted (see `inner_starts`)
 
 
 class Owner(NamedTuple):
@@ -94,6 +100,68 @@ def doubts(value: ast.expr, found: Inference, *, constant: bool, narrowed: bool)
     return frozenset()
 
 
+def narrowed_first(value: ast.expr, found: Inference) -> bool:
+    """Check whether code reading `value` almost always narrows it first, so `found` is best not offered.
+
+    A copy, attribute or subscript of an `X | None`, and a filtered comprehension over one, is nearly
+    always checked for `None` before it's used (an `assert`, an early `return`, a walrus), and a
+    checker then takes it for the `X` it's narrowed to: declaring the union breaks that. A bare
+    `None` (a copy of a name only ever `None`) says nothing.
+
+    Returns:
+      Whether it is.
+
+    """
+    if found.annotation == _NONE:
+        return True
+    optional: bool = _NONE in (members(found.annotation) or ())
+    filtered: bool = isinstance(value, _COMPREHENSIONS) and any(g.ifs for g in value.generators)
+    return (isinstance(value, tuple(_READS)) and optional) or (filtered and _has_none(found.annotation))
+
+
+def _has_none(annotation: str) -> bool:
+    """Check whether an annotation allows `None` anywhere in it (`list[int | None]`, `list[Optional[str]]`).
+
+    Returns:
+      Whether it does.
+
+    """
+    # `annotation` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
+    return any(
+        (isinstance(node, ast.Constant) and node.value is None)
+        or (isinstance(node, ast.Name | ast.Attribute) and node_name(node) == _OPTIONAL)
+        for node in ast.walk(ast.parse(annotation, mode="eval"))
+    )
+
+
+def inner_starts(tree: ast.Module) -> tuple[int, ...]:
+    """List the lines the module's functions and lambdas start on, for `contains_inner` to look up.
+
+    Returns:
+      Them, sorted.
+
+    """
+    inner: list[FunctionDef | ast.Lambda] = cast(
+        "list[FunctionDef | ast.Lambda]",
+        of_type(tree, ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda),
+    )
+    return tuple(sorted(node.lineno for node in inner))
+
+
+def contains_inner(function: FunctionDef, starts: tuple[int, ...]) -> bool:
+    """Check whether a function has a function or lambda inside it, by the lines they start on.
+
+    Returns:
+      Whether one starts after its own line and by its last: most functions have none, and needn't
+      be walked for one.
+
+    """
+    return bisect.bisect_right(starts, function.lineno) < bisect.bisect_right(
+        starts,
+        function.end_lineno or function.lineno,
+    )
+
+
 def tests(tree: ast.Module) -> Tests:
     """Find what the module's tests read, once for all its functions (see `tested`).
 
@@ -106,7 +174,7 @@ def tests(tree: ast.Module) -> Tests:
         ((test.lineno, test.col_offset), ast.unparse(read))
         for node in of_type(tree, *_TESTS)
         for test in _tested_parts(node)
-        for read in ast.walk(test)
+        for read in walk(test)
         if isinstance(read, ast.Name | ast.Attribute | ast.Subscript)
     )
     return Tests(tuple(start for start, _ in found), tuple(text for _, text in found))
@@ -268,20 +336,22 @@ def spelled_self(plan: ImportPlan) -> str | None:
 
 
 def _bare(annotation: str, generics: frozenset[str]) -> bool:
-    """Check whether an annotation names one of `generics` without subscripting it.
+    """Check whether an annotation names one of `generics` (as the module spells them) unsubscripted.
 
     Returns:
-      Whether it does.
+      Whether it does: `Box`, `util.OrderedSet`, but not `Box[int]`.
 
     """
     if not generics:
         return False
     # `annotation` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
     tree: ast.expr = ast.parse(annotation, mode="eval").body
-    subscripted: set[int] = {id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Subscript)}
+    inner: set[int] = {
+        id(node.value) for node in walk(tree) if isinstance(node, ast.Subscript | ast.Attribute)
+    }
     return any(
-        isinstance(node, ast.Name) and node.id in generics and id(node) not in subscripted
-        for node in ast.walk(tree)
+        isinstance(node, ast.Name | ast.Attribute) and id(node) not in inner and ast.unparse(node) in generics
+        for node in walk(tree)
     )
 
 

@@ -5,12 +5,25 @@ import builtins
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Final, NamedTuple
+from typing import Final, NamedTuple, TypeAlias
 
 from constricter.offences import MAX_LENGTH
+from constricter.rules.annotations import free_of, free_of_all
 
 _BUILTINS: Final = frozenset(dir(builtins))
 _DOT: Final = "."
+# What a name refers to: a module and an attribute of it (`None`: the module itself).
+Origin: TypeAlias = tuple[str, str | None]
+
+
+class Guarded(NamedTuple):
+    """A name a file can write only in an annotation: imported under `if TYPE_CHECKING:` (see `project`).
+
+    `origin`: what it refers to; `statement`: the import to add for it, or `None` if the file has it.
+    """
+
+    origin: Origin
+    statement: str | None
 
 
 class Classes(NamedTuple):
@@ -32,6 +45,10 @@ class ImportPlan:
     bound anywhere in it; `after`: the line added imports go after; `defined`: each name it binds
     at its top level (an import, a class, a function, an assignment), and the line it's first bound
     on; `added`: each name an added import binds, and that import's statement, as `spell` chose them.
+    `guarded`: the names other checked files' types are written with that the module imports (or is
+    to import) under `if TYPE_CHECKING:` alone; `block`: the first and last line of the body of the
+    `if TYPE_CHECKING:` among its leading imports, if it has one (else zeros); `postponed`: whether
+    it has `from __future__ import annotations`, so none of its annotations is evaluated.
     """
 
     bound: Mapping[str, str]
@@ -39,6 +56,10 @@ class ImportPlan:
     after: int
     defined: Mapping[str, int] = field(default_factory=dict[str, int])
     added: dict[str, str] = field(default_factory=dict[str, str])
+    guarded: Mapping[str, Guarded] = field(default_factory=dict[str, Guarded])
+    block: tuple[int, int] = (0, 0)
+    postponed: bool = False
+    values: frozenset[str] = frozenset()  # names it binds as values somewhere (see `imports._taken`)
 
     def spell(self, qualified: str) -> str | None:
         """Name `qualified` (`io.BufferedReader`) in this module, adding an import if it has to.
@@ -81,7 +102,7 @@ class ImportPlan:
         """
         if name in self.added:
             return self.added[name] == statement
-        return name not in self.taken and name not in _BUILTINS
+        return name not in self.taken and name not in _BUILTINS and name not in self.guarded
 
 
 class LibraryNames(NamedTuple):
@@ -153,6 +174,21 @@ class Known:
         return name in _BUILTINS and (self.names.plan is None or name not in self.names.plan.taken)
 
 
+class Returns(NamedTuple):
+    """What a module's unannotated functions return (`Returned.calls`), for the files importing them.
+
+    `calls`: each function's type, by its name (or, imported, as the importing file spells it: `f`,
+    `u.f`); `guesses`: for one whose `return`s are guesses, what they rest on (`FIX_KINDS`);
+    `names`: what each name their types use that the module imports for type checking alone
+    (see `Guarded`) refers to.
+    """
+
+    # Plain `dict`s, not `MappingProxyType`s: the CLI's worker processes are sent them, pickled.
+    calls: Mapping[str, str] = {}
+    guesses: Mapping[str, frozenset[str]] = {}
+    names: Mapping[str, Origin] = {}
+
+
 class Hints(NamedTuple):
     """A type checker's inlay hints for one file (`--infer-with`): which checker, and each type.
 
@@ -168,17 +204,51 @@ class Hints(NamedTuple):
 class Outside(NamedTuple):
     """What the CLI knows of a file from outside it, for `--fix`.
 
-    `calls`: the return types of functions other checked files define, and `classes` their classes'
-    attributes and methods' returns, as the file spells them (see `project.imported`); `hints`, a
+    `calls`: the return types of functions other checked files define, `returned` those of their
+    unannotated functions (see `Returns`), and `classes` their classes' attributes and methods'
+    returns, as the file spells them (see `project.imported`); `hints`, a
     type checker's types for what `--fix` can't type itself (`--infer-with`); `type_vars`, the names
     it imports that are type variables where they're defined (see `project.type_vars`), which a
-    type its own functions declare can't be written with outside them.
+    type its own functions declare can't be written with outside them; `guarded`, the names those
+    types are written with that it can use in an annotation alone (see `Guarded`); `generics`, the
+    generic classes it imports from them, which a fix mustn't write bare.
     """
 
     calls: Mapping[str, str] = {}
     classes: Classes | None = None
     hints: tuple[Hints, ...] = ()  # each checker's, in the order they were named
     type_vars: frozenset[str] = frozenset()
+    returned: Returns = Returns()
+    guarded: Mapping[str, Guarded] = {}
+    generics: frozenset[str] = frozenset()  # other checked files' generic classes, as it spells them
+
+    def usable(self, taken: frozenset[str]) -> "Outside":
+        """Drop what other files offer whose type needs a name imported that the module binds already.
+
+        That's a name to import under `if TYPE_CHECKING:` (see `Guarded`) that the module binds anywhere
+        else, a function's local or parameter included: the import would shadow it, or it the import.
+
+        Returns:
+          What's left.
+
+        """
+        clashing: frozenset[str] = frozenset(
+            name for name, found in self.guarded.items() if found.statement is not None and name in taken
+        )
+        if not clashing:
+            return self
+        members: Classes | None = self.classes
+        return Outside(
+            free_of(self.calls, clashing),
+            None
+            if members is None
+            else Classes(free_of_all(members.attributes, clashing), free_of_all(members.methods, clashing)),
+            self.hints,
+            self.type_vars,
+            Returns(free_of(self.returned.calls, clashing), self.returned.guesses, self.returned.names),
+            {name: found for name, found in self.guarded.items() if name not in clashing},
+            self.generics,
+        )
 
 
 class Inference(NamedTuple):

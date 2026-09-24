@@ -22,6 +22,7 @@ import ast
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
+from functools import lru_cache
 from typing import Final, TypeAlias
 
 from constricter.rules.walked import classes as defined_classes
@@ -273,6 +274,7 @@ def _visible(name: str, defined: Mapping[str, list[ast.expr]], seen: frozenset[s
     )
 
 
+@lru_cache(maxsize=4096)  # value flow asks of the same few annotations again and again
 def members(annotation: str) -> frozenset[str] | None:
     """Split an annotation into its union's members, normalised as text.
 

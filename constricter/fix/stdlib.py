@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: MIT
 """Standard-library functions and classes whose types `--fix` knows, and how a module names them.
 
-The tables are generated from typeshed's stubs into `stdlib.json` (see
+The tables are generated from typeshed's stubs into `tables/`, one JSON file each (see
 `tests/typeshed/stdlib_tables.py`): `RETURNS` holds functions returning the same builtin type
-whatever their arguments; `ANY_STR` functions return the type of their arguments (`str` in, `str`
-out; `bytes` in, `bytes` out), so they're typed only when those are known; `CLASSES` holds
+whatever their arguments; `OVERLOADS` those whose arguments decide it (`str` in, `str` out;
+`bytes` in, `bytes` out), so they're typed only when those are known; `CLASSES` holds
 non-generic classes, and functions returning one; `library_member` types those classes' methods
 and attributes. A call is matched by the module and name it resolves to through the module's imports
 (`origins`), not by how it's spelled, so `import os as o` then `o.getpid()`, or `from os import
@@ -12,50 +12,114 @@ getpid`, are the same call, and a `getpid` from anywhere else isn't.
 """
 
 import ast
+import builtins
 import json
 from collections.abc import Iterable, Mapping
-from functools import lru_cache
+from functools import cache, lru_cache
 from pathlib import Path
-from typing import Final, TypeAlias, TypedDict, cast
+from typing import Final, NamedTuple, NotRequired, Required, TypeAlias, TypedDict, cast
 
 from constricter.fix.known import ImportPlan, Inference, Known
 from constricter.rules.syntax import import_bindings
 
-_Members: TypeAlias = Mapping[str, Mapping[str, str]]  # each class's members' annotations, by name
+Constant: TypeAlias = bool | int | float | complex | str | bytes | None  # a literal's value
 
 
-class _Tables(TypedDict):
-    """`stdlib.json`'s tables (see `tests/typeshed/stdlib_tables.py`)."""
+class Accepts(TypedDict, total=False):
+    """Which argument types a parameter takes (see `constricter.fix.overloads`).
 
-    returns: dict[str, str]
-    any_str: list[str]
-    classes: dict[str, str]
-    aliases: dict[str, str]
-    methods: dict[str, dict[str, str]]
-    attributes: dict[str, dict[str, str]]
+    `v`: a verdict (`y`, `n`, `?`) per `overloads.SCALARS` type, for an argument that isn't a
+    literal; `c`: for a literal not among `lit` (its `Literal[...]` values), where that differs;
+    `var`: the type variable the parameter is, and its type, for an argument of each type; or just
+    its name, where each binds it to its own type (a `str` literal's `str`).
+    """
+
+    v: Required[str]
+    c: str
+    lit: list[Constant]
+    var: str | dict[str, list[str]]
 
 
-# Plain JSON, as generated: `jsonc`'s comment stripping took 20 ms of every run's start, for nothing.
-_TABLES: Final = cast("_Tables", json.loads(Path(__file__).with_name("stdlib.json").read_bytes()))
-RETURNS: Final = _TABLES["returns"]
-ANY_STR: Final = frozenset(_TABLES["any_str"])
+# A parameter: its name, kind (`p` positional, `e` either, `k` keyword, `a` `*args`, `w` `**kwargs`),
+# whether it has a default, and what it takes (`None`: whatever every signature takes there). The
+# tables write one every signature has alike as `"name kind"`, `=` after it if it has a default.
+Parameter: TypeAlias = tuple[str, str, bool, Accepts | None]
+
+
+class Signature(TypedDict):
+    """One signature of a function whose arguments decide its type: its parameters, and its return.
+
+    The return is a template (see `constricter.fix.overloads`), or `None` if `--fix` can't write it.
+    `self`: for a generic class's method declaring its instance's type (`self: Pattern[str]`), the
+    type arguments that instance must have.
+    """
+
+    params: list[Parameter | str]
+    returns: str | None
+    self: NotRequired[list[str]]
+
+
+Variant: TypeAlias = list[Signature]  # one configuration's signatures, in order
+
+
+def _table(name: str) -> object:
+    """Read one of the tables (`tables/<name>.json`), plain JSON as generated.
+
+    Returns:
+      Its entries.
+
+    """
+    # Not through `jsonc`: its comment stripping took 20 ms of every run's start, for nothing.
+    return cast(
+        "object",
+        json.loads(Path(__file__).with_name("tables").joinpath(f"{name}.json").read_bytes()),
+    )
+
+
+RETURNS: Final = cast("dict[str, str]", _table("returns"))
+# Functions whose arguments decide their type: each signature, as each configuration reads them
+# (see `constricter.fix.overloads`).
+OVERLOADS: Final = cast("dict[str, list[Variant]]", _table("overloads"))
 # Classes, and functions (constructors, classmethods) returning one: typed by that class's dotted
 # path, spelled (and imported, if it must be) the way the module can.
-CLASSES: Final = _TABLES["classes"]
-_ALIASES: Final[Mapping[str, str]] = _TABLES["aliases"]  # a class's other public paths, to its own
-_METHODS: Final[_Members] = _TABLES["methods"]
-_ATTRIBUTES: Final[_Members] = _TABLES["attributes"]
-# An environment lookup: `os.environ.get(k)` or `os.getenv(k)` is `str | None`, with a `str` default
-# it's `str` (`os.getenv`'s overloads, and `os.environ`'s generic `Mapping.get`, decide it by the
-# arguments, which the tables leave out).
-ENVIRONMENT: Final = frozenset({"os.environ.get", "os.getenv"})
-BY_ARGUMENTS: Final = ANY_STR | ENVIRONMENT  # the functions typed by their arguments' types
+CLASSES: Final = cast("dict[str, str]", _table("classes"))
+_ALIASES: Final = cast("Mapping[str, str]", _table("aliases"))  # a class's other public paths, to its own
+# Each class's methods' returns and attributes' types apart from its public ancestors' (`_BASES`),
+# `None` where it hides one of theirs: `_member` resolves the rest through them.
+_Own: TypeAlias = Mapping[str, Mapping[str, str | None]]
+_METHODS: Final = cast("_Own", _table("methods"))
+_ATTRIBUTES: Final = cast("_Own", _table("attributes"))
+# Each class's public ancestors in the tables, nearest first, comma-separated.
+_BASES: Final = cast("Mapping[str, str]", _table("bases"))
+# Classes' methods whose arguments decide their type: each one's entry in `method_signatures` (its
+# signatures without `self`, as `OVERLOADS`', under the class defining it: `module.Class.method`).
+_METHOD_OVERLOADS: Final = cast("_Own", _table("method_overloads"))  # by name, as `_METHODS`
+# Each generic class's type parameters, in order, comma-separated: an instance's type binds them.
+# One ending `=` has a default (PEP 696): a class all of whose have one may be written bare.
+_TYPE_PARAMETERS: Final = cast("Mapping[str, str]", _table("type_parameters"))
+
+
+@cache
+def method_signatures() -> dict[str, list[Variant]]:
+    """Read the `method_signatures` table, the first time a call needs it.
+
+    Returns:
+      Each method's signatures (see `OVERLOADS`), by its entry.
+
+    """
+    return cast("dict[str, list[Variant]]", _table("method_signatures"))
+
+
+# An environment lookup: `os.environ.get(k)` is `str | None`, with a `str` default it's `str`
+# (`os.environ`'s generic `Mapping.get` decides it by the arguments).
+ENVIRONMENT: Final = "os.environ.get"
 _KIND: Final = "stdlib"  # the fix kind of what the tables type
+_BUILTIN_NAMES: Final = frozenset({*dir(builtins), "None"})
 _DOT: Final = "."
-KNOWN: Final = frozenset({*RETURNS, *ANY_STR, *ENVIRONMENT, *CLASSES})  # every function the tables type
+KNOWN: Final = frozenset({*RETURNS, *OVERLOADS, ENVIRONMENT, *CLASSES})  # every function the tables type
 _TABLE_MODULES: Final = frozenset(
     name.rsplit(".", count)[0]
-    for name in (*KNOWN, *_ALIASES, *_METHODS, *_ATTRIBUTES)
+    for name in (*KNOWN, *_ALIASES, *_METHODS, *_ATTRIBUTES, *_BASES)
     for count in range(1, name.count(".") + 1)
 )
 
@@ -118,8 +182,9 @@ def library_member(receiver: str, name: str, call: ast.Call | None, known: Known
 
     """
     path: str | None = _class_path(receiver, known)
-    table: _Members = _ATTRIBUTES if call is None else _METHODS
-    found: str | None = None if path is None else table.get(path, {}).get(name)
+    found: str | None = (
+        None if path is None else _member(_ATTRIBUTES if call is None else _METHODS, path, name)
+    )
     plan: ImportPlan | None = known.names.plan
     if found is not None and _is_class(found):
         found = None if plan is None else plan.spell(found)
@@ -131,6 +196,104 @@ def library_member(receiver: str, name: str, call: ast.Call | None, known: Known
     )
 
 
+def _member(table: "_Own", path: str, name: str) -> str | None:
+    """Look up a class's member in a table: its own entry, else its nearest public ancestor's.
+
+    Returns:
+      Its entry (an attribute's type, a method's return, a `method_signatures` entry), or `None`.
+
+    """
+    own: Mapping[str, str | None] = table.get(path, {})
+    if name in own:
+        return own[name]
+    ancestor: str
+    for ancestor in _ancestors(path):
+        found: str | None
+        if (found := _member(table, ancestor, name)) is not None:
+            return found
+    return None
+
+
+@lru_cache(maxsize=1024)
+def _ancestors(path: str) -> tuple[str, ...]:
+    return tuple(_BASES[path].split(",")) if path in _BASES else ()
+
+
+class Method(NamedTuple):
+    """A standard-library method whose arguments decide its type, on a receiver of a known type.
+
+    `entry`: its `method_signatures` entry; `instance`: the receiver's type arguments, if they're
+    builtins (`Pattern[str]`'s `str`), for a signature declaring `self`'s; `types`: its class's type
+    parameters, bound to the receiver's type arguments as the module spells them.
+    """
+
+    entry: str
+    instance: list[str] | None
+    types: dict[str, str]
+
+
+def overloaded_method(receiver: str, name: str, known: Known) -> Method | None:
+    """Find a standard-library class's method whose arguments decide its type (see `method_signatures`).
+
+    Returns:
+      It, or `None` if the receiver isn't such a class or the method isn't such a method.
+
+    """
+    root: ast.expr = _parsed(receiver)
+    args: list[ast.expr] = []
+    if isinstance(root, ast.Subscript):
+        args = list(root.slice.elts) if isinstance(root.slice, ast.Tuple) else [root.slice]
+        root = root.value
+    path: str | None = _path(root, known)
+    entry: str | None = None if path is None else _member(_METHOD_OVERLOADS, path, name)
+    if path is None or entry is None:
+        return None
+    texts: list[str] = [ast.unparse(arg) for arg in args]
+    params: list[str] = [param.rstrip("=") for param in _TYPE_PARAMETERS.get(path, "").split(",") if param]
+    builtin: bool = all(
+        isinstance(node, ast.Name) and node.id in _BUILTIN_NAMES and known.is_builtin(node.id)
+        for arg in args
+        for node in ast.walk(arg)
+        if isinstance(node, ast.Name | ast.Attribute)
+    )
+    return Method(
+        entry,
+        texts if args and builtin else None,
+        dict(zip(params, texts, strict=True)) if args and len(params) == len(args) else {},
+    )
+
+
+def generics(bound: Mapping[str, str]) -> frozenset[str]:
+    """Spell the standard library's generic classes as a module's imports (`bound`, see `origins`) name them.
+
+    Returns:
+      Each spelling (`StreamHandler`, `logging.StreamHandler`): written bare, one is missing its
+      type arguments.
+
+    """
+    return frozenset(
+        f"{name}{path.removeprefix(origin)}"
+        for name, origin in bound.items()
+        for path in _generic_paths(origin)
+    )
+
+
+@lru_cache(maxsize=1024)
+def _generic_paths(origin: str) -> tuple[str, ...]:
+    """Find the generic classes an import's origin names (itself, or those in its module) that need arguments.
+
+    Returns:
+      Their paths.
+
+    """
+    return tuple(
+        path
+        for path, params in _TYPE_PARAMETERS.items()
+        if (path == origin or path.startswith(f"{origin}."))
+        and not all(param.endswith("=") for param in params.split(","))
+    )
+
+
 def _class_path(receiver: str, known: Known) -> str | None:
     """Resolve a receiver's annotation to a class's path in the tables (its own, not an alias).
 
@@ -139,7 +302,16 @@ def _class_path(receiver: str, known: Known) -> str | None:
       (or `--fix` is importing).
 
     """
-    root: ast.expr = _parsed(receiver)
+    return _path(_parsed(receiver), known)
+
+
+def _path(root: ast.expr, known: Known) -> str | None:
+    """Resolve a class's name or dotted path to its path in the tables (see `_class_path`).
+
+    Returns:
+      The path, or `None`.
+
+    """
     path: str | None = resolved(root, known.names.stdlib)
     plan: ImportPlan | None = known.names.plan
     if path is None and plan is not None and plan.added:

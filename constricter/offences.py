@@ -130,6 +130,9 @@ class Fix(NamedTuple):
     drop: tuple[int, int] | None = None
     imports: tuple[str, ...] = ()  # statements the annotation needs added (`from io import BytesIO`)
     after: int = 0  # the line they go after (see `fix.imports.plan`)
+    guarded: tuple[str, ...] = ()  # statements the annotation needs added under `if TYPE_CHECKING:`
+    guard: str = ""  # how the module names `TYPE_CHECKING`, for a new such block
+    block: tuple[int, int] = (0, 0)  # the first and last line of the body of one there is (see `ImportPlan`)
 
 
 class FixPolicy(NamedTuple):

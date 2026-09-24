@@ -11,6 +11,8 @@ from constricter.rules.syntax import import_bindings
 from constricter.rules.walked import of_type
 
 _TYPE_CHECKING: Final = "TYPE_CHECKING"
+_FUTURE: Final = "__future__"
+_ANNOTATIONS: Final = "annotations"  # `from __future__ import annotations` postpones them all
 # The nodes that bind a name: all `_taken` needs look at.
 _BINDERS: Final = (
     ast.Name,
@@ -35,7 +37,62 @@ def plan(tree: ast.Module) -> ImportPlan:
       A fresh plan for the module's fixes.
 
     """
-    return ImportPlan(_bound(tree), _taken(tree), _after(tree), _defined(tree))
+    taken: frozenset[str]
+    values: frozenset[str]
+    taken, values = _taken(tree)
+    return ImportPlan(
+        _bound(tree),
+        taken,
+        _after(tree),
+        _defined(tree),
+        block=_block(tree),
+        postponed=_postponed(tree),
+        values=values,
+    )
+
+
+def _is_checking(test: ast.expr) -> bool:
+    """Check whether an `if`'s test is `TYPE_CHECKING` (or `typing.TYPE_CHECKING`).
+
+    Returns:
+      Whether it is.
+
+    """
+    return (isinstance(test, ast.Name) and test.id == _TYPE_CHECKING) or (
+        isinstance(test, ast.Attribute) and test.attr == _TYPE_CHECKING
+    )
+
+
+def _block(tree: ast.Module) -> tuple[int, int]:
+    """Find the body of the module's first top-level `if TYPE_CHECKING:` with no `else`.
+
+    Returns:
+      Its first and last line (from 1), or zeros.
+
+    """
+    return next(
+        (
+            (stmt.body[0].lineno, stmt.end_lineno or stmt.lineno)
+            for stmt in tree.body
+            if isinstance(stmt, ast.If) and _is_checking(stmt.test) and not stmt.orelse
+        ),
+        (0, 0),
+    )
+
+
+def _postponed(tree: ast.Module) -> bool:
+    """Check whether the module has `from __future__ import annotations`.
+
+    Returns:
+      Whether it has.
+
+    """
+    return any(
+        isinstance(stmt, ast.ImportFrom)
+        and stmt.module == _FUTURE
+        and any(alias.name == _ANNOTATIONS for alias in stmt.names)
+        for stmt in tree.body
+    )
 
 
 def _bound(tree: ast.Module) -> dict[str, str]:
@@ -99,7 +156,7 @@ def _running(body: list[ast.stmt]) -> Iterator[ast.stmt]:
     for stmt in body:
         yield stmt
         match stmt:
-            case ast.If(test=test) if not (isinstance(test, ast.Name) and test.id == _TYPE_CHECKING):
+            case ast.If(test=test) if not _is_checking(test):
                 yield from _running(stmt.body + stmt.orelse)
             case ast.Try() | ast.TryStar():
                 yield from _running(stmt.body + [s for h in stmt.handlers for s in h.body] + stmt.orelse)
@@ -108,30 +165,38 @@ def _running(body: list[ast.stmt]) -> Iterator[ast.stmt]:
 
 
 @lru_cache(maxsize=16)
-def _taken(tree: ast.Module) -> frozenset[str]:
+def _taken(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
     """Find every name bound anywhere in the module: its own, a function's, a class's, a parameter's.
 
     Returns:
-      Them all.
+      Them all; and those bound by anything but an import or a class statement (an assignment, a
+      parameter, a `def`), which name a value, not a class or module, somewhere.
 
     """
     names: set[str] = set()
+    values: set[str] = set()
     node: ast.AST
     name: str
     asname: str | None
     for node in of_type(tree, *_BINDERS):
         match node:
-            case ast.Name(id=name, ctx=ast.Store()) | ast.arg(arg=name):
-                names.add(name)
-            case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) | ast.ClassDef(name=name):
+            case ast.ClassDef(name=name):
                 names.add(name)
             case ast.alias(name=name, asname=asname):
                 names.add(asname or name.split(".", 1)[0])
-            case ast.ExceptHandler(name=str() as name) | ast.MatchAs(name=str() as name):
+            case (
+                ast.Name(id=name, ctx=ast.Store())
+                | ast.arg(arg=name)
+                | ast.FunctionDef(name=name)
+                | ast.AsyncFunctionDef(name=name)
+                | ast.ExceptHandler(name=str() as name)
+                | ast.MatchAs(name=str() as name)
+            ):
                 names.add(name)
+                values.add(name)
             case _:
                 pass
-    return frozenset(names)
+    return frozenset(names), frozenset(values)
 
 
 def _after(tree: ast.Module) -> int:

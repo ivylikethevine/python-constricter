@@ -27,6 +27,8 @@ _DOT: Final = "."
 _PACKAGE: Final = "__init__"
 _OVERLOAD: Final = "overload"
 _TYPE_ALIAS: Final = "TypeAlias"
+_BOUND: Final = "bound"  # a `TypeVar`'s upper bound's keyword
+_DEFAULT: Final = "default"
 _ACCESSORS: Final = frozenset({"setter", "deleter"})  # a property's, which bind nothing new
 _MAX_HOPS: Final = 40  # re-exports followed before giving up (a cycle)
 _VERSION_PARTS: Final = 2  # `(3, 12)`: a comparison with a patch level decides nothing here
@@ -83,6 +85,8 @@ class TypeVariable(NamedTuple):
 
     name: str
     constraints: tuple[ast.expr, ...] = ()
+    bound: ast.expr | None = None
+    default: bool = False  # whether it has one (PEP 696): a class it parameterises may go without
 
 
 class Unknown(NamedTuple):
@@ -441,15 +445,19 @@ def _assign(stmt: ast.stmt, space: Namespace) -> None:
     annotation: ast.expr
     func: ast.expr
     args: list[ast.expr]
+    keywords: list[ast.keyword]
     match stmt:
         case ast.Assign(targets=[ast.Name(id="__all__")], value=value):
             space.all = _strings(value)
         case ast.AugAssign(target=ast.Name(id="__all__"), op=ast.Add(), value=value):
             space.all = [*(space.all or []), *_strings(value)]
-        case ast.Assign(targets=[ast.Name(id=name)], value=ast.Call(func=func, args=args)) if (
-            decorator_name(func) in _TYPE_VARIABLES
-        ):
-            _bind(space, name, TypeVariable(name, tuple(args[1:])))
+        case ast.Assign(
+            targets=[ast.Name(id=name)],
+            value=ast.Call(func=func, args=args, keywords=keywords),
+        ) if decorator_name(func).removeprefix("_") in _TYPE_VARIABLES:  # `TypeVar as _TypeVar` too
+            bound: ast.expr | None = next((k.value for k in keywords if k.arg == _BOUND), None)
+            default: bool = any(k.arg == _DEFAULT for k in keywords)
+            _bind(space, name, TypeVariable(name, tuple(args[1:]), bound, default))
         case (
             ast.Assign(targets=[ast.Name(id=name)], value=value)
             | ast.AnnAssign(
