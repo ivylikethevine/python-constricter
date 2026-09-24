@@ -9,7 +9,7 @@ pre-commit, after ruff's hooks (or `constricter-fix`, which runs `--fix` first):
 
 ```yaml
 - repo: https://github.com/ivylikethevine/python-constricter
-  rev: v0.2.3
+  rev: v0.2.6
   hooks:
     - id: constricter
 ```
@@ -23,7 +23,7 @@ ci:
   autofix_prs: true # the default: push the hooks' fixes to the pull request
 repos:
   - repo: https://github.com/ivylikethevine/python-constricter
-    rev: v0.2.3
+    rev: v0.2.6
     hooks:
       - id: constricter-fix
 ```
@@ -80,7 +80,7 @@ requirements = ["flake8", "python-constricter"]
 GitHub Actions, as PR annotations, with a table of the offences per code on the run's summary page:
 
 ```yaml
-- uses: ivylikethevine/python-constricter@v0.2.3
+- uses: ivylikethevine/python-constricter@v0.2.6
   with:
     args: --format=github src tests # the default is `--format=github` on `.`
     python-version: "3.13" # 3.11 or later
@@ -92,7 +92,7 @@ Its `sarif-file` output is the same check as a SARIF log, for code scanning (the
 `security-events: write`):
 
 ```yaml
-- uses: ivylikethevine/python-constricter@v0.2.3
+- uses: ivylikethevine/python-constricter@v0.2.6
   id: constricter
 - if: ${{ !cancelled() }} # upload the findings even when the check failed on them
   uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1

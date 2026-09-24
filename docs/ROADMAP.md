@@ -59,8 +59,9 @@
   library's included; and a constructor guessed only where its callee is a type. The unsafe runs'
   new errors went from 20, 76 and 165 (0.2.4) to 2, 5 and 36.
 - **Safe by construction**: never touches class bodies, keeps line endings and encodings, edits
-  notebooks' cells in place, converges in one pass on every corpus with nothing broken, and the
-  corpus packages' own test suites pass identically before and after.
+  notebooks' cells in place, nothing broken on any corpus, and the corpus packages' own test suites
+  pass identically before and after. One pass converges on every corpus but the standard library's
+  tests (see [Next](#next)).
 - **Fast enough**: the standard library checks in about 8s with `--jobs=1` and 1.5s with `--jobs=0`
   on 16 cores (from 227s profiled at 0.2.4): one shared walk of each module, kept with its tree from
   the cross-file index to the check, and a node's children listed without `ast`'s generators;
@@ -151,6 +152,16 @@
 
 By scope (smallest first) and, within each, by value. Each item says what it is, why, how, and when
 it's done.
+
+### Small: a day or less
+
+1. **`--fix` converges in one pass on the standard library again.** 0.2.6 leaves 911 fixes for a
+   second pass there ([RUNS.md](RUNS.md), the "Left" column), where 0.2.5 left none; the other
+   corpora, and the standard library without its `test/` package (662 files, as Arch's `python`
+   ships it), still converge. Find the files with `tests/corpus/corpus_fix.py` on a standard library
+   that has `test/`, and fix the mechanism whose output enables another fix. Check that CI's Corpus
+   job's standard library has `test/`, or it can't catch this. Done when the standard library's
+   "Left" is 0.
 
 ### Medium: a few days
 

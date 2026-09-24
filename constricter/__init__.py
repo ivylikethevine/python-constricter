@@ -25,7 +25,7 @@ from constricter.offences import (
 )
 from constricter.rules.checker import Coverage, annotation_coverage, check_source, check_tree
 
-__version__ = "0.2.5"
+__version__ = "0.2.6"
 __all__ = [
     "COMMENT_TYPED_TARGET",
     "DEFAULT_CHECKS",

@@ -167,7 +167,7 @@ jobs:
       # The latest release from PyPI, installed with uv.
       - uses: ./
         with:
-          version: 0.2.3
+          version: 0.2.5
           summary: "false"
           args: --level=suffocate --all-scopes --format=github constricter tests
 
