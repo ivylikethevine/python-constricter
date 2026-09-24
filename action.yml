@@ -12,7 +12,7 @@ inputs:
     description: The Python to run it with (3.11 or later).
     default: "3.13"
   version:
-    description: A release to install from PyPI (`0.2.7`), with uv; empty installs the action's own checkout.
+    description: A release to install from PyPI (`0.2.8`), with uv; empty installs the action's own checkout.
     default: ""
   summary:
     description: Whether to add a table of the offences per code to the run's summary page.

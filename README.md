@@ -237,7 +237,7 @@ pre-commit, after ruff's hooks (or `constricter-fix`, which runs `--fix` first):
 
 ```yaml
 - repo: https://github.com/ivylikethevine/python-constricter
-  rev: v0.2.7
+  rev: v0.2.8
   hooks:
     - id: constricter
 ```
