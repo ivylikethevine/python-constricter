@@ -6,6 +6,25 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types standard-library generic classes' constructors by what their arguments bind:
+  `collections.deque(names)` is a `collections.deque[str]`, `itertools.product(a, b)` an
+  `itertools.product[tuple[str, int]]`, `array.array("i")` an `array.array[int]`, `weakref.ref(obj)`
+  a `weakref.ReferenceType[Foo]`. A type variable binds to any argument's type where the parameter
+  is nothing but it (`copy.copy(obj)` is a `Foo`), to a builtin container's element where it's a
+  generic of one (`Iterable[_T]` given a `list[str]`, a `dict`'s keys, a `str`), to a scalar's
+  method's return through a generic protocol (`math.floor(x)` is an `int` for a `float`), and to a
+  function's declared return where it's a `Callable[..., _T]` (`functools.partial(helper, 1)`); a
+  parameter every overload shares is now read for it too. A generic class's own attributes are typed
+  by the receiver's type arguments (`m.string` on an `re.Match[str]` is a `str`). 512 more fixes on
+  the corpora (387 on the standard library), with no new type-checker error after `--fix`. A read
+  the function tests makes a type it binds a guess (`deque([x])` inside `if is_union(x):`, which
+  sqlalchemy's `TypeGuard` narrows: 6 of its `--fix --unsafe-fixes` new errors). At module level, a
+  class some supported Python can't subscript at run time is quoted (`"itertools.count[int]"`).
+- `--fix` converges in one pass on the standard library again (0.2.6 left 911 fixes for a second): a
+  call to another checked file's unannotated function returning a library type its module didn't
+  import yet (`test.support.import_helper.import_module`, a `types.ModuleType`) is typed on the
+  first pass, by the import that module's own fixes add. CI's Corpus job runs on Python 3.14, whose
+  standard library showed it.
 - Checking is about 10% faster (the standard library, `--jobs=1`: 9.0s to 8.1s), every fix the same:
   whether a fix is a guess is worked out only where there's a fix, a function's body is read once
   for all its empty containers, and a node's children are listed without `ast`'s generators.

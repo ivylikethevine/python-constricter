@@ -255,9 +255,12 @@ class Inference(NamedTuple):
     """An annotation `--fix` would add, how the value decided it (`--show-fixes`), and by which means.
 
     `kinds` are the `FIX_KINDS` ids of every mechanism that decided it, parts included (`[1, 2]`
-    is a `container` of `literal`s), for `fix-select` and `fix-ignore`.
+    is a `container` of `literal`s), for `fix-select` and `fix-ignore`. `reads`: the names,
+    attributes and subscripts (as source text) whose own types it takes as they are (`deque([x])`'s
+    `x`), which a type checker sees narrowed where the function tests them.
     """
 
     annotation: str
     reason: str
     kinds: frozenset[str] = frozenset()
+    reads: tuple[str, ...] = ()

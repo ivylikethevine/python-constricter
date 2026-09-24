@@ -3,7 +3,8 @@
 
 - A copy, attribute or subscript of a union may be narrowed where it's read (`if x is not None:`,
   `isinstance`), which a type checker sees and `--fix` doesn't; so may a comprehension's elements, by
-  its condition (`[c for c in cs if isinstance(c, Column)]`). Their fixes are guesses.
+  its condition (`[c for c in cs if isinstance(c, Column)]`), and a read whose type a call takes as
+  its own (`deque([x])`). Their fixes are guesses.
 - An ALL_CAPS module-level name is a constant to pyright, which keeps its literal's type
   (`Literal["r"]`) where `str` would widen it: a guess too, where the module passes it to a call
   or a default (see `passed`), for a parameter that may take only some values.
@@ -79,20 +80,22 @@ class Owner(NamedTuple):
     selfish: frozenset[str]  # its methods declared to return a bare `Self` (see `self_returns`)
 
 
-def doubts(value: ast.expr, found: Inference, *, constant: bool, narrowed: bool) -> frozenset[str]:
+def doubts(value: ast.expr, found: Inference, *, constant: bool, narrowed: frozenset[str]) -> frozenset[str]:
     """Find what makes `found`, a certain inference of `value`, a guess (see the module docstring).
 
-    `constant`: whether the value is bound to an ALL_CAPS module-level name; `narrowed`: whether the
-    function tests the value itself somewhere (`isinstance(x, C)`, `x is None`, `is_c(x)`), where a
-    type checker narrows it, whatever its type.
+    `constant`: whether the value is bound to an ALL_CAPS module-level name; `narrowed`: what the
+    function tests somewhere (`isinstance(x, C)`, `x is None`, `is_c(x)`), where a type checker
+    narrows it, whatever its type: the value itself, or a read whose type it takes (`found.reads`).
 
     Returns:
       The guessing mechanisms (`FIX_KINDS`) it then rests on; none if it stays certain.
 
     """
     kind: str | None = _READS.get(type(value))
-    if kind is not None and (narrowed or len(members(found.annotation) or ()) > 1):
+    if kind is not None and (ast.unparse(value) in narrowed or len(members(found.annotation) or ()) > 1):
         return frozenset({kind})
+    if narrowed.intersection(found.reads):
+        return frozenset({_READS[ast.Name]})
     if isinstance(value, _COMPREHENSIONS) and any(g.ifs for g in value.generators) and _has_union(found):
         return frozenset({_COMPREHENSION})
     if constant and _literal(value):

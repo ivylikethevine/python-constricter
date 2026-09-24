@@ -6,7 +6,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix import fills, hinted
+from constricter.fix import fills, hinted, stdlib
 from constricter.fix.doubts import (
     Facts,
     Owner,
@@ -231,7 +231,7 @@ class Scope:
                 value,
                 fix,
                 constant=constant,
-                narrowed=function is not None and ast.unparse(value) in tested(function, facts.tests),
+                narrowed=frozenset() if function is None else tested(function, facts.tests),
             )
             unsafe = bool(origins)
         if fix is not None and constant and origins == _LITERAL_DOUBT:
@@ -427,10 +427,10 @@ class Scope:
         self.assignments.found.setdefault(name, []).append((where, self.assignments.looping > 0))
 
     def evaluated(self, offence: Offence) -> Offence:
-        """Quote a module body's fix whose type names what the module imports for type checking alone.
+        """Quote a module body's fix that can't be evaluated when the module runs (unless it postpones them).
 
-        A module's annotations are evaluated when it runs (unless it postpones them), and those
-        names aren't bound then.
+        One whose type names what the module imports for type checking alone (unbound then), or
+        subscripts a standard-library class that can't be at run time (`itertools.count[int]`).
 
         Returns:
           The offence, its fix quoted if it must be.
@@ -438,13 +438,10 @@ class Scope:
         """
         plan: ImportPlan | None = self.settings.known.names.plan
         fix: Fix | None = offence.edit
-        if (
-            fix is None
-            or plan is None
-            or plan.postponed
-            or self.kind.function is not None
-            or not roots(fix.annotation) & plan.guarded.keys()
-        ):
+        if fix is None or plan is None or plan.postponed or self.kind.function is not None:
+            return offence
+        guarded: bool = bool(roots(fix.annotation) & plan.guarded.keys())
+        if not guarded and stdlib.evaluable(fix.annotation, self.settings.known):
             return offence
         return replace(offence, edit=fix._replace(annotation=_quoted(fix.annotation)))
 

@@ -198,7 +198,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
-          python-version: "3.12" # the `corpus` group's django needs 3.12+
+          python-version: "3.14" # as RUNS.md is measured: the newest standard library, which has the most to fix
           group: corpus
       # Against the runner's standard library, or one pinned real package (`pyproject.toml`'s
       # `corpus` group: a web framework, an ORM, a runtime-validation library, a data library), or

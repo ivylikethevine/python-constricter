@@ -48,10 +48,27 @@ in a function or module body:
   `os.getenv("X", 3)` a `str | int`, `re.compile("x")` a `re.Pattern[str]` (its type variable bound
   by the argument), `parser.parse_args()` an `argparse.Namespace`, and on a `re.Pattern[str]`,
   `pat.match(s)` a `re.Match[str] | None` (the class's type parameter bound by the receiver's type).
-  Only when that's certain: every signature that may be the one (not certainly refusing the
-  arguments, up to the first that certainly takes them) gives the same type, on every platform and
-  version. An argument's type counts only if it's a builtin scalar (`str`, `bytes`, `int`, a
-  literal, `None`, ...); a call unpacking `*args` or `**kwargs` isn't typed;
+  A generic class's constructor is read the same way, from its `__new__` or `__init__`:
+  `collections.deque(names)` with `names: list[str]` is a `collections.deque[str]`,
+  `itertools.product(a, b)` an `itertools.product[tuple[str, int]]`, `array.array("i")` an
+  `array.array[int]`, `weakref.ref(obj)` a `weakref.ReferenceType[Foo]`. Only when that's certain:
+  every signature that may be the one (not certainly refusing the arguments, up to the first that
+  certainly takes them) gives the same type, on every platform and version, with every type variable
+  bound (`collections.deque()` isn't typed). An argument binds a type variable by its type: a
+  builtin scalar (`str`, `bytes`, `int`, a literal, `None`, ...) wherever the parameter takes it;
+  any other type only where the parameter is nothing but an unbounded type variable
+  (`copy.copy(obj)` is a `Foo`); a builtin container (`list[str]`, `dict[str, int]`'s keys,
+  `tuple[str, ...]`) or a `str` by its element, where the parameter is a generic class of one
+  (`Iterable[_T]`); a scalar by its method's return, where the parameter is a generic protocol
+  (`math.floor(x)` is an `int` for a `float`, by `float.__floor__`); and a function by its declared
+  return, where the parameter is a `Callable[..., _T]` (`functools.partial(helper, 1)` is a
+  `functools.partial[str]`). Two arguments binding one differently leave the call alone
+  (`itertools.chain(names, ids)`), as does unpacking `*args` or `**kwargs`. At module level, where
+  an annotation is evaluated when the module runs, a class some supported Python can't subscript at
+  run time is quoted (`counter: "itertools.count[int]"`), unless the module has
+  `from __future__ import annotations`;
+- a generic standard-library class's own attribute or property, by the receiver's type arguments:
+  `m.string` on an `re.Match[str]` is a `str`, `p.pattern` on an `re.Pattern[bytes]` a `bytes`;
 - `open(path, mode)` (or `io.open`), by its literal mode (`r` when there's none): a text mode gives
   an `io.TextIOWrapper`, a binary one an `io.BufferedReader` to read, an `io.BufferedWriter` to
   write, and an `io.BufferedRandom` for both (`+`). Not unbuffered (`buffering`, which gives an

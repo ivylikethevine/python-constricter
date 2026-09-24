@@ -31,13 +31,22 @@ class Accepts(TypedDict, total=False):
     `v`: a verdict (`y`, `n`, `?`) per `overloads.SCALARS` type, for an argument that isn't a
     literal; `c`: for a literal not among `lit` (its `Literal[...]` values), where that differs;
     `var`: the type variable the parameter is, and its type, for an argument of each type; or just
-    its name, where each binds it to its own type (a `str` literal's `str`).
+    its name, where each binds it to its own type (a `str` literal's `str`). `t`: the type variable
+    the parameter is, unbounded, so any argument binds it to its own type (`copy.copy(x)`). `e`, for
+    a parameter that is a generic class of one type variable (`Iterable[_T]`): that variable, which
+    an argument of a builtin container in `of` (`list[str]`) binds to its type argument at that index.
+    `r`: the type variable a callable parameter returns (`Callable[..., _T]`), which a function
+    argument binds to its declared return (`functools.partial(helper, 1)`).
     """
 
     v: Required[str]
     c: str
     lit: list[Constant]
     var: str | dict[str, list[str]]
+    t: str
+    e: str
+    of: dict[str, int]
+    r: str
 
 
 # A parameter: its name, kind (`p` positional, `e` either, `k` keyword, `a` `*args`, `w` `**kwargs`),
@@ -97,6 +106,12 @@ _METHOD_OVERLOADS: Final = cast("_Own", _table("method_overloads"))  # by name, 
 # Each generic class's type parameters, in order, comma-separated: an instance's type binds them.
 # One ending `=` has a default (PEP 696): a class all of whose have one may be written bare.
 _TYPE_PARAMETERS: Final = cast("Mapping[str, str]", _table("type_parameters"))
+# The generic classes every Python can subscript at run time (`itertools.chain[str]`, not
+# `itertools.count[int]`), as a module's own annotations are evaluated.
+_SUBSCRIPTABLE: Final = cast("Mapping[str, str]", _table("subscriptable"))
+# Each generic class's own attributes and properties, as templates naming its type parameters
+# (`re.Match`'s `string`: `AnyStr`), which its instance's type arguments bind.
+_GENERIC_ATTRIBUTES: Final = cast("_Own", _table("generic_attributes"))
 
 
 @cache
@@ -239,28 +254,63 @@ def overloaded_method(receiver: str, name: str, known: Known) -> Method | None:
       It, or `None` if the receiver isn't such a class or the method isn't such a method.
 
     """
-    root: ast.expr = _parsed(receiver)
-    args: list[ast.expr] = []
-    if isinstance(root, ast.Subscript):
-        args = list(root.slice.elts) if isinstance(root.slice, ast.Tuple) else [root.slice]
-        root = root.value
-    path: str | None = _path(root, known)
+    path: str | None
+    args: list[ast.expr]
+    path, args = _receiver(receiver, known)
     entry: str | None = None if path is None else _member(_METHOD_OVERLOADS, path, name)
     if path is None or entry is None:
         return None
     texts: list[str] = [ast.unparse(arg) for arg in args]
-    params: list[str] = [param.rstrip("=") for param in _TYPE_PARAMETERS.get(path, "").split(",") if param]
     builtin: bool = all(
         isinstance(node, ast.Name) and node.id in _BUILTIN_NAMES and known.is_builtin(node.id)
         for arg in args
         for node in ast.walk(arg)
         if isinstance(node, ast.Name | ast.Attribute)
     )
-    return Method(
-        entry,
-        texts if args and builtin else None,
-        dict(zip(params, texts, strict=True)) if args and len(params) == len(args) else {},
-    )
+    return Method(entry, texts if args and builtin else None, _bound(path, texts))
+
+
+def generic_attribute(receiver: str, name: str, known: Known) -> tuple[str, str, dict[str, str]] | None:
+    """Find a generic class's own attribute or property on a receiver of a known type (`re.Match[str]`).
+
+    Returns:
+      Its class's path, its template (see `_GENERIC_ATTRIBUTES`), and the class's type parameters
+      bound to the receiver's type arguments as the module spells them; or `None`.
+
+    """
+    path: str | None
+    args: list[ast.expr]
+    path, args = _receiver(receiver, known)
+    template: str | None = None if path is None else _GENERIC_ATTRIBUTES.get(path, {}).get(name)
+    if path is None or template is None:
+        return None
+    return path, template, _bound(path, [ast.unparse(arg) for arg in args])
+
+
+def _receiver(receiver: str, known: Known) -> tuple[str | None, list[ast.expr]]:
+    """Resolve a receiver's annotation to its class's path, and its type arguments (`re.Match[str]`'s `str`).
+
+    Returns:
+      The path (`None` if it's no standard-library class the module can name), and the arguments.
+
+    """
+    root: ast.expr = _parsed(receiver)
+    args: list[ast.expr] = []
+    if isinstance(root, ast.Subscript):
+        args = list(root.slice.elts) if isinstance(root.slice, ast.Tuple) else [root.slice]
+        root = root.value
+    return _path(root, known), args
+
+
+def _bound(path: str, texts: list[str]) -> dict[str, str]:
+    """Bind a generic class's type parameters to an instance's type arguments, if it gives them all.
+
+    Returns:
+      Each parameter's argument, by name; none if they don't match.
+
+    """
+    params: list[str] = [param.rstrip("=") for param in _TYPE_PARAMETERS.get(path, "").split(",") if param]
+    return dict(zip(params, texts, strict=True)) if texts and len(params) == len(texts) else {}
 
 
 def generics(bound: Mapping[str, str]) -> frozenset[str]:
@@ -292,6 +342,21 @@ def _generic_paths(origin: str) -> tuple[str, ...]:
         if (path == origin or path.startswith(f"{origin}."))
         and not all(param.endswith("=") for param in params.split(","))
     )
+
+
+def evaluable(annotation: str, known: Known) -> bool:
+    """Check that an annotation subscripts no standard-library class that can't be at run time.
+
+    Returns:
+      Whether it can be evaluated (as a module's annotations are) without that `TypeError`.
+
+    """
+    node: ast.AST
+    for node in ast.walk(_parsed(annotation)):
+        path: str | None = _path(node.value, known) if isinstance(node, ast.Subscript) else None
+        if path in _TYPE_PARAMETERS and path not in _SUBSCRIPTABLE:
+            return False
+    return True
 
 
 def _class_path(receiver: str, known: Known) -> str | None:

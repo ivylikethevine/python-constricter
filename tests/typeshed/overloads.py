@@ -8,7 +8,8 @@ and which argument types it certainly takes or refuses; and the return, as a tem
 
 Argument types are the builtin scalars in `SCALARS`, `LiteralString` standing for a `str` literal.
 A parameter every overload declares the same way takes whatever a call passes it (a call matching
-none is an error anyway), so only the parameters that tell the overloads apart are read. A return
+none is an error anyway), so only the parameters that tell the overloads apart, or bind a type
+variable, are read. A return
 template is an annotation with standard-library classes by their dotted paths (`re.Pattern[AnyStr]`)
 and type variables by their bare names, which the call's arguments bind.
 """
@@ -19,8 +20,40 @@ from collections.abc import Iterable, Iterator, Sequence
 from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.stdlib import Accepts, Constant, Parameter, Signature
-from tests.typeshed.reading import ARITY, TYPING_GENERICS, ClassRef, Defs, Reading, readable, usable
-from tests.typeshed.stubs import Alias, Binding, Found, Function, Klass, TypeVariable, decorator_name
+from tests.typeshed.reading import (
+    ClassRef,
+    Defs,
+    Reading,
+    readable,
+    substituted,
+)
+from tests.typeshed.stubs import (
+    Alias,
+    Binding,
+    Found,
+    Function,
+    Klass,
+    TypeVariable,
+    Variable,
+    decorator_name,
+    private,
+)
+from tests.typeshed.templates import (
+    BUILTINS,
+    LITERAL,
+    LITERAL_STRING,
+    MAX_DEPTH,
+    NONE,
+    OBJECT,
+    OPTIONAL,
+    STR,
+    TYPING,
+    UNIONS,
+    Templates,
+    literal_values,
+    parsed,
+    type_name,
+)
 
 SCALARS: Final = ("str", "LiteralString", "bytes", "bytearray", "int", "float", "complex", "bool", "None")
 YES: Final = "y"
@@ -31,20 +64,9 @@ EITHER: Final = "e"  # positional or keyword
 KEYWORD: Final = "k"  # keyword only
 STAR: Final = "a"  # `*args`
 STARS: Final = "w"  # `**kwargs`
-_BUILTINS: Final = "builtins"
-_TYPING: Final = frozenset({"typing", "typing_extensions", "_typeshed"})
-_STR: Final = "str"
-_LITERAL_STRING: Final = "LiteralString"
-_NONE: Final = "None"
-_OBJECT: Final = "object"
 _ANY: Final = frozenset({"Any", "Incomplete"})
 _REFUSING: Final = frozenset({"Callable", "Type", "type"})  # no scalar is a callable or a class
-_OPTIONAL: Final = "Optional"
-_UNIONS: Final = frozenset({_OPTIONAL, "Union"})
-_LITERAL: Final = "Literal"
 _ANNOTATED: Final = "Annotated"
-_GUARDS: Final = frozenset({"TypeGuard", "TypeIs"})
-_CONTAINERS: Final = frozenset({*ARITY, "tuple"})  # the builtin generics a return may use
 # A builtin scalar a parameter of another builtin type takes all the same (numbers widened).
 _PROMOTED: Final = {
     ("int", "float"),
@@ -54,12 +76,9 @@ _PROMOTED: Final = {
     ("bool", "complex"),
 }
 # The class an argument of each type is an instance of (`None`'s, `object`, less what it doesn't have).
-_CLASSES: Final = {"LiteralString": _STR, "None": _OBJECT}
-_MAX_DEPTH: Final = 20
-_DECLARING: Final = frozenset({"Generic", "Protocol"})  # a base that lists a class's type parameters
+_CLASSES: Final = {"LiteralString": STR, "None": OBJECT}
 # Methods whose calls aren't an instance's plain ones: read as attributes, or on the class.
 _NOT_METHODS: Final = frozenset({"property", "cached_property", "classmethod", "staticmethod"})
-_UNWRITTEN: Final = frozenset({_OBJECT, "type", "function", "ellipsis"})  # vague, or internal
 # What a protocol's body binds that isn't a member its instances need (`typing`'s own protocols'
 # `__slots__ = ()`).
 _MACHINERY: Final = frozenset({"__slots__", "__init__", "__new__", "__class_getitem__", "__init_subclass__"})
@@ -67,6 +86,13 @@ _ATOM_NONE: Final = "none"
 _ATOM_LITERAL: Final = "literal"
 _ATOM_FOUND: Final = "found"
 _ATOM_UNKNOWN: Final = "unknown"
+_SELF_TYPE: Final = "Self"
+_CALLABLE: Final = "Callable"
+_PROPERTIES: Final = frozenset({"property", "cached_property"})
+_INIT: Final = "__init__"
+_NEW: Final = "__new__"
+# The builtin containers whose element an argument of the type binds a parameter's type variable to.
+CONTAINERS: Final = ("list", "tuple", "set", "frozenset", "dict")
 
 
 class Atom(NamedTuple):
@@ -92,13 +118,21 @@ class Verdicts(NamedTuple):
 
     `values`: for a variable argument; `constants`: for a literal argument not among `literals`
     (the values of its `Literal[...]` members), if they differ; `binds`: the type variable the
-    parameter is, and what an argument of each type binds it to.
+    parameter is, and what an argument of each type binds it to. `anything`: the type variable the
+    parameter is, if it's unbounded, which any argument binds to its own type; `elements`: for a
+    parameter that is a generic class of one type variable (`Iterable[_T]`), that variable, and which
+    type argument of each builtin container in `CONTAINERS` taking it binds it (`dict`'s keys: 0);
+    `returned`: for a callable returning an unbounded type variable (`Callable[..., _T]`), that
+    variable, which a function argument binds to its declared return.
     """
 
     values: str
     constants: str | None = None
     literals: tuple[Constant, ...] | None = None
     binds: dict[str, tuple[str, str]] | None = None
+    anything: str | None = None
+    elements: tuple[str, dict[str, int]] | None = None
+    returned: str | None = None
 
 
 def parameters(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[Param]:
@@ -144,7 +178,7 @@ def _binding(binds: dict[str, tuple[str, str]]) -> str | dict[str, list[str]]:
     """
     names: set[str] = {name for name, _ in binds.values()}
     own: bool = len(binds) == len(SCALARS) and all(
-        text == (_STR if scalar == _LITERAL_STRING else scalar) for scalar, (_, text) in binds.items()
+        text == (STR if scalar == LITERAL_STRING else scalar) for scalar, (_, text) in binds.items()
     )
     return names.pop() if own and len(names) == 1 else {kind: list(bound) for kind, bound in binds.items()}
 
@@ -192,13 +226,12 @@ def _key(parameter: Param) -> _Key:
     return parameter.name, parameter.kind, parameter.default, annotation
 
 
-class Overloads:
+class Overloads(Templates):
     """Signatures read for `--fix` to pick among, as one configuration sees the stubs."""
 
     def __init__(self, reading: Reading, canonical: dict[ClassRef, str]) -> None:
         """Read with `reading`; `canonical`: every public class's path, generic ones too."""
-        self.reading: Reading = reading
-        self.canonical: dict[ClassRef, str] = canonical
+        super().__init__(reading, canonical)
         self._names: dict[str, frozenset[str] | None] = {}
 
     def entry(
@@ -206,10 +239,13 @@ class Overloads:
         defs: Defs,
         module: str,
         selves: Sequence[ast.expr | None] = (),
+        constructed: str | None = None,
     ) -> list[Signature] | None:
         """Read a function's signatures, in order, as the `overloads` table holds them.
 
-        `selves`: a method's (read without `self`) each signature's `self` annotation, if any.
+        `selves`: a method's (read without `self`) each signature's `self` annotation, if any;
+        `constructed`: for a class's `__new__` or `__init__`, the template its instance is, which a
+        signature returning `Self` (or `__init__`'s) returns.
 
         Returns:
           Each one's parameters (`[name, kind, default, accepts]`, or `"name kind="` where every
@@ -229,15 +265,111 @@ class Overloads:
         index: int
         for index, (node, one) in enumerate(zip(defs, each, strict=True)):
             params: list[Parameter | str] = [
-                _shared(p) if _key(p) in shared else (p.name, p.kind, p.default, self._accepted(p, module))
+                _shared(p)
+                if _key(p) in shared and not self._variable_in(p.annotation, module)
+                else (p.name, p.kind, p.default, self._accepted(p, module))
                 for p in one
             ]
-            signature: Signature = Signature(params=params, returns=self.template(node.returns, module))
+            signature: Signature = Signature(
+                params=params,
+                returns=constructed
+                if constructed is not None and (node.name == _INIT or self._is_self(node.returns, module))
+                else self.template(node.returns, module),
+            )
             instance: list[str] | None
             if index < len(selves) and (instance := self._instance(selves[index], module)) is not None:
                 signature["self"] = instance
             found.append(signature)
         return found if any(signature["returns"] is not None for signature in found) else None
+
+    def constructor(self, klass: ClassRef) -> list[Signature] | None:
+        """Read a generic class's constructor as a function returning its instance, typed by its arguments.
+
+        Its `__new__`'s signatures, or its `__init__`'s, whichever its method resolution order has
+        (not both: which decides would be a type checker's call), each returning the class with its
+        type parameters as the arguments bind them (`deque(names)`: `collections.deque[str]`), or the
+        instance a `__new__` overload declares (`array("i")`: `array.array[int]`).
+
+        Returns:
+          The signatures (see `entry`), or `None` for a protocol, a class whose order can't be worked
+          out, one with neither or both, or an `__init__` declaring `self`'s type.
+
+        """
+        node: ast.ClassDef | None = self.reading.class_node(klass)
+        params: list[str] | None = self.type_parameters(klass)
+        classes: list[ClassRef]
+        whole: bool
+        classes, whole = self.reading.trusted(klass)
+        if (
+            node is None
+            or klass not in self.canonical  # a builtin (`memoryview`), typed apart
+            or not params
+            or not whole
+            or self.reading.is_protocol(node, klass.module)
+        ):
+            return None
+        found: dict[str, tuple[Function, ClassRef]] = {}
+        owner: ClassRef
+        for owner in classes:
+            name: str
+            binding: Binding
+            for name, binding in self.reading.body(owner).items():
+                if name in {_NEW, _INIT} and isinstance(binding, Function):
+                    _ = found.setdefault(name, (binding, owner))
+        if len(found) != 1:
+            return None
+        function: Function
+        name, (function, owner) = next(iter(found.items()))
+        if name == _INIT and any(_self(node) is not None for node in function.defs):
+            return None
+        template: str = f"{self.canonical[klass]}[{', '.join(param.rstrip('=') for param in params)}]"
+        return self.entry(tuple(_unbound(node) for node in function.defs), owner.module, (), template)
+
+    def _variable_in(self, annotation: ast.expr | None, module: str) -> bool:
+        """Check whether a parameter's annotation names a type variable, which its argument may bind.
+
+        Returns:
+          Whether it does.
+
+        """
+        return annotation is not None and bool(self._variables(annotation, module))
+
+    def attributes(self, klass: ClassRef) -> dict[str, str]:
+        """Read a generic class's own attributes and properties, as templates its type arguments bind.
+
+        `re.Match`'s `string` is its `AnyStr`, `pos` an `int`. Only its own body's: a generic base's
+        members name that base's type parameters.
+
+        Returns:
+          Each one's template, by name (one that can't be written left out).
+
+        """
+        found: dict[str, str] = {}
+        name: str
+        binding: Binding
+        annotation: ast.expr
+        defs: Defs
+        for name, binding in self.reading.body(klass).items():
+            written: ast.expr | None = None
+            match binding:
+                case Variable(annotation=annotation) if not private(name):
+                    written = annotation
+                case Function(defs=defs) if (
+                    not private(name)
+                    and len(defs) == 1
+                    and _PROPERTIES & {decorator_name(d) for d in defs[0].decorator_list}
+                ):
+                    written = defs[0].returns
+                case _:
+                    pass
+            template: str | None
+            if (template := None if written is None else self.template(written, klass.module)) is not None:
+                found[name] = template
+        return found
+
+    def _is_self(self, annotation: ast.expr | None, module: str) -> bool:
+        found: Found | None = None if annotation is None else self.reading.ref(annotation, module)
+        return found is not None and found.module in TYPING and found.name == _SELF_TYPE
 
     def methods(
         self,
@@ -292,48 +424,6 @@ class Overloads:
             return None
         return [text for text in texts if text is not None]
 
-    def type_parameters(self, klass: ClassRef) -> list[str] | None:
-        """Name a generic class's type parameters, in order.
-
-        Its `Generic[...]`'s (or `Protocol[...]`'s), else the type variables its bases' arguments
-        name, as they first appear.
-
-        Returns:
-          Their names, or `None` if it isn't a class here.
-
-        """
-        node: ast.ClassDef | None
-        if (node := self.reading.class_node(klass)) is None:
-            return None
-        base: ast.expr
-        for base in node.bases:
-            found: Found | None
-            if (
-                isinstance(base, ast.Subscript)
-                and (found := self.reading.ref(base.value, klass.module)) is not None
-                and found.module in _TYPING
-                and found.name in _DECLARING
-            ):
-                return self._variables(base.slice, klass.module)
-        return list(
-            dict.fromkeys(name for base in node.bases for name in self._variables(base, klass.module)),
-        )
-
-    def _variables(self, expr: ast.expr, module: str) -> list[str]:
-        """Name the type variables an expression names, in order, one with a default marked `=` (`_T=`).
-
-        Returns:
-          Them.
-
-        """
-        names: list[ast.Name] = [node for node in ast.walk(expr) if isinstance(node, ast.Name)]
-        found: list[Found | None] = [self.reading.ref(node, module) for node in names]
-        return [
-            node.id + ("=" if target.binding.default else "")
-            for node, target in zip(names, found, strict=True)
-            if target is not None and isinstance(target.binding, TypeVariable)
-        ]
-
     def _accepted(self, parameter: Param, module: str) -> Accepts:
         """Write what a parameter takes as the tables hold it.
 
@@ -353,6 +443,12 @@ class Overloads:
             found["lit"] = list(verdicts.literals)
         if verdicts.binds:
             found["var"] = _binding(verdicts.binds)
+        if verdicts.anything is not None:
+            found["t"] = verdicts.anything
+        if verdicts.elements is not None:
+            found["e"], found["of"] = verdicts.elements
+        if verdicts.returned is not None:
+            found["r"] = verdicts.returned
         return found
 
     def accepts(self, annotation: ast.expr, module: str) -> Verdicts:
@@ -372,12 +468,169 @@ class Overloads:
             bound: tuple[str, str] | None
             if (bound := self._binds(atoms, scalar)) is not None:
                 binds[scalar] = bound
+        # A scalar that is one (`str`, an `Iterable[str]`; `float`, a `_SupportsFloor[int]`) binds it.
+        of: tuple[ClassRef, str] | None
+        if (of := self._of_one(annotation, module)) is not None:
+            taken: list[bool] = []
+            for scalar in SCALARS:
+                element: str | None = self._scalar_element(scalar, of[0])
+                taken.append(element is not None)
+                if element is not None:
+                    binds[scalar] = (of[1], element)
+            values = "".join(YES if yes else verdict for yes, verdict in zip(taken, values, strict=True))
+            constants = "".join(
+                YES if yes else verdict for yes, verdict in zip(taken, constants, strict=True)
+            )
         return Verdicts(
             values,
             constants if literals and constants != values else None,
             tuple(literals) if literals else None,
             binds or None,
+            _unbounded(atoms),
+            None if of is None else self._container_elements(*of),
+            self._callable_return(annotation, module),
         )
+
+    def _callable_return(self, annotation: ast.expr, module: str) -> str | None:
+        """Name the unbounded type variable a callable parameter returns (`Callable[..., _T]`'s `_T`).
+
+        Returns:
+          Its name, or `None` for any other parameter.
+
+        """
+        callee: ast.expr
+        returned: ast.expr
+        match annotation:
+            case ast.Subscript(value=callee, slice=ast.Tuple(elts=[_, returned])):
+                pass
+            case _:
+                return None
+        found: Found | None = self.reading.ref(callee, module)
+        if found is None or found.name != _CALLABLE:
+            return None
+        return _unbounded(list(self._atoms(returned, module, 1)))
+
+    def _of_one(self, annotation: ast.expr, module: str) -> tuple[ClassRef, str] | None:
+        """Read a parameter that is a generic class of one unbounded type variable (`Iterable[_T]`).
+
+        Returns:
+          The class, and the variable's name; or `None`.
+
+        """
+        if not isinstance(annotation, ast.Subscript) or isinstance(annotation.slice, ast.Tuple):
+            return None
+        found: Found | None = self.reading.ref(annotation.value, module)
+        inner: list[Atom] = list(self._atoms(annotation.slice, module, 1))
+        name: str | None = _unbounded(inner)
+        if found is None or not isinstance(found.binding, Klass) or name is None:
+            return None
+        return ClassRef(found.module, found.name), name
+
+    def _scalar_element(self, scalar: str, generic: ClassRef) -> str | None:
+        """Find what a builtin scalar that is a `generic` (`str`, an `Iterable[str]`) binds its variable to.
+
+        Returns:
+          That type, if it's a builtin scalar (`bytes`' `int`); or `None`.
+
+        """
+        builtin: ClassRef = ClassRef(BUILTINS, _CLASSES.get(scalar, scalar))
+        found: list[str] | None = self.base_arguments(builtin, generic)
+        protocol: str | None = None if found is not None else self._protocol_element(scalar, generic)
+        found = found if protocol is None else [protocol]
+        return found[0] if found is not None and len(found) == 1 and found[0] in SCALARS else None
+
+    def _protocol_element(self, scalar: str, protocol: ClassRef) -> str | None:
+        """Find what a scalar that has a generic protocol's members binds its one type parameter to.
+
+        By the methods returning it (`_SupportsFloor[_T]`'s `__floor__`), as the scalar's class
+        declares them (`float.__floor__` returns an `int`).
+
+        Returns:
+          That type, if every such method returns the same; or `None`.
+
+        """
+        node: ast.ClassDef | None = self.reading.class_node(protocol)
+        params: list[str] = [param.rstrip("=") for param in self.type_parameters(protocol) or []]
+        if (
+            node is None
+            or len(params) != 1
+            or not self.reading.is_protocol(node, protocol.module)
+            or self._structural(protocol, scalar) != YES
+        ):
+            return None
+        owners: list[ClassRef] = self.reading.trusted(ClassRef(BUILTINS, _CLASSES.get(scalar, scalar)))[0]
+        found: set[str | None] = set()
+        name: str
+        binding: Binding
+        for name, binding in self.reading.body(protocol).items():
+            returns: ast.expr | None = binding.defs[0].returns if isinstance(binding, Function) else None
+            if returns is None or self._spelled(returns, protocol.module, 0) != params[0]:
+                continue
+            method: Binding | None = next(
+                (body[name] for body in (self.reading.body(owner) for owner in owners) if name in body),
+                None,
+            )
+            found.update(
+                {self.template(d.returns, BUILTINS) for d in method.defs}
+                if isinstance(method, Function)
+                else {None},
+            )
+        return found.pop() if len(found) == 1 else None
+
+    def _container_elements(self, generic: ClassRef, variable: str) -> tuple[str, dict[str, int]] | None:
+        """Find which type argument of each builtin container that is a `generic` binds its variable.
+
+        Returns:
+          The variable, and each such container's index (`list`'s 0, `dict`'s keys' 0); or `None` if
+          none is.
+
+        """
+        found: dict[str, int] = {}
+        container: str
+        for container in CONTAINERS:
+            klass: ClassRef = ClassRef(BUILTINS, container)
+            params: list[str] = [param.rstrip("=") for param in self.type_parameters(klass) or []]
+            arguments: list[str] | None = self.base_arguments(klass, generic)
+            if arguments is not None and len(arguments) == 1 and arguments[0] in params:
+                found[container] = params.index(arguments[0])
+        return (variable, found) if found else None
+
+    def base_arguments(self, klass: ClassRef, base: ClassRef, hops: int = 0) -> list[str] | None:
+        """Spell the type arguments `klass` gives an ancestor (`list` gives `Iterable` its own `_T`).
+
+        Through its bases' arguments, each class's type parameters replaced by what its subclass
+        passes them.
+
+        Returns:
+          Them, in terms of `klass`'s own type parameters; or `None` if it isn't an ancestor, or an
+          argument can't be spelled.
+
+        """
+        node: ast.ClassDef | None = self.reading.class_node(klass)
+        if node is None or hops > MAX_DEPTH:
+            return None
+        written: ast.expr
+        for written in node.bases:
+            value: ast.expr = written.value if isinstance(written, ast.Subscript) else written
+            found: Found | None = self.reading.ref(value, klass.module)
+            if found is None or not isinstance(found.binding, Klass):
+                continue
+            parent: ClassRef = ClassRef(found.module, found.name)
+            args: list[ast.expr] = []
+            if isinstance(written, ast.Subscript):
+                index: ast.expr = written.slice
+                args = list(index.elts) if isinstance(index, ast.Tuple) else [index]
+            texts: list[str | None] = [self._spelled(arg, klass.module, 0) for arg in args]
+            if None in texts:
+                continue
+            spelled: list[str] = [text for text in texts if text is not None]
+            if parent == base:
+                return spelled
+            above: list[str] | None
+            if (above := self.base_arguments(parent, base, hops + 1)) is not None:
+                params: list[str] = [param.rstrip("=") for param in self.type_parameters(parent) or []]
+                return [substituted(text, dict(zip(params, spelled, strict=False))) for text in above]
+        return None
 
     def _atoms(self, expr: ast.expr, module: str, hops: int) -> Iterator[Atom]:
         """Split an annotation into its union's members, through aliases, `Optional`, `Union`, strings.
@@ -390,14 +643,14 @@ class Overloads:
         left: ast.expr
         right: ast.expr
         text: str
-        if hops > _MAX_DEPTH:
+        if hops > MAX_DEPTH:
             yield Atom(_ATOM_UNKNOWN)
             return
         match expr:
             case ast.Constant(value=None):
                 yield Atom(_ATOM_NONE)
             case ast.Constant(value=str() as text):
-                yield from self._atoms(_parsed(text), module, hops + 1)
+                yield from self._atoms(parsed(text), module, hops + 1)
             case ast.BinOp(left=left, op=ast.BitOr(), right=right):
                 yield from self._atoms(left, module, hops + 1)
                 yield from self._atoms(right, module, hops + 1)
@@ -417,13 +670,13 @@ class Overloads:
         args: list[ast.expr] = list(expr.slice.elts) if isinstance(expr.slice, ast.Tuple) else [expr.slice]
         if found is None:
             yield Atom(_ATOM_UNKNOWN)
-        elif found.module in _TYPING and found.name in _UNIONS:
-            members: list[ast.expr] = [*args, *([ast.Constant(None)] if found.name == _OPTIONAL else [])]
+        elif found.module in TYPING and found.name in UNIONS:
+            members: list[ast.expr] = [*args, *([ast.Constant(None)] if found.name == OPTIONAL else [])]
             yield from (atom for member in members for atom in self._atoms(member, module, hops + 1))
-        elif found.module in _TYPING and found.name == _LITERAL:
-            constants: list[Constant] = _constants(args)
+        elif found.module in TYPING and found.name == LITERAL:
+            constants: list[Constant] = literal_values(args)
             yield Atom(_ATOM_LITERAL, literals=tuple(constants))
-        elif found.module in _TYPING and found.name == _ANNOTATED:
+        elif found.module in TYPING and found.name == _ANNOTATED:
             yield from self._atoms(args[0], module, hops + 1)
         elif isinstance(found.binding, Alias):  # a generic alias: taken whole, its parameters unread
             yield from (
@@ -447,10 +700,10 @@ class Overloads:
 
     def _atom(self, atom: Atom, scalar: str, *, constant: bool) -> str:
         if atom.kind == _ATOM_NONE:
-            return YES if scalar == _NONE else NO
+            return YES if scalar == NONE else NO
         if atom.kind == _ATOM_LITERAL:
-            types: set[str] = {_type_name(value) for value in atom.literals}
-            matches: bool = scalar in types or (scalar == _LITERAL_STRING and _STR in types)
+            types: set[str] = {type_name(value) for value in atom.literals}
+            matches: bool = scalar in types or (scalar == LITERAL_STRING and STR in types)
             return NO if constant or not matches else MAYBE  # a literal among them is matched apart
         if atom.found is not None:
             return self._found(atom.found, scalar, subscripted=atom.subscripted)
@@ -463,11 +716,11 @@ class Overloads:
           The verdict.
 
         """
-        if found.module in _TYPING and found.name in _ANY:
+        if found.module in TYPING and found.name in _ANY:
             return YES
-        if found.module in _TYPING and found.name == _LITERAL_STRING:
-            return YES if scalar == _LITERAL_STRING else NO
-        if found.module in _TYPING and found.name in _REFUSING:
+        if found.module in TYPING and found.name == LITERAL_STRING:
+            return YES if scalar == LITERAL_STRING else NO
+        if found.module in TYPING and found.name in _REFUSING:
             return NO
         if isinstance(found.binding, TypeVariable):
             return self._type_variable(found.binding, found.module, scalar)
@@ -487,8 +740,8 @@ class Overloads:
         """
         klass: ClassRef = ClassRef(found.module, found.name)
         node: ast.ClassDef | None = self.reading.class_node(klass)
-        if klass == ClassRef(_BUILTINS, _OBJECT) or (
-            klass.module == _BUILTINS and (scalar, klass.name) in _PROMOTED
+        if klass == ClassRef(BUILTINS, OBJECT) or (
+            klass.module == BUILTINS and (scalar, klass.name) in _PROMOTED
         ):
             return YES
         verdict: str = (
@@ -525,7 +778,7 @@ class Overloads:
         variable: Binding = found.binding
         if not isinstance(variable, TypeVariable) or self._atom(taking[0], scalar, constant=False) != YES:
             return None
-        widened: str = _STR if scalar == _LITERAL_STRING else scalar
+        widened: str = STR if scalar == LITERAL_STRING else scalar
         if not variable.constraints:
             return found.name, widened
         texts: set[str | None] = {
@@ -543,10 +796,10 @@ class Overloads:
           The verdict (`MAYBE` if the scalar's class's order can't be worked out).
 
         """
-        if scalar == _NONE:
+        if scalar == NONE:
             return NO
         order: list[ClassRef] | None
-        if (order := self.reading.mro(ClassRef(_BUILTINS, _CLASSES.get(scalar, scalar)))) is None:
+        if (order := self.reading.mro(ClassRef(BUILTINS, _CLASSES.get(scalar, scalar)))) is None:
             return MAYBE
         return YES if klass in order else NO
 
@@ -590,11 +843,11 @@ class Overloads:
         if name not in self._names:
             classes: list[ClassRef]
             whole: bool
-            classes, whole = self.reading.trusted(ClassRef(_BUILTINS, name))
+            classes, whole = self.reading.trusted(ClassRef(BUILTINS, name))
             self._names[name] = (
                 frozenset(
                     member
-                    for owner in (*classes, ClassRef(_BUILTINS, _OBJECT))
+                    for owner in (*classes, ClassRef(BUILTINS, OBJECT))
                     for member in self.reading.body(owner)
                 )
                 if whole
@@ -602,179 +855,16 @@ class Overloads:
             )
         return self._names[name]
 
-    def template(self, expr: ast.expr | None, module: str, hops: int = 0) -> str | None:
-        """Spell a return annotation as a template: builtins, classes' dotted paths, type variables' names.
 
-        Returns:
-          It, or `None` if it can't be written (`Any`, `Self`, a class with no public path) or
-          `--fix` shouldn't write it (vague, too deep, `None` alone).
-
-        """
-        found: str | None = None if expr is None else self._spelled(expr, module, hops)
-        return found if found is not None and usable(found) else None
-
-    def _spelled(self, expr: ast.expr, module: str, hops: int) -> str | None:
-        left: ast.expr
-        right: ast.expr
-        text: str
-        found: str | None = None
-        match expr:
-            case _ if hops > _MAX_DEPTH:
-                pass
-            case ast.Constant(value=None):
-                found = _NONE
-            case ast.Constant(value=str() as text):
-                found = self._spelled(_parsed(text), module, hops + 1)
-            case ast.BinOp(left=left, op=ast.BitOr(), right=right):
-                found = self._union([left, right], module, hops)
-            case ast.Subscript():
-                found = self._spelled_subscript(expr, module, hops)
-            case ast.Name() | ast.Attribute():
-                target: Found | None = self.reading.ref(expr, module)
-                found = None if target is None else self._spelled_name(target, hops)
-            case _:
-                pass
-        return found
-
-    def _union(self, parts: Sequence[ast.expr], module: str, hops: int) -> str | None:
-        spelled: list[str | None] = [self._spelled(part, module, hops + 1) for part in parts]
-        return None if None in spelled else _joined([part for part in spelled if part is not None])
-
-    def _spelled_name(self, found: Found, hops: int) -> str | None:
-        value: ast.expr
-        if found.module in _TYPING and found.name == _LITERAL_STRING:
-            return _STR
-        match found.binding:
-            case TypeVariable():
-                return found.name
-            case Alias(value=value):
-                return self._spelled(value, found.module, hops + 1)
-            case Klass():
-                klass: ClassRef = ClassRef(found.module, found.name)
-                if self.reading.generic(klass) or klass.name in _UNWRITTEN:
-                    return None
-                return klass.name if klass.module == _BUILTINS else self.canonical.get(klass)
-            case _:
-                return None
-
-    def _spelled_subscript(self, expr: ast.Subscript, module: str, hops: int) -> str | None:
-        found: Found | None = self.reading.ref(expr.value, module)
-        args: list[ast.expr] = list(expr.slice.elts) if isinstance(expr.slice, ast.Tuple) else [expr.slice]
-        if found is None:
-            return None
-        typing_class: bool = isinstance(found.binding, Klass) and found.name not in TYPING_GENERICS
-        if found.module in _TYPING and found.name not in TYPING_GENERICS and not typing_class:
-            return self._special(found.name, args, module, hops)
-        # `typing`'s own generic classes (`Iterator`) by their public path (`collections.abc.Iterator`).
-        base: str | None = (
-            TYPING_GENERICS.get(found.name)
-            if found.module in _TYPING and not typing_class
-            else self._generic_base(found)
-        )
-        inner: list[str | None] = [
-            "..."
-            if isinstance(arg, ast.Constant) and arg.value is Ellipsis
-            else self._spelled(arg, module, hops + 1)
-            for arg in args
-        ]
-        arity: int | None = ARITY.get(base or "")
-        if base is None or not inner or None in inner or (arity is not None and arity != len(inner)):
-            return None
-        return f"{base}[{', '.join(part for part in inner if part is not None)}]"
-
-    def _special(self, name: str, args: list[ast.expr], module: str, hops: int) -> str | None:
-        """Spell one of `typing`'s subscripted forms in a return: `Optional`, `Union`, `Literal`, a guard.
-
-        Returns:
-          It, or `None` for any other.
-
-        """
-        if name in _UNIONS:
-            return self._union([*args, *([ast.Constant(None)] if name == _OPTIONAL else [])], module, hops)
-        if name == _LITERAL:
-            constants: list[Constant] = _constants(args)
-            return (
-                _joined([_type_name(value) for value in constants]) if len(constants) == len(args) else None
-            )
-        return "bool" if name in _GUARDS else None
-
-    def _generic_base(self, found: Found) -> str | None:
-        """Spell a generic class subscripted in a return: a builtin container, or a class's dotted path.
-
-        Returns:
-          It, or `None`.
-
-        """
-        if not isinstance(found.binding, Klass):
-            return None
-        klass: ClassRef = ClassRef(found.module, found.name)
-        if klass.module == _BUILTINS:
-            return klass.name if klass.name in _CONTAINERS else None
-        return self.canonical.get(klass) if self.reading.generic(klass) else None
-
-
-def _parsed(text: str) -> ast.expr:
-    """Parse a string annotation (a forward reference); one that doesn't parse is `...`, naming nothing.
+def _unbounded(atoms: Sequence[Atom]) -> str | None:
+    """Name the type variable a parameter is, if it's all it is and nothing bounds it (`x: _T`).
 
     Returns:
-      Its expression.
+      Its name, or `None`.
 
     """
-    try:
-        return ast.parse(text, mode="eval").body
-    except SyntaxError:
-        return ast.Constant(...)
-
-
-def _constants(nodes: Sequence[ast.expr]) -> list[Constant]:
-    """Read a `Literal[...]`'s builtin constants (another member, an enum's, is left out).
-
-    Returns:
-      Them.
-
-    """
-    value: Constant
-    found: list[Constant] = []
-    node: ast.expr
-    for node in nodes:
-        match node:
-            case ast.Constant(value=bool() | int() | float() | str() | bytes() | None as value):
-                found.append(value)
-            case _:
-                pass
-    return found
-
-
-def _type_name(value: Constant) -> str:
-    return _NONE if value is None else type(value).__name__
-
-
-def _joined(parts: Sequence[str]) -> str:
-    """Join annotations with `|`, each member once, in order.
-
-    Returns:
-      The union.
-
-    """
-    members: list[str] = []
-    part: str
-    for part in parts:
-        member: str
-        for member in _members(ast.parse(part, mode="eval").body):
-            if member not in members:
-                members.append(member)
-    return " | ".join(members)
-
-
-def _members(expr: ast.expr) -> Iterator[str]:
-    """Walk a union's members (`a | b | c`), not into brackets.
-
-    Yields:
-      Each one's text.
-
-    """
-    if isinstance(expr, ast.BinOp) and isinstance(expr.op, ast.BitOr):
-        yield from _members(expr.left)
-        yield from _members(expr.right)
-    else:
-        yield ast.unparse(expr)
+    found: Found | None = atoms[0].found if len(atoms) == 1 else None
+    variable: Binding | None = None if found is None else found.binding
+    if not isinstance(variable, TypeVariable) or variable.constraints or variable.bound is not None:
+        return None
+    return variable.name

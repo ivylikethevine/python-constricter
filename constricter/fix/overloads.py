@@ -17,11 +17,12 @@ import ast
 import builtins
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from functools import lru_cache
-from typing import Final, NamedTuple, TypeAlias, cast
+from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix import stdlib
 from constricter.fix.known import Inference, Known
 from constricter.fix.stdlib import Accepts, Constant, Parameter
+from constricter.rules.walked import walk
 
 SCALARS: Final = ("str", "LiteralString", "bytes", "bytearray", "int", "float", "complex", "bool", "None")
 _COLUMNS: Final = {scalar: index for index, scalar in enumerate(SCALARS)}
@@ -36,6 +37,12 @@ _STAR: Final = "a"
 _STARS: Final = "w"
 _BUILTINS: Final = frozenset({*dir(builtins), _NONE})
 _KIND: Final = "stdlib"
+_TUPLE: Final = "tuple"
+_ANYTHING: Final = "t"  # `Accepts`' key for a parameter any argument binds
+_RETURNED: Final = "r"  # `Accepts`' key for a callable parameter a function's return binds
+_CALL: Final = "call"  # the fix kind of a declared return
+# The builtin containers whose type arguments bind a parameter's type variable (`Iterable[_T]`'s).
+_CONTAINERS: Final = frozenset({"list", _TUPLE, "set", "frozenset", "dict"})
 _SELF: Final = "self"  # a signature's key for the type arguments its method's instance must have
 _Infer: TypeAlias = Callable[[ast.expr], Inference | None]
 # A signature that may be the one: its return template and its type variables' types (`None`:
@@ -47,12 +54,23 @@ class Argument(NamedTuple):
     """One argument of a call: its type among `SCALARS` (`None` if it's none of them, or unknown).
 
     `constant`: the literal it is, if it is one (in a 1-tuple, as its value may be `None`);
-    `found`: what `--fix` inferred it to be, whose kinds the call's type rests on too.
+    `found`: what `--fix` inferred it to be, whose kinds the call's type rests on too; `elements`:
+    for a builtin container (`list[str]`), its name and type arguments (`tuple[str, ...]`'s `str`);
+    `reads`: the names, attributes and subscripts in it, as source text; `returns`: for a function
+    the module knows the declared return of (`helper`, `u.helper`), that return.
     """
 
     type: str | None
     constant: tuple[Constant] | None = None
     found: Inference | None = None
+    elements: tuple[str, tuple[str, ...]] | None = None
+    reads: tuple[str, ...] = ()
+    returns: Inference | None = None
+
+    @property
+    def text(self) -> str | None:
+        """Its type as the module writes it, or `None` if unknown (a literal's is its `type`)."""
+        return None if self.found is None else self.found.annotation
 
 
 class Arguments(NamedTuple):
@@ -80,7 +98,7 @@ def chosen(
 
     """
     read: Arguments | None
-    if (read := _arguments(call, infer)) is None:
+    if (read := _arguments(call, infer, known)) is None:
         return None
     variants: tuple[tuple[_Signature, ...], ...] = _signatures(name)
     instance: list[str] | None = None if method is None else method.instance
@@ -97,7 +115,34 @@ def chosen(
     return Inference(
         annotation,
         f"`{name}`'s return type, for its arguments",
-        frozenset({_KIND}).union(*(part.found.kinds for part in parts if part.found is not None)),
+        frozenset({_KIND}).union(
+            *(part.found.kinds for part in parts if part.found is not None),
+            *(part.returns.kinds for part in parts if part.returns is not None),
+        ),
+        # What a type variable may take as its type: an argument of any type but a scalar's.
+        tuple(text for part in parts if part.type is None for text in part.reads),
+    )
+
+
+def generic_member(receiver: str, name: str, call: ast.Call | None, known: Known) -> Inference | None:
+    """Type a generic standard-library class's own attribute or property, bound by the receiver's type.
+
+    `m.string` on an `re.Match[str]` is a `str`; a method (`call`) is `method_signatures`' to type.
+
+    Returns:
+      The inference, or `None` if the tables don't have it, or a type parameter it names is unbound.
+
+    """
+    found: tuple[str, str, dict[str, str]] | None = (
+        stdlib.generic_attribute(receiver, name, known) if call is None else None
+    )
+    if found is None:
+        return None
+    annotation: str | None = _written((found[1], found[2]), known)
+    return (
+        None
+        if annotation is None
+        else Inference(annotation, f"`{found[0]}.{name}`'s annotation in typeshed", frozenset({_KIND}))
     )
 
 
@@ -113,7 +158,7 @@ def _receiving(picked: _Picked, types: Mapping[str, str]) -> _Picked:
     return picked[0], {**types, **picked[1]}
 
 
-def _arguments(call: ast.Call, infer: _Infer) -> Arguments | None:
+def _arguments(call: ast.Call, infer: _Infer, known: Known) -> Arguments | None:
     """Read a call's arguments.
 
     Returns:
@@ -127,11 +172,11 @@ def _arguments(call: ast.Call, infer: _Infer) -> Arguments | None:
     for keyword in call.keywords:
         if keyword.arg is None:
             return None
-        keywords[keyword.arg] = _argument(keyword.value, infer)
-    return Arguments([_argument(arg, infer) for arg in call.args], keywords)
+        keywords[keyword.arg] = _argument(keyword.value, infer, known)
+    return Arguments([_argument(arg, infer, known) for arg in call.args], keywords)
 
 
-def _argument(value: ast.expr, infer: _Infer) -> Argument:
+def _argument(value: ast.expr, infer: _Infer, known: Known) -> Argument:
     constant: Constant
     match value:
         case ast.Constant(value=bool() | int() | float() | complex() | str() | bytes() | None as constant):
@@ -140,7 +185,54 @@ def _argument(value: ast.expr, infer: _Infer) -> Argument:
         case _:
             found: Inference | None = infer(value)
             typed: str | None = None if found is None else found.annotation
-            return Argument(typed if typed in _COLUMNS and typed != _LITERAL_STRING else None, found=found)
+            return Argument(
+                typed if typed in _COLUMNS and typed != _LITERAL_STRING else None,
+                found=found,
+                elements=None if typed is None else _elements(typed, known),
+                reads=tuple(
+                    ast.unparse(node)
+                    for node in walk(value)
+                    if isinstance(node, ast.Name | ast.Attribute | ast.Subscript)
+                ),
+                returns=_function_return(value, known),
+            )
+
+
+def _function_return(value: ast.expr, known: Known) -> Inference | None:
+    """Type what a function passed as an argument returns, by its declared return (`partial(helper, x)`).
+
+    Returns:
+      The inference, or `None` for anything but a function whose return the module knows.
+
+    """
+    name: str = ast.unparse(value)
+    if not isinstance(value, ast.Name | ast.Attribute) or name not in known.calls:
+        return None
+    return Inference(known.calls[name], f"`{name}`'s declared return type", frozenset({_CALL}))
+
+
+def _elements(annotation: str, known: Known) -> tuple[str, tuple[str, ...]] | None:
+    """Read a builtin container's type arguments (`dict[str, int]`), one for a tuple of one type.
+
+    Returns:
+      Its name and them, or `None` for anything else (a tuple of several types among them).
+
+    """
+    tree: ast.expr = ast.parse(annotation, mode="eval").body
+    name: str
+    index: ast.expr
+    match tree:
+        case ast.Subscript(value=ast.Name(id=name), slice=index) if name in _CONTAINERS:
+            pass
+        case _:
+            return None
+    if not known.is_builtin(name):
+        return None
+    texts: list[str] = [ast.unparse(arg) for arg in (index.elts if isinstance(index, ast.Tuple) else [index])]
+    if name == _TUPLE:  # `tuple[str, ...]`, or `tuple[str, str]`: `str`
+        texts = [text for text in texts if text not in {"...", "()"}]
+        return (name, (texts[0],)) if len(set(texts)) == 1 else None
+    return name, tuple(texts)
 
 
 class _Signature(NamedTuple):
@@ -234,7 +326,7 @@ def _matched(params: Sequence[Parameter], read: Arguments) -> tuple[str, dict[st
         verdict: str = _verdict(param[3], arg)
         verdicts.add(verdict)
         bound: tuple[str, str] | None
-        if (bound := None if verdict != _YES else _binding(param[3], arg.type)) is not None:
+        if (bound := None if verdict != _YES else _binding(param[3], arg)) is not None:
             variable: str
             text: str
             variable, text = bound
@@ -248,18 +340,39 @@ def _matched(params: Sequence[Parameter], read: Arguments) -> tuple[str, dict[st
     }
 
 
-def _binding(accepts: Accepts | None, kind: str | None) -> tuple[str, str] | None:
-    """Find the type variable an argument of type `kind` binds, taken by a parameter that is one.
+def _binding(accepts: Accepts | None, arg: Argument) -> tuple[str, str] | None:
+    """Find the type variable an argument binds, taken by a parameter that is one (or has one).
+
+    A scalar by the parameter's own verdicts (`var`); else anything by its type, for a parameter that
+    is an unbounded type variable (`t`), and a builtin container by its type argument, for one that
+    is a generic class of one (`e`, `of`).
 
     Returns:
       Its name and type, or `None`.
 
     """
-    binds: str | dict[str, list[str]] = {} if accepts is None or kind is None else accepts.get("var", {})
-    if isinstance(binds, str):  # each type binds it to itself; a `str` literal to `str`
-        return binds, "str" if kind == _LITERAL_STRING else cast("str", kind)
-    found: list[str] | None = None if kind is None else binds.get(kind)
-    return None if found is None else (found[0], found[1])
+    kind: str | None = arg.type
+    if accepts is None:
+        return None
+    if kind is not None:
+        binds: str | dict[str, list[str]] = accepts.get("var", {})
+        if isinstance(binds, str):  # each type binds it to itself; a `str` literal to `str`
+            return binds, "str" if kind == _LITERAL_STRING else kind
+        found: list[str] | None = binds.get(kind)
+        return None if found is None else (found[0], found[1])
+    anything: str | None = accepts.get(_ANYTHING)
+    if anything is not None and arg.text is not None:
+        return anything, arg.text
+    returned: str | None = accepts.get(_RETURNED)
+    if returned is not None and arg.returns is not None:
+        return returned, arg.returns.annotation
+    of: dict[str, int] = accepts.get("of", {})
+    elements: tuple[str, tuple[str, ...]] | None = arg.elements
+    return (
+        None
+        if elements is None or elements[0] not in of
+        else (accepts.get("e", ""), elements[1][of[elements[0]]])
+    )
 
 
 def _bound(params: Sequence[Parameter], read: Arguments) -> list[tuple[Parameter, Argument]] | None:
@@ -308,7 +421,14 @@ def _verdict(accepts: Accepts | None, arg: Argument) -> str:
     if arg.constant is not None and any(_same(arg.constant[0], value) for value in accepts.get("lit", [])):
         return _YES
     table: str = accepts.get("c", accepts["v"]) if arg.constant is not None else accepts["v"]
-    return _MAYBE if arg.type is None else table[_COLUMNS[arg.type]]
+    if arg.type is not None:
+        return table[_COLUMNS[arg.type]]
+    taken: bool = (
+        (_ANYTHING in accepts and arg.text is not None)
+        or (arg.elements is not None and arg.elements[0] in accepts.get("of", {}))
+        or (_RETURNED in accepts and arg.returns is not None)
+    )
+    return _YES if taken else _MAYBE
 
 
 def _same(constant: Constant, value: Constant) -> bool:

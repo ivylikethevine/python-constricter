@@ -43,6 +43,7 @@ _STR: Final = "str"
 _BYTES: Final = "bytes"
 _NONE: Final = "None"
 _NEW: Final = "__new__"
+_CLASS_GETITEM: Final = "__class_getitem__"
 _TYPING: Final = frozenset({"typing", "typing_extensions"})
 # Builtins spelled as themselves; `object` and `type` are vague, `function` and `ellipsis` internal.
 _BUILTIN_SKIPPED: Final = frozenset({"object", "type", "function", "ellipsis"})
@@ -533,6 +534,22 @@ class Reading:
                 pass
         return None if form is None or form == ANY_STR else Member(kind, form, owner.module)
 
+    def subscriptable(self, klass: ClassRef) -> bool:
+        """Check whether a generic class can be subscripted at run time, as a module's annotations are.
+
+        One of `typing`'s (its `collections.abc` class), or one whose own order defines
+        `__class_getitem__`: a `typing` base the stubs give it isn't one it has at run time.
+
+        Returns:
+          Whether it can.
+
+        """
+        return klass.module in _TYPING or any(
+            _CLASS_GETITEM in self.body(owner)
+            for owner in self.trusted(klass)[0]
+            if owner.module not in _TYPING
+        )
+
     def constructs(self, klass: ClassRef) -> bool:
         """Check whether calling a class certainly gives an instance of it (its `__new__` says nothing else).
 
@@ -696,6 +713,38 @@ def _c3(klass: ClassRef, lines: list[list[ClassRef]]) -> list[ClassRef] | None:
         merged.append(head)
         pending = [rest for rest in ([c for c in line if c != head] for line in pending) if rest]
     return merged
+
+
+def substituted(template: str, names: dict[str, str]) -> str:
+    """Replace names in a template: a class's type parameters by what a subclass passes them.
+
+    Returns:
+      The template.
+
+    """
+    return ast.unparse(_replaced(ast.parse(template, mode="eval").body, names))
+
+
+def _replaced(node: ast.expr, names: dict[str, str]) -> ast.expr:
+    """Replace names in a template's tree, in place (a template is names, subscripts, tuples, unions).
+
+    Returns:
+      The tree.
+
+    """
+    name: str
+    match node:
+        case ast.Name(id=name) if name in names:
+            return ast.parse(names[name], mode="eval").body
+        case ast.Subscript():
+            node.value, node.slice = _replaced(node.value, names), _replaced(node.slice, names)
+        case ast.Tuple():
+            node.elts = [_replaced(element, names) for element in node.elts]
+        case ast.BinOp():
+            node.left, node.right = _replaced(node.left, names), _replaced(node.right, names)
+        case _:
+            pass
+    return node
 
 
 def usable(text: str) -> bool:

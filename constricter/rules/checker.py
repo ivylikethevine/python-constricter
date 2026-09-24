@@ -16,6 +16,7 @@ from constricter.fix.known import (
     Inference,
     Known,
     LibraryNames,
+    Origin,
     Outside,
     Returned,
     Returns,
@@ -236,18 +237,39 @@ def checked_tree(
     finals: list[Offence] = [o for scope in scopes for o in late.finals(scope)] if checks.final else []
     reported: list[Offence] = [o for scope in scopes for o in scope.reported()]
     exported: Returns = returned.exported(found)
-    guarded: Mapping[str, Guarded] = {} if outside is None else outside.guarded
     return Checked(
         sorted([*reported, *redundant(tree, settings.checks.fixes), *flow, *finals]),
         exported._replace(
-            names={
-                name: guarded[name].origin
-                for annotation in exported.calls.values()
-                for name in roots(annotation)
-                if name in guarded
-            },
+            names=_exported_names(
+                exported,
+                {} if outside is None else outside.guarded,
+                (settings.known.names.plan or imports.plan(tree)).added,
+            ),
         ),
     )
+
+
+def _exported_names(
+    exported: Returns,
+    guarded: Mapping[str, Guarded],
+    added: Mapping[str, str],
+) -> dict[str, Origin]:
+    """Find what each name the exported types use refers to, where the module doesn't import it to run.
+
+    Imported for type checking alone (`guarded`), or by an import its fixes add (`added`): a library
+    type it doesn't import yet (`types.ModuleType`) is named for its importers too, or they'd type
+    its calls only on a second pass, once the import is in the source.
+
+    Returns:
+      Each such name's origin.
+
+    """
+    return {
+        name: guarded[name].origin if name in guarded else imports.added_origin(added[name])
+        for annotation in exported.calls.values()
+        for name in roots(annotation)
+        if name in guarded or name in added
+    }
 
 
 class Coverage(NamedTuple):
