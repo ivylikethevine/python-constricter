@@ -16,11 +16,12 @@ none takes is left to the type checker, which rejects it anyway.
 import ast
 import builtins
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from functools import lru_cache
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix import stdlib
 from constricter.fix.known import Inference, Known
-from constricter.fix.stdlib import Accepts, Constant, Parameter, Signature
+from constricter.fix.stdlib import Accepts, Constant, Parameter
 
 SCALARS: Final = ("str", "LiteralString", "bytes", "bytearray", "int", "float", "complex", "bool", "None")
 _COLUMNS: Final = {scalar: index for index, scalar in enumerate(SCALARS)}
@@ -81,7 +82,7 @@ def chosen(
     read: Arguments | None
     if (read := _arguments(call, infer)) is None:
         return None
-    variants: list[stdlib.Variant] = stdlib.OVERLOADS.get(name) or stdlib.method_signatures()[name]
+    variants: tuple[tuple[_Signature, ...], ...] = _signatures(name)
     instance: list[str] | None = None if method is None else method.instance
     picks: list[_Picked] = [
         _receiving(picked, {} if method is None else method.types)
@@ -142,8 +143,53 @@ def _argument(value: ast.expr, infer: _Infer) -> Argument:
             return Argument(typed if typed in _COLUMNS and typed != _LITERAL_STRING else None, found=found)
 
 
+class _Signature(NamedTuple):
+    """One signature, read: its parameters in full, its return template, and its `self`'s type arguments."""
+
+    params: tuple[Parameter, ...]
+    returns: str | None
+    instance: list[str] | None
+
+
+@lru_cache(maxsize=512)
+def _signatures(name: str) -> tuple[tuple[_Signature, ...], ...]:
+    """Read a function's (or method's) variants from the tables, once, each parameter in full.
+
+    Returns:
+      Each variant's signatures.
+
+    """
+    variants: list[stdlib.Variant] = stdlib.OVERLOADS.get(name) or stdlib.method_signatures()[name]
+    return tuple(
+        tuple(
+            _Signature(
+                tuple(_parameter(param) for param in signature["params"]),
+                signature["returns"],
+                signature.get("self"),
+            )
+            for signature in variant
+        )
+        for variant in variants
+    )
+
+
+def _parameter(written: Parameter | str) -> Parameter:
+    """Read a parameter as the tables write it (`"name kind="`: one every signature has alike).
+
+    Returns:
+      It in full.
+
+    """
+    if not isinstance(written, str):
+        return written
+    name: str
+    kind: str
+    name, _, kind = written.partition(" ")
+    return name, kind.removesuffix("="), kind.endswith("="), None
+
+
 def _picked(
-    variant: Sequence[Signature],
+    variant: Sequence[_Signature],
     read: Arguments,
     instance: Sequence[str] | None,
 ) -> Iterator[_Picked]:
@@ -156,16 +202,15 @@ def _picked(
       Each one that doesn't certainly refuse them: its return template and type variables' types.
 
     """
-    signature: Signature
+    signature: _Signature
     for signature in variant:
         verdict: str
         bound: dict[str, str]
-        verdict, bound = _matched(signature["params"], read)
-        if _SELF in signature and signature["self"] != instance:
+        verdict, bound = _matched(signature.params, read)
+        if signature.instance is not None and signature.instance != instance:
             verdict = _NO if instance is not None else _MAYBE if verdict == _YES else verdict
         if verdict != _NO:
-            template: str | None = signature["returns"]
-            yield None if template is None else (template, bound)
+            yield None if signature.returns is None else (signature.returns, bound)
         if verdict == _YES:
             return
 

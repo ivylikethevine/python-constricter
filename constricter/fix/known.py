@@ -8,6 +8,7 @@ from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias
 
 from constricter.offences import MAX_LENGTH
+from constricter.rules.annotations import free_of, free_of_all
 
 _BUILTINS: Final = frozenset(dir(builtins))
 _DOT: Final = "."
@@ -208,7 +209,8 @@ class Outside(NamedTuple):
     type checker's types for what `--fix` can't type itself (`--infer-with`); `type_vars`, the names
     it imports that are type variables where they're defined (see `project.type_vars`), which a
     type its own functions declare can't be written with outside them; `guarded`, the names those
-    types are written with that it can use in an annotation alone (see `Guarded`).
+    types are written with that it can use in an annotation alone (see `Guarded`); `generics`, the
+    generic classes it imports from them, which a fix mustn't write bare.
     """
 
     calls: Mapping[str, str] = {}
@@ -217,6 +219,35 @@ class Outside(NamedTuple):
     type_vars: frozenset[str] = frozenset()
     returned: Returns = Returns()
     guarded: Mapping[str, Guarded] = {}
+    generics: frozenset[str] = frozenset()  # other checked files' generic classes, as it spells them
+
+    def usable(self, taken: frozenset[str]) -> "Outside":
+        """Drop what other files offer whose type needs a name imported that the module binds already.
+
+        That's a name to import under `if TYPE_CHECKING:` (see `Guarded`) that the module binds anywhere
+        else, a function's local or parameter included: the import would shadow it, or it the import.
+
+        Returns:
+          What's left.
+
+        """
+        clashing: frozenset[str] = frozenset(
+            name for name, found in self.guarded.items() if found.statement is not None and name in taken
+        )
+        if not clashing:
+            return self
+        members: Classes | None = self.classes
+        return Outside(
+            free_of(self.calls, clashing),
+            None
+            if members is None
+            else Classes(free_of_all(members.attributes, clashing), free_of_all(members.methods, clashing)),
+            self.hints,
+            self.type_vars,
+            Returns(free_of(self.returned.calls, clashing), self.returned.guesses, self.returned.names),
+            {name: found for name, found in self.guarded.items() if name not in clashing},
+            self.generics,
+        )
 
 
 class Inference(NamedTuple):

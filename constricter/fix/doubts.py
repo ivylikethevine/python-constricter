@@ -38,6 +38,8 @@ _TESTS: Final = (ast.If, ast.While, ast.Assert, ast.IfExp, ast.comprehension, as
 _SELF: Final = "Self"
 _COMPREHENSION: Final = "comprehension"
 _LITERAL: Final = "literal"
+_NONE: Final = "None"
+_OPTIONAL: Final = "Optional"
 _COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 _UNIONS: Final = frozenset({"Optional", "Union"})
 _SELF_ORIGINS: Final = frozenset({"typing.Self", "typing_extensions.Self"})
@@ -92,6 +94,40 @@ def doubts(value: ast.expr, found: Inference, *, constant: bool, narrowed: bool)
     if constant and _literal(value):
         return frozenset({_LITERAL})
     return frozenset()
+
+
+def narrowed_first(value: ast.expr, found: Inference) -> bool:
+    """Check whether code reading `value` almost always narrows it first, so `found` is best not offered.
+
+    A copy, attribute or subscript of an `X | None`, and a filtered comprehension over one, is nearly
+    always checked for `None` before it's used (an `assert`, an early `return`, a walrus), and a
+    checker then takes it for the `X` it's narrowed to: declaring the union breaks that. A bare
+    `None` (a copy of a name only ever `None`) says nothing.
+
+    Returns:
+      Whether it is.
+
+    """
+    if found.annotation == _NONE:
+        return True
+    optional: bool = _NONE in (members(found.annotation) or ())
+    filtered: bool = isinstance(value, _COMPREHENSIONS) and any(g.ifs for g in value.generators)
+    return (isinstance(value, tuple(_READS)) and optional) or (filtered and _has_none(found.annotation))
+
+
+def _has_none(annotation: str) -> bool:
+    """Check whether an annotation allows `None` anywhere in it (`list[int | None]`, `list[Optional[str]]`).
+
+    Returns:
+      Whether it does.
+
+    """
+    # `annotation` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
+    return any(
+        (isinstance(node, ast.Constant) and node.value is None)
+        or (isinstance(node, ast.Name | ast.Attribute) and node_name(node) == _OPTIONAL)
+        for node in ast.walk(ast.parse(annotation, mode="eval"))
+    )
 
 
 def tests(tree: ast.Module) -> Tests:
@@ -268,19 +304,21 @@ def spelled_self(plan: ImportPlan) -> str | None:
 
 
 def _bare(annotation: str, generics: frozenset[str]) -> bool:
-    """Check whether an annotation names one of `generics` without subscripting it.
+    """Check whether an annotation names one of `generics` (as the module spells them) unsubscripted.
 
     Returns:
-      Whether it does.
+      Whether it does: `Box`, `util.OrderedSet`, but not `Box[int]`.
 
     """
     if not generics:
         return False
     # `annotation` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
     tree: ast.expr = ast.parse(annotation, mode="eval").body
-    subscripted: set[int] = {id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Subscript)}
+    inner: set[int] = {
+        id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Subscript | ast.Attribute)
+    }
     return any(
-        isinstance(node, ast.Name) and node.id in generics and id(node) not in subscripted
+        isinstance(node, ast.Name | ast.Attribute) and id(node) not in inner and ast.unparse(node) in generics
         for node in ast.walk(tree)
     )
 

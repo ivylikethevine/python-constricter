@@ -64,13 +64,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: write # create the release
+      contents: write # create the release (and generate its notes)
+      pull-requests: read # each merged pull request's `## Release note` section
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: block
-          # The README's checkout, the artifact download, then `gh release create` and its asset
-          # uploads.
+          # The checkout, the artifact download, the generated notes and the pull requests they
+          # list, then `gh release create` and its asset uploads.
           allowed-endpoints: >
             github.com:443
             api.github.com:443
@@ -84,7 +85,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          sparse-checkout: README.md
+          sparse-checkout: |
+            README.md
+            .github/scripts/release_notes.sh
           sparse-checkout-cone-mode: false
       # The README's badges head the release page, above the generated notes: the block of them
       # under its title, each relative link (a file, or a heading's #anchor) made absolute at this
@@ -96,11 +99,25 @@ jobs:
             -e "s#\]\(([^):\#][^):]*)\)#](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/\1)#g" \
             > badges.md
           test -s badges.md
-      # Notes passed with --generate-notes go above the generated ones.
+      # Below the badges, "What changed": each merged pull request's `## Release note` section
+      # (release_notes.sh, empty if none says anything), then the generated list of them, grouped
+      # by .github/release.yml.
+      - name: Write the notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+            -f tag_name="$GITHUB_REF_NAME" --jq .body > generated.md
+          bash .github/scripts/release_notes.sh "$GITHUB_REPOSITORY" generated.md > changed.md
+          {
+            cat badges.md
+            echo
+            if [ -s changed.md ]; then cat changed.md; echo; fi
+            cat generated.md
+          } > notes.md
       - name: Create the release from the tag
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release create "$GITHUB_REF_NAME" assets/*
-          --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes-file badges.md --generate-notes
-          --verify-tag
+          --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag

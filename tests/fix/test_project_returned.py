@@ -200,3 +200,26 @@ def test_returns_are_recorded_only_for_indexed_modules() -> None:
     )
     assert list(found.modules) == ["m"]
     assert found.modules["m"].returned.calls == {"f": "int"}
+
+
+LATE: Final = """
+def make(n):
+    out = []
+    for _ in range(n):
+        out.append(1)
+    return out
+"""
+TYPED_LATE: Final = "    items: list[int] = make(2)\n"
+LATE_USE: Final = "from pkg.late import make\n\ndef use():\n    items = make(2)\n    return items\n"
+
+
+def test_a_return_typed_late_reaches_other_files(tmp_path: Path) -> None:
+    """A function whose `return`s are typed only once its body's seen (a container it fills) is exported.
+
+    Nothing in its own module calls it: its type is still what other files import.
+    """
+    _ = _write(tmp_path / "pkg" / "__init__.py", "")
+    _ = _write(tmp_path / "pkg" / "late.py", LATE)
+    use: Path = _write(tmp_path / "use.py", LATE_USE)
+    assert cli.main(["--fix", "--unsafe-fixes", "-q", str(tmp_path)]) == cli.EXIT_CLEAN
+    assert TYPED_LATE in use.read_text(encoding="utf-8")

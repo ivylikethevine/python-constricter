@@ -58,6 +58,17 @@ def g(p: re.Pattern[Any], q: re.Pattern[str], s: str) -> None:
     t = p.match(s)
     u = q.match(s)
 """
+GENERIC: Final = """
+import io
+import logging
+from collections import OrderedDict as OD
+
+
+def f(p: str) -> None:
+    a = logging.StreamHandler()
+    b = OD()
+    c = io.BufferedReader(io.FileIO(p))
+"""
 UNBOUND: Final = [[Signature(params=[("a", "e", False, None)], returns="tuple[U, ...]")]]
 MADE_UP: Final = """
 import os
@@ -103,6 +114,11 @@ def test_a_call_is_typed_by_the_signature_its_arguments_match() -> None:
 def test_a_generic_receiver_binds_its_class_type_parameters() -> None:
     """`Pattern[str]`'s methods declared for `self: Pattern[str]` apply; with `Pattern[Any]` none is sure."""
     assert _fixes(RECEIVERS) == {"t": None, "u": "re.Match[str] | None"}
+
+
+def test_a_standard_library_generic_class_isnt_written_bare() -> None:
+    """Unless every type parameter it has has a default (`io.BufferedReader`'s)."""
+    assert _fixes(GENERIC) == {"a": None, "b": None, "c": "io.BufferedReader"}
 
 
 def test_a_builtin_the_module_rebinds_isnt_written() -> None:

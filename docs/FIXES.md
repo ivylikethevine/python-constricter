@@ -12,8 +12,8 @@ in a function or module body:
   declares its return type (not a decorated, generic, async or redefined one, and not a return of
   `None`, `Any` or one that uses a `TypeVar`), in the same module or, with the CLI, in another file
   it's checking: `from pkg.util import f`, `import pkg.util as u` or `from pkg import util` then
-  `u.f()`, relative imports and re-exports all work, as long as every name in the type already means
-  the same thing in the file;
+  `u.f()`, relative imports and re-exports all work. A name in the type the file doesn't import is
+  imported for type checking alone (see below);
 - a builtin with a fixed result: `len(x)` is an `int`, `hex(n)` a `str`, `any(xs)` a `bool`, `dir()`
   a `list[str]`, `range(n)` a `range`, and so on; but not where the module binds the name itself (a
   parameter named `format`, a local `input`, its own `def dir()`), anywhere in it;
@@ -32,22 +32,31 @@ in a function or module body:
 - `typing.cast(T, x)`, however `cast` is imported: `T`;
 - the standard library, resolved through the imports (`import m`, `import m as a`,
   `from m import f`), by tables generated from typeshed's stubs (`tests/typeshed/stdlib_tables.py`,
-  keeping what's the same on Linux, macOS and Windows and Python 3.11 to 3.14): a function returning
-  a builtin type whatever its arguments (`time.time()` is a `float`, `os.cpu_count()` an
-  `int | None`, `sys.intern(s)` a `str`); an `AnyStr` function (`os.path.join`, `re.escape`) the
-  type all its arguments share; `os.environ.get(k)` a `str | None` (a `str` with a `str` default); a
+  into `constricter/fix/tables/`, keeping what Linux, macOS and Windows and Python 3.11 to 3.14
+  agree on, where they have it: `os.getuid()` is an `int`): a function returning a builtin type
+  whatever its arguments (`time.time()` is a `float`, `os.cpu_count()` an `int | None`); a
   non-generic class, or a function or classmethod returning one: `logging.getLogger()` is a
-  `logging.Logger`, `datetime.now()` a `datetime.datetime`, `asyncio.Lock()` an `asyncio.Lock`,
-  `os.stat(p)` an `os.stat_result`; and on a value typed as such a class, its attributes and
-  properties, and its methods' returns (`parser.prog` is a `str`, `dt.astimezone()` a
-  `datetime.datetime`). Not an overload that depends on its arguments (`parser.parse_args()`,
-  `subprocess.run`), a generic class, or a function only some platforms have (`os.getuid`);
+  `logging.Logger`, `datetime.now()` a `datetime.datetime`, `os.stat(p)` an `os.stat_result`; and on
+  a value typed as such a class, its attributes and properties, and its methods' returns
+  (`parser.prog` is a `str`, `dt.astimezone()` a `datetime.datetime`);
+- a standard-library function or method whose arguments decide its type, by the signature they
+  match, as a type checker picks among its overloads: `os.listdir(data)` with `data: bytes` is a
+  `list[bytes]`, `ast.parse(s, mode="eval")` an `ast.Expression` (by the literal),
+  `os.path.join(name, x)` a `str` whatever `x` is (only the `str` signature takes `name`),
+  `os.getenv("X", 3)` a `str | int`, `re.compile("x")` a `re.Pattern[str]` (its type variable bound
+  by the argument), `parser.parse_args()` an `argparse.Namespace`, and on a `re.Pattern[str]`,
+  `pat.match(s)` a `re.Match[str] | None` (the class's type parameter bound by the receiver's type).
+  Only when that's certain: every signature that may be the one (not certainly refusing the
+  arguments, up to the first that certainly takes them) gives the same type, on every platform and
+  version. An argument's type counts only if it's a builtin scalar (`str`, `bytes`, `int`, a
+  literal, `None`, ...); a call unpacking `*args` or `**kwargs` isn't typed;
 - `open(path, mode)` (or `io.open`), by its literal mode (`r` when there's none): a text mode gives
   an `io.TextIOWrapper`, a binary one an `io.BufferedReader` to read, an `io.BufferedWriter` to
   write, and an `io.BufferedRandom` for both (`+`). Not unbuffered (`buffering`, which gives an
   `io.FileIO`), with an `opener`, or when the module binds `open` itself;
 - `x = None`, when every later binding of `x` in the function has one certain type `T` (and nothing
-  else writes it): `T | None`;
+  else writes it, nor reads it from a function or lambda inside, which would see `T | None` where a
+  checker otherwise sees what `x` was narrowed to): `T | None`;
 - a call to an unannotated function (or method) of the module, when every `return` it has gives one
   type and it can't fall off its end: that type, certain for a function and a guess for a method (a
   subclass may override it); a function whose `return`s are themselves guesses makes its calls
@@ -61,8 +70,8 @@ in a function or module body:
   may assign it too; an attribute the class body binds, stored any other way (`+=`, an unpacking,
   `del`, a nested function's `self.x = ...`), or assigned a local bound more than once, is left
   alone;
-- an attribute, property or method of a class another checked file defines, when the file can name
-  its type (the CLI only: the plugins see one file at a time);
+- an attribute, property or method of a class another checked file defines, its type imported as a
+  declared return's is (the CLI only: the plugins see one file at a time);
 - with `--unsafe-fixes`, an empty container (`[]`, `{}`, `set()`, `list()`, `dict()`) the function
   then only adds to, every addition typed alike (`append`, `insert`, `add`, `setdefault`,
   `x[k] = v`): `list[T]`, `set[T]` or `dict[K, V]`. A guess, since something else could add to it;
@@ -89,10 +98,20 @@ being its own context manager.
 A type the module can't name yet gets an import. One it already has is reused (with `import io`,
 `io.BufferedReader`); otherwise `from io import BufferedReader` is added after the module's
 docstring and its leading imports (below a shebang or coding line when it has neither), or
-`import io` if `BufferedReader` is a name the module binds. It never goes under `if TYPE_CHECKING:`
-(a module-level annotation is evaluated), and never binds a name the module binds anywhere, or a
-builtin's; with no name free, there's no fix. In a notebook, which has no import block, such a fix
-is reported but not applied.
+`import io` if `BufferedReader` is a name the module binds. A standard-library type's import never
+goes under `if TYPE_CHECKING:`.
+
+A type another checked file declares (`get_handle() -> IOHandles[str]`) names what that file imports
+or defines; a name the calling file doesn't have is imported where the type's file has it from,
+under `if TYPE_CHECKING:` (into the module's first top-level one, or a new one after its imports,
+with `from typing import TYPE_CHECKING` if it must be), so the import can't make an import cycle at
+run time. A name the file already imports, under any name and even for type checking alone, is
+reused; a module-level annotation using one imported for type checking alone is quoted
+(`top: "IOHandles[str]" = get_handle()`), unless the module has
+`from __future__ import annotations`. A generic class another file defines is never written bare.
+
+An added import never binds a name the module binds anywhere, or a builtin's; with no name free,
+there's no fix. In a notebook, which has no import block, such a fix is reported but not applied.
 
 LVA012 (opt-in) offers `Final`: around the annotation there (`x: int = 1` becomes
 `x: Final[int] = 1`), with LVA001's type for an unannotated name (whose own fix it then replaces),
@@ -122,15 +141,21 @@ than the fix says, the fix is changed, made a guess, or not offered:
   declared union (`int | None`, then `1`), which every checker narrows it to; a guess otherwise;
 - a copy, attribute or subscript of a union, or of anything the function tests (`isinstance(x, C)`,
   `x is None`, `is_c(x)`, an `assert`, a `match`), may be narrowed where it's read: a guess; so is a
-  comprehension of a union with a condition (`[c for c in cs if isinstance(c, Column)]`);
+  comprehension of a union with a condition (`[c for c in cs if isinstance(c, Column)]`). One of an
+  `X | None` (or a filtered comprehension over one) isn't offered at all: code nearly always checks
+  it for `None` first, and a checker then takes it for the `X`; nor is a bare `None`;
 - an ALL_CAPS module-level name bound to a literal is a constant to pyright, which keeps its
-  `Literal` type: `MODE = "r"`'s `str` would widen it, so it's a guess;
+  `Literal` type: `MODE = "r"`'s `str` would widen it. Passed to a call (where a parameter may take
+  only some values), it's declared `MODE: Final = "r"`, which keeps the `Literal`: a guess, as
+  something may rebind it, and not offered where the module binds it again;
 - `self`, and a method declared to return `Self` called on `self` or `cls`, is `Self`, not its class
   (in a subclass, the class isn't `Self`): written as the module already imports `Self`
   (`typing.Self` is Python 3.11's, so no import is added), and not offered without one; a `Self`
   later bound to anything else isn't offered either;
-- a generic class the module defines is never written bare (`list[Box]`, as `[self]` in `Box` would
-  be): it's missing its type arguments;
+- a generic class is never written bare (`list[Box]`, as `[self]` in `Box` would be; `Box()` guessed
+  to construct one): the module's own, another checked file's, or the standard library's
+  (`logging.StreamHandler()`), unless every type parameter it has has a default
+  (`io.BufferedReader`);
 - a declared return that names a type variable, the module's own, one it imports from another
   checked file (`from ._typing import T`, under `if TYPE_CHECKING:` too) or `typing.AnyStr`, depends
   on the arguments: its calls aren't typed;

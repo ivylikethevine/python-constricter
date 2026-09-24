@@ -1,4 +1,4 @@
-# Groups for the release notes `gh release create --generate-notes` writes (release.yml's last job).
+# Groups for the release notes GitHub generates (release.yml's last job, under each pull request's own note).
 changelog:
   exclude:
     authors: [dependabot]

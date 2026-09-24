@@ -177,6 +177,16 @@ def _unbound(node: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.FunctionDef | 
     return unbound
 
 
+def _shared(parameter: Param) -> str:
+    """Write a parameter every signature has alike, which takes whatever a call passes it, compactly.
+
+    Returns:
+      Its name and kind, and `=` if it has a default: `bufsize e=`.
+
+    """
+    return f"{parameter.name} {parameter.kind}{'=' if parameter.default else ''}"
+
+
 def _key(parameter: Param) -> _Key:
     annotation: str = "" if parameter.annotation is None else ast.dump(parameter.annotation)
     return parameter.name, parameter.kind, parameter.default, annotation
@@ -202,8 +212,9 @@ class Overloads:
         `selves`: a method's (read without `self`) each signature's `self` annotation, if any.
 
         Returns:
-          Each one's parameters (`[name, kind, default, accepts]`, `accepts` null where every
-          signature has the parameter alike) and return template (null if it can't be written);
+          Each one's parameters (`[name, kind, default, accepts]`, or `"name kind="` where every
+          signature has the parameter alike: see `_shared`) and return template (null if it can't
+          be written);
           or `None` if a signature can't be read, or none's return can be written.
 
         """
@@ -217,8 +228,8 @@ class Overloads:
         one: list[Param]
         index: int
         for index, (node, one) in enumerate(zip(defs, each, strict=True)):
-            params: list[Parameter] = [
-                (p.name, p.kind, p.default, None if _key(p) in shared else self._accepted(p, module))
+            params: list[Parameter | str] = [
+                _shared(p) if _key(p) in shared else (p.name, p.kind, p.default, self._accepted(p, module))
                 for p in one
             ]
             signature: Signature = Signature(params=params, returns=self.template(node.returns, module))
@@ -309,7 +320,7 @@ class Overloads:
         )
 
     def _variables(self, expr: ast.expr, module: str) -> list[str]:
-        """Name the type variables an expression names, in order.
+        """Name the type variables an expression names, in order, one with a default marked `=` (`_T=`).
 
         Returns:
           Them.
@@ -318,7 +329,7 @@ class Overloads:
         names: list[ast.Name] = [node for node in ast.walk(expr) if isinstance(node, ast.Name)]
         found: list[Found | None] = [self.reading.ref(node, module) for node in names]
         return [
-            node.id
+            node.id + ("=" if target.binding.default else "")
             for node, target in zip(names, found, strict=True)
             if target is not None and isinstance(target.binding, TypeVariable)
         ]

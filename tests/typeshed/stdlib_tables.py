@@ -93,7 +93,7 @@ class _Tables(NamedTuple):
     attributes: dict[str, Table]
     method_overloads: dict[str, Table]  # each class's methods in `method_signatures`
     method_signatures: dict[str, list[Signatures]]  # as `overloads`, by where they're defined
-    type_parameters: Table  # each generic class's, in order, comma-separated
+    type_parameters: Table  # each generic class's, in order, comma-separated (`_T=`: with a default)
 
 
 def _paths(stubs: Stubs, config: Config) -> dict[str, Found]:

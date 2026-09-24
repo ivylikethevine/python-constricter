@@ -42,7 +42,8 @@ class Accepts(TypedDict, total=False):
 
 
 # A parameter: its name, kind (`p` positional, `e` either, `k` keyword, `a` `*args`, `w` `**kwargs`),
-# whether it has a default, and what it takes (`None`: whatever every signature takes there).
+# whether it has a default, and what it takes (`None`: whatever every signature takes there). The
+# tables write one every signature has alike as `"name kind"`, `=` after it if it has a default.
 Parameter: TypeAlias = tuple[str, str, bool, Accepts | None]
 
 
@@ -54,7 +55,7 @@ class Signature(TypedDict):
     type arguments that instance must have.
     """
 
-    params: list[Parameter]
+    params: list[Parameter | str]
     returns: str | None
     self: NotRequired[list[str]]
 
@@ -90,6 +91,7 @@ _ATTRIBUTES: Final = cast("_Members", _table("attributes"))
 # signatures without `self`, as `OVERLOADS`', under the class defining it: `module.Class.method`).
 _METHOD_OVERLOADS: Final = cast("Mapping[str, list[str]]", _table("method_overloads"))
 # Each generic class's type parameters, in order, comma-separated: an instance's type binds them.
+# One ending `=` has a default (PEP 696): a class all of whose have one may be written bare.
 _TYPE_PARAMETERS: Final = cast("Mapping[str, str]", _table("type_parameters"))
 
 
@@ -219,7 +221,7 @@ def overloaded_method(receiver: str, name: str, known: Known) -> Method | None:
     if path is None or entry is None:
         return None
     texts: list[str] = [ast.unparse(arg) for arg in args]
-    params: list[str] = _TYPE_PARAMETERS[path].split(",") if path in _TYPE_PARAMETERS else []
+    params: list[str] = [param.rstrip("=") for param in _TYPE_PARAMETERS.get(path, "").split(",") if param]
     builtin: bool = all(
         isinstance(node, ast.Name) and node.id in _BUILTIN_NAMES and known.is_builtin(node.id)
         for arg in args
@@ -242,6 +244,37 @@ def _entries(path: str) -> dict[str, str]:
 
     """
     return {entry.rpartition(_DOT)[2]: entry for entry in _METHOD_OVERLOADS.get(path, [])}
+
+
+def generics(bound: Mapping[str, str]) -> frozenset[str]:
+    """Spell the standard library's generic classes as a module's imports (`bound`, see `origins`) name them.
+
+    Returns:
+      Each spelling (`StreamHandler`, `logging.StreamHandler`): written bare, one is missing its
+      type arguments.
+
+    """
+    return frozenset(
+        f"{name}{path.removeprefix(origin)}"
+        for name, origin in bound.items()
+        for path in _generic_paths(origin)
+    )
+
+
+@lru_cache(maxsize=1024)
+def _generic_paths(origin: str) -> tuple[str, ...]:
+    """Find the generic classes an import's origin names (itself, or those in its module) that need arguments.
+
+    Returns:
+      Their paths.
+
+    """
+    return tuple(
+        path
+        for path, params in _TYPE_PARAMETERS.items()
+        if (path == origin or path.startswith(f"{origin}."))
+        and not all(param.endswith("=") for param in params.split(","))
+    )
 
 
 def _class_path(receiver: str, known: Known) -> str | None:

@@ -4,7 +4,6 @@
 import ast
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
-from functools import lru_cache
 from typing import Final, NamedTuple, cast
 
 from constricter.fix import imports, returned, stdlib
@@ -30,7 +29,7 @@ from constricter.offences import (
     Offence,
     at,
 )
-from constricter.rules import binding, parsed
+from constricter.rules import binding, late, parsed
 from constricter.rules.annotations import (
     Tables,
     awaited_returns,
@@ -48,7 +47,7 @@ from constricter.rules.annotations import (
     self_returns,
 )
 from constricter.rules.flow import Finding, Hierarchy
-from constricter.rules.narrowing import flow_offences
+from constricter.rules.narrowing import flow_offences, module_flow, module_names
 from constricter.rules.redundant import redundant
 from constricter.rules.scope import Kind, Late, Scope, Settings, certain_type, guesses_in
 from constricter.rules.syntax import (
@@ -163,7 +162,14 @@ def _settings(
             ),
         ),
         () if outside is None else outside.hints,
-        Facts(self_returns(tree), generic_classes(tree), passed(tree), tests(tree)),
+        Facts(
+            self_returns(tree),
+            generic_classes(tree)
+            | stdlib.generics(stdlib.origins(tree))
+            | (frozenset() if outside is None else outside.generics),
+            passed(tree),
+            tests(tree),
+        ),
     )
 
 
@@ -212,7 +218,7 @@ def checked_tree(
 
     """
     own = own or module_tables(tree)
-    outside = None if outside is None else _usable(outside, imports.plan(tree).taken)
+    outside = None if outside is None else outside.usable(imports.plan(tree).taken)
     imported: Returns = Returns() if outside is None else outside.returned
     table: returned.Table = returned.Table(tree, imported)
     settings: Settings = _settings(tree, checks, lines, own, outside)
@@ -223,8 +229,8 @@ def checked_tree(
     settings, scopes, found = _returned(tree, settings, scopes, table, imported)
     # A finding's kind is the code that reports it (LVA008, LVA009, LVA010).
     _finished(tree, scopes)
-    flow: list[Offence] = flow_offences(_value_flow(tree, scopes), settings.checks.fixes)
-    finals: list[Offence] = [o for scope in scopes for o in scope.finals()] if checks.final else []
+    flow: list[Offence] = flow_offences(module_flow(tree, scopes), settings.checks.fixes)
+    finals: list[Offence] = [o for scope in scopes for o in late.finals(scope)] if checks.final else []
     reported: list[Offence] = [o for scope in scopes for o in scope.reported()]
     exported: Returns = returned.exported(found)
     guarded: Mapping[str, Guarded] = {} if outside is None else outside.guarded
@@ -238,32 +244,6 @@ def checked_tree(
                 if name in guarded
             },
         ),
-    )
-
-
-def _usable(outside: Outside, taken: frozenset[str]) -> Outside:
-    """Drop what other files offer whose type needs a name imported that the module binds already.
-
-    That's a name to import under `if TYPE_CHECKING:` (see `Guarded`) that the module binds anywhere
-    else, a function's local or parameter included: the import would shadow it, or it the import.
-
-    Returns:
-      What's left.
-
-    """
-    clashing: frozenset[str] = frozenset(
-        name for name, found in outside.guarded.items() if found.statement is not None and name in taken
-    )
-    if not clashing:
-        return outside
-    members: Classes | None = outside.classes
-    return outside._replace(
-        calls=free_of(outside.calls, clashing),
-        classes=None
-        if members is None
-        else Classes(free_of_all(members.attributes, clashing), free_of_all(members.methods, clashing)),
-        returned=outside.returned._replace(calls=free_of(outside.returned.calls, clashing)),
-        guarded={name: found for name, found in outside.guarded.items() if name not in clashing},
     )
 
 
@@ -431,10 +411,10 @@ def _function_scope(
         )
     scope.opaque(extra.arg for extra in (args.vararg, args.kwarg) if extra is not None)
     name: str
-    late: Late
-    for name, late in (seed or {}).items():
-        scope.inferred.seeded[name] = late
-        scope.inferred.learn(name, late[0], late[1] or None)
+    typed: Late
+    for name, typed in (seed or {}).items():
+        scope.inferred.seeded[name] = typed
+        scope.inferred.learn(name, typed[0], typed[1] or None)
     stmt: ast.stmt
     for stmt in func.body:
         _visit(scope, stmt)
@@ -572,7 +552,8 @@ def _returned(
         typed: bool = latest != found and returned.called(tree, tree, latest)  # even if only a body calls one
         # Attributes typed anew: what reads one, of any value, may be typed now.
         newly: set[str] = returned.retyped(found, latest)
-        if typed or newly:
+        # Kept even when nothing here calls it: other files import what the module's functions return.
+        if latest != found:
             found = latest
             settings = replace(
                 settings,
@@ -682,10 +663,10 @@ def _finished(tree: ast.Module, scopes: Sequence[Scope]) -> None:
     """
     scope: Scope
     for scope in scopes:
-        scope.mark_escaped(_module_names(tree)[0])
-        scope.optionals()
-        scope.rebinds()
-        scope.fills()
+        scope.mark_escaped(module_names(tree)[0])
+        late.optionals(scope)
+        late.rebinds(scope)
+        late.fills(scope)
 
 
 def _recorded(scope: Scope, value: ast.expr | None) -> returned.Recorded:
@@ -745,41 +726,4 @@ def value_flow(
     tree: ast.Module = _parse(source, filename)[0]
     # Its lines place a `**rest` capture at its name, as `check_source` does.
     settings: Settings = _settings(tree, checks, as_text(source).splitlines(), module_tables(tree))
-    return _value_flow(tree, _scopes(tree, settings))
-
-
-def _value_flow(tree: ast.Module, scopes: list[Scope]) -> list[Finding]:
-    """Compare each name's values with its declared type, in each of `scopes`.
-
-    Returns:
-      Every finding, in source order.
-
-    """
-    escaped: frozenset[str]
-    checking_only: frozenset[str]
-    escaped, checking_only = _module_names(tree)
-    return sorted(found for scope in scopes for found in scope.value_flow(escaped, checking_only))
-
-
-@lru_cache(maxsize=16)  # `_value_flow` runs once per round of `_returned`, on the same tree
-def _module_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
-    """Find the names value flow leaves alone in a module.
-
-    Returns:
-      Those a `global` or `nonlocal` writes from elsewhere, and those annotated only for type
-      checkers (`if TYPE_CHECKING: x: str`), whose runtime values may differ on purpose.
-
-    """
-    escaped: set[str] = set()
-    checking_only: set[str] = set()
-    node: ast.AST
-    for node in of_type(tree, ast.Global, ast.Nonlocal, ast.If):
-        if isinstance(node, ast.Global | ast.Nonlocal):
-            escaped.update(node.names)
-        elif isinstance(node, ast.If) and node_name(node.test) == _TYPE_CHECKING:  # the only other kind
-            checking_only.update(
-                stmt.target.id
-                for stmt in node.body
-                if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name)
-            )
-    return frozenset(escaped), frozenset(checking_only)
+    return module_flow(tree, _scopes(tree, settings))

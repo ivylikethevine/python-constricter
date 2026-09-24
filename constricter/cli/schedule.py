@@ -34,6 +34,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         project.type_vars(modules, path),
         imported.returned,
         imported.guarded,
+        imported.generics,
     )
 
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Generic, Literal, TypeVar
 import collections as col
+import thirdparty as tp
 
 if TYPE_CHECKING:
     from pkg.other import Thing
@@ -64,11 +65,20 @@ def again() -> Again:
 
 def made():
     return plain()
+
+
+def outer() -> tp.Thing:
+    raise ValueError
+
+
+def boxes():
+    return Handles()
 """
 OTHER: Final = "class Thing:\n    pass\n"
 AGAIN: Final = "from pkg.other import Thing as Again\n"
 _SELECT: Final = ("--all-scopes", "--select=LVA001,LVA004")
 _TYPED: Final = "    {}: Plain = g()\n"
+_UNTYPED: Final = "    y = boxes()\n"
 USER: Final = """
 \"\"\"Doc.\"\"\"
 
@@ -194,6 +204,14 @@ def f(typing, TYPE_CHECKING):
     x = plain()
     return x, typing, TYPE_CHECKING
 """
+THIRD_PARTY: Final = """
+from pkg.handles import outer
+
+
+def f():
+    x = outer()
+    return x
+"""
 ALIASED: Final = """
 from pkg.handles import Plain as P, plain
 
@@ -203,7 +221,12 @@ def f():
     return x
 """
 CHAINED: Final = """
-from pkg.handles import made
+from pkg.handles import boxes, made
+
+
+def box():
+    y = boxes()
+    return y
 
 
 def g():
@@ -271,9 +294,15 @@ def test_a_name_the_file_binds_otherwise_isnt_imported(tmp_path: Path) -> None:
     assert not project.calls(catalog, user)
 
 
-@pytest.mark.parametrize(("source", "annotation"), [(UNGUARDABLE, None), (ALIASED, "P")])
+@pytest.mark.parametrize(
+    ("source", "annotation"),
+    [(UNGUARDABLE, None), (THIRD_PARTY, None), (ALIASED, "P")],
+)
 def test_a_type_is_written_as_the_file_can(tmp_path: Path, source: str, annotation: str | None) -> None:
-    """Under the name the file imports it by; not at all where nothing can be `TYPE_CHECKING`."""
+    """Under the name the file imports it by; not where nothing can be `TYPE_CHECKING`.
+
+    Nor from a module that may not be installed: neither checked nor the standard library's.
+    """
     _package(tmp_path)
     user: Path = _write(tmp_path / "user.py", source)
     imported: project.Imported = project.imported(project.index(sorted(tmp_path.rglob("*.py"))), user)
@@ -285,13 +314,29 @@ def test_a_type_is_written_as_the_file_can(tmp_path: Path, source: str, annotati
 
 
 def test_a_guarded_type_passes_through_an_unannotated_function(tmp_path: Path) -> None:
-    """A file's own function returning another's guarded type types its calls in a third, in one run."""
+    """A file's own function returning another's guarded type types its calls in a third, in one run.
+
+    Never another file's generic class, bare.
+    """
     _package(tmp_path)
     _ = _write(tmp_path / "pkg" / "chain.py", CHAINED)
     _ = _write(tmp_path / "use.py", "from pkg.chain import g\n\ndef k():\n    y = g()\n    return y\n")
-    assert cli.main(["--fix", "-q", "--unsafe-fixes", "--select=LVA001", str(tmp_path)]) == cli.EXIT_CLEAN
+    assert cli.main(["--fix", "-q", "--unsafe-fixes", "--select=LVA001", str(tmp_path)]) == cli.EXIT_FOUND
     assert _TYPED.format("y") in (tmp_path / "use.py").read_text(encoding="utf-8")
     assert _TYPED.format("x") in (tmp_path / "pkg" / "chain.py").read_text(encoding="utf-8")
+    assert _UNTYPED in (tmp_path / "pkg" / "chain.py").read_text(encoding="utf-8")  # generic: bare
+
+
+def test_another_files_generic_class_is_known_as_the_file_spells_it(tmp_path: Path) -> None:
+    """For `--fix` never to write it bare, however it's imported."""
+    _package(tmp_path)
+    _ = _write(tmp_path / "pkg" / "__init__.py", "from .handles import Handles\n")
+    user: Path = _write(
+        tmp_path / "user.py",
+        "from pkg.handles import Handles as H, Plain\nimport pkg.handles\n",
+    )
+    imported: project.Imported = project.imported(project.index(sorted(tmp_path.rglob("*.py"))), user)
+    assert imported.generics == {"H", "pkg.handles.Handles", "pkg.Handles"}  # the package's re-export too
 
 
 def test_a_guarded_import_is_a_replacement_too(tmp_path: Path) -> None:

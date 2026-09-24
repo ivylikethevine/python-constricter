@@ -13,20 +13,18 @@ from constricter.fix.doubts import (
     corrected,
     doubts,
     is_constant,
+    narrowed_first,
     says_self,
-    spelled_self,
     tested,
 )
 from constricter.fix.guesses import guessed, guessing
 from constricter.fix.inference import inference, inferred
 from constricter.fix.known import Hints, ImportPlan, Inference, Known
 from constricter.offences import (
-    CAN_BE_FINAL,
     LONG_TUPLE,
     NESTED_TYPE,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
-    UNTYPED_TARGET,
     VAGUE_TYPE,
     Checks,
     Edit,
@@ -42,24 +40,17 @@ from constricter.rules.annotations import (
     node_name,
     roots,
 )
-from constricter.rules.flow import Binding, Finding, Hierarchy, Lifetime, findings, members
-from constricter.rules.rebinding import REBOUND, Refit, refit
+from constricter.rules.flow import Finding, Hierarchy, Lifetime, findings, members
+from constricter.rules.rebinding import REBOUND
 from constricter.rules.syntax import FunctionDef, Start
 
-_DISCARD: Final = "_"
 _SELF: Final = "self"
 _CLASSMETHOD: Final = "classmethod"
 _STATICMETHOD: Final = "staticmethod"
-_OPTIONAL: Final = "optional"  # the fix kind of a `None` default rebound to one type
-_DECLARING: Final = frozenset({UNANNOTATED, UNTYPED_TARGET})  # the codes whose fix declares a name's type
-_FILLED: Final = "filled"  # the fix kind (and guessing mechanism) of an empty container filled later
-_NONE: Final = "None"
-_FINAL: Final = "Final"
-_FINAL_KIND: Final = "final"  # the fix kind of LVA012's `Final`
+FINAL_KIND: Final = "final"  # the fix kind of LVA012's `Final`
 _TYPING_FINAL: Final = "typing.Final"
+_LITERAL_DOUBT: Final = frozenset({"literal"})  # a constant's literal, which `doubts` makes a guess
 _TYPE_CHECKING: Final = "typing.TYPE_CHECKING"
-_FINALS: Final = frozenset({_TYPING_FINAL, "typing_extensions.Final"})
-_NO_ALIASES: Final = frozenset[str]()
 _READS: Final = (ast.Name, ast.Attribute, ast.Subscript)  # a read of a value a type checker may narrow
 
 
@@ -224,17 +215,22 @@ class Scope:
         fix: Inference | None
         if (fix := inference(value, self.settings.known, self.inferred.types)) is not None:
             fix = corrected(value, fix, self._owner(), facts.generics, self.settings.known.names.plan)
+        if fix is not None and narrowed_first(value, fix):
+            fix = None
         unsafe: bool
         origins: frozenset[str]
         unsafe, origins = guesses_in(self, [value])
+        constant: bool = function is None and is_constant(name) and name in facts.passed
         if fix is not None and not unsafe:
             origins = doubts(
                 value,
                 fix,
-                constant=function is None and is_constant(name) and name in facts.passed,
+                constant=constant,
                 narrowed=function is not None and ast.unparse(value) in tested(function, facts.tests),
             )
             unsafe = bool(origins)
+        if fix is not None and constant and origins == _LITERAL_DOUBT:
+            fix = self._constant(fix)
         # Value flow's type is `--fix`'s own, if certain: worked out once, here, for both.
         certain: str | None = certain_type(self, value, (None if fix is None else fix.annotation, unsafe))
         if fix is None and (fix := self.hint(target)) is not None:
@@ -253,6 +249,25 @@ class Scope:
         self._first(name, at(target), code, None if fix is None else self.offer(fix, origins, unsafe=unsafe))
         if fix is not None:
             self.inferred.learn(name, fix.annotation, origins if unsafe else None)
+
+    def _constant(self, fix: Inference) -> Inference | None:
+        """Declare an ALL_CAPS constant passed to a call `Final`, which keeps its literal's `Literal` type.
+
+        `str` would widen it, where a parameter may take only some values (see `doubts`). A guess
+        still (a name bound again is left alone, see `rebinds`), and only where the module can name
+        `Final`.
+
+        Returns:
+          The `Final` inference, or `None`.
+
+        """
+        plan: ImportPlan | None = self.settings.known.names.plan
+        spelled: str | None = None if plan is None else plan.spell(_TYPING_FINAL)
+        return (
+            None
+            if spelled is None
+            else Inference(spelled, f"{fix.reason}, a constant passed to a call", fix.kinds | {FINAL_KIND})
+        )
 
     def _owner(self) -> Owner | None:
         """Find the class this scope is a method of, if its instance (or class) is a `Self` in it.
@@ -339,7 +354,7 @@ class Scope:
             span,
             fix.kinds,
             # With the import `TYPE_CHECKING` takes, for a new block.
-            imports=_imports(f"{fix.annotation} | {guard}" if guard else fix.annotation, plan),
+            imports=imports_of(f"{fix.annotation} | {guard}" if guard else fix.annotation, plan),
             after=plan.after,
             guarded=guarded,
             guard=guard or "",
@@ -406,137 +421,7 @@ class Scope:
         """Record a plain assignment to `name` at `where`, for LVA012."""
         self.assignments.found.setdefault(name, []).append((where, self.assignments.looping > 0))
 
-    def optionals(self) -> None:
-        """Offer `T | None` to a name first bound to `None`, then only ever to a known `T`.
-
-        Every later binding must have a type value flow is sure of (or `--fix` guessed, which makes
-        this a guess too), all the same one, not itself allowing `None`, and nothing in another scope
-        may write the name (`nonlocal`, `global`).
-        """
-        index: int
-        o: Offence
-        for index, o in enumerate(self.offences):
-            lifetime: Lifetime | None = self.flow.get(o.name)
-            if o.code != UNANNOTATED or _fixed(o) or lifetime is None or lifetime.escaped:
-                continue
-            first: Binding
-            rest: list[Binding]
-            first, *rest = lifetime.bindings
-            guesses: list[Late] = [
-                binding.guess for binding in rest if binding.value is None and binding.guess is not None
-            ]
-            types: set[str | None] = {binding.value or (binding.guess or (None,))[0] for binding in rest}
-            if first.at != (o.line, o.col) or first.value != _NONE or len(types) != 1:
-                continue
-            found: str | None = types.pop()
-            if found is None or _NONE in (members(found) or [found]):
-                continue
-            origins: frozenset[str] = frozenset[str]().union(*(rests for _, rests in guesses))
-            reason: str = f"`None`, then only `{found}`"
-            fix: Fix | None = self.offer(
-                Inference(f"{found} | None", reason, frozenset({_OPTIONAL}) | origins),
-                origins,
-                unsafe=bool(guesses),
-            )
-            self.offences[index] = replace(o, edit=fix)
-            self.inferred.late[o.name] = (f"{found} | None", origins)
-
-    def rebinds(self) -> None:
-        """Refit each first binding's fix to every value the name is bound to later (see `rebinding`).
-
-        A name something out of sight writes is left alone.
-        """
-        index: int
-        o: Offence
-        plan: ImportPlan | None = self.settings.known.names.plan
-        self_type: str | None = None if plan is None else spelled_self(plan)
-        for index, o in enumerate(self.offences):
-            lifetime: Lifetime | None = self.flow.get(o.name)
-            fix: Fix | None = o.edit
-            if o.code not in _DECLARING or fix is None or lifetime is None or lifetime.escaped:
-                continue
-            first: Binding
-            rest: list[Binding]
-            first, *rest = lifetime.bindings
-            if first.at != (o.line, o.col) or not rest:
-                continue
-            found: Refit | Fix | None = refit(o, fix, rest, self.settings.hierarchy, self_type)
-            refitted: Fix | None = self._offered(found) if isinstance(found, Refit) else found
-            self.offences[index] = replace(o, edit=refitted)
-
-    def _offered(self, found: Refit) -> Fix | None:
-        """Offer a refit fix, as the project's fix policy has it (see `offer`).
-
-        Returns:
-          The fix, or `None` if it isn't offered.
-
-        """
-        return self.offer(found.found, found.origins, unsafe=found.unsafe, edit=found.edit, span=found.span)
-
-    def fills(self) -> None:
-        """Offer an empty container, bound nowhere else, the type of what its function adds to it.
-
-        A guess (see `constricter.fix.fills`), resting on `filled` for `unsafe-fix-select`.
-        """
-        index: int
-        o: Offence
-        for index, o in enumerate(self.offences):
-            lifetime: Lifetime | None = self.flow.get(o.name)
-            kind: str | None = self.assignments.empty.get(o.name)
-            if o.code != UNANNOTATED or _fixed(o) or kind is None:
-                continue
-            if lifetime is None or lifetime.escaped or len(lifetime.bindings) != 1:
-                continue
-            found: Inference | None
-            if (
-                found := fills.filled(
-                    self.kind.body(),
-                    o.name,
-                    kind,
-                    self.settings.known,
-                    self.inferred.types,
-                )
-            ) is None:
-                continue
-            fix: Fix | None = self.offer(found, frozenset({_FILLED}), unsafe=True)
-            self.offences[index] = replace(o, edit=fix)
-            # What the scope infers from it (its `return`s) knows its type, a guess.
-            self.inferred.late[o.name] = (found.annotation, frozenset({_FILLED}))
-
-    def finals(self) -> list[Offence]:
-        """Find the names that could be `Final` (LVA012); run after `value_flow`, which marks escapes.
-
-        Returns:
-          An offence for each name bound exactly once, by a plain assignment outside any loop, and not
-          declared apart from it or already `Final`, nor written from another scope; with a fix
-          (see `_final`) where one is offered.
-
-        """
-        found: list[Offence] = []
-        plan: ImportPlan | None = self.settings.known.names.plan
-        # What else the module calls `Final`: `from typing import Final as F`.
-        aliases: frozenset[str] = frozenset(
-            () if plan is None else (name for name, origin in plan.bound.items() if origin in _FINALS),
-        )
-        name: str
-        lifetime: Lifetime
-        for name, lifetime in self.flow.items():
-            if (
-                name == _DISCARD
-                or lifetime.escaped
-                or self.kind.unannotated == UNANNOTATED_MEMBER
-                or len(lifetime.bindings) != 1
-            ):
-                continue
-            where: tuple[int, int] = lifetime.bindings[0].at
-            if self.assignments.found.get(name) == [(where, False)] and (
-                lifetime.declared is None
-                or (lifetime.declared_at == where and not is_final(lifetime.declared, aliases))
-            ):
-                found.append(Offence(*where, name, CAN_BE_FINAL, self._final(name, lifetime)))
-        return [self._evaluated(o) for o in found]
-
-    def _evaluated(self, offence: Offence) -> Offence:
+    def evaluated(self, offence: Offence) -> Offence:
         """Quote a module body's fix whose type names what the module imports for type checking alone.
 
         A module's annotations are evaluated when it runs (unless it postpones them), and those
@@ -558,56 +443,6 @@ class Scope:
             return offence
         return replace(offence, edit=fix._replace(annotation=_quoted(fix.annotation)))
 
-    def _final(self, name: str, lifetime: Lifetime) -> Fix | None:
-        """Offer LVA012's `Final`: around the annotation there (`Final[int]`), or as one (`: Final`).
-
-        An unannotated name LVA001 would annotate gets `Final[T]` with LVA001's type instead, and
-        LVA001's own fix is dropped: both write where the name is bound, and this one does for both.
-
-        Returns:
-          The fix, or `None` where the scope isn't fixed, the `final` kind isn't selected, an
-          annotation spans lines, or the module can't name `Final`.
-
-        """
-        plan: ImportPlan | None = self.settings.known.names.plan
-        spelled: str | None = None if plan is None else plan.spell(_TYPING_FINAL)
-        kinds: frozenset[str] = frozenset({_FINAL_KIND})
-        if (
-            plan is None
-            or spelled is None
-            or not self.kind.fixable
-            or not self.settings.checks.fixes.allows(kinds)
-        ):
-            return None
-        reason: str = "bound once, and never rebound"
-        if lifetime.declared is not None:
-            if lifetime.declared_span is None:
-                return None
-            line: int = lifetime.declared_at[0]
-            start: int
-            end: int
-            start, end = lifetime.declared_span
-            text: str = self.settings.lines[line - 1].encode()[start:end].decode()
-            return _final_fix(
-                Fix(f"{spelled}[{text}]", reason, edit=Edit.REPLACE, span=(start, end), kinds=kinds),
-                plan,
-            )
-        index: int
-        o: Offence
-        for index, o in enumerate(self.offences):
-            if (
-                o.name == name
-                and o.code == UNANNOTATED
-                and o.edit is not None
-                and o.edit.edit == Edit.ANNOTATE
-            ):
-                self.offences[index] = replace(o, edit=None)
-                return _final_fix(
-                    o.edit._replace(annotation=f"{spelled}[{o.edit.annotation}]", kinds=o.edit.kinds | kinds),
-                    plan,
-                )
-        return _final_fix(Fix(spelled, reason, kinds=kinds), plan)
-
     def _covered(self, name: str) -> bool:
         """Check whether the rules cover `name` here.
 
@@ -626,7 +461,7 @@ class Scope:
           All but those for exempt names.
 
         """
-        return [self._evaluated(o) for o in self.offences if self._covered(o.name)]
+        return [self.evaluated(o) for o in self.offences if self._covered(o.name)]
 
     def bound(self) -> list[str]:
         """List the first bindings the rules cover.
@@ -673,18 +508,6 @@ class Scope:
         return (
             None if type_comment is not None and self.settings.checks.type_comments else self.kind.unannotated
         )
-
-
-def is_final(annotation: str, aliases: frozenset[str] = _NO_ALIASES) -> bool:
-    """Check whether an annotation is `Final` (`Final[T]`, `typing.Final`, ...), or one of `aliases` for it.
-
-    Returns:
-      Whether it is.
-
-    """
-    # `annotation` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
-    root: ast.expr = ast.parse(annotation, mode="eval").body
-    return node_name(root.value if isinstance(root, ast.Subscript) else root) in aliases | {_FINAL}
 
 
 def guesses_in(scope: Scope, values: Iterable[ast.expr]) -> tuple[bool, frozenset[str]]:
@@ -741,7 +564,7 @@ def certain_type(
     return None if unsafe else annotation
 
 
-def _imports(annotation: str, plan: ImportPlan) -> tuple[str, ...]:
+def imports_of(annotation: str, plan: ImportPlan) -> tuple[str, ...]:
     """Find the imports `annotation` needs: those `plan` added for a name it's written with.
 
     Returns:
@@ -774,23 +597,3 @@ def _quoted(annotation: str) -> str:
     """
     plain: bool = not {'"', "\\"} & set(annotation)
     return f'"{annotation}"' if plain else ast.unparse(ast.Constant(annotation))
-
-
-def _final_fix(fix: Fix, plan: ImportPlan) -> Fix:
-    """Give a `Final` fix the imports its annotation needs.
-
-    Returns:
-      It, with them.
-
-    """
-    return fix._replace(imports=_imports(fix.annotation, plan), after=plan.after)
-
-
-def _fixed(offence: Offence) -> bool:
-    """Check whether an offence already has a fix a late one (`optionals`, `fills`) mustn't replace.
-
-    Returns:
-      Whether it has one, other than a type checker's hint (`--infer-with`), which one would.
-
-    """
-    return offence.edit is not None and hinted.KIND not in offence.edit.kinds

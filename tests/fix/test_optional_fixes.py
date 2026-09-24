@@ -62,3 +62,25 @@ def test_optional_is_its_own_fix_kind() -> None:
     """`fix-ignore = ["optional"]` turns it off."""
     fixed: dict[str, str | None] = _fixed(Checks(fixes=FixPolicy(ignore=frozenset({"optional"}))))
     assert fixed["a"] is None
+
+
+ENCLOSED: Final = """
+def f(flag: bool) -> None:
+    a = None
+    b = None
+    if flag:
+        a = 1
+        b = 2
+    later = lambda: a
+    later()
+"""
+
+
+def test_a_name_a_nested_function_reads_isnt_declared_optional() -> None:
+    """Inside it, `T | None` is what a checker would see: outside, what it narrowed the name to."""
+    found: list[Offence] = check_source(textwrap.dedent(ENCLOSED))
+    assert {o.name: o.fix for o in found if o.code == UNANNOTATED} == {
+        "a": None,
+        "b": "int | None",
+        "later": None,
+    }

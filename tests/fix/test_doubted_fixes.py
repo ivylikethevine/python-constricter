@@ -16,26 +16,47 @@ def _found(source: str, checks: Checks | None = None) -> dict[str, tuple[str | N
 
 
 def test_a_read_of_a_union_may_be_narrowed_where_it_is_so_is_a_guess() -> None:
-    """A copy, attribute or subscript of a union, and a filtered comprehension of one, are guesses."""
+    """A copy, attribute or subscript of a union, and a filtered comprehension of one, are guesses.
+
+    One of an `X | None` isn't offered at all: it's nearly always checked for `None` first. Nor is a
+    bare `None`.
+    """
     source: str = """
     class C:
         x: int | None
 
-    def f(c: C, maybe: int | None, pairs: dict[str, int | None], items: list[int | str]) -> None:
+    def f(
+        c: C,
+        maybe: int | None,
+        pairs: dict[str, int | None],
+        items: list[int | str],
+        either: int | str,
+        options: list[int | None],
+        spelled: "list[Optional[int]]",
+        nothing: None,
+    ) -> None:
         a = maybe
         b = c.x
         d = pairs["k"]
         e = [i for i in items if isinstance(i, int)]
         g = [i for i in items]
         h = [maybe]
+        i = either
+        j = [o for o in options if o]
+        k = nothing
+        m = [s for s in spelled if s]
     """
     assert _found(source) == {
-        "a": ("int | None", True),
-        "b": ("int | None", True),
-        "d": ("int | None", True),
+        "a": (None, False),
+        "b": (None, False),
+        "d": (None, False),
         "e": ("list[int | str]", True),
         "g": ("list[int | str]", False),  # no condition to narrow it
         "h": ("list[int | None]", False),  # a container of one isn't narrowed with it
+        "i": ("int | str", True),
+        "j": (None, False),
+        "k": (None, False),
+        "m": (None, False),
     }
 
 
@@ -95,7 +116,10 @@ def test_after_a_rebinding_a_name_is_what_it_was_bound_to() -> None:
 
 
 def test_an_all_caps_module_literal_is_a_constant_to_pyright_so_is_a_guess() -> None:
-    """To pyright an ALL_CAPS module name is a constant: it keeps its `Literal` type, which `str` widens."""
+    """To pyright an ALL_CAPS module name is a constant: it keeps its `Literal` type, which `str` widens.
+
+    One passed to a call is declared `Final`, which keeps it (a guess still); one bound again isn't.
+    """
     source: str = """
     MODE = "r"
     _LIMIT = -3
@@ -104,16 +128,19 @@ def test_an_all_caps_module_literal_is_a_constant_to_pyright_so_is_a_guess() -> 
     lower = "x"
     NAMES = ["a"]
     UNUSED = "x"
+    AGAIN = "a"
+    AGAIN = "b"
 
     def f(limit: int = _LIMIT, *, flag: bool = FLAG) -> None:
         LOCAL = "x"
         open("f", MODE)
-        g(rate=RATE, lower=lower, names=NAMES)
+        g(rate=RATE, lower=lower, names=NAMES, again=AGAIN)
     """
     assert _found(source, Checks(all_scopes=True)) == {
-        "MODE": ("str", True),
-        "_LIMIT": ("int", True),
-        "FLAG": ("bool", True),
+        "MODE": ("Final", True),
+        "_LIMIT": ("Final", True),
+        "FLAG": ("Final", True),
+        "AGAIN": (None, False),
         "RATE": ("float", False),  # no `Literal` of a float
         "lower": ("str", False),
         "NAMES": ("list[str]", False),
@@ -255,7 +282,10 @@ def test_a_typing_type_variable_is_never_a_calls_type() -> None:
 
 
 def test_a_chained_read_of_a_union_or_of_what_is_tested_is_a_guess() -> None:
-    """Through any receiver (`self.a.b`), as through a local: a union, or what the function tests."""
+    """Through any receiver (`self.a.b`), as through a local: what the function tests is a guess.
+
+    An `X | None` isn't offered at all.
+    """
     source: str = """
     class Inner:
         x: int | None
@@ -271,4 +301,4 @@ def test_a_chained_read_of_a_union_or_of_what_is_tested_is_a_guess() -> None:
                 b = self.inner.y
             d = self.inner.z
     """
-    assert _found(source) == {"a": ("int | None", True), "b": ("object", True), "d": ("int", False)}
+    assert _found(source) == {"a": (None, False), "b": ("object", True), "d": ("int", False)}
