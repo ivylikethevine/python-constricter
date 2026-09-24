@@ -952,8 +952,6 @@
 "lib2to3.pgen2.tokenize.TokenError": "lib2to3.pgen2.tokenize.TokenError",
 "lib2to3.pgen2.tokenize.Untokenizer": "lib2to3.pgen2.tokenize.Untokenizer",
 "lib2to3.pygram.Symbols": "lib2to3.pygram.Symbols",
-"lib2to3.pygram.pattern_symbols": "lib2to3.pygram.pattern_symbols",
-"lib2to3.pygram.python_symbols": "lib2to3.pygram.python_symbols",
 "lib2to3.pytree.Base": "lib2to3.pytree.Base",
 "lib2to3.pytree.BasePattern": "lib2to3.pytree.BasePattern",
 "lib2to3.pytree.Leaf": "lib2to3.pytree.Leaf",

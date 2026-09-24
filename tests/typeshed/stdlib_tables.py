@@ -71,15 +71,29 @@ _SKIPPED_MODULES: Final = frozenset(
     {"typing", "typing_extensions", "builtins", "encodings", "xxlimited", "__main__", "this", "antigravity"},
 )
 # In the stubs for every platform, but not in every Python CI runs the tests on (CPython's own, a
-# debug build's), or not what they say there (`KW_ONLY` is an instance, not a class).
-_RUNTIME: Final = frozenset({"sys.getrefcount", "sys.gettotalrefcount", "dataclasses.KW_ONLY"})
+# debug build's), or not what they say there (`KW_ONLY`, `python_symbols` are instances, not classes).
+_RUNTIME: Final = frozenset(
+    {
+        "sys.getrefcount",
+        "sys.gettotalrefcount",
+        "dataclasses.KW_ONLY",
+        "lib2to3.pygram.python_symbols",
+        "lib2to3.pygram.pattern_symbols",
+    },
+)
 _CHECK: Final = "--check"
 
 
 # Each signature of a function whose return its arguments decide (see `overloads.Overloads.entry`).
 Signatures: TypeAlias = list[Signature]
 # One of the tables (or `source`, where they're from).
-_Json: TypeAlias = Table | dict[str, Table] | dict[str, list[Signatures]] | dict[str, list[str]]
+_Json: TypeAlias = (
+    Table
+    | dict[str, Table]
+    | dict[str, dict[str, str | None]]
+    | dict[str, list[Signatures]]
+    | dict[str, list[str]]
+)
 
 
 class _Tables(NamedTuple):
@@ -94,6 +108,7 @@ class _Tables(NamedTuple):
     method_overloads: dict[str, Table]  # each class's methods in `method_signatures`
     method_signatures: dict[str, list[Signatures]]  # as `overloads`, by where they're defined
     type_parameters: Table  # each generic class's, in order, comma-separated (`_T=`: with a default)
+    bases: Table  # each class's public ancestors in the tables, nearest first, comma-separated
 
 
 def _paths(stubs: Stubs, config: Config) -> dict[str, Found]:
@@ -140,20 +155,13 @@ def _read(stubs: Stubs, config: Config) -> _Tables:
     canonical: dict[ClassRef, str] = {
         klass: path for klass, path in every.items() if not reading.generic(klass)
     }
-    tables: _Tables = _Tables({}, {}, {}, {}, {}, {}, {}, {}, {})
+    tables: _Tables = _Tables({}, {}, {}, {}, {}, {}, {}, {}, {}, {})
     reader: _Reader = _Reader(reading, Overloads(reading, every), canonical)
     for path, found in paths.items():
         _enter(tables, reader, path, found)
     owner: ClassRef
     for owner, path in canonical.items():
-        members: dict[str, Member] = reading.members(owner)
-        _enter_members(tables, path, members, canonical)
-        name: str
-        method: str
-        signatures: list[Signature]
-        for name, (method, signatures) in reader.overloads.methods(owner, members).items():
-            tables.method_overloads.setdefault(path, {})[name] = method
-            tables.method_signatures[method] = [signatures]
+        _enter_class(tables, reader, owner, path)
     for owner, path in every.items():
         _enter_generic(tables, reader, owner, path)
     return tables
@@ -165,6 +173,23 @@ class _Reader(NamedTuple):
     reading: Reading
     overloads: Overloads
     canonical: dict[ClassRef, str]  # every public non-generic class's path
+
+
+def _enter_class(tables: _Tables, reader: _Reader, klass: ClassRef, path: str) -> None:
+    """Enter a class's members, its public ancestors, and its methods whose arguments decide their return."""
+    members: dict[str, Member] = reader.reading.members(klass)
+    _enter_members(tables, path, members, reader.canonical)
+    ancestors: list[str] = [
+        reader.canonical[base] for base in reader.reading.trusted(klass)[0][1:] if base in reader.canonical
+    ]
+    if ancestors:
+        tables.bases[path] = ",".join(ancestors)
+    name: str
+    method: str
+    signatures: list[Signature]
+    for name, (method, signatures) in reader.overloads.methods(klass, members).items():
+        tables.method_overloads.setdefault(path, {})[name] = method
+        tables.method_signatures[method] = [signatures]
 
 
 def _enter_generic(tables: _Tables, reader: _Reader, klass: ClassRef, path: str) -> None:
@@ -348,6 +373,7 @@ def _agreed(tables: list[_Tables]) -> _Tables:
         _common_by_class([one.method_overloads for one in tables]),
         _variants([one.method_signatures for one in tables]),
         _common([one.type_parameters for one in tables]),
+        _common([one.bases for one in tables]),
     )
 
 
@@ -372,18 +398,67 @@ def generate(typeshed: Path = TYPESHED) -> dict[Path, str]:
         "overloads": tables.overloads,
         "classes": tables.classes,
         "aliases": tables.aliases,
-        "methods": tables.methods,
-        "attributes": tables.attributes,
-        # Each class's list: a method's name is its entry's last part.
-        "method_overloads": {
-            klass: sorted(table.values()) for klass, table in tables.method_overloads.items()
-        },
+        "methods": inherited(tables.methods, tables.bases),
+        "attributes": inherited(tables.attributes, tables.bases),
+        "bases": tables.bases,
+        "method_overloads": inherited(tables.method_overloads, tables.bases),
         "method_signatures": tables.method_signatures,
         "type_parameters": tables.type_parameters,
     }
     files: dict[Path, str] = {OUTPUT / f"{name}.json": write(table) for name, table in document.items()}
     files[PARTIAL] = write(_partial(each))
     return files
+
+
+def inherited(members: dict[str, Table], bases: Table) -> dict[str, dict[str, str | None]]:
+    """Write each class's members as it has them apart from its public ancestors (`bases`).
+
+    `--fix` resolves a member as a class's own entry, else its ancestors' in order (each resolved
+    the same way): a member the class has as its nearest ancestor does is left out, and one it
+    hides (a member it defines that the tables can't hold) is `None`. Checked against the full
+    tables, entry by entry.
+
+    Returns:
+      Each class's entries.
+
+    """
+    found: dict[str, dict[str, str | None]] = {}
+    klass: str
+    for klass in dict.fromkeys([*members, *bases]):
+        through: dict[str, str] = {}
+        ancestor: str
+        name: str
+        value: str
+        for ancestor in bases.get(klass, "").split(",") if klass in bases else []:
+            for name, value in members.get(ancestor, {}).items():
+                _ = through.setdefault(name, value)
+        own: Table = members.get(klass, {})
+        entries: dict[str, str | None] = {
+            **{name: value for name, value in own.items() if through.get(name) != value},
+            **dict.fromkeys(through.keys() - own.keys()),
+        }
+        if entries:
+            found[klass] = entries
+    assert all(_resolved(found, bases, klass) == table for klass, table in members.items())
+    return found
+
+
+def _resolved(own: dict[str, dict[str, str | None]], bases: Table, klass: str) -> Table:
+    """Resolve a class's members as `--fix` does (`stdlib._member`): its own entries, then each ancestor's.
+
+    Returns:
+      Them.
+
+    """
+    found: dict[str, str | None] = {}
+    ancestor: str
+    for ancestor in bases.get(klass, "").split(",") if klass in bases else []:
+        name: str
+        value: str
+        for name, value in _resolved(own, bases, ancestor).items():
+            _ = found.setdefault(name, value)
+    found.update(own.get(klass, {}))
+    return {name: value for name, value in found.items() if value is not None}
 
 
 def write(table: _Json) -> str:

@@ -2,19 +2,23 @@
 """`--fix` for the standard library, from tables generated from typeshed, resolved through the imports."""
 
 import ast
+import importlib
 import json
 import pkgutil
 import sys
 import textwrap
 import warnings
 from pathlib import Path
-from typing import Final, TypeAlias, cast
+from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
 import pytest
 
 from constricter import Offence, check_source
 from constricter.fix import imports, stdlib
 from constricter.fix.known import ImportPlan, Inference, Known, LibraryNames
+
+if TYPE_CHECKING:
+    from types import ModuleType
 
 UNANNOTATED: Final = "LVA001"
 PYPY: Final = "pypy"
@@ -91,7 +95,9 @@ def test_every_table_function_exists(name: str) -> None:
     patch releases, so they must have every entry listed for them. Elsewhere an entry may be missing, and
     is skipped: PyPy lacks some of CPython's own (`tracemalloc`, `gc.get_count`), and macOS and
     Windows stop at the last patch release with an installer (3.11.9, 3.12.10), before security
-    releases' additions like `tarfile.LinkFallbackError`. What's there must still be callable.
+    releases' additions like `tarfile.LinkFallbackError`. A module built only where a system
+    library is (`nis` with `libnsl`, `dbm.gnu` with `gdbm`) may be missing anywhere. What's there
+    must still be callable.
     """
     found: bool | None = _callable(name)
     here: str = f"{sys.platform}-{sys.version_info.major}.{sys.version_info.minor}"
@@ -99,7 +105,30 @@ def test_every_table_function_exists(name: str) -> None:
         pytest.skip("not in this platform's build")
     if name in PARTIAL and here not in PARTIAL[name]:
         pytest.skip("not in the stubs for this platform and version")
+    if found is None and not _built(name):
+        pytest.skip("its module isn't built into this Python")
     assert found
+
+
+def _built(name: str) -> bool:
+    """Check that every module a table entry's path names is here (not an optional one left unbuilt).
+
+    Returns:
+      Whether each is.
+
+    """
+    parts: list[str] = name.split(".")
+    index: int
+    for index in range(1, len(parts)):
+        module: str = ".".join(parts[:index])
+        found: ModuleType
+        try:
+            found = importlib.import_module(module)
+        except ImportError:
+            return False
+        if not hasattr(found, "__path__"):
+            return True  # a module, not a package: the rest is a name in it
+    return True
 
 
 def _callable(name: str) -> bool | None:

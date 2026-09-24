@@ -6,6 +6,12 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- The standard-library tables write each class's members apart from its public ancestors
+  (`bases.json`), which `--fix` resolves them through: 908 KB to 688 KB, the generator checking
+  every class resolves to exactly its full table. `lib2to3.pygram`'s `python_symbols` and
+  `pattern_symbols`, instances at run time though typeshed declares them classes, are left out; the
+  existence test skips a module a Python was built without (`nis`, `dbm.gnu`), which failed CI's
+  3.11 and 3.12 jobs.
 - `--fix` types a call to another checked file's function, and its classes' members, whose type
   names something the calling file doesn't import: the name is imported where that file has it from,
   under `if TYPE_CHECKING:` (the module's own block, or a new one), so no import cycle can follow at

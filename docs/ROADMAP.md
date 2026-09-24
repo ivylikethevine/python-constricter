@@ -30,12 +30,13 @@
   the statement; fixes for LVA003 and LVA007. A tuple longer than `max-length` is `tuple[T, ...]`.
 - **The standard library, from typeshed**: tables generated from the stubs basedpyright bundles
   (`tests/typeshed/`, checked in CI), read as Linux, macOS and Windows and Python 3.11 to 3.14 see
-  them, into `constricter/fix/tables/` (one JSON file a table, an entry a line). Fixed returns,
-  classes and what returns them (`asyncio.Lock()`, `logging.getLogger()`), their attributes and
-  methods; and functions and methods whose arguments decide their type, by the signature a call
-  matches as a type checker picks among overloads, with type variables bound by the arguments
-  (`re.compile("x")` is a `re.Pattern[str]`) and generic classes' by the receiver (`pat.match(s)`).
-  What only some platforms or versions have is kept (`os.getuid()`).
+  them, into `constricter/fix/tables/` (one JSON file a table, an entry a line; each class's members
+  apart from its public ancestors'). Fixed returns, classes and what returns them (`asyncio.Lock()`,
+  `logging.getLogger()`), their attributes and methods; and functions and methods whose arguments
+  decide their type, by the signature a call matches as a type checker picks among overloads, with
+  type variables bound by the arguments (`re.compile("x")` is a `re.Pattern[str]`) and generic
+  classes' by the receiver (`pat.match(s)`). What only some platforms or versions have is kept
+  (`os.getuid()`).
 - **Fixes that add an import**: `open(p, "rb")` by its literal mode, standard-library classes, and
   `Final`, through an import the module has or one added after its leading imports; another checked
   file's type the module doesn't import, under `if TYPE_CHECKING:` (no import cycle at run time),
@@ -147,14 +148,6 @@
 
 By scope (smallest first) and, within each, by value. Each item says what it is, why, how, and when
 it's done.
-
-### Small: a day or less
-
-1. **Inherited members written once.** `methods.json` (277 KB) and `attributes.json` (136 KB) repeat
-   every inherited member for each subclass, as `method_overloads` did. Write each class's own
-   members and its public bases in order, and resolve the rest through them at run time (a private
-   base's members stay with the class). Done when those tables shrink and every corpus's fixes are
-   unchanged.
 
 ### Medium: a few days
 

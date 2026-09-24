@@ -447,8 +447,6 @@
 "lib2to3.pgen2.tokenize.Untokenizer": ["linux-3.11","linux-3.12","darwin-3.11","darwin-3.12","win32-3.11","win32-3.12"],
 "lib2to3.pgen2.tokenize.untokenize": ["linux-3.11","linux-3.12","darwin-3.11","darwin-3.12","win32-3.11","win32-3.12"],
 "lib2to3.pygram.Symbols": ["linux-3.11","linux-3.12","darwin-3.11","darwin-3.12","win32-3.11","win32-3.12"],
-"lib2to3.pygram.pattern_symbols": ["linux-3.11","linux-3.12","darwin-3.11","darwin-3.12","win32-3.11","win32-3.12"],
-"lib2to3.pygram.python_symbols": ["linux-3.11","linux-3.12","darwin-3.11","darwin-3.12","win32-3.11","win32-3.12"],
 "lib2to3.pytree.Base": ["linux-3.11","linux-3.12","darwin-3.11","darwin-3.12","win32-3.11","win32-3.12"],
 "lib2to3.pytree.BasePattern": ["linux-3.11","linux-3.12","darwin-3.11","darwin-3.12","win32-3.11","win32-3.12"],
 "lib2to3.pytree.Leaf": ["linux-3.11","linux-3.12","darwin-3.11","darwin-3.12","win32-3.11","win32-3.12"],

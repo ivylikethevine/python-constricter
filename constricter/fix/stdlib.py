@@ -22,7 +22,6 @@ from typing import Final, NamedTuple, NotRequired, Required, TypeAlias, TypedDic
 from constricter.fix.known import ImportPlan, Inference, Known
 from constricter.rules.syntax import import_bindings
 
-_Members: TypeAlias = Mapping[str, Mapping[str, str]]  # each class's members' annotations, by name
 Constant: TypeAlias = bool | int | float | complex | str | bytes | None  # a literal's value
 
 
@@ -85,11 +84,16 @@ OVERLOADS: Final = cast("dict[str, list[Variant]]", _table("overloads"))
 # path, spelled (and imported, if it must be) the way the module can.
 CLASSES: Final = cast("dict[str, str]", _table("classes"))
 _ALIASES: Final = cast("Mapping[str, str]", _table("aliases"))  # a class's other public paths, to its own
-_METHODS: Final = cast("_Members", _table("methods"))
-_ATTRIBUTES: Final = cast("_Members", _table("attributes"))
+# Each class's methods' returns and attributes' types apart from its public ancestors' (`_BASES`),
+# `None` where it hides one of theirs: `_member` resolves the rest through them.
+_Own: TypeAlias = Mapping[str, Mapping[str, str | None]]
+_METHODS: Final = cast("_Own", _table("methods"))
+_ATTRIBUTES: Final = cast("_Own", _table("attributes"))
+# Each class's public ancestors in the tables, nearest first, comma-separated.
+_BASES: Final = cast("Mapping[str, str]", _table("bases"))
 # Classes' methods whose arguments decide their type: each one's entry in `method_signatures` (its
 # signatures without `self`, as `OVERLOADS`', under the class defining it: `module.Class.method`).
-_METHOD_OVERLOADS: Final = cast("Mapping[str, list[str]]", _table("method_overloads"))
+_METHOD_OVERLOADS: Final = cast("_Own", _table("method_overloads"))  # by name, as `_METHODS`
 # Each generic class's type parameters, in order, comma-separated: an instance's type binds them.
 # One ending `=` has a default (PEP 696): a class all of whose have one may be written bare.
 _TYPE_PARAMETERS: Final = cast("Mapping[str, str]", _table("type_parameters"))
@@ -115,7 +119,7 @@ _DOT: Final = "."
 KNOWN: Final = frozenset({*RETURNS, *OVERLOADS, ENVIRONMENT, *CLASSES})  # every function the tables type
 _TABLE_MODULES: Final = frozenset(
     name.rsplit(".", count)[0]
-    for name in (*KNOWN, *_ALIASES, *_METHODS, *_ATTRIBUTES)
+    for name in (*KNOWN, *_ALIASES, *_METHODS, *_ATTRIBUTES, *_BASES)
     for count in range(1, name.count(".") + 1)
 )
 
@@ -178,8 +182,9 @@ def library_member(receiver: str, name: str, call: ast.Call | None, known: Known
 
     """
     path: str | None = _class_path(receiver, known)
-    table: _Members = _ATTRIBUTES if call is None else _METHODS
-    found: str | None = None if path is None else table.get(path, {}).get(name)
+    found: str | None = (
+        None if path is None else _member(_ATTRIBUTES if call is None else _METHODS, path, name)
+    )
     plan: ImportPlan | None = known.names.plan
     if found is not None and _is_class(found):
         found = None if plan is None else plan.spell(found)
@@ -189,6 +194,29 @@ def library_member(receiver: str, name: str, call: ast.Call | None, known: Known
         if found is None
         else Inference(found, f"`{path}.{name}`'s {what} in typeshed", frozenset({_KIND}))
     )
+
+
+def _member(table: "_Own", path: str, name: str) -> str | None:
+    """Look up a class's member in a table: its own entry, else its nearest public ancestor's.
+
+    Returns:
+      Its entry (an attribute's type, a method's return, a `method_signatures` entry), or `None`.
+
+    """
+    own: Mapping[str, str | None] = table.get(path, {})
+    if name in own:
+        return own[name]
+    ancestor: str
+    for ancestor in _ancestors(path):
+        found: str | None
+        if (found := _member(table, ancestor, name)) is not None:
+            return found
+    return None
+
+
+@lru_cache(maxsize=1024)
+def _ancestors(path: str) -> tuple[str, ...]:
+    return tuple(_BASES[path].split(",")) if path in _BASES else ()
 
 
 class Method(NamedTuple):
@@ -217,7 +245,7 @@ def overloaded_method(receiver: str, name: str, known: Known) -> Method | None:
         args = list(root.slice.elts) if isinstance(root.slice, ast.Tuple) else [root.slice]
         root = root.value
     path: str | None = _path(root, known)
-    entry: str | None = None if path is None else _entries(path).get(name)
+    entry: str | None = None if path is None else _member(_METHOD_OVERLOADS, path, name)
     if path is None or entry is None:
         return None
     texts: list[str] = [ast.unparse(arg) for arg in args]
@@ -233,17 +261,6 @@ def overloaded_method(receiver: str, name: str, known: Known) -> Method | None:
         texts if args and builtin else None,
         dict(zip(params, texts, strict=True)) if args and len(params) == len(args) else {},
     )
-
-
-@lru_cache(maxsize=256)
-def _entries(path: str) -> dict[str, str]:
-    """Map a class's methods whose arguments decide their type to their `method_signatures` entries.
-
-    Returns:
-      Each entry, by the method's name (its last part).
-
-    """
-    return {entry.rpartition(_DOT)[2]: entry for entry in _METHOD_OVERLOADS.get(path, [])}
 
 
 def generics(bound: Mapping[str, str]) -> frozenset[str]:
