@@ -9,7 +9,7 @@ import io
 import json
 import sys
 import tokenize
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
@@ -23,8 +23,8 @@ from constricter.cli.protocol import HintError
 from constricter.cli.report import Format, Result, fix_reasons, render, statistics
 from constricter.cli.runs import BaselineRun, CheckRun, CoverageRun, FileRun
 from constricter.cli.workers import Workers
-from constricter.fix import fixes, installed, project
-from constricter.fix.known import Hints, Outside, Returns
+from constricter.fix import callers, fixes, installed, project
+from constricter.fix.known import Callee, Hints, Outside, Returns
 from constricter.noqa import lines, unsuppressed
 from constricter.offences import (
     DEFAULT_CHECKS,
@@ -41,6 +41,7 @@ EXIT_CLEAN: Final = 0
 EXIT_FOUND: Final = 1
 EXIT_ERROR: Final = 2
 _ALL: Final = 100  # percent
+_PY: Final = ".py"  # a module the index names (not a notebook)
 
 
 def _encoding(path: Path, data: bytes) -> str:
@@ -264,7 +265,11 @@ def _check_path(path: Path, outside: Outside, options: Options) -> CheckRun:
     raw, checked, error = _read_checked(path, name, options.checks, outside)
     if error:
         return CheckRun(error=error)
-    return replace(_handled(path, (raw, name), checked.offences, options), returned=checked.returned)
+    return replace(
+        _handled(path, (raw, name), checked.offences, options),
+        returned=checked.returned,
+        calls=checked.calls,
+    )
 
 
 def _handled(path: Path, text: tuple[str, Path], offences: list[Offence], options: Options) -> CheckRun:
@@ -350,8 +355,10 @@ def _check_all(options: Options) -> tuple[list[Path], list[FileRun]]:
     else:
         check = partial(_check_path, options=options)
     names: list[Path] = [options.input.name(path) for path in paths]
-    if not options.infer_with or options.mode in {Mode.COVERAGE, Mode.WRITE_BASELINE}:
+    if options.mode in {Mode.COVERAGE, Mode.WRITE_BASELINE}:
         return names, _checked_all(paths, check, options)[0]
+    if not options.infer_with:
+        return names, _called_again(paths, _checked_all(paths, check, options), check, options)[0]
     session: hints.Session
     # Imported only for `--infer-with`: it's slow to import, for every run's start.
     with cast("type[hints.Session]", importlib.import_module("constricter.cli.hints").Session)(
@@ -362,7 +369,13 @@ def _check_all(options: Options) -> tuple[list[Path], list[FileRun]]:
     ) as session:
         runs: list[FileRun]
         modules: project.Index
-        runs, modules = _checked_all(paths, check, options, session)
+        runs, modules = _called_again(
+            paths,
+            _checked_all(paths, check, options, session),
+            check,
+            options,
+            session,
+        )
         # The files the last round changed: only their hints can have changed.
         again: list[int] = [
             index
@@ -385,6 +398,67 @@ def _check_all(options: Options) -> tuple[list[Path], list[FileRun]]:
                 runs[index] = _merged(runs[index], run)
             again = [index for index, run in zip(again, redone, strict=True) if cast("CheckRun", run).fixed]
     return names, runs
+
+
+def _called_again(
+    paths: Sequence[Path],
+    first: tuple[list[FileRun], project.Index],
+    check: Callable[[Path, Outside], FileRun],
+    options: Options,
+    session: "hints.Session | None" = None,
+) -> tuple[list[FileRun], project.Index]:
+    """Check again the files whose functions' unannotated parameters every call passes one type.
+
+    Knowing those types (see `callers`), as guesses; a file among several of one module name isn't
+    (which its callers call can't be told). Then the other files calling those functions, knowing
+    what they now return. With `--fix` a file's rounds are joined; otherwise the last, knowing more,
+    stands.
+
+    Returns:
+      What each file found, and the index, with the parameters' types.
+
+    """
+    runs: list[FileRun]
+    modules: project.Index
+    runs, modules = first
+    found: dict[str, callers.Parameters] = callers.parameters(
+        (run.calls for run in runs if isinstance(run, CheckRun)),
+        modules,
+    )
+    names: list[str | None] = [project.module_name(path) if path.suffix == _PY else None for path in paths]
+    again: list[int]
+    if not (again := [at for at, name in enumerate(names) if name in found and names.count(name) == 1]):
+        return runs, modules
+    calling: list[int] = _calling(runs, found, again)
+    modules = callers.with_parameters(modules, found)
+    which: list[int]
+    for which in (again, calling):
+        redone: list[FileRun]
+        redone, modules = _checked_all([paths[at] for at in which], check, options, session, modules)
+        at: int
+        run: FileRun
+        for at, run in zip(which, redone, strict=True):
+            runs[at] = _merged(runs[at], run) if options.mode is Mode.FIX else run
+    return runs, modules
+
+
+def _calling(
+    runs: Sequence[FileRun],
+    found: Mapping[str, callers.Parameters],
+    again: Sequence[int],
+) -> list[int]:
+    """Find the files (not among `again`) calling a function whose parameters `found` types.
+
+    Returns:
+      Their indexes.
+
+    """
+    typed: set[Callee] = {(module, function) for module, functions in found.items() for function in functions}
+    return [
+        at
+        for at, run in enumerate(runs)
+        if at not in again and isinstance(run, CheckRun) and typed & run.calls.calls.keys()
+    ]
 
 
 def _checked_all(

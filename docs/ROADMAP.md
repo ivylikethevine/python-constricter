@@ -54,9 +54,10 @@
   quoted where a module-level annotation is evaluated.
 - **Guesses** apply only with `--unsafe-fixes`: a capitalised call taken to construct its class,
   LVA008's and LVA010's narrowing, an empty container typed by what's added to it, a method typed by
-  its `return`s, an instance attribute by its assignments (`assigned`), and what rests on any of
-  these. **Fix levels**: every mechanism has a stable id (`--show-fixes`, JSON), and `fix-select`,
-  `fix-ignore` and `unsafe-fix-select` choose which apply.
+  its `return`s, an instance attribute by its assignments (`assigned`), an unannotated parameter by
+  what every call in the checked files passes it (`callers`, builtin types alone), and what rests on
+  any of these. **Fix levels**: every mechanism has a stable id (`--show-fixes`, JSON), and
+  `fix-select`, `fix-ignore` and `unsafe-fix-select` choose which apply.
 - **Type-checker-backed inference** (`--infer-with basedpyright,ty`): the checkers' inlay hints type
   what `--fix` can't, as guesses, widened, checked and imported; with basedpyright it about doubles
   what `--fix --unsafe-fixes` types on the annotated corpora.
@@ -165,24 +166,28 @@
 By scope (smallest first) and, within each, by value. Each item says what it is, why, how, and when
 it's done.
 
+### Medium: a few days
+
+1. **Installed functions' overloads.** Calls into installed packages are typed by declared returns
+   alone; their overloads aren't read. On the corpora, 898 untyped numpy calls pass only literals,
+   but the commonest (`np.array([1, 2])`) matches an overload returning `NDArray[Any]`, too vague to
+   write, and most of the rest need a class argument to bind a type variable
+   (`np.empty(n, dtype=np.float64)`: `_DTypeLike[_SCT]` given `np.float64`). Move the stub reading
+   in `tests/typeshed/` into the package, read an installed stub's overloads as the tables' are
+   (cached with the module), and bind a type variable to a class argument (`type[_SCT]`). Done when
+   `np.empty(n, dtype=np.float64)` is an `npt.NDArray[np.float64]` and pandas's `--types` finds no
+   new error.
+
+2. **Callers' classes, not only builtins.** An unannotated parameter is typed by its callers only
+   when their arguments' types are builtins alone (96 more fixes on the corpora): a class the caller
+   names may mean nothing, or something else, in the callee's module. Respell a caller's type in the
+   callee's module as a declared return's is (`project`'s respelling, imported under
+   `if TYPE_CHECKING:`), and join numbers as `rebound` does (`int` and `float`: `float`). Done when
+   a parameter every caller passes a `Box` is a `Box` in its function, with no new `--types` error.
+
 ### Large: a week or more
 
-1. **Installed dependencies, cached and typed further.** `--fix` reads the typed packages the
-   checked files import (`constricter.fix.installed`) on every run: pandas's check takes about 20s
-   longer for numpy's stubs. Cache each module's read per package version (by its `dist-info`),
-   under the user's cache directory. Most calls into them stay untyped: `numpy.array` and
-   `numpy.zeros` are overloaded generics, `pytest.importorskip` returns `Any`, and typeshed's
-   third-party stubs aren't read. Match installed functions' overloads as the standard library's are
-   (`constricter.fix.overloads`, from the stubs at run time rather than generated tables). Done when
-   a second run reads no installed module again, and numpy's commonest calls are typed with no new
-   `--types` error.
-2. **Unannotated code, from its call sites.** Most bindings with no fix are in functions with no
-   annotations: nothing anchors an unannotated parameter's type. Type a parameter from its callers
-   when every call in the checked files passes the same known type (a guess: the function is
-   public), then everything computed from it, over the call graph `returned` builds. Done when it
-   measurably types unannotated code on the standard library and Twisted, as guesses, with no new
-   `--types` error.
-3. **Tables generated at build time.** The standard-library tables could leave git and be generated
+1. **Tables generated at build time.** The standard-library tables could leave git and be generated
    (and compressed) when the package is built, but the pre-commit hooks and the Action install
    straight from a checkout, and `flit_core` has no build hooks: it takes a build backend with one
    (hatchling), the generator out of `tests/`, and typeshed's stubs at build time, pinned with

@@ -19,7 +19,7 @@ from constricter.fix.doubts import (
 )
 from constricter.fix.guesses import guessed, guessing
 from constricter.fix.inference import inference, inferred
-from constricter.fix.known import Hints, ImportPlan, Inference, Known
+from constricter.fix.known import Hints, ImportPlan, Inference, Known, Passed
 from constricter.fix.narrowed import narrowed_at
 from constricter.offences import (
     LONG_TUPLE,
@@ -71,6 +71,9 @@ class Settings:
     # Type checkers' types, for what `--fix` can't type (`--infer-with`): each checker's, in order.
     hints: tuple[Hints, ...] = ()
     facts: Facts = field(default_factory=Facts)  # what a type checker sees otherwise (see `doubts`)
+    # What every call passes each unannotated parameter of its top-level functions, by `id()` (see
+    # `constricter.fix.callers`): guesses, for what's computed from them.
+    parameters: Mapping[int, Mapping[str, Passed]] = field(default_factory=dict[int, Mapping[str, Passed]])
 
 
 class Kind(NamedTuple):

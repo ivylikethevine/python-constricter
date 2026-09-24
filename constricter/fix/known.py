@@ -201,6 +201,38 @@ class Hints(NamedTuple):
     types: Mapping[tuple[int, int], str] = {}
 
 
+# An argument's type, and what it rests on if it's a guess (`FIX_KINDS`; none: it's certain).
+Passed: TypeAlias = tuple[str, frozenset[str]]
+# A module's functions' parameters every call passes one type: each one's, by name, by function.
+Seeds: TypeAlias = Mapping[str, Mapping[str, Passed]]
+
+
+class Call(NamedTuple):
+    """One call to a checked file's function: what `--fix` knows each argument's type to be (`None`: unknown).
+
+    `unpacked`: whether it passes `*args` or `**kwargs`, whose arguments can't be matched.
+    """
+
+    positional: tuple[Passed | None, ...] = ()
+    keywords: tuple[tuple[str, Passed | None], ...] = ()
+    unpacked: bool = False
+
+
+Callee: TypeAlias = tuple[str, str]  # a checked file's function: its module and name
+
+
+class Observed(NamedTuple):
+    """What a module does with checked files' functions whose parameters aren't all annotated.
+
+    `calls`: each call to one, by the function; `escaped`: those it uses other than by calling them
+    (a callback, a stored reference), whose callers can't be known.
+    """
+
+    # Plain `dict`s and tuples, not `MappingProxyType`s: the CLI's worker processes send them back, pickled.
+    calls: Mapping[Callee, tuple[Call, ...]] = {}
+    escaped: frozenset[Callee] = frozenset()
+
+
 class Outside(NamedTuple):
     """What the CLI knows of a file from outside it, for `--fix`.
 
@@ -211,7 +243,10 @@ class Outside(NamedTuple):
     it imports that are type variables where they're defined (see `project.type_vars`), which a
     type its own functions declare can't be written with outside them; `guarded`, the names those
     types are written with that it can use in an annotation alone (see `Guarded`); `generics`, the
-    generic classes it imports from them, which a fix mustn't write bare.
+    generic classes it imports from them, which a fix mustn't write bare. `callees`: the functions of
+    checked files it may call whose parameters aren't all annotated, as it spells them (`f`, `u.f`);
+    `parameters`: for its own such functions, each parameter every call passes one type (see
+    `constricter.fix.callers`).
     """
 
     calls: Mapping[str, str] = {}
@@ -221,6 +256,8 @@ class Outside(NamedTuple):
     returned: Returns = Returns()
     guarded: Mapping[str, Guarded] = {}
     generics: frozenset[str] = frozenset()  # other checked files' generic classes, as it spells them
+    callees: Mapping[str, Callee] = {}
+    parameters: Mapping[str, Mapping[str, Passed]] = {}  # see `Seeds`
 
     def usable(self, taken: frozenset[str]) -> "Outside":
         """Drop what other files offer whose type needs a name imported that the module binds already.
@@ -248,6 +285,8 @@ class Outside(NamedTuple):
             Returns(free_of(self.returned.calls, clashing), self.returned.guesses, self.returned.names),
             {name: found for name, found in self.guarded.items() if name not in clashing},
             self.generics,
+            self.callees,
+            self.parameters,
         )
 
 

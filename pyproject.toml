@@ -120,6 +120,9 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 "tests/corpus/corpus_untyped.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The local CI runner runs the workflow's own steps (and git) as subprocesses.
 "tests/ci_local.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
+# Installed modules' reads are cached as pickles, written and read by constricter alone in the
+# user's own cache directory.
+"constricter/fix/installed.py" = ["suspicious-pickle-import", "suspicious-pickle-usage"]
 # `--infer-with` starts the type checker's language server, from a fixed table of commands (and
 # asks it its version, to see it runs).
 "constricter/cli/{hints,guard,protocol}.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]

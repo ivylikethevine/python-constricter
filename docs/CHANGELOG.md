@@ -6,6 +6,13 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix --unsafe-fixes` types what's computed from an unannotated parameter of a plain top-level
+  function when every call in the checked files passes it an argument of one builtin type
+  (`callers`, a guess): `def greet(name)` called only as `greet("a")` types `line = name.upper()` as
+  `str`. A function used any way but called, or a call that leaves the parameter to its default or
+  unpacks its arguments, types nothing. The defining files are checked again knowing the types, then
+  the files calling them: 96 more fixes on the corpora (64 on the standard library, 14 on Twisted),
+  every corpus still converging in one pass.
 - `--fix` types calls into installed packages that declare their types (`py.typed`, a stub package,
   a lone stub module) by their declared returns, as it does another checked file's
   (`pydantic_core.to_json(x)` is a `bytes`): found as the import system would on this Python's path

@@ -14,8 +14,10 @@ from collections.abc import Collection, Iterator, Mapping, Sequence
 from functools import lru_cache
 from typing import Final, NamedTuple, TypeAlias, cast
 
+from constricter.fix import imports
 from constricter.fix.inference import ASSIGNED
-from constricter.fix.known import Inference, Returned, Returns
+from constricter.fix.known import Guarded, Inference, Origin, Returned, Returns
+from constricter.rules.annotations import roots
 from constricter.rules.syntax import FunctionDef, Start, has_within, own_nodes, within
 from constricter.rules.walked import classes, of_type
 
@@ -676,3 +678,26 @@ def terminates(body: Sequence[ast.stmt]) -> bool:
             return terminates(last.orelse or last.body) and all(terminates(h.body) for h in last.handlers)
         case _:
             return False
+
+
+def exported_names(
+    returns: Returns,
+    guarded: Mapping[str, Guarded],
+    added: Mapping[str, str],
+) -> dict[str, Origin]:
+    """Find what each name `returns`' types use refers to, where the module doesn't import it to run.
+
+    Imported for type checking alone (`guarded`), or by an import its fixes add (`added`): a library
+    type it doesn't import yet (`types.ModuleType`) is named for its importers too, or they'd type
+    its calls only on a second pass, once the import is in the source.
+
+    Returns:
+      Each such name's origin.
+
+    """
+    return {
+        name: guarded[name].origin if name in guarded else imports.added_origin(added[name])
+        for annotation in returns.calls.values()
+        for name in roots(annotation)
+        if name in guarded or name in added
+    }

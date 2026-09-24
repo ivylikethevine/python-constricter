@@ -18,3 +18,4 @@ extend-exclude = [
 
 [default.extend-words]
 astroid = "astroid" # pylint's parser, a real package name
+ND = "ND" # numpy's `NDArray`, named in the roadmap

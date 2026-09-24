@@ -91,6 +91,15 @@ in a function or module body:
   alone;
 - an attribute, property or method of a class another checked file defines, its type imported as a
   declared return's is (the CLI only: the plugins see one file at a time);
+- with `--unsafe-fixes` (the CLI only), what's computed from an unannotated parameter of a plain
+  top-level function (undecorated, without `*args` or `**kwargs`) when every call in the checked
+  files passes it an argument of the same type made of builtins alone (`int`, `list[str]`; not a
+  union, nor a class another module may not name): `def greet(name)` called only as `greet("a")`
+  types `line = name.upper()` as `str`. A guess (`callers`), since a caller outside the checked
+  files may pass anything; never for a function used any way but called (a callback), one a call
+  leaves a parameter to its default, can't be matched to, or unpacks its arguments for, nor a
+  parameter the function binds again. The files defining such functions are checked again knowing
+  those types, then the files calling them, knowing what they now return;
 - with `--unsafe-fixes`, an empty container (`[]`, `{}`, `set()`, `list()`, `dict()`) the function
   then only adds to, every addition typed alike (`append`, `insert`, `add`, `setdefault`,
   `x[k] = v`): `list[T]`, `set[T]` or `dict[K, V]`. A guess, since something else could add to it;
@@ -290,6 +299,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `filled`        | an empty container, then only what the function adds to it (a guess)                |
 | `returned`      | an unannotated function's own `return`s (a method's: a guess)                       |
 | `assigned`      | an unannotated instance attribute's every `self.x = value` in its class (a guess)   |
+| `callers`       | an unannotated parameter every call in the checked files passes one type (a guess)  |
 
 A project chooses which apply, in `[tool.constricter]` or on the command line:
 

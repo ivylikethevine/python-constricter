@@ -115,3 +115,35 @@ def test_at_most_the_limit_is_read(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(installed, "LIMIT", 1)
     assert sorted(installed.with_installed(catalog, (site,)).modules) == ["main", "typed"]
     assert installed.with_installed(catalog, ()) is catalog
+
+
+def test_a_read_is_cached_until_its_file_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The second read comes from the cache; a changed file, or an unreadable entry, is read again."""
+    site: Path = _site(tmp_path, {"lone.pyi": "def k() -> bytes: ...\n"})
+    stub: Path = site / "lone.pyi"
+    reads: list[Path] = []
+
+    def counted(path: Path, name: str | None = None) -> project.Module | None:
+        reads.append(path)
+        return project.read(path, name)
+
+    monkeypatch.setattr("constricter.fix.installed.read", counted)
+    first: project.Module | None = installed.cached(stub, "lone")
+    assert installed.cached(stub, "lone") == first
+    assert len(reads) == 1
+    _ = stub.write_text("def k() -> str: ...\n", encoding="utf-8")
+    assert installed.cached(stub, "lone") != first
+    entry: Path = next(installed.cache_directory().glob("*.pickle"))
+    _ = entry.write_bytes(b"not a pickle")
+    assert installed.cached(site / "missing.pyi", "missing") is None
+    monkeypatch.setenv("XDG_CACHE_HOME", str(stub))  # a file: nothing can be made under it
+    assert installed.cached(stub, "lone") is not None
+
+
+def test_the_cache_is_the_platforms(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """`$XDG_CACHE_HOME`, else Windows' `%LOCALAPPDATA%`, else `~/.cache`."""
+    monkeypatch.delenv("XDG_CACHE_HOME")
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    assert installed.cache_directory() == tmp_path / "constricter" / "installed"
+    monkeypatch.delenv("LOCALAPPDATA")
+    assert installed.cache_directory() == Path.home() / ".cache" / "constricter" / "installed"

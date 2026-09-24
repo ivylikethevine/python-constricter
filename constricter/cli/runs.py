@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import TypeAlias
 
 from constricter.cli.report import Result
-from constricter.fix.known import Returns
+from constricter.fix.known import Observed, Returns
 from constricter.offences import Offence
 from constricter.rules.checker import Coverage
 
@@ -20,6 +20,7 @@ class CheckRun:
     text: str = ""  # --diff: the diff; --fix on standard input: the fixed source
     error: str = ""
     returned: Returns = field(default_factory=Returns)  # what its unannotated functions return
+    calls: Observed = field(default_factory=Observed)  # what it passes checked files' functions
 
 
 @dataclass(frozen=True)
