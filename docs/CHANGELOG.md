@@ -6,6 +6,21 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types calls into installed packages that declare their types (`py.typed`, a stub package,
+  a lone stub module) by their declared returns, as it does another checked file's
+  (`pydantic_core.to_json(x)` is a `bytes`): found as the import system would on this Python's path
+  and the active virtual environment's, read but never fixed. A type is imported from a public
+  module that re-exports it, not a private one, and an installed generic class isn't written bare:
+  pandas loses 181 fixes that wrote numpy's generic `np.ndarray` bare, and gains 6; pydantic
+  gains 66.
+- `--max-fix` (command line only) applies every fix: `--max`, `--fix --unsafe-fixes`, and
+  `--infer-with` each of basedpyright and ty that's installed and runs. A checker's executable is
+  the first found that runs (`--version`): a version manager's shim that can't run in the directory
+  is passed over for the one beside this Python.
+- `--infer-with=ty` no longer stops with `ty failed textDocument/inlayHint: content modified`: a
+  hint request the server drops while later files open is asked again, up to five times.
+- `--max` (command line only) runs the strictest check: `suffocate` for every path, over any
+  `per-path-levels`, with `--all-scopes` and the opt-in `LVA012`.
 - `--fix` types standard-library generic classes' constructors by what their arguments bind:
   `collections.deque(names)` is a `collections.deque[str]`, `itertools.product(a, b)` an
   `itertools.product[tuple[str, int]]`, `array.array("i")` an `array.array[int]`, `weakref.ref(obj)`

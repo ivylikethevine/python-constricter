@@ -120,6 +120,14 @@ docstring and its leading imports (below a shebang or coding line when it has ne
 `import io` if `BufferedReader` is a name the module binds. A standard-library type's import never
 goes under `if TYPE_CHECKING:`.
 
+An installed package that declares its types (a `py.typed` package, its stubs first; a stub package,
+`pkg-stubs`; a lone `mod.pyi`) is read the same way for the calls into it, and never fixed: found on
+this Python's path and the active virtual environment's (`VIRTUAL_ENV`), as the import system would
+(an untyped copy earlier on the path shadows a typed one later), with the modules it re-exports
+from. `pydantic_core.to_json(x)` is a `bytes`. A type it names is imported from a public module that
+re-exports it (`from typed import Thing`, not `typed._types`), or not written; and one of its
+generic classes is never written bare (`np.ndarray`).
+
 A type another checked file declares (`get_handle() -> IOHandles[str]`) names what that file imports
 or defines; a name the calling file doesn't have is imported where the type's file has it from,
 under `if TYPE_CHECKING:` (into the module's first top-level one, or a new one after its imports,

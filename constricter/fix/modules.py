@@ -28,6 +28,7 @@ from constricter.rules.walked import of_type
 
 _PACKAGE: Final = "__init__"
 SUFFIX: Final = ".py"
+STUB: Final = ".pyi"
 
 
 class Module(NamedTuple):
@@ -48,6 +49,7 @@ class Module(NamedTuple):
     called: frozenset[str] = frozenset()  # what it calls through its top-level names (`f`, `u.f`)
     returned: Returns = Returns()  # what they return, once it's checked
     generics: frozenset[str] = frozenset()  # its generic classes, which a type mustn't write bare
+    installed: bool = False  # an installed package's, read for its types alone (see `installed`)
 
 
 class Index(NamedTuple):
@@ -192,14 +194,17 @@ def indexed(found: Iterable[Module | None]) -> Index:
     return Index(modules, sorted(modules))
 
 
-def read(path: Path) -> Module | None:
+def read(path: Path, name: str | None = None) -> Module | None:
     """Read what one `.py` file offers and uses.
+
+    With `name`, an installed package's module (see `installed`): a stub (`.pyi`) too, named that,
+    and not kept for a check.
 
     Returns:
       Its module, or `None` if it isn't a `.py` file, or can't be read or parsed.
 
     """
-    if path.suffix != SUFFIX or not path.is_file():
+    if path.suffix not in ({SUFFIX} if name is None else {SUFFIX, STUB}) or not path.is_file():
         return None
     source: str | None
     if (source := _source(path)) is None:
@@ -209,20 +214,22 @@ def read(path: Path) -> Module | None:
     except (SyntaxError, ValueError):  # a null byte is a ValueError
         return None
     own: Tables = module_tables(tree)
-    parsed.keep(source, (tree, own))  # for the check to take, rather than parse it and read it again
-    name: str = module_name(path)
-    names: dict[str, Origin] = _names(tree, name, is_package=path.stem == _PACKAGE)
+    if name is None:
+        parsed.keep(source, (tree, own))  # for the check to take, rather than parse it and read it again
+    named: str = name or module_name(path)
+    names: dict[str, Origin] = _names(tree, named, is_package=path.stem == _PACKAGE)
     return Module(
-        name,
+        named,
         own.returns,
         names,
         own.classes,
         own.methods,
         defined_type_vars(tree),
-        _guarded(tree, name, is_package=path.stem == _PACKAGE),
+        _guarded(tree, named, is_package=path.stem == _PACKAGE),
         unannotated(tree.body),
         _called(tree, names),
         generics=generic_classes(tree),
+        installed=name is not None,
     )
 
 

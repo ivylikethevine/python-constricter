@@ -21,7 +21,7 @@ from constricter.cli.config import (
 )
 from constricter.cli.explain import explain
 from constricter.cli.paths import STDIN, excluded
-from constricter.cli.protocol import SERVERS
+from constricter.cli.protocol import SERVERS, runs
 from constricter.cli.report import Format, Result
 from constricter.offences import (
     LEVELS,
@@ -192,6 +192,16 @@ def _parser() -> argparse.ArgumentParser:
         choices=LEVELS,
         default="strict",
         help="which codes are errors rather than warnings (default: strict)",
+    )
+    _ = parser.add_argument(
+        "--max",
+        action="store_true",
+        help="the strictest check: suffocate everywhere, all scopes, the opt-in codes (command line only)",
+    )
+    _ = parser.add_argument(
+        "--max-fix",
+        action="store_true",
+        help="--max, --fix --unsafe-fixes, and every installed checker's hints (command line only)",
     )
     _ = parser.add_argument(
         "--format",
@@ -492,7 +502,7 @@ class Options:
             parser.set_defaults(**config_defaults(Path.cwd()))
         except ValueError as error:
             parser.error(str(error))
-        args: argparse.Namespace = parser.parse_args(argv)
+        args: argparse.Namespace = _maximal(parser.parse_args(argv))
         code: str | None
         if (code := cast("str | None", args.explain)) is not None:
             _ = sys.stdout.write(explain(code))
@@ -536,6 +546,30 @@ class Options:
             infer_with=tuple(cast("list[str]", args.infer_with)),
             infer_memory=_bytes(cast("float | None", args.infer_memory)),
         )
+
+
+def _maximal(args: argparse.Namespace) -> argparse.Namespace:
+    """Apply `--max-fix` (`--max`, every fix, every installed checker) and `--max`.
+
+    `--max`: `suffocate` for every path (over `per-path-levels`), all scopes, the opt-in codes.
+
+    Returns:
+      The arguments.
+
+    """
+    if cast("bool", args.max_fix):
+        args.max = args.fix = args.unsafe_fixes = True
+        chosen: list[str] = cast("list[str]", args.infer_with)
+        args.infer_with = [
+            *chosen,
+            *(checker for checker in SERVERS if checker not in chosen and runs(checker)),
+        ]
+    if cast("bool", args.max):
+        args.level = Level.SUFFOCATE.name.lower()
+        args.per_path_levels = {}
+        args.all_scopes = True
+        args.extend_select = [*cast("list[str]", args.extend_select), *sorted(OPT_IN)]
+    return args
 
 
 def _filter(parser: argparse.ArgumentParser, args: argparse.Namespace, mode: Mode) -> Filter:

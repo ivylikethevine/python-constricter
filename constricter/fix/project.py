@@ -314,6 +314,7 @@ def _respelled(
     root: str
     for root in {root for root in names if not _same(target, defined, root)}:
         origin: Origin | None = _where(defined, root)
+        origin = None if origin is None else _public(modules, origin)
         name: str | None
         if (
             origin is None
@@ -390,8 +391,9 @@ def _named(
 ) -> str | None:
     """Name `origin` in `target`: as an import it has names it (preferring `name`), else `name` if free.
 
-    A new import only from a module certain to resolve: a checked file's, or the standard library's
-    (a third-party one the type's file imports may not be installed where the type checker runs).
+    A new import only from a module certain to resolve: a checked file's, an installed package's public
+    one (not `numpy._typing`), or the standard library's (a third-party one the type's file imports
+    may not be installed where the type checker runs).
 
     Returns:
       The name, or `None` if `target` imports nothing for it and binds `name` to something else, or
@@ -406,8 +408,51 @@ def _named(
     )
     if matches:
         return matches[0]
-    resolves: bool = origin[0] in modules or origin[0].partition(".")[0] in _STDLIB
+    module: Module | None = modules.get(origin[0])
+    public: bool = module is not None and not (module.installed and _private(origin[0]))
+    resolves: bool = public or origin[0].partition(".")[0] in _STDLIB
     return None if name in known or name in _BUILTINS or not resolves else name
+
+
+def _public(modules: Mapping[str, Module], origin: Origin) -> Origin:
+    """Find where an installed package's public module re-exports what `origin` names from a private one.
+
+    `numpy._core.multiarray`'s `ndarray` as `numpy`'s: its shortest public module binding the name to
+    the same thing.
+
+    Returns:
+      That origin; `origin` itself if it isn't in an installed package's private module, or no
+      public one re-exports it.
+
+    """
+    module: Module | None = modules.get(origin[0])
+    if module is None or not module.installed or origin[1] is None or not _private(origin[0]):
+        return origin
+    wanted: Origin = _canonical(modules, origin)
+    top: str = origin[0].partition(".")[0]
+    found: list[str] = sorted(
+        (
+            name
+            for name, other in modules.items()
+            if other.installed
+            and name.partition(".")[0] == top
+            and not _private(name)
+            and origin[1] in other.names
+            and _canonical(modules, other.names[origin[1]]) == wanted
+        ),
+        key=lambda name: (name.count("."), name),
+    )
+    return (found[0], origin[1]) if found else origin
+
+
+def _private(module: str) -> bool:
+    """Check whether a module's path has a private part (`numpy._typing`).
+
+    Returns:
+      Whether it has.
+
+    """
+    return any(part.startswith("_") for part in module.split("."))
 
 
 def _statement(origin: Origin, name: str) -> str:

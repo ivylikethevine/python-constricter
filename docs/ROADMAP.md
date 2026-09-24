@@ -44,6 +44,10 @@
   read from their `__new__` or `__init__` (`collections.deque(names)` is a `collections.deque[str]`,
   `array.array("i")` an `array.array[int]`); at module level, one some Python can't subscript at run
   time is quoted. What only some platforms or versions have is kept (`os.getuid()`).
+- **Installed packages**: calls into an installed package that declares its types (`py.typed`, a
+  stub package, a lone stub module) are typed by their declared returns as a checked file's are,
+  found as the import system would on this Python's path and `VIRTUAL_ENV`'s; types are imported
+  from a public module that re-exports them.
 - **Fixes that add an import**: `open(p, "rb")` by its literal mode, standard-library classes, and
   `Final`, through an import the module has or one added after its leading imports; another checked
   file's type the module doesn't import, under `if TYPE_CHECKING:` (no import cycle at run time),
@@ -163,13 +167,15 @@ it's done.
 
 ### Large: a week or more
 
-1. **Types from installed dependencies.** Calls into third-party packages with no fix (`numpy`,
-   `pytest`, `pyarrow`, `zope`, `pydantic_core`, ...). The CLI indexes the checked files' declared
-   returns, `return`s and classes (`project.Index`); do the same for the installed packages they
-   import, from their inline annotations (`py.typed`) or stubs (`*-stubs`, typeshed's third-party
-   stubs), resolved in the environment the code runs in, cached per package version. Done when a
-   declared return in an installed typed package types its calls as a checked file's does, and the
-   corpora converge with no new `--types` error.
+1. **Installed dependencies, cached and typed further.** `--fix` reads the typed packages the
+   checked files import (`constricter.fix.installed`) on every run: pandas's check takes about 20s
+   longer for numpy's stubs. Cache each module's read per package version (by its `dist-info`),
+   under the user's cache directory. Most calls into them stay untyped: `numpy.array` and
+   `numpy.zeros` are overloaded generics, `pytest.importorskip` returns `Any`, and typeshed's
+   third-party stubs aren't read. Match installed functions' overloads as the standard library's are
+   (`constricter.fix.overloads`, from the stubs at run time rather than generated tables). Done when
+   a second run reads no installed module again, and numpy's commonest calls are typed with no new
+   `--types` error.
 2. **Unannotated code, from its call sites.** Most bindings with no fix are in functions with no
    annotations: nothing anchors an unannotated parameter's type. Type a parameter from its callers
    when every call in the checked files passes the same known type (a guess: the function is
