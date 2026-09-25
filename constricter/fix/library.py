@@ -15,6 +15,7 @@ from constricter.fix.known import ImportPlan, Inference, Known
 
 _STDLIB: Final = "stdlib"  # the fix kind
 _STR: Final = "str"
+_SELF: Final = "Self"  # a method's own class, in a template
 _WITH_DEFAULT: Final = 2  # `os.environ.get(key, default)`'s arguments
 
 
@@ -83,6 +84,29 @@ def installed_call(
             return overloads.chosen(callee, value, known, infer)
         case _:
             return None
+
+
+def installed_method(receiver: str, name: str, known: Known) -> stdlib.Method | None:
+    """Find an installed class's method whose arguments or instance decide its type, on a receiver's type.
+
+    Its class's type parameters bound to the receiver's type arguments (`np.ndarray[tuple[int], ...]`),
+    and `Self` to the receiver's type.
+
+    Returns:
+      It (its `entry`: the method's key in `LibraryNames.installed`), or `None`.
+
+    """
+    tree: ast.expr = ast.parse(receiver, mode="eval").body
+    base: ast.expr = tree.value if isinstance(tree, ast.Subscript) else tree
+    entry: str
+    if (entry := f"{ast.unparse(base)}.{name}") not in known.names.installed:
+        return None
+    args: list[ast.expr] = []
+    if isinstance(tree, ast.Subscript):
+        args = list(tree.slice.elts) if isinstance(tree.slice, ast.Tuple) else [tree.slice]
+    params: tuple[str, ...] = known.names.parameters.get(ast.unparse(base), ())
+    types: dict[str, str] = dict(zip(params, (ast.unparse(arg) for arg in args), strict=False))
+    return stdlib.Method(entry, None, {**types, _SELF: receiver})
 
 
 def library_call(

@@ -57,6 +57,7 @@ class Module(NamedTuple):
     unannotated: frozenset[str] = frozenset()  # its functions a `return` could type (`returned`)
     called: frozenset[str] = frozenset()  # what it calls through its top-level names (`f`, `u.f`)
     passed: frozenset[str] = frozenset()  # what it passes as an argument through them (`np.float64`)
+    method_calls: frozenset[str] = frozenset()  # the methods it calls on anything (`astype` in `a.astype(x)`)
     returned: Returns = Returns()  # what they return, once it's checked
     generics: frozenset[str] = frozenset()  # its generic classes, which a type mustn't write bare
     installed: bool = False  # an installed package's, read for its types alone (see `installed`)
@@ -246,6 +247,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         _called(tree, names),
         generics=generic_classes(tree),
         passed=frozenset() if name is not None else _passed(tree, names),
+        method_calls=frozenset() if name is not None else _method_calls(tree),
         installed=name is not None,
         open=open_functions(tree),
         declared=None if name is None else declarations(tree),
@@ -344,6 +346,20 @@ def _passed(tree: ast.Module, names: Mapping[str, Origin]) -> frozenset[str]:
         for argument in (*node.args, *(keyword.value for keyword in node.keywords))
     )
     return frozenset(name for name in arguments if name is not None and name.partition(".")[0] in names)
+
+
+def _method_calls(tree: ast.Module) -> frozenset[str]:
+    """Name the methods the module calls on anything: `astype` in `a.astype(x)`.
+
+    Returns:
+      Them.
+
+    """
+    return frozenset(
+        node.func.attr
+        for node in cast("list[ast.Call]", of_type(tree, ast.Call))
+        if isinstance(node.func, ast.Attribute)
+    )
 
 
 def _source(path: Path) -> str | None:

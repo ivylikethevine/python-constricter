@@ -6,6 +6,13 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types an installed class's methods whose arguments or receiver decide their type, its type
+  parameters bound by the receiver's type (`a.astype(np.float32)`, `a.reshape(2, -1)`, a `Self`
+  return), inherited ones too; and a builtin container argument by its elements, a bounded type
+  variable binding it (`np.empty((n, 2), dtype=np.float64)` is an
+  `np.ndarray[tuple[int, int], np.dtype[np.float64]]`). A class alias passed as an argument
+  (`np.int32`) binds a `type[T]` as a class does. 52 more fixes on pandas, whose type checkers still
+  find no new error after `--fix`.
 - `--fix` types a call into an installed package whose overloads its arguments decide by the one
   they match, as it does the standard library's: with numpy 2.5's stubs,
   `np.empty(n, dtype=np.float64)` is an `np.ndarray[tuple[int], np.dtype[np.float64]]`. A stub's

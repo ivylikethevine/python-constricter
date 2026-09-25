@@ -20,103 +20,105 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter.fix import project, stdlib
-from constricter.fix.declared import Alias, Declarations, Protocol, Signature, Variable
+from constricter.fix import project
+from constricter.fix.atoms import (
+    BUILTINS_MODULE,
+    CLASS,
+    MAYBE,
+    NO,
+    NONE,
+    PARAM_SPEC,
+    TYPE,
+    TYPES,
+    TYPING,
+    UNKNOWN,
+    VAR,
+    YES,
+    Atom,
+    Scope,
+    Taken,
+    argument_of,
+    atom_path,
+    bound_alias,
+    class_binds,
+    class_verdict,
+    combined,
+    element_of,
+    free_variables,
+    joined,
+    literal_values,
+    owned,
+    parse_text,
+    private_name,
+    scalar_binds,
+    scalar_verdict,
+    verdict_of,
+)
+from constricter.fix.declared import Alias, Class, Declarations, Signature, Variable
 from constricter.fix.known import Origin
 from constricter.fix.modules import SUFFIX, Index, Module, module_name
-from constricter.fix.overloads import SCALARS
-from constricter.fix.signatures import Accepts, Constant, Parameter, ReadSignature
+from constricter.fix.overloads import CONTAINERS, SCALARS
+from constricter.fix.signatures import (
+    CLASS_BINDS,
+    CLASS_VERDICT,
+    CONTAINER_BINDS,
+    CONTAINER_VERDICTS,
+    ELEMENT_VERDICTS,
+    Accepts,
+    Constant,
+    Parameter,
+    ReadSignature,
+)
 
-_YES: Final = "y"
-_NO: Final = "n"
-_MAYBE: Final = "?"
-_NONE: Final = "None"
-_LITERAL_STRING: Final = "LiteralString"
 _KIND: Final = "signatures"
-# What an atom is (see `_Atom`).
+# What an atom is (see `Atom`).
 _NONE_ATOM: Final = "none"
 _LITERAL_ATOM: Final = "literal"
-_VAR: Final = "var"
 _ARG: Final = "arg"
-_TYPE: Final = "type"
-_CLASS: Final = "class"
-_UNKNOWN_ATOM: Final = "unknown"
 _OPTIONAL: Final = "Optional"
 _LITERAL: Final = "Literal"
 _ANNOTATED: Final = "Annotated"
-_STR: Final = "str"  # `project.definition`'s kind for a function `Declarations` has
-_BUILTINS_MODULE: Final = "builtins"
 _BUILTINS: Final = frozenset(dir(builtins))
-_TYPING: Final = frozenset({"typing", "typing_extensions"})
-_ANYTHING: Final = frozenset(
-    {"typing.Any", "typing_extensions.Any", "_typeshed.Incomplete", "builtins.object"},
-)
-_TYPES: Final = frozenset({"builtins.type", "typing.Type", "typing_extensions.Type"})
 _UNIONS: Final = frozenset({"Union", "Optional"})  # `_OPTIONAL` too
-_REFUSING: Final = frozenset({"Callable", "Type"})  # no scalar is a callable or a class
 _MAX_DEPTH: Final = 20  # aliases followed before giving up
-_PARAM_SPEC: Final = "*"  # a `ParamSpec`'s or `TypeVarTuple`'s bound (see `declared`)
 _TYPE_VARIABLE: Final = "t"  # `Accepts`' key for an unbounded type variable
-_CLASS_VERDICT: Final = "k"  # `Accepts`' key for a class argument's verdict
-_CLASS_BINDS: Final = "kv"  # `Accepts`' key for the type variable a class argument binds
+_SELF: Final = "Self"
 
 
-class _Scope(NamedTuple):
-    """Where an annotation is read: its module, and the type parameters in scope.
-
-    Each parameter is its bound's text (`None`: unbounded; `"*"`: a `ParamSpec`'s), or an
-    argument an alias was subscripted with: its annotation and the scope that's read in.
-    """
-
-    module: Module
-    params: Mapping[str, "str | tuple[ast.expr, _Scope] | None"]
-    owner: str  # the module whose function is read: only its type variables are bound
+_Resolved: TypeAlias = Atom | tuple[Alias, Scope, Origin]
 
 
-class _Atom(NamedTuple):
-    """One member of an annotation's union.
-
-    `kind`: `none`, `literal` (`values`), `any`, `var` (a type variable `name`, bounded by `bound`
-    read in `scope`), `type` (a `type[...]`, whose own atoms are `inner`), `class` (`origin`, and
-    the installed module defining it, if one does), or `unknown`.
-    """
-
-    kind: str
-    values: tuple[Constant, ...] = ()
-    name: str = ""
-    bound: str | None = None
-    scope: _Scope | None = None
-    inner: tuple["_Atom", ...] = ()
-    origin: Origin = ("", None)
-    module: Module | None = None
-    subscripted: bool = False
-    constrained: bool = False  # a type variable's `bound` is its constraints: it binds none of them
-
-
-_UNKNOWN: Final = _Atom(_UNKNOWN_ATOM)
-_Resolved: TypeAlias = _Atom | tuple[Alias, _Scope, Origin]
+# A package's classes: each as written after the package's name, and where it's defined.
+_Packaged: TypeAlias = tuple[tuple[str, Origin], ...]
 
 
 @dataclass
 class _Memo:
-    """Each installed function's signatures, read, for the index they were read from."""
+    """What's read for the index it was read from.
+
+    Each installed function's signatures, and each package's classes (see `_package_classes`).
+    """
 
     modules: Mapping[str, Module] | None = None
     read: dict[tuple[str, str], tuple[ReadSignature, ...]] = field(
         default_factory=dict[tuple[str, str], "tuple[ReadSignature, ...]"],
     )
+    packages: dict[str, _Packaged] = field(
+        default_factory=dict[str, "_Packaged"],
+    )
 
-    def of(self, modules: Mapping[str, Module]) -> dict[tuple[str, str], tuple[ReadSignature, ...]]:
+    def of(self, modules: Mapping[str, Module]) -> "_Memo":
         """Keep what's read for `modules` alone.
 
         Returns:
-          What's read so far.
+          This memo, emptied if it was another index's.
 
         """
         if modules is not self.modules:
             self.modules = modules
             self.read = {}
-        return self.read
+            self.packages = {}
+        return self
 
 
 _MEMO: Final = _Memo()
@@ -135,7 +137,7 @@ def overloaded(catalog: Index, path: Path) -> dict[str, tuple[ReadSignature, ...
     if path.suffix != SUFFIX or (target := modules.get(module_name(path))) is None:
         return {}
     found: dict[str, tuple[ReadSignature, ...]] = {}
-    memo: dict[tuple[str, str], tuple[ReadSignature, ...]] = _MEMO.of(modules)
+    memo: dict[tuple[str, str], tuple[ReadSignature, ...]] = _MEMO.of(modules).read
     key: str
     for key in sorted(target.called):
         origin: Origin | None = _callee(modules, target, key)
@@ -164,6 +166,95 @@ def classes(catalog: Index, path: Path) -> frozenset[str]:
         return frozenset()
     reader: _Reader = _Reader(modules)
     return frozenset(name for name in target.passed if reader.is_class(target, name))
+
+
+class Methods(NamedTuple):
+    """Installed classes' methods a file may call whose arguments or instance decide their type.
+
+    `signatures`: each one's, by the class as the file writes it and the method (`np.ndarray.astype`);
+    `parameters`: each such class's type parameters, in order, which a receiver's type binds.
+    """
+
+    signatures: dict[str, tuple[ReadSignature, ...]]
+    parameters: dict[str, tuple[str, ...]]
+
+
+def methods(catalog: Index, path: Path) -> Methods:
+    """Find the methods the file at `path` calls that an installed class it names declares (see `Methods`).
+
+    Returns:
+      Them; none for a file `catalog` doesn't have.
+
+    """
+    modules: dict[str, Module] = catalog.modules
+    found: Methods = Methods({}, {})
+    target: Module | None
+    if path.suffix != SUFFIX or (target := modules.get(module_name(path))) is None or not target.method_calls:
+        return found
+    reader: _Reader = _Reader(modules)
+    spelled: str
+    origin: Origin
+    for spelled, origin in _classes(modules, target):
+        module: Module = modules[origin[0]]
+        klass: Class = cast("Declarations", module.declared).classes[origin[1] or ""]
+        name: str
+        for name in sorted(target.method_calls):
+            read: tuple[ReadSignature, ...] | None
+            if (read := reader.method(module, klass, name, 0)) is not None:
+                found.signatures[f"{spelled}.{name}"] = read
+                found.parameters[spelled] = tuple(param for param, _ in klass.params)
+    return found
+
+
+def _classes(modules: Mapping[str, Module], target: Module) -> Iterator[tuple[str, Origin]]:
+    """Find the installed classes a module names: imported (`ndarray`), or through a package (`np.ndarray`).
+
+    Through a package, what any of its modules defines or re-exports (`numpy.ndarray`).
+
+    Yields:
+      Each as the module writes it, and where it's defined.
+
+    """
+    local: str
+    origin: Origin
+    for local, origin in target.names.items():
+        if origin[1] is not None:
+            where: Origin = project.canonical_origin(modules, origin)
+            if _declares(modules, where):
+                yield local, where
+            continue
+        packaged: dict[str, _Packaged] = _MEMO.of(modules).packages
+        if origin[0] not in packaged:
+            packaged[origin[0]] = tuple(_package_classes(modules, origin[0]))
+        suffix: str
+        found: Origin
+        for suffix, found in packaged[origin[0]]:
+            yield f"{local}{suffix}", found
+
+
+def _package_classes(modules: Mapping[str, Module], package: str) -> Iterator[tuple[str, Origin]]:
+    """Find the installed classes a package's modules define or re-export.
+
+    Yields:
+      Each as written after the package's name (`.ndarray`, `.linalg.LinAlgError`), and where it's defined.
+
+    """
+    name: str
+    other: Module
+    for name, other in modules.items():
+        if other.installed and (name == package or name.startswith(f"{package}.")):
+            bound: str
+            found: Origin
+            for bound, found in other.names.items():
+                where: Origin = project.canonical_origin(modules, found)
+                if _declares(modules, where):
+                    yield f"{name.removeprefix(package)}.{bound}", where
+
+
+def _declares(modules: Mapping[str, Module], origin: Origin) -> bool:
+    module: Module | None = modules.get(origin[0])
+    declared: Declarations | None = None if module is None or not module.installed else module.declared
+    return declared is not None and origin[1] in declared.classes
 
 
 def _callee(modules: Mapping[str, Module], target: Module, callee: str) -> Origin | None:
@@ -197,21 +288,40 @@ def _signatures(modules: Mapping[str, Module], module: Module, name: str) -> tup
     """
     # Found by its declared signatures (`project.definition`): only an installed module has them.
     declared: Declarations = cast("Declarations", module.declared)
-    written: tuple[Signature, ...] = declared.signatures[name]
+    return _read_all(_Reader(modules), module, declared.signatures[name], frozenset(), {})
+
+
+def _read_all(
+    reader: "_Reader",
+    module: Module,
+    written: tuple[Signature, ...],
+    variables: frozenset[str],
+    params: Mapping[str, str | None],
+) -> tuple[ReadSignature, ...]:
+    """Read a function's (or method's) signatures, `params` its class's type parameters.
+
+    A parameter every signature declares the same way takes whatever a call passes it, unless it
+    names a type variable (the module's, the class's in `variables`, or the signature's own).
+
+    Returns:
+      Them.
+
+    """
+    declared: Declarations = cast("Declarations", module.declared)
     shared: set[tuple[str, str, bool, str | None]] = set(written[0].params)
     signature: Signature
     for signature in written[1:]:
         shared &= set(signature.params)
-    variables: frozenset[str] = frozenset(
+    named: frozenset[str] = frozenset(
         {
             *declared.variables,
             *module.type_vars,
+            *variables,
             *(param for each in written for param, _ in each.type_params),
         },
     )
-    shared = {param for param in shared if not _names_any(param[3], variables)}
-    reader: _Reader = _Reader(modules)
-    return tuple(reader.signature(module, signature, shared) for signature in written)
+    shared = {param for param in shared if not _names_any(param[3], named)}
+    return tuple(reader.signature(module, signature, shared, params) for signature in written)
 
 
 def _names_any(annotation: str | None, names: frozenset[str]) -> bool:
@@ -224,7 +334,7 @@ def _names_any(annotation: str | None, names: frozenset[str]) -> bool:
     if annotation is None:
         return False
     node: ast.AST
-    for node in ast.walk(_parsed(annotation)):
+    for node in ast.walk(parse_text(annotation)):
         if isinstance(node, ast.Name) and node.id in names:
             return True
         if isinstance(node, ast.Constant) and isinstance(node.value, str) and _names_any(node.value, names):
@@ -244,6 +354,7 @@ class _Reader:
         module: Module,
         signature: Signature,
         shared: set[tuple[str, str, bool, str | None]],
+        types: Mapping[str, str | None],
     ) -> ReadSignature:
         """Read one signature: what each parameter takes, and its return as a template.
 
@@ -255,7 +366,7 @@ class _Reader:
           It.
 
         """
-        scope: _Scope = _Scope(module, dict(signature.type_params), module.name)
+        scope: Scope = Scope(module, {**types, **dict(signature.type_params)}, module.name)
         params: tuple[Parameter, ...] = tuple(
             (
                 param[0],
@@ -272,45 +383,104 @@ class _Reader:
             if signature.returns is None
             else self._template(ast.parse(signature.returns, mode="eval").body, scope, 0)
         )
-        return ReadSignature(params, returns, None)
+        # A method declaring its `self` (`self: ndarray[Any, dtype[bool]]`) is for some instances only.
+        return ReadSignature(params, returns, [MAYBE] if signature.self_typed else None)
 
-    def _accepts(self, annotation: ast.expr, scope: _Scope) -> Accepts:
+    def _accepts(self, annotation: ast.expr, scope: Scope) -> Accepts:
         """Work out what a parameter takes (see `stdlib.Accepts`).
 
         Returns:
           It.
 
         """
-        atoms: list[_Atom] = list(self._atoms(annotation, scope, 0))
+        atoms: list[Atom] = list(self._atoms(annotation, scope, 0))
         literals: list[Constant] = [value for atom in atoms for value in atom.values]
-        values: str = "".join(_verdict(atoms, scalar, constant=False) for scalar in SCALARS)
-        found: Accepts = {"v": values, _CLASS_VERDICT: _combined({_class_verdict(atom) for atom in atoms})}
+        values: str = "".join(verdict_of(atoms, scalar, constant=False) for scalar in SCALARS)
+        found: Accepts = {"v": values, CLASS_VERDICT: combined({class_verdict(atom) for atom in atoms})}
         if literals:
             found["lit"] = literals
-            constants: str = "".join(_verdict(atoms, scalar, constant=True) for scalar in SCALARS)
+            constants: str = "".join(verdict_of(atoms, scalar, constant=True) for scalar in SCALARS)
             if constants != values:
                 found["c"] = constants
         binds: dict[str, list[str]] = {}
         scalar: str
         for scalar in SCALARS:
             bound: tuple[str, str] | None
-            if (bound := _binds(atoms, scalar, scope.owner)) is not None:
+            if (bound := scalar_binds(atoms, scalar, scope.owner)) is not None:
                 binds[scalar] = [bound[0], bound[1]]
         if binds:
             found["var"] = binds
         if (
             len(atoms) == 1
-            and atoms[0].kind == _VAR
+            and atoms[0].kind == VAR
             and atoms[0].bound is None
-            and _own(atoms[0], scope.owner)
+            and owned(atoms[0], scope.owner)
         ):
             found[_TYPE_VARIABLE] = atoms[0].name
         variable: str | None
-        if (variable := _class_binds(atoms, scope.owner)) is not None:
-            found[_CLASS_BINDS] = variable
+        if (variable := class_binds(atoms, scope.owner)) is not None:
+            found[CLASS_BINDS] = variable
+        self._containers(atoms, scope, found)
         return found
 
-    def _atoms(self, expr: ast.expr, scope: _Scope, hops: int) -> Iterator[_Atom]:
+    def _containers(self, atoms: Sequence[Atom], scope: Scope, found: Accepts) -> None:
+        """Add what a parameter takes of each builtin container argument to `found` (see `Accepts`).
+
+        A container every member refuses, or one member takes (its elements' types too, where that
+        member says: `tuple[int, ...]`); and the bounded type variable it binds, where the parameter
+        is only that (`ShapeT`, bound to `tuple[int, ...]`).
+        """
+        verdicts: dict[str, str] = {}
+        elements: dict[str, str] = {}
+        container: str
+        for container in CONTAINERS:
+            each: list[Taken] = [self._container(atom, container, 0) for atom in atoms]
+            verdict: str
+            if (verdict := combined({taken for taken, _ in each})) != MAYBE:
+                verdicts[container] = verdict
+            taking: list[tuple[Atom, ...] | None] = [inner for taken, inner in each if taken != NO]
+            if verdict == YES and len(taking) == 1 and taking[0] is not None:
+                elements[container] = "".join(
+                    verdict_of(taking[0], scalar, constant=False) for scalar in SCALARS
+                )
+        if verdicts:
+            found[CONTAINER_VERDICTS] = verdicts
+        if elements:
+            found[ELEMENT_VERDICTS] = elements
+        only: Atom | None = atoms[0] if len(atoms) == 1 and atoms[0].kind == VAR else None
+        if (
+            only is not None
+            and only.bound not in {None, PARAM_SPEC}
+            and not only.constrained
+            and owned(only, scope.owner)
+        ):
+            found[CONTAINER_BINDS] = only.name
+
+    def _container(self, atom: Atom, container: str, hops: int) -> Taken:
+        """Decide whether one atom takes a builtin `container` argument, and what its elements must be.
+
+        Returns:
+          The verdict, and the atoms its elements' type must fit where the atom says (`list[int]`,
+          `tuple[int, ...]`); `None` where it doesn't.
+
+        """
+        verdict: str = scalar_verdict(atom, container, constant=False)
+        elements: tuple[Atom, ...] | None = None
+        if atom.kind == VAR and atom.bound not in {None, PARAM_SPEC} and hops < _MAX_DEPTH:
+            each: list[Taken] = [self._container(inner, container, hops + 1) for inner in atom.inner]
+            taking: list[tuple[Atom, ...] | None] = [inner for taken, inner in each if taken != NO]
+            verdict = combined({taken for taken, _ in each})
+            elements = taking[0] if len(taking) == 1 else None
+        elif atom.kind == CLASS and atom.module is None and atom_path(atom) == f"builtins.{container}":
+            verdict = YES
+            of: ast.expr | None = element_of(container, atom.args)
+            if atom.args and (of is None or atom.scope is None):
+                verdict = MAYBE  # `tuple[int, str]`, `dict[str, int]`: their elements aren't read
+            elif of is not None and atom.scope is not None:
+                elements = tuple(self._atoms(of, atom.scope, hops + 1))
+        return verdict, elements
+
+    def _atoms(self, expr: ast.expr, scope: Scope, hops: int) -> Iterator[Atom]:
         """Split an annotation into its union's members, through aliases, `Optional`, `Union`, strings.
 
         Yields:
@@ -321,13 +491,13 @@ class _Reader:
         left: ast.expr
         right: ast.expr
         if hops > _MAX_DEPTH:
-            yield _UNKNOWN
+            yield UNKNOWN
             return
         match expr:
             case ast.Constant(value=None):
-                yield _Atom(_NONE_ATOM)
+                yield Atom(_NONE_ATOM)
             case ast.Constant(value=str() as text):
-                yield from self._atoms(_parsed(text), scope, hops + 1)
+                yield from self._atoms(parse_text(text), scope, hops + 1)
             case ast.BinOp(left=left, op=ast.BitOr(), right=right):
                 yield from self._atoms(left, scope, hops + 1)
                 yield from self._atoms(right, scope, hops + 1)
@@ -336,15 +506,15 @@ class _Reader:
             case ast.Name() | ast.Attribute():
                 yield from self._named_atoms(expr, scope, hops, ())
             case _:
-                yield _UNKNOWN
+                yield UNKNOWN
 
     def _named_atoms(
         self,
         expr: ast.Name | ast.Attribute,
-        scope: _Scope,
+        scope: Scope,
         hops: int,
         args: Sequence[ast.expr],
-    ) -> Iterator[_Atom]:
+    ) -> Iterator[Atom]:
         """Read a name an annotation uses, subscripted with `args` (none if it isn't).
 
         Yields:
@@ -353,47 +523,45 @@ class _Reader:
         """
         resolved: _Resolved | None
         if (resolved := self.resolve(expr, scope)) is None:
-            yield _UNKNOWN
-        elif not isinstance(resolved, _Atom):
+            yield UNKNOWN
+        elif not isinstance(resolved, Atom):
             alias: Alias
-            where: _Scope
+            where: Scope
             alias, where, _ = resolved
-            yield from self._atoms(_parsed(alias.value), _bound_alias(alias, where, args, scope), hops + 1)
+            yield from self._atoms(parse_text(alias.value), bound_alias(alias, where, args, scope), hops + 1)
         elif resolved.kind == _ARG:
-            yield from self._atoms(*_argument(resolved), hops + 1)
-        elif (
-            resolved.kind == _VAR and resolved.scope is not None and resolved.bound not in {None, _PARAM_SPEC}
-        ):
-            bound: ast.expr = _parsed(resolved.bound or "")
+            yield from self._atoms(*argument_of(resolved), hops + 1)
+        elif resolved.kind == VAR and resolved.scope is not None and resolved.bound not in {None, PARAM_SPEC}:
+            bound: ast.expr = parse_text(resolved.bound or "")
             yield resolved._replace(inner=tuple(self._atoms(bound, resolved.scope, hops + 1)))
         else:
-            yield resolved._replace(subscripted=bool(args))
+            yield resolved._replace(subscripted=bool(args), args=tuple(args), scope=scope)
 
-    def _subscript_atoms(self, expr: ast.Subscript, scope: _Scope, hops: int) -> Iterator[_Atom]:
+    def _subscript_atoms(self, expr: ast.Subscript, scope: Scope, hops: int) -> Iterator[Atom]:
         args: list[ast.expr] = list(expr.slice.elts) if isinstance(expr.slice, ast.Tuple) else [expr.slice]
         base: ast.expr = expr.value
         if not isinstance(base, ast.Name | ast.Attribute):
-            yield _UNKNOWN
+            yield UNKNOWN
             return
         path: str | None = self._external(base, scope)
-        if path is not None and path.rpartition(".")[0] in _TYPING:
+        if path is not None and path.rpartition(".")[0] in TYPING:
             name: str = path.rpartition(".")[2]
             if name in _UNIONS:
                 members: list[ast.expr] = [*args, *([ast.Constant(None)] if name == _OPTIONAL else [])]
                 yield from (atom for member in members for atom in self._atoms(member, scope, hops + 1))
                 return
             if name == _LITERAL:
-                yield _Atom(_LITERAL_ATOM, tuple(_literal_values(args)))
+                yield Atom(_LITERAL_ATOM, tuple(literal_values(args)))
                 return
             if name == _ANNOTATED:
                 yield from self._atoms(args[0], scope, hops + 1)
                 return
-        if path in _TYPES:
-            yield _Atom(_TYPE, inner=tuple(self._atoms(args[0], scope, hops + 1)))
+        if path in TYPES:
+            yield Atom(TYPE, inner=tuple(self._atoms(args[0], scope, hops + 1)))
             return
         yield from self._named_atoms(base, scope, hops, args)
 
-    def _external(self, expr: ast.Name | ast.Attribute, scope: _Scope) -> str | None:
+    def _external(self, expr: ast.Name | ast.Attribute, scope: Scope) -> str | None:
         """Name what an annotation's name refers to outside the installed modules (`typing.Union`).
 
         Returns:
@@ -401,11 +569,11 @@ class _Reader:
 
         """
         resolved: _Resolved | None = self.resolve(expr, scope)
-        if not isinstance(resolved, _Atom) or resolved.kind != _CLASS or resolved.module is not None:
+        if not isinstance(resolved, Atom) or resolved.kind != CLASS or resolved.module is not None:
             return None
-        return _path(resolved)
+        return atom_path(resolved)
 
-    def resolve(self, expr: ast.Name | ast.Attribute, scope: _Scope) -> _Resolved | None:
+    def resolve(self, expr: ast.Name | ast.Attribute, scope: Scope) -> _Resolved | None:
         """Resolve a name an annotation uses: a type parameter, a class, an alias, a type variable.
 
         Returns:
@@ -415,17 +583,55 @@ class _Reader:
         """
         origin: Origin | None
         if isinstance(expr, ast.Name) and expr.id in scope.params:
-            param: str | tuple[ast.expr, _Scope] | None = scope.params[expr.id]
+            param: str | tuple[ast.expr, Scope] | None = scope.params[expr.id]
             if isinstance(param, tuple):
-                return _Atom(_ARG, name=ast.unparse(param[0]), scope=param[1])
-            return _Atom(_VAR, name=expr.id, bound=param, scope=scope)
+                return Atom(_ARG, name=ast.unparse(param[0]), scope=param[1])
+            return Atom(VAR, name=expr.id, bound=param, scope=scope)
         if (origin := self._origin(expr, scope.module)) is None or origin[1] is None:
             return None
         origin = project.canonical_origin(self.modules, origin)
         defining: Module | None = self.modules.get(origin[0])
         if defining is None or not defining.installed:
-            return _Atom(_CLASS, origin=origin)
+            return Atom(CLASS, origin=origin)
         return self._declared(defining, origin)
+
+    def method(self, module: Module, klass: Class, name: str, hops: int) -> tuple[ReadSignature, ...] | None:
+        """Read a class's method (its own, else its nearest base's that has it) as a function's are.
+
+        Returns:
+          Its signatures, or `None` if neither it nor a base it can follow declares it.
+
+        """
+        written: tuple[Signature, ...] | None
+        if (written := klass.methods.get(name)) is not None:
+            return _read_all(
+                self,
+                module,
+                written,
+                frozenset(name for name, _ in klass.params),
+                dict(klass.params),
+            )
+        base: str
+        for base in klass.bases if hops < _MAX_DEPTH else ():
+            parsed: ast.expr = parse_text(base)
+            parsed = parsed.value if isinstance(parsed, ast.Subscript) else parsed
+            resolved: _Resolved | None = (
+                self.resolve(parsed, Scope(module, {}, module.name))
+                if isinstance(parsed, ast.Name | ast.Attribute)
+                else None
+            )
+            if (
+                isinstance(resolved, Atom)
+                and resolved.module is not None
+                and resolved.module.declared is not None
+            ):
+                inherited: Class | None = resolved.module.declared.classes.get(resolved.origin[1] or "")
+                read: tuple[ReadSignature, ...] | None = (
+                    None if inherited is None else self.method(resolved.module, inherited, name, hops + 1)
+                )
+                if read is not None:
+                    return read
+        return None
 
     def is_class(self, target: Module, name: str) -> bool:
         """Check whether a dotted name the module writes (`np.float64`) is an installed class or its alias.
@@ -440,11 +646,11 @@ class _Reader:
             if origin is None or origin[1] is None
             else self._declared_of(project.canonical_origin(self.modules, origin))
         )
-        if resolved is not None and not isinstance(resolved, _Atom):  # an alias: of a class?
-            value: ast.expr = _parsed(resolved[0].value)
+        if resolved is not None and not isinstance(resolved, Atom):  # an alias: of a class?
+            value: ast.expr = parse_text(resolved[0].value)
             base: ast.expr = value.value if isinstance(value, ast.Subscript) else value
             resolved = self.resolve(base, resolved[1]) if isinstance(base, ast.Name | ast.Attribute) else None
-        return isinstance(resolved, _Atom) and resolved.kind == _CLASS and resolved.module is not None
+        return isinstance(resolved, Atom) and resolved.kind == CLASS and resolved.module is not None
 
     def _declared_of(self, origin: Origin) -> _Resolved | None:
         defining: Module | None = self.modules.get(origin[0])
@@ -460,18 +666,18 @@ class _Reader:
         """
         name: str = origin[1] or ""
         declared: Declarations | None = module.declared
-        own: _Scope = _Scope(module, {}, module.name)
+        own: Scope = Scope(module, {}, module.name)
         if declared is not None and name in declared.aliases:
             return declared.aliases[name], own, origin
         variable: Variable | None
         if (variable := None if declared is None else declared.variables.get(name)) is not None:
-            return _Atom(_VAR, name=name, bound=variable.bound, scope=own, constrained=variable.constrained)
+            return Atom(VAR, name=name, bound=variable.bound, scope=own, constrained=variable.constrained)
         if (
             name in module.classes
             or name in module.generics
             or (declared is not None and name in declared.protocols)
         ):
-            return _Atom(_CLASS, origin=origin, module=module)
+            return Atom(CLASS, origin=origin, module=module)
         return None
 
     def _origin(self, expr: ast.Name | ast.Attribute, module: Module) -> Origin | None:
@@ -487,7 +693,7 @@ class _Reader:
                 ((module.name, expr.id) if declared is not None and expr.id in declared.aliases else None)
                 or module.names.get(expr.id)
                 or module.guarded.get(expr.id)
-                or ((_BUILTINS_MODULE, expr.id) if expr.id in _BUILTINS else None)
+                or ((BUILTINS_MODULE, expr.id) if expr.id in _BUILTINS else None)
             )
         if not isinstance(expr.value, ast.Name | ast.Attribute):
             return None
@@ -499,7 +705,7 @@ class _Reader:
             return (submodule, None) if submodule in self.modules else (base[0], expr.attr)
         return None
 
-    def _template(self, expr: ast.expr, scope: _Scope, hops: int) -> str | None:
+    def _template(self, expr: ast.expr, scope: Scope, hops: int) -> str | None:
         """Write an annotation as a template: classes by their public dotted paths, type variables bare.
 
         A private alias is written as what it stands for, its parameters bound by its arguments.
@@ -518,13 +724,13 @@ class _Reader:
             case _ if hops > _MAX_DEPTH:
                 pass
             case ast.Constant(value=None):
-                found = _NONE
+                found = NONE
             case ast.Constant(value=builtins.Ellipsis):
                 found = "..."
             case ast.Constant(value=str() as text):
-                found = self._template(_parsed(text), scope, hops + 1)
+                found = self._template(parse_text(text), scope, hops + 1)
             case ast.BinOp(left=left, op=ast.BitOr(), right=right):
-                found = _joined(" | ", [self._template(side, scope, hops + 1) for side in (left, right)])
+                found = joined(" | ", [self._template(side, scope, hops + 1) for side in (left, right)])
             case ast.Subscript(value=ast.Name() | ast.Attribute() as base):
                 args: list[ast.expr] = (
                     list(expr.slice.elts) if isinstance(expr.slice, ast.Tuple) else [expr.slice]
@@ -539,7 +745,7 @@ class _Reader:
     def _named_template(
         self,
         expr: ast.Name | ast.Attribute,
-        scope: _Scope,
+        scope: Scope,
         hops: int,
         args: Sequence[ast.expr],
     ) -> str | None:
@@ -553,20 +759,26 @@ class _Reader:
         written: str | None
         if resolved is None:
             return None
-        if not isinstance(resolved, _Atom):
+        if not isinstance(resolved, Atom):
             alias: Alias
-            where: _Scope
+            where: Scope
             origin: Origin
             alias, where, origin = resolved
             public: Origin = project.public_origin(self.modules, origin)
-            if not _private(public[0]) and not _private(public[1]):
+            if not private_name(public[0]) and not private_name(public[1]):
                 written = f"{public[0]}.{public[1]}"
-            else:
-                return self._template(_parsed(alias.value), _bound_alias(alias, where, args, scope), hops + 1)
+            elif alias.params or free_variables(alias.value, where) or not args:
+                return self._template(
+                    parse_text(alias.value),
+                    bound_alias(alias, where, args, scope),
+                    hops + 1,
+                )
+            else:  # another name for a generic class (`_dtype = dtype`): its arguments are the class's
+                written = self._template(parse_text(alias.value), where, hops + 1)
         elif resolved.kind == _ARG:
-            return self._template(*_argument(resolved), hops + 1)
-        elif resolved.kind == _VAR:
-            written = resolved.name if _own(resolved, scope.owner) else None
+            return self._template(*argument_of(resolved), hops + 1)
+        elif resolved.kind == VAR:
+            written = resolved.name if owned(resolved, scope.owner) else None
         else:
             written = self._class_path(resolved)
         if written is None or not args:
@@ -574,7 +786,7 @@ class _Reader:
         texts: list[str | None] = [self._template(arg, scope, hops + 1) for arg in args]
         return None if None in texts else f"{written}[{', '.join(t for t in texts if t is not None)}]"
 
-    def _class_path(self, atom: _Atom) -> str | None:
+    def _class_path(self, atom: Atom) -> str | None:
         """Write a class as a template names it: a builtin bare, any other by its public dotted path.
 
         Returns:
@@ -584,284 +796,8 @@ class _Reader:
         origin: Origin = atom.origin
         if atom.module is not None:
             origin = project.public_origin(self.modules, origin)
-        elif origin[0] == _BUILTINS_MODULE:
+        elif origin[0] == BUILTINS_MODULE:
             return origin[1] if origin[1] not in {"object", "type"} else None
-        elif origin[0] in _TYPING:
-            return None
-        return None if _private(origin[0]) or _private(origin[1]) else f"{origin[0]}.{origin[1]}"
-
-
-def _path(atom: _Atom) -> str:
-    """Name a class atom by its dotted path (`typing.SupportsIndex`).
-
-    Returns:
-      It.
-
-    """
-    return f"{atom.origin[0]}.{atom.origin[1]}"
-
-
-def _own(atom: _Atom, owner: str) -> bool:
-    """Check that a type variable is the function's own: one of its type parameters, or its module's.
-
-    Returns:
-      Whether it is.
-
-    """
-    return atom.scope is not None and atom.scope.module.name == owner
-
-
-def _argument(atom: _Atom) -> tuple[ast.expr, _Scope]:
-    """Read back the argument an alias's parameter was bound to (an `arg` atom).
-
-    Returns:
-      Its annotation, and the scope it's read in.
-
-    """
-    scope: _Scope | None = atom.scope
-    assert scope is not None  # an `arg` atom always has one  # ruff: ignore[assert]
-    return _parsed(atom.name), scope
-
-
-def _bound_alias(alias: Alias, where: _Scope, args: Sequence[ast.expr], caller: _Scope) -> _Scope:
-    """Scope an alias's value: its type parameters bound to the arguments it's subscripted with.
-
-    Its own (`type X[T] = ...`), or else the type variables its value names, in order; one without
-    an argument stays unbound (any type).
-
-    Returns:
-      The scope.
-
-    """
-    params: tuple[str, ...] = alias.params or _free_variables(alias.value, where)
-    bound: dict[str, str | tuple[ast.expr, _Scope] | None] = dict.fromkeys(params)
-    name: str
-    arg: ast.expr
-    for name, arg in zip(params, args, strict=False):
-        bound[name] = (arg, caller)
-    return _Scope(where.module, bound, caller.owner)
-
-
-def _free_variables(value: str, scope: _Scope) -> tuple[str, ...]:
-    """Name the type variables an old-style alias's value names (its parameters), in order.
-
-    Returns:
-      Them.
-
-    """
-    declared: Declarations | None = scope.module.declared
-    variables: Mapping[str, Variable] = {} if declared is None else declared.variables
-    return tuple(
-        dict.fromkeys(
-            node.id
-            for node in ast.walk(_parsed(value))
-            if isinstance(node, ast.Name) and (node.id in variables or node.id in scope.module.type_vars)
-        ),
-    )
-
-
-def _verdict(atoms: Sequence[_Atom], scalar: str, *, constant: bool) -> str:
-    """Decide whether an annotation's atoms take an argument of type `scalar` (a literal one if `constant`).
-
-    Returns:
-      `y` if one certainly does, `n` if none does, else `?`.
-
-    """
-    return _combined({_scalar_verdict(atom, scalar, constant=constant) for atom in atoms})
-
-
-def _combined(verdicts: set[str]) -> str:
-    if _YES in verdicts:
-        return _YES
-    return _NO if verdicts == {_NO} else _MAYBE
-
-
-def _scalar_verdict(atom: _Atom, scalar: str, *, constant: bool) -> str:
-    """Decide whether one atom takes an argument of type `scalar`.
-
-    Returns:
-      The verdict.
-
-    """
-    match atom.kind:
-        case "none":
-            return _YES if scalar == _NONE else _NO
-        case "literal":
-            types: set[str] = {type(value).__name__ if value is not None else _NONE for value in atom.values}
-            matches: bool = scalar in types or (scalar == _LITERAL_STRING and _STR in types)
-            return _NO if constant or not matches else _MAYBE
-        case "var":
-            return _bound_verdict(atom, scalar)
-        case "type":
-            return _NO
-        case "class":
-            return _class_takes(atom, scalar)
-        case _:
-            return _MAYBE
-
-
-def _bound_verdict(atom: _Atom, scalar: str) -> str:
-    """Decide whether a type variable takes an argument of type `scalar`, by its bound (its `inner` atoms).
-
-    Returns:
-      The verdict (`y` without one).
-
-    """
-    if atom.bound is None:
-        return _YES
-    return _MAYBE if atom.bound == _PARAM_SPEC else _verdict(atom.inner, scalar, constant=False)
-
-
-def _class_takes(atom: _Atom, scalar: str) -> str:
-    """Decide whether a class takes an argument of type `scalar`.
-
-    A standard-library one by the `scalars` table; an installed protocol by its members (a generic
-    one's parameters unread); no other installed class.
-
-    Returns:
-      The verdict.
-
-    """
-    path: str = _path(atom)
-    if atom.module is None:
-        return _external_takes(path, scalar)
-    declared: Declarations | None = atom.module.declared
-    protocol: Protocol | None = None if declared is None else declared.protocols.get(path.rpartition(".")[2])
-    members: frozenset[str] | None = stdlib.scalar_members(scalar)
-    if protocol is None or (members is not None and not protocol.members <= members):
-        return _NO
-    return (
-        _MAYBE
-        if members is None or atom.subscripted or path.rpartition(".")[2] in atom.module.generics
-        else _YES
-    )
-
-
-def _external_takes(path: str, scalar: str) -> str:
-    """Decide whether a class outside the installed packages (`typing.SupportsIndex`) takes a `scalar`.
-
-    Returns:
-      The verdict: the `scalars` table's, or `?` where it hasn't one.
-
-    """
-    module: str
-    name: str
-    module, _, name = path.rpartition(".")
-    verdicts: str | None = stdlib.scalar_verdicts(path)
-    if path in _ANYTHING:
-        verdicts = _YES * len(SCALARS)
-    elif module in _TYPING and name == _LITERAL_STRING:
-        verdicts = "".join(_YES if each == _LITERAL_STRING else _NO for each in SCALARS)
-    elif module in _TYPING and name in _REFUSING:
-        verdicts = _NO * len(SCALARS)
-    return _MAYBE if verdicts is None else verdicts[SCALARS.index(scalar)]
-
-
-def _class_verdict(atom: _Atom) -> str:
-    """Decide whether one atom takes a class passed as an argument (`dtype=np.float64`).
-
-    A class is an instance of `type` alone: `type[...]`, `type` and `object` take it; `None`, a
-    literal, any other class, or a protocol with an attribute or property (which a class has as a
-    descriptor, not a value) don't.
-
-    Returns:
-      The verdict.
-
-    """
-    found: str = _MAYBE
-    match atom.kind:
-        case "none" | "literal":
-            found = _NO
-        case "type":  # a `type[T]` takes any class (bounds unchecked: a call outside one is an error)
-            found = _YES if all(inner.kind == _VAR or _anything(inner) for inner in atom.inner) else _MAYBE
-        case "var" if atom.bound is None:
-            found = _YES
-        case "var" if atom.bound != _PARAM_SPEC:
-            found = _combined({_class_verdict(inner) for inner in atom.inner})
-        case "class":
-            found = _class_takes_class(atom)
-        case _:
-            pass
-    return found
-
-
-def _anything(atom: _Atom) -> bool:
-    """Check whether an atom is `Any`, `object` or `typeshed`'s `Incomplete`.
-
-    Returns:
-      Whether it is.
-
-    """
-    return atom.kind == _CLASS and _path(atom) in _ANYTHING
-
-
-def _class_takes_class(atom: _Atom) -> str:
-    """Decide whether a class atom takes a class passed as an argument (see `_class_verdict`).
-
-    Returns:
-      The verdict.
-
-    """
-    origin: Origin = atom.origin
-    if _path(atom) in _ANYTHING | _TYPES:
-        return _YES
-    if atom.module is None:
-        return _NO if origin[0] == _BUILTINS_MODULE else _MAYBE
-    declared: Declarations | None = atom.module.declared
-    protocol: Protocol | None = None if declared is None else declared.protocols.get(origin[1] or "")
-    return _NO if protocol is None or protocol.properties else _MAYBE
-
-
-def _binds(atoms: Sequence[_Atom], scalar: str, owner: str) -> tuple[str, str] | None:
-    """Find the type variable an argument of type `scalar` binds: the one member that takes it.
-
-    Returns:
-      Its name, and the argument's type (a literal's widened to `str`); or `None`.
-
-    """
-    taking: list[_Atom] = [atom for atom in atoms if _scalar_verdict(atom, scalar, constant=False) != _NO]
-    if len(taking) != 1 or taking[0].kind != _VAR or taking[0].constrained or not _own(taking[0], owner):
-        return None
-    if _scalar_verdict(taking[0], scalar, constant=False) != _YES:
-        return None
-    return taking[0].name, _STR if scalar == _LITERAL_STRING else scalar
-
-
-def _class_binds(atoms: Sequence[_Atom], owner: str) -> str | None:
-    """Find the type variable a class argument binds: a `type[T]`, all else refusing a class.
-
-    Returns:
-      Its name, or `None`.
-
-    """
-    types: list[_Atom] = [atom for atom in atoms if atom.kind == _TYPE]
-    if len(types) != 1 or any(_class_verdict(atom) != _NO for atom in atoms if atom.kind != _TYPE):
-        return None
-    inner: tuple[_Atom, ...] = types[0].inner
-    variable: _Atom | None = inner[0] if len(inner) == 1 and inner[0].kind == _VAR else None
-    return None if variable is None or variable.constrained or not _own(variable, owner) else variable.name
-
-
-def _literal_values(args: Sequence[ast.expr]) -> Iterator[Constant]:
-    arg: ast.expr
-    for arg in args:
-        if isinstance(arg, ast.Constant) and isinstance(
-            arg.value,
-            bool | int | float | complex | str | bytes | None,
-        ):
-            yield arg.value
-
-
-def _joined(separator: str, parts: Sequence[str | None]) -> str | None:
-    return None if None in parts else separator.join(part for part in parts if part is not None)
-
-
-def _parsed(text: str) -> ast.expr:
-    try:
-        return ast.parse(text, mode="eval").body
-    except SyntaxError:
-        return ast.Constant(value=...)  # read as nothing it names
-
-
-def _private(name: str | None) -> bool:
-    return name is None or any(part.startswith("_") for part in name.split("."))
+        elif origin[0] in TYPING:
+            return _SELF if origin[1] == _SELF else None  # a method's `Self`: the receiver's type
+        return None if private_name(origin[0]) or private_name(origin[1]) else f"{origin[0]}.{origin[1]}"

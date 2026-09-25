@@ -153,6 +153,7 @@ def _settings(
                 replace(imports.plan(tree), guarded={} if outside is None else outside.guarded),
                 {} if outside is None else outside.overloaded,
                 frozenset() if outside is None else outside.installed_classes,
+                {} if outside is None else outside.installed_parameters,
             ),
             checks.max_length,
         ),

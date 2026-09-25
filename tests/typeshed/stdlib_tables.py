@@ -23,10 +23,11 @@ keeps what comes out the same for all twelve:
   templates its instance's type arguments bind;
 - `variables`: module-level variables' types (`sys.path`, `os.sep`), as `returns` and `classes` hold
   a function's;
-- `scalars`: which builtin scalar types (`overloads.SCALARS`) each class or alias takes, by every
-  path an installed package's stub may import it from (`typing.SupportsIndex`, `_typeshed.StrPath`),
-  and `scalar_members`: each scalar's members, for its protocols; installed packages' overloads are
-  matched with them (`constricter.fix.stubbed`).
+- `scalars`: which builtin scalar types (`overloads.SCALARS`), then containers (`CONTAINERS`),
+  each class or alias takes, by every path an installed package's stub may import it from
+  (`typing.SupportsIndex`, `_typeshed.StrPath`), and `scalar_members`: each of those types'
+  members, for its protocols; installed packages' overloads are matched with them
+  (`constricter.fix.stubbed`).
 
 A return that names a `TypeVar` (but `AnyStr`), `Any`, or anything else vague, differs between
 overloads, or is spelled with a class inside a generic (`list[Path]`), is left out; so is `typing`
@@ -43,7 +44,7 @@ from typing import Final, NamedTuple, TypeAlias
 import basedpyright  # pyright: ignore[reportMissingTypeStubs]  # the dev group's: its bundled stubs
 
 from constricter.fix.stdlib import Signature
-from tests.typeshed.overloads import SCALARS, Overloads
+from tests.typeshed.overloads import CONTAINERS, SCALARS, Overloads
 from tests.typeshed.reading import (
     ANY_STR,
     ATTRIBUTE,
@@ -125,7 +126,7 @@ class _Tables(NamedTuple):
     subscriptable: Table  # each generic class's: `y` if it can be subscripted at run time, else `n`
     generic_attributes: dict[str, Table]  # each generic class's own attributes, as templates
     variables: Table  # module-level variables' types: builtin annotations, or classes' paths
-    scalars: Table  # each class's and alias's verdict (`y`, `n`, `?`) per `SCALARS` type, in order
+    scalars: Table  # each class's and alias's verdict (`y`, `n`, `?`) per `SCALARS`, then `CONTAINERS`, type
     scalar_members: dict[str, list[str]]  # each scalar's members, its class's and its bases'
 
 
@@ -210,13 +211,13 @@ def _enter_scalars(tables: _Tables, reader: _Reader, stubs: Stubs, config: Confi
     target: Found
     for path, target in paths.items():
         if isinstance(target.binding, Klass | Alias):
-            tables.scalars[path] = reader.overloads.accepts(
-                ast.Name(path.rpartition(".")[2]),
-                path.rpartition(".")[0],
-            ).values
+            bare: ast.Name = ast.Name(path.rpartition(".")[2])
+            tables.scalars[path] = reader.overloads.accepts(bare, path.rpartition(".")[0]).values + (
+                reader.overloads.takes(bare, path.rpartition(".")[0], CONTAINERS)
+            )
     scalar: str
     members: frozenset[str] | None
-    for scalar in SCALARS:
+    for scalar in (*SCALARS, *CONTAINERS):
         if (members := reader.overloads.scalar_members(scalar)) is not None:
             tables.scalar_members[scalar] = sorted(members)
 

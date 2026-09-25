@@ -25,6 +25,7 @@ _PROTOCOL: Final = "Protocol"
 _PROPERTIES: Final = frozenset({"property", "cached_property"})
 _BOUND: Final = "bound"
 _STAR: Final = "*"
+_SELF: Final = "Self"  # a method returning its instance's own type
 
 
 class Signature(NamedTuple):
@@ -37,6 +38,20 @@ class Signature(NamedTuple):
     params: tuple[Param, ...]
     returns: str | None
     type_params: tuple[tuple[str, str | None], ...] = ()
+    self_typed: bool = False  # a method whose `self` is annotated: only some instances have it
+
+
+class Class(NamedTuple):
+    """A class: its type parameters (each with its bound's text, or `None`), and its methods' signatures.
+
+    `bases`: its bases as written. `methods`: those whose arguments or instance decide their return:
+    overloaded, naming a type variable, or any at all for a generic class (its parameters bind them);
+    each signature without `self`.
+    """
+
+    params: tuple[tuple[str, str | None], ...]
+    bases: tuple[str, ...]
+    methods: Mapping[str, tuple[Signature, ...]]
 
 
 class Alias(NamedTuple):
@@ -74,6 +89,7 @@ class Declarations(NamedTuple):
     # Classes generic only through a subscripted base (`class float64(floating[_64Bit])`), each with
     # the names in its bases' subscripts: generic if one is a type variable (see `installed`).
     bases: Mapping[str, frozenset[str]] = {}
+    classes: Mapping[str, Class] = {}  # every class, for its methods
 
 
 def declarations(tree: ast.Module) -> Declarations:
@@ -90,6 +106,7 @@ def declarations(tree: ast.Module) -> Declarations:
     variables: dict[str, Variable] = {}
     protocols: dict[str, Protocol] = {}
     bases: dict[str, frozenset[str]] = {}
+    classes: dict[str, Class] = {}
     names: frozenset[str] | None
     stmt: ast.stmt
     for stmt in tree.body:
@@ -101,6 +118,7 @@ def declarations(tree: ast.Module) -> Declarations:
                     protocols[stmt.name] = _protocol(stmt)
                 if (names := _subscripted(stmt)) is not None:
                     bases[stmt.name] = names
+                classes[stmt.name] = _class(stmt, type_vars, variables)
             case _:
                 _assignment(stmt, aliases, variables)
     return Declarations(
@@ -110,6 +128,68 @@ def declarations(tree: ast.Module) -> Declarations:
         protocols,
         _exports(tree),
         bases,
+        classes,
+    )
+
+
+def _class(node: ast.ClassDef, type_vars: frozenset[str], variables: Mapping[str, Variable]) -> Class:
+    """Read a class's type parameters and its methods (see `Class`).
+
+    Its own (`class C[T]`), else a `Generic[...]` or `Protocol[...]` base's, else the type variables
+    its bases' subscripts name, in order.
+
+    Returns:
+      It.
+
+    """
+    own: tuple[tuple[str, str | None], ...] = tuple(_type_params(node))
+    subscripts: list[ast.Subscript] = [base for base in node.bases if isinstance(base, ast.Subscript)]
+    generic: list[ast.Subscript] = [
+        base for base in subscripts if node_name(base.value) in {"Generic", _PROTOCOL}
+    ]
+    known: frozenset[str] = type_vars | variables.keys()
+    names: list[str] = list(
+        dict.fromkeys(
+            found.id
+            for base in (generic or subscripts)
+            for found in ast.walk(base.slice)
+            if isinstance(found, ast.Name) and (generic or found.id in known)
+        ),
+    )
+    params: tuple[tuple[str, str | None], ...] = own or tuple(
+        (name, None if name not in variables or variables[name].constrained else variables[name].bound)
+        for name in names
+    )
+    signatures: dict[str, list[Signature]] = {}
+    overloaded: set[str] = set()
+    stmt: ast.stmt
+    for stmt in node.body:
+        if isinstance(stmt, ast.FunctionDef) and (stmt.args.posonlyargs or stmt.args.args):
+            _signature(
+                stmt,
+                signatures,
+                overloaded,
+                known | {_SELF, *(name for name, _ in params)},
+                every=bool(params),
+            )
+    return Class(
+        params,
+        tuple(ast.unparse(base) for base in node.bases),
+        {name: tuple(_unbound(each) for each in found) for name, found in signatures.items() if found},
+    )
+
+
+def _unbound(signature: Signature) -> Signature:
+    """Drop a method's `self` from its signature, noting whether it's annotated (not as `Self`).
+
+    Returns:
+      The signature.
+
+    """
+    annotation: str | None = signature.params[0][3]
+    return signature._replace(
+        params=signature.params[1:],
+        self_typed=annotation is not None and annotation.rpartition(".")[2] != _SELF,
     )
 
 
@@ -178,8 +258,13 @@ def _signature(
     signatures: dict[str, list[Signature]],
     overloaded: set[str],
     type_vars: frozenset[str],
+    *,
+    every: bool = False,
 ) -> None:
-    """Add a function's signature: an `@overload` to those before it; a generic one as its only one."""
+    """Add a function's signature: an `@overload` to those before it; a generic one as its only one.
+
+    With `every` (a generic class's methods), any undecorated one with a return annotation too.
+    """
     overload: bool = any(node_name(decorator) == _OVERLOAD for decorator in node.decorator_list)
     if node.name in overloaded:
         if overload:
@@ -189,7 +274,9 @@ def _signature(
     if overload:
         overloaded.add(node.name)
         signatures[node.name] = [signature]
-    elif not node.decorator_list and (signature.type_params or _mentions(node.returns, type_vars)):
+    elif not node.decorator_list and (
+        signature.type_params or _mentions(node.returns, type_vars) or (every and node.returns is not None)
+    ):
         signatures[node.name] = [signature]
     else:
         signatures[node.name] = []  # defined again later: whichever is last is the one

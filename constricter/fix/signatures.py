@@ -6,7 +6,15 @@ What each parameter takes (`Accepts`) and the signature it's in (`ReadSignature`
 and `constricter.fix.stubbed`, which reads an installed package's.
 """
 
-from typing import NamedTuple, Required, TypeAlias, TypedDict
+from typing import Final, NamedTuple, Required, TypeAlias, TypedDict
+
+# `Accepts`' keys for an installed package's parameter (see `constricter.fix.stubbed`): a class passed
+# as the argument, and a builtin container.
+CLASS_VERDICT: Final = "k"
+CLASS_BINDS: Final = "kv"
+CONTAINER_VERDICTS: Final = "b"
+ELEMENT_VERDICTS: Final = "be"
+CONTAINER_BINDS: Final = "bc"
 
 Constant: TypeAlias = bool | int | float | complex | str | bytes | None  # a literal's value
 
@@ -24,7 +32,9 @@ class Accepts(TypedDict, total=False):
     `r`: the type variable a callable parameter returns (`Callable[..., _T]`), which a function
     argument binds to its declared return (`functools.partial(helper, 1)`). `k`: for an installed
     package's parameter, a verdict for a class passed as the argument (`dtype=np.float64`), and `kv`
-    the type variable it binds to that class (`type[_T]`'s `_T`).
+    the type variable it binds to that class (`type[_T]`'s `_T`). `b`: a verdict per builtin container
+    argument (`tuple`), and `be`, where the parameter says what its elements must be, a verdict per
+    `SCALARS` type for them; `bc`: the bounded type variable a container argument it takes binds.
     """
 
     v: Required[str]
@@ -37,6 +47,9 @@ class Accepts(TypedDict, total=False):
     r: str
     k: str
     kv: str
+    b: dict[str, str]
+    be: dict[str, str]
+    bc: str
 
 
 # A parameter: its name, kind (`p` positional, `e` either, `k` keyword, `a` `*args`, `w` `**kwargs`),

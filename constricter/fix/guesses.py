@@ -15,7 +15,7 @@ from constricter.fix.inference import (
     targets_typed,
 )
 from constricter.fix.known import Known
-from constricter.fix.library import library_class
+from constricter.fix.library import installed_method, library_class
 from constricter.fix.members import assigned_attribute, member, returned_method
 from constricter.fix.opened import opened
 from constricter.fix.returns import BUILTIN_RETURNS
@@ -176,7 +176,10 @@ def _overloaded_method(call: ast.Call, known: Known, declared: Mapping[str, str]
     match call:
         case ast.Call(func=ast.Attribute(value=receiver, attr=method)):
             typed: str | None = inferred(receiver, known, declared)
-            return typed is not None and stdlib.overloaded_method(typed, method, known) is not None
+            return typed is not None and (
+                stdlib.overloaded_method(typed, method, known) is not None
+                or installed_method(typed, method, known) is not None
+            )
         case _:
             return False
 

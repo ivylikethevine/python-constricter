@@ -35,6 +35,9 @@ SITE: Final = {
             nothing as nothing,
             odd as odd,
             label as label,
+            shaped as shaped,
+            sized as sized,
+            Sub as Sub,
             Double as Double,
             Floats as Floats,
             Numbers as Numbers,
@@ -55,7 +58,7 @@ SITE: Final = {
             Annotated, Any, Callable, Generic, Literal, Optional, Protocol, SupportsIndex, TypeAlias,
             TypeVar, Union, overload,
         )
-        from typing_extensions import LiteralString
+        from typing_extensions import LiteralString, Self
         from _typeshed import Incomplete
         from shapes.typing import Pair
         from shapes.typing import _T as _U
@@ -75,7 +78,22 @@ SITE: Final = {
 
         class Scalar: ...
         class Float(Scalar, float): ...
-        class Array(Generic[_S]): ...
+        _Sh = TypeVar("_Sh", bound=tuple[int, ...])
+        _Same = Array
+
+        class Array(Generic[_S]):
+            def first(self) -> _S: ...
+            def same(self) -> Self: ...
+            def plain(self): ...
+            @overload
+            def cast(self, kind: type[_T]) -> _Same[_T]: ...
+            @overload
+            def cast(self, kind: None = None) -> Array[_S]: ...
+            def only(self: Array[Float]) -> int: ...
+            @staticmethod
+            def build() -> int: ...
+
+        class Sub(Missing, Array[_S], f()): ...
         class _Hidden: ...
         class Bound(Array[Float]): ...
         class Local(Array[_T]): ...
@@ -139,16 +157,30 @@ SITE: Final = {
         def label(x: Literal["a"] | str) -> int: ...
         @overload
         def label(x: bytes) -> str: ...
+
+        @overload
+        def shaped(shape: SupportsIndex) -> int: ...
+        @overload
+        def shaped(shape: _Sh) -> _Sh: ...
+
+        @overload
+        def sized(x: list[int]) -> int: ...
+        @overload
+        def sized(x: list[str]) -> str: ...
+        @overload
+        def sized(x: dict[str, int]) -> bytes: ...
+        @overload
+        def sized(x: tuple) -> float: ...
     """,
     "loose/__init__.pyi": "from typing import TypeVar\n_T = TypeVar('_T')\ndef same(x: _T) -> _T: ...\n",
 }
 MAIN: Final = """
 import shapes
-from shapes import make, pick, mode, size, either, loose, first, wrap, listed, nothing, odd, label
+from shapes import make, pick, mode, size, either, loose, first, wrap, listed, nothing, odd, label, Array
 import loose as untyped
 
 
-def run(n: int, s: str) -> None:
+def run(n: int, s: str, sub: shapes.Sub[shapes.Float], bare: Array) -> None:
     a = make(n)
     b = shapes.make(3, kind=shapes.Float)
     c = make(n, shapes.Scalar)
@@ -174,12 +206,27 @@ def run(n: int, s: str) -> None:
     z = make(n, shapes.Numbers)
     aa = make(n, shapes.make)
     bb = label(s)
+    cc = shapes.shaped((n, 2))
+    dd = shapes.shaped(n)
+    ee = shapes.sized([1])
+    ff = shapes.sized(["a"])
+    gg = shapes.sized((1, 2))
+    hh = a.first()
+    ii = a.same()
+    jj = a.cast(shapes.Scalar)
+    kk = a.only()
+    mm = sub.first()
+    oo = a.plain()
+    pp = s.first()
+    qq = bare.same()
+    print(qq)
     print(a, b, c, d, e, f, g, h, i, j, k, m, o, p, q, r, t, u, v, w, x, y, z, aa, bb)
+    print(cc, dd, ee, ff, gg, hh, ii, jj, kk, mm, oo, pp)
 """
 FIXED: Final = (
-    "    a: shapes.Array[shapes.Float] = make(n)\n",
-    "    b: shapes.Array[shapes.Float] = shapes.make(3, kind=shapes.Float)\n",
-    "    c: shapes.Array[shapes.Scalar] = make(n, shapes.Scalar)\n",
+    "    a: Array[shapes.Float] = make(n)\n",
+    "    b: Array[shapes.Float] = shapes.make(3, kind=shapes.Float)\n",
+    "    c: Array[shapes.Scalar] = make(n, shapes.Scalar)\n",
     "    d = make(n, s)\n",  # `Named | Any`: `Incomplete`, unwritable
     "    e = pick(1)\n",  # constrained: `int` or `str`, never bound to the argument's own type
     '    f: int = mode("r")\n',
@@ -198,11 +245,24 @@ FIXED: Final = (
     "    u = untyped.same(1)\n",  # untyped: no `py.typed`
     "    v = shapes.nowhere(1)\n",
     "    w = odd(1, 2, int, z=3)\n",
-    "    x: shapes.Array[shapes.Double] = make(n, shapes.Double)\n",  # an alias of a class, as written
-    "    y: shapes.Array[shapes.Floats] = make(n, shapes.Floats)\n",
+    "    x: Array[shapes.Double] = make(n, shapes.Double)\n",  # an alias of a class, as written
+    "    y: Array[shapes.Floats] = make(n, shapes.Floats)\n",
     "    z = make(n, shapes.Numbers)\n",  # an alias of a union: not a class
     "    aa = make(n, shapes.make)\n",  # a function
     "    bb: int = label(s)\n",
+    "    cc: tuple[int, int] = shapes.shaped((n, 2))\n",  # a bounded type variable, bound to the tuple
+    "    dd: int = shapes.shaped(n)\n",
+    "    ee: int = shapes.sized([1])\n",  # by the list's elements
+    '    ff: str = shapes.sized(["a"])\n',
+    "    gg: float = shapes.sized((1, 2))\n",
+    "    hh: shapes.Float = a.first()\n",  # the class's type parameter, bound by the receiver's type
+    "    ii: Array[shapes.Float] = a.same()\n",  # `Self`: the receiver's type
+    "    jj: Array[shapes.Scalar] = a.cast(shapes.Scalar)\n",
+    "    kk: int = a.only()\n",  # declares its `self`: its one signature, all the same
+    "    mm: shapes.Float = sub.first()\n",  # inherited
+    "    oo = a.plain()\n",
+    "    pp = s.first()\n",
+    "    qq = bare.same()\n",  # `Array` without its argument: not written bare
 )
 
 MODERN_FIXED: Final = "    a: modern.Array[modern.Float] = modern.empty(n, modern.Float)\n"
@@ -253,6 +313,8 @@ def test_signatures_are_read_once_per_index(tmp_path: Path, site: Path) -> None:
     assert list(first) == ["shapes.make"]
     assert not stubbed.overloaded(catalog, tmp_path / "other.py")
     assert stubbed.classes(catalog, tmp_path / "other.py") == frozenset()
+    assert stubbed.methods(catalog, tmp_path / "other.py") == stubbed.Methods({}, {})
+    assert stubbed.methods(catalog, main) == stubbed.methods(catalog, main)  # the second from the memo
     # A class generic only through a base is generic where that base passes a type variable.
     generics: frozenset[str] = catalog.modules["shapes._core"].generics
     assert {"Array", "Local", "Imported"} <= generics

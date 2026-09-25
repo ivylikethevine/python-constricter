@@ -149,7 +149,13 @@ matched as the standard library's are: `np.empty(n, dtype=np.float64)` is an
 `np.ndarray[tuple[int], np.dtype[np.float64]]` with numpy 2.5's stubs. What each parameter takes is
 read from its annotation through the package's aliases, type variables and protocols; a
 standard-library class it names (`SupportsIndex`) by the `scalars` table; and a class passed as the
-argument binds a `type[T]` parameter's `T`. A private alias in the return is written as what it
+argument binds a `type[T]` parameter's `T`, as does an alias of one (`np.int32`). A builtin
+container argument is taken by its elements where the parameter says what they must be
+(`tuple[int, ...]`), and binds a bounded type variable its bound takes (numpy's shape: `(n, 2)` is a
+`tuple[int, int]`). An installed class's methods are matched the same way, on a receiver whose type
+is known: its type arguments bind the class's type parameters, `Self` is the receiver's type, and a
+method its class inherits is its base's. A method declaring its `self` is for some instances only:
+its signature may be the one, never certainly. A private alias in the return is written as what it
 stands for; a public one by its public path (`npt.NDArray[np.float64]`).
 
 A type another checked file declares (`get_handle() -> IOHandles[str]`) names what that file imports

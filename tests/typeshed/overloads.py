@@ -834,6 +834,16 @@ class Overloads(Templates):
         node: ast.ClassDef | None = self.reading.class_node(klass)
         return node is not None and self.reading.is_protocol(node, klass.module)
 
+    def takes(self, annotation: ast.expr, module: str, types: Sequence[str]) -> str:
+        """Work out whether a parameter's annotation takes an argument of each builtin type in `types`.
+
+        Returns:
+          A verdict (`YES`, `NO`, `MAYBE`) per type, in order.
+
+        """
+        atoms: list[Atom] = list(self._atoms(annotation, module, 0))
+        return "".join(self._verdict(atoms, name, constant=False) for name in types)
+
     def scalar_members(self, scalar: str) -> frozenset[str] | None:
         """Name what an argument of type `scalar` has (`None`'s: `object`'s), for protocols to be checked by.
 

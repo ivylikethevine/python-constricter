@@ -21,7 +21,17 @@ from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix import stdlib
 from constricter.fix.known import Inference, Known
-from constricter.fix.signatures import Accepts, Constant, Parameter, ReadSignature
+from constricter.fix.signatures import (
+    CLASS_BINDS,
+    CLASS_VERDICT,
+    CONTAINER_BINDS,
+    CONTAINER_VERDICTS,
+    ELEMENT_VERDICTS,
+    Accepts,
+    Constant,
+    Parameter,
+    ReadSignature,
+)
 from constricter.rules.walked import walk
 
 SCALARS: Final = ("str", "LiteralString", "bytes", "bytearray", "int", "float", "complex", "bool", "None")
@@ -42,10 +52,9 @@ _ANYTHING: Final = "t"  # `Accepts`' key for a parameter any argument binds
 _RETURNED: Final = "r"  # `Accepts`' key for a callable parameter a function's return binds
 _CALL: Final = "call"  # the fix kind of a declared return
 # The builtin containers whose type arguments bind a parameter's type variable (`Iterable[_T]`'s).
-_CONTAINERS: Final = frozenset({"list", _TUPLE, "set", "frozenset", "dict"})
+CONTAINERS: Final = ("list", _TUPLE, "set", "frozenset", "dict")  # in the `scalars` table's order
+_CONTAINERS: Final = frozenset(CONTAINERS)
 _SELF: Final = "self"  # a signature's key for the type arguments its method's instance must have
-_CLASS_VERDICT: Final = "k"  # `Accepts`' key for a class argument's verdict (installed packages')
-_CLASS_BINDS: Final = "kv"  # `Accepts`' key for the type variable a class argument binds
 _Infer: TypeAlias = Callable[[ast.expr], Inference | None]
 # A signature that may be the one: its return template and its type variables' types (`None`:
 # a return `--fix` can't write).
@@ -355,7 +364,7 @@ def _binding(accepts: Accepts | None, arg: Argument) -> tuple[str, str] | None:
     """
     kind: str | None = arg.type
     if accepts is None or arg.klass is not None:  # a class binds `type[T]`'s `T` (`kv`), or nothing
-        variable: str | None = None if accepts is None else accepts.get(_CLASS_BINDS)
+        variable: str | None = None if accepts is None else accepts.get(CLASS_BINDS)
         return None if variable is None or arg.klass is None else (variable, arg.klass)
     if kind is not None:
         binds: str | dict[str, list[str]] = accepts.get("var", {})
@@ -363,19 +372,22 @@ def _binding(accepts: Accepts | None, arg: Argument) -> tuple[str, str] | None:
             return binds, "str" if kind == _LITERAL_STRING else kind
         found: list[str] | None = binds.get(kind)
         return None if found is None else (found[0], found[1])
-    anything: str | None = accepts.get(_ANYTHING)
-    if anything is not None and arg.text is not None:
-        return anything, arg.text
-    returned: str | None = accepts.get(_RETURNED)
-    if returned is not None and arg.returns is not None:
-        return returned, arg.returns.annotation
+    # Anything, by its type (`t`); a function, by its declared return (`r`).
+    named: str | None
+    text: str | None
+    for named, text in (
+        (accepts.get(_ANYTHING), arg.text),
+        (accepts.get(_RETURNED), None if arg.returns is None else arg.returns.annotation),
+    ):
+        if named is not None and text is not None:
+            return named, text
     of: dict[str, int] = accepts.get("of", {})
     elements: tuple[str, tuple[str, ...]] | None = arg.elements
-    return (
-        None
-        if elements is None or elements[0] not in of
-        else (accepts.get("e", ""), elements[1][of[elements[0]]])
-    )
+    if elements is not None and elements[0] in of:
+        return accepts.get("e", ""), elements[1][of[elements[0]]]
+    # A bounded type variable a builtin container argument binds, its bound certainly taking it.
+    container: str | None = accepts.get(CONTAINER_BINDS)
+    return None if container is None or elements is None or arg.text is None else (container, arg.text)
 
 
 def _bound(params: Sequence[Parameter], read: Arguments) -> list[tuple[Parameter, Argument]] | None:
@@ -422,7 +434,7 @@ def _verdict(accepts: Accepts | None, arg: Argument) -> str:
     if accepts is None:
         return _YES
     if arg.klass is not None:
-        return accepts.get(_CLASS_VERDICT, _MAYBE)
+        return accepts.get(CLASS_VERDICT, _MAYBE)
     if arg.constant is not None and any(_same(arg.constant[0], value) for value in accepts.get("lit", [])):
         return _YES
     table: str = accepts.get("c", accepts["v"]) if arg.constant is not None else accepts["v"]
@@ -433,7 +445,25 @@ def _verdict(accepts: Accepts | None, arg: Argument) -> str:
         or (arg.elements is not None and arg.elements[0] in accepts.get("of", {}))
         or (_RETURNED in accepts and arg.returns is not None)
     )
-    return _YES if taken else _MAYBE
+    return _YES if taken else _container_verdict(accepts, arg)
+
+
+def _container_verdict(accepts: Accepts, arg: Argument) -> str:
+    """Decide whether a parameter takes a builtin container argument, by its elements' type where it says.
+
+    Returns:
+      The verdict: `_MAYBE` for any other argument, or a parameter that doesn't say.
+
+    """
+    elements: tuple[str, tuple[str, ...]] | None
+    if (elements := arg.elements) is None:
+        return _MAYBE
+    verdict: str = accepts.get(CONTAINER_VERDICTS, {}).get(elements[0], _MAYBE)
+    of: str | None = accepts.get(ELEMENT_VERDICTS, {}).get(elements[0])
+    if verdict != _YES or of is None:
+        return verdict
+    element: str = elements[1][0]
+    return of[_COLUMNS[element]] if element in _COLUMNS else _MAYBE
 
 
 def _same(constant: Constant, value: Constant) -> bool:
