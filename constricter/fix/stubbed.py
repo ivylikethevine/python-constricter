@@ -94,7 +94,7 @@ class _Atom(NamedTuple):
 
 
 _UNKNOWN: Final = _Atom(_UNKNOWN_ATOM)
-_Resolved: TypeAlias = "_Atom | tuple[Alias, _Scope, Origin]"
+_Resolved: TypeAlias = _Atom | tuple[Alias, _Scope, Origin]
 
 
 @dataclass
