@@ -8,7 +8,8 @@ running interpreter's, and the active virtual environment's) as the import syste
 as `modules.read` reads a checked file, but never checked or fixed; the modules they import from
 their own package (re-exports) are read too, up to `LIMIT` modules in all. Each module read is
 cached (`cached`) under the user's cache directory, by its file's path, size and modification time
-and constricter's version: a package upgraded, or a new constricter, reads it again.
+and constricter's version and reading code: a package upgraded, or a changed constricter, reads it
+again.
 """
 
 import contextlib
@@ -162,7 +163,7 @@ def cached(path: Path, name: str) -> Module | None:
         stat: os.stat_result = path.stat()
     except OSError:
         return None
-    key: str = f"{__version__}\0{name}\0{path.resolve()}\0{stat.st_size}\0{stat.st_mtime_ns}"
+    key: str = f"{__version__}\0{_code()}\0{name}\0{path.resolve()}\0{stat.st_size}\0{stat.st_mtime_ns}"
     entry: Path = cache_directory() / f"{hashlib.sha256(key.encode()).hexdigest()}.pickle"
     module: Module | None
     if (module := _load(entry)) is not None:
@@ -170,6 +171,21 @@ def cached(path: Path, name: str) -> Module | None:
     if (module := read(path, name)) is not None:
         _store(entry, module)
     return module
+
+
+@lru_cache(maxsize=1)
+def _code() -> str:
+    """Fingerprint the code that reads a module and shapes what's cached (`constricter.fix`'s).
+
+    A development build keeps its version as its modules' fields change: an entry pickled by another
+    unpickles with them shifted.
+
+    Returns:
+      Its sources' digest.
+
+    """
+    sources: list[Path] = sorted(Path(__file__).parent.glob(f"*{SUFFIX}"))
+    return hashlib.sha256(b"\0".join(source.read_bytes() for source in sources)).hexdigest()
 
 
 def _load(entry: Path) -> Module | None:

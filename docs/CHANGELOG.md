@@ -6,6 +6,13 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types an installed class's methods on a receiver typed through a public alias of the class
+  (`x.sum()` on an `npt.NDArray[np.float64]` is an `np.float64`): matched as what the alias stands
+  for, with `Self` kept as the receiver is written; the alias found through an import under
+  `if TYPE_CHECKING:`, one another module re-exports (pandas's `from pandas._typing import npt`), or
+  one the file's own fixes add. 8 more fixes on pandas, no new type error.
+- An installed module's cached read is keyed by constricter's code as well as its version: a
+  development build whose modules had changed shape crashed reading an older entry.
 - `--fix` types an installed class's method that declares its `self` by the receiver's type: matched
   against `self`'s annotation, the type variables it binds checked against their bounds by the
   installed classes' ancestors (`a.sum()` on an `np.ndarray[tuple[int], np.dtype[np.float64]]` is an

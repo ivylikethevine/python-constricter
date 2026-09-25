@@ -158,8 +158,12 @@ method its class inherits is its base's. A method declaring its `self`
 (`def sum(self: NDArray[ScalarT]) -> ScalarT`) is matched against the receiver's type: argument by
 argument, a type variable bound to what's there and checked against its bound, and a class by the
 installed classes' ancestors (`np.float64` is an `inexact`); a receiver that certainly isn't one
-passes the signature over, one that may be leaves it open. A private alias in the return is written
-as what it stands for; a public one by its public path (`npt.NDArray[np.float64]`).
+passes the signature over, one that may be leaves it open. A receiver typed through a public alias
+of the class (`npt.NDArray[np.float64]`) is matched as what the alias stands for
+(`np.ndarray[tuple[Any, ...], np.dtype[np.float64]]`), and has the class's methods: a type variable
+bound only to what the alias itself writes is left unbound, and `Self` is the receiver as written. A
+private alias in the return is written as what it stands for; a public one by its public path
+(`npt.NDArray[np.float64]`).
 
 A type another checked file declares (`get_handle() -> IOHandles[str]`) names what that file imports
 or defines; a name the calling file doesn't have is imported where the type's file has it from,

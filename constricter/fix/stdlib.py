@@ -17,6 +17,7 @@ import json
 from collections.abc import Iterable, Mapping
 from functools import cache, lru_cache
 from pathlib import Path
+from types import MappingProxyType
 from typing import Final, NamedTuple, NotRequired, TypeAlias, TypedDict, cast
 
 from constricter.fix.known import ImportPlan, Inference, Known
@@ -245,12 +246,17 @@ class Method(NamedTuple):
 
     `entry`: its `method_signatures` entry; `instance`: the receiver's type arguments, if they're
     builtins (`Pattern[str]`'s `str`), for a signature declaring `self`'s; `types`: its class's type
-    parameters, bound to the receiver's type arguments as the module spells them.
+    parameters, bound to the receiver's type arguments as the module spells them. For a receiver
+    typed through an installed class's alias (`npt.NDArray[np.float64]`): `templates`, the class's
+    type parameters as templates naming the alias's, and `matched`, the receiver's type as the class
+    it stands for, which a method's `self` is matched against (see `signatures.Expansion`).
     """
 
     entry: str
     instance: list[str] | None
     types: dict[str, str]
+    templates: Mapping[str, str] = MappingProxyType({})
+    matched: str | None = None
 
 
 def overloaded_method(receiver: str, name: str, known: Known) -> Method | None:

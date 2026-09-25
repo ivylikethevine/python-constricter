@@ -155,6 +155,7 @@ def _settings(
                 frozenset() if outside is None else outside.installed_classes,
                 {} if outside is None else outside.installed_parameters,
                 {} if outside is None else outside.installed_lineage,
+                {} if outside is None else outside.installed_aliases,
             ),
             checks.max_length,
         ),

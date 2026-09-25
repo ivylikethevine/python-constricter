@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter.fix import project
+from constricter.fix import classnames, project
 from constricter.fix.atoms import (
     ANYTHING,
     BUILTINS_MODULE,
@@ -55,10 +55,11 @@ from constricter.fix.atoms import (
     scalar_verdict,
     verdict_of,
 )
+from constricter.fix.classnames import Packaged
 from constricter.fix.declared import Alias, Class, Declarations, Signature, Variable
-from constricter.fix.known import Origin
+from constricter.fix.known import Guarded, Origin
 from constricter.fix.modules import SUFFIX, Index, Module, module_name
-from constricter.fix.overloads import CONTAINERS, SCALARS
+from constricter.fix.overloads import CONTAINERS, SCALARS, substituted
 from constricter.fix.signatures import (
     CLASS_BINDS,
     CLASS_VERDICT,
@@ -67,6 +68,7 @@ from constricter.fix.signatures import (
     ELEMENT_VERDICTS,
     Accepts,
     Constant,
+    Expansion,
     Parameter,
     ReadSignature,
 )
@@ -86,37 +88,40 @@ _TYPE_VARIABLE: Final = "t"  # `Accepts`' key for an unbounded type variable
 _SELF: Final = "Self"
 _ANY: Final = "typing.Any"  # a pattern's anything
 _UNFOLLOWED: Final = "?"  # a lineage's base that can't be followed
+_RENAMED: Final = "_alias"  # an alias's type parameter, renamed apart (see `Expansion`)
 
 
 _Resolved: TypeAlias = Atom | tuple[Alias, Scope, Origin]
 
 
-# A package's classes: each as written after the package's name, and where it's defined.
-_Packaged: TypeAlias = tuple[tuple[str, Origin], ...]
+# An alias of an installed generic class: the class, the alias's expansion, and each installed class
+# its pattern names, by its path there and where it's defined.
+_Expanded: TypeAlias = tuple[Origin, Expansion, tuple[tuple[str, Origin], ...]]
 
 
 @dataclass
 class _Memo:
     """What's read of the installed modules, for as long as the index has the same ones.
 
-    Each installed function's signatures, each package's classes (see `_package_classes`), each
-    class's lineage and methods (see `Methods`), each class's methods by name, and the names of
-    those it has, its bases' included. The index changes as files are checked, the installed
-    modules in it don't.
+    Each installed function's signatures, each package's classes and aliases (see
+    `classnames.classes`), each class's lineage and methods (see `Methods`), each class's methods by
+    name, the names of those it has, its bases' included, and each alias's expansion. The index
+    changes as files are checked, the installed modules in it don't.
     """
 
     installed: frozenset[int] = frozenset()  # the installed modules read, by identity
     read: dict[tuple[str, str], tuple[ReadSignature, ...]] = field(
         default_factory=dict[tuple[str, str], "tuple[ReadSignature, ...]"],
     )
-    packages: dict[str, _Packaged] = field(
-        default_factory=dict[str, "_Packaged"],
+    packages: dict[tuple[str, bool], Packaged] = field(
+        default_factory=dict[tuple[str, bool], "Packaged"],
     )
     lines: dict[Origin, tuple[str, ...]] = field(default_factory=dict[Origin, "tuple[str, ...]"])
     methods: dict[tuple[Origin, str], tuple[ReadSignature, ...]] = field(
         default_factory=dict[tuple[Origin, str], "tuple[ReadSignature, ...]"],
     )
     names: dict[Origin, frozenset[str]] = field(default_factory=dict[Origin, frozenset[str]])
+    expansions: dict[Origin, _Expanded | None] = field(default_factory=dict[Origin, "_Expanded | None"])
 
     def of(self, modules: Mapping[str, Module]) -> "_Memo":
         """Keep what's read for as long as `modules` has the same installed ones.
@@ -133,6 +138,7 @@ class _Memo:
             self.lines = {}
             self.methods = {}
             self.names = {}
+            self.expansions = {}
         return self
 
 
@@ -190,23 +196,29 @@ class Methods(NamedTuple):
     `parameters`: each such class's type parameters, in order, which a receiver's type binds;
     `lineage`: each installed class the file names, as it writes it, with where it's defined and its
     ancestors' (`numpy.float64`, `numpy.floating`, ...), `?` last where a base can't be followed: a
-    receiver's type is matched against a method's `self` by them.
+    receiver's type is matched against a method's `self` by them. `aliases`: each public alias of an
+    installed generic class the file names (`npt.NDArray`), whose methods are its class's; the
+    classes its expansion names are in `lineage` by their paths (`numpy.dtype`).
     """
 
     signatures: dict[str, tuple[ReadSignature, ...]]
     parameters: dict[str, tuple[str, ...]]
     lineage: dict[str, tuple[str, ...]]
+    aliases: dict[str, Expansion]
 
 
-def methods(catalog: Index, path: Path) -> Methods:
+def methods(catalog: Index, path: Path, guarded: Mapping[str, Guarded] | None = None) -> Methods:
     """Find the methods the file at `path` calls that an installed class it names declares (see `Methods`).
+
+    Named through its imports, those under `if TYPE_CHECKING:` included, and those its fixes will add
+    there (`guarded`, see `project.Imported`): a return type spelled through one is a receiver's.
 
     Returns:
       Them; none for a file `catalog` doesn't have.
 
     """
     modules: dict[str, Module] = catalog.modules
-    found: Methods = Methods({}, {}, {})
+    found: Methods = Methods({}, {}, {}, {})
     target: Module | None
     if path.suffix != SUFFIX or (target := modules.get(module_name(path))) is None or not target.method_calls:
         return found
@@ -214,94 +226,59 @@ def methods(catalog: Index, path: Path) -> Methods:
     memo: _Memo = _MEMO.of(modules)
     spelled: str
     origin: Origin
-    for spelled, origin in _classes(modules, target):
-        if origin not in memo.lines:
-            memo.lines[origin] = tuple(dict.fromkeys(reader.lineage(origin, 0)))
-            memo.names[origin] = _method_names(modules, memo.lines[origin])
-        found.lineage[spelled] = memo.lines[origin]
-        module: Module = modules[origin[0]]
-        klass: Class = cast("Declarations", module.declared).classes[origin[1] or ""]
-        name: str
-        for name in sorted(memo.names[origin] & target.method_calls):
-            if (origin, name) not in memo.methods:
-                # Its lineage has the method: the class or a base declares it.
-                memo.methods[origin, name] = cast(
-                    "tuple[ReadSignature, ...]",
-                    reader.method(module, klass, name, 0),
-                )
-            found.signatures[f"{spelled}.{name}"] = memo.methods[origin, name]
-            found.parameters[spelled] = tuple(param for param, _ in klass.params)
+    names: dict[str, Origin] = {
+        **{name: found.origin for name, found in (guarded or {}).items()},
+        **target.guarded,
+        **target.names,
+    }
+    for spelled, origin in classnames.classes(modules, names, memo.packages):
+        _class_methods(found, reader, target, spelled, origin)
+    alias: Origin
+    for spelled, alias in classnames.classes(modules, names, memo.packages, aliases=True):
+        if alias not in memo.expansions:
+            memo.expansions[alias] = reader.expansion(alias)
+        expanded: _Expanded | None
+        if (expanded := memo.expansions[alias]) is None:
+            continue
+        paths: tuple[tuple[str, Origin], ...]
+        origin, found.aliases[spelled], paths = expanded
+        _class_methods(found, reader, target, spelled, origin)
+        path_named: str
+        for path_named, origin in paths:
+            found.lineage[path_named] = _lineage(reader, origin)
     return found
 
 
-def _method_names(modules: Mapping[str, Module], lineage: Sequence[str]) -> frozenset[str]:
-    """Name the methods a class or any of its installed ancestors (its lineage) declares.
+def _lineage(reader: "_Reader", origin: Origin) -> tuple[str, ...]:
+    """Find an installed class's lineage (see `Methods.lineage`), and the methods it has, once.
 
     Returns:
-      Them.
+      It.
 
     """
-    found: set[str] = set()
-    path: str
-    for path in lineage:
-        module: str
-        name: str
-        module, _, name = path.rpartition(".")
-        declared: Declarations | None = None if module not in modules else modules[module].declared
-        klass: Class | None = None if declared is None else declared.classes.get(name)
-        found.update(() if klass is None else klass.methods)
-    return frozenset(found)
+    memo: _Memo = _MEMO.of(reader.modules)
+    if origin not in memo.lines:
+        memo.lines[origin] = tuple(dict.fromkeys(reader.lineage(origin, 0)))
+        memo.names[origin] = classnames.method_names(reader.modules, memo.lines[origin])
+    return memo.lines[origin]
 
 
-def _classes(modules: Mapping[str, Module], target: Module) -> Iterator[tuple[str, Origin]]:
-    """Find the installed classes a module names: imported (`ndarray`), or through a package (`np.ndarray`).
-
-    Through a package, what any of its modules defines or re-exports (`numpy.ndarray`).
-
-    Yields:
-      Each as the module writes it, and where it's defined.
-
-    """
-    local: str
-    origin: Origin
-    for local, origin in target.names.items():
-        if origin[1] is not None:
-            where: Origin = project.canonical_origin(modules, origin)
-            if _declares(modules, where):
-                yield local, where
-            continue
-        packaged: dict[str, _Packaged] = _MEMO.of(modules).packages
-        if origin[0] not in packaged:
-            packaged[origin[0]] = tuple(_package_classes(modules, origin[0]))
-        suffix: str
-        found: Origin
-        for suffix, found in packaged[origin[0]]:
-            yield f"{local}{suffix}", found
-
-
-def _package_classes(modules: Mapping[str, Module], package: str) -> Iterator[tuple[str, Origin]]:
-    """Find the installed classes a package's modules define or re-export.
-
-    Yields:
-      Each as written after the package's name (`.ndarray`, `.linalg.LinAlgError`), and where it's defined.
-
-    """
+def _class_methods(found: Methods, reader: "_Reader", target: Module, spelled: str, origin: Origin) -> None:
+    """Add an installed class's methods `target` calls, as it writes the class (`spelled`), to `found`."""
+    found.lineage[spelled] = _lineage(reader, origin)
+    memo: _Memo = _MEMO.of(reader.modules)
+    module: Module = reader.modules[origin[0]]
+    klass: Class = cast("Declarations", module.declared).classes[origin[1] or ""]
     name: str
-    other: Module
-    for name, other in modules.items():
-        if other.installed and (name == package or name.startswith(f"{package}.")):
-            bound: str
-            found: Origin
-            for bound, found in other.names.items():
-                where: Origin = project.canonical_origin(modules, found)
-                if _declares(modules, where):
-                    yield f"{name.removeprefix(package)}.{bound}", where
-
-
-def _declares(modules: Mapping[str, Module], origin: Origin) -> bool:
-    module: Module | None = modules.get(origin[0])
-    declared: Declarations | None = None if module is None or not module.installed else module.declared
-    return declared is not None and origin[1] in declared.classes
+    for name in sorted(memo.names[origin] & target.method_calls):
+        if (origin, name) not in memo.methods:
+            # Its lineage has the method: the class or a base declares it.
+            memo.methods[origin, name] = cast(
+                "tuple[ReadSignature, ...]",
+                reader.method(module, klass, name, 0),
+            )
+        found.signatures[f"{spelled}.{name}"] = memo.methods[origin, name]
+        found.parameters[spelled] = tuple(param for param, _ in klass.params)
 
 
 def _callee(modules: Mapping[str, Module], target: Module, callee: str) -> Origin | None:
@@ -734,6 +711,84 @@ class _Reader:
                 if read is not None:
                     return read
         return None
+
+    def expansion(self, origin: Origin) -> _Expanded | None:
+        """Expand an installed alias of a generic class (`NDArray`), as a receiver's type (see `Expansion`).
+
+        Returns:
+          The class, the expansion, and the installed classes its pattern names; or `None` for an
+          alias of anything else (a union, a protocol, another alias).
+
+        """
+        module: Module = self.modules[origin[0]]
+        alias: Alias = cast("Declarations", module.declared).aliases[origin[1] or ""]
+        value: ast.expr = parse_text(alias.value)
+        own: Scope = Scope(module, {}, module.name)
+        base: ast.Name | ast.Attribute
+        index: ast.expr
+        match value:
+            case ast.Subscript(value=ast.Name() | ast.Attribute() as base, slice=index):
+                pass
+            case _:
+                return None
+        head: _Resolved | None = self.resolve(base, own)
+        if not isinstance(head, Atom) or head.kind != CLASS or head.module is None:
+            return None
+        klass: Class | None = cast("Declarations", head.module.declared).classes.get(head.origin[1] or "")
+        params: tuple[str, ...] = alias.params or free_variables(alias.value, own)
+        scope: Scope = Scope(module, dict.fromkeys(params), module.name)
+        receiver: str | None = self.pattern(value, scope)
+        if klass is None or receiver is None:
+            return None
+        renamed: dict[str, str] = {param: f"{_RENAMED}{place}" for place, param in enumerate(params)}
+        args: list[ast.expr] = list(index.elts) if isinstance(index, ast.Tuple) else [index]
+        return (
+            head.origin,
+            Expansion(
+                tuple(renamed.values()),
+                substituted(receiver, renamed),
+                self._templates(klass, args, scope, renamed),
+            ),
+            self._named(receiver),
+        )
+
+    def _templates(
+        self,
+        klass: Class,
+        args: Sequence[ast.expr],
+        scope: Scope,
+        renamed: Mapping[str, str],
+    ) -> tuple[tuple[str, str], ...]:
+        """Write what an alias passes each of its class's type parameters, where it can be written.
+
+        Returns:
+          Each parameter with its template, the alias's own parameters `renamed`.
+
+        """
+        found: list[tuple[str, str]] = []
+        param: str
+        arg: ast.expr
+        for (param, _), arg in zip(klass.params, args, strict=False):  # a class's own subscript fits
+            template: str | None
+            if (template := self._template(arg, scope, 0)) is not None:
+                found.append((param, substituted(template, renamed)))
+        return tuple(found)
+
+    def _named(self, pattern: str) -> tuple[tuple[str, Origin], ...]:
+        """Find the installed classes a pattern names.
+
+        Returns:
+          Each by its path there, and where it's defined.
+
+        """
+        found: dict[str, Origin] = {}
+        node: ast.AST
+        for node in ast.walk(parse_text(pattern)):
+            path: str = ast.unparse(node) if isinstance(node, ast.Attribute) else ""
+            where: Origin = (path.rpartition(".")[0], path.rpartition(".")[2])
+            if path and classnames.declares(self.modules, where):
+                found[path] = where
+        return tuple(found.items())
 
     def lineage(self, origin: Origin, hops: int) -> Iterator[str]:
         """Walk an installed class and its ancestors, depth first (see `Methods.lineage`).

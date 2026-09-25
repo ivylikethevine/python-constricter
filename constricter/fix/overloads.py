@@ -58,6 +58,7 @@ _SELF: Final = "self"  # a signature's key for the type arguments its method's i
 _SELF_TYPE: Final = "Self"  # a method's receiver's type, in `stdlib.Method.types`
 _ANY_PATH: Final = "typing.Any"  # a receiver pattern's anything
 _TUPLE_PATH: Final = "builtins.tuple"
+_BUILTINS_PATH: Final = "builtins."
 _UNFOLLOWED: Final = "?"  # a lineage's base that can't be followed
 _CLASHING: Final = "?"  # a type variable a receiver's type binds two ways
 _REPEATED: Final = 2  # `tuple[int, ...]`'s arguments
@@ -124,14 +125,9 @@ def chosen(
     variants: tuple[tuple[ReadSignature, ...], ...] = _signatures(name) if installed is None else (installed,)
     instance: list[str] | None = None if method is None else method.instance
     picks: list[_Picked] = [
-        _receiving(picked, {} if method is None else method.types)
+        _receiving(picked, method)
         for variant in variants
-        for picked in _picked(
-            variant,
-            read,
-            instance,
-            None if method is None else _Receiver(method.types.get(_SELF_TYPE), known),
-        )
+        for picked in _picked(variant, read, instance, None if method is None else _receiver(method, known))
     ]
     found: set[str | None] = {None if picked is None else _written(picked, known) for picked in picks}
     annotation: str | None
@@ -172,16 +168,55 @@ def generic_member(receiver: str, name: str, call: ast.Call | None, known: Known
     )
 
 
-def _receiving(picked: _Picked, types: Mapping[str, str]) -> _Picked:
-    """Add what the receiver binds its class's type parameters to (`types`) to a signature picked.
+def _receiving(picked: _Picked, method: stdlib.Method | None) -> _Picked:
+    """Add what a method's receiver binds its class's type parameters to (`Method.types`) to a pick.
+
+    Through an alias, its return's class parameters are first written as the alias has them
+    (`Method.templates`).
 
     Returns:
       It, or `None` if an argument binds one differently (the call is an error).
 
     """
+    types: Mapping[str, str] = {} if method is None else method.types
     if picked is None or any(types.get(name, text) != text for name, text in picked[1].items()):
         return None
-    return picked[0], {**types, **picked[1]}
+    return (
+        picked[0] if method is None else substituted(picked[0], method.templates),
+        {**types, **picked[1]},
+    )
+
+
+def substituted(template: str, types: Mapping[str, str]) -> str:
+    """Write a template or pattern with each bare name in `types` replaced by its text.
+
+    Returns:
+      It.
+
+    """
+    if not types:
+        return template
+    tree: ast.expr = _parsed(template)
+    if isinstance(tree, ast.Name):
+        return types.get(tree.id, template)
+    node: ast.AST
+    for node in ast.walk(tree):  # a node's children are listed before it's changed: no text is replaced twice
+        field: str
+        for field in node._fields:
+            setattr(node, field, _replaced(cast("object", getattr(node, field, None)), types))
+    return ast.unparse(tree)
+
+
+def _replaced(value: object, types: Mapping[str, str]) -> object:
+    """Replace a field's name, or each name in its list, by its text in `types`.
+
+    Returns:
+      The field's new value.
+
+    """
+    if isinstance(value, list):
+        return [_replaced(item, types) for item in cast("list[object]", value)]
+    return _parsed(types[value.id]) if isinstance(value, ast.Name) and value.id in types else value
 
 
 def _arguments(call: ast.Call, infer: _Infer, known: Known) -> Arguments | None:
@@ -346,13 +381,27 @@ def _both(first: str, second: str) -> str:
 class _Receiver(NamedTuple):
     """A method call's receiver, matched against an installed method's `self` (`ReadSignature.receiver`).
 
-    Its type (`Self` in `stdlib.Method.types`), as the module writes it; and what the module knows,
-    whose `LibraryNames.lineage` a class it names is compared with a pattern's by (where each is
-    defined, and its ancestors).
+    Its type (`Self` in `stdlib.Method.types`), as the module writes it, or as the class an alias
+    stands for (`Method.matched`); and what the module knows, whose `LibraryNames.lineage` a class
+    it names is compared with a pattern's by (where each is defined, and its ancestors). `own`, for
+    an alias's: what a type variable may be bound to, the parts the module wrote; the alias's own
+    are paths, which it can't.
     """
 
     text: str | None
     known: Known
+    own: frozenset[str] | None = None
+
+
+def _receiver(method: stdlib.Method, known: Known) -> _Receiver:
+    written: str | None = method.types.get(_SELF_TYPE)
+    if method.matched is None or written is None:
+        return _Receiver(written, known)
+    return _Receiver(
+        method.matched,
+        known,
+        frozenset(ast.unparse(node) for node in ast.walk(_parsed(written)) if isinstance(node, ast.expr)),
+    )
 
 
 def _matches(receiver: _Receiver, signature: ReadSignature, bound: dict[str, str]) -> str:
@@ -371,9 +420,13 @@ def _matches(receiver: _Receiver, signature: ReadSignature, bound: dict[str, str
         found,
     )
     # A variable bound two ways (by two parts, or by the arguments too) is left unbound: a type
-    # checker would widen it, or reject the call.
+    # checker would widen it, or reject the call. So is one bound to what an alias wrote.
     clashing: set[str] = {
-        name for name, text in found.items() if text == _CLASHING or bound.get(name, text) != text
+        name
+        for name, text in found.items()
+        if text == _CLASHING
+        or bound.get(name, text) != text
+        or (receiver.own is not None and text not in receiver.own)
     }
     name: str
     for name in clashing:
@@ -464,10 +517,12 @@ def _subscript(
         return _MAYBE if related == _YES else related
     wanted: list[ast.expr] = _arguments_of(pattern)
     given: list[ast.expr] = _arguments_of(actual)
-    if len(wanted) == _REPEATED and isinstance(wanted[1], ast.Constant) and wanted[1].value is Ellipsis:
-        wanted = [wanted[0]] * len(given)  # `tuple[int, ...]`
-    if len(given) == _REPEATED and isinstance(given[1], ast.Constant) and given[1].value is Ellipsis:
+    if _repeated(wanted) and _repeated(given):  # `tuple[int, ...]` both: their elements
+        wanted, given = wanted[:1], given[:1]
+    elif _repeated(given):
         return _MAYBE  # its length unknown
+    elif _repeated(wanted):
+        wanted = [wanted[0]] * len(given)
     if len(wanted) != len(given):
         return _NO if ast.unparse(pattern.value) == _TUPLE_PATH else _MAYBE
     verdict: str = _YES
@@ -476,6 +531,10 @@ def _subscript(
     for part, other in zip(wanted, given, strict=True):
         verdict = _both(verdict, _unified(receiver, part, other, bounds, found))
     return verdict
+
+
+def _repeated(args: Sequence[ast.expr]) -> bool:
+    return len(args) == _REPEATED and isinstance(args[1], ast.Constant) and args[1].value is Ellipsis
 
 
 def _class(receiver: _Receiver, path: str, actual: ast.expr) -> str:
@@ -511,6 +570,8 @@ def _lineage(receiver: _Receiver, actual: ast.expr) -> tuple[str, ...]:
     text: str = ast.unparse(actual)
     if isinstance(actual, ast.Name) and receiver.known.is_builtin(text):
         return (f"builtins.{text}", "builtins.object")
+    if text.startswith(_BUILTINS_PATH):  # an alias's expansion's (`builtins.tuple`)
+        return (text, "builtins.object")
     return tuple(receiver.known.names.lineage.get(text, ()))
 
 

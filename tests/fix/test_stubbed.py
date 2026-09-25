@@ -43,6 +43,12 @@ SITE: Final = {
             Double as Double,
             Floats as Floats,
             Numbers as Numbers,
+            Grid as Grid,
+            Pairs as Pairs,
+            Loose as Loose,
+            Maybe as Maybe,
+            Nested as Nested,
+            Literally as Literally,
         )
         from shapes import _core
         from shapes.typing import Pair as Pair
@@ -77,6 +83,12 @@ SITE: Final = {
         Double: TypeAlias = Float
         Floats: TypeAlias = Array[Float]
         Numbers = int | float
+        Grid: TypeAlias = Array[_S]
+        Pairs: TypeAlias = Array[tuple[_T, int]]
+        Loose: TypeAlias = Array[Any]
+        Maybe: TypeAlias = Array[_S] | None
+        Nested: TypeAlias = _Arr[_S]
+        Literally: TypeAlias = Array[Literal[1]]
 
         class Scalar: ...
         class Float(Scalar, float): ...
@@ -107,6 +119,8 @@ SITE: Final = {
             def fill(self: Array[_T], value: _T) -> _T: ...
             def anything(self: Array[Any]) -> int: ...
             def three(self: Array[Other] | Array[Scalar] | Array[Float]) -> str: ...
+            def head(self: Array[tuple[_T, Any]]) -> _T: ...
+            def second(self: Array[tuple[Any, _T]]) -> _T: ...
 
         class Other(Scalar): ...
         class Mixed(Scalar, Array[_S]): ...
@@ -196,7 +210,8 @@ SITE: Final = {
 }
 MAIN: Final = """
 import shapes
-from shapes import make, pick, mode, size, either, loose, first, wrap, listed, nothing, odd, label, Array
+from shapes import make, pick, mode, size, either, loose, first, wrap, listed, nothing, odd, label
+from shapes import Array, Grid
 import loose as untyped
 
 
@@ -215,6 +230,14 @@ def run(
     mi: Array[Missing],
     sa: Array[shapes.Sub[shapes.Float]],
     mx: shapes.Mixed[shapes.Float],
+    gr: Grid[shapes.Float],
+    go: Grid[shapes.Other],
+    fl: shapes.Floats,
+    pr: shapes.Pairs[str],
+    lo: shapes.Loose,
+    mb: shapes.Maybe[shapes.Float],
+    ne: shapes.Nested[shapes.Float],
+    li: shapes.Literally,
 ) -> None:
     a = make(n)
     b = shapes.make(3, kind=shapes.Float)
@@ -278,6 +301,20 @@ def run(
     u3 = a.three()
     u4 = mx.first()
     print(u2, u3, u4)
+    v1 = gr.total()
+    v2 = go.total()
+    v3 = gr.first()
+    v4 = gr.same()
+    v5 = fl.first()
+    v6 = pr.head()
+    v7 = pr.second()
+    v8 = lo.anything()
+    v9 = lo.first()
+    w1 = mb.first()
+    w2 = ne.first()
+    w3 = li.first()
+    w4 = t3.pair()
+    print(v1, v2, v3, v4, v5, v6, v7, v8, v9, w1, w2, w3, w4)
     print(r1, r2, r3, r4, r5, r6, r7, r8, r9, s1, s2, s3, s4, s5, s6, s7, s8, s9, u1)
     print(a, b, c, d, e, f, g, h, i, j, k, m, o, p, q, r, t, u, v, w, x, y, z, aa, bb)
     print(cc, dd, ee, ff, gg, hh, ii, jj, kk, mm, oo, pp)
@@ -344,8 +381,31 @@ FIXED: Final = (
     "    u2: int = a.anything()\n",
     "    u3: str = a.three()\n",
     "    u4: shapes.Float = mx.first()\n",  # its second base's
+    # Receivers typed through a public alias of the class: its methods, matched as the class.
+    "    v1: shapes.Float = gr.total()\n",
+    "    v2 = go.total()\n",
+    "    v3: shapes.Float = gr.first()\n",  # the class's parameter, as the alias binds it
+    "    v4: Grid[shapes.Float] = gr.same()\n",  # `Self`, as the receiver's written
+    "    v5: shapes.Float = fl.first()\n",
+    "    v6: str = pr.head()\n",
+    "    v7 = pr.second()\n",  # bound to what the alias writes (`int`), which the module doesn't
+    "    v8: int = lo.anything()\n",
+    "    v9 = lo.first()\n",  # `Any`: unwritable
+    "    w1 = mb.first()\n",  # an alias of a union
+    "    w2 = ne.first()\n",  # an alias of an alias
+    "    w3 = li.first()\n",  # a `Literal` argument
+    "    w4: int = t3.pair()\n",  # `tuple[int, ...]` both
 )
 
+THROUGH: Final = """
+from pkg._typing import st
+
+
+def f(g: st.Grid[st.Float]) -> None:
+    a = g.first()
+    print(a)
+"""
+THROUGH_FIXED: Final = "    a: st.Float = g.first()\n"
 MODERN_FIXED: Final = "    a: modern.Array[modern.Float] = modern.empty(n, modern.Float)\n"
 
 
@@ -384,6 +444,19 @@ def test_calls_are_typed_by_the_overload_their_arguments_match(tmp_path: Path, s
     assert not missing, main.read_text(encoding="utf-8")
 
 
+def test_a_package_imported_through_another_module_is_followed(tmp_path: Path, site: Path) -> None:
+    """`from pkg._typing import st`, where `_typing` imports the package: its aliases, as pandas's `npt`."""
+    assert site.is_dir()
+    package: Path = tmp_path / "pkg"
+    package.mkdir()
+    _ = (package / "__init__.py").write_text("", encoding="utf-8")
+    _ = (package / "_typing.py").write_text("import shapes as st\n", encoding="utf-8")
+    main: Path = package / "main.py"
+    _ = main.write_text(THROUGH, encoding="utf-8")
+    _ = cli.main(["--fix", "-q", str(package)])
+    assert THROUGH_FIXED in main.read_text(encoding="utf-8")
+
+
 def test_signatures_are_read_once_per_index(tmp_path: Path, site: Path) -> None:
     """A second file calling the same function reads it from the memo; a file not indexed gets none."""
     main: Path = tmp_path / "main.py"
@@ -394,7 +467,7 @@ def test_signatures_are_read_once_per_index(tmp_path: Path, site: Path) -> None:
     assert list(first) == ["shapes.make"]
     assert not stubbed.overloaded(catalog, tmp_path / "other.py")
     assert stubbed.classes(catalog, tmp_path / "other.py") == frozenset()
-    assert stubbed.methods(catalog, tmp_path / "other.py") == stubbed.Methods({}, {}, {})
+    assert stubbed.methods(catalog, tmp_path / "other.py") == stubbed.Methods({}, {}, {}, {})
     assert stubbed.methods(catalog, main) == stubbed.methods(catalog, main)  # the second from the memo
     # A class generic only through a base is generic where that base passes a type variable.
     generics: frozenset[str] = catalog.modules["shapes._core"].generics

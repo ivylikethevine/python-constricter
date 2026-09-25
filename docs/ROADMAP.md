@@ -56,7 +56,8 @@
   (`np.empty(n, dtype=np.float64)`), no new type error. They're read at run time through the index,
   not by `tests/typeshed/`'s reader, which needs typeshed's standard-library stubs. Their classes'
   methods too, the receiver's type binding the class's type parameters and `Self`, or matched
-  against a method's own `self` (`a.sum()`); a builtin container argument by its elements, binding a
+  against a method's own `self` (`a.sum()`), a receiver typed through a public alias as the class it
+  stands for (`npt.NDArray[np.float64]`); a builtin container argument by its elements, binding a
   bounded type variable (numpy's shapes).
 - **Fixes that add an import**: `open(p, "rb")` by its literal mode, standard-library classes, and
   `Final`, through an import the module has or one added after its leading imports; another checked
@@ -177,15 +178,16 @@
 By scope (smallest first) and, within each, by value. Each item says what it is, why, how, and when
 it's done.
 
-### Medium: a few days
+### Small: a day or less
 
-1. **Receivers typed through a public alias.** An installed method is found by its receiver's class
-   as the module writes it (`np.ndarray[...]`), so a receiver typed `npt.NDArray[np.float64]`, as
-   pandas writes 503 of its annotations, finds none, and `self`'s pattern is never matched against
-   it. Resolve a receiver's alias to the class it stands for, its arguments bound (`NDArray`'s
-   `ScalarT`), for the lookup and the match alike; `Self` stays the receiver's own spelling. Done
-   when `x.sum()` on an `npt.NDArray[np.float64]` is an `np.float64` and pandas's `--types` still
-   finds no new error.
+1. **Plain Pyright in editors.** An editor running Pyright (Neovim's Mason, Pylance) reads only
+   `[tool.pyright]` or `pyrightconfig.json`, so it doesn't find `local/.venv` and reports the dev
+   dependencies unresolved; but basedpyright refuses a `pyproject.toml` with both sections and falls
+   back to checking the whole checkout, `local/` included, and it reads `pyrightconfig.json` before
+   `pyproject.toml`, where Pyright rejects its `typeCheckingMode = "all"`. Find a layout both read
+   (the shared settings where both look, basedpyright's own apart), or document the editor-side
+   setting (`python.pythonPath`). Done when Pyright resolves `pytest` and `numpy` in an editor and
+   `basedpyright` still checks `constricter` and `tests` alone in about the same time.
 
 ### Large: a week or more
 

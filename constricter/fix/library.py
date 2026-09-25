@@ -8,10 +8,13 @@ whose arguments decide its type (`constricter.fix.overloads`), an installed pack
 
 import ast
 from collections.abc import Callable
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from constricter.fix import overloads, stdlib
 from constricter.fix.known import ImportPlan, Inference, Known
+
+if TYPE_CHECKING:
+    from constricter.fix.signatures import Expansion
 
 _STDLIB: Final = "stdlib"  # the fix kind
 _STR: Final = "str"
@@ -90,7 +93,8 @@ def installed_method(receiver: str, name: str, known: Known) -> stdlib.Method | 
     """Find an installed class's method whose arguments or instance decide its type, on a receiver's type.
 
     Its class's type parameters bound to the receiver's type arguments (`np.ndarray[tuple[int], ...]`),
-    and `Self` to the receiver's type.
+    and `Self` to the receiver's type; through a public alias of the class (`npt.NDArray[np.float64]`),
+    the alias's parameters bound instead, and the class's by what the alias writes for them.
 
     Returns:
       It (its `entry`: the method's key in `LibraryNames.installed`), or `None`.
@@ -104,9 +108,19 @@ def installed_method(receiver: str, name: str, known: Known) -> stdlib.Method | 
     args: list[ast.expr] = []
     if isinstance(tree, ast.Subscript):
         args = list(tree.slice.elts) if isinstance(tree.slice, ast.Tuple) else [tree.slice]
+    texts: list[str] = [ast.unparse(arg) for arg in args]
+    expansion: Expansion | None
+    if (expansion := known.names.aliases.get(ast.unparse(base))) is not None:
+        own: dict[str, str] = dict(zip(expansion.params, texts, strict=False))
+        return stdlib.Method(
+            entry,
+            None,
+            {**own, _SELF: receiver},
+            dict(expansion.templates),
+            overloads.substituted(expansion.receiver, own),
+        )
     params: tuple[str, ...] = known.names.parameters.get(ast.unparse(base), ())
-    types: dict[str, str] = dict(zip(params, (ast.unparse(arg) for arg in args), strict=False))
-    return stdlib.Method(entry, None, {**types, _SELF: receiver})
+    return stdlib.Method(entry, None, {**dict(zip(params, texts, strict=False)), _SELF: receiver})
 
 
 def library_call(

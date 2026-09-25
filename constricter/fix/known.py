@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix.signatures import ReadSignature
+from constricter.fix.signatures import Expansion, ReadSignature
 from constricter.offences import MAX_LENGTH
 from constricter.rules.annotations import free_of, free_of_all
 
@@ -115,7 +115,8 @@ class LibraryNames(NamedTuple):
     `classes` the installed classes it passes as arguments, which may bind their type variables;
     `parameters`: those methods' classes' type parameters, which a receiver's type binds; `lineage`:
     the installed classes it names, each with where it and its ancestors are defined, which a
-    receiver's type is matched by (see `constricter.fix.stubbed`).
+    receiver's type is matched by; `aliases`: the public aliases of installed generic classes it
+    names, whose methods are their classes' (see `constricter.fix.stubbed`).
     """
 
     casts: frozenset[str] = frozenset()
@@ -125,6 +126,7 @@ class LibraryNames(NamedTuple):
     classes: frozenset[str] = frozenset()
     parameters: Mapping[str, tuple[str, ...]] = MappingProxyType({})
     lineage: Mapping[str, tuple[str, ...]] = MappingProxyType({})
+    aliases: Mapping[str, Expansion] = MappingProxyType({})
 
 
 class Returned(NamedTuple):
@@ -273,6 +275,7 @@ class Outside(NamedTuple):
     installed_classes: frozenset[str] = frozenset()  # see `LibraryNames.classes`
     installed_parameters: Mapping[str, tuple[str, ...]] = {}  # see `LibraryNames.parameters`
     installed_lineage: Mapping[str, tuple[str, ...]] = {}  # see `LibraryNames.lineage`
+    installed_aliases: Mapping[str, Expansion] = {}  # see `LibraryNames.aliases`
 
     def usable(self, taken: frozenset[str]) -> "Outside":
         """Drop what other files offer whose type needs a name imported that the module binds already.
@@ -306,6 +309,7 @@ class Outside(NamedTuple):
             self.installed_classes,
             self.installed_parameters,
             self.installed_lineage,
+            self.installed_aliases,
         )
 
 

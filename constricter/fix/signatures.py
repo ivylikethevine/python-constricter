@@ -69,3 +69,17 @@ class ReadSignature(NamedTuple):
     # variables' bounds, likewise (see `constricter.fix.stubbed`).
     receiver: str | None = None
     bounds: tuple[tuple[str, str], ...] = ()
+
+
+class Expansion(NamedTuple):
+    """A public alias of an installed generic class (`npt.NDArray`), as a receiver's type is written.
+
+    `params`: its own type parameters, renamed apart from any a method names (`_alias0`), which the
+    receiver's type arguments bind; `receiver`: what it stands for, as a pattern naming them (see
+    `ReadSignature.receiver`); `templates`: the class's type parameters, each with a template naming
+    them (`np.dtype[_alias0]`), where one can be written.
+    """
+
+    params: tuple[str, ...]
+    receiver: str
+    templates: tuple[tuple[str, str], ...]

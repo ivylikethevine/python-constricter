@@ -27,7 +27,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
 
     """
     imported: project.Imported = project.imported(modules, path)
-    methods: stubbed.Methods = stubbed.methods(modules, path)
+    methods: stubbed.Methods = stubbed.methods(modules, path, imported.guarded)
     return Outside(
         imported.calls,
         imported.classes,
@@ -42,6 +42,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         stubbed.classes(modules, path),
         methods.parameters,
         methods.lineage,
+        methods.aliases,
     )
 
 

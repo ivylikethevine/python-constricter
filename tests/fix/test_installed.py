@@ -140,6 +140,22 @@ def test_a_read_is_cached_until_its_file_changes(tmp_path: Path, monkeypatch: py
     assert installed.cached(stub, "lone") is not None
 
 
+def test_a_read_is_cached_until_constricter_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A changed `constricter.fix`, at the same version, reads the module again."""
+    site: Path = _site(tmp_path, {"lone.pyi": "def k() -> bytes: ...\n"})
+    reads: list[Path] = []
+
+    def counted(path: Path, name: str | None = None) -> project.Module | None:
+        reads.append(path)
+        return project.read(path, name)
+
+    monkeypatch.setattr("constricter.fix.installed.read", counted)
+    _ = installed.cached(site / "lone.pyi", "lone")
+    monkeypatch.setattr("constricter.fix.installed._code", lambda: "changed")
+    _ = installed.cached(site / "lone.pyi", "lone")
+    assert reads == [site / "lone.pyi"] * 2
+
+
 def test_the_cache_is_the_platforms(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """`$XDG_CACHE_HOME`, else Windows' `%LOCALAPPDATA%`, else `~/.cache`."""
     monkeypatch.delenv("XDG_CACHE_HOME")
