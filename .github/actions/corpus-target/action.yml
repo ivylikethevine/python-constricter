@@ -1,0 +1,25 @@
+name: Corpus target
+description: The directory a Corpus job checks (empty for the standard library, the scripts' default).
+inputs:
+  package:
+    description: "`stdlib`, a package installed from the `corpus` group, or a source corpus_sources.py fetches."
+    required: true
+outputs:
+  path:
+    description: The package's directory, or empty for the standard library.
+    value: ${{ steps.target.outputs.path }}
+runs:
+  using: composite
+  steps:
+    - id: target
+      shell: bash
+      env:
+        PACKAGE: ${{ inputs.package }}
+      run: |
+        if [ "$PACKAGE" = stdlib ]; then
+          echo "path=" >> "$GITHUB_OUTPUT"
+        elif [ "$PACKAGE" = twisted ] || [ "$PACKAGE" = pip ]; then
+          echo "path=$(python tests/corpus/corpus_sources.py "$PACKAGE")" >> "$GITHUB_OUTPUT"
+        else
+          echo "path=$(python -c "import $PACKAGE, os; print(os.path.dirname($PACKAGE.__file__))")" >> "$GITHUB_OUTPUT"
+        fi

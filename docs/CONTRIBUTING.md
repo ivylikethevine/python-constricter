@@ -55,12 +55,13 @@ offences per code, and any crash. `local/.venv/bin/python tests/corpus/corpus_fi
 and a second pass has nothing left to fix.
 `local/.venv/bin/python tests/corpus/corpus_profile.py [PATH]` checks it under `cProfile`, in one
 process, and prints (as Markdown) constricter's slowest modules and functions, and where the rest of
-the time went; the profile is saved to `local/profile/`. CI's Corpus job runs all three against the
-standard library and, from the pinned `corpus` dependency group (`django`, `sqlalchemy`, `pydantic`,
-`pandas` — a web framework, an ORM, a runtime-validation library and a data library), the same way,
-and against pure Python 2 (Twisted 12.3.0) and pip 20.3.4 (2/3-era code whose `# type:` comments sit
-in modules with Python 2 `__future__` imports), hash-pinned sdists `tests/corpus/corpus_sources.py`
-fetches, since neither installs as a dependency.
+the time went; the profile is saved to `local/profile/`. CI runs all three, each in its own job (the
+profile's never fails the run), against the standard library and, from the pinned `corpus`
+dependency group (`django`, `sqlalchemy`, `pydantic`, `pandas` — a web framework, an ORM, a
+runtime-validation library and a data library), the same way, and against pure Python 2 (Twisted
+12.3.0) and pip 20.3.4 (2/3-era code whose `# type:` comments sit in modules with Python 2
+`__future__` imports), hash-pinned sdists `tests/corpus/corpus_sources.py` fetches, since neither
+installs as a dependency.
 
 `tests/corpus/corpus_suite.py` runs a Python 3 corpus package's own test suite (cloned at its pinned
 tag, with its test dependencies as its CI installs them, in `local/corpus-suites/`) as released,

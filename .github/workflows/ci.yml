@@ -171,16 +171,23 @@ jobs:
           summary: "false"
           args: --level=suffocate --all-scopes --format=github constricter tests
 
+  # Against the runner's standard library, or one pinned real package (`pyproject.toml`'s `corpus`
+  # group: a web framework, an ORM, a runtime-validation library, a data library), or pure Python 2
+  # (Twisted 12.3.0) and pip 20.3.4's 2/3-era type comments, hash-pinned sdists
+  # tests/corpus/corpus_sources.py fetches (neither installs as a dependency): no crashes or slowdowns
+  # (corpus.py), and `--fix` doesn't break any file or leave anything for a second pass
+  # (corpus_fix.py). Each in its own job, so the largest corpus's two passes run side by side.
   corpus:
-    name: Corpus (${{ matrix.package }})
+    name: Corpus (${{ matrix.package }}, ${{ matrix.task }})
     needs: reuse
     if: github.event.pull_request.draft != true && needs.reuse.outputs.tested != 'true'
     strategy:
       fail-fast: false
       matrix:
         package: [stdlib, django, sqlalchemy, pydantic, pandas, twisted, pip]
+        task: [check, fix]
     runs-on: ubuntu-latest
-    timeout-minutes: 20 # the standard library's profile, in one process, takes minutes
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -200,37 +207,56 @@ jobs:
         with:
           python-version: "3.14" # as RUNS.md is measured: the newest standard library, which has the most to fix
           group: corpus
-      # Against the runner's standard library, or one pinned real package (`pyproject.toml`'s
-      # `corpus` group: a web framework, an ORM, a runtime-validation library, a data library), or
-      # pure
-      # Python 2 (Twisted 12.3.0) and pip 20.3.4's 2/3-era type comments, hash-pinned sdists
-      # tests/corpus/corpus_sources.py fetches (neither installs as a dependency): no crashes or slowdowns
-      # (corpus.py), and `--fix` doesn't break any file or leave anything for a second pass
-      # (corpus_fix.py).
-      - name: Find the package's path
+      - uses: ./.github/actions/corpus-target
         id: target
-        env:
-          PACKAGE: ${{ matrix.package }}
-        run: |
-          if [ "$PACKAGE" = stdlib ]; then
-            echo "path=" >> "$GITHUB_OUTPUT"
-          elif [ "$PACKAGE" = twisted ] || [ "$PACKAGE" = pip ]; then
-            echo "path=$(python tests/corpus/corpus_sources.py "$PACKAGE")" >> "$GITHUB_OUTPUT"
-          else
-            echo "path=$(python -c "import $PACKAGE, os; print(os.path.dirname($PACKAGE.__file__))")" >> "$GITHUB_OUTPUT"
-          fi
-      - run: python tests/corpus/corpus.py ${TARGET_PATH:+"$TARGET_PATH"}
-        env:
+        with:
+          package: ${{ matrix.package }}
+      - env:
+          SCRIPT: ${{ matrix.task == 'check' && 'corpus.py' || 'corpus_fix.py' }}
           TARGET_PATH: ${{ steps.target.outputs.path }}
-      - run: python tests/corpus/corpus_fix.py ${TARGET_PATH:+"$TARGET_PATH"}
-        env:
+        run: python "tests/corpus/$SCRIPT" ${TARGET_PATH:+"$TARGET_PATH"}
+
+  # Where constricter's own time goes (corpus_profile.py): its slowest modules and functions, in the
+  # job's summary, and the profile itself, kept for `python -m pstats` or snakeviz. One process under
+  # cProfile is the slowest pass of all, and a report rather than a check: nothing waits for it, and
+  # it can't fail the run.
+  profile:
+    name: Profile (${{ matrix.package }})
+    needs: reuse
+    if: github.event.pull_request.draft != true && needs.reuse.outputs.tested != 'true'
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [stdlib, django, sqlalchemy, pydantic, pandas, twisted, pip]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            pypi.org:443
+            files.pythonhosted.org:443
+            raw.githubusercontent.com:443
+            releases.astral.sh:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          python-version: "3.14"
+          group: corpus
+      - uses: ./.github/actions/corpus-target
+        id: target
+        with:
+          package: ${{ matrix.package }}
+      - env:
           TARGET_PATH: ${{ steps.target.outputs.path }}
-      # Where constricter's own time goes (corpus_profile.py): its slowest modules and functions, in
-      # the job's summary, and the profile itself, kept for `python -m pstats` or snakeviz.
-      - name: Profile
         run: python tests/corpus/corpus_profile.py ${TARGET_PATH:+"$TARGET_PATH"} >> "$GITHUB_STEP_SUMMARY"
-        env:
-          TARGET_PATH: ${{ steps.target.outputs.path }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: profile-${{ matrix.package }}
