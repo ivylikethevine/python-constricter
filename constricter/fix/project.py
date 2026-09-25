@@ -94,19 +94,15 @@ def _kind(module: Module, kind: str) -> Iterable[str]:
       Their names.
 
     """
-    match kind:
-        case "function":
-            return module.returns
-        case "class":
-            return module.classes
-        case "returned":
-            return module.returned.calls
-        case "unannotated":
-            return module.unannotated
-        case "open":
-            return module.open
-        case _:
-            return module.type_vars
+    kinds: dict[str, Iterable[str]] = {
+        _FUNCTION: module.returns,
+        _CLASS: module.classes,
+        _RETURNED: module.returned.calls,
+        _UNANNOTATED: module.unannotated,
+        OPEN: module.open,
+        "signatures": {} if module.declared is None else module.declared.signatures,
+    }
+    return kinds.get(kind, module.type_vars)
 
 
 def type_vars(catalog: Index, path: Path) -> frozenset[str]:
@@ -413,6 +409,26 @@ class _Memo:
 _MEMO: Final = _Memo()
 
 
+def canonical_origin(modules: Mapping[str, Module], origin: Origin) -> Origin:
+    """Follow `origin` through indexed modules' re-exports to where it's defined (see `_canonical`).
+
+    Returns:
+      That origin.
+
+    """
+    return _canonical(modules, origin)
+
+
+def public_origin(modules: Mapping[str, Module], origin: Origin) -> Origin:
+    """Find where an installed package's public module re-exports `origin` (see `_public`).
+
+    Returns:
+      That origin, or `origin` itself.
+
+    """
+    return _public(modules, origin)
+
+
 def _canonical(modules: Mapping[str, Module], origin: Origin) -> Origin:
     """Follow `origin` through checked modules' re-exports to where it's defined.
 
@@ -509,6 +525,11 @@ def _reexported(modules: Mapping[str, Module], origin: Origin) -> Origin:
             and name.partition(".")[0] == top
             and not _private(name)
             and origin[1] in other.names
+            and (
+                other.declared is None
+                or other.declared.exports is None
+                or origin[1] in other.declared.exports
+            )
             and _canonical(modules, other.names[origin[1]]) == wanted
         ),
         key=lambda name: (name.count("."), name),

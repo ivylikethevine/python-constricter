@@ -18,7 +18,7 @@ import pickle  # the cache: written and read by constricter alone, in the user's
 import sys
 import sysconfig
 import tempfile
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from functools import lru_cache
 from pathlib import Path
 from typing import Final, cast
@@ -27,6 +27,7 @@ from constricter import __version__
 from constricter.fix.modules import STUB, SUFFIX, Index, Module, indexed, read
 
 LIMIT: Final = 2000  # the most installed modules one run reads
+_HOPS: Final = 5  # re-exports followed to a type variable
 _STUBS: Final = "-stubs"
 _TYPED: Final = "py.typed"
 _PACKAGE: Final = "__init__"
@@ -92,7 +93,48 @@ def with_installed(catalog: Index, search: Sequence[Path]) -> Index:
         wanted.extend(  # ruff: ignore[loop-iterator-mutation]
             other for other in _imported([module]) if other.partition(".")[0] == top
         )
-    return indexed([*catalog.modules.values(), *found.values()]) if found else catalog
+    if not found:
+        return catalog
+    every: dict[str, Module] = {**catalog.modules, **found}
+    return indexed([*catalog.modules.values(), *(_generics(every, module) for module in found.values())])
+
+
+def _generics(modules: Mapping[str, Module], module: Module) -> Module:
+    """Drop the classes a subscripted base made look generic whose bases pass no type variable.
+
+    `class float64(floating[_64Bit])` binds every parameter it inherits: it's written bare.
+
+    Returns:
+      The module, its `generics` corrected.
+
+    """
+    bases: Mapping[str, frozenset[str]] = {} if module.declared is None else module.declared.bases
+    bound: frozenset[str] = frozenset(
+        name
+        for name, names in bases.items()
+        if name in module.generics and not any(_is_type_var(modules, module, found) for found in names)
+    )
+    return module._replace(generics=module.generics - bound) if bound else module
+
+
+def _is_type_var(modules: Mapping[str, Module], module: Module, name: str, hops: int = _HOPS) -> bool:
+    """Check whether `name` is a type variable in `module`: its own, or one it imports from an indexed module.
+
+    Returns:
+      Whether it is (unknown: no).
+
+    """
+    if name in module.type_vars or (module.declared is not None and name in module.declared.variables):
+        return True
+    origin: tuple[str, str | None] | None = module.names.get(name) or module.guarded.get(name)
+    onward: Module | None = None if origin is None or origin[1] is None else modules.get(origin[0])
+    return (
+        hops > 0
+        and onward is not None
+        and onward is not module
+        and origin is not None
+        and _is_type_var(modules, onward, origin[1] or "", hops - 1)
+    )
 
 
 def cache_directory() -> Path:

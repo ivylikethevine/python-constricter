@@ -21,7 +21,7 @@ from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix import stdlib
 from constricter.fix.known import Inference, Known
-from constricter.fix.stdlib import Accepts, Constant, Parameter
+from constricter.fix.signatures import Accepts, Constant, Parameter, ReadSignature
 from constricter.rules.walked import walk
 
 SCALARS: Final = ("str", "LiteralString", "bytes", "bytearray", "int", "float", "complex", "bool", "None")
@@ -44,6 +44,8 @@ _CALL: Final = "call"  # the fix kind of a declared return
 # The builtin containers whose type arguments bind a parameter's type variable (`Iterable[_T]`'s).
 _CONTAINERS: Final = frozenset({"list", _TUPLE, "set", "frozenset", "dict"})
 _SELF: Final = "self"  # a signature's key for the type arguments its method's instance must have
+_CLASS_VERDICT: Final = "k"  # `Accepts`' key for a class argument's verdict (installed packages')
+_CLASS_BINDS: Final = "kv"  # `Accepts`' key for the type variable a class argument binds
 _Infer: TypeAlias = Callable[[ast.expr], Inference | None]
 # A signature that may be the one: its return template and its type variables' types (`None`:
 # a return `--fix` can't write).
@@ -57,7 +59,8 @@ class Argument(NamedTuple):
     `found`: what `--fix` inferred it to be, whose kinds the call's type rests on too; `elements`:
     for a builtin container (`list[str]`), its name and type arguments (`tuple[str, ...]`'s `str`);
     `reads`: the names, attributes and subscripts in it, as source text; `returns`: for a function
-    the module knows the declared return of (`helper`, `u.helper`), that return.
+    the module knows the declared return of (`helper`, `u.helper`), that return; `klass`: for a class
+    passed as it is (`np.float64`), its name as written.
     """
 
     type: str | None
@@ -66,6 +69,7 @@ class Argument(NamedTuple):
     elements: tuple[str, tuple[str, ...]] | None = None
     reads: tuple[str, ...] = ()
     returns: Inference | None = None
+    klass: str | None = None
 
     @property
     def text(self) -> str | None:
@@ -90,7 +94,8 @@ def chosen(
     """Type a call to standard-library function `name` by the signatures its arguments may match.
 
     `name` is an entry of `OVERLOADS`, or `method_signatures` for a `method`'s call on an instance
-    (whose type binds its class's type parameters); `infer` types an argument.
+    (whose type binds its class's type parameters); or an installed package's function, as the
+    module calls it (`np.empty`: see `LibraryNames.installed`). `infer` types an argument.
 
     Returns:
       The inference, its classes spelled (and imported, if they must be) as the module can; or
@@ -100,7 +105,8 @@ def chosen(
     read: Arguments | None
     if (read := _arguments(call, infer, known)) is None:
         return None
-    variants: tuple[tuple[_Signature, ...], ...] = _signatures(name)
+    installed: tuple[ReadSignature, ...] | None = known.names.installed.get(name)
+    variants: tuple[tuple[ReadSignature, ...], ...] = _signatures(name) if installed is None else (installed,)
     instance: list[str] | None = None if method is None else method.instance
     picks: list[_Picked] = [
         _receiving(picked, {} if method is None else method.types)
@@ -115,7 +121,7 @@ def chosen(
     return Inference(
         annotation,
         f"`{name}`'s return type, for its arguments",
-        frozenset({_KIND}).union(
+        frozenset({_KIND if installed is None else _CALL}).union(
             *(part.found.kinds for part in parts if part.found is not None),
             *(part.returns.kinds for part in parts if part.returns is not None),
         ),
@@ -182,6 +188,10 @@ def _argument(value: ast.expr, infer: _Infer, known: Known) -> Argument:
         case ast.Constant(value=bool() | int() | float() | complex() | str() | bytes() | None as constant):
             kind: str = _LITERAL_STRING if isinstance(constant, str) else type(constant).__name__
             return Argument(_NONE if constant is None else kind, (constant,))
+        case ast.Name() | ast.Attribute() if (
+            ast.unparse(value) in known.classes or ast.unparse(value) in known.names.classes
+        ):
+            return Argument(None, reads=(ast.unparse(value),), klass=ast.unparse(value))
         case _:
             found: Inference | None = infer(value)
             typed: str | None = None if found is None else found.annotation
@@ -235,16 +245,8 @@ def _elements(annotation: str, known: Known) -> tuple[str, tuple[str, ...]] | No
     return name, tuple(texts)
 
 
-class _Signature(NamedTuple):
-    """One signature, read: its parameters in full, its return template, and its `self`'s type arguments."""
-
-    params: tuple[Parameter, ...]
-    returns: str | None
-    instance: list[str] | None
-
-
 @lru_cache(maxsize=512)
-def _signatures(name: str) -> tuple[tuple[_Signature, ...], ...]:
+def _signatures(name: str) -> tuple[tuple[ReadSignature, ...], ...]:
     """Read a function's (or method's) variants from the tables, once, each parameter in full.
 
     Returns:
@@ -254,7 +256,7 @@ def _signatures(name: str) -> tuple[tuple[_Signature, ...], ...]:
     variants: list[stdlib.Variant] = stdlib.OVERLOADS.get(name) or stdlib.method_signatures()[name]
     return tuple(
         tuple(
-            _Signature(
+            ReadSignature(
                 tuple(_parameter(param) for param in signature["params"]),
                 signature["returns"],
                 signature.get("self"),
@@ -281,7 +283,7 @@ def _parameter(written: Parameter | str) -> Parameter:
 
 
 def _picked(
-    variant: Sequence[_Signature],
+    variant: Sequence[ReadSignature],
     read: Arguments,
     instance: Sequence[str] | None,
 ) -> Iterator[_Picked]:
@@ -294,7 +296,7 @@ def _picked(
       Each one that doesn't certainly refuse them: its return template and type variables' types.
 
     """
-    signature: _Signature
+    signature: ReadSignature
     for signature in variant:
         verdict: str
         bound: dict[str, str]
@@ -352,8 +354,9 @@ def _binding(accepts: Accepts | None, arg: Argument) -> tuple[str, str] | None:
 
     """
     kind: str | None = arg.type
-    if accepts is None:
-        return None
+    if accepts is None or arg.klass is not None:  # a class binds `type[T]`'s `T` (`kv`), or nothing
+        variable: str | None = None if accepts is None else accepts.get(_CLASS_BINDS)
+        return None if variable is None or arg.klass is None else (variable, arg.klass)
     if kind is not None:
         binds: str | dict[str, list[str]] = accepts.get("var", {})
         if isinstance(binds, str):  # each type binds it to itself; a `str` literal to `str`
@@ -418,6 +421,8 @@ def _verdict(accepts: Accepts | None, arg: Argument) -> str:
     """
     if accepts is None:
         return _YES
+    if arg.klass is not None:
+        return accepts.get(_CLASS_VERDICT, _MAYBE)
     if arg.constant is not None and any(_same(arg.constant[0], value) for value in accepts.get("lit", [])):
         return _YES
     table: str = accepts.get("c", accepts["v"]) if arg.constant is not None else accepts["v"]

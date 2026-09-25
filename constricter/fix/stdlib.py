@@ -17,42 +17,11 @@ import json
 from collections.abc import Iterable, Mapping
 from functools import cache, lru_cache
 from pathlib import Path
-from typing import Final, NamedTuple, NotRequired, Required, TypeAlias, TypedDict, cast
+from typing import Final, NamedTuple, NotRequired, TypeAlias, TypedDict, cast
 
 from constricter.fix.known import ImportPlan, Inference, Known
+from constricter.fix.signatures import Parameter
 from constricter.rules.syntax import import_bindings
-
-Constant: TypeAlias = bool | int | float | complex | str | bytes | None  # a literal's value
-
-
-class Accepts(TypedDict, total=False):
-    """Which argument types a parameter takes (see `constricter.fix.overloads`).
-
-    `v`: a verdict (`y`, `n`, `?`) per `overloads.SCALARS` type, for an argument that isn't a
-    literal; `c`: for a literal not among `lit` (its `Literal[...]` values), where that differs;
-    `var`: the type variable the parameter is, and its type, for an argument of each type; or just
-    its name, where each binds it to its own type (a `str` literal's `str`). `t`: the type variable
-    the parameter is, unbounded, so any argument binds it to its own type (`copy.copy(x)`). `e`, for
-    a parameter that is a generic class of one type variable (`Iterable[_T]`): that variable, which
-    an argument of a builtin container in `of` (`list[str]`) binds to its type argument at that index.
-    `r`: the type variable a callable parameter returns (`Callable[..., _T]`), which a function
-    argument binds to its declared return (`functools.partial(helper, 1)`).
-    """
-
-    v: Required[str]
-    c: str
-    lit: list[Constant]
-    var: str | dict[str, list[str]]
-    t: str
-    e: str
-    of: dict[str, int]
-    r: str
-
-
-# A parameter: its name, kind (`p` positional, `e` either, `k` keyword, `a` `*args`, `w` `**kwargs`),
-# whether it has a default, and what it takes (`None`: whatever every signature takes there). The
-# tables write one every signature has alike as `"name kind"`, `=` after it if it has a default.
-Parameter: TypeAlias = tuple[str, str, bool, Accepts | None]
 
 
 class Signature(TypedDict):
@@ -123,6 +92,41 @@ def method_signatures() -> dict[str, list[Variant]]:
 
     """
     return cast("dict[str, list[Variant]]", _table("method_signatures"))
+
+
+@cache
+def _scalars() -> Mapping[str, str]:
+    return cast("Mapping[str, str]", _table("scalars"))
+
+
+@cache
+def _scalar_members() -> Mapping[str, frozenset[str]]:
+    return {
+        scalar: frozenset(names)
+        for scalar, names in cast("Mapping[str, list[str]]", _table("scalar_members")).items()
+    }
+
+
+def scalar_verdicts(path: str) -> str | None:
+    """Look up which builtin scalars a standard-library class or alias takes (`typing.SupportsIndex`).
+
+    Read the first time an installed package's overloads need it (see `constricter.fix.stubbed`).
+
+    Returns:
+      Its verdict per `overloads.SCALARS` type, in order; or `None` if the tables don't have it.
+
+    """
+    return _scalars().get(path)
+
+
+def scalar_members(scalar: str) -> frozenset[str] | None:
+    """Name what an argument of builtin scalar type `scalar` has, for a protocol to be checked against.
+
+    Returns:
+      Its members, or `None` if the tables don't have them.
+
+    """
+    return _scalar_members().get(scalar)
 
 
 # An environment lookup: `os.environ.get(k)` is `str | None`, with a `str` default it's `str`

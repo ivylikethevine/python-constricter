@@ -14,6 +14,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
 
+from constricter.fix.declared import Declarations, declarations
 from constricter.fix.known import Origin, Passed, Returns
 from constricter.fix.returned import unannotated
 from constricter.rules import parsed
@@ -55,6 +56,7 @@ class Module(NamedTuple):
     guarded: Mapping[str, Origin] = MappingProxyType({})
     unannotated: frozenset[str] = frozenset()  # its functions a `return` could type (`returned`)
     called: frozenset[str] = frozenset()  # what it calls through its top-level names (`f`, `u.f`)
+    passed: frozenset[str] = frozenset()  # what it passes as an argument through them (`np.float64`)
     returned: Returns = Returns()  # what they return, once it's checked
     generics: frozenset[str] = frozenset()  # its generic classes, which a type mustn't write bare
     installed: bool = False  # an installed package's, read for its types alone (see `installed`)
@@ -63,6 +65,7 @@ class Module(NamedTuple):
     # `dict`s: the CLI's worker processes send modules back, pickled.
     open: Mapping[str, tuple[Param, ...]] = {}
     parameters: Mapping[str, Mapping[str, Passed]] = {}  # see `Seeds`
+    declared: Declarations | None = None  # an installed module's, for its overloads (see `declared`)
 
 
 class Index(NamedTuple):
@@ -242,8 +245,10 @@ def read(path: Path, name: str | None = None) -> Module | None:
         unannotated(tree.body),
         _called(tree, names),
         generics=generic_classes(tree),
+        passed=frozenset() if name is not None else _passed(tree, names),
         installed=name is not None,
         open=open_functions(tree),
+        declared=None if name is None else declarations(tree),
     )
 
 
@@ -324,6 +329,21 @@ def _called(tree: ast.Module, names: Mapping[str, Origin]) -> frozenset[str]:
         dotted(node.func) for node in cast("list[ast.Call]", of_type(tree, ast.Call))
     )
     return frozenset(callee for callee in callees if callee is not None and callee.partition(".")[0] in names)
+
+
+def _passed(tree: ast.Module, names: Mapping[str, Origin]) -> frozenset[str]:
+    """Find what the module passes as an argument through its top-level names: `np.float64`, `Row`.
+
+    Returns:
+      Each, as written.
+
+    """
+    arguments: Iterator[str | None] = (
+        dotted(argument)
+        for node in cast("list[ast.Call]", of_type(tree, ast.Call))
+        for argument in (*node.args, *(keyword.value for keyword in node.keywords))
+    )
+    return frozenset(name for name in arguments if name is not None and name.partition(".")[0] in names)
 
 
 def _source(path: Path) -> str | None:

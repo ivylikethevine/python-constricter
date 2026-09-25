@@ -140,8 +140,17 @@ An installed package that declares its types (a `py.typed` package, its stubs fi
 this Python's path and the active virtual environment's (`VIRTUAL_ENV`), as the import system would
 (an untyped copy earlier on the path shadows a typed one later), with the modules it re-exports
 from. `pydantic_core.to_json(x)` is a `bytes`. A type it names is imported from a public module that
-re-exports it (`from typed import Thing`, not `typed._types`), or not written; and one of its
-generic classes is never written bare (`np.ndarray`).
+re-exports it (`from typed import Thing`, not `typed._types`; a module exports what `__all__` lists,
+or else what it defines and imports as itself, `from m import x as x`), or not written; and one of
+its generic classes is never written bare (`np.ndarray`).
+
+Its functions whose arguments decide their type (overloads, or a return naming a type variable) are
+matched as the standard library's are: `np.empty(n, dtype=np.float64)` is an
+`np.ndarray[tuple[int], np.dtype[np.float64]]` with numpy 2.5's stubs. What each parameter takes is
+read from its annotation through the package's aliases, type variables and protocols; a
+standard-library class it names (`SupportsIndex`) by the `scalars` table; and a class passed as the
+argument binds a `type[T]` parameter's `T`. A private alias in the return is written as what it
+stands for; a public one by its public path (`npt.NDArray[np.float64]`).
 
 A type another checked file declares (`get_handle() -> IOHandles[str]`) names what that file imports
 or defines; a name the calling file doesn't have is imported where the type's file has it from,

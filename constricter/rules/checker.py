@@ -151,6 +151,8 @@ def _settings(
                 casts(tree),
                 stdlib.origins(tree),
                 replace(imports.plan(tree), guarded={} if outside is None else outside.guarded),
+                {} if outside is None else outside.overloaded,
+                frozenset() if outside is None else outside.installed_classes,
             ),
             checks.max_length,
         ),

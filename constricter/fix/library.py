@@ -2,8 +2,8 @@
 """Calls to the standard library `--fix` types from the tables (see `constricter.fix.stdlib`).
 
 A class, or a function returning one (`library_class`); a function with a fixed builtin result, one
-whose arguments decide its type (`constricter.fix.overloads`), or `os.environ.get`
-(`library_call`).
+whose arguments decide its type (`constricter.fix.overloads`), an installed package's too (see
+`constricter.fix.stubbed`), or `os.environ.get` (`library_call`).
 """
 
 import ast
@@ -58,6 +58,31 @@ def library_variable(value: ast.expr, known: Known) -> Inference | None:
         if found is None
         else Inference(found, f"`{name}`'s annotation in typeshed", frozenset({_STDLIB}))
     )
+
+
+def installed_call(
+    value: ast.expr,
+    known: Known,
+    infer: Callable[[ast.expr], Inference | None],
+) -> Inference | None:
+    """Infer a call to an installed package's function whose arguments decide its type (`np.empty`).
+
+    By the signature its arguments certainly match (see `constricter.fix.stubbed`); `infer` types an
+    argument.
+
+    Returns:
+      The inference, or `None` for any other call, or arguments that don't decide it.
+
+    """
+    callee: str
+    func: ast.Name | ast.Attribute
+    match value:
+        case ast.Call(func=ast.Name() | ast.Attribute() as func) if (callee := ast.unparse(func)) in (
+            known.names.installed
+        ):
+            return overloads.chosen(callee, value, known, infer)
+        case _:
+            return None
 
 
 def library_call(

@@ -6,6 +6,16 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types a call into an installed package whose overloads its arguments decide by the one
+  they match, as it does the standard library's: with numpy 2.5's stubs,
+  `np.empty(n, dtype=np.float64)` is an `np.ndarray[tuple[int], np.dtype[np.float64]]`. A stub's
+  overloads are read through its aliases (PEP 695's too), type variables' bounds and constraints,
+  and protocols; a standard-library class they name, by a new `scalars` table; and a class passed as
+  an argument binds a `type[T]`. 83 more fixes on pandas, whose type checkers find no new error
+  after `--fix`. An installed class whose subscripted base passes no type variable
+  (`class float64(floating[_64Bit])`) is no longer taken for a generic one, and a typed package's
+  module re-exports only what the typing rules export (`from m import x as x`, `__all__`), so
+  `numpy.NDArray`, which numpy doesn't export, is never written.
 - `--fix` types a comparison of builtin values (`n < 3`, `len(xs) == 0`) as a `bool`; a
   standard-library module's variable by its annotation in typeshed (`sys.path`: `list[str]`,
   `os.sep`: `str`, from a new `variables` table); and a chained assignment's names (`i = j = 0`) by

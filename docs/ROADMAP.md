@@ -49,7 +49,12 @@
 - **Installed packages**: calls into an installed package that declares its types (`py.typed`, a
   stub package, a lone stub module) are typed by their declared returns as a checked file's are,
   found as the import system would on this Python's path and `VIRTUAL_ENV`'s; types are imported
-  from a public module that re-exports them.
+  from a public module that re-exports them. Functions whose overloads or type variables their
+  arguments decide are matched as the tables' are (`constricter.fix.stubbed`), through the package's
+  aliases, type variables and protocols, the standard-library classes it names by the `scalars`
+  table, and a class argument binding `type[T]`: 83 more fixes on pandas
+  (`np.empty(n, dtype=np.float64)`), no new type error. They're read at run time through the index,
+  not by `tests/typeshed/`'s reader, which needs typeshed's standard-library stubs.
 - **Fixes that add an import**: `open(p, "rb")` by its literal mode, standard-library classes, and
   `Final`, through an import the module has or one added after its leading imports; another checked
   file's type the module doesn't import, under `if TYPE_CHECKING:` (no import cycle at run time),
@@ -171,15 +176,14 @@ it's done.
 
 ### Medium: a few days
 
-1. **Installed functions' overloads.** Calls into installed packages are typed by declared returns
-   alone; their overloads aren't read. On the corpora, 898 untyped numpy calls pass only literals,
-   but the commonest (`np.array([1, 2])`) matches an overload returning `NDArray[Any]`, too vague to
-   write, and most of the rest need a class argument to bind a type variable
-   (`np.empty(n, dtype=np.float64)`: `_DTypeLike[_SCT]` given `np.float64`). Move the stub reading
-   in `tests/typeshed/` into the package, read an installed stub's overloads as the tables' are
-   (cached with the module), and bind a type variable to a class argument (`type[_SCT]`). Done when
-   `np.empty(n, dtype=np.float64)` is an `npt.NDArray[np.float64]` and pandas's `--types` finds no
-   new error.
+1. **Installed overloads: containers and methods.** A builtin container argument is matched as an
+   unknown type, so numpy's shape overloads stay open for `np.empty((n, 2), dtype=np.float64)`
+   (`SupportsIndex` refuses a tuple; `ShapeT`, bound to `tuple[int, ...]`, would bind
+   `tuple[int, int]`); and an installed class's methods' overloads aren't read
+   (`arr.astype(np.float32)`). Give `scalars` the builtin containers' verdicts, bind a bounded type
+   variable to a container argument its bound takes, and read methods as `method_signatures` does.
+   Done when that call is an `np.ndarray[tuple[int, int], np.dtype[np.float64]]` and pandas's
+   `--types` still finds no new error.
 
 ### Large: a week or more
 

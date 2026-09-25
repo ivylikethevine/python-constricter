@@ -248,6 +248,7 @@ def _is_guess(
             _returned_certainly(func, known)
             or ast.unparse(func) in known.names.casts
             or stdlib.resolved(func, known.names.stdlib) in stdlib.KNOWN
+            or ast.unparse(func) in known.names.installed
             or opened(node, known) is not None
             or certain_method(node, known, declared)
             or _overloaded_method(node, known, declared)

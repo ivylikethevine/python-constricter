@@ -1,2 +1,2 @@
-# asdf pins for local development; python matches CI's primary "3.14".
+# mise pins for local development (mise reads this file); python matches CI's primary "3.14".
 python 3.14.7

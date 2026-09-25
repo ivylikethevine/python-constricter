@@ -15,7 +15,7 @@ from constricter.fix import installed, project
 # package for an untyped one, a lone stub module, an untyped package, and a broken stub.
 SITE: Final = {
     "typed/py.typed": "",
-    "typed/__init__.py": "from typed._impl import make, thing\nfrom typed._types import Thing\n",
+    "typed/__init__.py": "from typed._impl import make, thing\nfrom typed._types import Thing as Thing\n",
     "typed/_impl.pyi": "from typed._types import Thing\ndef make() -> int: ...\ndef thing() -> Thing: ...\n",
     "typed/_types.pyi": "class Thing: ...\n",
     "typed/sub.py": "def sub() -> float:\n    return 1.0\n",
