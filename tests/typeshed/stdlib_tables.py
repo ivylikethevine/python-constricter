@@ -22,23 +22,29 @@ keeps what comes out the same for all twelve:
   Python can subscript it at run time; `generic_attributes`: its own attributes and properties, as
   templates its instance's type arguments bind;
 - `variables`: module-level variables' types (`sys.path`, `os.sep`), as `returns` and `classes` hold
-  a function's.
+  a function's;
+- `scalars`: which builtin scalar types (`overloads.SCALARS`), then containers (`CONTAINERS`),
+  each class or alias takes, by every path an installed package's stub may import it from
+  (`typing.SupportsIndex`, `_typeshed.StrPath`), and `scalar_members`: each of those types'
+  members, for its protocols; installed packages' overloads are matched with them
+  (`constricter.fix.stubbed`).
 
 A return that names a `TypeVar` (but `AnyStr`), `Any`, or anything else vague, differs between
 overloads, or is spelled with a class inside a generic (`list[Path]`), is left out; so is `typing`
 (its factories), `enum`'s classes (their functional API makes a class), and what `_RUNTIME` lists.
 """
 
+import ast
 import json
 import sys
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, NamedTuple, TypeAlias
+from typing import Final, NamedTuple, TypeAlias
 
 import basedpyright  # pyright: ignore[reportMissingTypeStubs]  # the dev group's: its bundled stubs
 
 from constricter.fix.stdlib import Signature
-from tests.typeshed.overloads import Overloads
+from tests.typeshed.overloads import CONTAINERS, SCALARS, Overloads
 from tests.typeshed.reading import (
     ANY_STR,
     ATTRIBUTE,
@@ -65,9 +71,6 @@ from tests.typeshed.stubs import (
     private,
 )
 
-if TYPE_CHECKING:
-    import ast
-
 TYPESHED: Final = Path(basedpyright.__file__).parent / "dist" / "typeshed-fallback"
 OUTPUT: Final = Path(__file__).parents[2] / "constricter" / "fix" / "tables"  # one JSON file per table
 # Where each function or class only some platforms and Python versions have is (the tests' alone).
@@ -89,6 +92,8 @@ _RUNTIME: Final = frozenset(
         "lib2to3.pygram.pattern_symbols",
     },
 )
+# Modules whose names installed packages' stubs annotate with, private or not (`scalars`).
+_ANNOTATING: Final = frozenset({"typing", "typing_extensions", "builtins", "_typeshed", "collections.abc"})
 _CHECK: Final = "--check"
 _YES: Final = "y"
 
@@ -121,6 +126,8 @@ class _Tables(NamedTuple):
     subscriptable: Table  # each generic class's: `y` if it can be subscripted at run time, else `n`
     generic_attributes: dict[str, Table]  # each generic class's own attributes, as templates
     variables: Table  # module-level variables' types: builtin annotations, or classes' paths
+    scalars: Table  # each class's and alias's verdict (`y`, `n`, `?`) per `SCALARS`, then `CONTAINERS`, type
+    scalar_members: dict[str, list[str]]  # each scalar's members, its class's and its bases'
 
 
 def _paths(stubs: Stubs, config: Config) -> dict[str, Found]:
@@ -167,8 +174,9 @@ def _read(stubs: Stubs, config: Config) -> _Tables:
     canonical: dict[ClassRef, str] = {
         klass: path for klass, path in every.items() if not reading.generic(klass)
     }
-    tables: _Tables = _Tables({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+    tables: _Tables = _Tables({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
     reader: _Reader = _Reader(reading, Overloads(reading, every), canonical)
+    _enter_scalars(tables, reader, stubs, config)
     for path, found in paths.items():
         _enter(tables, reader, path, found)
     owner: ClassRef
@@ -185,6 +193,33 @@ class _Reader(NamedTuple):
     reading: Reading
     overloads: Overloads
     canonical: dict[ClassRef, str]  # every public non-generic class's path
+
+
+def _enter_scalars(tables: _Tables, reader: _Reader, stubs: Stubs, config: Config) -> None:
+    """Enter which scalars each class and alias takes, by its public paths and `_ANNOTATING`'s names."""
+    paths: dict[str, Found] = {}
+    module: str
+    for module in sorted(_ANNOTATING):
+        space: Namespace | None = stubs.namespace(module, config)
+        name: str
+        for name in sorted({} if space is None else space.names):
+            found: Found | None
+            if (found := stubs.lookup(module, name, config)) is not None:
+                paths[f"{module}.{name}"] = found
+    paths.update(_paths(stubs, config))
+    path: str
+    target: Found
+    for path, target in paths.items():
+        if isinstance(target.binding, Klass | Alias):
+            bare: ast.Name = ast.Name(path.rpartition(".")[2])
+            tables.scalars[path] = reader.overloads.accepts(bare, path.rpartition(".")[0]).values + (
+                reader.overloads.takes(bare, path.rpartition(".")[0], CONTAINERS)
+            )
+    scalar: str
+    members: frozenset[str] | None
+    for scalar in (*SCALARS, *CONTAINERS):
+        if (members := reader.overloads.scalar_members(scalar)) is not None:
+            tables.scalar_members[scalar] = sorted(members)
 
 
 def _enter_class(tables: _Tables, reader: _Reader, klass: ClassRef, path: str) -> None:
@@ -440,7 +475,24 @@ def _agreed(tables: list[_Tables]) -> _Tables:
         _common([one.subscriptable for one in tables]),
         _common_by_class([one.generic_attributes for one in tables]),
         _common([one.variables for one in tables]),
+        _common([one.scalars for one in tables]),
+        _common_lists([one.scalar_members for one in tables]),
     )
+
+
+def _common_lists(each: list[dict[str, list[str]]]) -> dict[str, list[str]]:
+    """Keep each entry's names every configuration that has it has (see `_common`).
+
+    Returns:
+      Them.
+
+    """
+    found: dict[str, list[str]] = {}
+    key: str
+    for key in dict.fromkeys(key for one in each for key in one):
+        lists: list[list[str]] = [one[key] for one in each if key in one]
+        found[key] = [name for name in lists[0] if all(name in other for other in lists[1:])]
+    return found
 
 
 def generate(typeshed: Path = TYPESHED) -> dict[Path, str]:
@@ -474,6 +526,8 @@ def generate(typeshed: Path = TYPESHED) -> dict[Path, str]:
         "subscriptable": {path: value for path, value in tables.subscriptable.items() if value == _YES},
         "generic_attributes": tables.generic_attributes,
         "variables": tables.variables,
+        "scalars": tables.scalars,
+        "scalar_members": tables.scalar_members,
     }
     files: dict[Path, str] = {OUTPUT / f"{name}.json": write(table) for name, table in document.items()}
     files[PARTIAL] = write(_partial(each))

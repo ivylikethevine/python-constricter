@@ -15,7 +15,7 @@ from constricter.fix import installed, project
 # package for an untyped one, a lone stub module, an untyped package, and a broken stub.
 SITE: Final = {
     "typed/py.typed": "",
-    "typed/__init__.py": "from typed._impl import make, thing\nfrom typed._types import Thing\n",
+    "typed/__init__.py": "from typed._impl import make, thing\nfrom typed._types import Thing as Thing\n",
     "typed/_impl.pyi": "from typed._types import Thing\ndef make() -> int: ...\ndef thing() -> Thing: ...\n",
     "typed/_types.pyi": "class Thing: ...\n",
     "typed/sub.py": "def sub() -> float:\n    return 1.0\n",
@@ -138,6 +138,22 @@ def test_a_read_is_cached_until_its_file_changes(tmp_path: Path, monkeypatch: py
     assert installed.cached(site / "missing.pyi", "missing") is None
     monkeypatch.setenv("XDG_CACHE_HOME", str(stub))  # a file: nothing can be made under it
     assert installed.cached(stub, "lone") is not None
+
+
+def test_a_read_is_cached_until_constricter_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A changed `constricter.fix`, at the same version, reads the module again."""
+    site: Path = _site(tmp_path, {"lone.pyi": "def k() -> bytes: ...\n"})
+    reads: list[Path] = []
+
+    def counted(path: Path, name: str | None = None) -> project.Module | None:
+        reads.append(path)
+        return project.read(path, name)
+
+    monkeypatch.setattr("constricter.fix.installed.read", counted)
+    _ = installed.cached(site / "lone.pyi", "lone")
+    monkeypatch.setattr("constricter.fix.installed._code", lambda: "changed")
+    _ = installed.cached(site / "lone.pyi", "lone")
+    assert reads == [site / "lone.pyi"] * 2
 
 
 def test_the_cache_is_the_platforms(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -2,19 +2,23 @@
 """Calls to the standard library `--fix` types from the tables (see `constricter.fix.stdlib`).
 
 A class, or a function returning one (`library_class`); a function with a fixed builtin result, one
-whose arguments decide its type (`constricter.fix.overloads`), or `os.environ.get`
-(`library_call`).
+whose arguments decide its type (`constricter.fix.overloads`), an installed package's too (see
+`constricter.fix.stubbed`), or `os.environ.get` (`library_call`).
 """
 
 import ast
 from collections.abc import Callable
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from constricter.fix import overloads, stdlib
 from constricter.fix.known import ImportPlan, Inference, Known
 
+if TYPE_CHECKING:
+    from constricter.fix.signatures import Expansion
+
 _STDLIB: Final = "stdlib"  # the fix kind
 _STR: Final = "str"
+_SELF: Final = "Self"  # a method's own class, in a template
 _WITH_DEFAULT: Final = 2  # `os.environ.get(key, default)`'s arguments
 
 
@@ -58,6 +62,65 @@ def library_variable(value: ast.expr, known: Known) -> Inference | None:
         if found is None
         else Inference(found, f"`{name}`'s annotation in typeshed", frozenset({_STDLIB}))
     )
+
+
+def installed_call(
+    value: ast.expr,
+    known: Known,
+    infer: Callable[[ast.expr], Inference | None],
+) -> Inference | None:
+    """Infer a call to an installed package's function whose arguments decide its type (`np.empty`).
+
+    By the signature its arguments certainly match (see `constricter.fix.stubbed`); `infer` types an
+    argument.
+
+    Returns:
+      The inference, or `None` for any other call, or arguments that don't decide it.
+
+    """
+    callee: str
+    func: ast.Name | ast.Attribute
+    match value:
+        case ast.Call(func=ast.Name() | ast.Attribute() as func) if (callee := ast.unparse(func)) in (
+            known.names.installed
+        ):
+            return overloads.chosen(callee, value, known, infer)
+        case _:
+            return None
+
+
+def installed_method(receiver: str, name: str, known: Known) -> stdlib.Method | None:
+    """Find an installed class's method whose arguments or instance decide its type, on a receiver's type.
+
+    Its class's type parameters bound to the receiver's type arguments (`np.ndarray[tuple[int], ...]`),
+    and `Self` to the receiver's type; through a public alias of the class (`npt.NDArray[np.float64]`),
+    the alias's parameters bound instead, and the class's by what the alias writes for them.
+
+    Returns:
+      It (its `entry`: the method's key in `LibraryNames.installed`), or `None`.
+
+    """
+    tree: ast.expr = ast.parse(receiver, mode="eval").body
+    base: ast.expr = tree.value if isinstance(tree, ast.Subscript) else tree
+    entry: str
+    if (entry := f"{ast.unparse(base)}.{name}") not in known.names.installed:
+        return None
+    args: list[ast.expr] = []
+    if isinstance(tree, ast.Subscript):
+        args = list(tree.slice.elts) if isinstance(tree.slice, ast.Tuple) else [tree.slice]
+    texts: list[str] = [ast.unparse(arg) for arg in args]
+    expansion: Expansion | None
+    if (expansion := known.names.aliases.get(ast.unparse(base))) is not None:
+        own: dict[str, str] = dict(zip(expansion.params, texts, strict=False))
+        return stdlib.Method(
+            entry,
+            None,
+            {**own, _SELF: receiver},
+            dict(expansion.templates),
+            overloads.substituted(expansion.receiver, own),
+        )
+    params: tuple[str, ...] = known.names.parameters.get(ast.unparse(base), ())
+    return stdlib.Method(entry, None, {**dict(zip(params, texts, strict=False)), _SELF: receiver})
 
 
 def library_call(

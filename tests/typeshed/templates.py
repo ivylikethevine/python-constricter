@@ -9,7 +9,7 @@ import ast
 from collections.abc import Iterator, Sequence
 from typing import Final
 
-from constricter.fix.stdlib import Constant
+from constricter.fix.signatures import Constant
 from tests.typeshed.reading import ARITY, TYPING_GENERICS, ClassRef, Reading, usable
 from tests.typeshed.stubs import Alias, Found, Klass, TypeVariable
 

@@ -6,6 +6,36 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types an installed class's methods on a receiver typed through a public alias of the class
+  (`x.sum()` on an `npt.NDArray[np.float64]` is an `np.float64`): matched as what the alias stands
+  for, with `Self` kept as the receiver is written; the alias found through an import under
+  `if TYPE_CHECKING:`, one another module re-exports (pandas's `from pandas._typing import npt`), or
+  one the file's own fixes add. 8 more fixes on pandas, no new type error.
+- An installed module's cached read is keyed by constricter's code as well as its version: a
+  development build whose modules had changed shape crashed reading an older entry.
+- `--fix` types an installed class's method that declares its `self` by the receiver's type: matched
+  against `self`'s annotation, the type variables it binds checked against their bounds by the
+  installed classes' ancestors (`a.sum()` on an `np.ndarray[tuple[int], np.dtype[np.float64]]` is an
+  `np.float64`: `self: NDArray[ScalarT]`, `ScalarT` bound to `inexact`). A signature whose `self`
+  the receiver certainly isn't is passed over. None more on pandas yet, whose arrays are typed bare
+  (`np.ndarray`) or through `npt.NDArray`.
+- `--fix` types an installed class's methods whose arguments or receiver decide their type, its type
+  parameters bound by the receiver's type (`a.astype(np.float32)`, `a.reshape(2, -1)`, a `Self`
+  return), inherited ones too; and a builtin container argument by its elements, a bounded type
+  variable binding it (`np.empty((n, 2), dtype=np.float64)` is an
+  `np.ndarray[tuple[int, int], np.dtype[np.float64]]`). A class alias passed as an argument
+  (`np.int32`) binds a `type[T]` as a class does. 52 more fixes on pandas, whose type checkers still
+  find no new error after `--fix`.
+- `--fix` types a call into an installed package whose overloads its arguments decide by the one
+  they match, as it does the standard library's: with numpy 2.5's stubs,
+  `np.empty(n, dtype=np.float64)` is an `np.ndarray[tuple[int], np.dtype[np.float64]]`. A stub's
+  overloads are read through its aliases (PEP 695's too), type variables' bounds and constraints,
+  and protocols; a standard-library class they name, by a new `scalars` table; and a class passed as
+  an argument binds a `type[T]`. 83 more fixes on pandas, whose type checkers find no new error
+  after `--fix`. An installed class whose subscripted base passes no type variable
+  (`class float64(floating[_64Bit])`) is no longer taken for a generic one, and a typed package's
+  module re-exports only what the typing rules export (`from m import x as x`, `__all__`), so
+  `numpy.NDArray`, which numpy doesn't export, is never written.
 - `--fix` types a comparison of builtin values (`n < 3`, `len(xs) == 0`) as a `bool`; a
   standard-library module's variable by its annotation in typeshed (`sys.path`: `list[str]`,
   `os.sep`: `str`, from a new `variables` table); and a chained assignment's names (`i = j = 0`) by

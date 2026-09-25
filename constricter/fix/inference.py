@@ -7,7 +7,13 @@ from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
 from constricter.fix import overloads, stdlib
 from constricter.fix.known import ImportPlan, Inference, Known
-from constricter.fix.library import library_call, library_class, library_variable
+from constricter.fix.library import (
+    installed_call,
+    installed_method,
+    library_call,
+    library_class,
+    library_variable,
+)
 from constricter.fix.members import assigned_attribute, member, returned_method, subscripted
 from constricter.fix.opened import opened
 from constricter.fix.returns import BUILTIN_RETURNS
@@ -198,7 +204,10 @@ def _member_of(
         case ast.Call():
             found: Inference | None = member(receiver, attr, value, known)
             method: stdlib.Method | None
-            if found is None and (method := stdlib.overloaded_method(receiver, attr, known)) is not None:
+            if found is None and (
+                (method := stdlib.overloaded_method(receiver, attr, known)) is not None
+                or (method := installed_method(receiver, attr, known)) is not None
+            ):
                 found = overloads.chosen(
                     method.entry,
                     value,
@@ -258,6 +267,7 @@ def _from_value(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
         or library_class(value, known)
         or library_variable(value, known)
         or library_call(value, known, lambda arg: inference(arg, known, declared))
+        or installed_call(value, known, lambda arg: inference(arg, known, declared))
         or _returns(value, known)
         or _called(value, known)
     )

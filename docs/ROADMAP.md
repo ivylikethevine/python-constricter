@@ -49,7 +49,16 @@
 - **Installed packages**: calls into an installed package that declares its types (`py.typed`, a
   stub package, a lone stub module) are typed by their declared returns as a checked file's are,
   found as the import system would on this Python's path and `VIRTUAL_ENV`'s; types are imported
-  from a public module that re-exports them.
+  from a public module that re-exports them. Functions whose overloads or type variables their
+  arguments decide are matched as the tables' are (`constricter.fix.stubbed`), through the package's
+  aliases, type variables and protocols, the standard-library classes it names by the `scalars`
+  table, and a class argument binding `type[T]`: 83 more fixes on pandas
+  (`np.empty(n, dtype=np.float64)`), no new type error. They're read at run time through the index,
+  not by `tests/typeshed/`'s reader, which needs typeshed's standard-library stubs. Their classes'
+  methods too, the receiver's type binding the class's type parameters and `Self`, or matched
+  against a method's own `self` (`a.sum()`), a receiver typed through a public alias as the class it
+  stands for (`npt.NDArray[np.float64]`); a builtin container argument by its elements, binding a
+  bounded type variable (numpy's shapes).
 - **Fixes that add an import**: `open(p, "rb")` by its literal mode, standard-library classes, and
   `Final`, through an import the module has or one added after its leading imports; another checked
   file's type the module doesn't import, under `if TYPE_CHECKING:` (no import cycle at run time),
@@ -169,17 +178,16 @@
 By scope (smallest first) and, within each, by value. Each item says what it is, why, how, and when
 it's done.
 
-### Medium: a few days
+### Small: a day or less
 
-1. **Installed functions' overloads.** Calls into installed packages are typed by declared returns
-   alone; their overloads aren't read. On the corpora, 898 untyped numpy calls pass only literals,
-   but the commonest (`np.array([1, 2])`) matches an overload returning `NDArray[Any]`, too vague to
-   write, and most of the rest need a class argument to bind a type variable
-   (`np.empty(n, dtype=np.float64)`: `_DTypeLike[_SCT]` given `np.float64`). Move the stub reading
-   in `tests/typeshed/` into the package, read an installed stub's overloads as the tables' are
-   (cached with the module), and bind a type variable to a class argument (`type[_SCT]`). Done when
-   `np.empty(n, dtype=np.float64)` is an `npt.NDArray[np.float64]` and pandas's `--types` finds no
-   new error.
+1. **Plain Pyright in editors.** An editor running Pyright (Neovim's Mason, Pylance) reads only
+   `[tool.pyright]` or `pyrightconfig.json`, so it doesn't find `local/.venv` and reports the dev
+   dependencies unresolved; but basedpyright refuses a `pyproject.toml` with both sections and falls
+   back to checking the whole checkout, `local/` included, and it reads `pyrightconfig.json` before
+   `pyproject.toml`, where Pyright rejects its `typeCheckingMode = "all"`. Find a layout both read
+   (the shared settings where both look, basedpyright's own apart), or document the editor-side
+   setting (`python.pythonPath`). Done when Pyright resolves `pytest` and `numpy` in an editor and
+   `basedpyright` still checks `constricter` and `tests` alone in about the same time.
 
 ### Large: a week or more
 

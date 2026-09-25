@@ -19,7 +19,8 @@ import copy
 from collections.abc import Iterable, Iterator, Sequence
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix.stdlib import Accepts, Constant, Parameter, Signature
+from constricter.fix.signatures import Accepts, Constant, Parameter
+from constricter.fix.stdlib import Signature
 from tests.typeshed.reading import (
     ClassRef,
     Defs,
@@ -832,6 +833,25 @@ class Overloads(Templates):
     def _is_protocol(self, klass: ClassRef) -> bool:
         node: ast.ClassDef | None = self.reading.class_node(klass)
         return node is not None and self.reading.is_protocol(node, klass.module)
+
+    def takes(self, annotation: ast.expr, module: str, types: Sequence[str]) -> str:
+        """Work out whether a parameter's annotation takes an argument of each builtin type in `types`.
+
+        Returns:
+          A verdict (`YES`, `NO`, `MAYBE`) per type, in order.
+
+        """
+        atoms: list[Atom] = list(self._atoms(annotation, module, 0))
+        return "".join(self._verdict(atoms, name, constant=False) for name in types)
+
+    def scalar_members(self, scalar: str) -> frozenset[str] | None:
+        """Name what an argument of type `scalar` has (`None`'s: `object`'s), for protocols to be checked by.
+
+        Returns:
+          Them, or `None` if its class's bases can't all be followed.
+
+        """
+        return self._class_names(_CLASSES.get(scalar, scalar))
 
     def _class_names(self, name: str) -> frozenset[str] | None:
         """Name what a builtin class's instances have: its members, its bases', `object`'s.

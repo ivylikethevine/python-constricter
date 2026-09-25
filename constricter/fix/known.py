@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias
 
+from constricter.fix.signatures import Expansion, ReadSignature
 from constricter.offences import MAX_LENGTH
 from constricter.rules.annotations import free_of, free_of_all
 
@@ -108,12 +109,24 @@ class ImportPlan:
 class LibraryNames(NamedTuple):
     """How the module names the library functions `--fix` knows.
 
-    `typing.cast` (see `casts`), and the standard library's (see `stdlib.origins`).
+    `typing.cast` (see `casts`), and the standard library's (see `stdlib.origins`). `installed`: the
+    installed packages' functions it calls whose arguments decide their type, by the call's name as
+    written, each with its signatures (their classes' methods too, as `np.ndarray.astype`), and
+    `classes` the installed classes it passes as arguments, which may bind their type variables;
+    `parameters`: those methods' classes' type parameters, which a receiver's type binds; `lineage`:
+    the installed classes it names, each with where it and its ancestors are defined, which a
+    receiver's type is matched by; `aliases`: the public aliases of installed generic classes it
+    names, whose methods are their classes' (see `constricter.fix.stubbed`).
     """
 
     casts: frozenset[str] = frozenset()
     stdlib: Mapping[str, str] = MappingProxyType({})
     plan: ImportPlan | None = None  # how to name a type the module doesn't import yet
+    installed: Mapping[str, tuple[ReadSignature, ...]] = MappingProxyType({})
+    classes: frozenset[str] = frozenset()
+    parameters: Mapping[str, tuple[str, ...]] = MappingProxyType({})
+    lineage: Mapping[str, tuple[str, ...]] = MappingProxyType({})
+    aliases: Mapping[str, Expansion] = MappingProxyType({})
 
 
 class Returned(NamedTuple):
@@ -258,6 +271,11 @@ class Outside(NamedTuple):
     generics: frozenset[str] = frozenset()  # other checked files' generic classes, as it spells them
     callees: Mapping[str, Callee] = {}
     parameters: Mapping[str, Mapping[str, Passed]] = {}  # see `Seeds`
+    overloaded: Mapping[str, tuple[ReadSignature, ...]] = {}  # see `LibraryNames.installed`
+    installed_classes: frozenset[str] = frozenset()  # see `LibraryNames.classes`
+    installed_parameters: Mapping[str, tuple[str, ...]] = {}  # see `LibraryNames.parameters`
+    installed_lineage: Mapping[str, tuple[str, ...]] = {}  # see `LibraryNames.lineage`
+    installed_aliases: Mapping[str, Expansion] = {}  # see `LibraryNames.aliases`
 
     def usable(self, taken: frozenset[str]) -> "Outside":
         """Drop what other files offer whose type needs a name imported that the module binds already.
@@ -287,6 +305,11 @@ class Outside(NamedTuple):
             self.generics,
             self.callees,
             self.parameters,
+            self.overloaded,
+            self.installed_classes,
+            self.installed_parameters,
+            self.installed_lineage,
+            self.installed_aliases,
         )
 
 
