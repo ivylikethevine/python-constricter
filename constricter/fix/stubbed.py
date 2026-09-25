@@ -22,6 +22,7 @@ from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix import project
 from constricter.fix.atoms import (
+    ANYTHING,
     BUILTINS_MODULE,
     CLASS,
     MAYBE,
@@ -83,6 +84,8 @@ _UNIONS: Final = frozenset({"Union", "Optional"})  # `_OPTIONAL` too
 _MAX_DEPTH: Final = 20  # aliases followed before giving up
 _TYPE_VARIABLE: Final = "t"  # `Accepts`' key for an unbounded type variable
 _SELF: Final = "Self"
+_ANY: Final = "typing.Any"  # a pattern's anything
+_UNFOLLOWED: Final = "?"  # a lineage's base that can't be followed
 
 
 _Resolved: TypeAlias = Atom | tuple[Alias, Scope, Origin]
@@ -94,30 +97,42 @@ _Packaged: TypeAlias = tuple[tuple[str, Origin], ...]
 
 @dataclass
 class _Memo:
-    """What's read for the index it was read from.
+    """What's read of the installed modules, for as long as the index has the same ones.
 
-    Each installed function's signatures, and each package's classes (see `_package_classes`).
+    Each installed function's signatures, each package's classes (see `_package_classes`), each
+    class's lineage and methods (see `Methods`), each class's methods by name, and the names of
+    those it has, its bases' included. The index changes as files are checked, the installed
+    modules in it don't.
     """
 
-    modules: Mapping[str, Module] | None = None
+    installed: frozenset[int] = frozenset()  # the installed modules read, by identity
     read: dict[tuple[str, str], tuple[ReadSignature, ...]] = field(
         default_factory=dict[tuple[str, str], "tuple[ReadSignature, ...]"],
     )
     packages: dict[str, _Packaged] = field(
         default_factory=dict[str, "_Packaged"],
     )
+    lines: dict[Origin, tuple[str, ...]] = field(default_factory=dict[Origin, "tuple[str, ...]"])
+    methods: dict[tuple[Origin, str], tuple[ReadSignature, ...]] = field(
+        default_factory=dict[tuple[Origin, str], "tuple[ReadSignature, ...]"],
+    )
+    names: dict[Origin, frozenset[str]] = field(default_factory=dict[Origin, frozenset[str]])
 
     def of(self, modules: Mapping[str, Module]) -> "_Memo":
-        """Keep what's read for `modules` alone.
+        """Keep what's read for as long as `modules` has the same installed ones.
 
         Returns:
-          This memo, emptied if it was another index's.
+          This memo, emptied if they've changed.
 
         """
-        if modules is not self.modules:
-            self.modules = modules
+        installed: frozenset[int] = frozenset(id(module) for module in modules.values() if module.installed)
+        if installed != self.installed:
+            self.installed = installed
             self.read = {}
             self.packages = {}
+            self.lines = {}
+            self.methods = {}
+            self.names = {}
         return self
 
 
@@ -172,11 +187,15 @@ class Methods(NamedTuple):
     """Installed classes' methods a file may call whose arguments or instance decide their type.
 
     `signatures`: each one's, by the class as the file writes it and the method (`np.ndarray.astype`);
-    `parameters`: each such class's type parameters, in order, which a receiver's type binds.
+    `parameters`: each such class's type parameters, in order, which a receiver's type binds;
+    `lineage`: each installed class the file names, as it writes it, with where it's defined and its
+    ancestors' (`numpy.float64`, `numpy.floating`, ...), `?` last where a base can't be followed: a
+    receiver's type is matched against a method's `self` by them.
     """
 
     signatures: dict[str, tuple[ReadSignature, ...]]
     parameters: dict[str, tuple[str, ...]]
+    lineage: dict[str, tuple[str, ...]]
 
 
 def methods(catalog: Index, path: Path) -> Methods:
@@ -187,23 +206,51 @@ def methods(catalog: Index, path: Path) -> Methods:
 
     """
     modules: dict[str, Module] = catalog.modules
-    found: Methods = Methods({}, {})
+    found: Methods = Methods({}, {}, {})
     target: Module | None
     if path.suffix != SUFFIX or (target := modules.get(module_name(path))) is None or not target.method_calls:
         return found
     reader: _Reader = _Reader(modules)
+    memo: _Memo = _MEMO.of(modules)
     spelled: str
     origin: Origin
     for spelled, origin in _classes(modules, target):
+        if origin not in memo.lines:
+            memo.lines[origin] = tuple(dict.fromkeys(reader.lineage(origin, 0)))
+            memo.names[origin] = _method_names(modules, memo.lines[origin])
+        found.lineage[spelled] = memo.lines[origin]
         module: Module = modules[origin[0]]
         klass: Class = cast("Declarations", module.declared).classes[origin[1] or ""]
         name: str
-        for name in sorted(target.method_calls):
-            read: tuple[ReadSignature, ...] | None
-            if (read := reader.method(module, klass, name, 0)) is not None:
-                found.signatures[f"{spelled}.{name}"] = read
-                found.parameters[spelled] = tuple(param for param, _ in klass.params)
+        for name in sorted(memo.names[origin] & target.method_calls):
+            if (origin, name) not in memo.methods:
+                # Its lineage has the method: the class or a base declares it.
+                memo.methods[origin, name] = cast(
+                    "tuple[ReadSignature, ...]",
+                    reader.method(module, klass, name, 0),
+                )
+            found.signatures[f"{spelled}.{name}"] = memo.methods[origin, name]
+            found.parameters[spelled] = tuple(param for param, _ in klass.params)
     return found
+
+
+def _method_names(modules: Mapping[str, Module], lineage: Sequence[str]) -> frozenset[str]:
+    """Name the methods a class or any of its installed ancestors (its lineage) declares.
+
+    Returns:
+      Them.
+
+    """
+    found: set[str] = set()
+    path: str
+    for path in lineage:
+        module: str
+        name: str
+        module, _, name = path.rpartition(".")
+        declared: Declarations | None = None if module not in modules else modules[module].declared
+        klass: Class | None = None if declared is None else declared.classes.get(name)
+        found.update(() if klass is None else klass.methods)
+    return frozenset(found)
 
 
 def _classes(modules: Mapping[str, Module], target: Module) -> Iterator[tuple[str, Origin]]:
@@ -324,6 +371,16 @@ def _read_all(
     return tuple(reader.signature(module, signature, shared, params) for signature in written)
 
 
+def _names(text: str) -> frozenset[str]:
+    """Name the bare names a template or pattern uses (its type variables').
+
+    Returns:
+      Them.
+
+    """
+    return frozenset(node.id for node in ast.walk(parse_text(text)) if isinstance(node, ast.Name))
+
+
 def _names_any(annotation: str | None, names: frozenset[str]) -> bool:
     """Check whether an annotation names any of `names`.
 
@@ -348,6 +405,7 @@ class _Reader:
     def __init__(self, modules: Mapping[str, Module]) -> None:
         """Read in `modules`."""
         self.modules: Mapping[str, Module] = modules
+        self.matching: bool = False  # writing a pattern to match a receiver against (see `pattern`)
 
     def signature(
         self,
@@ -383,8 +441,52 @@ class _Reader:
             if signature.returns is None
             else self._template(ast.parse(signature.returns, mode="eval").body, scope, 0)
         )
-        # A method declaring its `self` (`self: ndarray[Any, dtype[bool]]`) is for some instances only.
-        return ReadSignature(params, returns, [MAYBE] if signature.self_typed else None)
+        if signature.self_type is None:
+            return ReadSignature(params, returns, None)
+        # A method declaring its `self` (`self: NDArray[ScalarT]`) is for such instances alone.
+        receiver: str | None = self.pattern(parse_text(signature.self_type), scope)
+        # Each type variable `self`'s pattern names, bounded (its constraints, for a constrained one).
+        variables: Mapping[str, Variable] = cast("Declarations", module.declared).variables
+        bounds: list[tuple[str, str]] = []
+        name: str
+        for name in sorted(_names(receiver or "")):
+            bound: str | tuple[ast.expr, Scope] | None = (
+                scope.params[name]
+                if name in scope.params
+                else variables[name].bound
+                if name in variables
+                else None
+            )
+            pattern: str | None = (
+                self.pattern(parse_text(bound), scope)
+                if isinstance(bound, str) and bound != PARAM_SPEC
+                else None
+            )
+            if pattern is not None:
+                bounds.append((name, pattern))
+        return ReadSignature(
+            params,
+            returns,
+            None if receiver is not None else [MAYBE],
+            receiver,
+            tuple(bounds),
+        )
+
+    def pattern(self, expr: ast.expr, scope: Scope) -> str | None:
+        """Write an annotation as a pattern for a receiver's type to match (see `ReadSignature.receiver`).
+
+        As a template, but every class by where it's defined (`builtins.tuple`), aliases written out,
+        and anything (`Any`, `object`, a type variable from elsewhere) as `typing.Any`.
+
+        Returns:
+          It, or `None` if it names something that can't be matched (a `Literal`).
+
+        """
+        self.matching = True
+        try:
+            return self._template(expr, scope, 0)
+        finally:
+            self.matching = False
 
     def _accepts(self, annotation: ast.expr, scope: Scope) -> Accepts:
         """Work out what a parameter takes (see `stdlib.Accepts`).
@@ -633,6 +735,34 @@ class _Reader:
                     return read
         return None
 
+    def lineage(self, origin: Origin, hops: int) -> Iterator[str]:
+        """Walk an installed class and its ancestors, depth first (see `Methods.lineage`).
+
+        Yields:
+          Where each is defined (`numpy.float64`), then `?` if a base can't be followed.
+
+        """
+        yield f"{origin[0]}.{origin[1]}"
+        module: Module = self.modules[origin[0]]
+        klass: Class = cast("Declarations", module.declared).classes[origin[1] or ""]
+        base: str
+        for base in klass.bases:
+            parsed: ast.expr = parse_text(base)
+            parsed = parsed.value if isinstance(parsed, ast.Subscript) else parsed
+            resolved: _Resolved | None = (
+                self.resolve(parsed, Scope(module, {}, module.name))
+                if isinstance(parsed, ast.Name | ast.Attribute)
+                else None
+            )
+            if not isinstance(resolved, Atom) or resolved.kind != CLASS:
+                yield _UNFOLLOWED
+            elif resolved.module is None:
+                yield atom_path(resolved)
+            elif hops < _MAX_DEPTH:
+                yield from self.lineage(resolved.origin, hops + 1)
+            else:  # a cycle of bases
+                yield _UNFOLLOWED
+
     def is_class(self, target: Module, name: str) -> bool:
         """Check whether a dotted name the module writes (`np.float64`) is an installed class or its alias.
 
@@ -765,7 +895,7 @@ class _Reader:
             origin: Origin
             alias, where, origin = resolved
             public: Origin = project.public_origin(self.modules, origin)
-            if not private_name(public[0]) and not private_name(public[1]):
+            if not self.matching and not private_name(public[0]) and not private_name(public[1]):
                 written = f"{public[0]}.{public[1]}"
             elif alias.params or free_variables(alias.value, where) or not args:
                 return self._template(
@@ -778,7 +908,7 @@ class _Reader:
         elif resolved.kind == _ARG:
             return self._template(*argument_of(resolved), hops + 1)
         elif resolved.kind == VAR:
-            written = resolved.name if owned(resolved, scope.owner) else None
+            written = resolved.name if owned(resolved, scope.owner) else _ANY if self.matching else None
         else:
             written = self._class_path(resolved)
         if written is None or not args:
@@ -794,6 +924,8 @@ class _Reader:
 
         """
         origin: Origin = atom.origin
+        if self.matching:
+            return _ANY if atom_path(atom) in ANYTHING else None if origin[0] in TYPING else atom_path(atom)
         if atom.module is not None:
             origin = project.public_origin(self.modules, origin)
         elif origin[0] == BUILTINS_MODULE:

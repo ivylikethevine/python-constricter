@@ -113,8 +113,9 @@ class LibraryNames(NamedTuple):
     installed packages' functions it calls whose arguments decide their type, by the call's name as
     written, each with its signatures (their classes' methods too, as `np.ndarray.astype`), and
     `classes` the installed classes it passes as arguments, which may bind their type variables;
-    `parameters`: those methods' classes' type parameters, which a receiver's type binds (see
-    `constricter.fix.stubbed`).
+    `parameters`: those methods' classes' type parameters, which a receiver's type binds; `lineage`:
+    the installed classes it names, each with where it and its ancestors are defined, which a
+    receiver's type is matched by (see `constricter.fix.stubbed`).
     """
 
     casts: frozenset[str] = frozenset()
@@ -123,6 +124,7 @@ class LibraryNames(NamedTuple):
     installed: Mapping[str, tuple[ReadSignature, ...]] = MappingProxyType({})
     classes: frozenset[str] = frozenset()
     parameters: Mapping[str, tuple[str, ...]] = MappingProxyType({})
+    lineage: Mapping[str, tuple[str, ...]] = MappingProxyType({})
 
 
 class Returned(NamedTuple):
@@ -270,6 +272,7 @@ class Outside(NamedTuple):
     overloaded: Mapping[str, tuple[ReadSignature, ...]] = {}  # see `LibraryNames.installed`
     installed_classes: frozenset[str] = frozenset()  # see `LibraryNames.classes`
     installed_parameters: Mapping[str, tuple[str, ...]] = {}  # see `LibraryNames.parameters`
+    installed_lineage: Mapping[str, tuple[str, ...]] = {}  # see `LibraryNames.lineage`
 
     def usable(self, taken: frozenset[str]) -> "Outside":
         """Drop what other files offer whose type needs a name imported that the module binds already.
@@ -302,6 +305,7 @@ class Outside(NamedTuple):
             self.overloaded,
             self.installed_classes,
             self.installed_parameters,
+            self.installed_lineage,
         )
 
 

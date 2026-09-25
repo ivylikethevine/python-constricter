@@ -154,9 +154,12 @@ container argument is taken by its elements where the parameter says what they m
 (`tuple[int, ...]`), and binds a bounded type variable its bound takes (numpy's shape: `(n, 2)` is a
 `tuple[int, int]`). An installed class's methods are matched the same way, on a receiver whose type
 is known: its type arguments bind the class's type parameters, `Self` is the receiver's type, and a
-method its class inherits is its base's. A method declaring its `self` is for some instances only:
-its signature may be the one, never certainly. A private alias in the return is written as what it
-stands for; a public one by its public path (`npt.NDArray[np.float64]`).
+method its class inherits is its base's. A method declaring its `self`
+(`def sum(self: NDArray[ScalarT]) -> ScalarT`) is matched against the receiver's type: argument by
+argument, a type variable bound to what's there and checked against its bound, and a class by the
+installed classes' ancestors (`np.float64` is an `inexact`); a receiver that certainly isn't one
+passes the signature over, one that may be leaves it open. A private alias in the return is written
+as what it stands for; a public one by its public path (`npt.NDArray[np.float64]`).
 
 A type another checked file declares (`get_handle() -> IOHandles[str]`) names what that file imports
 or defines; a name the calling file doesn't have is imported where the type's file has it from,

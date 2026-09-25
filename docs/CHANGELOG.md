@@ -6,6 +6,12 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types an installed class's method that declares its `self` by the receiver's type: matched
+  against `self`'s annotation, the type variables it binds checked against their bounds by the
+  installed classes' ancestors (`a.sum()` on an `np.ndarray[tuple[int], np.dtype[np.float64]]` is an
+  `np.float64`: `self: NDArray[ScalarT]`, `ScalarT` bound to `inexact`). A signature whose `self`
+  the receiver certainly isn't is passed over. None more on pandas yet, whose arrays are typed bare
+  (`np.ndarray`) or through `npt.NDArray`.
 - `--fix` types an installed class's methods whose arguments or receiver decide their type, its type
   parameters bound by the receiver's type (`a.astype(np.float32)`, `a.reshape(2, -1)`, a `Self`
   return), inherited ones too; and a builtin container argument by its elements, a bounded type

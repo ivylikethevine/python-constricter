@@ -38,7 +38,7 @@ class Signature(NamedTuple):
     params: tuple[Param, ...]
     returns: str | None
     type_params: tuple[tuple[str, str | None], ...] = ()
-    self_typed: bool = False  # a method whose `self` is annotated: only some instances have it
+    self_type: str | None = None  # a method's `self` annotation (not `Self`): only such instances have it
 
 
 class Class(NamedTuple):
@@ -189,7 +189,7 @@ def _unbound(signature: Signature) -> Signature:
     annotation: str | None = signature.params[0][3]
     return signature._replace(
         params=signature.params[1:],
-        self_typed=annotation is not None and annotation.rpartition(".")[2] != _SELF,
+        self_type=None if annotation is None or annotation.rpartition(".")[2] == _SELF else annotation,
     )
 
 

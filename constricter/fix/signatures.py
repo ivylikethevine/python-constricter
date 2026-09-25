@@ -64,3 +64,8 @@ class ReadSignature(NamedTuple):
     params: tuple[Parameter, ...]
     returns: str | None
     instance: list[str] | None
+    # An installed class's method declaring its `self`: the type its receiver must have, as a pattern
+    # (classes by where they're defined, `typing.Any` for anything, type variables bare), and those
+    # variables' bounds, likewise (see `constricter.fix.stubbed`).
+    receiver: str | None = None
+    bounds: tuple[tuple[str, str], ...] = ()

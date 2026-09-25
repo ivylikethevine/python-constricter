@@ -41,6 +41,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         {**stubbed.overloaded(modules, path), **methods.signatures},
         stubbed.classes(modules, path),
         methods.parameters,
+        methods.lineage,
     )
 
 

@@ -38,6 +38,8 @@ SITE: Final = {
             shaped as shaped,
             sized as sized,
             Sub as Sub,
+            Other as Other,
+            Mixed as Mixed,
             Double as Double,
             Floats as Floats,
             Numbers as Numbers,
@@ -79,6 +81,7 @@ SITE: Final = {
         class Scalar: ...
         class Float(Scalar, float): ...
         _Sh = TypeVar("_Sh", bound=tuple[int, ...])
+        _B2 = TypeVar("_B2", bound=Scalar)
         _Same = Array
 
         class Array(Generic[_S]):
@@ -92,6 +95,23 @@ SITE: Final = {
             def only(self: Array[Float]) -> int: ...
             @staticmethod
             def build() -> int: ...
+            @overload
+            def total(self: Array[Float], axis: None = None) -> Float: ...
+            @overload
+            def total(self: _Arr[_B2], axis: int) -> Array[_B2]: ...
+            def weird(self: Literal[1]) -> int: ...
+            def pair(self: Array[tuple[int, ...]]) -> int: ...
+            def tail(self: Array[tuple[int, int]]) -> str: ...
+            def either(self: Array[Float] | Array[Other]) -> bytes: ...
+            def twice(self: Array[tuple[_T, _T]]) -> _T: ...
+            def fill(self: Array[_T], value: _T) -> _T: ...
+            def anything(self: Array[Any]) -> int: ...
+            def three(self: Array[Other] | Array[Scalar] | Array[Float]) -> str: ...
+
+        class Other(Scalar): ...
+        class Mixed(Scalar, Array[_S]): ...
+        class Loop(Looped): ...
+        class Looped(Loop): ...
 
         class Sub(Missing, Array[_S], f()): ...
         class _Hidden: ...
@@ -180,7 +200,22 @@ from shapes import make, pick, mode, size, either, loose, first, wrap, listed, n
 import loose as untyped
 
 
-def run(n: int, s: str, sub: shapes.Sub[shapes.Float], bare: Array) -> None:
+def run(
+    n: int,
+    s: str,
+    sub: shapes.Sub[shapes.Float],
+    bare: Array,
+    others: Array[shapes.Other],
+    ai: Array[int],
+    t1: Array[tuple[int, int]],
+    t2: Array[tuple[int]],
+    t3: Array[tuple[int, ...]],
+    t4: Array[shapes.Float, shapes.Float],
+    t5: Array[tuple[int, str]],
+    mi: Array[Missing],
+    sa: Array[shapes.Sub[shapes.Float]],
+    mx: shapes.Mixed[shapes.Float],
+) -> None:
     a = make(n)
     b = shapes.make(3, kind=shapes.Float)
     c = make(n, shapes.Scalar)
@@ -220,6 +255,30 @@ def run(n: int, s: str, sub: shapes.Sub[shapes.Float], bare: Array) -> None:
     pp = s.first()
     qq = bare.same()
     print(qq)
+    r1 = a.total()
+    r2 = c.total()
+    r3 = c.total(1)
+    r4 = a.weird()
+    r5 = t1.pair()
+    r6 = t1.tail()
+    r7 = t3.tail()
+    r8 = t2.tail()
+    r9 = t4.total()
+    s1 = a.either()
+    s2 = c.either()
+    s3 = others.either()
+    s4 = ai.total(1)
+    s5 = sub.total()
+    s6 = bare.total()
+    s7 = mi.total()
+    s8 = sa.total()
+    s9 = t5.twice()
+    u1 = a.fill(1)
+    u2 = a.anything()
+    u3 = a.three()
+    u4 = mx.first()
+    print(u2, u3, u4)
+    print(r1, r2, r3, r4, r5, r6, r7, r8, r9, s1, s2, s3, s4, s5, s6, s7, s8, s9, u1)
     print(a, b, c, d, e, f, g, h, i, j, k, m, o, p, q, r, t, u, v, w, x, y, z, aa, bb)
     print(cc, dd, ee, ff, gg, hh, ii, jj, kk, mm, oo, pp)
 """
@@ -263,6 +322,28 @@ FIXED: Final = (
     "    oo = a.plain()\n",
     "    pp = s.first()\n",
     "    qq = bare.same()\n",  # `Array` without its argument: not written bare
+    "    r1: shapes.Float = a.total()\n",  # `self: Array[Float]`, as the receiver is
+    "    r2 = c.total()\n",  # an `Array[Scalar]` is neither overload's `self`, with no axis
+    "    r3: Array[shapes.Scalar] = c.total(1)\n",  # `_B2` bound to `Scalar`, within its bound
+    "    r4: int = a.weird()\n",  # a `self` it can't match: its one signature, all the same
+    "    r5: int = t1.pair()\n",
+    "    r6: str = t1.tail()\n",
+    "    r7: str = t3.tail()\n",  # any length: its one signature
+    "    r8 = t2.tail()\n",  # one element, not two
+    "    r9: shapes.Float = t4.total()\n",
+    "    s1: bytes = a.either()\n",
+    "    s2 = c.either()\n",
+    "    s3: bytes = others.either()\n",
+    "    s4 = ai.total(1)\n",  # `int` isn't within `_B2`'s bound
+    "    s5: shapes.Float = sub.total()\n",  # a subclass: the first may be the one, the second isn't
+    "    s6: shapes.Float = bare.total()\n",  # without its argument: the first may be the one
+    "    s7: shapes.Float = mi.total()\n",  # an unknown argument: likewise
+    "    s8: shapes.Float = sa.total()\n",  # a class whose lineage has a gap: likewise
+    "    s9 = t5.twice()\n",  # `_T` bound two ways
+    "    u1 = a.fill(1)\n",  # `_T` bound by the receiver and the argument apart
+    "    u2: int = a.anything()\n",
+    "    u3: str = a.three()\n",
+    "    u4: shapes.Float = mx.first()\n",  # its second base's
 )
 
 MODERN_FIXED: Final = "    a: modern.Array[modern.Float] = modern.empty(n, modern.Float)\n"
@@ -313,7 +394,7 @@ def test_signatures_are_read_once_per_index(tmp_path: Path, site: Path) -> None:
     assert list(first) == ["shapes.make"]
     assert not stubbed.overloaded(catalog, tmp_path / "other.py")
     assert stubbed.classes(catalog, tmp_path / "other.py") == frozenset()
-    assert stubbed.methods(catalog, tmp_path / "other.py") == stubbed.Methods({}, {})
+    assert stubbed.methods(catalog, tmp_path / "other.py") == stubbed.Methods({}, {}, {})
     assert stubbed.methods(catalog, main) == stubbed.methods(catalog, main)  # the second from the memo
     # A class generic only through a base is generic where that base passes a type variable.
     generics: frozenset[str] = catalog.modules["shapes._core"].generics

@@ -55,8 +55,9 @@
   table, and a class argument binding `type[T]`: 83 more fixes on pandas
   (`np.empty(n, dtype=np.float64)`), no new type error. They're read at run time through the index,
   not by `tests/typeshed/`'s reader, which needs typeshed's standard-library stubs. Their classes'
-  methods too, the receiver's type binding the class's type parameters and `Self`; a builtin
-  container argument by its elements, binding a bounded type variable (numpy's shapes).
+  methods too, the receiver's type binding the class's type parameters and `Self`, or matched
+  against a method's own `self` (`a.sum()`); a builtin container argument by its elements, binding a
+  bounded type variable (numpy's shapes).
 - **Fixes that add an import**: `open(p, "rb")` by its literal mode, standard-library classes, and
   `Final`, through an import the module has or one added after its leading imports; another checked
   file's type the module doesn't import, under `if TYPE_CHECKING:` (no import cycle at run time),
@@ -178,13 +179,12 @@ it's done.
 
 ### Medium: a few days
 
-1. **Installed methods that declare their `self`.** numpy types most reductions and element
-   accessors by `self`'s annotation (`def sum(self: NDArray[ScalarT], ...) -> ScalarT`, `take`,
-   `item`, `tolist`), which `--fix` reads as possibly any instance's: with more than one such
-   overload, none is certain. Match the receiver's type against `self`'s, as a type variable's
-   argument (`NDArray[np.float64]` binds `ScalarT` to `np.float64`), and refuse a signature whose
-   `self` it certainly isn't. Done when `a.sum()` on an
-   `np.ndarray[tuple[int], np.dtype[np.float64]]` is an `np.float64` and pandas's `--types` still
+1. **Receivers typed through a public alias.** An installed method is found by its receiver's class
+   as the module writes it (`np.ndarray[...]`), so a receiver typed `npt.NDArray[np.float64]`, as
+   pandas writes 503 of its annotations, finds none, and `self`'s pattern is never matched against
+   it. Resolve a receiver's alias to the class it stands for, its arguments bound (`NDArray`'s
+   `ScalarT`), for the lookup and the match alike; `Self` stays the receiver's own spelling. Done
+   when `x.sum()` on an `npt.NDArray[np.float64]` is an `np.float64` and pandas's `--types` still
    finds no new error.
 
 ### Large: a week or more
