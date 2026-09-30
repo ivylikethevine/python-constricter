@@ -3,7 +3,7 @@
 
 The Corpus coverage workflow runs it on a pull request, and comments with what it prints:
 
-  local/.venv/bin/python -m tests.corpus.corpus_coverage stdlib --base base/local/.venv/bin/python
+  local/.venv/bin/python -m tests.corpus.corpus_coverage stdlib --base local/base/local/.venv/bin/python
 
 The corpus is this Python's standard library (`stdlib`) or one of the `corpus` group's packages. For
 each side, `head` (this checkout) and `base` (the constricter that `--base`'s Python runs), it
@@ -76,11 +76,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     _ = parser.add_argument("--base", required=True, help="a Python the base's constricter is installed in")
     options: argparse.Namespace = parser.parse_args(argv)
     corpus: Corpus = _corpus(cast("str", options.corpus))
+    # Absolute, since each run starts from `WORK`; not resolved, which would leave the venv.
+    base: str = str(Path(cast("str", options.base)).absolute())
     result: dict[str, str | _Counts] = {
         "corpus": corpus.name,
         "version": corpus.version,
         "head": _counts(coverage(interpreter(DEV), corpus, DEV)),
-        _BASE: _counts(coverage(cast("str", options.base), corpus, _BASE)),
+        _BASE: _counts(coverage(base, corpus, _BASE)),
     }
     _ = sys.stdout.write(f"{json.dumps(result)}\n")
     return 0
