@@ -32,7 +32,10 @@ Checks (as CI runs them): `ruff check .` (every rule, preview included), `ruff f
 branch coverage). Everything generated goes in `local/`, but `constricter/fix/tables/`, the
 standard-library tables `--fix` reads: after the pinned basedpyright changes, regenerate it from its
 typeshed stubs with `local/.venv/bin/python -m tests.typeshed.stdlib_tables` (CI checks it with
-`--check`). Python is indented with 4 spaces.
+`--check`). Python is indented with 4 spaces. An editor running Pyright or basedpyright (Pylance,
+Neovim's Mason) needs no setting of its own: `pyrightconfig.json` points both at `local/.venv` and
+the two directories checked, and basedpyright alone reads the stricter `[tool.basedpyright]` it
+extends.
 
 `local/.venv/bin/python tests/ci_local.py` runs them all at once, as CI does: it reads the Lint,
 Docs and Test jobs' steps from `.github/workflows/ci.yml` (so it can't fall behind it), fails a step

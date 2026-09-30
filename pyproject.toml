@@ -219,12 +219,8 @@ module = ["numpy", "numpy.*"]
 follow_imports = "skip"
 follow_imports_for_stubs = true  # numpy ships `.pyi` stubs, which `follow_imports` alone doesn't cover
 
+# What only basedpyright has: pyrightconfig.json, which both it and Pyright read, extends this.
 [tool.basedpyright]
-include = ["constricter", "tests"]
-# The dev venv (see README, Development).
-venvPath = "local"
-venv = ".venv"
-pythonVersion = "3.11"
 typeCheckingMode = "all"
 # astroid (pylint's AST) and fastjsonschema (the SARIF test's validator) ship no annotations.
 allowedUntypedLibraries = ["astroid", "fastjsonschema"]

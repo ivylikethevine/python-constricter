@@ -172,22 +172,16 @@
   lines; the standard-library tables in `constricter/fix/tables/`, their generator in
   `tests/typeshed/`; docs in `docs/` (changelog, contributing, security, integrations, fixes, runs),
   release notes grouped by `.github/release.yml`, issue and PR templates, CODEOWNERS.
+- **Pyright and basedpyright in editors**: `pyrightconfig.json`, which both read first, holds the
+  shared settings (`local/.venv`, `constricter` and `tests` alone) and extends `pyproject.toml`,
+  where only basedpyright finds a section (`typeCheckingMode = "all"`). Plain Pyright resolves the
+  dev dependencies with no config warning, and `basedpyright` checks the same 128 files in about the
+  same time (9.6s, from 9.0s).
 
 ## Next
 
 By scope (smallest first) and, within each, by value. Each item says what it is, why, how, and when
 it's done.
-
-### Small: a day or less
-
-1. **Plain Pyright in editors.** An editor running Pyright (Neovim's Mason, Pylance) reads only
-   `[tool.pyright]` or `pyrightconfig.json`, so it doesn't find `local/.venv` and reports the dev
-   dependencies unresolved; but basedpyright refuses a `pyproject.toml` with both sections and falls
-   back to checking the whole checkout, `local/` included, and it reads `pyrightconfig.json` before
-   `pyproject.toml`, where Pyright rejects its `typeCheckingMode = "all"`. Find a layout both read
-   (the shared settings where both look, basedpyright's own apart), or document the editor-side
-   setting (`python.pythonPath`). Done when Pyright resolves `pytest` and `numpy` in an editor and
-   `basedpyright` still checks `constricter` and `tests` alone in about the same time.
 
 ### Large: a week or more
 
