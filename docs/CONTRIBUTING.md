@@ -24,15 +24,20 @@ uv sync --locked --no-install-project --no-build # the dev group: hash-checked w
 uv pip install --python local/.venv --no-deps --no-build-isolation -e .
 ```
 
-Checks (as CI runs them): `ruff check .` (every rule, preview included), `ruff format --check .`,
-`basedpyright` (all), `mypy` (strict), `pylint constricter tests` (every extension),
-`flake8 constricter tests`, `typos`, `validate-pyproject pyproject.toml`, `uv lock --check`,
-`constricter --level=suffocate --all-scopes constricter tests`,
-`constricter --coverage --all-scopes --fail-under=100 constricter tests`, `pytest --cov` (100%
-branch coverage). Everything generated goes in `local/`, but `constricter/fix/tables/`, the
-standard-library tables `--fix` reads: after the pinned basedpyright changes, regenerate it from its
-typeshed stubs with `local/.venv/bin/python -m tests.typeshed.stdlib_tables` (CI checks it with
-`--check`). Python is indented with 4 spaces.
+Checks (as CI runs them), on `constricter stdlib_tables tests hatch_build.py` where they take paths:
+`ruff check .` (every rule, preview included), `ruff format --check .`, `basedpyright` (all), `mypy`
+(strict), `pylint` (every extension), `flake8`, `typos`, `validate-pyproject pyproject.toml`,
+`uv lock --check`, `constricter --level=suffocate --all-scopes`,
+`constricter --coverage --all-scopes --fail-under=100`, `pytest --cov` (100% branch coverage).
+Everything generated goes in `local/`, but the standard-library tables `--fix` reads
+(`constricter/fix/tables/`) and the tests' `stdlib_tables/partial.json`, which git ignores: a build
+(`hatch_build.py`), the editable install included, generates them from the typeshed stubs of the
+basedpyright `uv.lock` pins, in about a minute, wherever they're missing or stale. After changing
+the generator (`stdlib_tables/`) or the pinned basedpyright, run
+`local/.venv/bin/python -m stdlib_tables --if-stale`; `tests/fix/test_stdlib_tables.py` fails until
+then. Python is indented with 4 spaces. An editor running Pyright or basedpyright (Pylance, Neovim's
+Mason) needs no setting of its own: `pyrightconfig.json` points both at `local/.venv` and the code
+checked, and basedpyright alone reads the stricter `[tool.basedpyright]` it extends.
 
 `local/.venv/bin/python tests/ci_local.py` runs them all at once, as CI does: it reads the Lint,
 Docs and Test jobs' steps from `.github/workflows/ci.yml` (so it can't fall behind it), fails a step
@@ -77,6 +82,10 @@ level, fixes, guesses, anything a fix broke, and the share of bindings typed bef
 (by this checkout's `--coverage`). It needs the `corpus` group
 (`uv sync --group dev --group corpus`) and `uv`; see its docstring for the options.
 
+On a pull request that touches what `--fix` does, the Corpus coverage workflow comments with
+pydantic's share of bindings typed as released, after `--fix`, and after `--fix --unsafe-fixes`,
+beside the base branch's (`tests/corpus/corpus_coverage.py`), and edits the comment on each push.
+
 `local/.venv/bin/python -m tests.corpus.corpus_untyped` counts what `--fix` still can't type on the
 same corpora, and why: each untyped binding by the statement that binds it and the shape of its
 value, in annotated functions or not, and each call through an import by where it comes from. It
@@ -115,7 +124,7 @@ Everything else is on. Some of these may be revisited.
 | ruff (`tests/`)    | `assert` (S101)                                                                    | pytest works through `assert`.                                                                                        |
 | mypy, basedpyright | astroid's and fastjsonschema's untyped calls and missing stubs                     | Neither astroid (pylint's parser) nor fastjsonschema (the SARIF test's validator) ships type information.             |
 | typos              | the word `astroid`                                                                 | A real package name.                                                                                                  |
-| typos              | `constricter/fix/tables/*.json`                                                    | Generated from typeshed: the standard library's own names, which typos takes for misspellings.                        |
+| typos              | `constricter/fix/tables/*.json`, `stdlib_tables/partial.json`                      | Generated from typeshed: the standard library's own names, which typos takes for misspellings.                        |
 | harden-runner      | `egress-policy: audit` on macOS and Windows, and in the weekly external-link check | harden-runner supports only audit on GitHub's macOS and Windows runners; external links can go anywhere.              |
 | reuse              | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)            | No recent release ships a wheel for Python 3.11+, so installing it builds from source with an unpinned `poetry-core`. |
 | zizmor             | `self-repository` (`.github/zizmor.yml`)                                           | Scorecard reads the `$/` form it wants as an unpinned third-party action, so local actions stay `./`.                 |

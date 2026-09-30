@@ -30,22 +30,23 @@
   before them (`i = j = 0`); `typing.cast`; `x = None` later rebound to one type as `T | None`; loop
   targets (`enumerate` and `zip` part by part) and unpackings, declared before the statement; fixes
   for LVA003 and LVA007. A tuple longer than `max-length` is `tuple[T, ...]`.
-- **The standard library, from typeshed**: tables generated from the stubs basedpyright bundles
-  (`tests/typeshed/`, checked in CI), read as Linux, macOS and Windows and Python 3.11 to 3.14 see
-  them, into `constricter/fix/tables/` (one JSON file a table, an entry a line; each class's members
-  apart from its public ancestors'). Fixed returns, classes and what returns them (`asyncio.Lock()`,
-  `logging.getLogger()`), their attributes and methods; and functions and methods whose arguments
-  decide their type, by the signature a call matches as a type checker picks among overloads, with
-  type variables bound by the arguments (`re.compile("x")` is a `re.Pattern[str]`) and generic
-  classes' by the receiver (`pat.match(s)`). A type variable binds to any argument's type where the
-  parameter is nothing but it (`copy.copy(obj)`), and to a builtin container's element where it's a
-  generic of one (`Iterable[_T]` given `list[str]`), to a scalar's method's return through a generic
-  protocol (`math.floor(x)`), and to a function's declared return (`functools.partial(f, x)`);
-  generic classes' own attributes are bound by the receiver's (`m.string`). `defaultdict(list)` and
-  `Counter()` stay untyped: their parameters come from later use. Generic classes' constructors are
-  read from their `__new__` or `__init__` (`collections.deque(names)` is a `collections.deque[str]`,
-  `array.array("i")` an `array.array[int]`); at module level, one some Python can't subscript at run
-  time is quoted. What only some platforms or versions have is kept (`os.getuid()`).
+- **The standard library, from typeshed**: tables generated from the stubs basedpyright bundles when
+  the package is built (`stdlib_tables/`, see [Project](#project)), read as Linux, macOS and Windows
+  and Python 3.11 to 3.14 see them, into `constricter/fix/tables/` (one JSON file a table, an entry
+  a line; each class's members apart from its public ancestors'). Fixed returns, classes and what
+  returns them (`asyncio.Lock()`, `logging.getLogger()`), their attributes and methods; and
+  functions and methods whose arguments decide their type, by the signature a call matches as a type
+  checker picks among overloads, with type variables bound by the arguments (`re.compile("x")` is a
+  `re.Pattern[str]`) and generic classes' by the receiver (`pat.match(s)`). A type variable binds to
+  any argument's type where the parameter is nothing but it (`copy.copy(obj)`), and to a builtin
+  container's element where it's a generic of one (`Iterable[_T]` given `list[str]`), to a scalar's
+  method's return through a generic protocol (`math.floor(x)`), and to a function's declared return
+  (`functools.partial(f, x)`); generic classes' own attributes are bound by the receiver's
+  (`m.string`). `defaultdict(list)` and `Counter()` stay untyped: their parameters come from later
+  use. Generic classes' constructors are read from their `__new__` or `__init__`
+  (`collections.deque(names)` is a `collections.deque[str]`, `array.array("i")` an
+  `array.array[int]`); at module level, one some Python can't subscript at run time is quoted. What
+  only some platforms or versions have is kept (`os.getuid()`).
 - **Installed packages**: calls into an installed package that declares its types (`py.typed`, a
   stub package, a lone stub module) are typed by their declared returns as a checked file's are,
   found as the import system would on this Python's path and `VIRTUAL_ENV`'s; types are imported
@@ -54,7 +55,7 @@
   aliases, type variables and protocols, the standard-library classes it names by the `scalars`
   table, and a class argument binding `type[T]`: 83 more fixes on pandas
   (`np.empty(n, dtype=np.float64)`), no new type error. They're read at run time through the index,
-  not by `tests/typeshed/`'s reader, which needs typeshed's standard-library stubs. Their classes'
+  not by `stdlib_tables/`'s reader, which needs typeshed's standard-library stubs. Their classes'
   methods too, the receiver's type binding the class's type parameters and `Self`, or matched
   against a method's own `self` (`a.sum()`), a receiver typed through a public alias as the class it
   stands for (`npt.NDArray[np.float64]`); a builtin container argument by its elements, binding a
@@ -170,8 +171,23 @@
   checker. Code for any Python 3 version can still be checked.
 - **Layout**: a flat `constricter/` in `rules/`, `fix/`, `cli/` and `plugins/`, no module over 750
   lines; the standard-library tables in `constricter/fix/tables/`, their generator in
-  `tests/typeshed/`; docs in `docs/` (changelog, contributing, security, integrations, fixes, runs),
+  `stdlib_tables/`; docs in `docs/` (changelog, contributing, security, integrations, fixes, runs),
   release notes grouped by `.github/release.yml`, issue and PR templates, CODEOWNERS.
+- **Pyright and basedpyright in editors**: `pyrightconfig.json`, which both read first, holds the
+  shared settings (`local/.venv`, and the code checked alone) and extends `pyproject.toml`, where
+  only basedpyright finds a section (`typeCheckingMode = "all"`). Plain Pyright resolves the dev
+  dependencies with no config warning, and `basedpyright` checks the same files in about the same
+  time (9.6s, from 9.0s).
+- **Tables generated at build time**: built with hatchling, whose hook (`hatch_build.py`) generates
+  `constricter/fix/tables/` wherever they're missing or stale, from the typeshed stubs of the
+  basedpyright `uv.lock` pins, a build dependency only then. They're stale when `source.json`'s
+  stamp differs: that version, and a digest of the generator's code (`stdlib_tables/`) and the
+  modules of `constricter` it imports. An sdist carries them, so a wheel built from it needs
+  nothing; a wheel, an sdist and a build from a checkout carry the same tables, byte for byte the
+  ones git tracked before. Not compressed: a wheel is a zip already (the tables are 1 MB, the whole
+  wheel 395 KB). A build from a checkout takes about 75s more here: 75 MB to download (60 MB of it
+  Node, which basedpyright depends on and the generator doesn't use), and the generation. The Action
+  pays it on every run, and a pre-commit hook once, on install.
 
 ## Next
 
@@ -180,28 +196,19 @@ it's done.
 
 ### Small: a day or less
 
-1. **Plain Pyright in editors.** An editor running Pyright (Neovim's Mason, Pylance) reads only
-   `[tool.pyright]` or `pyrightconfig.json`, so it doesn't find `local/.venv` and reports the dev
-   dependencies unresolved; but basedpyright refuses a `pyproject.toml` with both sections and falls
-   back to checking the whole checkout, `local/` included, and it reads `pyrightconfig.json` before
-   `pyproject.toml`, where Pyright rejects its `typeCheckingMode = "all"`. Find a layout both read
-   (the shared settings where both look, basedpyright's own apart), or document the editor-side
-   setting (`python.pythonPath`). Done when Pyright resolves `pytest` and `numpy` in an editor and
-   `basedpyright` still checks `constricter` and `tests` alone in about the same time.
-
-### Large: a week or more
-
-1. **Tables generated at build time.** The standard-library tables could leave git and be generated
-   (and compressed) when the package is built, but the pre-commit hooks and the Action install
-   straight from a checkout, and `flit_core` has no build hooks: it takes a build backend with one
-   (hatchling), the generator out of `tests/`, and typeshed's stubs at build time, pinned with
-   basedpyright's. Done when a wheel, an sdist and a git install all carry the same tables, and none
-   is tracked.
+1. **Faster table generation.** Every build from a checkout generates the tables in one process: the
+   Action on every run, a pre-commit hook's install, and each CI job's editable install, about 75s
+   here and more on a runner. The twelve configurations it reads the stubs as are independent: read
+   them in parallel, or cache the result by its stamp. Done when a build from a checkout generates
+   them in under 20s on 4 cores.
 
 ## Ongoing
 
 - **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+ (last checked 2026-09-22:
   6.2.0 still has only a CPython 3.10 one).
+- **Test on PyPy 8** once hypothesis ships wheels for its ABI (`pp80`): CI's PyPy entry is pinned to
+  7.3 (`pypy: v7.3.x`), since hypothesis has no pure-Python wheel (last checked 2026-09-30: 6.168.3
+  has `pp73` wheels alone).
 - **Revisit the [disabled rules](CONTRIBUTING.md#disabled-rules)** as tools change (last checked
   2026-09-22: COM812, one-line DOC201/DOC402 and `max-args` came back on; the rest can't go yet).
 
@@ -216,7 +223,6 @@ it's done.
    oxsecurity/megalinter. Trunk's is drafted in `upstream/trunk/linters/constricter/`, for a pull
    request to trunk-io/plugins with the snapshot its test harness generates.
 3. **A conda-forge recipe**, submitted to conda-forge/staged-recipes: drafted in
-   `upstream/conda-forge/recipes/python-constricter/`. It builds and passes its tests with
-   rattler-build against flit-core 4.0.2, still conda-forge's newest (2026-09-22), while
-   `pyproject.toml` asks for `flit_core>=4.1`: either the recipe's host pin or that floor has to
-   give until conda-forge has 4.1.
+   `upstream/conda-forge/recipes/python-constricter/`, built from the sdist, which carries the
+   tables. It built and passed its tests with rattler-build against flit-core; the build backend is
+   hatchling now (`>=1.27`), which its host requirements name, not yet rebuilt.

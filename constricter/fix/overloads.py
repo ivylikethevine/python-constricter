@@ -2,7 +2,7 @@
 """Standard-library calls whose arguments decide their type: the signatures a call may match.
 
 `tables/overloads.json` holds each such function's signatures, in order, as each platform and Python
-version reads them (see `tests/typeshed/overloads.py`): every parameter's kind, whether it has a
+version reads them (see `stdlib_tables/overloads.py`): every parameter's kind, whether it has a
 default, and which argument types (`SCALARS`) it certainly takes or refuses; and the return, as a
 template naming classes by their dotted paths and type variables by their names.
 
@@ -31,6 +31,7 @@ from constricter.fix.signatures import (
     Constant,
     Parameter,
     ReadSignature,
+    Variant,
 )
 from constricter.rules.walked import walk
 
@@ -308,7 +309,7 @@ def _signatures(name: str) -> tuple[tuple[ReadSignature, ...], ...]:
       Each variant's signatures.
 
     """
-    variants: list[stdlib.Variant] = stdlib.OVERLOADS.get(name) or stdlib.method_signatures()[name]
+    variants: list[Variant] = stdlib.OVERLOADS.get(name) or stdlib.method_signatures()[name]
     return tuple(
         tuple(
             ReadSignature(

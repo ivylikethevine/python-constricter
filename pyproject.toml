@@ -7,6 +7,7 @@ license = "MIT"
 license-files = ["LICENSE.md"]
 authors = [{ name = "Ivy Duggan" }]
 requires-python = ">=3.11"
+import-names = ["constricter"]
 dependencies = []
 classifiers = [
     "Framework :: Flake8",
@@ -29,11 +30,19 @@ pylint = ["pylint>=3"]
 
 [dependency-groups]
 # Locked with hashes in uv.lock (see README, Development).
+# What an editable install needs, with no build isolation: the build backend (and what it asks for
+# an editable one), and the basedpyright whose typeshed stubs the standard-library tables are
+# generated from (see hatch_build.py).
+build = [
+    "basedpyright",
+    "editables",
+    "hatchling>=1.27,<2",
+]
 # What the tests need: pure Python, so it installs on PyPy and free-threaded builds too.
 test = [
+    { include-group = "build" },
     "fastjsonschema", # validates the SARIF output against its schema
     "flake8>=7",
-    "flit_core>=4.1,<5",
     "hypothesis",
     "pylint>=3",
     "pytest",
@@ -44,8 +53,8 @@ test = [
 # runtime-validation library and a data library, each a different style of real-world Python.
 # Pure Python 2 code (Twisted 12.3.0) can't be installed on 3.11+: tests/corpus/corpus_sources.py fetches it.
 corpus = [
+    { include-group = "build" }, # for the setup action's editable `-e .` install
     "django==5.2.17", # 6.x needs Python 3.12+; 5.2 is the current LTS and still supports 3.11
-    "flit_core>=4.1,<5", # build backend, needed for the setup action's editable `-e .` install
     "pandas==3.0.6", # a large, partly annotated data library: overloads, generics, TYPE_CHECKING imports
     "pydantic==2.13.5",
     "sqlalchemy==2.0.54",
@@ -73,11 +82,25 @@ constricter = "constricter.cli.command:main"
 LVA = "constricter.plugins.flake8:ConstricterChecker"
 
 [build-system]
-requires = ["flit_core>=4.1,<5"]
-build-backend = "flit_core.buildapi"
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
 
-[tool.flit.module]
-name = "constricter"
+[tool.hatch.version]
+path = "constricter/__init__.py"
+
+[tool.hatch.build]
+# Generated where they're missing or stale (hatch_build.py), not tracked. `partial.json` is the tests',
+# in the sdist only: a wheel built from it counts the tables current only with it there.
+artifacts = ["constricter/fix/tables/*.json", "stdlib_tables/partial.json"]
+
+[tool.hatch.build.hooks.custom]
+
+[tool.hatch.build.targets.wheel]
+packages = ["constricter"]
+
+[tool.hatch.build.targets.sdist]
+# The generator too: a wheel built from the sdist checks the tables it carries are current.
+only-include = ["constricter", "stdlib_tables", "hatch_build.py", "README.md", "LICENSE.md"]
 
 [tool.constricter]
 # Drafts for other projects (Trunk, conda-forge); Trunk's `basic.in.py` is untyped on purpose. The
@@ -116,6 +139,10 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 # `--infer-with`'s tests start its guard and a fake server, and a constricter to kill.
 "tests/cli/test_hints.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 "tests/corpus/corpus_suite.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
+# Hatchling's build hook interface: generating the tables needs neither the version nor the build data.
+"hatch_build.py" = ["unused-method-argument"]
+# The generator imports `constricter`'s modules without its `__init__`: its tests import it apart.
+"tests/fix/test_stdlib_tables.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The census of what `--fix` can't type runs this checkout's constricter on each corpus.
 "tests/corpus/corpus_untyped.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The local CI runner runs the workflow's own steps (and git) as subprocesses.
@@ -126,11 +153,13 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 # `--infer-with` starts the type checker's language server, from a fixed table of commands (and
 # asks it its version, to see it runs).
 "constricter/cli/{hints,guard,protocol}.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
+# The generator's modules import `constricter`'s without its `__init__`, which loads the tables.
+"stdlib_tables/__init__.py" = ["non-empty-init-module"]
 "tests/corpus/corpus_sources.py" = ["suspicious-url-open-usage"] # downloads only its pinned https URLs
 "tests/cli/test_cli.py" = ["suspicious-url-open-usage"] # fetches the SARIF schema from its pinned URL
 
 [tool.mypy]
-files = ["constricter", "tests"]
+files = ["constricter", "stdlib_tables", "tests", "hatch_build.py"]
 python_version = "3.11"
 cache_dir = "local/.mypy_cache"
 strict = true
@@ -219,12 +248,8 @@ module = ["numpy", "numpy.*"]
 follow_imports = "skip"
 follow_imports_for_stubs = true  # numpy ships `.pyi` stubs, which `follow_imports` alone doesn't cover
 
+# What only basedpyright has: pyrightconfig.json, which both it and Pyright read, extends this.
 [tool.basedpyright]
-include = ["constricter", "tests"]
-# The dev venv (see README, Development).
-venvPath = "local"
-venv = ".venv"
-pythonVersion = "3.11"
 typeCheckingMode = "all"
 # astroid (pylint's AST) and fastjsonschema (the SARIF test's validator) ship no annotations.
 allowedUntypedLibraries = ["astroid", "fastjsonschema"]

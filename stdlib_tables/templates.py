@@ -10,8 +10,8 @@ from collections.abc import Iterator, Sequence
 from typing import Final
 
 from constricter.fix.signatures import Constant
-from tests.typeshed.reading import ARITY, TYPING_GENERICS, ClassRef, Reading, usable
-from tests.typeshed.stubs import Alias, Found, Klass, TypeVariable
+from stdlib_tables.reading import ARITY, TYPING_GENERICS, ClassRef, Reading, usable
+from stdlib_tables.stubs import Alias, Found, Klass, TypeVariable
 
 BUILTINS: Final = "builtins"
 TYPING: Final = frozenset({"typing", "typing_extensions", "_typeshed"})

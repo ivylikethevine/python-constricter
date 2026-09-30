@@ -1,0 +1,10 @@
+// Read by Pyright and basedpyright alike, before pyproject.toml. Pyright finds no section in the file
+// this extends; basedpyright takes its own settings from `[tool.basedpyright]` there.
+{
+  "extends": "pyproject.toml",
+  "include": ["constricter", "stdlib_tables", "tests", "hatch_build.py"],
+  // The dev venv (see CONTRIBUTING, Development).
+  "venvPath": "local",
+  "venv": ".venv",
+  "pythonVersion": "3.11"
+}

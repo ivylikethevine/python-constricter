@@ -1,0 +1,193 @@
+name: Corpus coverage
+
+# A pull request's annotation coverage on one corpus package, beside its base's: typed as released,
+# after `--fix`, and after `--fix --unsafe-fixes` (tests/corpus/corpus_coverage.py), as one comment
+# edited in place on every push. A report, not a gate. Only when what `--fix` does can have changed,
+# and never a fork's, whose token can't comment.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+    paths:
+      - constricter/**
+      - stdlib_tables/**
+      - hatch_build.py
+      - pyproject.toml
+      - uv.lock
+      - tests/corpus/corpus_coverage.py
+      - tests/corpus/corpus_table.py
+      - .github/actions/setup/**
+      - .github/workflows/corpus-coverage.yml
+
+permissions: {}
+
+concurrency:
+  group: corpus-coverage-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CORPUS: pydantic # the smallest `corpus` package: both sides measured in about a minute
+
+jobs:
+  # Runs the pull request's code, so its token only reads: the comment job posts what it found.
+  measure:
+    name: Measure
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            pypi.org:443
+            files.pythonhosted.org:443
+            raw.githubusercontent.com:443
+            releases.astral.sh:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          python-version: "3.14" # as RUNS.md is measured
+          group: corpus
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: local/base
+          persist-credentials: false
+      # As the setup action installs it, from the base's own lock and build.
+      - name: Install the base's constricter
+        working-directory: local/base
+        env:
+          UV_PROJECT_ENVIRONMENT: local/.venv
+          UV_PYTHON: "3.14"
+          UV_PYTHON_DOWNLOADS: never
+        run: |
+          uv sync --locked --no-install-project --no-build --only-group test
+          uv pip install --python local/.venv --no-deps --no-build-isolation -e .
+      - run: |
+          mkdir -p local/corpus-coverage
+          python -m tests.corpus.corpus_coverage "$CORPUS" --base local/base/local/.venv/bin/python \
+            > local/corpus-coverage/coverage.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: corpus-coverage
+          path: local/corpus-coverage/coverage.json
+          retention-days: 7
+          if-no-files-found: error
+
+  # Runs none of the pull request's code: it reads the counts as data, and only bare integers (and
+  # a version-shaped string) out of them reach the comment.
+  comment:
+    name: Comment
+    needs: measure
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    permissions:
+      pull-requests: write # post or edit the comment
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            results-receiver.actions.githubusercontent.com:443
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: corpus-coverage
+          path: ${{ runner.temp }}/coverage
+      - name: Post or update the comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          marker='<!-- corpus-coverage -->'
+          file="$RUNNER_TEMP/coverage/coverage.json"
+          # count <side> <when>: "<typed> <total>", or nothing
+          count() {
+            local v
+            v="$(jq -r --arg s "$1" --arg w "$2" \
+              '.[$s][$w] | if type == "array" and length == 2 then "\(.[0]) \(.[1])" else "" end' "$file" || true)"
+            [[ "$v" =~ ^[0-9]+\ [1-9][0-9]*$ ]] || v=""
+            printf '%s' "$v"
+          }
+          # pct <count>: the typed share, one decimal, or nothing
+          pct() { [ -z "$1" ] || awk -v t="${1% *}" -v n="${1#* }" 'BEGIN { printf "%.1f", 100 * t / n }'; }
+          whens=(released fixed guessed)
+          # row <label> <side>: its share at each point
+          row() {
+            local when v
+            printf '| %s |' "$1"
+            for when in "${whens[@]}"; do
+              v="$(pct "$(count "$2" "$when")")"
+              printf ' %s |' "${v:-not measured}${v:+%}"
+            done
+            printf '\n'
+          }
+          # change_row: this PR's share less the base's, at each point
+          change_row() {
+            local when now was
+            printf '| Change |'
+            for when in "${whens[@]}"; do
+              now="$(pct "$(count head "$when")")"
+              was="$(pct "$(count base "$when")")"
+              if [ -n "$now" ] && [ -n "$was" ]; then
+                awk -v a="$now" -v b="$was" 'BEGIN { printf " %+.1f pts |", a - b }'
+              else
+                printf ' - |'
+              fi
+            done
+            printf '\n'
+          }
+          version="$(jq -r '.version // ""' "$file" || true)"
+          [[ "$version" =~ ^[0-9A-Za-z.+-]{1,32}$ ]] || version=""
+          [[ "$BASE_REF" =~ ^[0-9A-Za-z._/-]{1,64}$ ]] || BASE_REF=base
+          total="$(count head released)"
+          if [ "$CORPUS" = stdlib ]; then
+            title="Python ${version:-3.14}'s standard library"
+          else
+            title="$CORPUS $version"
+          fi
+          # shellcheck disable=SC2016 # the backticks are Markdown's
+          body="$(
+            printf '%s\n### Annotation coverage on %s\n\n' "$marker" "$title"
+            printf '| | Typed as released | After `--fix` | After `--fix --unsafe-fixes` |\n| --- | ---: | ---: | ---: |\n'
+            row 'This PR' head
+            row "\`$BASE_REF\`" base
+            change_row
+            printf '\n'
+            [ -z "$total" ] || printf 'Of %s bindings. ' "${total#* }"
+            printf 'Each side fixes with its own constricter; this PR counts both, with `--coverage` and `all-scopes`. '
+            printf 'Measured at %s by [this run](%s).\n' "$HEAD_SHA" \
+              "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          )"
+          printf '%s\n' "$body" >> "$GITHUB_STEP_SUMMARY"
+          id="$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id")"
+          id="${id%%$'\n'*}"
+          if [ -n "$id" ]; then
+            set -- -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id"
+          else
+            set -- "repos/$GITHUB_REPOSITORY/issues/$PR/comments"
+          fi
+          # A Dependabot pull request's token only reads.
+          gh api "$@" -f body="$body" > /dev/null || {
+            echo "::warning title=corpus coverage::could not comment on PR #$PR: the table is in this job's summary."
+            exit 0
+          }
+          echo "corpus coverage comment updated on PR #$PR"

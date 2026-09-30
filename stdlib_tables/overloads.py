@@ -19,16 +19,15 @@ import copy
 from collections.abc import Iterable, Iterator, Sequence
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix.signatures import Accepts, Constant, Parameter
-from constricter.fix.stdlib import Signature
-from tests.typeshed.reading import (
+from constricter.fix.signatures import Accepts, Constant, Parameter, Signature
+from stdlib_tables.reading import (
     ClassRef,
     Defs,
     Reading,
     readable,
     substituted,
 )
-from tests.typeshed.stubs import (
+from stdlib_tables.stubs import (
     Alias,
     Binding,
     Found,
@@ -39,7 +38,7 @@ from tests.typeshed.stubs import (
     decorator_name,
     private,
 )
-from tests.typeshed.templates import (
+from stdlib_tables.templates import (
     BUILTINS,
     LITERAL,
     LITERAL_STRING,

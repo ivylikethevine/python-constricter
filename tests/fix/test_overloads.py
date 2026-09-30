@@ -8,8 +8,7 @@ import pytest
 
 from constricter import Checks, Offence, check_source
 from constricter.fix import stdlib
-from constricter.fix.signatures import Accepts
-from constricter.fix.stdlib import Signature
+from constricter.fix.signatures import Accepts, Signature
 
 UNANNOTATED: Final = "LVA001"
 SOURCE: Final = """

@@ -15,12 +15,15 @@ adapted: `npm ci` runs only when `.github/node_modules` is missing, lychee is th
 
 `interpreters` runs the tests on each Python in the Test job's matrix (PyPy and free-threaded builds
 included) but the one `local/.venv` has: each in its own `local/.venv-<python>`, with the dependency
-group its matrix entry installs. uv downloads an interpreter it doesn't find. Operating systems aren't
-covered: only CI runs macOS and Windows.
+group its matrix entry installs. uv downloads an interpreter it doesn't find, of the PyPy line an
+entry's `pypy` names (`v7.3.x`) if it names one. Operating systems aren't covered: only CI runs macOS
+and Windows.
 """
 
 import argparse
+import json
 import os
+import re
 import shutil
 import subprocess  # runs each step's shell command, as the runner does
 import sys
@@ -38,7 +41,7 @@ _WORKFLOW: Final = _ROOT / ".github" / "workflows" / "ci.yml"
 _VENV_BIN: Final = _ROOT / "local" / ".venv" / "bin"
 _JOBS: Final = ("lint", "docs", "test", "interpreters")
 _INTERPRETERS: Final = "interpreters"  # not a workflow job: the Test job's matrix, by Python
-_PYPY: Final = "pypy"  # `sys.implementation.name`, and the prefix of its matrix names
+_PYPY: Final = "pypy"  # `sys.implementation.name`, the prefix of its matrix names, and its pin's key
 _RUN: Final = "run"  # a step's shell command
 _EXPRESSION: Final = "${{"  # the start of a GitHub Actions expression
 _NPM_CI: Final = "npm ci --prefix .github"
@@ -135,23 +138,52 @@ def _interpreter_steps(defined: Mapping[str, _Yaml]) -> list[Step]:
     matrix: dict[str, _Yaml] = cast("dict[str, _Yaml]", cast("dict[str, _Yaml]", test["strategy"])["matrix"])
     group: str = str(cast("list[_Yaml]", matrix["group"])[0])
     groups: dict[str, str] = {str(python): group for python in cast("list[_Yaml]", matrix["python"])}
+    pins: dict[str, str] = {}
     raw: _Yaml
     for raw in cast("list[_Yaml]", matrix.get("include", [])):
         entry: dict[str, _Yaml] = cast("dict[str, _Yaml]", raw)
         groups[str(entry["python"])] = str(entry.get("group", group))
+        if _PYPY in entry:
+            pins[str(entry["python"])] = str(entry[_PYPY])
     found: list[Step] = []
     python: str
     for python, group in groups.items():
         if python == _this_python():
             continue  # the Test job's own steps run the tests on it
         venv: str = f"local/.venv-{python}"
+        request: str = _pypy_build(python, pins[python]) if python in pins else python
         command: str = (
-            f"uv sync -q --locked --no-install-project --no-build --python {python} --only-group {group}\n"
+            f"uv sync -q --locked --no-install-project --no-build --python {request} --only-group {group}\n"
             f"uv pip install -q --python {venv} --no-deps --no-build-isolation -e .\n"
             f"{venv}/bin/python -m pytest -q -o cache_dir=local/.pytest_cache-{python}"
         )
         found.append(Step(_INTERPRETERS, command, {"UV_PROJECT_ENVIRONMENT": venv}))
     return found
+
+
+def _pypy_build(python: str, pin: str) -> str:
+    """Find the newest PyPy build uv has of an entry's line (`pypy3.11` at `v7.3.x`), as setup-python does.
+
+    uv requests a PyPy by the Python version it implements alone, so the build is picked by its
+    download's name (`pypy3.11-v7.3.23-linux64.tar.gz`).
+
+    Returns:
+      The build's uv key (`pypy-3.11.15-linux-x86_64-gnu`), or `python` if uv has none of that line.
+
+    """
+    request: str = f"{_PYPY}@{python.removeprefix(_PYPY)}"
+    listed: subprocess.CompletedProcess[str] = subprocess.run(
+        ["uv", "python", "list", request, "--all-versions", "--output-format", "json"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    line: re.Pattern[str] = re.compile(re.escape(f"/{python}-{pin}-").replace(r"\.x", r"\.\d+"))
+    build: dict[str, str | None]
+    for build in cast("list[dict[str, str | None]]", json.loads(listed.stdout)):
+        if line.search(build["url"] or ""):
+            return str(build["key"])
+    return python
 
 
 def _adapted(command: str) -> str | None:
