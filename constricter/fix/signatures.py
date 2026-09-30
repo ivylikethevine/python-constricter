@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: MIT
 """The signatures `--fix` matches a call against: the standard library's tables', and installed packages'.
 
-What each parameter takes (`Accepts`) and the signature it's in (`ReadSignature`); see
-`constricter.fix.overloads`, which matches them, `constricter.fix.stdlib`, whose tables hold them,
-and `constricter.fix.stubbed`, which reads an installed package's.
+What each parameter takes (`Accepts`), and a signature as the tables hold it (`Signature`) and as
+it's matched (`ReadSignature`); see `constricter.fix.overloads`, which matches them,
+`constricter.fix.stdlib`, whose tables hold them, and `constricter.fix.stubbed`, which reads an
+installed package's.
 """
 
-from typing import Final, NamedTuple, Required, TypeAlias, TypedDict
+from typing import Final, NamedTuple, NotRequired, Required, TypeAlias, TypedDict
 
 # `Accepts`' keys for an installed package's parameter (see `constricter.fix.stubbed`): a class passed
 # as the argument, and a builtin container.
@@ -56,6 +57,22 @@ class Accepts(TypedDict, total=False):
 # whether it has a default, and what it takes (`None`: whatever every signature takes there). The
 # tables write one every signature has alike as `"name kind"`, `=` after it if it has a default.
 Parameter: TypeAlias = tuple[str, str, bool, Accepts | None]
+
+
+class Signature(TypedDict):
+    """One signature of a function whose arguments decide its type: its parameters, and its return.
+
+    The return is a template (see `constricter.fix.overloads`), or `None` if `--fix` can't write it.
+    `self`: for a generic class's method declaring its instance's type (`self: Pattern[str]`), the
+    type arguments that instance must have.
+    """
+
+    params: list[Parameter | str]
+    returns: str | None
+    self: NotRequired[list[str]]
+
+
+Variant: TypeAlias = list[Signature]  # one configuration's signatures, in order
 
 
 class ReadSignature(NamedTuple):

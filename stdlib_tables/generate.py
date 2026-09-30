@@ -1,10 +1,14 @@
 # SPDX-License-Identifier: MIT
 """Generate `constricter/fix/tables/`, the standard-library tables `--fix` types calls from.
 
-  local/.venv/bin/python -m tests.typeshed.stdlib_tables          # rewrite it
-  local/.venv/bin/python -m tests.typeshed.stdlib_tables --check  # exit 1 if it's out of date
+  local/.venv/bin/python -m stdlib_tables             # rewrite them
+  local/.venv/bin/python -m stdlib_tables --if-stale  # only if they're missing or stale
 
-It reads the typeshed stubs basedpyright bundles (the dev group's pinned version), as each platform
+They aren't tracked: a build (`hatch_build.py`) generates them where they're missing or stale
+(`current`), and an sdist carries them. They're stale when `source.json`'s stamp differs: the
+basedpyright version `uv.lock` pins, and a digest of the code that generates them (`INPUTS`).
+
+It reads the typeshed stubs basedpyright bundles (that pinned version, installed), as each platform
 (Linux, macOS, Windows) and each Python version constricter supports (3.11 to 3.14) sees them, and
 keeps what comes out the same for all twelve:
 
@@ -17,7 +21,7 @@ keeps what comes out the same for all twelve:
   properties hold, inherited ones included (in their method resolution order), by that path;
 - `aliases`: the class's other public paths;
 - `overloads`: functions whose arguments decide their return, and generic classes' constructors,
-  each signature as `tests/typeshed/overloads.py` reads it;
+  each signature as `stdlib_tables/overloads.py` reads it;
 - `type_parameters` and `subscriptable`: each generic class's type parameters, and whether every
   Python can subscript it at run time; `generic_attributes`: its own attributes and properties, as
   templates its instance's type arguments bind;
@@ -34,18 +38,19 @@ overloads, or is spelled with a class inside a generic (`list[Path]`), is left o
 (its factories), `enum`'s classes (their functional API makes a class), and what `_RUNTIME` lists.
 """
 
+import argparse
 import ast
+import hashlib
+import importlib.metadata
 import json
-import sys
+import tomllib
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Final, NamedTuple, TypeAlias
+from typing import Final, NamedTuple, TypeAlias, cast
 
-import basedpyright  # pyright: ignore[reportMissingTypeStubs]  # the dev group's: its bundled stubs
-
-from constricter.fix.stdlib import Signature
-from tests.typeshed.overloads import CONTAINERS, SCALARS, Overloads
-from tests.typeshed.reading import (
+from constricter.fix.signatures import Signature
+from stdlib_tables.overloads import CONTAINERS, SCALARS, Overloads
+from stdlib_tables.reading import (
     ANY_STR,
     ATTRIBUTE,
     CLASSMETHOD,
@@ -58,7 +63,7 @@ from tests.typeshed.reading import (
     Text,
     usable,
 )
-from tests.typeshed.stubs import (
+from stdlib_tables.stubs import (
     CONFIGS,
     Alias,
     Config,
@@ -71,10 +76,27 @@ from tests.typeshed.stubs import (
     private,
 )
 
-TYPESHED: Final = Path(basedpyright.__file__).parent / "dist" / "typeshed-fallback"
-OUTPUT: Final = Path(__file__).parents[2] / "constricter" / "fix" / "tables"  # one JSON file per table
+ROOT: Final = Path(__file__).parents[1]
+OUTPUT: Final = ROOT / "constricter" / "fix" / "tables"  # one JSON file per table
 # Where each function or class only some platforms and Python versions have is (the tests' alone).
 PARTIAL: Final = Path(__file__).with_name("partial.json")
+STUBS: Final = "basedpyright"  # the package whose bundled typeshed stubs the tables are read from
+# The code that decides the tables: the generator's, and the modules of constricter it imports (a
+# test checks that's all of them).
+INPUTS: Final = (
+    *sorted(path.relative_to(ROOT).as_posix() for path in Path(__file__).parent.glob("*.py")),
+    "constricter/fix/__init__.py",
+    "constricter/fix/signatures.py",
+    "constricter/offences.py",
+    "constricter/rules/__init__.py",
+    "constricter/rules/annotations.py",
+    "constricter/rules/flow.py",
+    "constricter/rules/syntax.py",
+    "constricter/rules/walked.py",
+)
+_SOURCE: Final = OUTPUT / "source.json"  # what the tables were generated from: `stamp`, and more
+_LOCK: Final = ROOT / "uv.lock"
+_TABLES_KEY: Final = "tables"  # `source.json`'s list of the tables
 # Modules nothing is taken from: `typing`'s classes are special forms and factories, `builtins` is
 # typed apart, and these aren't imported for what they define (`encodings`' codecs register
 # themselves; `xxlimited` is CPython's example extension).
@@ -94,9 +116,10 @@ _RUNTIME: Final = frozenset(
 )
 # Modules whose names installed packages' stubs annotate with, private or not (`scalars`).
 _ANNOTATING: Final = frozenset({"typing", "typing_extensions", "builtins", "_typeshed", "collections.abc"})
-_CHECK: Final = "--check"
 _YES: Final = "y"
 
+
+_Locked: TypeAlias = dict[str, str]  # a package `uv.lock` pins: its name, its version, and more
 
 # Each signature of a function whose return its arguments decide (see `overloads.Overloads.entry`).
 Signatures: TypeAlias = list[Signature]
@@ -495,8 +518,95 @@ def _common_lists(each: list[dict[str, list[str]]]) -> dict[str, list[str]]:
     return found
 
 
-def generate(typeshed: Path = TYPESHED) -> dict[Path, str]:
-    """Generate the tables from the stubs under `typeshed`, one file each (see `write`).
+def pinned() -> str:
+    """Find the basedpyright version the tables are read from: `uv.lock`'s, else the one they were.
+
+    An sdist has no `uv.lock`, but carries the tables and their stamp.
+
+    Returns:
+      It.
+
+    """
+    if not _LOCK.exists():
+        return _written()[STUBS]
+    lock: dict[str, list[_Locked]] = cast(
+        "dict[str, list[_Locked]]",
+        tomllib.loads(_LOCK.read_text(encoding="utf-8")),
+    )
+    return next(package["version"] for package in lock["package"] if package["name"] == STUBS)
+
+
+def digest() -> str:
+    """Hash `INPUTS`, each by its path and its text (line endings as a checkout on Linux has them).
+
+    Returns:
+      The digest, in hex.
+
+    """
+    parts: list[bytes] = [
+        part
+        for path in INPUTS
+        for part in (path.encode(), (ROOT / path).read_bytes().replace(b"\r\n", b"\n"))
+    ]
+    return hashlib.sha256(b"\0".join(parts)).hexdigest()
+
+
+def stamp() -> dict[str, str]:
+    """Say what the tables would be generated from now: the basedpyright version, and `digest`.
+
+    Returns:
+      Each, by `source.json`'s key.
+
+    """
+    return {STUBS: pinned(), "digest": digest()}
+
+
+def current() -> bool:
+    """Check the tables are all there, and generated from what `stamp` says.
+
+    Returns:
+      Whether they are.
+
+    """
+    if not _SOURCE.exists():
+        return False
+    written: dict[str, str] = _written()
+    tables: list[str] = cast("list[str]", json.loads(_SOURCE.read_bytes())[_TABLES_KEY])
+    return all(written.get(key) == value for key, value in stamp().items()) and all(
+        (OUTPUT / f"{name}.json").exists() for name in tables
+    )
+
+
+def _written() -> dict[str, str]:
+    """Read `source.json`'s stamp.
+
+    Returns:
+      Its entries that are strings.
+
+    """
+    entries: dict[str, str | list[str]] = cast("dict[str, str | list[str]]", json.loads(_SOURCE.read_bytes()))
+    return {key: value for key, value in entries.items() if isinstance(value, str)}
+
+
+def typeshed() -> Path:
+    """Find the typeshed stubs the installed basedpyright bundles, which must be the pinned version.
+
+    Returns:
+      Their directory.
+
+    Raises:
+      RuntimeError: if another version is installed.
+
+    """
+    installed: importlib.metadata.Distribution = importlib.metadata.distribution(STUBS)
+    if installed.version != pinned():
+        message: str = f"{STUBS} {installed.version} is installed, but the tables are read from {pinned()}"
+        raise RuntimeError(message)
+    return Path(str(installed.locate_file(f"{STUBS}/dist/typeshed-fallback")))
+
+
+def generate(stubs_root: Path | None = None) -> dict[Path, str]:
+    """Generate the tables from the stubs under `stubs_root` (`typeshed()`), one file each (see `write`).
 
     And `PARTIAL`, for the tests alone.
 
@@ -504,14 +614,11 @@ def generate(typeshed: Path = TYPESHED) -> dict[Path, str]:
       Each file's text, by path.
 
     """
-    stubs: Stubs = Stubs(typeshed)
+    root: Path = typeshed() if stubs_root is None else stubs_root
+    stubs: Stubs = Stubs(root)
     each: list[_Tables] = [_read(stubs, config) for config in CONFIGS]
     tables: _Tables = _agreed(each)
     document: dict[str, _Json] = {
-        "source": {
-            "generator": "tests/typeshed/stdlib_tables.py",
-            "typeshed": (typeshed / "commit.txt").read_text(encoding="utf-8").strip(),
-        },
         "returns": tables.returns,
         "overloads": tables.overloads,
         "classes": tables.classes,
@@ -529,7 +636,13 @@ def generate(typeshed: Path = TYPESHED) -> dict[Path, str]:
         "scalars": tables.scalars,
         "scalar_members": tables.scalar_members,
     }
+    source: dict[str, str | list[str]] = {
+        **stamp(),
+        _TABLES_KEY: sorted(document),
+        "typeshed": (root / "commit.txt").read_text(encoding="utf-8").strip(),
+    }
     files: dict[Path, str] = {OUTPUT / f"{name}.json": write(table) for name, table in document.items()}
+    files[_SOURCE] = json.dumps(source, indent=0, sort_keys=True) + "\n"
     files[PARTIAL] = write(_partial(each))
     return files
 
@@ -544,6 +657,9 @@ def inherited(members: dict[str, Table], bases: Table) -> dict[str, dict[str, st
 
     Returns:
       Each class's entries.
+
+    Raises:
+      RuntimeError: if they don't resolve to the full tables.
 
     """
     found: dict[str, dict[str, str | None]] = {}
@@ -563,7 +679,9 @@ def inherited(members: dict[str, Table], bases: Table) -> dict[str, dict[str, st
         }
         if entries:
             found[klass] = entries
-    assert all(_resolved(found, bases, klass) == table for klass, table in members.items())
+    if any(_resolved(found, bases, klass) != table for klass, table in members.items()):
+        message: str = "a class's members resolve otherwise than they were read"
+        raise RuntimeError(message)
     return found
 
 
@@ -616,31 +734,44 @@ def _partial(each: list[_Tables]) -> dict[str, list[str]]:
     return {path: configs for path, configs in sorted(found.items()) if len(configs) < len(CONFIGS)}
 
 
-def main(argv: Sequence[str]) -> int:
-    """Write the tables, or with `--check`, compare them with what's written.
+def ensure() -> bool:
+    """Generate the tables if they're missing or stale (see `current`).
 
     Returns:
-      The exit status: 1 if `--check` finds them out of date.
+      Whether it did.
 
     """
-    files: dict[Path, str] = generate()
-    written: list[Path] = [*OUTPUT.glob("*.json"), PARTIAL]
-    if _CHECK not in argv:
-        OUTPUT.mkdir(exist_ok=True)
-        stale: Path
-        for stale in written:
-            if stale not in files:
-                stale.unlink()
-        path: Path
-        text: str
-        for path, text in files.items():
-            _ = path.write_text(text, encoding="utf-8")
-        return 0
-    if {path: path.read_text(encoding="utf-8") for path in written if path.exists()} == files:
-        return 0
-    _ = sys.stderr.write(f"{OUTPUT} is out of date: run tests/typeshed/stdlib_tables.py\n")
-    return 1
+    if current():
+        return False
+    _write(generate())
+    return True
 
 
-if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+def _write(files: dict[Path, str]) -> None:
+    """Write the tables, and remove any other there."""
+    OUTPUT.mkdir(exist_ok=True)
+    stale: Path
+    for stale in OUTPUT.glob("*.json"):
+        if stale not in files:
+            stale.unlink()
+    path: Path
+    text: str
+    for path, text in files.items():
+        _ = path.write_text(text, encoding="utf-8", newline="\n")
+
+
+def main(argv: Sequence[str]) -> int:
+    """Write the tables; with `--if-stale`, only if they're missing or stale.
+
+    Returns:
+      The exit status.
+
+    """
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(prog="python -m stdlib_tables")
+    _ = parser.add_argument("--if-stale", action="store_true", help="only if they're missing or stale")
+    options: argparse.Namespace = parser.parse_args(argv)
+    if not cast("bool", options.if_stale):
+        _write(generate())
+    else:
+        _ = ensure()
+    return 0

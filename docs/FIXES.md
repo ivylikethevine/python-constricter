@@ -36,14 +36,15 @@ in a function or module body:
   guessed value is a guess too (`Box().name`), and its fix kinds include the value's;
 - `typing.cast(T, x)`, however `cast` is imported: `T`;
 - the standard library, resolved through the imports (`import m`, `import m as a`,
-  `from m import f`), by tables generated from typeshed's stubs (`tests/typeshed/stdlib_tables.py`,
-  into `constricter/fix/tables/`, keeping what Linux, macOS and Windows and Python 3.11 to 3.14
-  agree on, where they have it: `os.getuid()` is an `int`): a function returning a builtin type
-  whatever its arguments (`time.time()` is a `float`, `os.cpu_count()` an `int | None`); a
-  non-generic class, or a function or classmethod returning one: `logging.getLogger()` is a
-  `logging.Logger`, `datetime.now()` a `datetime.datetime`, `os.stat(p)` an `os.stat_result`; and on
-  a value typed as such a class, its attributes and properties, and its methods' returns
-  (`parser.prog` is a `str`, `dt.astimezone()` a `datetime.datetime`);
+  `from m import f`), by tables generated from typeshed's stubs when the package is built
+  (`stdlib_tables/generate.py`, into `constricter/fix/tables/`, keeping what Linux, macOS and
+  Windows and Python 3.11 to 3.14 agree on, where they have it: `os.getuid()` is an `int`): a
+  function returning a builtin type whatever its arguments (`time.time()` is a `float`,
+  `os.cpu_count()` an `int | None`); a non-generic class, or a function or classmethod returning
+  one: `logging.getLogger()` is a `logging.Logger`, `datetime.now()` a `datetime.datetime`,
+  `os.stat(p)` an `os.stat_result`; and on a value typed as such a class, its attributes and
+  properties, and its methods' returns (`parser.prog` is a `str`, `dt.astimezone()` a
+  `datetime.datetime`);
 - a standard-library function or method whose arguments decide its type, by the signature they
   match, as a type checker picks among its overloads: `os.listdir(data)` with `data: bytes` is a
   `list[bytes]`, `ast.parse(s, mode="eval")` an `ast.Expression` (by the literal),

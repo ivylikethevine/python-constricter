@@ -12,7 +12,7 @@ from typing import Final, NamedTuple, TypeAlias
 
 from constricter.offences import MAX_LENGTH, NESTING
 from constricter.rules.annotations import depth, is_vague
-from tests.typeshed.stubs import (
+from stdlib_tables.stubs import (
     Alias,
     Binding,
     Config,

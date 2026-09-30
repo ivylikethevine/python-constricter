@@ -1,4 +1,22 @@
 {
-"generator": "tests/typeshed/stdlib_tables.py",
+"basedpyright": "1.40.1",
+"digest": "e7366104e8d6ba21db06648141240d943d1daf140ae59c1ee0bb9dee8629cb47",
+"tables": [
+"aliases",
+"attributes",
+"bases",
+"classes",
+"generic_attributes",
+"method_overloads",
+"method_signatures",
+"methods",
+"overloads",
+"returns",
+"scalar_members",
+"scalars",
+"subscriptable",
+"type_parameters",
+"variables"
+],
 "typeshed": "289e5d3568961c8bcd33d01eef5b7ec5e1ad33ad"
 }

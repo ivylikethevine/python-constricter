@@ -6,6 +6,11 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- Built with hatchling, and the standard-library tables `--fix` reads are generated from typeshed's
+  stubs when the package is built, no longer tracked in git. A release from PyPI installs as before;
+  installing from a checkout (the GitHub Action without `version`, the pre-commit hooks,
+  `pip install git+...`) downloads the pinned basedpyright as a build dependency and generates them,
+  about a minute more.
 - `--fix` types an installed class's methods on a receiver typed through a public alias of the class
   (`x.sum()` on an `npt.NDArray[np.float64]` is an `np.float64`): matched as what the alias stands
   for, with `Self` kept as the receiver is written; the alias found through an import under

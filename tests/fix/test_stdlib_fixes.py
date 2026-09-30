@@ -23,10 +23,10 @@ if TYPE_CHECKING:
 UNANNOTATED: Final = "LVA001"
 PYPY: Final = "pypy"
 Configs: TypeAlias = list[str]  # platforms and Python versions: `linux-3.12`
-# Where each entry only some platforms and Python versions have is (see `stdlib_tables.PARTIAL`).
+# Where each entry only some platforms and Python versions have is (see `stdlib_tables.generate.PARTIAL`).
 PARTIAL: Final = cast(
     "dict[str, Configs]",
-    json.loads((Path(__file__).parents[1] / "typeshed" / "partial.json").read_text(encoding="utf-8")),
+    json.loads((Path(__file__).parents[2] / "stdlib_tables" / "partial.json").read_text(encoding="utf-8")),
 )
 LINUX: Final = "linux"
 SOURCE: Final = """
@@ -91,7 +91,7 @@ def test_every_table_function_exists(name: str) -> None:
     """Each table entry names a real standard-library function, as Linux CPython has it.
 
     The tables are what each minor release's latest patch release has, on the platforms typeshed
-    covers: `tests/typeshed/partial.json` lists an entry only some have. CI's Linux jobs run those
+    covers: `stdlib_tables/partial.json` lists an entry only some have. CI's Linux jobs run those
     patch releases, so they must have every entry listed for them. Elsewhere an entry may be missing, and
     is skipped: PyPy lacks some of CPython's own (`tracemalloc`, `gc.get_count`), and macOS and
     Windows stop at the last patch release with an installer (3.11.9, 3.12.10), before security

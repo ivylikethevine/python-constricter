@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MIT
 """Standard-library functions and classes whose types `--fix` knows, and how a module names them.
 
-The tables are generated from typeshed's stubs into `tables/`, one JSON file each (see
-`tests/typeshed/stdlib_tables.py`): `RETURNS` holds functions returning the same builtin type
+The tables are generated from typeshed's stubs into `tables/` when the package is built, one JSON
+file each (see `stdlib_tables/generate.py`): `RETURNS` holds functions returning the same builtin type
 whatever their arguments; `OVERLOADS` those whose arguments decide it (`str` in, `str` out;
 `bytes` in, `bytes` out), so they're typed only when those are known; `CLASSES` holds
 non-generic classes, and functions returning one; `library_member` types those classes' methods
@@ -18,27 +18,11 @@ from collections.abc import Iterable, Mapping
 from functools import cache, lru_cache
 from pathlib import Path
 from types import MappingProxyType
-from typing import Final, NamedTuple, NotRequired, TypeAlias, TypedDict, cast
+from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.known import ImportPlan, Inference, Known
-from constricter.fix.signatures import Parameter
+from constricter.fix.signatures import Variant
 from constricter.rules.syntax import import_bindings
-
-
-class Signature(TypedDict):
-    """One signature of a function whose arguments decide its type: its parameters, and its return.
-
-    The return is a template (see `constricter.fix.overloads`), or `None` if `--fix` can't write it.
-    `self`: for a generic class's method declaring its instance's type (`self: Pattern[str]`), the
-    type arguments that instance must have.
-    """
-
-    params: list[Parameter | str]
-    returns: str | None
-    self: NotRequired[list[str]]
-
-
-Variant: TypeAlias = list[Signature]  # one configuration's signatures, in order
 
 
 def _table(name: str) -> object:

@@ -13,7 +13,7 @@ extend-exclude = [
   # Generated from typeshed: the standard library's own names (`os.spawnve`,
   # `smtplib.SMTP.helo`), not prose.
   "constricter/fix/tables/*.json",
-  "tests/typeshed/partial.json",
+  "stdlib_tables/partial.json",
 ]
 
 [default.extend-words]

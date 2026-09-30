@@ -2,7 +2,7 @@
 // this extends; basedpyright takes its own settings from `[tool.basedpyright]` there.
 {
   "extends": "pyproject.toml",
-  "include": ["constricter", "tests"],
+  "include": ["constricter", "stdlib_tables", "tests", "hatch_build.py"],
   // The dev venv (see CONTRIBUTING, Development).
   "venvPath": "local",
   "venv": ".venv",
