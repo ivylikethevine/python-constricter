@@ -89,8 +89,9 @@ build-backend = "hatchling.build"
 path = "constricter/__init__.py"
 
 [tool.hatch.build]
-# Generated where they're missing or stale (hatch_build.py), not tracked.
-artifacts = ["constricter/fix/tables/*.json"]
+# Generated where they're missing or stale (hatch_build.py), not tracked. `partial.json` is the tests',
+# in the sdist only: a wheel built from it counts the tables current only with it there.
+artifacts = ["constricter/fix/tables/*.json", "stdlib_tables/partial.json"]
 
 [tool.hatch.build.hooks.custom]
 

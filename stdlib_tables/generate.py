@@ -562,13 +562,13 @@ def stamp() -> dict[str, str]:
 
 
 def current() -> bool:
-    """Check the tables are all there, and generated from what `stamp` says.
+    """Check the tables and `PARTIAL` are all there, and generated from what `stamp` says.
 
     Returns:
       Whether they are.
 
     """
-    if not _SOURCE.exists():
+    if not (_SOURCE.exists() and PARTIAL.exists()):
         return False
     written: dict[str, str] = _written()
     tables: list[str] = cast("list[str]", json.loads(_SOURCE.read_bytes())[_TABLES_KEY])
