@@ -82,6 +82,10 @@ level, fixes, guesses, anything a fix broke, and the share of bindings typed bef
 (by this checkout's `--coverage`). It needs the `corpus` group
 (`uv sync --group dev --group corpus`) and `uv`; see its docstring for the options.
 
+On a pull request that touches what `--fix` does, the Corpus coverage workflow comments with
+pydantic's share of bindings typed as released, after `--fix`, and after `--fix --unsafe-fixes`,
+beside the base branch's (`tests/corpus/corpus_coverage.py`), and edits the comment on each push.
+
 `local/.venv/bin/python -m tests.corpus.corpus_untyped` counts what `--fix` still can't type on the
 same corpora, and why: each untyped binding by the statement that binds it and the shape of its
 value, in annotated functions or not, and each call through an import by where it comes from. It

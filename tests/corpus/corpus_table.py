@@ -324,6 +324,20 @@ def _fixes(python: str, corpus: Corpus, version: str) -> _Fixing:
     )
 
 
+def coverage(python: str, corpus: Corpus, version: str) -> tuple[Typed, Typed | None, Typed | None]:
+    """Count `corpus`'s typed bindings as released, and after `python`'s constricter fixes copies of it.
+
+    The copies go under `WORK/<version>`.
+
+    Returns:
+      The typed bindings as released, after `--fix`, and after `--fix --unsafe-fixes` (`None` where
+      that fix crashed).
+
+    """
+    fixes: _Fixing = _fixes(python, corpus, version)
+    return _typed(corpus.root), fixes.typed_fixed, fixes.typed_guessed
+
+
 def measure(corpus: Corpus, version: str, name: str = __version__) -> Measured:
     """Check and fix one corpus with one version (`dev` recorded under `name`).
 
