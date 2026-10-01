@@ -108,7 +108,6 @@ if typing.TYPE_CHECKING:
     from pkg.handles import Handles
     from pkg.handles import Plain
     from pkg.other import Thing
-    from typing import Literal
     import collections as col
 
 
@@ -121,7 +120,7 @@ def f():
 
 
 top: "Plain" = plain()
-said: 'Literal["it\\'s"]' = quote()
+said: typing.Literal["it's"] = quote()
 """
 BLOCK: Final = """
 from __future__ import annotations
@@ -369,6 +368,70 @@ def test_a_name_quoted_inside_a_type_is_read_as_the_name(tmp_path: Path) -> None
     # A string that isn't a type stays one; what a name in it means here isn't known, so it isn't written.
     fixed: list[str | None] = ["list[Thing]", "Literal['r']", "list['no way']", "'no way'", None]
     assert fixes_by_import == {"": fixed, "from pkg.other import Thing": fixed}
+
+
+REBOUND: Final = """
+import sys
+from typing import List, TypeAlias
+
+MYPY = False
+if MYPY:
+    Either = List[int]
+else:
+    Either = List[str]
+if sys.version_info >= (3, 10):
+    Versioned = list[int]
+else:
+    Versioned = List[int]
+if False:
+    Constant = List[int]
+elif True:
+    Constant = List[str]
+else:
+    Constant = List[bytes]
+try:
+    Tried = List[int]
+except NameError:
+    Tried: TypeAlias = List[str]
+Once: TypeAlias = List[int]
+"""
+ALIASES_USED: Final = """
+from typing import List
+
+from pkg.rebound import Constant, Either, Once, Tried, Versioned
+
+Own = List[int]
+Own = List[str]
+
+
+def either() -> Either: ...
+def versioned() -> Versioned: ...
+def constant() -> Constant: ...
+def tried() -> Tried: ...
+def once() -> Once: ...
+def own() -> Own: ...
+"""
+
+
+def test_an_alias_assigned_twice_isnt_written_in_another_file(tmp_path: Path) -> None:
+    """A name two arms of an `if` assign is a variable to a type checker, unless it decides the `if`."""
+    _package(tmp_path)
+    _ = _write(tmp_path / "pkg" / "rebound.py", REBOUND)
+    _ = _write(tmp_path / "pkg" / "aliased.py", ALIASES_USED)
+    user: Path = _write(
+        tmp_path / "user.py",
+        "from pkg.aliased import constant, either, once, own, tried, versioned\n",
+    )
+    catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
+    assert catalog.modules["pkg.rebound"].rebound == {"Either", "Tried"}
+    assert set(catalog.modules["pkg.rebound"].aliases) == {"Versioned", "Constant", "Once"}
+    assert catalog.modules["pkg.aliased"].rebound == {"Own"}
+    guarded: dict[str, Guarded] = {}
+    assert project.calls(catalog, user, guarded) == {
+        "constant": "Constant",
+        "once": "Once",
+        "versioned": "Versioned",
+    }
 
 
 def test_a_guarded_type_passes_through_an_unannotated_function(tmp_path: Path) -> None:

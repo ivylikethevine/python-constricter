@@ -39,7 +39,7 @@ def plan(tree: ast.Module) -> ImportPlan:
     """
     taken: frozenset[str]
     values: frozenset[str]
-    taken, values = _taken(tree)
+    taken, values = taken_names(tree)
     return ImportPlan(
         _bound(tree),
         taken,
@@ -94,7 +94,10 @@ def _block(tree: ast.Module) -> tuple[int, int]:
 
 
 def checking(tree: ast.Module) -> frozenset[str]:
-    """Name what the module's top-level `if TYPE_CHECKING:` blocks import: unbound when it runs.
+    """Name what the module imports under a top-level `if` on a flag, which may not run.
+
+    `if TYPE_CHECKING:`, and any other name tested alone (`if MYPY_CHECK_RUNNING:`): what it imports
+    may be unbound when the module runs.
 
     Returns:
       The names they bind.
@@ -103,7 +106,7 @@ def checking(tree: ast.Module) -> frozenset[str]:
     return frozenset(
         alias.asname or alias.name.split(".", 1)[0]
         for stmt in tree.body
-        if isinstance(stmt, ast.If) and _is_checking(stmt.test)
+        if isinstance(stmt, ast.If) and isinstance(stmt.test, ast.Name | ast.Attribute)
         for node in stmt.body
         if isinstance(node, ast.Import | ast.ImportFrom)
         for alias in node.names
@@ -195,7 +198,7 @@ def _running(body: list[ast.stmt]) -> Iterator[ast.stmt]:
 
 
 @lru_cache(maxsize=16)
-def _taken(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
+def taken_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
     """Find every name bound anywhere in the module: its own, a function's, a class's, a parameter's.
 
     Returns:

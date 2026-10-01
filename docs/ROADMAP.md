@@ -30,13 +30,14 @@
   type); displays that unpack (`[*names, s]`, `{**d, k: v}`), `d.get(k, 0)` and `os.environ["X"]`;
   standard-library module variables (`sys.path`); chained assignments' names, declared before them
   (`i = j = 0`), and a `:=`'s, before its statement; a quoted annotation read as its text
-  (`xs: "list[Node]"`); `typing.cast`; `x = None` later rebound to one type as `T | None`; loop
-  targets (`enumerate` and `zip` part by part, an `Iterable[T]`'s `T`) and unpackings, declared
-  before the statement, as a `with` statement's target is, by its context manager's `__enter__`; a
-  method a class inherits, from the base that defines it, in the module or another checked file; an
-  unannotated generator function's calls, by its `yield`s; a call to a function decorated by what
-  gives it back (`functools.cache`, pandas's `@set_module("pandas")`, by its declared
-  `Callable[[F], F]`); fixes for LVA003 and LVA007. A tuple longer than `max-length` is
+  (`xs: "list[Node]"`); the `self` a function defined in a method reads; a `# type:` signature
+  comment's return, as a declared one; `typing.cast`; `x = None` later rebound to one type as
+  `T | None`; loop targets (`enumerate` and `zip` part by part, an `Iterable[T]`'s `T`) and
+  unpackings, declared before the statement, as a `with` statement's target is, by its context
+  manager's `__enter__`; a method a class inherits, from the base that defines it, in the module or
+  another checked file; an unannotated generator function's calls, by its `yield`s; a call to a
+  function decorated by what gives it back (`functools.cache`, pandas's `@set_module("pandas")`, by
+  its declared `Callable[[F], F]`); fixes for LVA003 and LVA007. A tuple longer than `max-length` is
   `tuple[T, ...]`.
 - **The standard library, from typeshed**: tables generated from the stubs basedpyright bundles when
   the package is built (`stdlib_tables/`, see [Project](#project)), read as Linux, macOS and Windows
@@ -70,7 +71,8 @@
   bounded type variable (numpy's shapes).
 - **Fixes that add an import**: `open(p, "rb")` by its literal mode, standard-library classes, and
   `Final`, through an import the module has or one added after its leading imports; another checked
-  file's type the module doesn't import, under `if TYPE_CHECKING:` (no import cycle at run time),
+  file's type the module doesn't import, through the module defining it if the file imports that one
+  to run (`core_schema.CoreSchema`), else under `if TYPE_CHECKING:` (no import cycle at run time),
   quoted where a module-level annotation is evaluated.
 - **Guesses** apply only with `--unsafe-fixes`: a capitalised call taken to construct its class,
   LVA008's and LVA010's narrowing, an empty container typed by what's added to it (`append`,
@@ -89,7 +91,9 @@
   more of ty's. A type alias the index finds (a name annotated `TypeAlias`, or bound to a subscript
   or a union) is taken as a class is, and a module's own composite alias is declared `TypeAlias`,
   imported from `typing` if it must be: on pydantic, 82 more aliases declared and 12 more fixes
-  naming `CoreSchema`.
+  naming `CoreSchema`. ty's spellings are read (`Model@create_model`, `str & ~AlwaysFalsy`, an
+  unpacked tuple), and a hint naming a type variable is a fix only where its function's signature or
+  its class names it.
 - **No new type errors**: `corpus_suite.py --types` runs pydantic's, sqlalchemy's and pandas's own
   type checkers after `--fix` (none new) and `--fix --unsafe-fixes`. Where a checker would see a
   value otherwise, the fix is changed, made a guess, or not offered (see
@@ -97,8 +101,9 @@
   union, or of what the function tests, is a guess, and one of an `X | None` isn't offered; an
   ALL_CAPS constant passed to a call is `Final`; a read a test around it narrows isn't offered its
   declared type; `Self` where the method says so; no generic class written bare, the standard
-  library's included; and a constructor guessed only where its callee is a type. The unsafe runs'
-  new errors went from 20, 76 and 165 (0.2.4) to 2, 5 and 36.
+  library's included; no alias its module assigns in two branches (a variable, to a checker) written
+  in another file; and a constructor guessed only where its callee is a type. The unsafe runs' new
+  errors went from 20, 76 and 165 (0.2.4) to 2, 5 and 36.
 - **Safe by construction**: never touches class bodies, keeps line endings and encodings, edits
   notebooks' cells in place, nothing broken on any corpus, and the corpus packages' own test suites
   pass identically before and after. One pass converges on every corpus, the standard library's
@@ -233,40 +238,24 @@ needs `--infer-with`. Each item says what it is, why, how, and when it's done.
 
 ### Small: a day or less
 
-1. **ty's spellings.** `(str & ~AlwaysFalsy) | None` is a `str | None`, `Model@create_model` the
-   module's type variable `Model`, and `tuple[str, *tuple[str, ...]]` an annotation as it is: each
-   is dropped as not one, tens of hints a package. Done when all three are fixes.
-2. **Faster table generation.** Every build from a checkout generates the tables in one process: the
+1. **Faster table generation.** Every build from a checkout generates the tables in one process: the
    Action on every run, a pre-commit hook's install, and each CI job's editable install, about 75s
    here and more on a runner. The twelve configurations it reads the stubs as are independent: read
    them in parallel, or cache the result by its stamp. Done when a build from a checkout generates
    them in under 20s on 4 cores.
-3. **A function's own import isn't the module's.**
-   `from multiprocessing.managers import SharedMemoryManager` inside one function lets a fix in
-   another write `SharedMemoryManager`, which nothing binds there (one new error on the standard
-   library). Take a name for bound only where the import that binds it runs. Done when that fix
-   imports the class or isn't offered.
-4. **`self` in a nested function.** A function or lambda defined in a method reads the method's
-   `self`, which `--fix` types only in the method itself: 29 `self.method()` bindings. Done when
-   `msg = self.label()` in a nested function is typed as in its method.
-5. **A hint's type variable its function doesn't declare.** `_proc: type[Row[_TP]]`, in a function
-   whose signature has no `_TP`, is an unbound type variable to mypy (2 new errors on sqlalchemy).
-   Done when a hint naming a module's type variable is a fix only where the signature names it.
-6. **A signature in a `# type:` comment as a declaration.** A function typed by one (pip's are) is
-   left alone by `returned`, and its calls untyped. Read the comment's return as a declared one.
-   Done when `names = find()` under `# type: () -> List[str]` is a `List[str]`.
-7. **A subscript by `__getitem__`.** `os.environ["X"]` is typed by name alone: a subscript of any
+2. **A subscript by `__getitem__`.** `os.environ["X"]` is typed by name alone: a subscript of any
    other standard-library generic class's instance (`shelve.Shelf`, `types.MappingProxyType`) has no
    fix, the tables holding no `__getitem__`. Generate it with the methods. Done when `proxy["k"]` on
    a `MappingProxyType[str, int]` is an `int`.
-8. **One type, two spellings.** A hint's class is written through an import that runs
-   (`core_schema.CoreSchema`) and another file's declared type through one for type checking alone
-   (`CoreSchema`): a name bound to one then the other gets no fix, the two taken for two types
-   (`schema` in pydantic's `_dataclasses.py`). Done when both are spelled one way in a file.
-9. **An alias a type checker takes for a variable.** A name assigned in two branches it can't tell
-   apart (`if MYPY: X = A else: X = B`) is no alias to pyright, and a quoted return naming one,
-   written where its function is called, is an error there too (2 on pydantic). Done when a type
-   naming one isn't written in another file.
+3. **One type, two spellings in one file.** A file that imports both a class and its module writes
+   it two ways (`CoreSchema`, by a hint, and `core_schema.CoreSchema`, by a declared return), and a
+   name bound to one then the other gets no fix, the two taken for two types (`schema` in
+   `new_handler`, in pydantic's `_generate_schema.py`); so does a file binding the module's name as
+   a value somewhere, where another file's type takes an import for type checking and a hint's the
+   module. Done when a name's later binding of the same class, spelled otherwise, fits its fix.
+4. **An unpacked tuple in older syntax.** A hint's `tuple[str, *tuple[str, ...]]` is written as it
+   is, which Python 3.10 can't parse (3 on pydantic's `v1/fields.py`). Done when a module that may
+   run on one gets `Unpack[...]`, or no fix.
 
 ### Medium: a few days
 

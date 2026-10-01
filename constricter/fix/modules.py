@@ -9,12 +9,14 @@ to; `constricter.fix.project` looks things up in it for each file.
 
 import ast
 import itertools
+from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.declared import Declarations, declarations
+from constricter.fix.imports import taken_names
 from constricter.fix.inherited import lineage
 from constricter.fix.known import Origin, Passed, Returns
 from constricter.fix.returned import unannotated
@@ -34,6 +36,8 @@ from constricter.rules.walked import of_type
 
 _PACKAGE: Final = "__init__"
 _TYPE_ALIAS: Final = "TypeAlias"  # the annotation, and the node class of `type X = ...` (Python 3.12+)
+# What a type checker decides an `if` by, taking one arm alone: `sys.version_info`, `TYPE_CHECKING`.
+_DECIDED: Final = frozenset({"version_info", "platform", "TYPE_CHECKING"})
 SUFFIX: Final = ".py"
 STUB: Final = ".pyi"
 
@@ -83,6 +87,10 @@ class Module(NamedTuple):
         str,
         bool,
     ] = {}  # its type aliases, and whether each takes type arguments (see `_aliases`)
+    # The names its top level assigns twice or more (see `_assigned`): variables, to a type checker.
+    rebound: frozenset[str] = frozenset()
+    # Its top-level names something in it binds as a value too (a local `m`, under `import pkg.m as m`).
+    shadowed: frozenset[str] = frozenset()
 
 
 class Index(NamedTuple):
@@ -247,6 +255,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
     except (SyntaxError, ValueError):  # a null byte is a ValueError
         return None
     own: Tables = module_tables(tree)
+    rebound: frozenset[str] = frozenset(bound for bound, count in _assigned(tree.body).items() if count > 1)
     if name is None:
         parsed.keep(source, (tree, own))  # for the check to take, rather than parse it and read it again
     named: str = name or module_name(path)
@@ -269,7 +278,9 @@ def read(path: Path, name: str | None = None) -> Module | None:
         declared=None if name is None else declarations(tree),
         held=own.held,
         passes=own.passes,
-        aliases=_aliases(tree),
+        aliases={alias: generic for alias, generic in _aliases(tree).items() if alias not in rebound},
+        rebound=rebound,
+        shadowed=frozenset(names) & taken_names(tree)[1] if name is None else frozenset(),
     )
 
 
@@ -308,8 +319,44 @@ def _aliases(tree: ast.Module) -> dict[str, bool]:
     return found
 
 
+def _assigned(body: Sequence[ast.stmt]) -> Counter[str]:
+    """Count how many times a run of a module's top level may assign each name, as a type checker reads it.
+
+    Under its `if`s and `try`s too: both arms of an `if`, but one of an `if` a checker decides
+    (`sys.version_info >= (3, 10)`, `TYPE_CHECKING`), and never the arm a constant rules out
+    (`elif False:`). A name assigned twice is a variable to it, not an alias (`if MYPY: X = A` /
+    `else: X = B`).
+
+    Returns:
+      Each name's count.
+
+    """
+    counts: Counter[str] = Counter()
+    stmt: ast.stmt
+    name: str
+    test: ast.expr
+    constant: bool
+    for stmt in body:
+        match stmt:
+            case (
+                ast.Assign(targets=[ast.Name(id=name)])
+                | ast.AnnAssign(target=ast.Name(id=name), value=ast.expr())
+            ):
+                counts[name] += 1
+            case ast.If(test=ast.Constant(value=bool() as constant)):
+                counts += _assigned(stmt.body if constant else stmt.orelse)
+            case ast.If(test=test):
+                arms: tuple[Counter[str], Counter[str]] = (_assigned(stmt.body), _assigned(stmt.orelse))
+                counts += (arms[0] | arms[1]) if _names_any(test, _DECIDED) else (arms[0] + arms[1])
+            case ast.Try() | ast.TryStar():
+                counts += _assigned(child_statements(stmt))
+            case _:
+                pass
+    return counts
+
+
 def _names_any(value: ast.expr, names: frozenset[str]) -> bool:
-    return any(isinstance(node, ast.Name) and node.id in names for node in ast.walk(value))
+    return any(node_name(node) in names for node in ast.walk(value))
 
 
 def _top_level(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:

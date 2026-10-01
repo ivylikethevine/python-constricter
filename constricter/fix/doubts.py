@@ -25,10 +25,11 @@ from typing import Final, NamedTuple, TypeAlias, cast
 from constricter.fix.imports import checking
 from constricter.fix.known import ImportPlan, Inference
 from constricter.fix.narrowed import Regions, regions
-from constricter.rules.annotations import generic_classes, node_name
+from constricter.rules.annotations import generic_classes, node_name, roots
 from constricter.rules.flow import members
+from constricter.rules.quoted import parsed
 from constricter.rules.syntax import FunctionDef, Start, within
-from constricter.rules.walked import of_type, walk
+from constricter.rules.walked import classes, of_type, walk
 
 # What a copy, an attribute and a subscript of a narrowable union rest on, as guesses.
 _Read: TypeAlias = type[ast.expr]
@@ -68,13 +69,16 @@ class Facts(NamedTuple):
     selfish: Mapping[str, frozenset[str]] = MappingProxyType({})
     generics: frozenset[str] = frozenset()
     passed: frozenset[str] = frozenset()
-    # What its top-level `if TYPE_CHECKING:` blocks import, unbound when it runs (see `imports.checking`).
+    # What it imports under a top-level `if` on a flag (`TYPE_CHECKING`), unbound when it runs.
     checking: frozenset[str] = frozenset()
     tests: Tests = Tests()  # what its tests read (see `tests`)
     narrowed: Regions = MappingProxyType({})  # where each value is narrowed (see `narrowed.regions`)
     inner: tuple[int, ...] = ()  # the lines functions and lambdas start on, sorted (see `inner_starts`)
     # Its functions `@contextmanager` makes context managers: what `with` gives of each (see `entered`).
     managers: Mapping[str, str] = MappingProxyType({})
+    type_vars: frozenset[str] = frozenset()  # its type variables, its own and those it imports
+    # Those each class's bases name (`class Row(Generic[_TP])`), bound in its methods.
+    bound: Mapping[str, frozenset[str]] = MappingProxyType({})
 
 
 def facts(
@@ -82,11 +86,12 @@ def facts(
     selfish: Mapping[str, frozenset[str]],
     generics: frozenset[str],
     managers: Mapping[str, str],
+    type_vars: frozenset[str],
 ) -> Facts:
     """Read a module's `Facts`.
 
     `selfish`: its `self_returns`; `generics`: the generic classes it names that others define;
-    `managers`: its `entered.managers`.
+    `managers`: its `entered.managers`; `type_vars`: its type variables.
 
     Returns:
       Them.
@@ -101,7 +106,52 @@ def facts(
         regions(tree),
         inner_starts(tree),
         managers,
+        type_vars,
+        _bound_vars(tree, type_vars),
     )
+
+
+def _bound_vars(tree: ast.Module, type_vars: frozenset[str]) -> dict[str, frozenset[str]]:
+    """Map each class to the type variables its bases name, which its methods may use.
+
+    Returns:
+      Each such class's name, and them.
+
+    """
+    found: dict[str, frozenset[str]] = {}
+    node: ast.ClassDef
+    for node in classes(tree) if type_vars else ():
+        named: frozenset[str] = frozenset(
+            name.id for base in node.bases for name in walk(base) if isinstance(name, ast.Name)
+        )
+        if named & type_vars:
+            found[node.name] = found.get(node.name, frozenset()) | (named & type_vars)
+    return found
+
+
+def undeclared(
+    annotation: str,
+    function: FunctionDef | None,
+    known: frozenset[str],
+    bound: frozenset[str],
+) -> bool:
+    """Check whether an annotation names a type variable its function doesn't declare.
+
+    One of the module's (`known`) that neither the function's signature names nor its class binds
+    (`bound`) is unbound there, to a type checker (`proc: type[Row[_TP]]`); a module body declares
+    none.
+
+    Returns:
+      Whether it does.
+
+    """
+    named: frozenset[str] = roots(annotation) & known
+    if not named or function is None:
+        return bool(named)
+    declared: set[str] = {
+        node.id for part in _signature(function) for node in ast.walk(part) if isinstance(node, ast.Name)
+    }
+    return not named <= (bound | declared)
 
 
 class Owner(NamedTuple):
@@ -261,6 +311,21 @@ def says_self(function: FunctionDef) -> bool:
       Whether it does.
 
     """
+    return any(
+        node_name(node) == _SELF
+        for annotation in _signature(function)
+        for node in ast.walk(annotation)
+        if isinstance(node, ast.Name | ast.Attribute)
+    )
+
+
+def _signature(function: FunctionDef) -> list[ast.expr]:
+    """List the annotations of a function's signature: its parameters', and its return's.
+
+    Returns:
+      Them, one in quotes as the expression it quotes.
+
+    """
     args: ast.arguments = function.args
     annotations: list[ast.expr | None] = [
         function.returns,
@@ -270,13 +335,7 @@ def says_self(function: FunctionDef) -> bool:
             if arg
         ),
     ]
-    return any(
-        node_name(node) == _SELF
-        for annotation in annotations
-        if annotation is not None
-        for node in ast.walk(annotation)
-        if isinstance(node, ast.Name | ast.Attribute)
-    )
+    return [parsed(annotation) for annotation in annotations if annotation is not None]
 
 
 def passed(tree: ast.Module) -> frozenset[str]:

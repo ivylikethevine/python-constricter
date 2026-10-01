@@ -6,6 +6,24 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types the `self` a function defined in a method reads (one taking and binding none of its
+  own; not in a method whose signature says `Self`), and a call to a function whose signature is a
+  `# type:` comment, by the comment's return: `names = find()` under `# type: () -> List[str]` is a
+  `List[str]`, quoted in a module body where `List` is imported under an `if` on a flag
+  (`if MYPY_CHECK_RUNNING:`). Another file's type is written through the module defining it, where
+  the file imports that module to run (`core_schema.CoreSchema`, `inspect.Signature`), as a hint's
+  is, and no longer by a new import for type checking; not through a name the file binds as a value
+  somewhere. With `--infer-with`, ty's spellings are read (`Model@create_model` is `Model`,
+  `(str & ~AlwaysFalsy) | None` a `str | None`, and `tuple[str, *tuple[str, ...]]` is kept as it is,
+  which is Python 3.11's syntax), and a hint naming a type variable is a fix only where its
+  function's signature or its class names it. On pydantic: 4 fewer bindings with no fix (2,142 to
+  2,138), 3 fewer with basedpyright's hints (1,593 to 1,590); basedpyright finds no new error after
+  `--fix --unsafe-fixes`.
+- Fixed: a type naming an alias its module assigns in two branches a type checker can't decide
+  between (`if MYPY: X = A`, `else: X = B`), a variable to it, isn't written in another file, nor
+  taken for an alias a hint names; an import a fix needs is added even where its text is on an
+  indented line (in a string, in the standard library's `_test_multiprocessing`), which binds
+  nothing; and a quoted `"Self"` in a signature counts as `Self`.
 - `--fix` types six more shapes. A union the author would write: `a if c else None` is a `T | None`,
   and `a or b` (or `a and b`) with operands of one type is that type, `or` dropping a `None` before
   its last operand (fix kind `boolean`). A `:=`'s name is declared on a line of its own before its
@@ -21,9 +39,7 @@ Notable changes, newest first. Each release's full notes are generated from its 
   defines (`schema: core_schema.CoreSchema`). On pydantic, the one corpus measured: 59 fewer
   bindings with no fix (2,201 to 2,142; 52 more certain fixes, 7 more guesses), and 127 fewer with
   basedpyright's hints (1,720 to 1,593, 82 of them aliases declared); nothing broken, one pass
-  converges. basedpyright finds 2 new errors after `--fix --unsafe-fixes`, both a return type
-  pydantic quotes (`Dict[str, 'AnyClassMethod']`) written where the function is called: it reports
-  that alias, assigned in two branches, wherever it's used.
+  converges.
 - Fixed: a fix in a line and a declaration before that line no longer land on each other
   (`x = f(y := 3)`); a fix whose annotation names a parameter or local of its own function, or the
   name it annotates, isn't offered (`text: str` under a parameter `str`); a value typed whatever its

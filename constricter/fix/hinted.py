@@ -5,7 +5,9 @@ Always a guess: a hint is the type the checker gave the value where the name is 
 too narrow for a later binding, or too wide for what the code means. It's judged here as text, as
 the checker printed it:
 
-- a class object printed `<class 'Point'>` (ty's way) is `type[Point]`;
+- a class object printed `<class 'Point'>` (ty's way) is `type[Point]`, a type variable printed with
+  its scope (`Model@create_model`) the variable, and an intersection with a truthiness
+  (`str & ~AlwaysFalsy`) its other member;
 - a `Literal` is widened to its values' types (`Literal[1, 2]` is `int`, `Literal[Color.RED]` is
   `Color`), and `LiteralString` to `str`, then a union's repeated members dropped;
 - anything that isn't an annotation (`Module("os")`, a callable's signature, `Self@C`) is dropped,
@@ -79,6 +81,7 @@ _ANNOTATION_NODES: Final = (
     ast.BinOp,
     ast.BitOr,
     ast.Load,
+    ast.Starred,  # `tuple[str, *tuple[str, ...]]`
 )
 _WIDER: Final = {"LiteralString": "str"}
 # `typing`'s special forms, which a checker prints for the form itself (`type[Generic]`, `Annotated`).
@@ -103,6 +106,10 @@ _FORMS: Final = frozenset(
 )
 # ty prints a class object as `<class 'Point'>`: that's `type[Point]`.
 _CLASS_OBJECT: Final = re.compile(r"<class '(\w+)'>")
+# ty prints a type variable with the function or class that declares it: `Model@create_model`.
+_SCOPED: Final = re.compile(r"\b(?!Self@)(\w+)@\w+")
+# What ty intersects a type with where a truth test narrowed it: `str & ~AlwaysFalsy`.
+_TRUTHINESS: Final = frozenset({"AlwaysFalsy", "AlwaysTruthy"})
 _DISCARD: Final = "_"
 # Each name a hint's edits import: its statement, module and name there (see `_origins`).
 _Origins: TypeAlias = dict[str, tuple[str, str, str]]
@@ -202,7 +209,7 @@ def _spelled(
     """
     plan: ImportPlan | None = known.names.plan
     try:
-        parsed: ast.expr = ast.parse(_CLASS_OBJECT.sub(r"type[\1]", text), mode="eval").body
+        parsed: ast.expr = ast.parse(_plain(text), mode="eval").body
     except SyntaxError:
         return None
     root: ast.expr | None = _widened(parsed)
@@ -237,6 +244,16 @@ def _spelled(
         lambda word: spelled.get(word[1], word[1]),
         ast.unparse(root),
     )
+
+
+def _plain(text: str) -> str:
+    """Write a hint's text as Python reads it: ty's class objects and scoped type variables as names.
+
+    Returns:
+      It: `<class 'Point'>` as `type[Point]`, `Model@create_model` as `Model`.
+
+    """
+    return _SCOPED.sub(r"\1", _CLASS_OBJECT.sub(r"type[\1]", text))
 
 
 def _lone(root: ast.expr) -> set[str]:
@@ -399,8 +416,8 @@ def _widened(node: ast.expr) -> ast.expr | None:
         case ast.Subscript(value=ast.Name(id=name), slice=inner) if name == _LITERAL:
             members: list[ast.expr] = inner.elts if isinstance(inner, ast.Tuple) else [inner]
             return _union([_literal_type(member) for member in members])
-        case ast.BinOp(op=ast.BitOr()):
-            return _union([_widened(member) for member in _members(node)])
+        case ast.BinOp(op=ast.BitOr() | ast.BitAnd()):
+            return _joined(node)
         case ast.Subscript(value=value, slice=inner):
             widened: ast.expr | None = _widened(inner)
             return None if widened is None else ast.Subscript(value, widened)
@@ -413,6 +430,19 @@ def _widened(node: ast.expr) -> ast.expr | None:
             return ast.Name(_WIDER.get(name, name))
         case _:
             return node
+
+
+def _joined(node: ast.BinOp) -> ast.expr | None:
+    """Widen a union's members; or read an intersection with a truthiness as its one other member.
+
+    Returns:
+      The annotation, or `None` for a member that widens to none, or any other intersection.
+
+    """
+    if isinstance(node.op, ast.BitOr):
+        return _union([_widened(member) for member in _members(node)])
+    types: list[ast.expr] = [part for part in _members(node, ast.BitAnd) if not _truthiness(part)]
+    return _widened(types[0]) if len(types) == 1 else None
 
 
 def _literal_type(member: ast.expr) -> ast.expr | None:
@@ -437,20 +467,31 @@ def _literal_type(member: ast.expr) -> ast.expr | None:
             return None
 
 
-def _members(node: ast.expr) -> list[ast.expr]:
-    """Flatten a union (`A | B | C`) into its members.
+def _members(node: ast.expr, joined: type[ast.operator] = ast.BitOr) -> list[ast.expr]:
+    """Flatten a union (`A | B | C`) into its members; or, `joined` by `&`, an intersection.
 
     Returns:
       Them, in order.
 
     """
-    left: ast.expr
-    right: ast.expr
+    if isinstance(node, ast.BinOp) and isinstance(node.op, joined):
+        return [*_members(node.left, joined), *_members(node.right, joined)]
+    return [node]
+
+
+def _truthiness(node: ast.expr) -> bool:
+    """Check whether an intersection's member only says its value is true, or false (`~AlwaysFalsy`).
+
+    Returns:
+      Whether it does.
+
+    """
+    name: str
     match node:
-        case ast.BinOp(left=left, op=ast.BitOr(), right=right):
-            return [*_members(left), *_members(right)]
+        case ast.UnaryOp(op=ast.Invert(), operand=ast.Name(id=name)):
+            return name in _TRUTHINESS
         case _:
-            return [node]
+            return False
 
 
 def _union(members: list[ast.expr | None]) -> ast.expr | None:

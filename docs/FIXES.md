@@ -16,8 +16,9 @@ in a function or module body:
 - a call to a capitalised name (`path = Path(...)` gives `Path`, a guess), if it can be written as a
   type: a name or dotted name whose first name the module binds only by an import or a class
   statement (not `Klass = ...`, `self.api.X()`, `make().X()`); or to a plain function that declares
-  its return type (not a generic, async or redefined one, and not a return of `None`, `Any` or one
-  that uses a `TypeVar`), in the same module or, with the CLI, in another file it's checking:
+  its return type, by an annotation or a `# type:` signature comment (`# type: () -> List[str]`)
+  (not a generic, async or redefined one, and not a return of `None`, `Any` or one that uses a
+  `TypeVar`), in the same module or, with the CLI, in another file it's checking:
   `from pkg.util import f`, `import pkg.util as u` or `from pkg import util` then `u.f()`, relative
   imports and re-exports all work. A name in the type the file doesn't import is imported for type
   checking alone (see below). A decorated function counts (a method too) only under decorators that
@@ -40,10 +41,11 @@ in a function or module body:
   checked file (`p.x`, `p.norm()`), a `str`/`bytes` method with a fixed return (`s.strip()`,
   `", ".join(parts)`, `"k=v".partition("=")` as `tuple[str, str, str]`), or a `list`/`set`/`dict`
   method that returns its own element type (`nums.pop()`, `d.get(k)` as `V | None`, `d.get(k, 0)` as
-  `V` with a default of that type); in a classmethod, `cls` is `type[C]`, whose class attributes
-  (`limit: int = 3`, `ClassVar[T]`) and classmethods' and staticmethods' declared returns type
-  `cls.x` and `cls.m()`. A member of a guessed value is a guess too (`Box().name`), and its fix
-  kinds include the value's;
+  `V` with a default of that type); `self` is its class's instance in a method, and in a function
+  defined in one that takes and binds no `self` of its own (not under a method whose signature says
+  `Self`); in a classmethod, `cls` is `type[C]`, whose class attributes (`limit: int = 3`,
+  `ClassVar[T]`) and classmethods' and staticmethods' declared returns type `cls.x` and `cls.m()`. A
+  member of a guessed value is a guess too (`Box().name`), and its fix kinds include the value's;
 - a method a class doesn't define, called on `self` or any value typed as the class: the base's that
   defines it, in Python's method resolution order, among the module's own classes (each defined
   once, not generic) and then a class another checked file defines (the CLI only), which ends the
@@ -162,8 +164,9 @@ statement: in a definition's decorators or defaults, or a statement that doesn't
 An annotation in quotes, or a quoted part of one, is read as its text: `xs: "list[Node]"` and
 `xs: list["Node"]` both type `xs[0]` as a `Node`. Not a `Literal`'s strings or an `Annotated`'s
 metadata, which are values. In a module body, where an annotation is evaluated, a fix naming what
-the module binds only further down, or imports under `if TYPE_CHECKING:` alone, is quoted
-(`first: "Node" = xs[0]`), unless the module has `from __future__ import annotations`.
+the module binds only further down, or imports under an `if` on a flag (`if TYPE_CHECKING:`,
+`if MYPY_CHECK_RUNNING:`), is quoted (`first: "Node" = xs[0]`), unless the module has
+`from __future__ import annotations`.
 
 A `with` statement's target is declared before it too, as what the context manager's `__enter__`
 returns: `with zipfile.ZipFile(path) as z:` gets `z: zipfile.ZipFile` (a standard-library manager
@@ -211,12 +214,14 @@ private alias in the return is written as what it stands for; a public one by it
 (`npt.NDArray[np.float64]`).
 
 A type another checked file declares (`get_handle() -> IOHandles[str]`) names what that file imports
-or defines; a name the calling file doesn't have is imported where the type's file has it from,
-under `if TYPE_CHECKING:` (into the module's first top-level one, or a new one after its imports,
-with `from typing import TYPE_CHECKING` if it must be), so the import can't make an import cycle at
-run time. A name the file already imports, under any name and even for type checking alone, is
-reused; a module-level annotation using one imported for type checking alone is quoted
-(`top: "IOHandles[str]" = get_handle()`), unless the module has
+or defines; a name the calling file doesn't have is written through the module that defines it, if
+the file imports that module to run (`core_schema.CoreSchema`, after
+`from pydantic_core import core_schema`; not through a name the file binds as a value somewhere),
+else imported where the type's file has it from, under `if TYPE_CHECKING:` (into the module's first
+top-level one, or a new one after its imports, with `from typing import TYPE_CHECKING` if it must
+be), so the import can't make an import cycle at run time. A name the file already imports, under
+any name and even for type checking alone, is reused; a module-level annotation using one imported
+for type checking alone is quoted (`top: "IOHandles[str]" = get_handle()`), unless the module has
 `from __future__ import annotations`. A generic class another file defines is never written bare.
 
 A chained assignment's names (`i = j = 0`), which can't be annotated where they're bound, are each
@@ -284,7 +289,10 @@ than the fix says, the fix is changed, made a guess, or not offered:
   checked file (`from ._typing import T`, under `if TYPE_CHECKING:` too) or `typing.AnyStr`, depends
   on the arguments: its calls aren't typed;
 - a one-parameter generic written with a trailing comma (`list[int,]`, as a formatter splits a long
-  one) has the element it would without.
+  one) has the element it would without;
+- an alias its module assigns in two arms of an `if` (`if MYPY: X = A`, `else: X = B`) is a variable
+  to a type checker, unless it decides the `if` itself (`sys.version_info`, `TYPE_CHECKING`, a
+  constant): a type naming one isn't written in another file.
 
 ## A type checker's types (`--infer-with`)
 
@@ -301,6 +309,12 @@ A hint is used only as an annotation the file can hold:
 
 - `Literal[...]` is widened to its values' types (`Literal[1] | None` is `int | None`,
   `Literal[Color.RED]` is `Color`), and `LiteralString` to `str`;
+- ty's own spellings are read: a class object (`<class 'Point'>`) is `type[Point]`, a type variable
+  printed with its scope (`Model@create_model`) the variable, and an intersection with a truthiness
+  (`str & ~AlwaysFalsy`) its other member; any other intersection is dropped. An unpacked tuple
+  (`tuple[str, *tuple[str, ...]]`) is kept as it is: Python 3.11's syntax;
+- a type variable of the module's is a fix only where the function's signature, or its class's
+  bases, name it: anywhere else it's unbound;
 - anything vague (`Any`, `list[Unknown]`), not an annotation (`Module("os")`, a signature), as deep
   as LVA006 reports or as long a tuple as LVA011 does, or a bare `None`, is dropped;
 - every name in it must be a builtin, a name the module binds at its top level (before the binding,

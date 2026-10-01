@@ -126,8 +126,8 @@ def _imported(lines: Sequence[str], offences: Sequence[Offence]) -> list["_Run"]
     if not (fixes := [o.edit for o in offences if o.edit and (o.edit.imports or o.edit.guarded)]):
         return []
     ending: str = _ending(lines)
-    statements: list[str] = _missing(lines, sorted({s for fix in fixes for s in fix.imports}))
-    guarded: list[str] = _missing(lines, sorted({s for fix in fixes for s in fix.guarded}))
+    statements: list[str] = _missing(lines, sorted({s for fix in fixes for s in fix.imports}), "\r\n")
+    guarded: list[str] = _missing(lines, sorted({s for fix in fixes for s in fix.guarded}), None)
     line: int = _import_line(lines, next((fix.after for fix in fixes if fix.imports), fixes[0].after))
     runs: list[_Run] = []
     block: tuple[int, int] = fixes[0].block
@@ -142,8 +142,12 @@ def _imported(lines: Sequence[str], offences: Sequence[Offence]) -> list["_Run"]
     return runs
 
 
-def _missing(lines: Sequence[str], statements: Sequence[str]) -> list[str]:
-    """Find the import statements `lines` doesn't have yet (as a line of their own).
+def _missing(lines: Sequence[str], statements: Sequence[str], stripped: str | None) -> list[str]:
+    """Find the import statements `lines` doesn't have yet, as a line of their own.
+
+    `stripped`: what a line may have around the statement: its line ending alone, for an import
+    that must run (an indented one is some block's, or a string's text, and may not), or any
+    whitespace (`None`), for one under `if TYPE_CHECKING:`.
 
     Returns:
       Them, in order.
@@ -151,7 +155,7 @@ def _missing(lines: Sequence[str], statements: Sequence[str]) -> list[str]:
     """
     if not statements:  # most fixes add none: the file's lines needn't be read for them
         return []
-    present: set[str] = {line.strip() for line in lines}
+    present: set[str] = {line.rstrip(stripped) if stripped else line.strip() for line in lines}
     return [statement for statement in statements if statement not in present]
 
 

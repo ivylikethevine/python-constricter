@@ -63,13 +63,12 @@ import pkg.util as u
 import pkg.util
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from pkg.util import Local
     import pkg.types as t
 
 def run() -> None:
     a: int = helper()
     b: Row = row()
-    c: Local = local()
+    c: u.Local = local()
     d: int = u.helper()
     e: list[str] = pkg.util.text()
     f: t.Row = u.trow()
@@ -220,8 +219,8 @@ def test_imported_classes_type_their_members(tmp_path: Path) -> None:
     """An imported class's attributes, properties and methods type their uses, as in its own module.
 
     Through `from pkg import Row` (a re-export) and `import pkg.models as m`; a `Self` return is the
-    class as the file spells it; a type the file doesn't import (`Hidden`) is imported for type
-    checking.
+    class as the file spells it; a type the file doesn't import (`Hidden`) is written through the
+    module it does (`m.Hidden`).
     """
     _ = _write(tmp_path / "pkg" / "__init__.py", "from .models import Row\n")
     _ = _write(tmp_path / "pkg" / "types.py", "class Tag:\n    pass\n")
@@ -240,7 +239,7 @@ def test_imported_classes_type_their_members(tmp_path: Path) -> None:
         "e": "m.Row",
         "g": "Tag",
         "h": "Tag",
-        "i": "Hidden",
+        "i": "m.Hidden",
         "j": None,
     }
     assert project.imported(project.Index({}, []), main) == project.Imported({}, Classes({}, {}))

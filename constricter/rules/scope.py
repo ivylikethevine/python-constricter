@@ -17,6 +17,7 @@ from constricter.fix.doubts import (
     narrowed_first,
     says_self,
     tested,
+    undeclared,
 )
 from constricter.fix.guesses import guessed, guessing
 from constricter.fix.inference import inference, inferred
@@ -400,9 +401,24 @@ class Scope:
                 # A generic class a checker prints bare has arguments it doesn't know.
                 and not bare(typed, self.settings.facts.generics)
                 and not hinted.renames(target.id, typed, local=self.kind.function is not None)
+                and not self._undeclared(typed)
             ):
                 return hinted.inference(typed, found.checker)
         return None
+
+    def _undeclared(self, annotation: str) -> bool:
+        """Check whether a hint names a type variable this scope's function doesn't declare.
+
+        See `undeclared`.
+
+        Returns:
+          Whether it does.
+
+        """
+        facts: Facts = self.settings.facts
+        function: FunctionDef | None = self.kind.function
+        owner: str | None = None if function is None else self.settings.owners.get(id(function))
+        return undeclared(annotation, function, facts.type_vars, facts.bound.get(owner or "", frozenset()))
 
     def placed(self, name: str, fix: Inference, origins: frozenset[str], *, unsafe: bool) -> Fix | None:
         """Offer `name`'s fix where it can go: at its binding, or declared before a chained assignment.
@@ -518,8 +534,9 @@ class Scope:
     def evaluated(self, offence: Offence) -> Offence:
         """Quote a module body's fix that can't be evaluated when the module runs (unless it postpones them).
 
-        One whose type names what the module imports for type checking alone, or binds only further
-        down (both unbound then, as a quoted annotation's names may be), or subscripts a
+        One whose type names what the module imports for type checking alone (under an `if` on a
+        flag), or binds only further down (both unbound then, as a quoted annotation's or a
+        `# type:` comment's names may be), or subscripts a
         standard-library class that can't be at run time (`itertools.count[int]`).
 
         Returns:
@@ -533,8 +550,7 @@ class Scope:
         line: int = fix.span[0] if fix.edit is Edit.DECLARE else offence.line
         names: frozenset[str] = roots(fix.annotation)
         unbound: bool = bool(names & plan.guarded.keys()) or any(
-            plan.defined[name] >= line if name in plan.defined else name in self.settings.facts.checking
-            for name in names
+            name in self.settings.facts.checking or plan.defined.get(name, 0) >= line for name in names
         )
         if not unbound and stdlib.evaluable(fix.annotation, self.settings.known):
             return offence

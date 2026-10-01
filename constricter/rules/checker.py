@@ -7,7 +7,7 @@ from dataclasses import replace
 from typing import Final, NamedTuple, cast
 
 from constricter.fix import entered, imports, inherited, returned, stdlib
-from constricter.fix.doubts import facts
+from constricter.fix.doubts import facts, says_self
 from constricter.fix.known import (
     Classes,
     ClassSide,
@@ -34,6 +34,7 @@ from constricter.rules.annotations import (
     casts,
     class_attributes,
     class_methods,
+    defined_type_vars,
     factories,
     free_of,
     free_of_all,
@@ -166,7 +167,7 @@ def _settings(
             checks.max_length,
         ),
         Hierarchy.for_module(tree, {name: frozenset(wider) for name, wider in checks.narrower}),
-        owners(tree),
+        owners(tree, says_self),
         tuple(
             sorted(
                 (node.lineno, node.col_offset)
@@ -179,6 +180,7 @@ def _settings(
             selfish,
             stdlib.generics(stdlib.origins(tree)) | (outside.generics if outside else frozenset[str]()),
             entered.managers(tree),
+            defined_type_vars(tree) | free,
         ),
         keyed(tree, {} if outside is None else outside.parameters),
     )
@@ -409,8 +411,9 @@ def _function_scope(
     scope.inferred.types.update(
         (arg.arg, written(arg.annotation)) for arg in named if arg.annotation is not None
     )
+    # A method's `self` is its class's instance; so is the `self` a function defined in it reads.
     owner: str | None = settings.owners.get(id(func))
-    if owner is not None and named and named[0].arg == _SELF:
+    if owner is not None and (_SELF not in params or [arg.arg for arg in named[:1]] == [_SELF]):
         _ = scope.inferred.types.setdefault(_SELF, owner)
     # A classmethod's first parameter is its class (`type[C]`), whatever it's called.
     if owner is not None and named and [node_name(d) for d in func.decorator_list] == [_CLASSMETHOD]:

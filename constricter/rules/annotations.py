@@ -13,7 +13,7 @@ from typing import Final, cast
 
 from constricter.rules.decorators import Held, passing, spelled
 from constricter.rules.quoted import parsed, written
-from constricter.rules.syntax import child_statements
+from constricter.rules.syntax import child_statements, declared_return
 
 _VAGUE: Final = frozenset({"Any", "object"})
 # `collections.abc`'s generic classes (`typing` has each too).
@@ -538,7 +538,7 @@ def self_returns(tree: ast.Module) -> dict[str, frozenset[str]]:
             for stmt in node.body
             if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef)
             and stmt.returns is not None
-            and _is_self(ast.unparse(stmt.returns))
+            and _is_self(written(stmt.returns))
         )
         for node in _class_nodes(tree)
     }
@@ -667,7 +667,7 @@ def _declared_returns(
             case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) if not _accessor(stmt):
                 counts[name] = counts.get(name, 0) + 1
                 if isinstance(stmt, ast.AsyncFunctionDef) == awaited and _plain(stmt, decorators, vouched):
-                    found[name] = written(cast("ast.expr", stmt.returns))
+                    found[name] = written(cast("ast.expr", declared_return(stmt)))
             case _:
                 pass
     return {
@@ -703,6 +703,7 @@ def _plain(
 
     """
     spellings: list[str | None] = [spelled(decorator) for decorator in func.decorator_list]
+    declared: ast.expr | None = declared_return(func)
     return (
         (
             [node_name(decorator) for decorator in func.decorator_list] in ([name] for name in decorators)
@@ -710,9 +711,9 @@ def _plain(
             else None not in spellings and (vouched is None or vouched.issuperset(spellings))
         )
         and not cast("object", getattr(func, "type_params", ()))  # Python 3.12+'s `def f[T]()`
-        and func.returns is not None
-        and not (isinstance(func.returns, ast.Constant) and func.returns.value is None)
-        and not is_vague(func.returns)
+        and declared is not None
+        and not (isinstance(declared, ast.Constant) and declared.value is None)
+        and not is_vague(declared)
     )
 
 

@@ -92,6 +92,11 @@ def _fixes(source: str, hinted: dict[str, str]) -> _Fixes:
         ("type[Generic]", None),  # a special form itself, not a type
         ("Annotated", None),
         ("Annotated[int, Color]", "Annotated[int, Color]"),
+        ("(str & ~AlwaysFalsy) | None", "str | None"),  # ty's: narrowed by a truth test
+        ("int & ~AlwaysTruthy", "int"),
+        ("Color & Sized", None),  # any other intersection isn't an annotation
+        ("~AlwaysFalsy", None),
+        ("tuple[str, *tuple[str, ...]]", "tuple[str, *tuple[str, ...]]"),
     ],
 )
 def test_a_hint_is_widened_spelled_or_dropped(hint: str, fix: str | None) -> None:
@@ -112,6 +117,54 @@ def test_a_hint_is_widened_spelled_or_dropped(hint: str, fix: str | None) -> Non
         x = q.make()
     """
     assert _fixes(source, {"x": hint}) == [("x", fix, fix is not None)]
+
+
+def test_a_type_variable_is_a_fix_only_where_its_function_declares_it() -> None:
+    """A type variable ty prints with its scope is the variable; a fix where its function declares it.
+
+    Where neither the function's signature nor its class names it, it's unbound.
+    """
+    source: str = """
+    from typing import Generic, TypeVar
+
+    Model = TypeVar("Model")
+    T = TypeVar("T")
+    top = make()
+
+
+    def create_model(base: "type[Model]", q) -> None:
+        a = q.make()
+
+
+    def other(q) -> None:
+        b = q.make()
+
+
+    class Box(Generic[T]):
+        def get(self, q) -> None:
+            c = q.make()
+            d = q.make()
+
+            def inner() -> None:
+                e = q.make()
+    """
+    hints: dict[str, str] = {
+        "top": "type[Model]",
+        "a": "type[Model@create_model]",
+        "b": "type[Model@create_model]",
+        "c": "list[T@Box]",
+        "d": "list[Model@create_model]",
+        "e": "list[T@Box]",
+    }
+    found: list[Offence] = _checked(source, hints, Checks(all_scopes=True))
+    assert {o.name: o.fix for o in found if o.name in hints} == {
+        "top": None,  # a module body declares none
+        "a": "type[Model]",
+        "b": None,
+        "c": "list[T]",  # its class's
+        "d": None,
+        "e": "list[T]",  # a function defined in the method reads its class's too
+    }
 
 
 def test_a_well_known_class_is_imported() -> None:

@@ -4,7 +4,7 @@
 import ast
 import bisect
 import re
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import Final, TypeAlias
 
 from constricter.offences import at
@@ -26,6 +26,7 @@ NESTED_SCOPES: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.C
 _END: Final = 1 << 62  # past any line: a module's span has no end
 Start: TypeAlias = tuple[int, int]  # where a node starts: its line and column
 _FUTURE: Final = "__future__"
+_SELF: Final = "self"
 # `from __future__` features only code that also runs on Python 2 imports: its type comments count.
 _PYTHON2_FUTURES: frozenset[str] = frozenset(
     {
@@ -67,11 +68,13 @@ def collect_functions(body: list[ast.stmt], into: list[FunctionDef]) -> None:
             collect_functions(child_statements(stmt), into)
 
 
-def owners(tree: ast.Module) -> dict[int, str]:
+def owners(tree: ast.Module, selfish: Callable[[FunctionDef], bool]) -> dict[int, str]:
     """Map each direct method of a class to that class's name, by the method's `id`.
 
     For `--fix` to type a method's `self`. A method is a function directly in a class's body,
     however deep through `if`/`try`/..., but not through a nested class's or function's own body.
+    A function defined in a method reads the method's `self` (see `_self_readers`): it's mapped
+    too, unless the method is one `selfish` says types its `self` otherwise (as `Self`).
 
     Returns:
       Each such function, by `id()`, mapped to its class's name.
@@ -80,11 +83,66 @@ def owners(tree: ast.Module) -> dict[int, str]:
     found: dict[int, str] = {}
     node: ast.AST
     methods: list[FunctionDef]
+    method: FunctionDef
     for node in classes(tree):
         methods = []
         _direct_methods(node.body, methods)
-        found.update((id(method), node.name) for method in methods)
+        for method in methods:
+            found[id(method)] = node.name
+            if _SELF in _first_parameter(method) and not _binds_self(method) and not selfish(method):
+                found.update((id(inner), node.name) for inner in _self_readers(method))
     return found
+
+
+def _first_parameter(function: FunctionDef) -> list[str]:
+    """Name a function's first positional parameter.
+
+    Returns:
+      It, alone; nothing for a function without one.
+
+    """
+    return [arg.arg for arg in (*function.args.posonlyargs, *function.args.args)][:1]
+
+
+def _self_readers(function: FunctionDef) -> Iterator[FunctionDef]:
+    """Walk the functions defined in `function`, however deep, that read its `self`.
+
+    One taking no parameter `self` and binding none, in a function that does neither (but
+    `function` itself, whose `self` it is).
+
+    Yields:
+      Each.
+
+    """
+    nested: list[FunctionDef] = []
+    _direct_methods(function.body, nested)
+    inner: FunctionDef
+    for inner in nested:
+        args: ast.arguments = inner.args
+        params: list[ast.arg | None] = [
+            *args.posonlyargs,
+            *args.args,
+            *args.kwonlyargs,
+            args.vararg,
+            args.kwarg,
+        ]
+        if not any(arg is not None and arg.arg == _SELF for arg in params) and not _binds_self(inner):
+            yield inner
+            yield from _self_readers(inner)
+
+
+def _binds_self(function: FunctionDef) -> bool:
+    """Check whether a function's own body binds `self` (an assignment, a loop, an import, ...).
+
+    Returns:
+      Whether it does.
+
+    """
+    return any(
+        (isinstance(node, ast.Name) and node.id == _SELF and not isinstance(node.ctx, ast.Load))
+        or (isinstance(node, ast.alias) and (node.asname or node.name) == _SELF)
+        for node in own_nodes(function.body)
+    )
 
 
 def _direct_methods(body: list[ast.stmt], into: list[FunctionDef]) -> None:
@@ -310,6 +368,23 @@ def comment_type(comment: str) -> str | None:
     if isinstance(parsed, ast.Tuple):
         return f"tuple[{', '.join(ast.unparse(part) for part in parsed.elts)}]"
     return ast.unparse(parsed)
+
+
+def declared_return(func: FunctionDef) -> ast.expr | None:
+    """Read the return type a function declares: its annotation, or its `# type:` signature comment's.
+
+    `def find():  # type: () -> List[str]` declares a `List[str]`, as a type checker reads it.
+
+    Returns:
+      It, or `None` for a function declaring none (or a comment that isn't a signature).
+
+    """
+    if func.returns is not None or not func.type_comment:
+        return func.returns
+    try:
+        return ast.parse(func.type_comment, mode="func_type").returns
+    except SyntaxError:
+        return None
 
 
 def type_comment_span(lines: Sequence[str], stmt: ast.For | ast.AsyncFor) -> tuple[int, int] | None:
