@@ -6,6 +6,20 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types a call to a decorated function that declares its return, under decorators that give
+  the function back: the standard library's (`functools.cache`, `lru_cache`, `wraps`,
+  `abc.abstractmethod`, `typing.final`, `override`, `deprecated`), and a function whose signature
+  says so (`F -> F`, or a factory's `Callable[[F], F]`), the module's own or one imported from a
+  checked file or an installed package (pandas's `@set_module("pandas")`):
+  `idx = date_range("2020", periods=3)` is a `DatetimeIndex`. 2,216 more certain fixes and 249 more
+  guesses on pandas, sqlalchemy and pydantic; basedpyright finds 30 new errors on pandas, where a
+  name so typed is bound again to another type.
+- Fixed: `--fix` left one fix for a second pass where a loop over an `Iterable[T]` binds names used
+  in `tup += (name, value)`; a loop's target declared before it is still what the loop gives, and a
+  tuple added to isn't taken for the tuple added. A type with a name in quotes inside it
+  (`Dict[str, 'Row']`) is no longer written in a file where the name means nothing (4 new errors on
+  pydantic). A hint's location that isn't a file's no longer raises, and the tests that build file
+  URIs pass on Windows.
 - `--fix` types a method a class inherits: `self.size()`, or `x.size()` on a value typed as the
   class, is the base's that defines it, in method resolution order among the module's classes and
   then a class of another checked file. A declared return is certain, a `Self` one the receiver's

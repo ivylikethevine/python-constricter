@@ -91,6 +91,7 @@ INPUTS: Final = (
     "constricter/offences.py",
     "constricter/rules/__init__.py",
     "constricter/rules/annotations.py",
+    "constricter/rules/decorators.py",
     "constricter/rules/flow.py",
     "constricter/rules/syntax.py",
     "constricter/rules/walked.py",

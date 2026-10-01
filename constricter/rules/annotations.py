@@ -9,8 +9,9 @@ import ast
 import re
 from collections.abc import Iterator, Mapping, Sequence
 from functools import lru_cache
-from typing import Final, NamedTuple, cast
+from typing import Final, cast
 
+from constricter.rules.decorators import Held, passing, spelled
 from constricter.rules.syntax import child_statements
 
 _VAGUE: Final = frozenset({"Any", "object"})
@@ -436,14 +437,47 @@ def depth(annotation: ast.expr) -> int:
 def returns(tree: ast.Module) -> dict[str, str]:
     """Return the declared return type of each plain top-level function whose calls `--fix` can annotate.
 
-    Skipped: decorated, generic, async and redefined functions, and returns that are `None`, vague, or
-    mention a module-level `TypeVar` (a call's type then depends on its arguments).
+    Skipped: generic, async and redefined functions, one decorated by anything but a decorator that
+    gives it back (see `decorators.passing`), and returns that are `None`, vague, or mention a
+    module-level `TypeVar` (a call's type then depends on its arguments).
 
     Returns:
       Each such function's name, and its return annotation as source text.
 
     """
-    return _declared_returns(tree.body, defined_type_vars(tree))
+    return _declared_returns(tree.body, defined_type_vars(tree), vouched=_passing(tree))
+
+
+@lru_cache(maxsize=4)  # asked for a module's functions, then its classes' methods
+def _passing(tree: ast.Module) -> frozenset[str]:
+    """Spell the decorators the module alone vouches for (see `decorators.passing`).
+
+    Returns:
+      Them.
+
+    """
+    return passing(tree, defined_type_vars(tree))
+
+
+def held(tree: ast.Module) -> dict[str, Held]:
+    """Find the plain top-level functions declaring a return under decorators the module can't vouch for.
+
+    As `returns` reads them, but for those decorators: another module's may give the function back.
+
+    Returns:
+      Each one's name, its return annotation and those decorators (see `Held`).
+
+    """
+    known: frozenset[str] = _passing(tree)
+    declared: dict[str, str] = _declared_returns(tree.body, defined_type_vars(tree), vouched=None)
+    return {
+        stmt.name: Held(
+            declared[stmt.name],
+            tuple(sorted({spelled(d) or "" for d in stmt.decorator_list} - known)),
+        )
+        for stmt in tree.body
+        if isinstance(stmt, ast.FunctionDef) and stmt.name in declared and stmt.name not in returns(tree)
+    }
 
 
 def method_returns(tree: ast.Module) -> dict[str, dict[str, str]]:
@@ -479,7 +513,12 @@ def _class_returns(tree: ast.Module, decorators: frozenset[str]) -> dict[str, di
         if not _generic(node):
             found[node.name] = {
                 name: node.name if _is_self(annotation) else annotation
-                for name, annotation in _declared_returns(node.body, type_vars, decorators=decorators).items()
+                for name, annotation in _declared_returns(
+                    node.body,
+                    type_vars,
+                    decorators=decorators,
+                    vouched=_passing(tree),
+                ).items()
                 if _is_self(annotation) or _SELF not in _words(annotation)
             }
     return found
@@ -609,11 +648,13 @@ def _declared_returns(
     *,
     awaited: bool = False,
     decorators: frozenset[str] = _UNDECORATED,
+    vouched: frozenset[str] | None = _UNDECORATED,
 ) -> dict[str, str]:
     """Find the plain functions (`async` ones if `awaited`) directly in `body` `--fix` can annotate.
 
-    Plain means undecorated, or with `decorators`, decorated by exactly one of them. A property's
-    `@name.setter` or `@name.deleter` is the same property, not a redefinition.
+    Plain means decorated only as `vouched` spells (`None`: by anything `decorators.spelled`
+    reads), or with `decorators`, by exactly one of them. A property's `@name.setter` or
+    `@name.deleter` is the same property, not a redefinition.
 
     Returns:
       Each such function's name, and its return annotation as source text.
@@ -627,7 +668,7 @@ def _declared_returns(
         match stmt:
             case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) if not _accessor(stmt):
                 counts[name] = counts.get(name, 0) + 1
-                if isinstance(stmt, ast.AsyncFunctionDef) == awaited and _plain(stmt, decorators):
+                if isinstance(stmt, ast.AsyncFunctionDef) == awaited and _plain(stmt, decorators, vouched):
                     found[name] = ast.unparse(cast("ast.expr", stmt.returns))
             case _:
                 pass
@@ -651,19 +692,24 @@ def _accessor(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     )
 
 
-def _plain(func: ast.FunctionDef | ast.AsyncFunctionDef, decorators: frozenset[str] = _UNDECORATED) -> bool:
-    """Check that `func` declares a return type its calls always have, decorated as `decorators` asks.
+def _plain(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+    decorators: frozenset[str],
+    vouched: frozenset[str] | None,
+) -> bool:
+    """Check that `func` declares a return type its calls always have, decorated as asked.
 
     Returns:
-      Whether it does: undecorated (or, with `decorators`, decorated by exactly one of them), not
-      `None`, and not vague.
+      Whether it does: decorated only as `vouched` spells (`None`: by anything spelled), or, with
+      `decorators`, by exactly one of them; not `None`, and not vague.
 
     """
+    written: list[str | None] = [spelled(decorator) for decorator in func.decorator_list]
     return (
         (
             [node_name(decorator) for decorator in func.decorator_list] in ([name] for name in decorators)
             if decorators
-            else not func.decorator_list
+            else None not in written and (vouched is None or vouched.issuperset(written))
         )
         and not cast("object", getattr(func, "type_params", ()))  # Python 3.12+'s `def f[T]()`
         and func.returns is not None
@@ -688,24 +734,3 @@ def roots(annotation: str) -> frozenset[str]:
     if isinstance(tree, ast.Constant) and isinstance(tree.value, str):
         tree = ast.parse(tree.value, mode="eval").body
     return frozenset(node.id for node in ast.walk(tree) if isinstance(node, ast.Name))
-
-
-class Tables(NamedTuple):
-    """A module's own tables `--fix` reads (see `returns`, `classes`, `method_returns`).
-
-    Its functions' declared returns, and its classes' attributes and methods' returns.
-    """
-
-    returns: dict[str, str]
-    classes: dict[str, dict[str, str]]
-    methods: dict[str, dict[str, str]]
-
-
-def module_tables(tree: ast.Module) -> Tables:
-    """Read the module's own tables, once for the cross-file index and the check (see `parsed.keep`).
-
-    Returns:
-      Them.
-
-    """
-    return Tables(returns(tree), classes(tree), method_returns(tree))

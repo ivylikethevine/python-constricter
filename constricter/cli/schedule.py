@@ -13,7 +13,7 @@ from typing import Final
 
 from constricter.cli.runs import CoverageRun, FileRun
 from constricter.cli.workers import Checking, Workers, check_share, first_done
-from constricter.fix import callers, offers, order, project, stubbed
+from constricter.fix import callers, decorated, offers, order, project, stubbed
 from constricter.fix.known import Hints, Outside
 
 CYCLE_ROUNDS: Final = 3  # how many times to check again files calling each other's functions
@@ -32,7 +32,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
     # What only a hint can name: the classes the file imports for type checking alone.
     own: offers.Own = offers.own(modules, path) if hints else offers.Own()
     return Outside(
-        imported.calls,
+        {**imported.calls, **decorated.own(modules, path)},
         imported.classes,
         hints,
         project.type_vars(modules, path),

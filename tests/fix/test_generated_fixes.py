@@ -136,6 +136,33 @@ def test_a_generator_is_typed_by_its_yields() -> None:
     }
 
 
+def test_a_loop_over_an_iterable_is_fixed_in_one_pass() -> None:
+    """Its targets, once declared, are still what it gives: a second pass finds nothing more."""
+    source: str = textwrap.dedent(
+        """\
+        from collections.abc import Iterable
+        from typing import Any
+
+
+        def key(tokens: tuple[Any, ...], pairs: Iterable[tuple[str, int]], args: Iterable[Any]) -> None:
+            tup = tokens
+            for (name, count), arg in zip(pairs, args):
+                tup += (name, arg)
+                copy = name
+        """,
+    )
+    first: list[Offence] = check_source(source)
+    assert {o.name: (o.fix, o.unsafe) for o in first} == {
+        "tup": ("tuple[Any, ...]", True),  # added to: by what isn't known
+        "name": ("str", False),
+        "count": ("int", False),
+        "arg": ("Any", False),
+        "copy": ("str", False),
+    }
+    fixed: str = "".join(fixes.apply(source.splitlines(keepends=True), first))
+    assert [o.name for o in check_source(fixed) if o.fix is not None] == []
+
+
 def test_the_generator_class_is_imported_for_the_fix() -> None:
     """As any library class a fix names: by an import the module has, or one added."""
     source: str = "def gen():\n    yield 1\n\n\ndef f() -> None:\n    made = gen()\n"

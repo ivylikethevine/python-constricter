@@ -140,7 +140,8 @@ def _part(name: str, defined: str | None = None) -> Json:
     """
     part: Object = {"value": name}
     if defined is not None:
-        part["location"] = {"uri": f"file://{defined}", "range": {"start": _TOP, "end": _TOP}}
+        # Absolute on Windows too, where a path without a drive has no file URI.
+        part["location"] = {"uri": Path(defined).absolute().as_uri(), "range": {"start": _TOP, "end": _TOP}}
     return part
 
 
@@ -185,3 +186,10 @@ def test_a_project_files_class_is_imported_from_its_module(tmp_path: Path) -> No
     assert found == Offered("Shape | Shape", ("from pkg.shapes import Shape",))
     plain: Object = {"position": _AT, "label": ": Shape"}
     assert edits.offered(plain, "Shape", _locate, edits.FromImports([])) is None
+    nowhere: Json = {
+        "value": "Shape",
+        "location": {"uri": "untitled:", "range": {"start": _TOP, "end": _TOP}},
+    }
+    assert (
+        edits.offered({"position": _AT, "label": [nowhere]}, "Shape", _locate, edits.FromImports([])) is None
+    )

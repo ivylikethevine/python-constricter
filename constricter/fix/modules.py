@@ -20,13 +20,13 @@ from constricter.fix.known import Origin, Passed, Returns
 from constricter.fix.returned import unannotated
 from constricter.rules import parsed
 from constricter.rules.annotations import (
-    Tables,
     defined_type_vars,
     dotted,
     generic_classes,
-    module_tables,
     self_returns,
 )
+from constricter.rules.decorators import Held, Pass
+from constricter.rules.tables import Tables, module_tables
 from constricter.rules.walked import of_type
 
 _PACKAGE: Final = "__init__"
@@ -70,6 +70,11 @@ class Module(NamedTuple):
     open: Mapping[str, tuple[Param, ...]] = {}
     parameters: Mapping[str, Mapping[str, Passed]] = {}  # see `Seeds`
     declared: Declarations | None = None  # an installed module's, for its overloads (see `declared`)
+    # Its functions declaring a return under decorators other modules may vouch for, each with those
+    # decorators as written, and its own decorators that give a function back (see `decorators`).
+    held: Mapping[str, Held] = {}
+    passes: Mapping[str, Pass] = {}
+    vouched: frozenset[str] = frozenset()  # those of `held` they vouched for, now among `returns`
 
 
 class Index(NamedTuple):
@@ -254,6 +259,8 @@ def read(path: Path, name: str | None = None) -> Module | None:
         installed=name is not None,
         open=open_functions(tree),
         declared=None if name is None else declarations(tree),
+        held=own.held,
+        passes=own.passes,
     )
 
 

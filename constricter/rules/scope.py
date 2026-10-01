@@ -206,14 +206,23 @@ class Scope:
         """
         return self.flow.setdefault(name, Lifetime())
 
-    def bind(self, name: str, where: tuple[int, int], code: str | None, fix: Fix | None = None) -> None:
+    def bind(
+        self,
+        name: str,
+        where: tuple[int, int],
+        code: str | None,
+        fix: Fix | None = None,
+        typed: str | None = None,
+    ) -> None:
         """Bind `name` to a value value flow can't see; unless it's already bound, report `code`.
 
         `code` is reported at `(line, col)` (`None` means typed), offering `fix` if there's one.
+        `typed`: the value's certain type, if `--fix` knows it (a loop's element), which a name
+        declared already is then bound to.
         """
         self.lifetime(name).bind(where, None)
         if name in self.declared:
-            self.inferred.rebound(name, None)
+            self.inferred.rebound(name, typed)
         self._first(name, where, code, fix)
 
     def assign(

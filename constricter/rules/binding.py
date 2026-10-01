@@ -182,7 +182,7 @@ def _bind_declaration(
         )
         # What the rest of the scope infers from `name` knows its type, as for `name = value`.
         scope.inferred.learn(name.id, found.annotation, origins if unsafe else None)
-    scope.bind(name.id, at(name), code, fix)
+    scope.bind(name.id, at(name), code, fix, None if found is None or unsafe else found.annotation)
 
 
 def _bind_commented(scope: Scope, stmt: ast.For | ast.AsyncFor, target: ast.expr, comment: str) -> None:

@@ -127,9 +127,11 @@ def _defined_in(path: Path) -> str | None:
 
     Returns:
       It, by the folders after `site-packages` or pyrefly's stubs' folder, else by its package
-      folders as the project index names it; `None` for a stub anywhere else.
+      folders as the project index names it; `None` for a stub anywhere else, or no file at all.
 
     """
+    if not path.name:  # a location that isn't a file's (`untitled:`)
+        return None
     parts: tuple[str, ...] = path.with_suffix("").parts
     index: int
     part: str

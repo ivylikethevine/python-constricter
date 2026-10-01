@@ -19,6 +19,7 @@ itself; a parameterised generic (`list[int]`) is compared by its text.
 """
 
 import ast
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -44,6 +45,8 @@ _OPTIONAL: Final = "Optional"
 _UNION: Final = "Union"
 _COMPLEX: Final = "complex"
 _TEXT: Final = frozenset({"str", "bytes"})
+# A tuple of a fixed length, as text: `tuple[int, str]`, not `tuple[int, ...]`.
+_FIXED_TUPLE: Final = re.compile(r"(?:tuple|Tuple)\[(?!.*,\s*\.\.\.\]$).*\]")
 # `typing`'s capitalised aliases, compared as the builtins they stand for.
 _ALIASES: Final = {
     "Dict": "dict",
@@ -388,7 +391,8 @@ def augmented(op: ast.operator, operand: str | None, own: str | None = None) -> 
     type both sides fit in, which the operand's own type stands for, since `x`'s is already among
     its values. Any other operator (`**` can turn an `int` into a `float`; bit operators, `@`, ...)
     is unknown. Text (`own`, `x`'s certain type, a `str` or `bytes`) stays text by `+`, `*` and `%`,
-    whatever the operand: any other would raise.
+    whatever the operand: any other would raise. A tuple of some length added or multiplied is a
+    longer one, unknown.
 
     Returns:
       The type as text, or `None` if unknown.
@@ -396,6 +400,8 @@ def augmented(op: ast.operator, operand: str | None, own: str | None = None) -> 
     """
     if own in _TEXT and isinstance(op, ast.Add | ast.Mult | ast.Mod):
         return own
+    if operand is not None and _FIXED_TUPLE.fullmatch(operand):
+        return None
     match op:
         case ast.Div():
             if operand == _COMPLEX:

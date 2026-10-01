@@ -25,7 +25,7 @@ from typing import Final, NamedTuple
 
 from constricter.fix.known import Classes, Guarded, Origin, Returns
 from constricter.fix.modules import SUFFIX, Index, Module, index, indexed, module_name, read
-from constricter.rules.annotations import roots
+from constricter.rules.annotations import node_name, roots
 
 __all__ = [
     "Imported",
@@ -42,6 +42,8 @@ _STDLIB: Final = sys.stdlib_module_names
 _BUILTINS_MODULE: Final = "builtins"
 _HOPS: Final = 5  # how many re-exports (`from .util import f` in an `__init__`) to follow
 _FUNCTION: Final = "function"
+DECORATOR: Final = "decorator"  # a function that gives back the one it decorates
+_LITERAL: Final = "Literal"
 CLASS: Final = "class"
 _TYPE_VAR: Final = "type variable"
 _RETURNED: Final = "returned"  # an unannotated function its `return`s type
@@ -100,6 +102,7 @@ def _kind(module: Module, kind: str) -> Iterable[str]:
         _RETURNED: module.returned.calls,
         _UNANNOTATED: module.unannotated,
         OPEN: module.open,
+        DECORATOR: module.passes,
         "signatures": {} if module.declared is None else module.declared.signatures,
     }
     return kinds.get(kind, module.type_vars)
@@ -119,11 +122,11 @@ def type_vars(catalog: Index, path: Path) -> frozenset[str]:
     if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
         return frozenset()
     return frozenset(
-        local for local in {*target.names, *target.guarded} if _is_type_var(catalog.modules, target, local)
+        local for local in {*target.names, *target.guarded} if is_type_var(catalog.modules, target, local)
     )
 
 
-def _is_type_var(modules: Mapping[str, Module], module: Module, name: str) -> bool:
+def is_type_var(modules: Mapping[str, Module], module: Module, name: str) -> bool:
     """Check whether `name` is a type variable in `module`: its own, or one it imports from a checked file.
 
     Returns:
@@ -296,15 +299,19 @@ def _respelled(
     As it is, if every name in it means the same in both; else, with `guarded` to record them in,
     each other name as `target` imports what it refers to (under any name), or by an import to add
     under `if TYPE_CHECKING:` (see `Guarded`), if nothing else in `target` has that name. Never one
-    naming a type variable (see `_is_type_var`), a builtin `target` rebinds, what `defined` doesn't
-    import at its top level (nor define), or a checked file's generic class without its arguments.
+    naming a type variable (see `is_type_var`), a builtin `target` rebinds, what `defined` doesn't
+    import at its top level (nor define), a checked file's generic class without its arguments, or
+    in quotes inside it (`Dict[str, 'Row']`) what means anything else in `target`.
 
     Returns:
       The type, or `None`.
 
     """
     names: frozenset[str] = roots(annotation)
-    if any(_is_type_var(modules, defined, root) for root in names) or _bare(modules, defined, annotation):
+    if any(is_type_var(modules, defined, root) for root in names) or _bare(modules, defined, annotation):
+        return None
+    # A name quoted inside it stays as it is: no import is added for it, and it isn't renamed.
+    if any(not _same(target, defined, root) for root in _quoted(annotation)):
         return None
     if all(_same(target, defined, root) for root in names):
         return annotation
@@ -330,6 +337,41 @@ def _respelled(
             found[name] = guarded.get(name) or found.get(name) or Guarded(origin, _statement(origin, name))
     guarded.update(found)
     return _renamed(annotation, renamed)
+
+
+@lru_cache(maxsize=4096)
+def _quoted(annotation: str) -> frozenset[str]:
+    """Find the names an annotation is written with in quotes inside it: `Row` in `Dict[str, 'Row']`.
+
+    Not a `Literal`'s strings, nor the whole annotation's own quotes (see `roots`).
+
+    Returns:
+      The names.
+
+    """
+    tree: ast.expr = ast.parse(annotation, mode="eval").body
+    found: set[str] = set()
+    waiting: list[ast.AST | None] = [None, tree]  # `None` at its bottom ends it
+    node: ast.AST
+    for node in iter(waiting.pop, None):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node is not tree:
+            found.update(_names_in(node.value))
+        elif not (isinstance(node, ast.Subscript) and node_name(node.value) == _LITERAL):
+            waiting.extend(ast.iter_child_nodes(node))
+    return frozenset(found)
+
+
+def _names_in(text: str) -> set[str]:
+    """Read the names a quoted part of an annotation is written with.
+
+    Returns:
+      Them; none if it isn't an expression.
+
+    """
+    try:
+        return {node.id for node in ast.walk(ast.parse(text, mode="eval")) if isinstance(node, ast.Name)}
+    except SyntaxError:
+        return set()
 
 
 def _bare(modules: Mapping[str, Module], defined: Module, annotation: str) -> bool:

@@ -313,6 +313,52 @@ def test_a_type_is_written_as_the_file_can(tmp_path: Path, source: str, annotati
     assert [o.fix for o in offences] == [annotation]
 
 
+def test_a_name_quoted_inside_a_type_must_mean_the_same(tmp_path: Path) -> None:
+    """No import is added for it: where the file doesn't have it, the type isn't written."""
+    quoting: str = """
+    from typing import Literal
+
+    from pkg.other import Thing
+
+
+    def things() -> list['Thing']:
+        return []
+
+
+    def mode() -> Literal['r']:
+        return 'r'
+
+
+    def odd() -> list['no way']:
+        return []
+    """
+    using: str = """
+    from typing import Literal
+
+    from pkg.quoting import mode, odd, things
+    {}
+
+    def f() -> None:
+        a = things()
+        b = mode()
+        c = odd()
+    """
+    _package(tmp_path)
+    _ = _write(tmp_path / "pkg" / "quoting.py", quoting)
+    fixes_by_import: dict[str, list[str | None]] = {}
+    extra: str
+    for extra in ("", "from pkg.other import Thing"):
+        user: Path = _write(tmp_path / "user.py", using.format(extra))
+        imported: project.Imported = project.imported(project.index(sorted(tmp_path.rglob("*.py"))), user)
+        offences: list[Offence] = check_source(
+            user.read_text(encoding="utf-8"),
+            outside=Outside(imported.calls, guarded=imported.guarded),
+        )
+        fixes_by_import[extra] = [o.fix for o in offences]
+    rest: list[str | None] = ["Literal['r']", "list['no way']"]
+    assert fixes_by_import == {"": [None, *rest], "from pkg.other import Thing": ["list['Thing']", *rest]}
+
+
 def test_a_guarded_type_passes_through_an_unannotated_function(tmp_path: Path) -> None:
     """A file's own function returning another's guarded type types its calls in a third, in one run.
 

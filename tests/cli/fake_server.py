@@ -202,7 +202,9 @@ def _located(position: _Object, said: str) -> _Object:
     for word in [found for found in re.split(r"(\w+)", shown) if found]:
         part: _Object = {"value": word}
         if word in files:
-            part["location"] = {"uri": Path(files[word]).as_uri(), "range": {"start": start, "end": start}}
+            # Absolute on Windows too, where a path without a drive has no file URI.
+            uri: str = Path(files[word]).absolute().as_uri()
+            part["location"] = {"uri": uri, "range": {"start": start, "end": start}}
         parts.append(part)
     return {"position": position, "label": parts}
 

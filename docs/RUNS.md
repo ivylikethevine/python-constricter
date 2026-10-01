@@ -34,8 +34,18 @@ CI has none. On 0.2.4, and since (Unreleased: see [FIXES.md](FIXES.md#what-a-typ
 | pandas     | mypy and pyright, as configured    |             259 |        117, now 0 |                      165, now 36 |
 
 `--types --infer-with CHECKERS` adds a run with the checkers' hints' fixes
-(`--fix --unsafe-fixes --infer-with CHECKERS`). sqlalchemy's mypy, with basedpyright's and ty's: 47
-new errors (193 files changed), 34 of them traced to a hint's fix.
+(`--fix --unsafe-fixes --infer-with CHECKERS`), here basedpyright's and ty's. New errors,
+Unreleased:
+
+| Package    | Released errors | After `--fix` | After `--fix --unsafe-fixes` | With the hints' fixes |
+| ---------- | --------------: | ------------: | ---------------------------: | --------------------: |
+| pydantic   |             191 |             5 |                            8 |                    26 |
+| sqlalchemy |               0 |             0 |                           11 |                    47 |
+
+pydantic's 191 are this environment's (its pinned pyright finds none in its CI). Its 5 after
+`--fix`: 3 are released lines' errors moved by an inserted line, 1 repeats an annotation pyright
+rejects where pydantic wrote it (`'AnyClassMethod'`), and 1 is the checkout's own path in a class's
+name.
 
 Earlier suites, on 0.2.4-rc.5:
 

@@ -14,11 +14,17 @@ in a function or module body:
 - a call to a capitalised name (`path = Path(...)` gives `Path`, a guess), if it can be written as a
   type: a name or dotted name whose first name the module binds only by an import or a class
   statement (not `Klass = ...`, `self.api.X()`, `make().X()`); or to a plain function that declares
-  its return type (not a decorated, generic, async or redefined one, and not a return of `None`,
-  `Any` or one that uses a `TypeVar`), in the same module or, with the CLI, in another file it's
-  checking: `from pkg.util import f`, `import pkg.util as u` or `from pkg import util` then `u.f()`,
-  relative imports and re-exports all work. A name in the type the file doesn't import is imported
-  for type checking alone (see below);
+  its return type (not a generic, async or redefined one, and not a return of `None`, `Any` or one
+  that uses a `TypeVar`), in the same module or, with the CLI, in another file it's checking:
+  `from pkg.util import f`, `import pkg.util as u` or `from pkg import util` then `u.f()`, relative
+  imports and re-exports all work. A name in the type the file doesn't import is imported for type
+  checking alone (see below). A decorated function counts (a method too) only under decorators that
+  give it back: the standard library's (`functools.cache`, `lru_cache`, `wraps(...)`,
+  `abc.abstractmethod`, `typing.final`, `override`, `deprecated(...)`), and a function whose own
+  signature says so, taking `F` and returning `F`, or (called to decorate, as
+  `@set_module("pandas")`) returning a `Callable[[F], F]`, where `F` is a type variable or a
+  `Callable[P, T]` returning one. The module's own such decorators count anywhere; one it imports
+  from a checked file or an installed package, with the CLI, which finds its type variables;
 - a builtin with a fixed result: `len(x)` is an `int`, `hex(n)` a `str`, `any(xs)` a `bool`, `dir()`
   a `list[str]`, `range(n)` a `range`, and so on; but not where the module binds the name itself (a
   parameter named `format`, a local `input`, its own `def dir()`), anywhere in it;

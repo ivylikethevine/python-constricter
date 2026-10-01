@@ -77,6 +77,9 @@ def test_a_modules_classes_join_the_hierarchy_under_their_named_bases() -> None:
         (ast.Add(), "str", "str"),
         (ast.Mod(), None, None),
         (ast.Pow(), "int", None),  # `2 ** -1` is a float
+        (ast.Add(), "tuple[int, str]", None),  # a longer tuple than either
+        (ast.Add(), "Tuple[int]", None),
+        (ast.Add(), "tuple[int, ...]", "tuple[int, ...]"),
     ],
 )
 def test_augmented_assignments(op: ast.operator, operand: str | None, expected: str | None) -> None:

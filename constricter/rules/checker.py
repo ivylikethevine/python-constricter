@@ -30,7 +30,6 @@ from constricter.offences import (
 )
 from constricter.rules import binding, late, parsed, recorded
 from constricter.rules.annotations import (
-    Tables,
     awaited_returns,
     casts,
     class_attributes,
@@ -39,7 +38,6 @@ from constricter.rules.annotations import (
     free_of,
     free_of_all,
     imported_from,
-    module_tables,
     node_name,
     self_returns,
 )
@@ -61,6 +59,7 @@ from constricter.rules.syntax import (
     python2_compatible,
     target_names,
 )
+from constricter.rules.tables import Tables, module_tables
 from constricter.rules.walked import classes, of_type
 
 # The node class of `type X = ...` statements, by name: Python 3.11's `ast` has no `TypeAlias`.

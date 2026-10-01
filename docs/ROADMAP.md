@@ -31,8 +31,10 @@
   targets (`enumerate` and `zip` part by part, an `Iterable[T]`'s `T`) and unpackings, declared
   before the statement, as a `with` statement's target is, by its context manager's `__enter__`; a
   method a class inherits, from the base that defines it, in the module or another checked file; an
-  unannotated generator function's calls, by its `yield`s; fixes for LVA003 and LVA007. A tuple
-  longer than `max-length` is `tuple[T, ...]`.
+  unannotated generator function's calls, by its `yield`s; a call to a function decorated by what
+  gives it back (`functools.cache`, pandas's `@set_module("pandas")`, by its declared
+  `Callable[[F], F]`); fixes for LVA003 and LVA007. A tuple longer than `max-length` is
+  `tuple[T, ...]`.
 - **The standard library, from typeshed**: tables generated from the stubs basedpyright bundles when
   the package is built (`stdlib_tables/`, see [Project](#project)), read as Linux, macOS and Windows
   and Python 3.11 to 3.14 see them, into `constricter/fix/tables/` (one JSON file a table, an entry
@@ -279,24 +281,23 @@ needs `--infer-with`. Each item says what it is, why, how, and when it's done.
 
 ### Medium: a few days
 
-1. **`--infer-with` in `corpus_suite.py --types`: pydantic and pandas.** sqlalchemy's is in
-   [RUNS.md](RUNS.md): mypy finds 47 new errors after basedpyright's and ty's hints' fixes, 34 of
-   them traced to a hint (a name bound again to another type, a class less exact than mypy's, and 6
-   a function's own alias, not declared since). pydantic's test dependencies need a Rust toolchain
-   (`rustup default stable`), and pandas's hasn't been run. Done when both are recorded.
+1. **`--infer-with` in `corpus_suite.py --types`: pandas.** pydantic's and sqlalchemy's are in
+   [RUNS.md](RUNS.md): 26 and 47 new errors after basedpyright's and ty's hints' fixes, most traced
+   to a hint (a name bound again to another type, a class less exact than the package's checker
+   sees). pandas's hasn't been run. Done when it's recorded, and a released line's error an inserted
+   line moves is no longer counted as new.
 2. **More context managers.** 4,167 `with` targets still have no fix: `self.assertRaises(...)` and
    its kin (typeshed's class for them is private), `tarfile.open`, `tempfile.TemporaryDirectory()`
    and `shelve.open` (generic classes whose arguments the call doesn't say),
    `warnings.catch_warnings`, `contextlib.closing`, `test.support`'s (not in typeshed), an
    `async with`'s by `__aenter__`, and a target that unpacks. Count each first. Done when the three
    largest are fixes.
-3. **Decorated functions that declare their return.** A call to one is never typed, since a
-   decorator may change what it returns: about 3,200 calls, 2,715 of them to pandas' functions under
-   `@set_module("pandas")` (`date_range`, `array`, `period_range`). Trust the declared return where
-   the decorator is declared to give back what it takes (`F -> F`, or a factory's
-   `Callable[[F], F]`), and for the standard library's that do (`functools.cache`, `lru_cache`,
-   `wraps`, `abstractmethod`). Done when `idx = date_range(...)` is a `DatetimeIndex` on pandas,
-   with no new type error.
+3. **A classmethod called on its class.** `MultiIndex.from_tuples(pairs)` has no fix, in the class's
+   own file or another: a classmethod's or staticmethod's declared return types only `cls.m()`
+   inside a classmethod. About 1,300 calls on pandas (`from_tuples` 399, `from_arrays` 368,
+   `from_product` 252, `from_breaks`, `from_records`, `from_dict`), most under a decorator that
+   gives the method back (`@classmethod` over `@names_compat`), which a class-side method doesn't
+   take yet. Done when `mi = MultiIndex.from_tuples(pairs)` is a `MultiIndex` on pandas.
 4. **Builtins, operators and iteration by their arguments.** `min(n, 3)`, `max(names)`,
    `sum(d.values())`, `abs(n)`, `round(x)`, `next(iter(xs))`, `divmod(n, 2)`, and `enumerate`,
    `zip`, `map`, `iter` and `reversed` bound to a name have no fix with every argument typed (about
