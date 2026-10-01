@@ -2,10 +2,12 @@
 """`--fix` for calls to unannotated functions: their own `return` statements decide their type.
 
 A function (or method) counts when it's plain (a `def` directly in the module or a class body, not
-`async`, decorated, redefined or a generator), declares no return type, every `return` it has gives
-a value whose type `--fix` is sure of, all the same, and it can't fall off its end (which returns
-`None`). A module function's type is certain; a method's is a guess, since a subclass may override
-it. Each `return`'s value is typed as the checker sees it there, with the function's own locals.
+`async`, decorated or redefined), declares no return type, every `return` it has gives a value whose
+type `--fix` is sure of, all the same, and it can't fall off its end (which returns `None`). A
+generator counts by its `yield`s instead, all of one type `T`: a `Generator[T, None, None]` (see
+`constricter.rules.recorded`). A module function's type is certain; a method's is a guess, since a
+subclass may override it. Each value is typed as the checker sees it there, with the function's own
+locals.
 """
 
 import ast
@@ -22,7 +24,7 @@ from constricter.rules.syntax import FunctionDef, Start, has_within, own_nodes, 
 from constricter.rules.walked import classes, of_type
 
 # A `return` statement as the checker saw it: its value's inference (`None`: none, or unknown), and
-# what that rests on if it's a guess (`FIX_KINDS`; empty: certain).
+# what that rests on if it's a guess (`FIX_KINDS`; empty: certain). A generator has one: its type.
 Recorded: TypeAlias = tuple[Inference | None, frozenset[str]]
 # A `self.x = value` as the checker saw it: the attribute, and its value as a `return`'s is recorded.
 Assigned: TypeAlias = tuple[str, Recorded]
@@ -597,16 +599,17 @@ def _return_type(
 
     Returns:
       The one type they all give, and what it rests on if any is a guess; or `None` if it's
-      decorated, annotated, a generator, can fall off its end, or has a `return` without a value or
-      of an unknown or different type.
+      decorated or annotated (by a `# type:` comment too), can fall off its end (but for a
+      generator, recorded as its type), or has a `return` without a value or of an unknown or
+      different type.
 
     """
     if (
         func.decorator_list
         or func.returns is not None
+        or func.type_comment
         or not returns
-        or _generator(module, func)
-        or not terminates(func.body)
+        or not (_generator(module, func) or terminates(func.body))
     ):
         return None
     types: set[str | None] = {None if found is None else found.annotation for found, _ in returns}
@@ -623,14 +626,14 @@ def _generator(module: ast.Module, func: ast.FunctionDef) -> bool:
       Whether it is.
 
     """
-    return has_within(_yields(module), func) and _yields_itself(func)
+    return has_within(_yields(module), func) and yields_itself(func)
 
 
 # By the function alone, not its module too: a cache holding modules keeps checked trees alive, and
 # the garbage collector then looks through them again and again (the standard library's check took
 # 10% longer).
 @lru_cache(maxsize=4096)  # asked of the same functions once per round
-def _yields_itself(func: ast.FunctionDef) -> bool:
+def yields_itself(func: ast.FunctionDef) -> bool:
     """Check whether a `yield` is in `func`'s own body, not a nested function's.
 
     Returns:

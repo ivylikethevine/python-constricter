@@ -102,6 +102,19 @@ def test_an_edits_import_must_name_a_class_and_no_generic_one_bare(
     assert found.offered == ({_AT: offered} if kept else {})
 
 
+def test_an_installed_packages_private_module_isnt_imported_from(tmp_path: Path) -> None:
+    """A class a hint places in an installed package's private module may move with its next release."""
+    paths: list[Path] = _package(tmp_path)
+    private: Path = paths[1].with_name("_plane.py")
+    _ = private.write_text("class Line: ...\n", encoding="utf-8")
+    catalog: project.Index = project.index([*paths, private])
+    offered: Offered = Offered("Line", ("from pkg._plane import Line",))
+    hints: tuple[Hints, ...] = (Hints("pyrefly", {_AT: "Line"}, {_AT: offered}),)
+    assert offers.vetted(catalog, paths[-1], hints)[0].offered == {_AT: offered}  # a checked file's
+    catalog.modules["pkg._plane"] = catalog.modules["pkg._plane"]._replace(installed=True)
+    assert offers.vetted(catalog, paths[-1], hints)[0].offered == {}
+
+
 def test_hints_without_edits_are_left_as_they_are(tmp_path: Path) -> None:
     """Hints that offer nothing aren't looked at: a file the index doesn't have is no trouble."""
     hints: tuple[Hints, ...] = (Hints("ty", {_AT: "int"}), Hints("basedpyright"))

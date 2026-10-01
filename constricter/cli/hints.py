@@ -60,9 +60,9 @@ _LINE_BREAK: Final = re.compile(r"\r\n|\r|\n")  # the lines positions count, as 
 _UTF16: Final = "utf-16"
 _UTF8: Final = "utf-8"
 _METHOD_NOT_FOUND: Final = -32601
-# A request the server dropped because a document changed under it (ty, as later files open): the
-# client is to ask again.
-_CONTENT_MODIFIED: Final = -32801
+# A request the server dropped because a document changed under it, as later files open (ty's
+# "content modified", pyrefly's "request cancelled"): the client is to ask again.
+_DROPPED: Final = frozenset({-32801, -32800})
 _ASK_AGAIN: Final = 5  # how many times a hint request is asked again after that, at most
 _HINTS: Final = "textDocument/inlayHint"
 _MODIFIED: Final[_Object] = {}  # a hint request's answer, when it's to be asked again (by identity)
@@ -495,7 +495,7 @@ class Connection:
           Each file's variable-type hints' texts, by where the name each types ends.
 
         Raises:
-          HintError: The server dropped one `_ASK_AGAIN` times more (see `_CONTENT_MODIFIED`).
+          HintError: The server dropped one `_ASK_AGAIN` times more (see `_DROPPED`).
 
         """
         found: _Found = {}
@@ -514,7 +514,7 @@ class Connection:
             }
             if not waiting:
                 return found
-        error: str = f"{self.name} failed `{_HINTS}`: content modified, {_ASK_AGAIN + 1} times"
+        error: str = f"{self.name} failed `{_HINTS}`: dropped {_ASK_AGAIN + 1} times"
         raise HintError(error)
 
     def _opened(self, uri: str, text: str) -> None:
@@ -631,7 +631,7 @@ class Connection:
         )
         if _ERROR in answer:
             failure: _Object = cast("_Object", answer[_ERROR])
-            if method == _HINTS and failure.get("code") == _CONTENT_MODIFIED:
+            if method == _HINTS and failure.get("code") in _DROPPED:
                 return cast("int", answer[_ID]), _MODIFIED
             error: str = f"{self.name} failed `{method}`: {failure.get('message')}"
             raise HintError(error)

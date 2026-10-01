@@ -30,8 +30,12 @@ CI has none. On 0.2.4, and since (Unreleased: see [FIXES.md](FIXES.md#what-a-typ
 | Package    | Checker                            | Released errors | New after `--fix` | New after `--fix --unsafe-fixes` |
 | ---------- | ---------------------------------- | --------------: | ----------------: | -------------------------------: |
 | pydantic   | `pyright pydantic`                 |               0 |         18, now 0 |                        20, now 2 |
-| sqlalchemy | `mypy noxfile.py ./lib/sqlalchemy` |               0 |         61, now 0 |                        76, now 5 |
+| sqlalchemy | `mypy noxfile.py ./lib/sqlalchemy` |               0 |         61, now 0 |                       76, now 11 |
 | pandas     | mypy and pyright, as configured    |             259 |        117, now 0 |                      165, now 36 |
+
+`--types --infer-with CHECKERS` adds a run with the checkers' hints' fixes
+(`--fix --unsafe-fixes --infer-with CHECKERS`). sqlalchemy's mypy, with basedpyright's and ty's: 47
+new errors (193 files changed), 34 of them traced to a hint's fix.
 
 Earlier suites, on 0.2.4-rc.5:
 

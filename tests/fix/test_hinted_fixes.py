@@ -153,6 +153,19 @@ def test_a_module_body_uses_only_what_is_bound_before() -> None:
     assert [(o.name, o.fix) for o in offences] == [("x", None), ("y", "Early")]
 
 
+def test_another_name_for_a_class_stays_an_alias() -> None:
+    """Declared a `type[C]`, a variable, it could no longer be an annotation: a lowercase local can."""
+    source: str = "Number = int\nkind = int\n\n\ndef f(q) -> None:\n    Pair = q.pair\n    cls = q.kind\n"
+    hinted: dict[str, str] = dict.fromkeys(("Number", "kind", "Pair", "cls"), "type[int]")
+    offences: list[Offence] = _checked(source, hinted, Checks(all_scopes=True))
+    assert {o.name: o.fix for o in offences} == {
+        "Number": None,
+        "kind": None,
+        "Pair": None,
+        "cls": "type[int]",
+    }
+
+
 def test_a_function_uses_any_name_the_module_binds() -> None:
     """A local's annotation is never evaluated: a class the module defines after it will do."""
     source: str = "def f(q) -> None:\n    x = q.make()\nclass Late: ...\n"

@@ -169,6 +169,22 @@ def test_a_methods_guess_rests_on_returned() -> None:
     assert _fixed(Checks(fixes=FixPolicy(unsafe_select=frozenset({"constructor"}))))["r"] == ("int", True)
 
 
+def test_a_signature_in_a_type_comment_is_a_declaration() -> None:
+    """Its `return`s don't type its calls: the comment says what they are."""
+    source: str = textwrap.dedent(
+        """\
+        def names(count):
+            # type: (int) -> Iterable[str]
+            return ["a"] * count
+
+
+        def f() -> None:
+            found = names(2)
+        """,
+    )
+    assert [(o.name, o.fix) for o in check_source(source)] == [("found", None)]
+
+
 def test_nothing_called_needs_no_second_pass() -> None:
     """A module that never calls its typed functions is checked once, and gets the same result."""
     source: str = "def one():\n    return 1\n\n\ndef f() -> None:\n    x = 2\n"

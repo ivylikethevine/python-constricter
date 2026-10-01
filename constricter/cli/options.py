@@ -291,7 +291,7 @@ def _parser() -> argparse.ArgumentParser:
         type=_checkers,
         default=[],
         metavar="CHECKERS",
-        help="type what --fix can't with these type checkers' inferred types, as guesses (basedpyright,ty)",
+        help="type what --fix can't with checkers' inferred types, as guesses (basedpyright,ty,pyrefly)",
     )
     _ = parser.add_argument(
         "--infer-memory",

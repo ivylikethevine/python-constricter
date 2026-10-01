@@ -6,13 +6,11 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
 from typing import Final, NamedTuple, cast
 
-from constricter.fix import imports, narrowed, returned, stdlib
-from constricter.fix.doubts import Facts, inner_starts, passed, tests
-from constricter.fix.inference import inference
+from constricter.fix import entered, imports, inherited, returned, stdlib
+from constricter.fix.doubts import facts
 from constricter.fix.known import (
     Classes,
     ClassSide,
-    Inference,
     Known,
     LibraryNames,
     Observed,
@@ -30,7 +28,7 @@ from constricter.offences import (
     Offence,
     at,
 )
-from constricter.rules import binding, late, parsed
+from constricter.rules import binding, late, parsed, recorded
 from constricter.rules.annotations import (
     Tables,
     awaited_returns,
@@ -40,7 +38,6 @@ from constricter.rules.annotations import (
     factories,
     free_of,
     free_of_all,
-    generic_classes,
     imported_from,
     module_tables,
     node_name,
@@ -50,7 +47,7 @@ from constricter.rules.calls import keyed, observed, seed_parameters, unshadowed
 from constricter.rules.flow import Finding, Hierarchy
 from constricter.rules.narrowing import flow_offences, module_flow, module_names
 from constricter.rules.redundant import redundant
-from constricter.rules.scope import Kind, Late, Scope, Settings, certain_type, guesses_in
+from constricter.rules.scope import Kind, Late, Scope, Settings, certain_type
 from constricter.rules.syntax import (
     BRANCHING,
     FUNCTION_DEFS,
@@ -64,7 +61,7 @@ from constricter.rules.syntax import (
     python2_compatible,
     target_names,
 )
-from constricter.rules.walked import classes, of_type, walk
+from constricter.rules.walked import classes, of_type
 
 # The node class of `type X = ...` statements, by name: Python 3.11's `ast` has no `TypeAlias`.
 _TYPE_ALIAS: Final = "TypeAlias"
@@ -137,6 +134,7 @@ def _settings(
     imported: Classes | None = None if outside is None else outside.classes
     # The file's own types that mention a type variable it imports (`--fix` sees only its own).
     free: frozenset[str] = frozenset() if outside is None else outside.type_vars
+    selfish: dict[str, frozenset[str]] = self_returns(tree)
     return Settings(
         checks._replace(type_comments=checks.type_comments or python2_compatible(tree)),
         lines,
@@ -146,7 +144,11 @@ def _settings(
             {**(imported.attributes if imported else {}), **free_of_all(own.classes, free)},
             {**(imported.methods if imported else {}), **free_of_all(own.methods, free)},
             free_of(awaited_returns(tree), free),
-            ClassSide(free_of_all(class_attributes(tree), free), free_of_all(class_methods(tree), free)),
+            ClassSide(
+                free_of_all(class_attributes(tree), free),
+                free_of_all(class_methods(tree), free),
+                inherited.lineage(tree, selfish, frozenset(imported.methods if imported else ())),
+            ),
             LibraryNames(
                 casts(tree),
                 stdlib.origins(tree),
@@ -172,15 +174,11 @@ def _settings(
             ),
         ),
         () if outside is None else outside.hints,
-        Facts(
-            self_returns(tree),
-            generic_classes(tree)
-            | stdlib.generics(stdlib.origins(tree))
-            | (frozenset() if outside is None else outside.generics),
-            passed(tree),
-            tests(tree),
-            narrowed.regions(tree),
-            inner_starts(tree),
+        facts(
+            tree,
+            selfish,
+            stdlib.generics(stdlib.origins(tree)) | (outside.generics if outside else frozenset[str]()),
+            entered.managers(tree),
         ),
         keyed(tree, {} if outside is None else outside.parameters),
     )
@@ -373,8 +371,8 @@ def _function_scopes(
             settled: bool = not scope.inferred.late.keys() - scope.inferred.seeded.keys()
             table.checked(
                 func,
-                [_recorded(scope, value) for value in scope.inferred.returns] if settled else [],
-                _assigned(scope) if settled else [],
+                recorded.returns(scope, func) if settled else [],
+                recorded.assigned(scope) if settled else [],
             )
         scopes += _function_scopes(nested, scope.settings, table)
     return scopes
@@ -619,10 +617,8 @@ def _checked_again(
     ]
     renewed: dict[int, Scope] = {id(func): scope for scope, func in fresh}
     _finished(tree, [scope for scope, _ in fresh])
-    table.recorded.update(
-        (id(func), [_recorded(scope, value) for value in scope.inferred.returns]) for scope, func in fresh
-    )
-    table.assigned.update((id(func), _assigned(scope)) for scope, func in fresh)
+    table.recorded.update((id(func), recorded.returns(scope, func)) for scope, func in fresh)
+    table.assigned.update((id(func), recorded.assigned(scope)) for scope, func in fresh)
     return [(renewed.get(id(func), scope), func) for scope, func in functions]
 
 
@@ -685,49 +681,6 @@ def _finished(tree: ast.Module, scopes: Sequence[Scope]) -> None:
         late.optionals(scope)
         late.rebinds(scope)
         late.fills(scope)
-
-
-def _recorded(scope: Scope, value: ast.expr | None) -> returned.Recorded:
-    """Record a `return` statement's value as its finished function's scope sees it.
-
-    Returns:
-      Its inference (`None` for a bare `return`, or an unknown value), and whether that's a guess.
-
-    """
-    if value is None:
-        return None, frozenset()
-    found: Inference | None = inference(value, scope.settings.known, scope.inferred.types)
-    # What it rests on counts only for a typed value (see `returned`).
-    return found, frozenset() if found is None else guesses_in(scope, [value])[1]
-
-
-def _assigned(scope: Scope) -> list[returned.Assigned]:
-    """Record a finished function's `self.x = value` assignments, each value as `_recorded` does a `return`'s.
-
-    But a value reading a local bound more than once is unknown: the scope's type for it is its last
-    binding's, not what reaches the assignment (`x = None`, `if c: x = 1`, then `self.x = x`).
-
-    Returns:
-      Each attribute, and its value's inference and guesses.
-
-    """
-    return [
-        (attr, (None, frozenset()) if _rebound_in(scope, value) else _recorded(scope, value))
-        for attr, value in scope.inferred.assigned
-    ]
-
-
-def _rebound_in(scope: Scope, value: ast.expr) -> bool:
-    """Check whether `value` reads a local of `scope` bound more than once.
-
-    Returns:
-      Whether it does.
-
-    """
-    return any(
-        isinstance(node, ast.Name) and node.id in scope.flow and len(scope.flow[node.id].bindings) > 1
-        for node in walk(value)
-    )
 
 
 def value_flow(

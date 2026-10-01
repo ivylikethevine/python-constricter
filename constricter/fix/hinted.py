@@ -41,6 +41,7 @@ _LITERAL: Final = "Literal"
 _NONE: Final = "None"
 _BUILTINS: Final = frozenset(dir(builtins))
 _ALIAS: Final = "TypeAlias"
+_CLASS: Final = "type["
 # `collections.abc`'s classes, which a checker prints bare (not `Set`: that's `AbstractSet` to it).
 _ABSTRACT: Final = sorted(ABSTRACT | {"Hashable", "MappingView", "Sized"})
 # Classes a checker prints by their bare names, and where each is from.
@@ -144,6 +145,20 @@ def inference(annotation: str, checker: str) -> Inference:
 
     """
     return Inference(annotation, f"{checker}'s inferred type", frozenset({KIND}))
+
+
+def renames(name: str, annotation: str, *, local: bool) -> bool:
+    """Check whether `annotation`, a hint's, says `name` is another name for a class: a `type[C]`.
+
+    An alias annotations are written with, which declared (a variable) it would no longer be. A
+    module's name is taken for one, and a function's (`local`) if it's written as a class's is
+    (`Pair = tuple[int, str]`, not `cls = type(self)`).
+
+    Returns:
+      Whether it does.
+
+    """
+    return annotation.startswith(_CLASS) and not (local and name[:1].islower())
 
 
 def _spelled(

@@ -28,8 +28,11 @@
   comprehensions, `sorted`/`list`/..., `await`), comparisons by `in` and `is`, or of builtin values
   (a `bool`); standard-library module variables (`sys.path`); chained assignments' names, declared
   before them (`i = j = 0`); `typing.cast`; `x = None` later rebound to one type as `T | None`; loop
-  targets (`enumerate` and `zip` part by part) and unpackings, declared before the statement; fixes
-  for LVA003 and LVA007. A tuple longer than `max-length` is `tuple[T, ...]`.
+  targets (`enumerate` and `zip` part by part, an `Iterable[T]`'s `T`) and unpackings, declared
+  before the statement, as a `with` statement's target is, by its context manager's `__enter__`; a
+  method a class inherits, from the base that defines it, in the module or another checked file; an
+  unannotated generator function's calls, by its `yield`s; fixes for LVA003 and LVA007. A tuple
+  longer than `max-length` is `tuple[T, ...]`.
 - **The standard library, from typeshed**: tables generated from the stubs basedpyright bundles when
   the package is built (`stdlib_tables/`, see [Project](#project)), read as Linux, macOS and Windows
   and Python 3.11 to 3.14 see them, into `constricter/fix/tables/` (one JSON file a table, an entry
@@ -71,14 +74,14 @@
   too would add 10 fixes on the corpora), and what rests on any of these. **Fix levels**: every
   mechanism has a stable id (`--show-fixes`, JSON), and `fix-select`, `fix-ignore` and
   `unsafe-fix-select` choose which apply.
-- **Type-checker-backed inference** (`--infer-with basedpyright,ty`): the checkers' inlay hints type
-  what `--fix` can't, as guesses, widened, checked and imported; with basedpyright it about doubles
-  what `--fix --unsafe-fixes` types on the annotated corpora. A hint naming a class the file doesn't
-  bind is a fix too, the class imported under `if TYPE_CHECKING:` by the import the hint's own edits
-  carry, or one the module has there: only a class the index of checked files and installed
-  packages, or the standard-library tables, define, and no generic one shown without its arguments:
-  27% more of basedpyright's hints are fixes on pydantic, sqlalchemy and django, and 19% more of
-  ty's.
+- **Type-checker-backed inference** (`--infer-with basedpyright,ty,pyrefly`): the checkers' inlay
+  hints type what `--fix` can't, as guesses, widened, checked and imported; with basedpyright it
+  about doubles what `--fix --unsafe-fixes` types on the annotated corpora. A hint naming a class
+  the file doesn't bind is a fix too, the class imported under `if TYPE_CHECKING:` by the import the
+  hint's own edits carry, or one the module has there: only a class the index of checked files and
+  installed packages, or the standard-library tables, define, and no generic one shown without its
+  arguments: 27% more of basedpyright's hints are fixes on pydantic, sqlalchemy and django, and 19%
+  more of ty's.
 - **No new type errors**: `corpus_suite.py --types` runs pydantic's, sqlalchemy's and pandas's own
   type checkers after `--fix` (none new) and `--fix --unsafe-fixes`. Where a checker would see a
   value otherwise, the fix is changed, made a guess, or not offered (see
@@ -132,7 +135,8 @@
 - **`tests/corpus/corpus_suite.py`** clones a corpus package at its pinned tag, installs its test
   dependencies as its CI does, and runs its test suite as released, after `--fix`, and after
   `--fix --unsafe-fixes` (see [RUNS.md](RUNS.md)); `--types` runs each one's own type checker the
-  same way and traces each new error to its fix mechanism.
+  same way and traces each new error to its fix mechanism, and `--infer-with CHECKERS` adds a run
+  with their hints' fixes.
 - **Python 3**: the standard library, `django` (the 5.2 LTS, for 3.11), `sqlalchemy`, `pydantic` and
   `pandas` 3.0.6 (1,421 files with its tests: overloads, generics, `TYPE_CHECKING` imports).
 - **Python 2**: Twisted 12.3.0 (pure Python 2, 147 of 819 files unparsable) and pip 20.3.4 (the most
@@ -151,7 +155,14 @@
   signatures first, by `pyrefly infer` before `--fix`: 2,254 more certain fixes on the six Python 3
   corpora (19.8% of their untyped bindings fixed, then 20.8%), since it annotates 8% of the
   unannotated parameters, most of the returns it adds are `-> None`, and it left one of pydantic's
-  files unparsable.
+  files unparsable; and an unannotated function's `return`s of two types, or of one and `None`,
+  joined into a union: 275 more fixes, and 38 new basedpyright errors (a union one of whose types is
+  wrong, or that the caller never narrows).
+- **Why `name = self.method()` has no fix** (8,195 bindings, before the inherited methods): the
+  method is the class's own (46%), a base's in the file (12%) or in another (10%), a class attribute
+  a subclass sets (`self.type2test()`, `self.dumps()`: 28%, left alone), or a library base's (5%).
+  Of the 5,479 found, 4,078 have a `return` whose value has no type: a name (1,779: an unannotated
+  parameter, or a local with no fix), a call on another value (823), another `self.method()` (408).
 - **Other type checkers' servers**, driven through `constricter.cli.hints` on pydantic, sqlalchemy
   and django (26,716 bindings with no fix): the share of them each one's hints type, as `--fix`
   judges hints now, is 8.2% for ty, 10.7% for basedpyright and 13.7% for pyrefly. Plain Pyright's
@@ -214,17 +225,7 @@ needs `--infer-with`. Each item says what it is, why, how, and when it's done.
 
 ### Small: a day or less
 
-1. **pyrefly as a third `--infer-with` checker.** Its hints type more of what `--fix` can't than
-   basedpyright's or ty's on all three packages, and 824 bindings more than both together (13.2% of
-   them, 16.3% with pyrefly), as fast as ty. `pyrefly lsp` is one server (it works in parallel
-   itself); it cancels a hint request when a later file opens (error `-32800`), which `hints.py`
-   must ask again as it does `-32801`. It infers an unannotated function's return only as its
-   configuration says (`infer-return-types = "checked"`): say so in FIXES.md. Its hints for a loop's
-   or an unpacking's names carry no edits, only each class's defining file in the label's parts:
-   name the module from that file, as the project index does. Done when `--infer-with pyrefly` types
-   sqlalchemy, `for item in registry().values():` declares `item: Shape`, and sqlalchemy's type
-   checker finds no new error.
-2. **Type aliases, declared and named.** basedpyright hints an alias's assignment as `TypeAlias`,
+1. **Type aliases, declared and named.** basedpyright hints an alias's assignment as `TypeAlias`,
    which `--fix` writes only where the module already names it (782 module-level bindings on the
    three packages), and a hint naming an alias (pydantic's `CoreSchema`) is dropped, a name being
    taken only for a class (about 60 bindings on pydantic). Index each module's aliases: a name
@@ -234,50 +235,61 @@ needs `--infer-with`. Each item says what it is, why, how, and when it's done.
    parameters (50 new errors on sqlalchemy); and take an indexed alias as a hint's name. Done when a
    module's composite aliases are declared, `schema: CoreSchema = ...` is a fix on pydantic, and its
    checker finds no new error.
-3. **A union the author would write.** `x if c else None` (241 bindings) is a `T | None`, and
+2. **A union the author would write.** `x if c else None` (241 bindings) is a `T | None`, and
    `a or b` with both sides of one type is that type; 1,986 conditionals and boolean operations have
    no fix. Sides of two other types stay untyped. Done when both are fixes and the corpus packages'
    type checkers find no new error.
-4. **`:=` declared before its statement.** A walrus's name can't be annotated where it's bound: 366
+3. **`:=` declared before its statement.** A walrus's name can't be annotated where it's bound: 366
    bindings with no fix. Declare it on a line before the statement, as a chained assignment's names
    are. Done when `if (m := pattern.match(s)) is not None:` declares `m: re.Match[str] | None`.
-5. **An empty container that is extended, or passed on.** 4,547 empty lists, dicts and sets have no
+4. **An empty container that is extended, or passed on.** 4,547 empty lists, dicts and sets have no
    fix: one the function `extend`s or `update`s, passes to a call or returns is left alone, since
    something else could add to it. `extend` and `update` with a value whose elements are typed add
    those elements, as `append` adds one; passing it on stays a reason to leave it. Done when
    `names = []` then `names.extend(parts)`, with `parts: list[str]`, is a `list[str]` (a guess).
-6. **Quoted annotations read through.** With `xs: "list[Node]"`, `xs[0]` and `for x in xs` have no
+5. **Quoted annotations read through.** With `xs: "list[Node]"`, `xs[0]` and `for x in xs` have no
    fix, and `list["Node"]` gives `'Node'`, whose attributes then have none: a quoted part is in 0.1%
    to 6.5% of the annotated corpora's annotations. Read a string annotation as its text. Done when a
    quoted declaration types what an unquoted one does.
-7. **Small shapes.** `d.get(k, 0)` with a default of the values' type, `[*names, s]`, `{**d, k: v}`,
+6. **Small shapes.** `d.get(k, 0)` with a default of the values' type, `[*names, s]`, `{**d, k: v}`,
    `type(x)` as a `type[C]`, and `os.environ["X"]` (a subscript of a standard-library generic
    class's instance, by its `__getitem__`) have no fix with every part typed. Done when each is one.
-8. **ty's spellings.** `(str & ~AlwaysFalsy) | None` is a `str | None`, `Model@create_model` the
+7. **ty's spellings.** `(str & ~AlwaysFalsy) | None` is a `str | None`, `Model@create_model` the
    module's type variable `Model`, and `tuple[str, *tuple[str, ...]]` an annotation as it is: each
    is dropped as not one, tens of hints a package. Done when all three are fixes.
-9. **Faster table generation.** Every build from a checkout generates the tables in one process: the
+8. **Faster table generation.** Every build from a checkout generates the tables in one process: the
    Action on every run, a pre-commit hook's install, and each CI job's editable install, about 75s
    here and more on a runner. The twelve configurations it reads the stubs as are independent: read
    them in parallel, or cache the result by its stamp. Done when a build from a checkout generates
    them in under 20s on 4 cores.
+9. **A function's own import isn't the module's.**
+   `from multiprocessing.managers import SharedMemoryManager` inside one function lets a fix in
+   another write `SharedMemoryManager`, which nothing binds there (one new error on the standard
+   library). Take a name for bound only where the import that binds it runs. Done when that fix
+   imports the class or isn't offered.
+10. **`self` in a nested function.** A function or lambda defined in a method reads the method's
+    `self`, which `--fix` types only in the method itself: 29 `self.method()` bindings. Done when
+    `msg = self.label()` in a nested function is typed as in its method.
+11. **A hint's type variable its function doesn't declare.** `_proc: type[Row[_TP]]`, in a function
+    whose signature has no `_TP`, is an unbound type variable to mypy (2 new errors on sqlalchemy).
+    Done when a hint naming a module's type variable is a fix only where the signature names it.
+12. **A signature in a `# type:` comment as a declaration.** A function typed by one (pip's are) is
+    left alone by `returned`, and its calls untyped. Read the comment's return as a declared one.
+    Done when `names = find()` under `# type: () -> List[str]` is a `List[str]`.
 
 ### Medium: a few days
 
-1. **`--infer-with` in `corpus_suite.py --types`**, before any other item that changes what a hint
-   gives. It runs each package's own checker after `--fix` and `--fix --unsafe-fixes`, never with
-   hints, whose fixes are checked by hand: basedpyright, unconfigured, finds 14 new errors on
-   pydantic and 148 on sqlalchemy after `--fix --unsafe-fixes --infer-with basedpyright`, most a
-   name bound again to another type (`stmt = insert(...)`, then `stmt = stmt.returning(...)`). Run
-   them with `--infer-with` too, trace each new error to its hint, and record the counts in RUNS.md.
-   Done when pydantic's, sqlalchemy's and pandas's are there.
-2. **`with` targets.** Only `open(...)`'s is typed: 5,017 bindings with no fix, 2,533 of them a call
-   through an import (`zipfile.ZipFile` 188, `socket.socket` 97, `tarfile.open` 67,
-   `tempfile.TemporaryDirectory` 63; at least 560 are `test.support`'s, which typeshed doesn't
-   have). Type the target by `__enter__`'s return: the tables' for a standard-library class (`Self`,
-   or `str` for a `TemporaryDirectory`), a project class's declared one, and a `@contextmanager`
-   function's `Iterator[T]`. Done when each of the three is declared before its statement, as
-   `open`'s is.
+1. **`--infer-with` in `corpus_suite.py --types`: pydantic and pandas.** sqlalchemy's is in
+   [RUNS.md](RUNS.md): mypy finds 47 new errors after basedpyright's and ty's hints' fixes, 34 of
+   them traced to a hint (a name bound again to another type, a class less exact than mypy's, and 6
+   a function's own alias, not declared since). pydantic's test dependencies need a Rust toolchain
+   (`rustup default stable`), and pandas's hasn't been run. Done when both are recorded.
+2. **More context managers.** 4,167 `with` targets still have no fix: `self.assertRaises(...)` and
+   its kin (typeshed's class for them is private), `tarfile.open`, `tempfile.TemporaryDirectory()`
+   and `shelve.open` (generic classes whose arguments the call doesn't say),
+   `warnings.catch_warnings`, `contextlib.closing`, `test.support`'s (not in typeshed), an
+   `async with`'s by `__aenter__`, and a target that unpacks. Count each first. Done when the three
+   largest are fixes.
 3. **Decorated functions that declare their return.** A call to one is never typed, since a
    decorator may change what it returns: about 3,200 calls, 2,715 of them to pandas' functions under
    `@set_module("pandas")` (`date_range`, `array`, `period_range`). Trust the declared return where
@@ -304,14 +316,26 @@ needs `--infer-with`. Each item says what it is, why, how, and when it's done.
    (`dict[str, Any]`, `list[Any]`): 4,393 of the three packages' bindings with no fix for
    basedpyright, 16.4% of them. It is the value's type, and LVA005 would report it: a fix kind of
    its own, off by default, trades an LVA001 for an LVA005. Done when `fix-select` can turn it on.
+8. **An unannotated method's type, in another file.** A module's functions' `return`s type their
+   calls in the files importing them; its classes' methods' don't: 132 `self.method()` bindings
+   whose base is another file's and whose `return`s give one type (Twisted's `self.mktemp()`), and
+   every such call on an imported class's instance. Carry them with the functions', as guesses. Done
+   when `path = self.mktemp()` is a `str` under a base class of another file.
+9. **Methods of a library base.** A class under a standard-library or installed class
+   (`unittest.TestCase`) gets nothing for the methods it inherits from it: 412 `self.method()`
+   bindings whose base is no checked file's. End a class's order at a class the tables or an
+   installed package's stubs define, as it ends at another checked file's. Done when
+   `name = self.id()` in a test case is a `str`.
 
 ### Large: a week or more
 
-1. **What an unannotated method returns.** 12,578 `self.method()` calls have no fix: the method
-   returns a call (3,488), a name or attribute (2,644), a tuple (2,192) or several kinds (1,093), or
-   yields (434), and 37% are defined in another class than the caller's. Follow a method to the base
-   class that defines it (a guess), type a generator as an `Iterator[T]`, and join `return`s of two
-   types into a union. Done when each is a guess on the corpora with no new type error.
+1. **A method's `return` of an untyped value.** 4,078 of the 8,195 `name = self.method()` bindings
+   with no fix call a method whose `return` gives a value `--fix` can't type: a name (1,779), a call
+   on another value (823), another `self.method()` (408), a module function's call (229), a
+   subscript (166). Most of the names are unannotated parameters, which `callers` types for a plain
+   top-level function alone: do so for a method, by what every call on `self` or on a value typed as
+   its class passes (a guess). Count first how many of the 1,779 are parameters, and how many of
+   those every call types. Done when a method returning its parameter types its calls.
 2. **Class bodies of plain classes.** `--fix` never touches a class body, where an annotation makes
    a dataclass's or a model's variable a field: 15,336 bindings with no fix, 3,070 of them in a
    class with no base and no decorator (1,421 bound to a literal) and 2,456 under a test case's. As

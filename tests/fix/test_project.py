@@ -246,6 +246,97 @@ def test_imported_classes_type_their_members(tmp_path: Path) -> None:
     assert project.imported(project.Index({}, []), main) == project.Imported({}, Classes({}, {}))
 
 
+BASES: Final = """
+from __future__ import annotations
+
+from typing import Self
+
+
+class Root:
+    def size(self) -> int:
+        return 1
+
+    def clone(self) -> Self:
+        return self
+
+    def label(self) -> str:
+        return ""
+
+    def root(self) -> Root:
+        return self
+
+
+class Base(Root):
+    label = None
+
+    def base(self) -> Base:
+        return self
+
+    def name(self) -> bytes:
+        return b""
+"""
+DERIVED: Final = """
+import other
+import pkg.bases as b
+from pkg.bases import Base
+
+
+class Own:
+    def own(self) -> float:
+        return 1.5
+
+
+class Child(Own, Base):
+    def f(self, base: Base) -> None:
+        a = self.size()
+        b = self.name()
+        c = self.own()
+        d = self.clone()
+        e = self.base()
+        g = self.root()
+        h = self.label()
+        i = base.size()
+        j = base.clone()
+
+
+class Spelled(b.Base, Own):
+    def g(self) -> None:
+        k = self.name()
+        m = self.own()
+
+
+class Hidden(other.Thing, Base):
+    def h(self) -> None:
+        n = self.size()
+"""
+
+
+def test_a_class_takes_methods_from_another_files_base(tmp_path: Path) -> None:
+    """The base's own, and those it takes from its file's classes; not past it, nor what may be `Self`."""
+    _ = _write(tmp_path / "pkg" / "__init__.py", "")
+    _ = _write(tmp_path / "pkg" / "bases.py", BASES)
+    main: Path = _write(tmp_path / "main.py", DERIVED)
+    imported: project.Imported = project.imported(project.index(sorted(tmp_path.rglob("*.py"))), main)
+    offences: list[Offence] = check_source(
+        main.read_text(encoding="utf-8"),
+        outside=Outside(classes=imported.classes),
+    )
+    assert {o.name: o.fix for o in offences} == {
+        "a": "int",  # `Root`'s, through `Base`
+        "b": "bytes",
+        "c": "float",
+        "d": None,  # `Self`: a `Child` here, which `Base` doesn't say
+        "e": None,  # `Base`, or its `Self`
+        "g": "Root",
+        "h": None,  # `Base` binds `label` itself
+        "i": "int",
+        "j": "Base",
+        "k": "bytes",
+        "m": None,  # `Own` comes after a class of another file
+        "n": None,  # a base out of sight comes first
+    }
+
+
 TYPING: Final = """
 from typing import TypeVar
 

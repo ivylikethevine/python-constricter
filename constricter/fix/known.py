@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias
 
+from constricter.fix.inherited import Lineage
 from constricter.fix.signatures import Expansion, ReadSignature
 from constricter.offences import MAX_LENGTH
 from constricter.rules.annotations import free_of, free_of_all
@@ -183,10 +184,15 @@ class Returned(NamedTuple):
 
 
 class ClassSide(NamedTuple):
-    """What each class the module defines offers on the class itself: `class_attributes`, `class_methods`."""
+    """What each class the module defines offers beyond its instances' own members.
+
+    On the class itself: `class_attributes`, `class_methods`. From its bases: `lineage`, which base
+    an instance takes a method from (see `Lineage`).
+    """
 
     attributes: Mapping[str, Mapping[str, str]]
     methods: Mapping[str, Mapping[str, str]]
+    lineage: Lineage = Lineage()
 
 
 @dataclass(frozen=True)

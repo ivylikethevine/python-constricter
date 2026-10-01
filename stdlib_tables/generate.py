@@ -17,8 +17,9 @@ keeps what comes out the same for all twelve:
 - `any_str`: functions returning their arguments' `str` or `bytes` (an `AnyStr`, or overloads);
 - `classes`: non-generic classes, and functions returning one, by the class's public path: the
   shortest (`unittest.TestLoader`, not `unittest.loader.TestLoader`), then its own module's;
-- `methods` and `attributes`: what each such class's public methods return, and its attributes and
-  properties hold, inherited ones included (in their method resolution order), by that path;
+- `methods` and `attributes`: what each such class's public methods (and `__enter__`, for `with`)
+  return, and its attributes and properties hold, inherited ones included (in their method
+  resolution order), by that path; a generic class's `__enter__` too, where it returns `Self`;
 - `aliases`: the class's other public paths;
 - `overloads`: functions whose arguments decide their return, and generic classes' constructors,
   each signature as `stdlib_tables/overloads.py` reads it;
@@ -117,6 +118,7 @@ _RUNTIME: Final = frozenset(
 # Modules whose names installed packages' stubs annotate with, private or not (`scalars`).
 _ANNOTATING: Final = frozenset({"typing", "typing_extensions", "builtins", "_typeshed", "collections.abc"})
 _YES: Final = "y"
+_ENTER: Final = "__enter__"
 
 
 _Locked: TypeAlias = dict[str, str]  # a package `uv.lock` pins: its name, its version, and more
@@ -269,6 +271,8 @@ def _enter_generic(tables: _Tables, reader: _Reader, klass: ClassRef, path: str)
         return
     tables.type_parameters[path] = ",".join(params)
     tables.subscriptable[path] = _YES if reader.reading.subscriptable(klass) else "n"
+    if reader.overloads.enters_itself(klass):  # `with` gives the instance, whatever its arguments
+        tables.methods.setdefault(path, {})[_ENTER] = path
     attributes: Table
     if attributes := reader.overloads.attributes(klass):
         tables.generic_attributes[path] = attributes

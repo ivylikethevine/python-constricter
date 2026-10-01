@@ -83,7 +83,8 @@ def _sound(catalog: project.Index, module: tuple[str, bool], offered: Offered, s
     the hint shows, which may write a class bare that its edit's spelling doesn't.
 
     Returns:
-      Whether they do; an `import m`, which names no class, never does.
+      Whether they do; an `import m`, which names no class, never does, nor an import from an
+      installed package's private module (`numpy._core`), which its next release may move.
 
     """
     statement: str
@@ -97,9 +98,21 @@ def _sound(catalog: project.Index, module: tuple[str, bool], offered: Offered, s
             continue
         lone: re.Pattern[str] = re.compile(rf"(?<![\w.]){re.escape(alias.asname or alias.name)}(?![\w\[])")
         generic: bool | None = _class(catalog, origin)
-        if generic is None or (generic and bool(lone.search(offered.text) or lone.search(shown))):
+        bare: bool = bool(generic and (lone.search(offered.text) or lone.search(shown)))
+        if generic is None or bare or _private(catalog, origin[0]):
             return False
     return True
+
+
+def _private(catalog: project.Index, name: str) -> bool:
+    """Check whether module `name` is an installed package's private one.
+
+    Returns:
+      Whether it is.
+
+    """
+    module: project.Module | None = catalog.modules.get(name)
+    return module is not None and module.installed and any(part.startswith("_") for part in name.split("."))
 
 
 def _class(catalog: project.Index, origin: Origin) -> bool | None:

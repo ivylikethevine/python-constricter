@@ -354,6 +354,7 @@ class Scope:
                 )
                 # A generic class a checker prints bare has arguments it doesn't know.
                 and not bare(typed, self.settings.facts.generics)
+                and not hinted.renames(target.id, typed, local=self.kind.function is not None)
             ):
                 return hinted.inference(typed, found.checker)
         return None

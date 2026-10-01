@@ -6,6 +6,35 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types a method a class inherits: `self.size()`, or `x.size()` on a value typed as the
+  class, is the base's that defines it, in method resolution order among the module's classes and
+  then a class of another checked file. A declared return is certain, a `Self` one the receiver's
+  class, and `return`s a guess. An unannotated generator function's calls are a
+  `Generator[T, None, None]` by its `yield`s, and a loop over an `Iterable[T]`, `Iterator[T]` or
+  `Generator[T, ...]` declares its target `T`. A fix whose type is the same whatever a guessed name
+  in it is stays certain (`os.path.join(root, "x")`), and a function whose signature is a `# type:`
+  comment is no longer typed by its `return`s. On the standard library, django, sqlalchemy,
+  pydantic, pandas and pip, inherited methods add 103 certain fixes and 299 guesses, generators and
+  iterables 178 and 122, and 506 guesses become certain; basedpyright finds 5 new errors after them
+  (4 on pandas, 1 on sqlalchemy). Joining two `return` types into a union was measured and left out:
+  275 more fixes, and 38 new basedpyright errors.
+- `--fix` declares a `with` statement's target by what its context manager's `__enter__` returns: a
+  standard-library manager by the tables (`with zipfile.ZipFile(p) as z:` is a `zipfile.ZipFile`,
+  `with tempfile.TemporaryDirectory() as d:` a `str`), a class's declared `__enter__`, and a
+  `@contextmanager` function's `Iterator[T]`. Of the 5,017 `with` targets with no fix on the
+  corpora, 494 have a certain one and 356 a guess; basedpyright finds no new error after the
+  standard library's 438 certain ones. Not `async with`, nor a target that unpacks.
+- `--infer-with pyrefly`: pyrefly is a third checker (`pyrefly lsp`). With all three, hints type
+  16.3% of the bindings `--fix` can't on pydantic, sqlalchemy and django (13.2% with basedpyright
+  and ty). A request pyrefly cancels is asked again; its hints for a loop's or an unpacking's names,
+  which carry no edits, name each class by the file its label says defines it; and a class in an
+  installed package's private module is no fix. It infers an unannotated function's return only as
+  its configuration says (`infer-return-types = "checked"`).
+- `--infer-with` no longer declares another name for a class (`Pair = tuple[int, str]`, hinted
+  `type[tuple[int, str]]`) a variable, which annotations then couldn't be written with: a module's
+  name, or a function's written as a class's is. `corpus_suite.py --types --infer-with CHECKERS`
+  runs a package's own type checker after the hints' fixes too: sqlalchemy's mypy found 321 new
+  errors with basedpyright's and ty's hints, and finds 47 without a module's such names.
 - `--infer-with` uses a hint that names a class the file doesn't bind where its annotations run: one
   the hint's own edits import (basedpyright, ty and pyrefly send the import an editor would add with
   each hint), written through an import the module has or imported under `if TYPE_CHECKING:`, a

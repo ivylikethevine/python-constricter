@@ -4,7 +4,7 @@
 `bind` is what `checker` calls for every statement: a plain `name = value` goes through the scope
 (`Scope.assign`); a loop's or an unpacking's targets are split from the value's type and declared on a
 line of their own before it; a loop typed only by its `# type:` comment (LVA003) declares that type
-instead; `with open(...) as f` declares `f` first; and a `match`'s captures and an augmented
+instead; `with manager as name` declares `name` first; and a `match`'s captures and an augmented
 assignment are bound as they are.
 """
 
@@ -12,8 +12,10 @@ import ast
 from typing import Final, cast
 
 from constricter.fix import hinted
+from constricter.fix.doubts import bare
+from constricter.fix.entered import entered
 from constricter.fix.inference import LoopPart, inference, looped, looped_parts
-from constricter.fix.known import Inference
+from constricter.fix.known import Inference, Known
 from constricter.fix.opened import opened
 from constricter.fix.targets import iterated, unpacked
 from constricter.offences import COMMENT_TYPED_TARGET, UNTYPED_TARGET, Edit, Fix, at
@@ -210,26 +212,49 @@ def _bind_commented(scope: Scope, stmt: ast.For | ast.AsyncFor, target: ast.expr
 
 
 def _bind_with(scope: Scope, stmt: ast.stmt, items: list[ast.withitem], code: str | None) -> None:
-    """Bind each `with` item's target, offering to declare `with open(path, mode) as f`'s `f` first.
+    """Bind each `with` item's target, offering to declare `with manager as name`'s `name` first.
 
-    The file object `open` gives is its context manager's own (`__enter__` returns `self`), typed by
-    its literal mode; any other item's names are bound untyped, as are an `async with`'s (a file
-    object isn't an asynchronous context manager).
+    As what the manager's `__enter__` returns (see `constricter.fix.entered`); the file object
+    `open` gives, which is its own context manager, by its literal mode. A target that unpacks is
+    bound untyped, as is an `async with`'s (`__aenter__`'s return is awaited: not read).
     """
     item: ast.withitem
     name: ast.Name
     target: ast.expr
     for item in items:
-        typed: Inference | None = (
-            opened(item.context_expr, scope.settings.known) if isinstance(stmt, ast.With) else None
+        typed: tuple[Inference | None, bool, frozenset[str]] = (
+            _entered(scope, item.context_expr) if isinstance(stmt, ast.With) else (None, False, frozenset())
         )
         match item.optional_vars:
             case ast.Name() as name:
-                _bind_declaration(scope, stmt, name, code, (typed, False, frozenset()))
+                _bind_declaration(scope, stmt, name, code, typed)
             case None:
                 pass
             case target:
                 _bind_targets(scope, [target], code)
+
+
+def _entered(scope: Scope, manager: ast.expr) -> tuple[Inference | None, bool, frozenset[str]]:
+    """Infer what a `with` statement binds its target to, entering `manager`.
+
+    Returns:
+      The inference, whether it's a guess (the manager's type is one), and what the guess rests on;
+      none for a generic class written without its arguments.
+
+    """
+    known: Known = scope.settings.known
+    file: Inference | None
+    if (file := opened(manager, known)) is not None:
+        return file, False, frozenset()
+    found: tuple[Inference, list[ast.expr]] | None = entered(
+        manager,
+        known,
+        scope.inferred.types,
+        scope.settings.facts.managers,
+    )
+    if found is None or bare(found[0].annotation, scope.settings.facts.generics):
+        return None, False, frozenset()
+    return (found[0], *guesses_in(scope, found[1]))
 
 
 def _bind_targets(scope: Scope, targets: list[ast.expr], code: str | None) -> None:

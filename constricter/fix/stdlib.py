@@ -120,6 +120,7 @@ ENVIRONMENT: Final = "os.environ.get"
 _KIND: Final = "stdlib"  # the fix kind of what the tables type
 _BUILTIN_NAMES: Final = frozenset({*dir(builtins), "None"})
 _DOT: Final = "."
+_ENTER: Final = "__enter__"
 KNOWN: Final = frozenset({*RETURNS, *OVERLOADS, ENVIRONMENT, *CLASSES})  # every function the tables type
 # Module-level variables' types (`sys.path`: `list[str]`): builtin annotations, or classes' paths.
 VARIABLES: Final = cast("dict[str, str]", _table("variables"))
@@ -200,6 +201,20 @@ def library_member(receiver: str, name: str, call: ast.Call | None, known: Known
         if found is None
         else Inference(found, f"`{path}.{name}`'s {what} in typeshed", frozenset({_KIND}))
     )
+
+
+def enters_itself(receiver: str, known: Known) -> bool:
+    """Check whether `receiver` is a standard-library class whose `__enter__` returns the instance itself.
+
+    `receiver` is an annotation as the module spells it; its type arguments (`Popen[bytes]`) are the
+    instance's, which `with` then gives as it is.
+
+    Returns:
+      Whether it is.
+
+    """
+    path: str | None = _receiver(receiver, known)[0]
+    return path is not None and _member(_METHODS, path, _ENTER) == path
 
 
 def _member(table: "_Own", path: str, name: str) -> str | None:

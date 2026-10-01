@@ -4,19 +4,31 @@
 An editor that accepts an inlay hint applies its `textEdits`: the annotation, spelled as the file can
 write it, and the imports its names take. An import comes as a statement to add
 (`from shapes import Shape`), or as names inserted into a `from` import the file has (`, Shape`).
+
+A hint with no edits (pyrefly's, for a loop's or an unpacking's names) may say where each class in
+its label is defined instead: the import is from the module that file is.
 """
 
 import ast
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import TypeAlias, cast
+from pathlib import Path
+from typing import Final, TypeAlias, cast
+from urllib.parse import urlsplit
+from urllib.request import url2pathname
 
 from constricter.cli.protocol import Json, Object
 from constricter.fix.known import Offered
+from constricter.fix.modules import SUFFIX, module_name
 from constricter.rules import parsed
 
 _Where: TypeAlias = tuple[int, int]  # a line (from 1) and a UTF-8 byte column, as `ast` counts
 _Locate: TypeAlias = Callable[[Object], _Where | None]  # a position's, or `None` past the file's end
+_SITE: Final = "site-packages"
+_BUNDLED: Final = "pyrefly_bundled_typeshed"  # how the folders pyrefly unpacks its stubs into start
+_STUBS: Final = "-stubs"  # a stub package's folder, after the package's name
+_PACKAGE: Final = "__init__"
+_BUILTINS: Final = "builtins"
 
 
 @dataclass
@@ -65,14 +77,18 @@ def offered(hint: Object, label: str, locate: _Locate, existing: FromImports) ->
     """Read what a variable-type hint (showing `label`) would write: its annotation and its imports.
 
     Returns:
-      Them; `None` for a hint with no edits, one whose edits say no more than its label, or one
-      with an edit that is neither.
+      Them; `None` for a hint whose edits say no more than its label, one with an edit that is
+      neither, or one with no edits whose label doesn't say where a class in it is defined.
 
     """
+    edits: list[Json]
+    if not (edits := cast("list[Json]", hint.get("textEdits") or [])):
+        located: tuple[str, ...] = _located(hint.get("label"))
+        return Offered(label, located) if located else None
     text: str = ""
     imports: list[str] = []
     edit: Json
-    for edit in cast("list[Json]", hint.get("textEdits") or []):
+    for edit in edits:
         new: str = str(cast("Object", edit).get("newText", ""))
         start: Object = cast("Object", cast("Object", cast("Object", edit)["range"])["start"])
         if start == hint["position"] and new.startswith(":"):
@@ -83,6 +99,46 @@ def offered(hint: Object, label: str, locate: _Locate, existing: FromImports) ->
             return None
         imports += found
     return Offered(text, tuple(imports)) if text and (imports or text != label) else None
+
+
+def _located(label: Json) -> tuple[str, ...]:
+    """Read the imports a label's parts take: each class a part names, from the module its file is.
+
+    Returns:
+      A statement for each class whose defining file's module can be named, once; not a builtin's.
+
+    """
+    found: dict[str, None] = {}
+    part: Json
+    for part in label if isinstance(label, list) else []:
+        name: str = str(cast("Object", part).get("value", ""))
+        location: Json = cast("Object", part).get("location")
+        if location is None or not name.isidentifier():
+            continue
+        uri: str = str(cast("Object", location)["uri"])
+        module: str | None = _defined_in(Path(url2pathname(urlsplit(uri).path)))
+        if module and module != _BUILTINS:
+            found[f"from {module} import {name}"] = None
+    return tuple(found)
+
+
+def _defined_in(path: Path) -> str | None:
+    """Name the module a file is: an installed one, one of pyrefly's own stubs, or a project's.
+
+    Returns:
+      It, by the folders after `site-packages` or pyrefly's stubs' folder, else by its package
+      folders as the project index names it; `None` for a stub anywhere else.
+
+    """
+    parts: tuple[str, ...] = path.with_suffix("").parts
+    index: int
+    part: str
+    for index, part in enumerate(parts[:-1]):
+        if part == _SITE or part.startswith(_BUNDLED):
+            after: int = index + 2
+            inside: list[str] = [parts[index + 1].removesuffix(_STUBS), *parts[after:]]
+            return ".".join(inside[:-1] if inside[-1] == _PACKAGE and len(inside) > 1 else inside)
+    return module_name(path) if path.suffix == SUFFIX else None
 
 
 def _imports(new: str, start: Object, locate: _Locate, existing: FromImports) -> list[str] | None:

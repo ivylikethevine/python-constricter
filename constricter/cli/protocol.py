@@ -47,8 +47,9 @@ SERVERS: Final = {
     "basedpyright": Server("basedpyright-langserver", ("--stdio",), MAX_SERVERS),
     # Parallel already: more servers only repeat its work (sqlalchemy's: 0.9s with one, 0.7s with four).
     "ty": Server("ty", ("server",), 1),
+    "pyrefly": Server("pyrefly", ("lsp",), 1),  # parallel too
 }
-_PROBE: Final = "--version"  # quick for both; basedpyright-langserver's exits 1 all the same
+_PROBE: Final = "--version"  # quick for each; basedpyright-langserver's exits 1 all the same
 _PROBE_TIMEOUT: Final = 10.0  # seconds it may take
 _CANT_RUN: Final = frozenset({126, 127})  # the shell's "can't execute" and "not found": a broken shim's
 

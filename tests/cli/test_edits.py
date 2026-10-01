@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 """`--infer-with`: what a hint's own edits would write, and the imports they name."""
 
+from pathlib import Path
 from typing import Final
 
 import pytest
@@ -128,3 +129,59 @@ def test_a_files_imports_are_read_once() -> None:
         "Shape",
         ("from shapes import Shape", "from shapes import Shape"),
     )
+
+
+def _part(name: str, defined: str | None = None) -> Json:
+    """Make a label's part: `name`, with the file it's defined in if there's one.
+
+    Returns:
+      It.
+
+    """
+    part: Object = {"value": name}
+    if defined is not None:
+        part["location"] = {"uri": f"file://{defined}", "range": {"start": _TOP, "end": _TOP}}
+    return part
+
+
+@pytest.mark.parametrize(
+    ("defined", "imports"),
+    [
+        ("/venv/lib/python3.14/site-packages/shapes/__init__.pyi", ("from shapes import Shape",)),
+        ("/venv/lib/python3.14/site-packages/shapes/plane.py", ("from shapes.plane import Shape",)),
+        ("/venv/lib/python3.14/site-packages/shapes-stubs/plane.pyi", ("from shapes.plane import Shape",)),
+        ("/venv/lib/python3.14/site-packages/shapes.py", ("from shapes import Shape",)),
+        ("/cache/pyrefly_bundled_typeshed_4f6b/shapes/__init__.pyi", ("from shapes import Shape",)),
+        (
+            "/cache/pyrefly_bundled_typeshed_third_party_20/shapes/plane.pyi",
+            ("from shapes.plane import Shape",),
+        ),
+        ("/cache/pyrefly_bundled_typeshed_4f6b/builtins.pyi", None),  # a builtin takes no import
+        ("/somewhere/typeshed/stdlib/shapes.pyi", None),  # a stub of who knows what module
+    ],
+)
+def test_a_label_naming_where_a_class_is_defined_imports_it_from_that_module(
+    defined: str,
+    imports: tuple[str, ...] | None,
+) -> None:
+    """A hint with no edits whose label's parts carry locations: each class is its file's module's."""
+    label: list[Json] = [_part(": "), _part("dict"), _part("["), _part("Shape", defined), _part("]", defined)]
+    hint: Object = {"position": _AT, "label": label, "textEdits": []}
+    found: Offered | None = edits.offered(hint, "dict[Shape]", _locate, edits.FromImports([]))
+    assert found == (None if imports is None else Offered("dict[Shape]", imports))
+
+
+def test_a_project_files_class_is_imported_from_its_module(tmp_path: Path) -> None:
+    """A file outside any installed package is the module its package folders name, once a name."""
+    package: Path = tmp_path / "pkg"
+    package.mkdir()
+    _ = (package / "__init__.py").write_text("", encoding="utf-8")
+    defined: str = str(package / "shapes.py")
+    hint: Object = {
+        "position": _AT,
+        "label": [_part("Shape", defined), _part(" | "), _part("Shape", defined)],
+    }
+    found: Offered | None = edits.offered(hint, "Shape | Shape", _locate, edits.FromImports([]))
+    assert found == Offered("Shape | Shape", ("from pkg.shapes import Shape",))
+    plain: Object = {"position": _AT, "label": ": Shape"}
+    assert edits.offered(plain, "Shape", _locate, edits.FromImports([])) is None

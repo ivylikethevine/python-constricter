@@ -23,8 +23,8 @@ from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.known import ImportPlan, Inference
-from constricter.fix.narrowed import Regions
-from constricter.rules.annotations import node_name
+from constricter.fix.narrowed import Regions, regions
+from constricter.rules.annotations import generic_classes, node_name
 from constricter.rules.flow import members
 from constricter.rules.syntax import FunctionDef, Start, within
 from constricter.rules.walked import of_type, walk
@@ -70,6 +70,34 @@ class Facts(NamedTuple):
     tests: Tests = Tests()  # what its tests read (see `tests`)
     narrowed: Regions = MappingProxyType({})  # where each value is narrowed (see `narrowed.regions`)
     inner: tuple[int, ...] = ()  # the lines functions and lambdas start on, sorted (see `inner_starts`)
+    # Its functions `@contextmanager` makes context managers: what `with` gives of each (see `entered`).
+    managers: Mapping[str, str] = MappingProxyType({})
+
+
+def facts(
+    tree: ast.Module,
+    selfish: Mapping[str, frozenset[str]],
+    generics: frozenset[str],
+    managers: Mapping[str, str],
+) -> Facts:
+    """Read a module's `Facts`.
+
+    `selfish`: its `self_returns`; `generics`: the generic classes it names that others define;
+    `managers`: its `entered.managers`.
+
+    Returns:
+      Them.
+
+    """
+    return Facts(
+        selfish,
+        generic_classes(tree) | generics,
+        passed(tree),
+        tests(tree),
+        regions(tree),
+        inner_starts(tree),
+        managers,
+    )
 
 
 class Owner(NamedTuple):

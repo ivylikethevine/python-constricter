@@ -125,7 +125,7 @@ def test_a_file_asked_about_again_is_changed(monkeypatch: pytest.MonkeyPatch, tm
         ("exit", "exited while answering `textDocument/inlayHint`"),
         ("silent", "said nothing for 0s while answering `textDocument/inlayHint`"),
         ("truncate", "exited while answering `textDocument/inlayHint`"),
-        ("always-modified", "failed `textDocument/inlayHint`: content modified, 6 times"),
+        ("always-modified", "failed `textDocument/inlayHint`: dropped 6 times"),
     ],
 )
 def test_a_failing_server_stops_the_run(
@@ -141,10 +141,28 @@ def test_a_failing_server_stops_the_run(
         _ = _session_hints(tmp_path, "x = 1  # hint: int\n")
 
 
-def test_a_request_the_server_dropped_is_asked_again(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """A "content modified" answer (ty's, while later files open) is asked again, as the protocol says."""
-    _fake(monkeypatch, "modified")
+@pytest.mark.parametrize("behaviour", ["modified", "cancelled"])
+def test_a_request_the_server_dropped_is_asked_again(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    behaviour: str,
+) -> None:
+    """A request dropped as later files open (ty's "content modified", pyrefly's cancel) is asked again."""
+    _fake(monkeypatch, behaviour)
     assert _session_hints(tmp_path, "x = 1  # hint: int\n").types == {(1, 1): "int"}
+
+
+def test_a_hint_without_edits_says_where_its_classes_are_defined(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A hint with no edits (pyrefly's, for a loop's target) names each class's file in its label's parts."""
+    _fake(monkeypatch)
+    shapes: Path = tmp_path / "shapes.py"
+    text: str = f"x = make()  # located: dict[str, Shape] @ Shape={shapes} @ str=/stubs/builtins.pyi\n"
+    found: Hints = _session_hints(tmp_path, text)
+    assert found.types == {(1, 1): "dict[str, Shape]"}
+    assert found.offered == {(1, 1): Offered("dict[str, Shape]", ("from shapes import Shape",))}
 
 
 def test_a_server_that_wont_stop_is_killed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

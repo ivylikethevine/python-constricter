@@ -15,6 +15,7 @@ from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.declared import Declarations, declarations
+from constricter.fix.inherited import lineage
 from constricter.fix.known import Origin, Passed, Returns
 from constricter.fix.returned import unannotated
 from constricter.rules import parsed
@@ -24,6 +25,7 @@ from constricter.rules.annotations import (
     dotted,
     generic_classes,
     module_tables,
+    self_returns,
 )
 from constricter.rules.walked import of_type
 
@@ -43,7 +45,8 @@ _KEYWORD: Final = "k"
 class Module(NamedTuple):
     """What one file offers and uses: its name, functions' return types, names' origins, and classes'.
 
-    `classes` and `methods`: each class's attributes and its methods' returns (see `Classes`).
+    `classes` and `methods`: each class's attributes and its methods' returns (see `Classes`), those
+    it takes from the file's other classes too (see `Lineage`).
     """
 
     name: str
@@ -240,7 +243,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         own.returns,
         names,
         own.classes,
-        own.methods,
+        lineage(tree, self_returns(tree), frozenset()).flattened(own.methods),
         defined_type_vars(tree),
         _guarded(tree, named, is_package=path.stem == _PACKAGE),
         unannotated(tree.body),

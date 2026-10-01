@@ -215,11 +215,13 @@ def _member_of(
                     lambda arg: inference(arg, known, declared),
                     method,
                 )
-            text = None if found is not None else returned_method(receiver, attr, known)
+            defined: tuple[str, str] | None = (
+                returned_method(receiver, attr, known) if found is None else None
+            )
             return (
                 found
-                if text is None
-                else Inference(text, f"`{receiver}.{attr}`'s `return`s", frozenset({RETURNED}))
+                if defined is None
+                else Inference(defined[1], f"`{defined[0]}.{attr}`'s `return`s", frozenset({RETURNED}))
             )
         case _:
             found = member(receiver, attr, None, known)
