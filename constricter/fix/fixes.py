@@ -3,7 +3,6 @@
 
 import contextlib
 import re
-import sys
 from collections.abc import Sequence
 from operator import itemgetter
 from typing import Final, NamedTuple, TypeAlias
@@ -14,8 +13,14 @@ _HEADER: Final = 2  # a file's shebang and coding lines come first, if it has th
 _HEADER_LINE: Final = re.compile(r"#!|#.*coding[:=]")
 # Lines to insert, and the number of lines before them.
 _Run: TypeAlias = tuple[int, list[str]]
+# What orders the edits: a line, what's made there first (`_IMPORTS`, then an edit in the line,
+# then a `_DECLARATION` before it), and an edit's own line and column.
+_Place: TypeAlias = tuple[int, int, int, int]
 # An edit's place, and its offence (`None`: a run of imports).
-_Placed: TypeAlias = tuple[tuple[int, int], Offence | None]
+_Placed: TypeAlias = tuple[_Place, Offence | None]
+_IMPORTS: Final = 2
+_INLINE: Final = 1
+_DECLARATION: Final = 0
 
 
 class Replacement(NamedTuple):
@@ -179,8 +184,9 @@ def apply(lines: Sequence[str], offences: Sequence[Offence]) -> list[str]:
     The drops go first: each deletes the end of a statement's line (its type comment), so moves no
     other edit, and one statement's is made once however many of its names declare. The rest, and
     the imports the fixes need (each once, see `_imported`), are made from the last to the first, so
-    no edit moves one still to be made (and two declarations before one statement keep their
-    order); one `replacement` can't make is left unmade.
+    no edit moves one still to be made: on one line, the edits in it before the declarations that
+    go before it (`y: int`, then `x: int = f(y := 3)`), which keep their names' order; one
+    `replacement` can't make is left unmade.
 
     Returns:
       New lines; `lines` is left as it was. An offence's `line` indexes `lines` from 1.
@@ -197,11 +203,9 @@ def apply(lines: Sequence[str], offences: Sequence[Offence]) -> list[str]:
         kept: int = edit.columns[1]
         text[edit.line - 1] = edit.prefix + text[edit.line - 1][kept:]
     # Each run of imports goes after its line: before any edit on that line, in this order.
-    runs: dict[tuple[int, int], list[str]] = {
-        (line, sys.maxsize): run for line, run in _imported(text, offences)
-    }
+    runs: dict[_Place, list[str]] = {(line, _IMPORTS, 0, 0): run for line, run in _imported(text, offences)}
     edits: list[_Placed] = [(_position(o), o) for o in offences if o.edit]
-    placed: tuple[int, int]
+    placed: _Place
     fixed: Offence | None
     for placed, fixed in sorted([*edits, *((key, None) for key in runs)], key=itemgetter(0), reverse=True):
         if fixed is None:
@@ -217,16 +221,14 @@ def apply(lines: Sequence[str], offences: Sequence[Offence]) -> list[str]:
     return text
 
 
-def _position(offence: Offence) -> tuple[int, int]:
-    """Place an offence's edit in the file, to order the edits by.
+def _position(offence: Offence) -> _Place:
+    """Place an offence's edit in the file, to order the edits by (see `_Place`).
 
     Returns:
-      Its line and column: a declaration's are the statement's it goes before.
+      Its place: a declaration's line is the statement's it goes before.
 
     """
     fix: Fix | None = offence.edit
-    return (
-        (fix.span[0], offence.col)
-        if fix is not None and fix.edit is Edit.DECLARE
-        else (offence.line, offence.col)
-    )
+    if fix is not None and fix.edit is Edit.DECLARE:
+        return fix.span[0], _DECLARATION, offence.line, offence.col
+    return offence.line, _INLINE, offence.line, offence.col

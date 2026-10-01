@@ -10,7 +10,7 @@ from constricter import Checks, FixPolicy, Offence, check_source
 _Fixed: TypeAlias = dict[str, tuple[str | None, bool]]
 UNANNOTATED: Final = "LVA001"
 SOURCE: Final = """
-def f(items: list[int], names: list[str], other) -> list[str]:
+def f(items: list[int], names: list[str], pairs: dict[str, int], other) -> list[str]:
     a = []
     for i in items:
         a.append(i)
@@ -25,6 +25,7 @@ def f(items: list[int], names: list[str], other) -> list[str]:
     d.append("x")
     e = []
     e.extend(items)
+    e.extend(range(3))
     g = []
     g.append(1)
     other(g)
@@ -56,6 +57,23 @@ def f(items: list[int], names: list[str], other) -> list[str]:
     z = []
     z.append(1)
     z = []
+    A = set()
+    A.update(names)
+    A.add("x")
+    B = {}
+    B.update(pairs)
+    B["k"] = 1
+    C = []
+    C.extend(items)
+    C.append("x")
+    D = []
+    D.extend(other)
+    E = {}
+    E.update(k=1)
+    F = set()
+    F.update(names, names)
+    G = {}
+    G.update(names)
     print(len(m), ", ".join(h), sorted(a), c if c else None, f"{p}", not u, [y for y in m], m[0])
     return h
 """
@@ -73,14 +91,18 @@ def test_an_empty_container_is_typed_by_what_is_added() -> None:
         "a": ("list[int]", True),
         "b": ("dict[str, int]", True),
         "c": ("set[str]", True),
+        "e": ("list[int]", True),  # `extend`: its argument's elements
         "h": ("list[str]", True),
         "m": ("list[int]", True),
         "p": ("dict[str, float]", True),
+        "A": ("set[str]", True),  # `update`, a set's
+        "B": ("dict[str, int]", True),  # and a `dict`'s: another's keys and values
     }
-    # Mixed types (d), `extend` (e), passed elsewhere (g), a nested function (k), `+=` into it (q),
-    # aliased (r), a slice (t), never filled (u), an unknown element (v) or key (w), a bad call (x),
-    # rebound (z).
-    assert {name for name, fix in fixed.items() if not fix[0]} >= set("degkqrtuvwxz")
+    # Mixed types (d), passed elsewhere (g), a nested function (k), `+=` into it (q), aliased (r), a
+    # slice (t), never filled (u), an unknown element (v) or key (w), a bad call (x), rebound (z);
+    # `extend` of other elements (C) or unknown ones (D), `update` by keyword (E), with two
+    # arguments (F), or with what isn't a `dict` (G).
+    assert {name for name, fix in fixed.items() if not fix[0]} >= set("dgkqrtuvwxzCDEFG")
 
 
 def test_it_is_trusted_or_ignored_as_a_mechanism() -> None:

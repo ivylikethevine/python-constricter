@@ -22,6 +22,7 @@ from functools import lru_cache
 from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
 
+from constricter.fix.imports import checking
 from constricter.fix.known import ImportPlan, Inference
 from constricter.fix.narrowed import Regions, regions
 from constricter.rules.annotations import generic_classes, node_name
@@ -67,6 +68,8 @@ class Facts(NamedTuple):
     selfish: Mapping[str, frozenset[str]] = MappingProxyType({})
     generics: frozenset[str] = frozenset()
     passed: frozenset[str] = frozenset()
+    # What its top-level `if TYPE_CHECKING:` blocks import, unbound when it runs (see `imports.checking`).
+    checking: frozenset[str] = frozenset()
     tests: Tests = Tests()  # what its tests read (see `tests`)
     narrowed: Regions = MappingProxyType({})  # where each value is narrowed (see `narrowed.regions`)
     inner: tuple[int, ...] = ()  # the lines functions and lambdas start on, sorted (see `inner_starts`)
@@ -93,6 +96,7 @@ def facts(
         selfish,
         generic_classes(tree) | generics,
         passed(tree),
+        checking(tree),
         tests(tree),
         regions(tree),
         inner_starts(tree),
@@ -320,30 +324,41 @@ def corrected(
       The inference to offer, or `None` if there's none to.
 
     """
-    if owner is not None and _selfish(value, found, owner):
+    written: str | None
+    if (written := None if owner is None else _selfish(value, found, owner)) is not None:
         spelled: str | None = None if plan is None else spelled_self(plan)
         return (
-            None if spelled is None else found._replace(annotation=spelled, reason=f"{found.reason}: `Self`")
+            None
+            if spelled is None
+            else found._replace(annotation=written.format(spelled), reason=f"{found.reason}: `Self`")
         )
     return None if bare(found.annotation, generics) else found
 
 
-def _selfish(value: ast.expr, found: Inference, owner: Owner) -> bool:
-    """Check whether `value` is `self`, or a `Self` method called on `self` or `cls`, typed as the class.
+def _selfish(value: ast.expr, found: Inference, owner: Owner) -> str | None:
+    """Find how `value`'s type is written with `Self`, if it's one typed as the class.
+
+    `self`, or a `Self` method called on `self` or `cls`; and `type(self)`, a `type[Self]`.
 
     Returns:
-      Whether it is.
+      Its annotation, `{}` standing for `Self`; or `None` if it isn't one.
 
     """
     name: str
     method: str
+    template: str | None = None
     match value:
         case ast.Name(id=name) if name == owner.first:
-            return found.annotation == owner.name
-        case ast.Call(func=ast.Attribute(value=ast.Name(id=name), attr=method)) if name == owner.first:
-            return method in owner.selfish and found.annotation == owner.name
+            template = "{}"
+        case ast.Call(func=ast.Attribute(value=ast.Name(id=name), attr=method)) if (
+            name == owner.first and method in owner.selfish
+        ):
+            template = "{}"
+        case ast.Call(func=ast.Name(id="type"), args=[ast.Name(id=name)]) if name == owner.first:
+            template = "type[{}]"
         case _:
-            return False
+            pass
+    return template if template is not None and found.annotation == template.format(owner.name) else None
 
 
 def spelled_self(plan: ImportPlan) -> str | None:

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
-"""`--infer-with`: the names a hint may use are classes the index knows, and no generic one bare."""
+"""`--infer-with`: the names a hint may use are classes and aliases the index knows, no generic one bare."""
 
+import sys
 from pathlib import Path
 from typing import Final
 
@@ -10,7 +11,7 @@ from constricter.fix import offers, project
 from constricter.fix.known import Guarded, Hints, Offered
 
 _SHAPES: Final = """
-from typing import Generic, TypeVar
+from typing import Generic, TypeAlias, TypeVar
 
 T = TypeVar("T")
 sizes = 3
@@ -30,6 +31,18 @@ class Line:
 
 def make() -> Shape:
     return Shape()
+
+
+Pair = tuple[int, Shape]
+Rows: TypeAlias = Shape
+Boxes = list[Box[T]]
+Same = Shape
+if sizes:
+    Either = Shape | Line
+try:
+    Lines = list[Line]
+except NameError:
+    pass
 """
 _USE: Final = """
 from typing import TYPE_CHECKING
@@ -43,7 +56,7 @@ if TYPE_CHECKING:
     from elsewhere import Thing
 
     from . import shapes
-    from .shapes import T, Box, Line, Shape, make, sizes
+    from .shapes import T, Box, Boxes, Line, Pair, Shape, make, sizes
 
 x = make()
 """
@@ -85,6 +98,13 @@ def _package(tmp_path: Path) -> list[Path]:
         (Offered("shapes", ("from . import shapes",)), "shapes", False),  # a module
         (Offered("Thing", ("from elsewhere import Thing",)), "Thing", False),  # not a checked file's
         (Offered("pkg.shapes.Shape", ("import pkg.shapes",)), "Shape", False),  # names no class
+        (Offered("Pair", ("from .shapes import Pair",)), "Pair", True),  # a type alias: a subscript
+        (Offered("Rows", ("from .shapes import Rows",)), "Rows", True),  # one annotated `TypeAlias`
+        (Offered("Either | None", ("from .shapes import Either",)), "Either | None", True),  # under an `if`
+        (Offered("Lines", ("from .shapes import Lines",)), "Lines", True),  # under a `try`
+        (Offered("Boxes[int]", ("from .shapes import Boxes",)), "Boxes[int]", True),
+        (Offered("Boxes", ("from .shapes import Boxes",)), "Boxes", False),  # a generic alias, bare
+        (Offered("Same", ("from .shapes import Same",)), "Same", False),  # a bare name's: not indexed
     ],
 )
 def test_an_edits_import_must_name_a_class_and_no_generic_one_bare(
@@ -94,7 +114,10 @@ def test_an_edits_import_must_name_a_class_and_no_generic_one_bare(
     *,
     kept: bool,
 ) -> None:
-    """A hint's name may be a module's, and a generic class shown bare has arguments unknown: no import."""
+    """A hint's name may be a module's, and a generic class shown bare has arguments unknown: no import.
+
+    A type alias (a name annotated `TypeAlias`, or bound to a subscript or a union) is taken as a class is.
+    """
     paths: list[Path] = _package(tmp_path)
     hints: tuple[Hints, ...] = (Hints("basedpyright", {_AT: shown}, {_AT: offered}),)
     found: Hints = offers.vetted(project.index(paths), paths[-1], hints)[0]
@@ -121,8 +144,16 @@ def test_hints_without_edits_are_left_as_they_are(tmp_path: Path) -> None:
     assert offers.vetted(project.index([]), tmp_path / "missing.py", hints) is hints
 
 
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="`type` statements are Python 3.12+")
+def test_a_type_statement_is_an_alias(tmp_path: Path) -> None:
+    """`type X = ...` is indexed as an alias, generic if it has type parameters of its own."""
+    path: Path = tmp_path / "aliases.py"
+    _ = path.write_text("type Pair = tuple[int, str]\ntype Many[T] = list[T]\n", encoding="utf-8")
+    assert project.index([path]).modules["aliases"].aliases == {"Pair": False, "Many": True}
+
+
 def test_the_classes_a_file_imports_for_type_checking_are_its_own(tmp_path: Path) -> None:
-    """Of a file's `if TYPE_CHECKING:` imports, the classes: not a module, a value, or what runs too."""
+    """Of a file's `if TYPE_CHECKING:` imports, the classes and aliases: no module, value, or what runs."""
     paths: list[Path] = _package(tmp_path)
     catalog: project.Index = project.index(paths)
     own: offers.Own = offers.own(catalog, paths[-1])
@@ -130,8 +161,10 @@ def test_the_classes_a_file_imports_for_type_checking_are_its_own(tmp_path: Path
         "Decimal": Guarded(("decimal", "Decimal"), None),
         "itemgetter": Guarded(("operator", "itemgetter"), None),
         "Box": Guarded(("pkg.shapes", "Box"), None),
+        "Boxes": Guarded(("pkg.shapes", "Boxes"), None),
+        "Pair": Guarded(("pkg.shapes", "Pair"), None),
         "Shape": Guarded(("pkg.shapes", "Shape"), None),
     }
-    assert own.generics == {"itemgetter", "Box"}
+    assert own.generics == {"itemgetter", "Box", "Boxes"}
     assert offers.own(catalog, tmp_path / "missing.py") == offers.Own()
     assert offers.own(catalog, tmp_path / "notebook.ipynb") == offers.Own()

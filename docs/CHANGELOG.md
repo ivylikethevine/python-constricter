@@ -6,6 +6,30 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types six more shapes. A union the author would write: `a if c else None` is a `T | None`,
+  and `a or b` (or `a and b`) with operands of one type is that type, `or` dropping a `None` before
+  its last operand (fix kind `boolean`). A `:=`'s name is declared on a line of its own before its
+  statement (before the `if`, for one in an `elif`), typed as an assignment's is:
+  `if (m := pattern.match(s)) is not None:` declares `m: re.Match[str] | None`. An empty container
+  the function `extend`s or `update`s is typed by that argument's elements (a guess, as `append`'s
+  is). A quoted annotation, or a quoted part of one, is read as its text (`xs: "list[Node]"` types
+  `xs[0]` and `for x in xs`), and a module body's fix naming what isn't bound yet is quoted. Small
+  shapes: `[*names, s]`, `{**d, k: v}`, `type(x)` (a `type[C]`), `d.get(k, 0)` with a default of the
+  values' type, and `os.environ["X"]`. With `--infer-with`, `TypeAlias` is imported for a module's
+  alias written as a subscript or a union (never a bare class's, which declared one loses the
+  class's type parameters), and a hint may name a type alias a checked file or an installed package
+  defines (`schema: core_schema.CoreSchema`). On pydantic, the one corpus measured: 59 fewer
+  bindings with no fix (2,201 to 2,142; 52 more certain fixes, 7 more guesses), and 127 fewer with
+  basedpyright's hints (1,720 to 1,593, 82 of them aliases declared); nothing broken, one pass
+  converges. basedpyright finds 2 new errors after `--fix --unsafe-fixes`, both a return type
+  pydantic quotes (`Dict[str, 'AnyClassMethod']`) written where the function is called: it reports
+  that alias, assigned in two branches, wherever it's used.
+- Fixed: a fix in a line and a declaration before that line no longer land on each other
+  (`x = f(y := 3)`); a fix whose annotation names a parameter or local of its own function, or the
+  name it annotates, isn't offered (`text: str` under a parameter `str`); a value typed whatever its
+  parts are (`x.kind is None`, an f-string) stays certain when a part is a guess; and an annotation
+  that is a string but not an expression (`x: "no way"`) no longer stops the file's check with a
+  syntax error.
 - `--fix` types a call to a decorated function that declares its return, under decorators that give
   the function back: the standard library's (`functools.cache`, `lru_cache`, `wraps`,
   `abc.abstractmethod`, `typing.final`, `override`, `deprecated`), and a function whose signature

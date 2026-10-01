@@ -5,13 +5,15 @@ import ast
 from collections.abc import Iterator, Mapping
 from typing import Final
 
-from constricter.fix import stdlib
+from constricter.fix import shapes, stdlib
 from constricter.fix.inference import (
     COMPREHENSIONS,
     CONTAINER_BUILDERS,
     RETURNED,
     dict_view,
+    inference,
     inferred,
+    scalar,
     targets_typed,
 )
 from constricter.fix.known import Known
@@ -25,7 +27,9 @@ from constricter.rules.annotations import dotted
 from constricter.rules.walked import children
 
 # Builtins whose call is certain (when the module doesn't rebind the name): see `_is_guess`.
-_CERTAIN_BUILTINS: Final = frozenset(BUILTIN_RETURNS.keys() | CONTAINER_BUILDERS.keys() | ITERATORS)
+_CERTAIN_BUILTINS: Final = frozenset(
+    BUILTIN_RETURNS.keys() | CONTAINER_BUILDERS.keys() | ITERATORS | {"type"},
+)
 
 
 def guessed(
@@ -55,7 +59,8 @@ def _deciding(value: ast.AST, known: Known, declared: Mapping[str, str]) -> Iter
     """Walk what decides `value`'s type: all of it, but not the arguments of a call they can't change.
 
     `open(path, "rb")` is a file object by its mode, `logging.getLogger(name)` a `Logger`, whatever
-    `path` or `name` are: a guess there doesn't make the call's type one. Nor does it in a call to a
+    `path` or `name` are: a guess there doesn't make the call's type one; nor in `x.kind is None`, a
+    `bool` whatever `x.kind` is, or an f-string. Nor does it in a call to a
     fixed-return builtin (`len(Box())`), a function declaring its return, or a method a certain
     source types (`"{}".format(Box())`, `self.items.get(key())`), though its receiver still counts.
 
@@ -68,6 +73,8 @@ def _deciding(value: ast.AST, known: Known, declared: Mapping[str, str]) -> Iter
     node: ast.AST
     for node in iter(waiting.pop, None):
         yield node
+        if isinstance(node, ast.expr) and scalar(node) is not None:
+            continue
         if isinstance(node, ast.Call) and (opened(node, known) or library_class(node, known)):
             continue
         if isinstance(node, ast.Call) and _fixed_by_callee(node, known, declared):
@@ -176,9 +183,10 @@ def certain_method(call: ast.expr, known: Known, declared: Mapping[str, str]) ->
 
 
 def _overloaded_method(call: ast.Call, known: Known, declared: Mapping[str, str]) -> bool:
-    """Check whether `call` calls a standard-library method its arguments type (`stdlib.overloaded_method`).
+    """Check whether `call` calls a method its arguments type: the standard library's, or `dict.get`.
 
-    Its arguments are walked as its parts: a guessed one makes it a guess.
+    See `stdlib.overloaded_method` and `shapes.defaulted`. Its arguments are walked as its parts: a
+    guessed one makes it a guess.
 
     Returns:
       Whether it does.
@@ -192,6 +200,7 @@ def _overloaded_method(call: ast.Call, known: Known, declared: Mapping[str, str]
             return typed is not None and (
                 stdlib.overloaded_method(typed, method, known) is not None
                 or installed_method(typed, method, known) is not None
+                or shapes.defaulted(typed, call, lambda arg: inference(arg, known, declared)) is not None
             )
         case _:
             return False

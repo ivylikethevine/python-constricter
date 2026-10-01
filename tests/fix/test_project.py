@@ -71,7 +71,7 @@ def run() -> None:
     b: Row = row()
     c: Local = local()
     d: int = u.helper()
-    e: 'list[str]' = pkg.util.text()
+    e: list[str] = pkg.util.text()
     f: t.Row = u.trow()
     g: len = length()
 """

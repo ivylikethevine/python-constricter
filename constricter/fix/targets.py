@@ -80,6 +80,23 @@ def element_type(container: str, reason: str, kinds: frozenset[str]) -> Inferenc
             return None
 
 
+def dict_parts(annotation: str) -> tuple[str, str] | None:
+    """Read a `dict[K, V]`'s key and value types.
+
+    Returns:
+      Them, as text, or `None` for any other annotation.
+
+    """
+    # `annotation` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
+    key: ast.expr
+    value: ast.expr
+    match ast.parse(annotation, mode="eval").body:
+        case ast.Subscript(value=ast.Name(id="dict" | "Dict"), slice=ast.Tuple(elts=[key, value])):
+            return ast.unparse(key), ast.unparse(value)
+        case _:
+            return None
+
+
 def counted(name: str, args: list[ast.expr]) -> list[ast.expr]:
     """Pick the arguments whose elements one of `ITERATORS` yields: `enumerate`'s first, others' all.
 

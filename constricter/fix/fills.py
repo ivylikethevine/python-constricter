@@ -3,18 +3,19 @@
 
 A guess (`--unsafe-fixes`): only this function's own uses are seen, and something else could still
 add to it. So every use of the name must be one of a few that can't: a fill whose value's type is
-known (`append`, `insert`, `add`, `setdefault`, `x[k] = v`), a read (`x[k]`, `x.get(k)`, iterating it,
-`len(x)`, `", ".join(x)`, returning it), or one that only shrinks or reorders it (`pop`, `sort`,
-`clear`). Anything else (`extend`, `update`, passing it to another function, aliasing it, a nested
-function that sees it) leaves it alone.
+known (`append`, `insert`, `add`, `setdefault`, `x[k] = v`; `extend` and `update`, by their one
+argument's elements), a read (`x[k]`, `x.get(k)`, iterating it, `len(x)`, `", ".join(x)`, returning
+it), or one that only shrinks or reorders it (`pop`, `sort`, `clear`). Anything else (passing it to
+another function, aliasing it, a nested function that sees it) leaves it alone.
 """
 
 import ast
 from collections.abc import Mapping, Sequence
 from typing import Final, NamedTuple
 
-from constricter.fix.inference import inference
+from constricter.fix.inference import inference, looped
 from constricter.fix.known import Inference, Known
+from constricter.fix.targets import dict_parts
 from constricter.rules.syntax import NESTED_SCOPES, own_nodes
 from constricter.rules.walked import walk
 
@@ -28,6 +29,8 @@ _ADDERS: Final = {
     _SET: {"add": 0},
     _DICT: {"setdefault": 1},
 }
+# What adds every element of its one argument, by container (a `dict`'s: another's entries).
+_SPREADERS: Final = {_LIST: "extend", _SET: "update", _DICT: "update"}
 # Methods that only read, shrink or reorder.
 _READERS: Final = frozenset(
     {"pop", "get", "items", "keys", "values", "copy", "sort", "reverse", "clear", "count", "index"}
@@ -42,10 +45,15 @@ _JOIN: Final = "join"
 
 
 class _Fill(NamedTuple):
-    """One element added: its key (a `dict`'s), and its value."""
+    """One addition: its key (a `dict`'s), and its value.
+
+    `spread`: the value isn't what's added, but holds it: its elements (`extend`), or a `dict`'s
+    entries (`update`).
+    """
 
     key: ast.expr | None
     value: ast.expr
+    spread: bool = False
 
 
 def empty(value: ast.expr) -> str | None:
@@ -180,12 +188,15 @@ def _method(attr: str, call: ast.Call, kind: str) -> _Fill | bool:
     """Judge a method called on the container.
 
     Returns:
-      A fill for an adder (with the arguments it needs), `True` for a reader, else `False`.
+      A fill for an adder or a spreader (with the arguments it needs), `True` for a reader, else
+      `False`.
 
     """
     position: int | None = _ADDERS[kind].get(attr)
     if position is not None and not call.keywords and len(call.args) == position + 1:
         return _Fill(call.args[0] if kind == _DICT else None, call.args[position])
+    if attr == _SPREADERS[kind] and not call.keywords and len(call.args) == 1:
+        return _Fill(None, call.args[0], spread=True)
     return attr in _READERS
 
 
@@ -213,16 +224,33 @@ def _typed(fills: Sequence[_Fill], kind: str, known: Known, declared: Mapping[st
       The inference, or `None` if a key or value isn't typed, or they differ.
 
     """
-    values: list[Inference | None] = [inference(fill.value, known, declared) for fill in fills]
-    keys: list[Inference | None] = [
-        inference(fill.key, known, declared) for fill in fills if fill.key is not None
-    ]
-    parts: list[Inference] = [part for part in (*values, *keys) if part is not None]
-    value_types: set[str | None] = {None if part is None else part.annotation for part in values}
-    key_types: set[str | None] = {None if part is None else part.annotation for part in keys}
-    if len(parts) != len(values) + len(keys) or len(value_types) != 1 or len(key_types) > 1:
+    added: list[list[Inference | None]] = [_added(fill, kind, known, declared) for fill in fills]
+    rows: list[list[Inference]] = [[part for part in each if part is not None] for each in added]
+    if [len(row) for row in rows] != [len(each) for each in added]:
         return None
-    value: str = str(next(iter(value_types)))
-    annotation: str = f"dict[{next(iter(key_types))}, {value}]" if kind == _DICT else f"{kind}[{value}]"
+    parts: list[Inference] = [part for row in rows for part in row]
+    # A `dict`'s keys, then its values; any other container's elements.
+    types: list[set[str]] = [{row[at].annotation for row in rows} for at in range(len(rows[0]))]
+    if any(len(found) != 1 for found in types):
+        return None
+    annotation: str = f"{kind}[{', '.join(next(iter(found)) for found in types)}]"
     reason: str = f"what the function adds to it ({len(fills)} {'fill' if len(fills) == 1 else 'fills'})"
     return Inference(annotation, reason, frozenset({"filled"}).union(*(part.kinds for part in parts)))
+
+
+def _added(fill: _Fill, kind: str, known: Known, declared: Mapping[str, str]) -> list[Inference | None]:
+    """Type what one fill adds: a `dict`'s key and value, any other container's element.
+
+    Returns:
+      Each one's inference (`None`: unknown).
+
+    """
+    if not fill.spread:
+        return [inference(part, known, declared) for part in (fill.key, fill.value) if part is not None]
+    if kind != _DICT:
+        return [looped(fill.value, known, declared)]
+    found: Inference | None = inference(fill.value, known, declared)
+    types: tuple[str, str] | None = None if found is None else dict_parts(found.annotation)
+    if found is None or types is None:
+        return [None, None]
+    return [found._replace(annotation=types[0]), found._replace(annotation=types[1])]

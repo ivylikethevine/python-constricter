@@ -3,9 +3,9 @@
 
 A hint is text, and a name in it may not be a type: basedpyright shows a value that is a module by
 the module's name, and a generic class without its arguments when it doesn't know them. So a name
-is taken only for a class the index of checked files and installed packages defines: `own`, for
-what the file imports under `if TYPE_CHECKING:`; `vetted`, for what a hint's edits would import
-(the standard library's are `hinted`'s to judge, by its tables).
+is taken only for a class or a type alias the index of checked files and installed packages
+defines: `own`, for what the file imports under `if TYPE_CHECKING:`; `vetted`, for what a hint's
+edits would import (the standard library's are `hinted`'s to judge, by its tables).
 """
 
 import ast
@@ -24,7 +24,7 @@ _STDLIB: Final = sys.stdlib_module_names
 
 
 class Own(NamedTuple):
-    """The classes a file imports for type checking alone, by name (`guarded`), and the generic ones."""
+    """The classes and aliases a file imports for type checking alone (`guarded`), and the generic ones."""
 
     # A plain `dict`, not a `MappingProxyType`: the CLI's worker processes are sent it, pickled.
     guarded: Mapping[str, Guarded] = {}
@@ -116,14 +116,19 @@ def _private(catalog: project.Index, name: str) -> bool:
 
 
 def _class(catalog: project.Index, origin: Origin) -> bool | None:
-    """Find whether `origin` is a class: an indexed module's (through re-exports), or the standard library's.
+    """Find whether `origin` is a class or a type alias: an indexed module's (through re-exports).
+
+    Or a class of the standard library's.
 
     Returns:
-      Whether it's generic, missing its arguments written bare; `None` if it isn't a class anyone knows.
+      Whether it's generic, missing its arguments written bare; `None` if it's neither, to anyone's
+      knowledge.
 
     """
     defined: tuple[project.Module, str] | None
     if (defined := project.definition(catalog.modules, origin, project.CLASS)) is not None:
         return defined[1] in defined[0].generics
+    if (defined := project.definition(catalog.modules, origin, project.ALIAS)) is not None:
+        return defined[0].aliases[defined[1]]
     path: str = f"{origin[0]}.{origin[1]}"
     return stdlib.needs_arguments(path) if stdlib.defines_class(path) else None

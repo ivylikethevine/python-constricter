@@ -5,7 +5,8 @@
 (`Scope.assign`); a loop's or an unpacking's targets are split from the value's type and declared on a
 line of their own before it; a loop typed only by its `# type:` comment (LVA003) declares that type
 instead; `with manager as name` declares `name` first; and a `match`'s captures and an augmented
-assignment are bound as they are.
+assignment are bound as they are. `walruses` binds a statement's `:=` targets, each declared before
+it too.
 """
 
 import ast
@@ -24,6 +25,9 @@ from constricter.rules.scope import Scope, certain_type, guesses_in
 from constricter.rules.syntax import captures, comment_type, target_names, type_comment_span
 
 _COMMENT: Final = "comment"  # the fix kind of LVA003's declaration
+_COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+# Statements a declaration can't go before: a decorator's line is its definition's.
+_DEFINITIONS: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
 
 def bind(scope: Scope, stmt: ast.stmt) -> None:
@@ -72,6 +76,41 @@ def bind(scope: Scope, stmt: ast.stmt) -> None:
             scope.inferred.rebound(name, bound)
         case _:
             pass
+
+
+def walruses(scope: Scope, part: ast.AST, before: ast.stmt) -> None:
+    """Bind the `:=` targets in `part`, an expression of a statement, each offered a declaration.
+
+    Comprehensions included, lambdas excluded. A name can't be annotated where `:=` binds it: it's
+    declared on a line of its own before `before` (its statement, or the `if` an `elif` belongs to),
+    typed as a plain assignment's is. Not one inside a comprehension, whose value may read the
+    comprehension's own names, nor where a line can't go before the statement: a definition (its
+    decorators' lines are its own), or one that doesn't start its line (`else: x = (y := 1)`).
+    Asked only in a module with a `:=` (`Settings.walruses`).
+    """
+    hidden: set[int] = _inside(part, ast.Lambda)
+    line: bytes = scope.settings.lines[before.lineno - 1].encode() if scope.settings.lines else b""
+    plain: bool = isinstance(before, _DEFINITIONS) or bool(line[: before.col_offset].strip())
+    comprehended: set[int] = set() if plain else _inside(part, *_COMPREHENSIONS)
+    code: str = scope.kind.unannotated
+    node: ast.AST
+    for node in ast.walk(part):
+        if not isinstance(node, ast.NamedExpr) or id(node) in hidden:
+            continue
+        if plain or id(node) in comprehended:
+            scope.bind(node.target.id, at(node.target), code)
+        else:
+            _bind_declaration(scope, before, node.target, code, scope.valued(node.value, node.lineno))
+
+
+def _inside(part: ast.AST, *kinds: type[ast.AST]) -> set[int]:
+    """Find every node inside a node of one of `kinds`, in `part`.
+
+    Returns:
+      Their `id()`s.
+
+    """
+    return {id(inner) for outer in ast.walk(part) if isinstance(outer, kinds) for inner in ast.walk(outer)}
 
 
 def _bind_assigned(scope: Scope, stmt: ast.Assign) -> None:

@@ -23,13 +23,17 @@ from constricter.rules.annotations import (
     defined_type_vars,
     dotted,
     generic_classes,
+    is_composite,
+    node_name,
     self_returns,
 )
 from constricter.rules.decorators import Held, Pass
+from constricter.rules.syntax import child_statements
 from constricter.rules.tables import Tables, module_tables
 from constricter.rules.walked import of_type
 
 _PACKAGE: Final = "__init__"
+_TYPE_ALIAS: Final = "TypeAlias"  # the annotation, and the node class of `type X = ...` (Python 3.12+)
 SUFFIX: Final = ".py"
 STUB: Final = ".pyi"
 
@@ -75,6 +79,10 @@ class Module(NamedTuple):
     held: Mapping[str, Held] = {}
     passes: Mapping[str, Pass] = {}
     vouched: frozenset[str] = frozenset()  # those of `held` they vouched for, now among `returns`
+    aliases: Mapping[
+        str,
+        bool,
+    ] = {}  # its type aliases, and whether each takes type arguments (see `_aliases`)
 
 
 class Index(NamedTuple):
@@ -261,7 +269,61 @@ def read(path: Path, name: str | None = None) -> Module | None:
         declared=None if name is None else declarations(tree),
         held=own.held,
         passes=own.passes,
+        aliases=_aliases(tree),
     )
+
+
+def _aliases(tree: ast.Module) -> dict[str, bool]:
+    """Find a module's type aliases, at its top level or under an `if` or `try` there.
+
+    A name annotated `TypeAlias`, bound to a subscript or a union (`Json = dict[str, "Json"] | str`),
+    or a `type` statement's.
+
+    Returns:
+      Each one's name, and whether it takes type arguments: its value names one of the module's type
+      variables, or it has type parameters of its own.
+
+    """
+    type_vars: frozenset[str] = defined_type_vars(tree)
+    found: dict[str, bool] = {}
+    stmt: ast.stmt
+    name: str
+    value: ast.expr
+    annotation: ast.expr
+    for stmt in _top_level(tree.body):
+        match stmt:
+            case ast.AnnAssign(
+                target=ast.Name(id=name),
+                annotation=annotation,
+                value=ast.expr() as value,
+            ) if node_name(annotation) == _TYPE_ALIAS:
+                found[name] = _names_any(value, type_vars)
+            case ast.Assign(targets=[ast.Name(id=name)], value=value) if is_composite(value):
+                found[name] = _names_any(value, type_vars)
+            case _ if type(stmt).__name__ == _TYPE_ALIAS:
+                named: ast.Name = cast("ast.Name", getattr(stmt, "name", None))
+                found[named.id] = bool(cast("object", getattr(stmt, "type_params", ())))
+            case _:
+                pass
+    return found
+
+
+def _names_any(value: ast.expr, names: frozenset[str]) -> bool:
+    return any(isinstance(node, ast.Name) and node.id in names for node in ast.walk(value))
+
+
+def _top_level(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
+    """Walk a module's top-level statements, those under its `if`s and `try`s too.
+
+    Yields:
+      Each.
+
+    """
+    stmt: ast.stmt
+    for stmt in body:
+        yield stmt
+        if isinstance(stmt, ast.If | ast.Try | ast.TryStar):
+            yield from _top_level(child_statements(stmt))
 
 
 def open_functions(tree: ast.Module) -> dict[str, tuple[Param, ...]]:

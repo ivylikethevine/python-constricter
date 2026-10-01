@@ -24,10 +24,13 @@
   functions that declare their return, or whose `return`s decide it (`returned`), in the same module
   or another checked file; fixed-return builtins and `str`/`bytes` methods; members of any typed
   value (`self.index.name`, `rows[0].strip()`, however deep, through `constricter.fix.members`);
-  `cls` in a classmethod as `type[C]`; computed values (conditionals, arithmetic on builtin scalars,
-  comprehensions, `sorted`/`list`/..., `await`), comparisons by `in` and `is`, or of builtin values
-  (a `bool`); standard-library module variables (`sys.path`); chained assignments' names, declared
-  before them (`i = j = 0`); `typing.cast`; `x = None` later rebound to one type as `T | None`; loop
+  `cls` in a classmethod as `type[C]`, and `type(x)`; computed values (conditionals, arithmetic on
+  builtin scalars, comprehensions, `sorted`/`list`/..., `await`), comparisons by `in` and `is`, or
+  of builtin values (a `bool`); a union the author would write (`a if c else None`, `a or b` of one
+  type); displays that unpack (`[*names, s]`, `{**d, k: v}`), `d.get(k, 0)` and `os.environ["X"]`;
+  standard-library module variables (`sys.path`); chained assignments' names, declared before them
+  (`i = j = 0`), and a `:=`'s, before its statement; a quoted annotation read as its text
+  (`xs: "list[Node]"`); `typing.cast`; `x = None` later rebound to one type as `T | None`; loop
   targets (`enumerate` and `zip` part by part, an `Iterable[T]`'s `T`) and unpackings, declared
   before the statement, as a `with` statement's target is, by its context manager's `__enter__`; a
   method a class inherits, from the base that defines it, in the module or another checked file; an
@@ -70,12 +73,12 @@
   file's type the module doesn't import, under `if TYPE_CHECKING:` (no import cycle at run time),
   quoted where a module-level annotation is evaluated.
 - **Guesses** apply only with `--unsafe-fixes`: a capitalised call taken to construct its class,
-  LVA008's and LVA010's narrowing, an empty container typed by what's added to it, a method typed by
-  its `return`s, an instance attribute by its assignments (`assigned`), an unannotated parameter by
-  what every call in the checked files passes it (`callers`, builtin types alone: callers' classes
-  too would add 10 fixes on the corpora), and what rests on any of these. **Fix levels**: every
-  mechanism has a stable id (`--show-fixes`, JSON), and `fix-select`, `fix-ignore` and
-  `unsafe-fix-select` choose which apply.
+  LVA008's and LVA010's narrowing, an empty container typed by what's added to it (`append`,
+  `extend`, `update`, ...), a method typed by its `return`s, an instance attribute by its
+  assignments (`assigned`), an unannotated parameter by what every call in the checked files passes
+  it (`callers`, builtin types alone: callers' classes too would add 10 fixes on the corpora), and
+  what rests on any of these. **Fix levels**: every mechanism has a stable id (`--show-fixes`,
+  JSON), and `fix-select`, `fix-ignore` and `unsafe-fix-select` choose which apply.
 - **Type-checker-backed inference** (`--infer-with basedpyright,ty,pyrefly`): the checkers' inlay
   hints type what `--fix` can't, as guesses, widened, checked and imported; with basedpyright it
   about doubles what `--fix --unsafe-fixes` types on the annotated corpora. A hint naming a class
@@ -83,7 +86,10 @@
   hint's own edits carry, or one the module has there: only a class the index of checked files and
   installed packages, or the standard-library tables, define, and no generic one shown without its
   arguments: 27% more of basedpyright's hints are fixes on pydantic, sqlalchemy and django, and 19%
-  more of ty's.
+  more of ty's. A type alias the index finds (a name annotated `TypeAlias`, or bound to a subscript
+  or a union) is taken as a class is, and a module's own composite alias is declared `TypeAlias`,
+  imported from `typing` if it must be: on pydantic, 82 more aliases declared and 12 more fixes
+  naming `CoreSchema`.
 - **No new type errors**: `corpus_suite.py --types` runs pydantic's, sqlalchemy's and pandas's own
   type checkers after `--fix` (none new) and `--fix --unsafe-fixes`. Where a checker would see a
   value otherwise, the fix is changed, made a guess, or not offered (see
@@ -227,57 +233,40 @@ needs `--infer-with`. Each item says what it is, why, how, and when it's done.
 
 ### Small: a day or less
 
-1. **Type aliases, declared and named.** basedpyright hints an alias's assignment as `TypeAlias`,
-   which `--fix` writes only where the module already names it (782 module-level bindings on the
-   three packages), and a hint naming an alias (pydantic's `CoreSchema`) is dropped, a name being
-   taken only for a class (about 60 bindings on pydantic). Index each module's aliases: a name
-   annotated `TypeAlias`, or bound to a subscript or a union of classes. Import `TypeAlias` from
-   `typing` for one of those (`Json = dict[str, "Json"] | str`), never for a bare class's alias
-   (`memoized_property = generic_fn_descriptor`), which declared one loses the class's type
-   parameters (50 new errors on sqlalchemy); and take an indexed alias as a hint's name. Done when a
-   module's composite aliases are declared, `schema: CoreSchema = ...` is a fix on pydantic, and its
-   checker finds no new error.
-2. **A union the author would write.** `x if c else None` (241 bindings) is a `T | None`, and
-   `a or b` with both sides of one type is that type; 1,986 conditionals and boolean operations have
-   no fix. Sides of two other types stay untyped. Done when both are fixes and the corpus packages'
-   type checkers find no new error.
-3. **`:=` declared before its statement.** A walrus's name can't be annotated where it's bound: 366
-   bindings with no fix. Declare it on a line before the statement, as a chained assignment's names
-   are. Done when `if (m := pattern.match(s)) is not None:` declares `m: re.Match[str] | None`.
-4. **An empty container that is extended, or passed on.** 4,547 empty lists, dicts and sets have no
-   fix: one the function `extend`s or `update`s, passes to a call or returns is left alone, since
-   something else could add to it. `extend` and `update` with a value whose elements are typed add
-   those elements, as `append` adds one; passing it on stays a reason to leave it. Done when
-   `names = []` then `names.extend(parts)`, with `parts: list[str]`, is a `list[str]` (a guess).
-5. **Quoted annotations read through.** With `xs: "list[Node]"`, `xs[0]` and `for x in xs` have no
-   fix, and `list["Node"]` gives `'Node'`, whose attributes then have none: a quoted part is in 0.1%
-   to 6.5% of the annotated corpora's annotations. Read a string annotation as its text. Done when a
-   quoted declaration types what an unquoted one does.
-6. **Small shapes.** `d.get(k, 0)` with a default of the values' type, `[*names, s]`, `{**d, k: v}`,
-   `type(x)` as a `type[C]`, and `os.environ["X"]` (a subscript of a standard-library generic
-   class's instance, by its `__getitem__`) have no fix with every part typed. Done when each is one.
-7. **ty's spellings.** `(str & ~AlwaysFalsy) | None` is a `str | None`, `Model@create_model` the
+1. **ty's spellings.** `(str & ~AlwaysFalsy) | None` is a `str | None`, `Model@create_model` the
    module's type variable `Model`, and `tuple[str, *tuple[str, ...]]` an annotation as it is: each
    is dropped as not one, tens of hints a package. Done when all three are fixes.
-8. **Faster table generation.** Every build from a checkout generates the tables in one process: the
+2. **Faster table generation.** Every build from a checkout generates the tables in one process: the
    Action on every run, a pre-commit hook's install, and each CI job's editable install, about 75s
    here and more on a runner. The twelve configurations it reads the stubs as are independent: read
    them in parallel, or cache the result by its stamp. Done when a build from a checkout generates
    them in under 20s on 4 cores.
-9. **A function's own import isn't the module's.**
+3. **A function's own import isn't the module's.**
    `from multiprocessing.managers import SharedMemoryManager` inside one function lets a fix in
    another write `SharedMemoryManager`, which nothing binds there (one new error on the standard
    library). Take a name for bound only where the import that binds it runs. Done when that fix
    imports the class or isn't offered.
-10. **`self` in a nested function.** A function or lambda defined in a method reads the method's
-    `self`, which `--fix` types only in the method itself: 29 `self.method()` bindings. Done when
-    `msg = self.label()` in a nested function is typed as in its method.
-11. **A hint's type variable its function doesn't declare.** `_proc: type[Row[_TP]]`, in a function
-    whose signature has no `_TP`, is an unbound type variable to mypy (2 new errors on sqlalchemy).
-    Done when a hint naming a module's type variable is a fix only where the signature names it.
-12. **A signature in a `# type:` comment as a declaration.** A function typed by one (pip's are) is
-    left alone by `returned`, and its calls untyped. Read the comment's return as a declared one.
-    Done when `names = find()` under `# type: () -> List[str]` is a `List[str]`.
+4. **`self` in a nested function.** A function or lambda defined in a method reads the method's
+   `self`, which `--fix` types only in the method itself: 29 `self.method()` bindings. Done when
+   `msg = self.label()` in a nested function is typed as in its method.
+5. **A hint's type variable its function doesn't declare.** `_proc: type[Row[_TP]]`, in a function
+   whose signature has no `_TP`, is an unbound type variable to mypy (2 new errors on sqlalchemy).
+   Done when a hint naming a module's type variable is a fix only where the signature names it.
+6. **A signature in a `# type:` comment as a declaration.** A function typed by one (pip's are) is
+   left alone by `returned`, and its calls untyped. Read the comment's return as a declared one.
+   Done when `names = find()` under `# type: () -> List[str]` is a `List[str]`.
+7. **A subscript by `__getitem__`.** `os.environ["X"]` is typed by name alone: a subscript of any
+   other standard-library generic class's instance (`shelve.Shelf`, `types.MappingProxyType`) has no
+   fix, the tables holding no `__getitem__`. Generate it with the methods. Done when `proxy["k"]` on
+   a `MappingProxyType[str, int]` is an `int`.
+8. **One type, two spellings.** A hint's class is written through an import that runs
+   (`core_schema.CoreSchema`) and another file's declared type through one for type checking alone
+   (`CoreSchema`): a name bound to one then the other gets no fix, the two taken for two types
+   (`schema` in pydantic's `_dataclasses.py`). Done when both are spelled one way in a file.
+9. **An alias a type checker takes for a variable.** A name assigned in two branches it can't tell
+   apart (`if MYPY: X = A else: X = B`) is no alias to pyright, and a quoted return naming one,
+   written where its function is called, is an error there too (2 on pydantic). Done when a type
+   naming one isn't written in another file.
 
 ### Medium: a few days
 

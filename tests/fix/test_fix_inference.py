@@ -75,7 +75,7 @@ def test_fixes_are_offered_only_where_the_value_decides_the_type(value: str, fix
 
 
 def test_fixes_are_offered_only_for_a_single_plain_name() -> None:
-    """`:=` and class bodies are never fixed; module bodies are, unpacking and chained `=` by declarations."""
+    """Class bodies are never fixed; module bodies are, unpacking, chained `=` and `:=` by declarations."""
     source: str = textwrap.dedent(
         """
     LIMIT = 3
@@ -98,7 +98,7 @@ def test_fixes_are_offered_only_for_a_single_plain_name() -> None:
         ("b", "int"),
         ("c", "int"),  # declared before it too
         ("d", "int"),
-        ("e", None),
+        ("e", "int"),  # and `:=`'s: see tests/fix/test_walrus_fixes.py
         ("size", None),
     ]
 

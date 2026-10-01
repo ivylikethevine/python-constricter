@@ -9,7 +9,8 @@ import pytest
 
 from constricter import Checks, Offence, check_source
 from constricter.fix import fixes
-from constricter.fix.known import Guarded, Hints, Offered, Outside
+from constricter.fix.hinted import type_alias
+from constricter.fix.known import Guarded, Hints, Known, Offered, Outside
 from constricter.offences import Edit, FixPolicy
 
 _CHECKER: Final = "basedpyright"
@@ -421,24 +422,70 @@ def test_a_generic_class_a_hint_shows_bare_is_no_fix() -> None:
     assert _fixes(source, {"x": "Box", "y": "Box[int]"}) == [("x", None, False), ("y", "Box[int]", True)]
 
 
-def test_a_type_alias_is_declared_one_only_as_the_module_names_it() -> None:
-    """`TypeAlias`, hinted for an alias's assignment, is never imported, and never a function's local's."""
-    source: str = """
-    Json = dict[str, "Json"] | str
+_ALIASES: Final = """
+class Shape: ...
 
 
-    def f(q) -> None:
-        Local = q.kind
+Json = dict[str, "Json"] | str
+Pair = tuple[int, str]
+Same = Shape
+
+
+def f(q) -> None:
+    Local = dict[str, int]
+"""
+
+
+@pytest.mark.parametrize(
+    ("imports", "fix", "added"),
+    [
+        ("", "TypeAlias", ("from typing import TypeAlias",)),
+        ("from typing import TypeAlias\n", "TypeAlias", ()),
+        ("from typing_extensions import TypeAlias\n", "TypeAlias", ()),
+        ("import typing as t\n", "t.TypeAlias", ()),
+        (
+            "import typing\nfrom typing_extensions import TypeAlias\n",
+            "TypeAlias",
+            (),
+        ),  # the name itself first
+        ("TypeAlias = 1\n", "typing.TypeAlias", ("import typing",)),
+        ("TypeAlias = typing = 1\n", None, ()),  # no name is free to import it by
+    ],
+)
+def test_a_composite_alias_is_declared_one(imports: str, fix: str | None, added: tuple[str, ...]) -> None:
+    """`TypeAlias`, hinted for an alias's assignment, declares a module's alias made of other types.
+
+    One written as a subscript or a union.
+
+    Named as the module's imports can, else imported from `typing`. Never a bare class's alias, which
+    declared one loses the class's type parameters, nor a function's local.
     """
-    hinted: dict[str, str] = {"Json": "TypeAlias", "Local": "TypeAlias"}
-    unbound: list[Offence] = _checked(source, hinted, Checks(all_scopes=True))
-    assert [(o.name, o.fix) for o in unbound] == [("Json", None), ("Local", None)]
-    importing: str = "from typing import TypeAlias\n" + textwrap.dedent(source)
-    bound: list[Offence] = _checked(importing, hinted, Checks(all_scopes=True))
-    assert [(o.name, o.fix) for o in bound] == [("Json", "TypeAlias"), ("Local", None)]
-    local: str = "import typing\ndef f(q) -> None:\n    x = q.kind\n"
-    spelled: list[Offence] = _offering(local, {"x": Offered("typing.TypeAlias")}, shown="TypeAlias")
-    assert [o.fix for o in spelled] == [None]
+    names: dict[str, str] = dict.fromkeys(("Json", "Pair", "Same", "Local"), "TypeAlias")
+    offences: list[Offence] = [
+        o for o in _checked(imports + _ALIASES, names, Checks(all_scopes=True)) if o.name in names
+    ]
+    assert [(o.name, o.fix) for o in offences] == [
+        ("Json", fix),
+        ("Pair", fix),
+        ("Same", None),
+        ("Local", None),
+    ]
+    assert {o.edit.imports for o in offences if o.edit is not None} <= {added}
+
+
+def test_an_alias_is_declared_only_where_typealias_is_bound_by_then() -> None:
+    """A module body's annotation is evaluated: an import of `TypeAlias` further down doesn't name it."""
+    source: str = "Pair = tuple[int, str]\nfrom typing import TypeAlias\nJson = dict[str, int]\n"
+    names: dict[str, str] = {"Pair": "TypeAlias", "Json": "TypeAlias"}
+    offences: list[Offence] = _checked(source, names, Checks(all_scopes=True))
+    assert [(o.name, o.fix) for o in offences] == [("Pair", None), ("Json", "TypeAlias")]
+    assert type_alias(Known({}, frozenset(), {}, {}), 1) is None  # a module not read for its imports
+    spelled: list[Offence] = _offering(
+        "import typing\ndef f(q) -> None:\n    x = q.kind\n",
+        {"x": Offered("typing.TypeAlias")},
+        shown="list[TypeAlias]",
+    )
+    assert [o.fix for o in spelled] == [None]  # nowhere else is it an annotation
 
 
 def test_a_class_the_module_imports_for_type_checking_is_used_as_it_is() -> None:

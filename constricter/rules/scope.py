@@ -37,6 +37,7 @@ from constricter.offences import (
 )
 from constricter.rules.annotations import (
     depth,
+    is_composite,
     is_vague,
     length,
     node_name,
@@ -240,33 +241,18 @@ class Scope:
         name: str = target.id
         again: bool = name in self.declared
         facts: Facts = self.settings.facts
-        function: FunctionDef | None = self.kind.function
         fix: Inference | None
-        if (fix := inference(value, self.settings.known, self.inferred.types)) is not None:
-            fix = corrected(value, fix, self._owner(), facts.generics, self.settings.known.names.plan)
-        if fix is not None and (
-            narrowed_first(value, fix)
-            or narrowed_at(facts.narrowed, value, target.lineno, union=len(members(fix.annotation) or ()) > 1)
-        ):
-            fix = None
         unsafe: bool
         origins: frozenset[str]
-        # Whether a fix is a guess, worked out only for one: untyped, it's the same either way.
-        unsafe, origins = (False, frozenset()) if fix is None else guesses_in(self, [value])
-        constant: bool = function is None and is_constant(name) and name in facts.passed and chained is None
-        if fix is not None and not unsafe:
-            origins = doubts(
-                value,
-                fix,
-                constant=constant,
-                narrowed=frozenset() if function is None else tested(function, facts.tests),
-            )
-            unsafe = bool(origins)
+        constant: bool = (
+            self.kind.function is None and is_constant(name) and name in facts.passed and chained is None
+        )
+        fix, unsafe, origins = self.valued(value, target.lineno, constant=constant)
         if fix is not None and constant and origins == _LITERAL_DOUBT:
             fix = self._constant(fix)
         # Value flow's type is `--fix`'s own, if certain: worked out once, here, for both.
         certain: str | None = certain_type(self, value, (None if fix is None else fix.annotation, unsafe))
-        if fix is None and (fix := self.hint(target)) is not None:
+        if fix is None and (fix := self.hint(target, value)) is not None:
             unsafe, origins = True, frozenset({hinted.KIND})
         self.lifetime(name).bind(
             at(target),
@@ -289,6 +275,47 @@ class Scope:
         )
         if fix is not None:
             self.inferred.learn(name, fix.annotation, origins if unsafe else None)
+
+    def valued(
+        self,
+        value: ast.expr,
+        line: int,
+        *,
+        constant: bool = False,
+    ) -> tuple[Inference | None, bool, frozenset[str]]:
+        """Infer the annotation of a name bound to `value` on `line`, as a type checker would see it.
+
+        `constant`: whether the name is an ALL_CAPS module-level one passed to a call (see `doubts`).
+
+        Returns:
+          The inference (`None` where there's none to offer), whether it's a guess, and what a guess
+          rests on.
+
+        """
+        facts: Facts = self.settings.facts
+        function: FunctionDef | None = self.kind.function
+        fix: Inference | None
+        if (fix := inference(value, self.settings.known, self.inferred.types)) is not None:
+            fix = corrected(value, fix, self._owner(), facts.generics, self.settings.known.names.plan)
+        if fix is not None and (
+            narrowed_first(value, fix)
+            or narrowed_at(facts.narrowed, value, line, union=len(members(fix.annotation) or ()) > 1)
+        ):
+            fix = None
+        if fix is None:
+            return None, False, frozenset()
+        unsafe: bool
+        origins: frozenset[str]
+        unsafe, origins = guesses_in(self, [value])
+        if not unsafe:
+            origins = doubts(
+                value,
+                fix,
+                constant=constant,
+                narrowed=frozenset() if function is None else tested(function, facts.tests),
+            )
+            unsafe = bool(origins)
+        return fix, unsafe, origins
 
     def _constant(self, fix: Inference) -> Inference | None:
         """Declare an ALL_CAPS constant passed to a call `Final`, which keeps its literal's `Literal` type.
@@ -334,8 +361,12 @@ class Scope:
             return None
         return Owner(owner, args[0].arg, self.settings.facts.selfish.get(owner, frozenset()))
 
-    def hint(self, target: ast.Name) -> Inference | None:
+    def hint(self, target: ast.Name, value: ast.expr | None = None) -> Inference | None:
         """Type `target` by the type checkers' hints for it (`--infer-with`): the first the file can use.
+
+        `value`: what a plain assignment binds it to. One hinted `TypeAlias` is declared an alias,
+        in a module body, where it's written as a type made of others (not a bare class's alias,
+        which declared one loses the class's type parameters).
 
         Returns:
           The inference (a guess), or `None`.
@@ -345,10 +376,15 @@ class Scope:
         if not self.settings.checks.fixes.allows(frozenset({hinted.KIND})):
             return None
         where: tuple[int, int] = (target.lineno, target.end_col_offset or 0)
+        composite: bool = value is not None and self.kind.function is None and is_composite(value)
         found: Hints
         for found in self.settings.hints:
             text: str | None = found.types.get(where)
             typed: str | None
+            if text == hinted.ALIAS:
+                if composite and (typed := hinted.type_alias(self.settings.known, target.lineno)) is not None:
+                    return hinted.inference(typed, found.checker)
+                continue
             if (
                 text is not None
                 and (
@@ -482,8 +518,9 @@ class Scope:
     def evaluated(self, offence: Offence) -> Offence:
         """Quote a module body's fix that can't be evaluated when the module runs (unless it postpones them).
 
-        One whose type names what the module imports for type checking alone (unbound then), or
-        subscripts a standard-library class that can't be at run time (`itertools.count[int]`).
+        One whose type names what the module imports for type checking alone, or binds only further
+        down (both unbound then, as a quoted annotation's names may be), or subscripts a
+        standard-library class that can't be at run time (`itertools.count[int]`).
 
         Returns:
           The offence, its fix quoted if it must be.
@@ -493,8 +530,13 @@ class Scope:
         fix: Fix | None = offence.edit
         if fix is None or plan is None or plan.postponed or self.kind.function is not None:
             return offence
-        guarded: bool = bool(roots(fix.annotation) & plan.guarded.keys())
-        if not guarded and stdlib.evaluable(fix.annotation, self.settings.known):
+        line: int = fix.span[0] if fix.edit is Edit.DECLARE else offence.line
+        names: frozenset[str] = roots(fix.annotation)
+        unbound: bool = bool(names & plan.guarded.keys()) or any(
+            plan.defined[name] >= line if name in plan.defined else name in self.settings.facts.checking
+            for name in names
+        )
+        if not unbound and stdlib.evaluable(fix.annotation, self.settings.known):
             return offence
         return replace(offence, edit=fix._replace(annotation=_quoted(fix.annotation)))
 
@@ -536,22 +578,6 @@ class Scope:
         longest: int
         if (longest := length(annotation)) > self.settings.known.max_length:
             self.offences.append(Offence(*at(annotation), name, LONG_TUPLE, detail=str(longest)))
-
-    def walrus(self, node: ast.AST) -> None:
-        """Bind `:=` targets in an expression, comprehensions included, lambdas excluded.
-
-        Asked only in a module with one (`Settings.walruses`).
-        """
-        in_lambda: set[int] = {
-            id(inner)
-            for outer in ast.walk(node)
-            if isinstance(outer, ast.Lambda)
-            for inner in ast.walk(outer)
-        }
-        current: ast.AST
-        for current in ast.walk(node):
-            if isinstance(current, ast.NamedExpr) and id(current) not in in_lambda:
-                self.bind(current.target.id, at(current.target), self.kind.unannotated)
 
     def unannotated(self, type_comment: str | None) -> str | None:
         """Decide the code for an `=` or `with` binding.

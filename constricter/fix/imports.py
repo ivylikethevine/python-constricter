@@ -93,6 +93,23 @@ def _block(tree: ast.Module) -> tuple[int, int]:
     )
 
 
+def checking(tree: ast.Module) -> frozenset[str]:
+    """Name what the module's top-level `if TYPE_CHECKING:` blocks import: unbound when it runs.
+
+    Returns:
+      The names they bind.
+
+    """
+    return frozenset(
+        alias.asname or alias.name.split(".", 1)[0]
+        for stmt in tree.body
+        if isinstance(stmt, ast.If) and _is_checking(stmt.test)
+        for node in stmt.body
+        if isinstance(node, ast.Import | ast.ImportFrom)
+        for alias in node.names
+    )
+
+
 def _postponed(tree: ast.Module) -> bool:
     """Check whether the module has `from __future__ import annotations`.
 

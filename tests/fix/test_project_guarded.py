@@ -313,10 +313,10 @@ def test_a_type_is_written_as_the_file_can(tmp_path: Path, source: str, annotati
     assert [o.fix for o in offences] == [annotation]
 
 
-def test_a_name_quoted_inside_a_type_must_mean_the_same(tmp_path: Path) -> None:
-    """No import is added for it: where the file doesn't have it, the type isn't written."""
+def test_a_name_quoted_inside_a_type_is_read_as_the_name(tmp_path: Path) -> None:
+    """Imported for type checking where the file doesn't have it, as an unquoted one is; a value stays one."""
     quoting: str = """
-    from typing import Literal
+    from typing import Annotated, Literal
 
     from pkg.other import Thing
 
@@ -331,17 +331,27 @@ def test_a_name_quoted_inside_a_type_must_mean_the_same(tmp_path: Path) -> None:
 
     def odd() -> list['no way']:
         return []
+
+
+    def odder() -> 'no way':
+        return []
+
+
+    def tagged() -> Annotated[int, 'meta']:
+        return 1
     """
     using: str = """
-    from typing import Literal
+    from typing import Annotated, Literal
 
-    from pkg.quoting import mode, odd, things
+    from pkg.quoting import mode, odd, odder, tagged, things
     {}
 
     def f() -> None:
         a = things()
         b = mode()
         c = odd()
+        d = odder()
+        e = tagged()
     """
     _package(tmp_path)
     _ = _write(tmp_path / "pkg" / "quoting.py", quoting)
@@ -355,8 +365,10 @@ def test_a_name_quoted_inside_a_type_must_mean_the_same(tmp_path: Path) -> None:
             outside=Outside(imported.calls, guarded=imported.guarded),
         )
         fixes_by_import[extra] = [o.fix for o in offences]
-    rest: list[str | None] = ["Literal['r']", "list['no way']"]
-    assert fixes_by_import == {"": [None, *rest], "from pkg.other import Thing": ["list['Thing']", *rest]}
+        assert set(imported.guarded) == (set() if extra else {"Thing"})
+    # A string that isn't a type stays one; what a name in it means here isn't known, so it isn't written.
+    fixed: list[str | None] = ["list[Thing]", "Literal['r']", "list['no way']", "'no way'", None]
+    assert fixes_by_import == {"": fixed, "from pkg.other import Thing": fixed}
 
 
 def test_a_guarded_type_passes_through_an_unannotated_function(tmp_path: Path) -> None:

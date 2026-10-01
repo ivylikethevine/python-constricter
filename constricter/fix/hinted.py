@@ -11,13 +11,14 @@ the checker printed it:
 - anything that isn't an annotation (`Module("os")`, a callable's signature, `Self@C`) is dropped,
   as is a vague one (`Any`, `list[Unknown]`), a bare `None`, one nested as deep as LVA006 reports,
   or a tuple as long as LVA011 does;
-- a special form alone (`type[Generic]`), or `TypeAlias` anywhere but in a module body that names
-  it, is dropped;
+- a special form alone (`type[Generic]`) is dropped;
+- `TypeAlias`, hinted for an alias's assignment, declares a module's alias written as a subscript or
+  a union (see `type_alias`), and is dropped anywhere else;
 - every name in it must be one the file can use: a builtin, a name the module binds at its top
-  level (before the binding, in a module body, where the annotation is evaluated), a class it
-  imports under `if TYPE_CHECKING:` or the hint's own edits import (`Offered`: imported for type
-  checking alone, as the checker says from where; see `constricter.fix.offers` for which are
-  taken), or a class the checker prints by its bare name from a module `ImportPlan.spell` can
+  level (before the binding, in a module body, where the annotation is evaluated), a class or
+  alias it imports under `if TYPE_CHECKING:` or the hint's own edits import (`Offered`: imported
+  for type checking alone, as the checker says from where; see `constricter.fix.offers` for which
+  are taken), or a class the checker prints by its bare name from a module `ImportPlan.spell` can
   import (`Callable`, `Iterator`, `Path`, `deque`, ...). Anything else, it can't be sure what the
   name means.
 
@@ -40,7 +41,8 @@ KIND: Final = "checker"  # the fix kind, and what the guess rests on
 _LITERAL: Final = "Literal"
 _NONE: Final = "None"
 _BUILTINS: Final = frozenset(dir(builtins))
-_ALIAS: Final = "TypeAlias"
+ALIAS: Final = "TypeAlias"  # what a checker hints an alias's assignment as
+_ALIAS_ORIGINS: Final = ("typing.TypeAlias", "typing_extensions.TypeAlias")
 _CLASS: Final = "type["
 # `collections.abc`'s classes, which a checker prints bare (not `Set`: that's `AbstractSet` to it).
 _ABSTRACT: Final = sorted(ABSTRACT | {"Hashable", "MappingView", "Sized"})
@@ -106,6 +108,7 @@ _DISCARD: Final = "_"
 _Origins: TypeAlias = dict[str, tuple[str, str, str]]
 _STDLIB: Final = sys.stdlib_module_names | {"_typeshed"}  # and the module its stubs alone have
 _RELATIVE: Final = "."
+_DOT: Final = "."
 # How one unbound name of a hint can be written: through a guarded import, or `ImportPlan.spell`.
 _OWN: Final = "own"  # the module imports it under `if TYPE_CHECKING:`
 _OFFERED: Final = "offered"  # the hint's edits import it
@@ -147,6 +150,28 @@ def inference(annotation: str, checker: str) -> Inference:
     return Inference(annotation, f"{checker}'s inferred type", frozenset({KIND}))
 
 
+def type_alias(known: Known, before: int) -> str | None:
+    """Name `TypeAlias`, to declare the alias a module body binds on line `before`.
+
+    As an import the module has names it (`typing`'s, or `typing_extensions`'s), if it runs by then,
+    the name itself before one through its module (`TypeAlias`, then `typing.TypeAlias`); else by a
+    new import from `typing`.
+
+    Returns:
+      The name, or `None` if the module can't name it there.
+
+    """
+    plan: ImportPlan | None
+    if (plan := known.names.plan) is None:
+        return None
+    name: str | None
+    named: list[str]
+    if not (named := [name for origin in _ALIAS_ORIGINS if (name := plan.named(origin)) is not None]):
+        return plan.spell(_ALIAS_ORIGINS[0])
+    bound: list[str] = [each for each in named if plan.defined.get(each.partition(".")[0], before) < before]
+    return min(bound, key=lambda each: _DOT in each, default=None)
+
+
 def renames(name: str, annotation: str, *, local: bool) -> bool:
     """Check whether `annotation`, a hint's, says `name` is another name for a class: a `type[C]`.
 
@@ -184,8 +209,8 @@ def _spelled(
     if plan is None or root is None or not _annotation(root) or not _fits(root, nesting, known.max_length):
         return None
     lone: set[str] = _lone(root)
-    # `TypeAlias` declares a module's name alone, never a function's local. A special form alone isn't a type.
-    if (before is None and _aliases(root)) or lone & _FORMS:
+    # `TypeAlias` is `type_alias`'s to write. A special form alone isn't a type.
+    if _aliases(root) or lone & _FORMS:
         return None
     origins: _Origins = _origins(imports)
     names: list[str] = sorted(
@@ -233,8 +258,8 @@ def _aliases(root: ast.expr) -> bool:
 
     """
     return any(
-        (isinstance(node, ast.Name) and node.id == _ALIAS)
-        or (isinstance(node, ast.Attribute) and node.attr == _ALIAS)
+        (isinstance(node, ast.Name) and node.id == ALIAS)
+        or (isinstance(node, ast.Attribute) and node.attr == ALIAS)
         for node in ast.walk(root)
     )
 
@@ -271,7 +296,7 @@ def _way(name: str, plan: ImportPlan, origins: _Origins, *, lone: bool) -> str |
       generic one written bare (a checker prints one so when it doesn't know its arguments).
 
     """
-    if name in {_DISCARD, _ALIAS}:
+    if name == _DISCARD:
         return None
     if name in plan.guarded and plan.guarded[name].statement is None and name not in plan.values:
         return _OWN

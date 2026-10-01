@@ -22,8 +22,13 @@ from constricter import Offence, check_source
         ("pairs: dict[str, int]", "pairs.pop(key='k')", None),  # a keyword decides nothing
         ("pairs: dict[str, int]", "pairs.setdefault('k', 1)", "int"),
         ("pairs: dict[str, int]", "pairs.get('k')", "int | None"),
-        ("pairs: dict[str, int]", "pairs.get('k', 0)", None),
-        ("pairs: dict[str, 'Node']", "pairs.get('k')", None),  # `'Node' | None` fails where evaluated
+        ("pairs: dict[str, int]", "pairs.get('k', 0)", "int"),  # a default of the values' type
+        ("pairs: dict[str, int]", "pairs.get('k', None)", "int | None"),
+        ("pairs: dict[str, int]", "pairs.get('k', 'x')", None),  # another type's
+        ("pairs: dict[str, int]", "pairs.get('k', default=0)", None),
+        ("pairs: dict[str, 'no way']", "pairs.get('k')", None),  # `'no way' | None` fails where evaluated
+        ("pairs: dict[str, 'no way']", "pairs.get('k', None)", None),
+        ("pairs: dict[str, 'Node']", "pairs.get('k')", "Node | None"),  # a quoted type is read as its text
         ("pairs: dict[str, int]", "pairs.popitem()", "tuple[str, int]"),
         ("pairs: dict[str, int]", "pairs.copy()", "dict[str, int]"),
         ("pairs: dict[str, int]", "pairs.keys()", None),  # a view, not in the table
@@ -78,7 +83,7 @@ def test_fixes_infer_a_module_class_method_call() -> None:
     assert [(o.name, o.fix, o.unsafe and o.fix is not None) for o in check_source(source)] == [
         ("a", "float", False),
         ("b", "Point", False),
-        ("c", None, False),  # a string `Self` isn't unwrapped
+        ("c", "Point", False),  # a string `Self` is read as its text
         ("d", None, False),  # only a bare `Self` is the class
         ("e", None, False),  # decorated
         ("g", None, False),  # redefined

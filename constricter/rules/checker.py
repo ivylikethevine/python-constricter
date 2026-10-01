@@ -44,6 +44,7 @@ from constricter.rules.annotations import (
 from constricter.rules.calls import keyed, observed, seed_parameters, unshadowed
 from constricter.rules.flow import Finding, Hierarchy
 from constricter.rules.narrowing import flow_offences, module_flow, module_names
+from constricter.rules.quoted import written
 from constricter.rules.redundant import redundant
 from constricter.rules.scope import Kind, Late, Scope, Settings, certain_type
 from constricter.rules.syntax import (
@@ -406,7 +407,7 @@ def _function_scope(
     # A copy of a plain, annotated parameter (`*args`/`**kwargs` aren't the type they're annotated
     # with) can be typed the same way, the moment it's assigned.
     scope.inferred.types.update(
-        (arg.arg, ast.unparse(arg.annotation)) for arg in named if arg.annotation is not None
+        (arg.arg, written(arg.annotation)) for arg in named if arg.annotation is not None
     )
     owner: str | None = settings.owners.get(id(func))
     if owner is not None and named and named[0].arg == _SELF:
@@ -436,14 +437,17 @@ def _function_scope(
     return scope
 
 
-def _visit(scope: Scope, stmt: ast.stmt) -> None:
-    """Bind the names `stmt` binds, as Python would, then visit its nested statements."""
+def _visit(scope: Scope, stmt: ast.stmt, head: ast.stmt | None = None) -> None:
+    """Bind the names `stmt` binds, as Python would, then visit its nested statements.
+
+    `head`: for an `elif`, the `if` it belongs to, which a declaration of its `:=`'s goes before.
+    """
     part: ast.AST
     walruses: tuple[Start, ...]
     if walruses := scope.settings.walruses:  # most modules have no `:=`: none of their parts need a look
         for part in expressions(stmt):
             if has_within(walruses, part):  # a `:=` in it
-                scope.walrus(part)
+                binding.walruses(scope, part, head or stmt)
     _declare(scope, stmt)
     binding.bind(scope, stmt)
     if isinstance(stmt, ast.Return):
@@ -464,10 +468,25 @@ def _visit(scope: Scope, stmt: ast.stmt) -> None:
     child: ast.stmt
     for child in child_statements(stmt):
         scope.assignments.looping += id(child) in body
-        _visit(scope, child)
+        _visit(scope, child, (head or stmt) if _is_elif(stmt, child) else None)
         scope.assignments.looping -= id(child) in body
     if before is not None:
         scope.inferred.rejoined(before)
+
+
+def _is_elif(stmt: ast.stmt, child: ast.stmt) -> bool:
+    """Check whether `child` is `stmt`'s `elif`: an `if`'s only `else` statement, an `if` at its own column.
+
+    Returns:
+      Whether it is.
+
+    """
+    return (
+        isinstance(stmt, ast.If)
+        and isinstance(child, ast.If)
+        and stmt.orelse == [child]
+        and child.col_offset == stmt.col_offset
+    )
 
 
 def _declare(scope: Scope, stmt: ast.stmt) -> None:
@@ -496,7 +515,7 @@ def _declare(scope: Scope, stmt: ast.stmt) -> None:
         case ast.AnnAssign(target=ast.Name(id=name) as target, annotation=annotation):
             scope.declare(name)
             scope.annotation(name, annotation)
-            _ = scope.inferred.types.setdefault(name, ast.unparse(annotation))
+            _ = scope.inferred.types.setdefault(name, written(annotation))
             scope.lifetime(name).declare(ast.unparse(annotation), at(target), _span(annotation, target))
             if stmt.value is not None:
                 scope.lifetime(name).bind(at(target), certain_type(scope, stmt.value))
@@ -669,10 +688,10 @@ def _body_statements(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
 
 
 def _finished(tree: ast.Module, scopes: Sequence[Scope]) -> None:
-    """Finish `scopes` for their late fixes (`None` rebound, filled containers).
+    """Finish `scopes` for their late fixes (`None` rebound, filled containers, shadowed types).
 
     Those need the names written out of sight marked first. Safe to run again: marking is
-    idempotent, and neither fix redoes one it made.
+    idempotent, and no fix redoes one it made.
     """
     scope: Scope
     for scope in scopes:
@@ -680,6 +699,7 @@ def _finished(tree: ast.Module, scopes: Sequence[Scope]) -> None:
         late.optionals(scope)
         late.rebinds(scope)
         late.fills(scope)
+        late.shadowed(scope)
 
 
 def value_flow(

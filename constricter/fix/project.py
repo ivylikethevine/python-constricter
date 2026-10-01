@@ -45,6 +45,7 @@ _FUNCTION: Final = "function"
 DECORATOR: Final = "decorator"  # a function that gives back the one it decorates
 _LITERAL: Final = "Literal"
 CLASS: Final = "class"
+ALIAS: Final = "alias"  # a type alias (see `modules.Module.aliases`)
 _TYPE_VAR: Final = "type variable"
 _RETURNED: Final = "returned"  # an unannotated function its `return`s type
 _UNANNOTATED: Final = "unannotated"  # an unannotated function, typed or not
@@ -99,6 +100,7 @@ def _kind(module: Module, kind: str) -> Iterable[str]:
     kinds: dict[str, Iterable[str]] = {
         _FUNCTION: module.returns,
         CLASS: module.classes,
+        ALIAS: module.aliases,
         _RETURNED: module.returned.calls,
         _UNANNOTATED: module.unannotated,
         OPEN: module.open,
@@ -301,7 +303,7 @@ def _respelled(
     under `if TYPE_CHECKING:` (see `Guarded`), if nothing else in `target` has that name. Never one
     naming a type variable (see `is_type_var`), a builtin `target` rebinds, what `defined` doesn't
     import at its top level (nor define), a checked file's generic class without its arguments, or
-    in quotes inside it (`Dict[str, 'Row']`) what means anything else in `target`.
+    in a string left inside it (an `Annotated`'s metadata) what means anything else in `target`.
 
     Returns:
       The type, or `None`.
@@ -310,7 +312,7 @@ def _respelled(
     names: frozenset[str] = roots(annotation)
     if any(is_type_var(modules, defined, root) for root in names) or _bare(modules, defined, annotation):
         return None
-    # A name quoted inside it stays as it is: no import is added for it, and it isn't renamed.
+    # A name in a string left inside it stays as it is: no import is added for it, and it isn't renamed.
     if any(not _same(target, defined, root) for root in _quoted(annotation)):
         return None
     if all(_same(target, defined, root) for root in names):
@@ -341,9 +343,10 @@ def _respelled(
 
 @lru_cache(maxsize=4096)
 def _quoted(annotation: str) -> frozenset[str]:
-    """Find the names an annotation is written with in quotes inside it: `Row` in `Dict[str, 'Row']`.
+    """Find the names in the strings left inside an annotation: `meta` in `Annotated[int, 'meta']`.
 
-    Not a `Literal`'s strings, nor the whole annotation's own quotes (see `roots`).
+    A quoted type is read as its text before it gets here (see `annotations.written`). Not a
+    `Literal`'s strings, nor a whole annotation's own quotes (see `roots`).
 
     Returns:
       The names.
@@ -403,7 +406,7 @@ def _unsubscripted(annotation: str) -> tuple[str, ...]:
       Them, in order.
 
     """
-    tree: ast.expr = _unquoted(annotation)
+    tree: ast.expr = ast.parse(annotation, mode="eval").body
     subscripted: set[int] = {id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Subscript)}
     return tuple(
         node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and id(node) not in subscripted
@@ -605,31 +608,18 @@ def _statement(origin: Origin, name: str) -> str:
 
 
 def _renamed(annotation: str, names: Mapping[str, str]) -> str:
-    """Rename names in an annotation (maybe a string one, which comes back unquoted).
+    """Rename names in an annotation.
 
     Returns:
       The annotation.
 
     """
-    tree: ast.expr = _unquoted(annotation)
+    tree: ast.expr = ast.parse(annotation, mode="eval").body
     node: ast.AST
     for node in ast.walk(tree):  # a fresh tree: renamed in place
         if isinstance(node, ast.Name):
             node.id = names.get(node.id, node.id)
     return ast.unparse(tree)
-
-
-def _unquoted(annotation: str) -> ast.expr:
-    """Parse an annotation, and a string one's text.
-
-    Returns:
-      Its expression.
-
-    """
-    tree: ast.expr = ast.parse(annotation, mode="eval").body
-    if isinstance(tree, ast.Constant) and isinstance(tree.value, str):
-        return ast.parse(tree.value, mode="eval").body
-    return tree
 
 
 def _same(target: Module, defined: Module, name: str) -> bool:

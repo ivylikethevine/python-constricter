@@ -12,6 +12,7 @@ from functools import lru_cache
 from typing import Final, cast
 
 from constricter.rules.decorators import Held, passing, spelled
+from constricter.rules.quoted import parsed, written
 from constricter.rules.syntax import child_statements
 
 _VAGUE: Final = frozenset({"Any", "object"})
@@ -233,7 +234,7 @@ def class_attributes(tree: ast.Module) -> dict[str, dict[str, str]]:
                     case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation, value=value):
                         text: str | None = _class_var(annotation)
                         if text is None and value is not None:
-                            text = ast.unparse(annotation)
+                            text = written(annotation)
                         if text and not type_vars & set(_words(text)):
                             attrs[name] = text
                     case _:
@@ -253,7 +254,7 @@ def _class_var(annotation: ast.expr) -> str | None:
     inner: ast.expr
     match annotation:
         case ast.Subscript(value=outer, slice=inner) if node_name(outer) == _CLASS_VAR:
-            return ast.unparse(inner)
+            return written(inner)
         case _:
             return None
 
@@ -278,7 +279,7 @@ def _attributes(node: ast.ClassDef) -> dict[str, str]:
     for stmt in node.body:
         match stmt:
             case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation):
-                attrs[name] = ast.unparse(annotation)
+                attrs[name] = written(annotation)
             case ast.FunctionDef() | ast.AsyncFunctionDef():
                 attrs.update(_self_attributes(stmt))
             case _:
@@ -302,27 +303,24 @@ def _self_attributes(func: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[t
                 target=ast.Attribute(value=ast.Name(id="self"), attr=name),
                 annotation=annotation,
             ):
-                yield name, ast.unparse(annotation)
+                yield name, written(annotation)
             case _:
                 pass
 
 
-@lru_cache(maxsize=256)
-def _parsed(annotation: ast.expr) -> ast.expr:
-    """Unwrap a string annotation.
+def is_composite(value: ast.expr) -> bool:
+    """Check whether a value is written as a type made of others: a subscript, or a union.
 
-    `is_vague` and `depth` both call this on the same annotation; cached so it's parsed once.
+    What a type alias's assignment binds (`Json = dict[str, "Json"] | str`), but for a bare class's
+    (`Alias = Class`).
 
     Returns:
-      Its parsed expression, or the annotation itself if it isn't a string.
+      Whether it is.
 
     """
-    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
-        try:
-            return ast.parse(annotation.value, mode="eval").body
-        except SyntaxError:
-            return annotation
-    return annotation
+    return isinstance(value, ast.Subscript) or (
+        isinstance(value, ast.BinOp) and isinstance(value.op, ast.BitOr)
+    )
 
 
 def node_name(node: ast.AST) -> str:
@@ -366,7 +364,7 @@ def is_vague(annotation: ast.expr) -> bool:
       Whether it has `Any`, `object` or a generic without its parameters in it.
 
     """
-    root: ast.expr = _parsed(annotation)
+    root: ast.expr = parsed(annotation)
     subscripted: set[int] = {id(node.value) for node in ast.walk(root) if isinstance(node, ast.Subscript)}
     node: ast.AST
     for node in ast.walk(root):
@@ -389,7 +387,7 @@ def length(annotation: ast.expr) -> int:
     head: ast.expr
     elements: list[ast.expr]
     lengths: list[int] = [0]
-    for node in ast.walk(_parsed(annotation)):
+    for node in ast.walk(parsed(annotation)):
         match node:
             case ast.Subscript(value=head, slice=ast.Tuple(elts=elements)) if node_name(head) in _TUPLES:
                 lengths.append(0 if _variadic(elements) else len(elements))
@@ -418,7 +416,7 @@ def depth(annotation: ast.expr) -> int:
       The depth: `dict[str, list[int]]` is 2.
 
     """
-    node: ast.expr = _parsed(annotation)
+    node: ast.expr = parsed(annotation)
     inner: ast.expr
     parts: list[ast.expr]
     left: ast.expr
@@ -669,7 +667,7 @@ def _declared_returns(
             case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) if not _accessor(stmt):
                 counts[name] = counts.get(name, 0) + 1
                 if isinstance(stmt, ast.AsyncFunctionDef) == awaited and _plain(stmt, decorators, vouched):
-                    found[name] = ast.unparse(cast("ast.expr", stmt.returns))
+                    found[name] = written(cast("ast.expr", stmt.returns))
             case _:
                 pass
     return {
@@ -704,12 +702,12 @@ def _plain(
       `decorators`, by exactly one of them; not `None`, and not vague.
 
     """
-    written: list[str | None] = [spelled(decorator) for decorator in func.decorator_list]
+    spellings: list[str | None] = [spelled(decorator) for decorator in func.decorator_list]
     return (
         (
             [node_name(decorator) for decorator in func.decorator_list] in ([name] for name in decorators)
             if decorators
-            else None not in written and (vouched is None or vouched.issuperset(written))
+            else None not in spellings and (vouched is None or vouched.issuperset(spellings))
         )
         and not cast("object", getattr(func, "type_params", ()))  # Python 3.12+'s `def f[T]()`
         and func.returns is not None
@@ -727,10 +725,8 @@ def roots(annotation: str) -> frozenset[str]:
     """Find the names an annotation (maybe a string one) is written with.
 
     Returns:
-      The names: `m.Row` gives `m`.
+      The names: `m.Row` gives `m`; none for a string that isn't an expression.
 
     """
-    tree: ast.expr = ast.parse(annotation, mode="eval").body
-    if isinstance(tree, ast.Constant) and isinstance(tree.value, str):
-        tree = ast.parse(tree.value, mode="eval").body
+    tree: ast.expr = parsed(ast.parse(annotation, mode="eval").body)
     return frozenset(node.id for node in ast.walk(tree) if isinstance(node, ast.Name))
