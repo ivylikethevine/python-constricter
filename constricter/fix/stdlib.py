@@ -324,6 +324,26 @@ def generics(bound: Mapping[str, str]) -> frozenset[str]:
     )
 
 
+def defines_class(path: str) -> bool:
+    """Check whether `path` is a class the tables know: a plain one, or a generic one.
+
+    Returns:
+      Whether it is (`decimal.Decimal`, `operator.itemgetter`; not `os.path`, nor `logging.getLogger`).
+
+    """
+    return CLASSES.get(path) == path or path in _TYPE_PARAMETERS
+
+
+def needs_arguments(path: str) -> bool:
+    """Check whether `path` is a generic class of the standard library's that is missing arguments, bare.
+
+    Returns:
+      Whether it is (`operator.itemgetter`; not `io.BufferedReader`, whose parameter has a default).
+
+    """
+    return path in _generic_paths(path)
+
+
 @lru_cache(maxsize=1024)
 def _generic_paths(origin: str) -> tuple[str, ...]:
     """Find the generic classes an import's origin names (itself, or those in its module) that need arguments.

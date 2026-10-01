@@ -30,13 +30,14 @@ from functools import partial
 from pathlib import Path
 from typing import IO, Final, NamedTuple, Self, TypeAlias, cast
 
-from constricter.cli import guard, protocol
+from constricter.cli import edits, guard, protocol
 from constricter.cli.protocol import SERVERS, HintError, Server
-from constricter.fix.known import Hints
+from constricter.fix.known import Hints, Offered
 
 _Json: TypeAlias = protocol.Json
 _Object: TypeAlias = protocol.Object
-_FileHints: TypeAlias = dict[tuple[int, int], str]  # a file's hints' texts, by where each name ends
+# A file's hints, by where each name ends: its text, and what its edits would write (see `edits`).
+_FileHints: TypeAlias = dict[tuple[int, int], tuple[str, Offered | None]]
 _Found: TypeAlias = dict[Path, _FileHints]  # each file's
 _Task: TypeAlias = Callable[[], _Found]  # one server's work: the hints of each file it's asked about
 
@@ -159,7 +160,7 @@ class Session:
             for (checker, _), future in zip(work, futures, strict=True):
                 found[checker.name].update(future.result())
         return {
-            path: tuple(Hints(checker.name, found[checker.name][path]) for checker in self.checkers)
+            path: tuple(_hints(checker.name, found[checker.name][path]) for checker in self.checkers)
             for path in files
         }
 
@@ -188,6 +189,20 @@ class Session:
                 failures.append(failure)
         if failures:
             raise failures[0]
+
+
+def _hints(checker: str, found: _FileHints) -> Hints:
+    """Gather one file's hints from `checker` as `--fix` reads them.
+
+    Returns:
+      Them.
+
+    """
+    return Hints(
+        checker,
+        {where: text for where, (text, _) in found.items()},
+        {where: offered for where, (_, offered) in found.items() if offered is not None},
+    )
 
 
 class Checker:
@@ -524,18 +539,23 @@ class Connection:
         """Read one file's hints.
 
         Returns:
-          Each variable-type hint's text, by where the name it types ends.
+          Each variable-type hint's text and what its edits would write, by where the name it types ends.
 
         """
         found: _FileHints = {}
+        existing: edits.FromImports = edits.FromImports(lines)
+        locate: Callable[[_Object], tuple[int, int] | None] = partial(self._where, lines=lines)
         hint: _Json
         for hint in cast("list[_Json]", answer or []):
             where: tuple[int, int] | None
             label: str | None
             if (label := protocol.label(cast("_Object", hint))) is not None and (
-                where := self._where(cast("_Object", cast("_Object", hint)["position"]), lines)
+                where := locate(cast("_Object", cast("_Object", hint)["position"]))
             ) is not None:
-                _ = found.setdefault(where, label)
+                _ = found.setdefault(
+                    where,
+                    (label, edits.offered(cast("_Object", hint), label, locate, existing)),
+                )
         return found
 
     def _where(self, position: _Object, lines: Sequence[str]) -> tuple[int, int] | None:

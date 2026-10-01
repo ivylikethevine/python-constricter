@@ -6,6 +6,18 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--infer-with` uses a hint that names a class the file doesn't bind where its annotations run: one
+  the hint's own edits import (basedpyright, ty and pyrefly send the import an editor would add with
+  each hint), written through an import the module has or imported under `if TYPE_CHECKING:`, a
+  module body's annotation quoted; and one the module itself imports under `if TYPE_CHECKING:`. Only
+  a class a checked file, an installed package that declares its types or the standard-library
+  tables define: a module basedpyright shows by its name, an alias, and a class of an unchecked
+  package are left. A generic class a hint shows without its arguments (the checker doesn't know
+  them) is no longer written, the module's own included, nor a special form alone (`type[Generic]`),
+  nor `TypeAlias` in a function. On pydantic, sqlalchemy and django, basedpyright's hints type 614
+  more of the 26,716 bindings `--fix` can't (2,253, now 2,867) and ty's 351 more; after
+  `--fix --unsafe-fixes --infer-with basedpyright`, basedpyright finds 14 new errors on pydantic (21
+  before) and 148 on sqlalchemy (134 before, for 411 more fixes).
 - Built with hatchling, and the standard-library tables `--fix` reads are generated from typeshed's
   stubs when the package is built, no longer tracked in git. A release from PyPI installs as before;
   installing from a checkout (the GitHub Action without `version`, the pre-commit hooks,

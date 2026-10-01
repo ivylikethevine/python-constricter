@@ -297,7 +297,7 @@ def corrected(
         return (
             None if spelled is None else found._replace(annotation=spelled, reason=f"{found.reason}: `Self`")
         )
-    return None if _bare(found.annotation, generics) else found
+    return None if bare(found.annotation, generics) else found
 
 
 def _selfish(value: ast.expr, found: Inference, owner: Owner) -> bool:
@@ -338,7 +338,7 @@ def spelled_self(plan: ImportPlan) -> str | None:
     return None
 
 
-def _bare(annotation: str, generics: frozenset[str]) -> bool:
+def bare(annotation: str, generics: frozenset[str]) -> bool:
     """Check whether an annotation names one of `generics` (as the module spells them) unsubscripted.
 
     Returns:

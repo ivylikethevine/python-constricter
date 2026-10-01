@@ -10,6 +10,7 @@ from constricter.fix import fills, hinted, stdlib
 from constricter.fix.doubts import (
     Facts,
     Owner,
+    bare,
     corrected,
     doubts,
     is_constant,
@@ -338,18 +339,23 @@ class Scope:
         found: Hints
         for found in self.settings.hints:
             text: str | None = found.types.get(where)
-            typed: Inference | None
-            if text is not None and (
-                typed := hinted.hinted(
-                    text,
-                    found.checker,
-                    self.settings.known,
-                    nesting=self.settings.checks.nesting,
-                    # A module body's annotation is evaluated there: only what's bound before it will do.
-                    before=target.lineno if self.kind.function is None else None,
+            typed: str | None
+            if (
+                text is not None
+                and (
+                    typed := hinted.hinted(
+                        text,
+                        self.settings.known,
+                        nesting=self.settings.checks.nesting,
+                        # A module body's annotation is evaluated there: only what's bound before it will do.
+                        before=target.lineno if self.kind.function is None else None,
+                        offered=found.offered.get(where),
+                    )
                 )
+                # A generic class a checker prints bare has arguments it doesn't know.
+                and not bare(typed, self.settings.facts.generics)
             ):
-                return typed
+                return hinted.inference(typed, found.checker)
         return None
 
     def placed(self, name: str, fix: Inference, origins: frozenset[str], *, unsafe: bool) -> Fix | None:

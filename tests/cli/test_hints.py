@@ -23,7 +23,7 @@ from constricter import check_source
 from constricter.cli import command as cli
 from constricter.cli import guard, hints, protocol
 from constricter.cli.options import Options
-from constricter.fix.known import Hints
+from constricter.fix.known import Hints, Offered
 
 _FAKE: Final = Path(__file__).with_name("fake_server.py")
 _Found: TypeAlias = dict[Path, tuple[Hints, ...]]
@@ -89,6 +89,23 @@ def test_utf8_positions_are_taken_as_they_are(monkeypatch: pytest.MonkeyPatch, t
     _fake(monkeypatch, "utf-8")
     text: str = 's = "😀"; x = 1  # hint: int\n'
     assert _session_hints(tmp_path, text).types == {(1, len('s = "😀"; x'.encode())): "int"}
+
+
+def test_a_hints_edits_are_read_with_it(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """What a hint's edits would write comes with it: the annotation, and the imports its names take."""
+    _fake(monkeypatch)
+    text: str = (
+        "from shapes import make\n"
+        "x = make()  # edits: Shape @ 0:23 , Shape\n"
+        "y = make()  # edits: Counter[str] => collections.Counter[str] @ import collections\n"
+        "z = make()  # edits: int\n"
+    )
+    found: Hints = _session_hints(tmp_path, text)
+    assert found.types == {(2, 1): "Shape", (3, 1): "Counter[str]", (4, 1): "int"}
+    assert found.offered == {
+        (2, 1): Offered("Shape", ("from shapes import Shape",)),
+        (3, 1): Offered("collections.Counter[str]", ("import collections",)),
+    }
 
 
 def test_a_file_asked_about_again_is_changed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -312,6 +329,45 @@ def test_hints_are_guesses_only_unsafe_fixes_apply(
     added: str = "+    a: int = q.make()  # hint: int"
     _, output, _ = _fixed(tmp_path, capsys, source, "--diff", "--unsafe-fixes")
     assert added in output
+
+
+def test_a_class_a_hints_edit_imports_is_imported_for_type_checking(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A hint naming a checked file's class the file doesn't bind is fixed, with the import its edit names.
+
+    One naming what isn't a class there (the checker shows a module by its name) is left.
+    """
+    _fake(monkeypatch)
+    shapes: str = "sizes = 3\nclass Shape: ...\ndef make(q):\n    return q.shape\n"
+    _ = (tmp_path / "shapes.py").write_text(shapes, encoding="utf-8")
+    source: str = """
+    from shapes import make
+
+    def f(q) -> None:
+        a = make(q)  # edits: Shape @ 1:23 , Shape
+        b = make(q)  # edits: sizes @ 1:23 , sizes
+    """
+    user: Path = tmp_path / "user.py"
+    _ = user.write_text(textwrap.dedent(source), encoding="utf-8")
+    options: list[str] = ["--infer-with", _CHECKER, "--fix", "--unsafe-fixes", "--jobs=1", "-q"]
+    assert cli.main([*options, str(tmp_path)]) == cli.EXIT_FOUND
+    left: str = "user.py:9:5: error: LVA001 local variable 'b'"  # where it is once `a`'s import is added
+    assert left in capsys.readouterr().out
+    fixed: list[str] = [
+        "",
+        "from shapes import make",
+        "from typing import TYPE_CHECKING",
+        "if TYPE_CHECKING:",
+        "    from shapes import Shape",
+        "",
+        "def f(q) -> None:",
+        "    a: Shape = make(q)  # edits: Shape @ 1:23 , Shape",
+        "    b = make(q)  # edits: sizes @ 1:23 , sizes",
+    ]
+    assert user.read_text(encoding="utf-8").splitlines() == fixed
 
 
 def test_a_failing_checker_is_the_commands_error(

@@ -42,7 +42,7 @@ _STDLIB: Final = sys.stdlib_module_names
 _BUILTINS_MODULE: Final = "builtins"
 _HOPS: Final = 5  # how many re-exports (`from .util import f` in an `__init__`) to follow
 _FUNCTION: Final = "function"
-_CLASS: Final = "class"
+CLASS: Final = "class"
 _TYPE_VAR: Final = "type variable"
 _RETURNED: Final = "returned"  # an unannotated function its `return`s type
 _UNANNOTATED: Final = "unannotated"  # an unannotated function, typed or not
@@ -96,7 +96,7 @@ def _kind(module: Module, kind: str) -> Iterable[str]:
     """
     kinds: dict[str, Iterable[str]] = {
         _FUNCTION: module.returns,
-        _CLASS: module.classes,
+        CLASS: module.classes,
         _RETURNED: module.returned.calls,
         _UNANNOTATED: module.unannotated,
         OPEN: module.open,
@@ -255,7 +255,7 @@ def _resolved(catalog: Index, names: Mapping[str, Origin]) -> Iterator[tuple[str
             and submodule in catalog.modules
             and not (
                 (package := catalog.modules.get(origin[0])) is not None
-                and any(origin[1] in _kind(package, kind) for kind in (_FUNCTION, _UNANNOTATED, _CLASS))
+                and any(origin[1] in _kind(package, kind) for kind in (_FUNCTION, _UNANNOTATED, CLASS))
             )
         ):
             yield local, (submodule, None)
@@ -639,7 +639,7 @@ def imported(catalog: Index, path: Path) -> Imported:
         where: Origin
         for key, where in spelled:
             defined: tuple[Module, str] | None
-            if (defined := definition(modules, where, _CLASS)) is not None:
+            if (defined := definition(modules, where, CLASS)) is not None:
                 if defined[1] in defined[0].generics:
                     generics.add(key)
                 attributes[key] = _portable(
@@ -682,7 +682,7 @@ def _reexported_generics(modules: Mapping[str, Module], local: str, name: str) -
         if (
             origin[1] is not None
             and origin[0] != name
-            and (defined := definition(modules, origin, _CLASS)) is not None
+            and (defined := definition(modules, origin, CLASS)) is not None
             and defined[1] in defined[0].generics
         ):
             yield f"{local}.{reexported}"

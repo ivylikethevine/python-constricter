@@ -94,7 +94,7 @@ def module_name(path: Path) -> str:
     )
 
 
-def _absolute(name: str, module: str | None, level: int, *, is_package: bool) -> str:
+def absolute(name: str, module: str | None, level: int, *, is_package: bool) -> str:
     """Resolve `from <.level><module> import ...` in module `name`.
 
     Returns:
@@ -144,7 +144,7 @@ def _imported(stmt: ast.Import | ast.ImportFrom, name: str, *, is_package: bool)
         return names
     for alias in stmt.names:
         names[alias.asname or alias.name] = (
-            _absolute(name, stmt.module, stmt.level, is_package=is_package),
+            absolute(name, stmt.module, stmt.level, is_package=is_package),
             alias.name,
         )
     return names

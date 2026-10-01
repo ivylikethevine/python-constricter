@@ -7,8 +7,10 @@ A line `name = value  # hint: T` gets a variable-type hint `: T` after `name` (t
 after a `; `), as long as `name` is unannotated (so fixing it ends its hint, as a real checker's
 does); `# parts: T` gives the label as parts; `# kinds: T` adds a parameter-name hint and a
 return-type one, which `--infer-with` ignores; `# round N: T` hints only from the file's Nth version
-(as a checker's view changes, as a file is annotated). Positions count UTF-16 code units, or UTF-8
-bytes with the `utf-8` behaviour.
+(as a checker's view changes, as a file is annotated); `# edits: T => U @ E @ L:C F` gives the hint
+`T` the edits an editor would apply: the annotation as `U` (`T` itself, without `=> U`), `E` added at
+the top of the file, and `F` inserted at line `L` (from 0), character `C`. Positions count UTF-16
+code units, or UTF-8 bytes with the `utf-8` behaviour.
 
 Behaviours: `utf-8` (it negotiates UTF-8 positions), `ask` (before answering `initialize`, it asks
 for its settings, registers a capability and asks something the client can't answer, and logs a
@@ -38,11 +40,13 @@ _Json: TypeAlias = dict[str, "_Json"] | list["_Json"] | str | int | float | bool
 _Object: TypeAlias = dict[str, _Json]
 
 # The name bound last on the line: at its start, or after a `; `.
-_HINTED: Final = re.compile(r"^((?:.*; )?\s*)(\w+) = .*#\s*(hint|parts|kinds|round \d+): (.+)$")
+_HINTED: Final = re.compile(r"^((?:.*; )?\s*)(\w+) = .*#\s*(hint|parts|kinds|edits|round \d+): (.+)$")
+_PLACED: Final = re.compile(r"^(\d+):(\d+) (.*)$")  # an edit's line and character, and its text
 _BEHAVIOURS: Final = frozenset(sys.argv[1:])
 _UTF8: Final = "utf-8"
 _PARTS: Final = "parts"
 _KINDS: Final = "kinds"
+_EDITS: Final = "edits"
 _ROUND: Final = "round "
 _HEADERS_END: Final = b"\r\n"
 _PAST_END: Final = "past-end"
@@ -127,6 +131,9 @@ def _hints(text: str, version: int) -> list[_Json]:
         annotation: str
         indent, name, how, annotation = match.groups()
         position: _Object = {"line": number, "character": _column(indent + name)}
+        if how == _EDITS:
+            found.append(_edited(position, annotation))
+            continue
         label: _Json = [{"value": ": "}, {"value": annotation}] if how == _PARTS else f": {annotation}"
         found.append({"position": position, "label": label, "kind": 1})
         if how == _KINDS:
@@ -139,6 +146,33 @@ def _hints(text: str, version: int) -> list[_Json]:
     if _PAST_END in _BEHAVIOURS:
         found.append({"position": {"line": len(text.splitlines()) + 5, "character": 0}, "label": ": int"})
     return found
+
+
+def _edited(position: _Object, said: str) -> _Object:
+    """Make a hint with edits, as `# edits:` says (`T => U @ E @ L:C F`).
+
+    Returns:
+      The hint.
+
+    """
+    shown: str
+    written: str
+    head: str
+    added: list[str]
+    head, *added = said.split(" @ ")
+    shown, _, written = head.partition(" => ")
+    edits: list[_Json] = [{"range": {"start": position, "end": position}, "newText": f": {written or shown}"}]
+    text: str
+    for text in added:
+        placed: re.Match[str] | None = _PLACED.match(text)
+        start: _Object = (
+            {"line": 0, "character": 0}
+            if placed is None
+            else {"line": int(placed[1]), "character": int(placed[2])}
+        )
+        new: str = f"{text}\n" if placed is None else placed[3]
+        edits.append({"range": {"start": start, "end": start}, "newText": new})
+    return {"position": position, "label": f": {shown}", "kind": 1, "textEdits": edits}
 
 
 def _initialize(message: _Object, _documents: _Documents) -> bool:

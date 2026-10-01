@@ -252,9 +252,30 @@ A hint is used only as an annotation the file can hold:
 - anything vague (`Any`, `list[Unknown]`), not an annotation (`Module("os")`, a signature), as deep
   as LVA006 reports or as long a tuple as LVA011 does, or a bare `None`, is dropped;
 - every name in it must be a builtin, a name the module binds at its top level (before the binding,
-  in a module body), or a class the checker prints bare that `--fix` can import
-  (`collections.abc`'s, `Path`, `deque`, `Decimal`, `UUID`, ...: one is added as other fixes add
-  theirs). Otherwise nothing says what the name means, and the hint is dropped.
+  in a module body), a class it imports under `if TYPE_CHECKING:`, a class the checker prints bare
+  that `--fix` can import (`collections.abc`'s, `Path`, `deque`, `Decimal`, `UUID`, ...: one is
+  added as other fixes add theirs), or a class the hint's own edits import. Otherwise nothing says
+  what the name means, and the hint is dropped;
+- a generic class without its arguments is dropped (a checker prints one so when it doesn't know
+  them), as is a special form alone (`type[Generic]`, `Annotated`), and `TypeAlias`, for an alias's
+  assignment, anywhere but in a module body that already names it.
+
+A hint carries the edits an editor applies to accept it: the annotation, and an import for each
+class in it the file doesn't have, which basedpyright, ty and pyrefly send as a statement to add
+(`from shapes import Shape`) or as a name for a `from` import the file has (`, Shape`). `--fix`
+reads them: the class is written through an import the module runs if it has one (`shapes.Shape`,
+after `import shapes`), else imported under `if TYPE_CHECKING:` as another checked file's type is, a
+module body's annotation quoted. Never by an import that runs: the checker's Python may have a class
+the project's oldest doesn't. The first hint to import a name decides what it means in the file: a
+later one importing it from elsewhere is dropped. Where what a hint shows names something the file
+can't, the annotation as its edit spells it is judged too (`things.Thing[str]`, through
+`import things`).
+
+A hint is text, and a name in it needn't be a type (basedpyright shows a value that is a module by
+the module's name): one an edit imports, or the file imports under `if TYPE_CHECKING:`, is taken
+only for a class a checked file or an installed package that declares its types defines, or one the
+standard-library tables have in a public module (not `_collections_abc`'s `dict_keys`). An alias, or
+a class of a package that isn't checked, is left out.
 
 With several checkers, each name takes the first checker's hint, in the order they're named, that
 passes the checks above: one checker's `Unknown` falls back to the next's type. They're asked at the

@@ -150,7 +150,11 @@ def _settings(
             LibraryNames(
                 casts(tree),
                 stdlib.origins(tree),
-                replace(imports.plan(tree), guarded={} if outside is None else outside.guarded),
+                # What annotations alone can name: its own imports for type checking, and other files' types'.
+                replace(
+                    imports.plan(tree),
+                    guarded={} if outside is None else {**outside.checking, **outside.guarded},
+                ),
                 {} if outside is None else outside.overloaded,
                 frozenset() if outside is None else outside.installed_classes,
                 {} if outside is None else outside.installed_parameters,

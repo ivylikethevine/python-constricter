@@ -46,10 +46,11 @@ class ImportPlan:
     bound anywhere in it; `after`: the line added imports go after; `defined`: each name it binds
     at its top level (an import, a class, a function, an assignment), and the line it's first bound
     on; `added`: each name an added import binds, and that import's statement, as `spell` chose them.
-    `guarded`: the names other checked files' types are written with that the module imports (or is
-    to import) under `if TYPE_CHECKING:` alone; `block`: the first and last line of the body of the
-    `if TYPE_CHECKING:` among its leading imports, if it has one (else zeros); `postponed`: whether
-    it has `from __future__ import annotations`, so none of its annotations is evaluated.
+    `guarded`: the names other checked files' types and a type checker's hints are written with
+    that the module imports (or is to import) under `if TYPE_CHECKING:` alone; `block`: the first
+    and last line of the body of the `if TYPE_CHECKING:` among its leading imports, if it has one
+    (else zeros); `postponed`: whether it has `from __future__ import annotations`, so none of its
+    annotations is evaluated.
     """
 
     bound: Mapping[str, str]
@@ -65,12 +66,36 @@ class ImportPlan:
     def spell(self, qualified: str) -> str | None:
         """Name `qualified` (`io.BufferedReader`) in this module, adding an import if it has to.
 
-        Through an import it has (`io.BufferedReader` after `import io`, `BufferedReader` after
-        `from io import BufferedReader`), else a new `from io import BufferedReader`, else a new
-        `import io`, but only binding a name nothing in the module binds.
+        Through an import it has (see `named`), else a new `from io import BufferedReader`, else a
+        new `import io`, but only binding a name nothing in the module binds.
 
         Returns:
           The name, or `None` if every way to write it is taken.
+
+        """
+        found: str | None
+        if (found := self.named(qualified)) is not None:
+            return found
+        module: str
+        name: str
+        module, _, name = qualified.rpartition(".")
+        statement: str = f"from {module} import {name}"
+        if self._free(name, statement):
+            self.added[name] = statement
+            return name
+        statement = f"import {module}"
+        if _DOT not in module and self._free(module, statement):
+            self.added[module] = statement
+            return qualified
+        return None
+
+    def named(self, qualified: str) -> str | None:
+        """Name `qualified` (`io.BufferedReader`) through an import the module has.
+
+        `io.BufferedReader` after `import io`, `BufferedReader` after `from io import BufferedReader`.
+
+        Returns:
+          The name, or `None` if no import of its names it.
 
         """
         module: str
@@ -84,15 +109,26 @@ class ImportPlan:
         for bound, origin in self.bound.items():
             if origin == module:
                 return f"{bound}.{name}"
-        statement: str = f"from {module} import {name}"
-        if self._free(name, statement):
-            self.added[name] = statement
-            return name
-        statement = f"import {module}"
-        if _DOT not in module and self._free(module, statement):
-            self.added[module] = statement
-            return qualified
         return None
+
+    def guard(self, name: str, origin: Origin, statement: str) -> bool:
+        """Let annotations be written with `name`, bound to `origin` for type checking alone.
+
+        By the import `statement`, to add under `if TYPE_CHECKING:`. A name already guarded must be
+        so by the same statement; a new import must bind a name nothing in the module binds.
+
+        Returns:
+          Whether they can.
+
+        """
+        found: Guarded | None
+        if (found := self.guarded.get(name)) is not None:
+            return found.statement == statement
+        if name in self.added or not self._free(name, statement):
+            return False
+        # A new mapping: the one it had is the file's `Outside.guarded`, which other files' types read.
+        self.guarded = {**self.guarded, name: Guarded(origin, statement)}
+        return True
 
     def _free(self, name: str, statement: str) -> bool:
         """Check that `statement` may bind `name`: it already does, or nothing (not a builtin) does.
@@ -202,16 +238,31 @@ class Returns(NamedTuple):
     names: Mapping[str, Origin] = {}
 
 
+class Offered(NamedTuple):
+    """What a type checker's hint would write if its editor accepted it (the hint's own edits).
+
+    `text`: the annotation as it would insert it, which may spell a class through a module the file
+    imports (`collections.Counter[str]`, where the hint shows `Counter[str]`); `imports`: the
+    imports it would add for the names in it, each a statement binding one name
+    (`from shapes import Shape`, `import shapes`).
+    """
+
+    text: str
+    imports: tuple[str, ...] = ()
+
+
 class Hints(NamedTuple):
     """A type checker's inlay hints for one file (`--infer-with`): which checker, and each type.
 
     Each hint's type is its text as the checker printed it (`int`, `list[str]`), by where the name
     it types ends: its line (from 1) and UTF-8 byte column, as `ast`'s `end_col_offset`.
+    `offered`: what each hint that has edits would write (see `Offered`), by the same place.
     """
 
     checker: str = ""
-    # A plain `dict`, not a `MappingProxyType`: the CLI's worker processes are sent it, pickled.
+    # Plain `dict`s, not `MappingProxyType`s: the CLI's worker processes are sent them, pickled.
     types: Mapping[tuple[int, int], str] = {}
+    offered: Mapping[tuple[int, int], Offered] = {}
 
 
 # An argument's type, and what it rests on if it's a guess (`FIX_KINDS`; none: it's certain).
@@ -276,6 +327,8 @@ class Outside(NamedTuple):
     installed_parameters: Mapping[str, tuple[str, ...]] = {}  # see `LibraryNames.parameters`
     installed_lineage: Mapping[str, tuple[str, ...]] = {}  # see `LibraryNames.lineage`
     installed_aliases: Mapping[str, Expansion] = {}  # see `LibraryNames.aliases`
+    # The classes it imports under `if TYPE_CHECKING:` alone, which an annotation can name (see `offers.own`).
+    checking: Mapping[str, Guarded] = {}
 
     def usable(self, taken: frozenset[str]) -> "Outside":
         """Drop what other files offer whose type needs a name imported that the module binds already.
@@ -310,6 +363,7 @@ class Outside(NamedTuple):
             self.installed_parameters,
             self.installed_lineage,
             self.installed_aliases,
+            self.checking,
         )
 
 
