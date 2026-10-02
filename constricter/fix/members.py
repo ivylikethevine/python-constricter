@@ -197,6 +197,19 @@ def returned_method(receiver: str, name: str, known: Known) -> tuple[str, str] |
     return owner, found
 
 
+def partial_method(receiver: str, name: str, known: Known) -> str | None:
+    """Look up a method of a value typed `receiver` declared to return a tuple with a vague part.
+
+    The receiver's class's own, or the base's that defines it (see `Lineage`, `Partial`).
+
+    Returns:
+      Its return, or `None` if it isn't one.
+
+    """
+    owner: str | None = known.class_side.lineage.definer(receiver, name)
+    return known.indirect.partial.methods.get(owner or "", {}).get(name)
+
+
 def assigned_attribute(receiver: str, name: str, known: Known) -> str | None:
     """Look up an attribute of a value typed `receiver` typed by its assignments alone (see `Returned`).
 

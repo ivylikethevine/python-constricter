@@ -6,6 +6,25 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A check of many files is faster: the standard library with its tests (1,867 files) in 108s with
+  `--jobs=1` (from 185s) and 35s with `--jobs=0` on 8 cores (from 62s), pydantic in 4.2s (from
+  6.0s). What a file passes other files' functions is read from the module's one shared walk, only
+  the functions that name one walked; a function is walked for a `yield`, a rebound `self` or a
+  shadowed import only where the module has one in it; a caller is checked again only where what it
+  imports now returns something else; a function's declared return is read once for every class
+  table; a value is asked only of what types its kind (a call, a name, a display); and another
+  file's function or class member is written for a file only where the file uses it. The results are
+  the same, but for what an unused member's type no longer holds back: a name it would have needed
+  imported is free for an import a fix adds (`Final`, `Iterator`: 15 more fixes on the standard
+  library).
+- `--fix` types an unpacked call whose declared return is a tuple with a vague part
+  (`schema, metadata = self.common(...)`, declared `tuple[CoreSchema, dict[str, Any]]`): each name
+  whose part isn't vague is declared (`schema: CoreSchema`), for a function or a method, the
+  module's own or another checked file's; the call whole still has no fix. A classmethod or
+  staticmethod types its calls on an instance too (`self.info(stmt)`), and on a class that takes it
+  from a base in the same module (`Sub.make()`, a `Sub` where `make` returns `Self`). On pydantic:
+  29 more certain fixes (849 to 878) and 1 more guess, 30 fewer bindings with no fix (2,072 to
+  2,042); no new basedpyright error, and one pass converges.
 - `--fix` types more of what a value's parts decide. An unpacking, name by name: a display of as
   many values gives each name its own value's type (`a, b = x, 1` declares `b: int` whatever `x`
   is), anything else its elements' (`a, b = s.split(",")`, `q, r = divmod(n, 2)`,

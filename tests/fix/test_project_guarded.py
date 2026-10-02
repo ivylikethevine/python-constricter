@@ -418,10 +418,11 @@ def test_an_alias_assigned_twice_isnt_written_in_another_file(tmp_path: Path) ->
     _package(tmp_path)
     _ = _write(tmp_path / "pkg" / "rebound.py", REBOUND)
     _ = _write(tmp_path / "pkg" / "aliased.py", ALIASES_USED)
-    user: Path = _write(
-        tmp_path / "user.py",
-        "from pkg.aliased import constant, either, once, own, tried, versioned\n",
+    calling: str = (
+        "from pkg.aliased import constant, either, once, own, tried, versioned\n\n"
+        "RESULTS = [constant(), either(), once(), own(), tried(), versioned()]\n"
     )
+    user: Path = _write(tmp_path / "user.py", calling)
     catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
     assert catalog.modules["pkg.rebound"].rebound == {"Either", "Tried"}
     assert set(catalog.modules["pkg.rebound"].aliases) == {"Versioned", "Constant", "Once"}

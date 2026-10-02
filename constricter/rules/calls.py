@@ -14,7 +14,7 @@ import ast
 import builtins
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
-from typing import Final
+from typing import Final, cast
 
 from constricter.fix import callers
 from constricter.fix.guesses import guessing
@@ -23,7 +23,8 @@ from constricter.fix.known import Call, Callee, Inference, Known, LibraryNames, 
 from constricter.rules.annotations import dotted
 from constricter.rules.flow import members
 from constricter.rules.scope import Scope, Settings, guesses_in
-from constricter.rules.syntax import FunctionDef, own_nodes
+from constricter.rules.syntax import FunctionDef, Start, has_within, own_nodes
+from constricter.rules.walked import of_type
 
 _BUILTINS: Final = frozenset(dir(builtins))
 _NONE: Final = "None"  # says nothing of what the parameter's other callers pass, nor what it's for
@@ -42,36 +43,81 @@ def observed(
       Each one's calls, and those that escape.
 
     """
-    if not callees:
+    named: list[tuple[ast.AST, str]]
+    if not (named := _naming(tree, callees) if callees else []):
         return Observed()
-    owner: dict[int, Scope] = {}  # each node's innermost function scope, by `id()`
-    bound: dict[int, frozenset[str]] = {}  # each function's own names, by its scope's `id()`
-    scope: Scope
-    for scope in scopes:
-        if scope.kind.function is not None:
-            nodes: list[ast.AST] = list(own_nodes(scope.kind.function.body))
-            owner.update((id(node), scope) for node in nodes)
-            bound[id(scope)] = _bound(scope.kind.function, nodes)
-    called: set[int] = {id(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)}
+    owner: dict[int, Scope]  # each such node's innermost function scope, by `id()`
+    bound: dict[int, frozenset[str]]  # each of those functions' own names, by its scope's `id()`
+    owner, bound = _owning(scopes, [node for node, _ in named])
+    called: set[int] = {id(node.func) for node in cast("list[ast.Call]", of_type(tree, ast.Call))}
     calls: dict[Callee, list[Call]] = {}
     escaped: set[Callee] = set()
     node: ast.AST
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call | ast.Name | ast.Attribute):
-            continue
+    spelled: str
+    for node, spelled in named:
         where: Scope | None = owner.get(id(node))
-        spelled: str | None = dotted(node.func) if isinstance(node, ast.Call) else dotted(node)
-        if (
-            spelled is None
-            or spelled not in callees
-            or (where is not None and spelled.partition(".")[0] in bound[id(where)])
-        ):
+        if where is not None and spelled.partition(".")[0] in bound[id(where)]:
             continue
         if isinstance(node, ast.Call):
             calls.setdefault(callees[spelled], []).append(_call(node, where, known))
-        elif id(node) not in called and isinstance(node.ctx, ast.Load):
+        elif id(node) not in called and isinstance(cast("ast.Name", node).ctx, ast.Load):
             escaped.add(callees[spelled])
     return Observed({callee: tuple(found) for callee, found in calls.items()}, frozenset(escaped))
+
+
+def _owning(
+    scopes: Sequence[Scope],
+    named: Sequence[ast.AST],
+) -> tuple[dict[int, Scope], dict[int, frozenset[str]]]:
+    """Find the innermost function scope of each node in `named`, and what each such function binds.
+
+    Only the functions one of them is in are walked: most have none.
+
+    Returns:
+      Each node's scope, by the node's `id()` (none for one outside any function's own body); and
+      each of those scopes' function's own names, by the scope's `id()`.
+
+    """
+    wanted: set[int] = {id(node) for node in named}
+    starts: list[Start] = sorted(
+        (cast("ast.expr", node).lineno, cast("ast.expr", node).col_offset) for node in named
+    )
+    owner: dict[int, Scope] = {}
+    bound: dict[int, frozenset[str]] = {}
+    scope: Scope
+    for scope in scopes:
+        if scope.kind.function is not None and has_within(starts, scope.kind.function):
+            nodes: list[ast.AST] = list(own_nodes(scope.kind.function.body))
+            owner.update((id(node), scope) for node in nodes if id(node) in wanted)
+            bound[id(scope)] = _bound(scope.kind.function, nodes)
+    return owner, bound
+
+
+def _naming(tree: ast.Module, callees: Mapping[str, Callee]) -> list[tuple[ast.AST, str]]:
+    """Find the module's calls, names and attributes that spell one of `callees`.
+
+    From its one shared walk, each looked at only if its last name is one of theirs.
+
+    Returns:
+      Each such node, with what it spells (a call's callee), calls first, each kind in the walk's order.
+
+    """
+    last: frozenset[str] = frozenset(spelled.rpartition(".")[2] for spelled in callees)
+    found: list[tuple[ast.AST, str]] = []
+    node: ast.AST
+    for node in of_type(tree, ast.Call, ast.Name, ast.Attribute):
+        target: ast.AST = node.func if isinstance(node, ast.Call) else node
+        name: str = (
+            target.id
+            if isinstance(target, ast.Name)
+            else target.attr
+            if isinstance(target, ast.Attribute)
+            else ""
+        )
+        spelled: str | None = dotted(cast("ast.expr", target)) if name in last else None
+        if spelled is not None and spelled in callees:
+            found.append((node, spelled))
+    return found
 
 
 def _bound(function: ast.FunctionDef | ast.AsyncFunctionDef, nodes: Sequence[ast.AST]) -> frozenset[str]:
@@ -204,6 +250,12 @@ def unshadowed(settings: Settings, function: FunctionDef) -> Settings:
 
     """
     names: LibraryNames = settings.known.names
+    rebound: Mapping[str, Sequence[Start]] | None = settings.facts.rebound
+    # Most functions can shadow none: no name the module imports is bound in them. They aren't walked.
+    if rebound is not None and not any(
+        has_within(rebound[name], function) for name in names.stdlib.keys() & rebound.keys()
+    ):
+        return settings
     bound: frozenset[str]
     if not (bound := _bound(function, list(own_nodes(function.body))) & names.stdlib.keys()):
         return settings

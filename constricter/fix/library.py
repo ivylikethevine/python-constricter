@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Final
 
 from constricter.fix import overloads, stdlib
 from constricter.fix.known import ImportPlan, Inference, Known
+from constricter.rules.annotations import dotted
 
 if TYPE_CHECKING:
     from constricter.fix.signatures import Expansion
@@ -22,20 +23,14 @@ _SELF: Final = "Self"  # a method's own class, in a template
 _WITH_DEFAULT: Final = 2  # `os.environ.get(key, default)`'s arguments
 
 
-def library_class(value: ast.expr, known: Known) -> Inference | None:
+def library_class(value: ast.Call, known: Known) -> Inference | None:
     """Infer a call to a standard-library class, or a function returning one (`stdlib.CLASSES`).
 
     Returns:
       The class, spelled (and imported, if it must be) as the module can; or `None`.
 
     """
-    func: ast.expr
-    match value:
-        case ast.Call(func=func):
-            pass
-        case _:
-            return None
-    name: str | None = stdlib.resolved(func, known.names.stdlib)
+    name: str | None = stdlib.resolved(value.func, known.names.stdlib)
     plan: ImportPlan | None = known.names.plan
     spelled: str | None = (
         None if name not in stdlib.CLASSES or plan is None else plan.spell(stdlib.CLASSES[name])
@@ -78,13 +73,13 @@ def installed_call(
       The inference, or `None` for any other call, or arguments that don't decide it.
 
     """
-    callee: str
+    callee: str | None
     func: ast.Name | ast.Attribute
     match value:
-        case ast.Call(func=ast.Name() | ast.Attribute() as func) if (callee := ast.unparse(func)) in (
-            known.names.installed
+        case ast.Call(func=ast.Name() | ast.Attribute() as func) if (
+            known.names.installed and (callee := dotted(func)) in known.names.installed
         ):
-            return overloads.chosen(callee, value, known, infer)
+            return overloads.chosen(callee or "", value, known, infer)
         case _:
             return None
 
@@ -124,7 +119,7 @@ def installed_method(receiver: str, name: str, known: Known) -> stdlib.Method | 
 
 
 def library_call(
-    value: ast.expr,
+    call: ast.Call,
     known: Known,
     infer: Callable[[ast.expr], Inference | None],
 ) -> Inference | None:
@@ -139,14 +134,7 @@ def library_call(
       The inference, or `None` for any other call, or arguments that don't decide it.
 
     """
-    call: ast.Call
-    args: list[ast.expr]
-    keywords: list[ast.keyword]
-    match value:
-        case ast.Call(args=args, keywords=keywords) as call:
-            pass
-        case _:
-            return None
+    args: list[ast.expr] = call.args
     name: str | None = stdlib.resolved(call.func, known.names.stdlib)
     reason: str = f"`{name}`'s return type"
     kinds: frozenset[str] = frozenset({_STDLIB})
@@ -155,7 +143,7 @@ def library_call(
     if name is not None and name in stdlib.OVERLOADS:
         return overloads.chosen(name, call, known, infer)
     # `os.environ.get`, decided by its positional arguments' types, worked out only for it.
-    if keywords or name != stdlib.ENVIRONMENT:
+    if call.keywords or name != stdlib.ENVIRONMENT:
         return None
     parts: list[Inference | None] = [infer(arg) for arg in args]
     if len(args) == 1:

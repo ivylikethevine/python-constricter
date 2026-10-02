@@ -13,14 +13,16 @@ import ast
 from collections.abc import Iterator
 from typing import Final, TypeAlias, cast
 
-from constricter.fix import hinted
+from constricter.fix import hinted, shapes
 from constricter.fix.doubts import bare
 from constricter.fix.entered import entered
 from constricter.fix.inference import LoopPart, inference, looped, looped_parts
 from constricter.fix.known import Inference, Known
+from constricter.fix.members import parsed
 from constricter.fix.opened import opened
 from constricter.fix.targets import iterated, unpacked
 from constricter.offences import COMMENT_TYPED_TARGET, UNTYPED_TARGET, Edit, Fix, at
+from constricter.rules.annotations import is_vague
 from constricter.rules.flow import augmented
 from constricter.rules.scope import Scope, certain_type, guesses_in
 from constricter.rules.syntax import captures, comment_type, target_names, type_comment_span
@@ -206,14 +208,39 @@ def _unpacked(scope: Scope, stmt: ast.Assign, target: ast.expr, value: ast.expr)
             fix, unsafe, origins = scope.valued(value, stmt.lineno)
             yield name, (None if fix is None else fix._replace(kinds=fix.kinds | _UNPACK), unsafe, origins)
         case _:
-            known: Known = scope.settings.known
-            typed: Inference | None = inference(value, known, scope.inferred.types)
-            element: Inference | None
-            if (element := None if typed else looped(value, known, scope.inferred.types)) is None:
-                yield from _split(scope, stmt, target, typed, [value])
-            else:  # what it iterates, each name an element of it
-                typed = element._replace(annotation=f"tuple[{element.annotation}, ...]")
-                yield from _split(scope, stmt, target, typed, iterated(value))
+            yield from _unpacked_whole(scope, stmt, target, value)
+
+
+def _unpacked_whole(scope: Scope, stmt: ast.Assign, target: ast.expr, value: ast.expr) -> Iterator[_Named]:
+    """Type each name an unpacking of `value` binds by `value`'s own type, split over them.
+
+    Its type as any value's is inferred; else what iterating it gives, each name an element; else a
+    call's declared tuple with a vague part (see `partly`), each name its part if that isn't vague.
+
+    Yields:
+      Each name, with its inference, whether that's a guess, and what the guess rests on.
+
+    """
+    known: Known = scope.settings.known
+    typed: Inference | None = inference(value, known, scope.inferred.types)
+    element: Inference | None
+    if (element := None if typed else looped(value, known, scope.inferred.types)) is not None:
+        typed = element._replace(annotation=f"tuple[{element.annotation}, ...]")
+        yield from _split(scope, stmt, target, typed, iterated(value))
+        return
+    if typed is not None:
+        yield from _split(scope, stmt, target, typed, [value])
+        return
+    typed = shapes.partly(value, known, lambda part: inference(part, known, scope.inferred.types))
+    # A method's return is a guess if its receiver's type is; a function's is declared.
+    receiver: list[ast.expr] = (
+        [value.func.value] if isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute) else []
+    )
+    name: ast.Name
+    part: _Valued
+    for name, part in _split(scope, stmt, target, typed, receiver):
+        vague: bool = part[0] is not None and is_vague(parsed(part[0].annotation))
+        yield name, ((None, False, frozenset()) if vague else part)
 
 
 def _bind_declared(

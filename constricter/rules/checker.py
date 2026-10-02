@@ -11,10 +11,12 @@ from constricter.fix.doubts import facts, says_self
 from constricter.fix.known import (
     Classes,
     ClassSide,
+    Indirect,
     Known,
     LibraryNames,
     Observed,
     Outside,
+    Partial,
     Returned,
     Returns,
 )
@@ -146,7 +148,7 @@ def _settings(
             factories(tree),
             {**(imported.attributes if imported else {}), **free_of_all(own.classes, free)},
             {**(imported.methods if imported else {}), **free_of_all(own.methods, free)},
-            free_of(awaited_returns(tree), free),
+            Indirect(free_of(awaited_returns(tree), free), _partial(own, free, outside)),
             ClassSide(
                 free_of_all(class_attributes(tree), free),
                 free_of_all(own.sides, free),
@@ -191,6 +193,20 @@ def _settings(
             defined_type_vars(tree) | free,
         ),
         keyed(tree, {} if outside is None else outside.parameters),
+    )
+
+
+def _partial(own: Tables, free: frozenset[str], outside: Outside | None) -> Partial:
+    """Gather the returns only an unpacking can use: other checked files', then the module's own.
+
+    Returns:
+      Them, less the module's that mention a type variable it imports (`free`).
+
+    """
+    given: Partial = Partial() if outside is None else outside.partial
+    return Partial(
+        {**given.calls, **free_of(own.partial, free)},
+        {**given.methods, **free_of_all(own.partial_methods, free)},
     )
 
 
@@ -394,7 +410,7 @@ def _function_scopes(
             settled: bool = not scope.inferred.late.keys() - scope.inferred.seeded.keys()
             table.checked(
                 func,
-                recorded.returns(scope, func) if settled else [],
+                recorded.returns(scope, func, table.module) if settled else [],
                 recorded.assigned(scope) if settled else [],
             )
         scopes += _function_scopes(nested, scope.settings, table)
@@ -659,7 +675,7 @@ def _checked_again(
     ]
     renewed: dict[int, Scope] = {id(func): scope for scope, func in fresh}
     _finished(tree, [scope for scope, _ in fresh])
-    table.recorded.update((id(func), recorded.returns(scope, func)) for scope, func in fresh)
+    table.recorded.update((id(func), recorded.returns(scope, func, tree)) for scope, func in fresh)
     table.assigned.update((id(func), recorded.assigned(scope)) for scope, func in fresh)
     return [(renewed.get(id(func), scope), func) for scope, func in functions]
 

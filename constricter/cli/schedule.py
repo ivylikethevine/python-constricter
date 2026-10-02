@@ -13,8 +13,8 @@ from typing import Final
 
 from constricter.cli.runs import CoverageRun, FileRun
 from constricter.cli.workers import Checking, Workers, check_share, first_done
-from constricter.fix import callers, decorated, offers, order, project, stubbed
-from constricter.fix.known import Hints, Outside
+from constricter.fix import callers, decorated, offers, order, project, sides, stubbed
+from constricter.fix.known import Guarded, Hints, Outside
 
 CYCLE_ROUNDS: Final = 3  # how many times to check again files calling each other's functions
 
@@ -27,17 +27,20 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
 
     """
     imported: project.Imported = project.imported(modules, path)
-    methods: stubbed.Methods = stubbed.methods(modules, path, imported.guarded)
+    side_calls: dict[str, str]
+    guarded: dict[str, Guarded]
+    side_calls, guarded = sides.calls(modules, path, imported.guarded)
+    methods: stubbed.Methods = stubbed.methods(modules, path, guarded)
     hints: tuple[Hints, ...] = offers.vetted(modules, path, hinted.get(path, ()))
     # What only a hint can name: the classes the file imports for type checking alone.
     own: offers.Own = offers.own(modules, path) if hints else offers.Own()
     return Outside(
-        {**imported.calls, **decorated.own(modules, path)},
+        {**imported.calls, **side_calls, **decorated.own(modules, path)},
         imported.classes,
         hints,
         project.type_vars(modules, path),
         imported.returned,
-        imported.guarded,
+        guarded,
         imported.generics | own.generics,
         callers.callees(modules, path),
         callers.own_parameters(modules, path),
@@ -49,7 +52,8 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         own.guarded,
         project.plain_classes(modules, path),
         imported.members,
-        project.same(modules, path, imported.guarded),
+        project.same(modules, path, guarded),
+        imported.partial,
     )
 
 

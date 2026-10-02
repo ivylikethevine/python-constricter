@@ -100,7 +100,7 @@ class Rebound:
         return 1
 
 
-def use(box: Box, Rebound: Box) -> None:
+def use(box: Box, Rebound) -> None:
     made = Box.make(1)
     new = Box.new()
     count = Box.count()
@@ -226,6 +226,62 @@ def test_a_class_side_method_called_on_its_class_gives_its_declared_return() -> 
         **dict.fromkeys(
             ("registered", "twice", "nothing", "plain", "deep", "many", "again", "rebound"),
         ),
+    }
+
+
+def test_an_instance_and_a_subclass_have_the_class_side_methods_too() -> None:
+    """`self.count()` is the staticmethod's return; a subclass takes its base's, `Self` as itself."""
+    source: str = """
+    from typing import Self
+
+
+    class Base:
+        @staticmethod
+        def pair() -> tuple[str, bool]:
+            return "", True
+
+        @classmethod
+        def make(cls) -> Self:
+            return cls()
+
+        @classmethod
+        def base(cls) -> "Base":
+            return cls()
+
+        def run(self) -> None:
+            name, flag = self.pair()
+
+
+    class Sub(Base):
+        def pair(self) -> int:
+            return 1
+
+        @classmethod
+        def more(cls) -> None:
+            own = cls.base()
+
+
+    def use(base: Base, sub: Sub) -> None:
+        both = base.pair()
+        hidden = sub.pair()
+        made = Sub.make()
+        plain = Sub.base()
+        mine = sub.make()
+        theirs = base.make()
+        shadowed = Sub.pair()
+    """
+    fixes: _Fixes = {o.name: o.fix for o in check_source(textwrap.dedent(source))}
+    assert fixes == {
+        "name": "str",
+        "flag": "bool",
+        "own": "Base",
+        "both": "tuple[str, bool]",
+        "hidden": "int",
+        "made": "Sub",
+        "plain": "Base",
+        "mine": "Sub",
+        "theirs": "Base",
+        "shadowed": None,  # `Sub` binds `pair` itself, a plain method
     }
 
 

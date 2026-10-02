@@ -7,7 +7,7 @@ from functools import lru_cache
 from typing import Final
 
 from constricter.fix.known import ImportPlan, Origin
-from constricter.rules.syntax import import_bindings
+from constricter.rules.syntax import Start, import_bindings
 from constricter.rules.walked import of_type
 
 _TYPE_CHECKING: Final = "TYPE_CHECKING"
@@ -230,6 +230,40 @@ def taken_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
             case _:
                 pass
     return frozenset(names), frozenset(values)
+
+
+@lru_cache(maxsize=16)
+def rebound_names(tree: ast.Module) -> dict[str, list[Start]]:
+    """Find the names the module binds more than once, anywhere in it, and where.
+
+    One bound once (by its import, say) means the same thing throughout: no function shadows it.
+    One bound again is shadowed only by a function one of its bindings is in.
+
+    Returns:
+      Each such name, and where each of its bindings starts, in source order.
+
+    """
+    found: dict[str, list[Start]] = {}
+    node: ast.AST
+    name: str
+    asname: str | None
+    for node in of_type(tree, *_BINDERS):
+        match node:
+            case ast.alias(name=name, asname=asname):
+                found.setdefault(asname or name.split(".", 1)[0], []).append((node.lineno, node.col_offset))
+            case (
+                ast.Name(id=name, ctx=ast.Store() | ast.Del())
+                | ast.arg(arg=name)
+                | ast.FunctionDef(name=name)
+                | ast.AsyncFunctionDef(name=name)
+                | ast.ClassDef(name=name)
+                | ast.ExceptHandler(name=str() as name)
+                | ast.MatchAs(name=str() as name)
+            ):
+                found.setdefault(name, []).append((node.lineno, node.col_offset))
+            case _:
+                pass
+    return {name: sorted(starts) for name, starts in found.items() if len(starts) > 1}
 
 
 def _after(tree: ast.Module) -> int:

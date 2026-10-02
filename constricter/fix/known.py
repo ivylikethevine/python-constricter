@@ -186,6 +186,30 @@ class Returned(NamedTuple):
     attributes: Mapping[str, Mapping[str, str]] = MappingProxyType({})
 
 
+class Partial(NamedTuple):
+    """Declared returns that are tuples with a vague part (`tuple[Row, dict[str, Any]]`).
+
+    One types no call whole; an unpacking takes the parts that aren't vague. `calls`: functions',
+    by the call's name as written; `methods`: classes' methods', by the class's name as spelled.
+    """
+
+    # Plain `dict`s, not `MappingProxyType`s: the CLI's worker processes are sent them, pickled.
+    calls: Mapping[str, str] = {}
+    methods: Mapping[str, Mapping[str, str]] = {}
+
+
+class Indirect(NamedTuple):
+    """Declared returns that type something other than a plain call.
+
+    `awaits`: what awaiting a call to each of the module's `async def`s gives (see
+    `awaited_returns`); `partial`: those only an unpacking can use (see `Partial`), other checked
+    files' too.
+    """
+
+    awaits: Mapping[str, str] = MappingProxyType({})
+    partial: Partial = Partial()
+
+
 class ClassSide(NamedTuple):
     """What each class the module defines offers beyond its instances' own members.
 
@@ -208,7 +232,7 @@ class Known:
     `factories`: names that build a class or special form rather than an instance of it (see
     `factories`), so a call to one is never guessed to construct one. `classes` and `methods`: each
     class's annotated attributes (see `classes`) and methods' return types (see `method_returns`).
-    `awaits`: what awaiting a call to each of its `async def`s gives (see `awaited_returns`).
+    `indirect`: its declared returns no plain call has (see `Indirect`).
     `class_side`: what `cls.x` and `cls.method()` give in a classmethod, where `cls` is `type[C]`
     (see `ClassSide`). `names`: how it names library functions (see `LibraryNames`). `returned`: what
     its unannotated functions return (see `Returned`).
@@ -218,7 +242,7 @@ class Known:
     factories: frozenset[str]
     classes: Mapping[str, Mapping[str, str]]
     methods: Mapping[str, Mapping[str, str]]
-    awaits: Mapping[str, str] = field(default_factory=dict[str, str])
+    indirect: Indirect = field(default_factory=Indirect)
     class_side: "ClassSide" = field(default_factory=lambda: ClassSide({}, {}))
     names: LibraryNames = field(default_factory=LibraryNames)
     max_length: int = MAX_LENGTH  # the longest tuple display typed element by element (LVA011's)
@@ -325,7 +349,8 @@ class Outside(NamedTuple):
     files settles it (`None`: as the file alone sees, see `constricter.fix.classvars`); `members`:
     the variables of the plain classes it imports from them, typed by their values, as it spells
     each class. `same`: each group of ways it spells one class or alias another module defines
-    (`CoreSchema`, `core_schema.CoreSchema`; see `project.same`).
+    (`CoreSchema`, `core_schema.CoreSchema`; see `project.same`). `partial`: the returns of other
+    checked files' functions and methods that only an unpacking can use (see `Partial`).
     """
 
     calls: Mapping[str, str] = {}
@@ -347,6 +372,7 @@ class Outside(NamedTuple):
     plain: frozenset[str] | None = None
     members: Mapping[str, Mapping[str, str]] = {}
     same: tuple[frozenset[str], ...] = ()
+    partial: Partial = Partial()
 
     def usable(self, taken: frozenset[str]) -> "Outside":
         """Drop what other files offer whose type needs a name imported that the module binds already.
@@ -385,6 +411,7 @@ class Outside(NamedTuple):
             self.plain,
             self.members,
             self.same,
+            Partial(free_of(self.partial.calls, clashing), free_of_all(self.partial.methods, clashing)),
         )
 
 

@@ -11,6 +11,7 @@ import ast
 import itertools
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
+from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
@@ -18,7 +19,6 @@ from typing import Final, NamedTuple, TypeAlias, cast
 from constricter.fix import classvars
 from constricter.fix.declared import Declarations, declarations
 from constricter.fix.imports import taken_names
-from constricter.fix.inherited import lineage
 from constricter.fix.known import Origin, Passed, Returns
 from constricter.fix.returned import unannotated
 from constricter.rules import parsed
@@ -28,7 +28,6 @@ from constricter.rules.annotations import (
     generic_classes,
     is_composite,
     node_name,
-    self_returns,
 )
 from constricter.rules.decorators import Held, Pass
 from constricter.rules.syntax import child_statements
@@ -70,6 +69,7 @@ class Module(NamedTuple):
     called: frozenset[str] = frozenset()  # what it calls through its top-level names (`f`, `u.f`)
     passed: frozenset[str] = frozenset()  # what it passes as an argument through them (`np.float64`)
     method_calls: frozenset[str] = frozenset()  # the methods it calls on anything (`astype` in `a.astype(x)`)
+    attributes: frozenset[str] = frozenset()  # every attribute it reads or calls, of anything (`x` in `a.x`)
     returned: Returns = Returns()  # what they return, once it's checked
     generics: frozenset[str] = frozenset()  # its generic classes, which a type mustn't write bare
     installed: bool = False  # an installed package's, read for its types alone (see `installed`)
@@ -102,6 +102,10 @@ class Module(NamedTuple):
     sides: Mapping[str, Mapping[str, str]] = {}
     held_sides: Mapping[str, Mapping[str, Held]] = {}
     vouched_sides: frozenset[tuple[str, str]] = frozenset()
+    # Its functions' and classes' methods' declared returns that are tuples with a vague part, which
+    # only an unpacking can use (see `known.Partial`): the methods as `methods` has them.
+    partial: Mapping[str, str] = {}
+    partial_methods: Mapping[str, Mapping[str, str]] = {}
 
 
 class Index(NamedTuple):
@@ -111,6 +115,7 @@ class Index(NamedTuple):
     names: list[str]  # modules, sorted by name
 
 
+@lru_cache(maxsize=65536)  # asked of each checked file a dozen times: its folders are looked at once
 def module_name(path: Path) -> str:
     """Name `path`'s module: its package folders (those with an `__init__.py`), then it.
 
@@ -276,7 +281,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         own.returns,
         names,
         own.classes,
-        lineage(tree, self_returns(tree), frozenset()).flattened(own.methods),
+        own.order.flattened(own.methods),
         defined_type_vars(tree),
         _guarded(tree, named, is_package=path.stem == _PACKAGE),
         unannotated(tree.body),
@@ -284,6 +289,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         generics=generic_classes(tree),
         passed=frozenset() if name is not None else _passed(tree, names),
         method_calls=frozenset() if name is not None else _method_calls(tree),
+        attributes=frozenset() if name is not None else _attributes(tree),
         installed=name is not None,
         open=open_functions(tree),
         declared=None if name is None else declarations(tree),
@@ -296,6 +302,8 @@ def read(path: Path, name: str | None = None) -> Module | None:
         members={} if name is not None else classvars.members(tree),
         sides=own.sides,
         held_sides=own.held_sides,
+        partial=own.partial,
+        partial_methods=own.order.flattened(own.partial_methods),
     )
 
 
@@ -494,6 +502,16 @@ def _method_calls(tree: ast.Module) -> frozenset[str]:
         for node in cast("list[ast.Call]", of_type(tree, ast.Call))
         if isinstance(node.func, ast.Attribute)
     )
+
+
+def _attributes(tree: ast.Module) -> frozenset[str]:
+    """Name the attributes the module takes of anything: `x` in `a.x`, `astype` in `a.astype(x)`.
+
+    Returns:
+      Them: all of another file's class's members it can use.
+
+    """
+    return frozenset(node.attr for node in cast("list[ast.Attribute]", of_type(tree, ast.Attribute)))
 
 
 def _source(path: Path) -> str | None:

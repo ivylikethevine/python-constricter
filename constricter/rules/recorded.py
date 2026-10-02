@@ -19,14 +19,16 @@ from constricter.rules.walked import walk
 _GENERATOR: Final = "collections.abc.Generator"
 
 
-def returns(scope: Scope, func: FunctionDef) -> list[returned.Recorded]:
+def returns(scope: Scope, func: FunctionDef, module: ast.Module) -> list[returned.Recorded]:
     """Record a finished function's `return` statements; a generator's one type instead (see `_generator`).
+
+    `module`: the function's, whose `yield`s say which functions to look in for one.
 
     Returns:
       Each one's value.
 
     """
-    if isinstance(func, ast.FunctionDef) and returned.yields_itself(func):
+    if isinstance(func, ast.FunctionDef) and returned.is_generator(module, func):
         return _generator(scope, func)
     return [
         (None, frozenset()) if value is None else _recorded(scope, value) for value in scope.inferred.returns

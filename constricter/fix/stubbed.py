@@ -110,6 +110,7 @@ class _Memo:
     """
 
     installed: frozenset[int] = frozenset()  # the installed modules read, by identity
+    modules: Mapping[str, Module] | None = None  # the index they were last compared with
     read: dict[tuple[str, str], tuple[ReadSignature, ...]] = field(
         default_factory=dict[tuple[str, str], "tuple[ReadSignature, ...]"],
     )
@@ -130,6 +131,9 @@ class _Memo:
           This memo, emptied if they've changed.
 
         """
+        if modules is self.modules:  # asked of the same index again and again: compared once
+            return self
+        self.modules = modules
         installed: frozenset[int] = frozenset(id(module) for module in modules.values() if module.installed)
         if installed != self.installed:
             self.installed = installed

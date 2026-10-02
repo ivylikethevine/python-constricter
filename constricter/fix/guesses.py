@@ -96,7 +96,7 @@ def _fixed_by_callee(call: ast.Call, known: Known, declared: Mapping[str, str]) 
     match call:
         case ast.Call(func=ast.Name(id=name)) if name in BUILTIN_RETURNS and known.is_builtin(name):
             return True
-        case ast.Call(func=ast.Name() | ast.Attribute() as func) if ast.unparse(func) in known.calls:
+        case ast.Call(func=ast.Name() | ast.Attribute() as func) if dotted(func) in known.calls:
             return True
         case _:
             return certain_method(call, known, declared)
@@ -272,21 +272,21 @@ def _is_guess(
     match node:
         case ast.Call(func=ast.Name(id=name)) if (
             name in _CERTAIN_BUILTINS and known.is_builtin(name)
-        ) or name in known.awaits:
+        ) or name in known.indirect.awaits:
             return False
         case ast.Call(func=func) if (
             _returned_certainly(func, known)
             or decided.decides(func, known)
-            or ast.unparse(func) in known.names.casts
+            or dotted(func) in known.names.casts
             or stdlib.resolved(func, known.names.stdlib) in stdlib.KNOWN
-            or ast.unparse(func) in known.names.installed
+            or dotted(func) in known.names.installed
             or opened(node, known) is not None
             or certain_method(node, known, declared)
             or _overloaded_method(node, known, declared)
         ):
             return False
         case ast.Call(func=func):
-            return ast.unparse(func) not in known.calls
+            return dotted(func) not in known.calls
         case ast.Name(id=name):
             return name in guesses
         case ast.Attribute():

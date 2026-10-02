@@ -7,9 +7,10 @@ dropped), and `finals` (LVA012's `Final`).
 """
 
 import ast
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 from dataclasses import replace
-from typing import TYPE_CHECKING, Final
+from functools import lru_cache
+from typing import Final
 
 from constricter.fix import fills as filling
 from constricter.fix import hinted
@@ -28,10 +29,8 @@ from constricter.rules.annotations import node_name, roots
 from constricter.rules.flow import Binding, Lifetime, members
 from constricter.rules.rebinding import Refit, refit
 from constricter.rules.scope import FINAL_KIND, Late, Scope, imports_of
-from constricter.rules.walked import walk
-
-if TYPE_CHECKING:
-    from constricter.rules.syntax import FunctionDef
+from constricter.rules.syntax import FunctionDef
+from constricter.rules.walked import children
 
 _DISCARD: Final = "_"
 _OPTIONAL: Final = "optional"  # the fix kind of a `None` default rebound to one type
@@ -42,6 +41,7 @@ _FINAL: Final = "Final"
 _TYPING_FINAL: Final = "typing.Final"
 _FINALS: Final = frozenset({_TYPING_FINAL, "typing_extensions.Final"})
 _NO_ALIASES: Final = frozenset[str]()
+_INNER: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)  # what reads a name later
 
 
 def optionals(scope: Scope) -> None:
@@ -63,7 +63,7 @@ def optionals(scope: Scope) -> None:
         if enclosed is None:
             function: FunctionDef | None = scope.kind.function
             inside: bool = function is not None and contains_inner(function, scope.settings.facts.inner)
-            enclosed = _enclosed_reads(scope.kind.body()) if inside else frozenset()
+            enclosed = _enclosed_reads(function) if function is not None and inside else frozenset()
         if o.name in enclosed:
             continue
         first: Binding
@@ -293,21 +293,25 @@ def _final_fix(fix: Fix, plan: ImportPlan) -> Fix:
     return fix._replace(imports=imports_of(fix.annotation, plan), after=plan.after)
 
 
-def _enclosed_reads(body: Sequence[ast.stmt]) -> frozenset[str]:
-    """Name what the functions and lambdas inside a function's `body` read.
+@lru_cache(maxsize=1024)  # a function is finished twice: as it's checked, and with its module
+def _enclosed_reads(function: FunctionDef) -> frozenset[str]:
+    """Name what the functions and lambdas inside a function's body read.
 
     Returns:
       Each name read in one, however deep.
 
     """
-    return frozenset(
-        node.id
-        for stmt in body
-        for inner in walk(stmt)
-        if isinstance(inner, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda)
-        for node in walk(inner)
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
-    )
+    found: set[str] = set()
+    # Each node of the body, and whether it's inside a function or lambda there; `None` ends it.
+    waiting: list[tuple[ast.AST, bool] | None] = [None, *((stmt, False) for stmt in function.body)]
+    node: ast.AST
+    inside: bool
+    for node, inside in iter(waiting.pop, None):
+        if inside and isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            found.add(node.id)
+        within: bool = inside or isinstance(node, _INNER)
+        waiting.extend([(child, within) for child in children(node)])
+    return frozenset(found)
 
 
 def _fixed(offence: Offence) -> bool:

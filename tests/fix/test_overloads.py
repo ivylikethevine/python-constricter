@@ -400,6 +400,19 @@ def f(argv, getpid):
         d = sys.path
 
     return g
+
+
+def outer():
+    e = getpid()
+
+    def inner(getpid):
+        h = getpid()
+
+    return inner
+
+
+def plain():
+    i = getpid()
 """
 
 
@@ -416,5 +429,13 @@ def test_a_module_variable_is_typed_by_its_annotation() -> None:
 
 
 def test_a_name_the_function_binds_isnt_the_modules_import() -> None:
-    """A parameter `getpid` isn't `os.getpid`, in the function or those inside it."""
-    assert _fixes(SHADOWING) == {"a": None, "b": None, "c": None, "d": "list[str]"}
+    """A parameter `getpid` isn't `os.getpid`, in the function or those inside it: only there."""
+    assert _fixes(SHADOWING) == {
+        "a": None,
+        "b": None,
+        "c": None,
+        "d": "list[str]",
+        "e": "int",  # bound in a function inside it, not in its own body
+        "h": None,
+        "i": "int",
+    }

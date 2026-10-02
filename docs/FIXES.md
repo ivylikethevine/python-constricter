@@ -30,8 +30,10 @@ in a function or module body:
   from a checked file or an installed package, with the CLI, which finds its type variables;
 - a classmethod or staticmethod called on its class, by its declared return: `Box.make()` is a `Box`
   (`Self` is the class), for a top-level class defined once whose name the module binds no other
-  way; with the CLI, another checked file's class too, however it's imported or re-exported
-  (`from pkg import Row`, `m.Row.make()`, `pkg.Row.make()`). Under decorators that give the method
+  way, and a class that takes the method from a base in the module (`Sub.make()` is a `Sub` where
+  `make` returns `Self`); with the CLI, another checked file's class too, however it's imported or
+  re-exported (`from pkg import Row`, `m.Row.make()`, `pkg.Row.make()`). On an instance it types the
+  call as a method does (`self.info(stmt)`, a staticmethod). Under decorators that give the method
   back, as a function's (`@classmethod` over `@names_compat`); a property counts under them too;
 - a builtin with a fixed result: `len(x)` is an `int`, `hex(n)` a `str`, `any(xs)` a `bool`, `dir()`
   a `list[str]`, `range(n)` a `range`, and so on; but not where the module binds the name itself (a
@@ -192,7 +194,10 @@ value read before any name is bound (`a, b = b, a`). Any other value's type is s
 by part (`a, b = pair`, `pair: tuple[int, str]`), anything else's elements one each
 (`a, b = s.split(",")` are `str`s, `q, r = divmod(n, 2)` `int`s, `i, j = range(2)`). A starred name
 is a `list` of what's left for it, where that's of one type: `first, *rest = names` declares
-`rest: list[str]`.
+`rest: list[str]`. A call whose declared return is a tuple with a vague part
+(`tuple[Row, dict[str, Any]]`), which types no call whole, still declares the names whose parts
+aren't vague (`row, extra = load()` declares `row: Row`): a function's or a method's, the module's
+own or, with the CLI, another checked file's.
 
 A `:=`'s name can't be annotated where it's bound: it's declared before its statement too, typed as
 a plain assignment's name is (`if (m := pattern.match(s)) is not None:` gets

@@ -609,7 +609,7 @@ def _return_type(
         or func.returns is not None
         or func.type_comment
         or not returns
-        or not (_generator(module, func) or terminates(func.body))
+        or not (is_generator(module, func) or terminates(func.body))
     ):
         return None
     types: set[str | None] = {None if found is None else found.annotation for found, _ in returns}
@@ -617,7 +617,7 @@ def _return_type(
     return None if found is None else (found, frozenset[str]().union(*(origins for _, origins in returns)))
 
 
-def _generator(module: ast.Module, func: ast.FunctionDef) -> bool:
+def is_generator(module: ast.Module, func: ast.FunctionDef) -> bool:
     """Check whether `func`, in `module`, is a generator: a `yield` in its own body (not a nested function's).
 
     Most functions have no `yield` anywhere in them (see `_yields`): only one with some is walked.

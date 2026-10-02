@@ -444,8 +444,19 @@ def _path(root: ast.expr, known: Known) -> str | None:
     path: str | None = resolved(root, known.names.stdlib)
     plan: ImportPlan | None = known.names.plan
     if path is None and plan is not None and plan.added:
-        path = resolved(root, _imported(ast.parse("\n".join(plan.added.values())).body))
+        path = resolved(root, _added(tuple(plan.added.values())))
     return None if path is None else _ALIASES.get(path, path)
+
+
+@lru_cache(maxsize=256)
+def _added(statements: tuple[str, ...]) -> Mapping[str, str]:
+    """Map the names the imports `--fix` is adding bind (see `_imported`), read once for all its lookups.
+
+    Returns:
+      Each bound name, mapped to its dotted origin: shared, so only read it.
+
+    """
+    return _imported(ast.parse("\n".join(statements)).body)
 
 
 @lru_cache(maxsize=4096)

@@ -318,10 +318,29 @@ def _from_value(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
     found: str | None
     if found := scalar(value):
         return Inference(found, _scalar_reason(value), frozenset({"literal"}))
+    # Each kind of value is asked only of what types one: most values are names, and calls.
+    match value:
+        case ast.Call():
+            return _computed(value, known, declared) or _from_call(value, known, declared)
+        case ast.Name() | ast.Attribute():
+            return library_variable(value, known)
+        case ast.Subscript():
+            return shapes.environment(value, known)
+        case ast.List() | ast.Set() | ast.Tuple() | ast.Dict():
+            return _container(value, known, declared)
+        case _:
+            return _computed(value, known, declared)
+
+
+def _from_call(value: ast.Call, known: Known, declared: Mapping[str, str]) -> Inference | None:
+    """Infer a call by what it calls: a builtin, a library's function or class, or the project's own.
+
+    Returns:
+      The inference, or `None`.
+
+    """
     return (
-        _container(value, known, declared)
-        or _computed(value, known, declared)
-        or decided.builtin(
+        decided.builtin(
             value,
             known,
             lambda arg: inference(arg, known, declared),
@@ -330,12 +349,10 @@ def _from_value(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
         or _cast(value, known.names.casts)
         or opened(value, known)
         or library_class(value, known)
-        or library_variable(value, known)
         or library_call(value, known, lambda arg: inference(arg, known, declared))
         or installed_call(value, known, lambda arg: inference(arg, known, declared))
         or _returns(value, known)
         or shapes.class_of(value, known, lambda arg: inference(arg, known, declared))
-        or shapes.environment(value, known)
         or _called(value, known)
     )
 
@@ -372,7 +389,7 @@ def _cast(value: ast.expr, spellings: frozenset[str]) -> Inference | None:
     func: ast.expr
     target: ast.expr
     match value:
-        case ast.Call(func=func, args=[target, _], keywords=[]) if ast.unparse(func) in spellings:
+        case ast.Call(func=func, args=[target, _], keywords=[]) if dotted(func) in spellings:
             pass
         case _:
             return None
@@ -428,9 +445,9 @@ def _computed(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
                     _kinds(found, kind="builder"),
                 )
             )
-        case ast.Await(value=ast.Call(func=ast.Name(id=name))) if name in known.awaits:
+        case ast.Await(value=ast.Call(func=ast.Name(id=name))) if name in known.indirect.awaits:
             return Inference(
-                known.awaits[name],
+                known.indirect.awaits[name],
                 f"`{name}`'s declared return type, awaited",
                 frozenset({"await"}),
             )
@@ -784,11 +801,12 @@ def _uniform(parts: Sequence[Inference | None]) -> str | None:
 def _called(value: ast.expr, known: Known) -> Inference | None:
     func: ast.expr
     name: str
+    callee: str | None
     match value:
-        case ast.Call(func=ast.Name() | ast.Attribute() as func) if ast.unparse(func) in known.calls:
+        case ast.Call(func=ast.Name() | ast.Attribute() as func) if (callee := dotted(func)) in known.calls:
             return Inference(
-                known.calls[ast.unparse(func)],
-                f"`{ast.unparse(func)}`'s declared return type",
+                known.calls[callee or ""],
+                f"`{callee}`'s declared return type",
                 frozenset({"call"}),
             )
         case ast.Call(func=ast.Name(id=name)) if name in BUILTIN_RETURNS and known.is_builtin(name):

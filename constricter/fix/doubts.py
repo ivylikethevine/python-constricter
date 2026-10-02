@@ -16,13 +16,13 @@
 
 import ast
 import bisect
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter.fix.imports import checking
+from constricter.fix.imports import checking, rebound_names
 from constricter.fix.known import ImportPlan, Inference
 from constricter.fix.narrowed import Regions, regions
 from constricter.rules.annotations import generic_classes, node_name, roots
@@ -80,6 +80,9 @@ class Facts(NamedTuple):
     type_vars: frozenset[str] = frozenset()  # its type variables, its own and those it imports
     # Those each class's bases name (`class Row(Generic[_TP])`), bound in its methods.
     bound: Mapping[str, frozenset[str]] = MappingProxyType({})
+    # The names it binds more than once, and where (see `imports.rebound_names`): all a function
+    # can shadow, each only where one of its bindings is.
+    rebound: Mapping[str, Sequence[Start]] | None = None
 
 
 def facts(
@@ -109,6 +112,7 @@ def facts(
         managers,
         type_vars,
         _bound_vars(tree, type_vars),
+        rebound_names(tree),
     )
 
 
@@ -468,8 +472,11 @@ def bare(annotation: str, generics: frozenset[str]) -> bool:
       Whether it does: `Box`, `util.OrderedSet`, but not `Box[int]`.
 
     """
-    if not generics:
-        return False
+    return bool(generics) and _bare(annotation, generics)
+
+
+@lru_cache(maxsize=4096)  # a module's fixes are a few types, each asked again and again
+def _bare(annotation: str, generics: frozenset[str]) -> bool:
     # `annotation` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
     tree: ast.expr = ast.parse(annotation, mode="eval").body
     inner: set[int] = {

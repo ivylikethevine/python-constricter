@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: MIT
 """Small shapes `--fix` types from their parts' types.
 
-A union the author would write (`a if c else None`, `a or b`), `type(x)`, `d.get(key, default)` and
-`os.environ[key]`. `infer` types a part as `constricter.fix.inference` does.
+A union the author would write (`a if c else None`, `a or b`), `type(x)`, `d.get(key, default)`,
+`os.environ[key]`, and a call an unpacking alone can use (`partly`). `infer` types a part as
+`constricter.fix.inference` does.
 
 A part that is a read (`x`, `self.x`, `d[k]`) is taken as its declared type, which a type checker
 narrows where the function tests it: it's named in the inference's `reads` (see `doubts`), and one
@@ -14,8 +15,8 @@ from collections.abc import Callable
 from typing import Final, TypeAlias
 
 from constricter.fix import stdlib
-from constricter.fix.known import Inference, Known
-from constricter.fix.members import parsed
+from constricter.fix.known import Inference, Known, Partial
+from constricter.fix.members import parsed, partial_method
 from constricter.rules.flow import members
 
 Infer: TypeAlias = Callable[[ast.expr], Inference | None]
@@ -24,6 +25,7 @@ _READS: Final = (ast.Name, ast.Attribute, ast.Subscript)
 _CONDITIONAL: Final = "conditional"  # the fix kind of `a if c else b`
 _BOOLEAN: Final = "boolean"  # the fix kind of `a or b`
 _BUILTIN: Final = "builtin"
+_CALL: Final = "call"
 _METHOD: Final = "method"
 _STDLIB: Final = "stdlib"
 _TYPE: Final = "type"
@@ -171,6 +173,37 @@ def defaulted(receiver: str, call: ast.Call, infer: Infer) -> Inference | None:
             found: Inference | None = infer(default)
             same: bool = found is not None and found.annotation == text
             return Inference(text, reason, found.kinds | {_METHOD}) if found and same else None
+        case _:
+            return None
+
+
+def partly(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
+    """Infer a call whose declared return is a tuple with a vague part, for an unpacking to split.
+
+    A function's, or a method's on a receiver whose type is known (see `known.Partial`).
+
+    Returns:
+      The whole return, vague parts and all; or `None` for any other value.
+
+    """
+    func: ast.expr
+    receiver: ast.expr
+    name: str
+    partial: Partial = known.indirect.partial
+    match value:
+        case ast.Call(func=ast.Name() | ast.Attribute() as func) if ast.unparse(func) in partial.calls:
+            callee: str = ast.unparse(func)
+            return Inference(partial.calls[callee], f"`{callee}`'s declared return type", frozenset({_CALL}))
+        case ast.Call(func=ast.Attribute(value=receiver, attr=name)):
+            owner: Inference | None = infer(receiver)
+            found: str | None = None if owner is None else partial_method(owner.annotation, name, known)
+            if owner is None or found is None:
+                return None
+            return Inference(
+                found,
+                f"`{owner.annotation}.{name}`'s declared return type",
+                frozenset({_METHOD}) if isinstance(receiver, ast.Name) else owner.kinds | {_METHOD},
+            )
         case _:
             return None
 

@@ -23,14 +23,14 @@
 - **What it infers** (all of it in [FIXES.md](FIXES.md)): literals and containers of them; calls to
   functions that declare their return, or whose `return`s decide it (`returned`), in the same module
   or another checked file, and a classmethod or staticmethod called on its class (`Box.make()`,
-  another checked file's `MultiIndex.from_arrays(...)`); fixed-return builtins and `str`/`bytes`
-  methods, and builtins their arguments decide (`min`, `max`, `sum`, `abs`, `round`, `divmod`,
-  `next`, `dict`); members of any typed value (`self.index.name`, `rows[0].strip()`, however deep,
-  through `constricter.fix.members`); `cls` in a classmethod as `type[C]`, and `type(x)`; computed
-  values (conditionals, arithmetic on builtin scalars and lists, comprehensions,
-  `sorted`/`list`/..., `await`), comparisons by `in` and `is`, or of builtin values (a `bool`); a
-  union the author would write (`a if c else None`, `a or b` of one type); displays that unpack
-  (`[*names, s]`, `{**d, k: v}`), `d.get(k, 0)` and `os.environ["X"]`; a subscript of a
+  another checked file's `MultiIndex.from_arrays(...)`, or on an instance); fixed-return builtins
+  and `str`/`bytes` methods, and builtins their arguments decide (`min`, `max`, `sum`, `abs`,
+  `round`, `divmod`, `next`, `dict`); members of any typed value (`self.index.name`,
+  `rows[0].strip()`, however deep, through `constricter.fix.members`); `cls` in a classmethod as
+  `type[C]`, and `type(x)`; computed values (conditionals, arithmetic on builtin scalars and lists,
+  comprehensions, `sorted`/`list`/..., `await`), comparisons by `in` and `is`, or of builtin values
+  (a `bool`); a union the author would write (`a if c else None`, `a or b` of one type); displays
+  that unpack (`[*names, s]`, `{**d, k: v}`), `d.get(k, 0)` and `os.environ["X"]`; a subscript of a
   standard-library class's instance by its `__getitem__` (`proxy["k"]` on a
   `MappingProxyType[str, int]`); standard-library module variables (`sys.path`); chained
   assignments' names, declared before them (`i = j = 0`), and a `:=`'s, before its statement; a
@@ -38,13 +38,14 @@
   reads; a `# type:` signature comment's return, as a declared one; `typing.cast`; `x = None` later
   rebound to one type as `T | None`; loop targets (`enumerate` and `zip` part by part, `map`, a
   generator expression, any mapping's items, an `Iterable[T]`'s `T`) and unpackings, name by name
-  (`a, b = x, 1`, `a, b = s.split(",")`, `first, *rest = names`), declared before the statement, as
-  a `with` statement's target is, by its context manager's `__enter__`; a method a class inherits,
-  from the base that defines it, in the module, another checked file or the standard library
-  (`self.id()` in a test case); an unannotated generator function's calls, by its `yield`s; a call
-  to a function decorated by what gives it back (`functools.cache`, pandas's
-  `@set_module("pandas")`, by its declared `Callable[[F], F]`); fixes for LVA003 and LVA007. A tuple
-  longer than `max-length` is `tuple[T, ...]`.
+  (`a, b = x, 1`, `a, b = s.split(",")`, `first, *rest = names`, and the parts that aren't vague of
+  a call declaring a `tuple[Row, dict[str, Any]]`), declared before the statement, as a `with`
+  statement's target is, by its context manager's `__enter__`; a method a class inherits, from the
+  base that defines it, in the module, another checked file or the standard library (`self.id()` in
+  a test case); an unannotated generator function's calls, by its `yield`s; a call to a function
+  decorated by what gives it back (`functools.cache`, pandas's `@set_module("pandas")`, by its
+  declared `Callable[[F], F]`); fixes for LVA003 and LVA007. A tuple longer than `max-length` is
+  `tuple[T, ...]`.
 - **The standard library, from typeshed**: tables generated from the stubs basedpyright bundles when
   the package is built (`stdlib_tables/`, see [Project](#project)), read as Linux, macOS and Windows
   and Python 3.11 to 3.14 see them, into `constricter/fix/tables/` (one JSON file a table, an entry
@@ -125,9 +126,14 @@
   the cross-file index to the check, and a node's children listed without `ast`'s generators;
   whether a fix is a guess worked out only where there is a fix; each function's body indexed once
   for its empty containers; functions checked callees first; files in `order.plan`'s order, each as
-  soon as the modules it calls into are done. A build from a checkout generates the standard-library
-  tables in about 12s on 4 cores (from 70s): each configuration read in a worker process, and what a
-  class takes, a name's definition and a class's members worked out once.
+  soon as the modules it calls into are done. Profiled again at 0.3.1, with the cross-file fixes
+  since: the standard library with its tests (1,867 files) checks in 108s with `--jobs=1` and 35s
+  with `--jobs=0` on 8 cores (from 185s and 62s), each function walked only for what the module has
+  in it (a `yield`, a shadowed import, a call to another file's function), and another file's
+  functions and members written for a file only where it uses them. A build from a checkout
+  generates the standard-library tables in about 12s on 4 cores (from 70s): each configuration read
+  in a worker process, and what a class takes, a name's definition and a class's members worked out
+  once.
 
 ### Command and output
 
@@ -222,11 +228,12 @@
 - **Python 3.11+**, the oldest still maintained after 3.10's end of life (October 2026): 3.10 would
   add a runtime dependency (`tomli`) for a month, and 3.6–3.9 would mean dropping `match` from the
   checker. Code for any Python 3 version can still be checked.
-- **Layout**: a flat `constricter/` in `rules/`, `fix/`, `cli/` and `plugins/`, all but five modules
+- **Layout**: a flat `constricter/` in `rules/`, `fix/`, `cli/` and `plugins/`, all but six modules
   under 750 lines (`fix/stubbed.py`, `overloads.py`, `inference.py` and `project.py`, and
-  `rules/annotations.py`); the standard-library tables in `constricter/fix/tables/`, their generator
-  in `stdlib_tables/`; docs in `docs/` (changelog, contributing, security, integrations, fixes,
-  runs), release notes grouped by `.github/release.yml`, issue and PR templates, CODEOWNERS.
+  `rules/annotations.py` and `checker.py`); the standard-library tables in
+  `constricter/fix/tables/`, their generator in `stdlib_tables/`; docs in `docs/` (changelog,
+  contributing, security, integrations, fixes, runs), release notes grouped by
+  `.github/release.yml`, issue and PR templates, CODEOWNERS.
 - **Pyright and basedpyright in editors**: `pyrightconfig.json`, which both read first, holds the
   shared settings (`local/.venv`, and the code checked alone) and extends `pyproject.toml`, where
   only basedpyright finds a section (`typeCheckingMode = "all"`). Plain Pyright resolves the dev
@@ -278,27 +285,36 @@ Nothing open.
    `concat`) is skipped as redefined: 1,689 calls. Match its signatures as the standard library's
    and installed packages' are (`constricter.fix.overloads`). Done when a call the arguments decide
    is typed, and one they don't is left alone.
-5. **An unpacked call's known parts.** `infos, to_replace = collect(cls)` has no fix where `collect`
-   declares a `tuple[Infos, list[tuple[str, Any]]]`: a vague return types no call, though the part
-   that isn't vague would type `infos`. 34 unpacked names on pydantic call a module function that
-   declares its return: count those with a vague part first. Done when each name whose part isn't
-   vague is declared.
-6. **Partly vague hints, opt-in.** The largest group of hints dropped is a type with `Any` in it
+5. **Partly vague hints, opt-in.** The largest group of hints dropped is a type with `Any` in it
    (`dict[str, Any]`, `list[Any]`): 4,393 of the three packages' bindings with no fix for
    basedpyright, 16.4% of them. It is the value's type, and LVA005 would report it: a fix kind of
    its own, off by default, trades an LVA001 for an LVA005. Done when `fix-select` can turn it on.
-7. **An unannotated method's type, in another file.** A module's functions' `return`s type their
+6. **An unannotated method's type, in another file.** A module's functions' `return`s type their
    calls in the files importing them; its classes' methods' don't: 132 `self.method()` bindings
    whose base is another file's and whose `return`s give one type (Twisted's `self.mktemp()`), and
    every such call on an imported class's instance. Carry them with the functions', as guesses. Done
    when `path = self.mktemp()` is a `str` under a base class of another file.
-8. **A library base out of sight.** A class under a standard-library class gets the methods it
+7. **A library base out of sight.** A class under a standard-library class gets the methods it
    inherits from it (`self.id()` in a `unittest.TestCase`), but not behind another checked file's
    class (django's `TestCase`, itself under `unittest.TestCase`: a module's index entry holds its
    own classes' methods alone), under an installed package's class, or a generic one
-   (`collections.OrderedDict`), nor a method its arguments decide. A class-side method a class
-   inherits (`Sub.make()`, `make` its base's) has no fix either. Done when `name = self.id()` in a
-   class under another file's test case is a `str`.
+   (`collections.OrderedDict`), nor a method its arguments decide. A class-side method a class takes
+   from another file's base (`Sub.make()`, `make` its imported base's) has no fix either. Done when
+   `name = self.id()` in a class under another file's test case is a `str`.
+8. **An unpacked named tuple.** `globalns, localns = ns_for_function(f)` has no fix where the
+   function declares a `NamedTuple` class (or an alias of a tuple): its fields, in order, would type
+   the names. Count them first. Done when each name is declared by its field.
+
+9. **The main process, in a parallel check.** With `--jobs`, what each file knows from outside it
+   (`schedule.outside`) is still worked out one file at a time in the main process, which the
+   workers wait on: about a third of a parallel check of the standard library. Most of it lists
+   every function and class of every module a file imports (`project.spellings`, 1.3 million on the
+   standard library) to find the few it uses: look up the names the file writes instead, or work it
+   out in the workers. Done when the main process's share is under a tenth.
+10. **A file checked again, whole.** A file whose functions' parameters every call types is parsed
+    and checked again from the start (227 of the standard library's files, a fifth of a
+    single-process check), as is each file of a cycle. Check again only the functions the new types
+    reach, with the tree kept. Done when the second round costs under a tenth of the first.
 
 ### Large: a week or more
 

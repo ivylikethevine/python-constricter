@@ -17,14 +17,14 @@ import ast
 import bisect
 import builtins
 import sys
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from typing import Final, NamedTuple
+from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix import classvars
-from constricter.fix.known import Classes, Guarded, Origin, Returns
+from constricter.fix.known import Classes, Guarded, Origin, Partial, Returns
 from constricter.fix.modules import SUFFIX, Index, Module, index, indexed, module_name, read
 from constricter.rules.annotations import node_name, roots
 
@@ -51,6 +51,7 @@ ALIAS: Final = "alias"  # a type alias (see `modules.Module.aliases`)
 _TYPE_VAR: Final = "type variable"
 _RETURNED: Final = "returned"  # an unannotated function its `return`s type
 _UNANNOTATED: Final = "unannotated"  # an unannotated function, typed or not
+_PARTIAL: Final = "partial"  # a function whose declared return only an unpacking can use
 OPEN: Final = "open"  # a function with a parameter left unannotated (see `modules.open_functions`)
 
 
@@ -64,6 +65,7 @@ class Imported(NamedTuple):
     generics: frozenset[str] = frozenset()  # its generic classes, as the file spells them
     # Its plain classes' variables typed by their values, by class (see `constricter.fix.classvars`).
     members: Mapping[str, Mapping[str, str]] = {}
+    partial: Partial = Partial()  # the returns only an unpacking can use
 
 
 def _origin(module: Module, name: str) -> Origin | None:
@@ -101,17 +103,23 @@ def _kind(module: Module, kind: str) -> Iterable[str]:
       Their names.
 
     """
-    kinds: dict[str, Iterable[str]] = {
-        _FUNCTION: module.returns,
-        CLASS: module.classes,
-        ALIAS: module.aliases,
-        _RETURNED: module.returned.calls,
-        _UNANNOTATED: module.unannotated,
-        OPEN: module.open,
-        DECORATOR: module.passes,
-        "signatures": {} if module.declared is None else module.declared.signatures,
-    }
-    return kinds.get(kind, module.type_vars)
+    found: _Defined | None = _KINDS.get(kind)
+    return module.type_vars if found is None else found(module)
+
+
+_Defined: TypeAlias = Callable[[Module], Iterable[str]]  # what a module defines of one kind
+# What a module defines of each kind (see `_kind`): any other kind is its type variables.
+_KINDS: Final[Mapping[str, _Defined]] = {
+    _FUNCTION: lambda module: module.returns,
+    CLASS: lambda module: module.classes,
+    ALIAS: lambda module: module.aliases,
+    _RETURNED: lambda module: module.returned.calls,
+    _UNANNOTATED: lambda module: module.unannotated,
+    OPEN: lambda module: module.open,
+    _PARTIAL: lambda module: module.partial,
+    DECORATOR: lambda module: module.passes,
+    "signatures": lambda module: {} if module.declared is None else module.declared.signatures,
+}
 
 
 def type_vars(catalog: Index, path: Path) -> frozenset[str]:
@@ -213,14 +221,13 @@ def _typed_calls(
     target: Module | None
     if path.suffix != SUFFIX or (target := modules.get(name)) is None:
         return
+    # Only what it calls, or (declaring its return) passes on (`partial(helper, 1)`): all that reads one.
+    wanted: frozenset[str] = target.called | target.passed if kind == _FUNCTION else target.called
     key: str
     origin: Origin
     for key, origin in spellings(catalog, target, kind):
         found: tuple[str, tuple[Module, str]] | None
-        # Only what it calls: the modules `plan` put it after, whatever else is checked by then.
-        if (kind != _RETURNED or key in target.called) and (
-            found := _portable_call(modules, target, origin, kind, guarded)
-        ) is not None:
+        if key in wanted and (found := _portable_call(modules, target, origin, kind, guarded)) is not None:
             yield key, *found
 
 
@@ -288,7 +295,8 @@ def _portable_call(
     defined: tuple[Module, str] | None
     if (defined := definition(modules, origin, kind)) is None:
         return None
-    annotation: str = (defined[0].returns if kind == _FUNCTION else defined[0].returned.calls)[defined[1]]
+    declared: dict[str, Mapping[str, str]] = {_FUNCTION: defined[0].returns, _PARTIAL: defined[0].partial}
+    annotation: str = declared.get(kind, defined[0].returned.calls)[defined[1]]
     respelled: str | None = _respelled(modules, target, defined[0], annotation, guarded)
     return None if respelled is None else (respelled, defined)
 
@@ -728,93 +736,87 @@ def imported(catalog: Index, path: Path) -> Imported:
     guarded: dict[str, Guarded] = {}
     generics: set[str] = set()
     members: dict[str, Mapping[str, str]] = {}
+    partial: dict[str, dict[str, str]] = {}
     target: Module | None
     if path.suffix != SUFFIX or (target := modules.get(module_name(path))) is None:
         return Imported({}, Classes(attributes, methods))
+    key: str
+    defined: tuple[Module, str]
+    for key, defined in _spelled_classes(catalog, target, generics):
+        if defined[1] in defined[0].generics:
+            generics.add(key)
+        if defined[1] in defined[0].plain and defined[1] in defined[0].members:
+            members[key] = defined[0].members[defined[1]]
+        attributes[key], methods[key], partial[key] = (
+            _used(modules, (target, defined), key, table.get(defined[1]), guarded)
+            for table in (defined[0].classes, defined[0].methods, defined[0].partial_methods)
+        )
+    return Imported(
+        calls(catalog, path, guarded),
+        Classes(attributes, methods),
+        returned(catalog, path, guarded),
+        guarded,
+        frozenset(generics),
+        members,
+        Partial(
+            {name: found for name, found, _ in _typed_calls(catalog, path, _PARTIAL, guarded)},
+            {name: found for name, found in partial.items() if found},
+        ),
+    )
+
+
+def _used(
+    modules: Mapping[str, Module],
+    where: tuple[Module, tuple[Module, str]],
+    key: str,
+    members: Mapping[str, str] | None,
+    guarded: dict[str, Guarded],
+) -> dict[str, str]:
+    """Keep the types of a class's `members` that the file (`where[0]`) takes of something, and can write.
+
+    Returns:
+      Each kept member's type (see `portable`): none for most classes it can name, whose members it
+      doesn't use.
+
+    """
+    used: frozenset[str] = where[0].attributes
+    taken: dict[str, str] = {name: typed for name, typed in (members or {}).items() if name in used}
+    return portable(modules, where, key, taken, guarded) if taken else {}
+
+
+def _spelled_classes(
+    catalog: Index,
+    target: Module,
+    generics: set[str],
+) -> Iterator[tuple[str, tuple[Module, str]]]:
+    """Find the classes other checked files define that `target` names, each as it spells it.
+
+    `Row` after `from m import Row`; `m.Row`, or `pkg.m.Row` after `import pkg.m`, for a module's.
+    The generic classes a module it imports re-exports are added to `generics`, as it spells them.
+
+    Yields:
+      Each spelling, and the module defining the class and its name there.
+
+    """
     local: str
     origin: Origin
     for local, origin in _resolved(catalog, target.names):
         spelled: list[tuple[str, Origin]] = []
         if origin[1] is not None and origin[0] != target.name:
             spelled = [(local, origin)]
-        elif origin[1] is None:  # a module: `m.Row`, or `pkg.m.Row` after `import pkg.m`
+        elif origin[1] is None:
             spelled = [
                 (f"{local}{other.name.removeprefix(origin[0])}.{cls}", (other.name, cls))
                 for other in _submodules(catalog, origin[0])
                 for cls in other.classes
             ]
-            generics.update(_reexported_generics(modules, local, origin[0]))
+            generics.update(_reexported_generics(catalog.modules, local, origin[0]))
         key: str
         where: Origin
         for key, where in spelled:
             defined: tuple[Module, str] | None
-            if (defined := definition(modules, where, CLASS)) is not None:
-                if defined[1] in defined[0].generics:
-                    generics.add(key)
-                if defined[1] in defined[0].plain and defined[1] in defined[0].members:
-                    members[key] = defined[0].members[defined[1]]
-                attributes[key] = _portable(
-                    modules,
-                    (target, defined),
-                    key,
-                    defined[0].classes[defined[1]],
-                    guarded,
-                )
-                methods[key] = _portable(
-                    modules,
-                    (target, defined),
-                    key,
-                    defined[0].methods.get(defined[1], {}),
-                    guarded,
-                )
-    return Imported(
-        {**calls(catalog, path, guarded), **_side_calls(modules, target, guarded)},
-        Classes(attributes, methods),
-        returned(catalog, path, guarded),
-        guarded,
-        frozenset(generics),
-        members,
-    )
-
-
-def _side_calls(modules: Mapping[str, Module], target: Module, guarded: dict[str, Guarded]) -> dict[str, str]:
-    """Type `target`'s calls to another module's class's classmethod or staticmethod, on the class.
-
-    `MultiIndex.from_arrays(...)`, `pd.MultiIndex.from_arrays(...)`: the class found through the
-    imports and re-exports, the method's declared return kept where `target` can write it.
-
-    Returns:
-      Each call's name as written, mapped to its type.
-
-    """
-    found: dict[str, str] = {}
-    spelled: str
-    for spelled in target.called:
-        receiver: str
-        method: str
-        receiver, _, method = spelled.rpartition(_DOT)
-        defined: tuple[Module, str] | None = _class_named(modules, target, receiver) if receiver else None
-        if defined is not None and method in defined[0].sides.get(defined[1], {}):
-            declared: dict[str, str] = {spelled: defined[0].sides[defined[1]][method]}
-            found.update(_portable(modules, (target, defined), receiver, declared, guarded))
-    return found
-
-
-def _class_named(modules: Mapping[str, Module], target: Module, spelled: str) -> tuple[Module, str] | None:
-    """Find the class another module defines that `target` writes as `spelled` (`Row`, `m.Row`, `pkg.Row`).
-
-    Returns:
-      The module defining it and its name there, through imports and re-exports; or `None`.
-
-    """
-    first: str
-    rest: str
-    first, _, rest = spelled.partition(_DOT)
-    origin: Origin | None = target.names.get(first)
-    if origin is None or origin[0] == target.name or first in target.shadowed:
-        return None
-    path: list[str] = [origin[0], *([origin[1]] if origin[1] else []), *(rest.split(_DOT) if rest else [])]
-    return definition(modules, (_DOT.join(path[:-1]), path[-1]), CLASS)
+            if (defined := definition(catalog.modules, where, CLASS)) is not None:
+                yield key, defined
 
 
 def _reexported_generics(modules: Mapping[str, Module], local: str, name: str) -> Iterator[str]:
@@ -840,7 +842,7 @@ def _reexported_generics(modules: Mapping[str, Module], local: str, name: str) -
             yield f"{local}.{reexported}"
 
 
-def _portable(
+def portable(
     modules: Mapping[str, Module],
     where: tuple[Module, tuple[Module, str]],
     key: str,

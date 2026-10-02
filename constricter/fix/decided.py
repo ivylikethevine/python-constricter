@@ -15,6 +15,7 @@ from typing import Final, NamedTuple, TypeAlias
 from constricter.fix.known import Inference, Known
 from constricter.fix.shapes import Infer, is_none, or_none, typed
 from constricter.fix.targets import dict_parts
+from constricter.rules.annotations import dotted
 from constricter.rules.flow import members
 
 _KIND: Final = "builtin"  # the fix kind
@@ -284,12 +285,8 @@ def decides(func: ast.expr, known: Known) -> bool:
       Whether it is, and the module doesn't bind the name itself.
 
     """
-    match func:
-        case ast.Name() | ast.Attribute(value=ast.Name()):
-            spelled: str = ast.unparse(func)
-            return spelled in _CALLS and known.is_builtin(spelled.partition(".")[0])
-        case _:
-            return False
+    spelled: str | None = dotted(func)
+    return spelled is not None and spelled in _CALLS and known.is_builtin(spelled.partition(".")[0])
 
 
 def builtin(value: ast.expr, known: Known, infer: Infer, loop: Infer) -> Inference | None:

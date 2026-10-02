@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from typing import NamedTuple
 
 from constricter.fix.imports import taken_names
+from constricter.fix.inherited import Lineage, lineage
 from constricter.rules import walked
 from constricter.rules.annotations import (
     class_methods,
@@ -14,7 +15,10 @@ from constricter.rules.annotations import (
     held,
     held_class_methods,
     method_returns,
+    partial_method_returns,
+    partial_returns,
     returns,
+    self_returns,
 )
 from constricter.rules.decorators import Held, Pass, passes
 
@@ -22,10 +26,13 @@ from constricter.rules.decorators import Held, Pass, passes
 class Tables(NamedTuple):
     """A module's own tables (see `returns`, `classes`, `method_returns`, `class_methods`).
 
-    Its functions' declared returns, and its classes' attributes and methods' returns; `held`, the
-    functions other modules' decorators may give back, and `passes`, its own such decorators;
-    `sides`, its classes' classmethods' and staticmethods' returns, and `held_sides`, those other
-    modules' decorators may give back; `side_calls`, `sides` as called on the class (see `_side_calls`).
+    Its functions' declared returns, and its classes' attributes and methods' returns (their
+    classmethods' and staticmethods' too, which an instance has as well); `held`, the functions other
+    modules' decorators may give back, and `passes`, its own such decorators; `sides`, its classes'
+    classmethods' and staticmethods' returns, those each takes from the module's other classes
+    included (see `Lineage`), and `held_sides`, those other modules' decorators may give back;
+    `side_calls`, `sides` as called on the class (see `_side_calls`). `partial` and
+    `partial_methods`: its functions' and methods' returns that are tuples with a vague part.
     """
 
     returns: dict[str, str]
@@ -36,6 +43,9 @@ class Tables(NamedTuple):
     sides: dict[str, dict[str, str]]
     held_sides: dict[str, dict[str, Held]]
     side_calls: dict[str, str]
+    partial: dict[str, str]
+    partial_methods: dict[str, dict[str, str]]
+    order: Lineage  # its classes' ancestry, as far as the module alone sees
 
 
 def module_tables(tree: ast.Module) -> Tables:
@@ -45,16 +55,21 @@ def module_tables(tree: ast.Module) -> Tables:
       Them.
 
     """
-    sides: dict[str, dict[str, str]] = class_methods(tree)
+    own: dict[str, dict[str, str]] = class_methods(tree)
+    order: Lineage = lineage(tree, self_returns(tree), frozenset())
+    sides: dict[str, dict[str, str]] = order.flattened(own)
     return Tables(
         returns(tree),
         classes(tree),
-        method_returns(tree),
+        {owner: {**own.get(owner, {}), **methods} for owner, methods in method_returns(tree).items()},
         held(tree),
         passes(tree),
         sides,
         held_class_methods(tree),
         _side_calls(tree, sides),
+        partial_returns(tree),
+        partial_method_returns(tree),
+        order,
     )
 
 
@@ -68,6 +83,8 @@ def _side_calls(tree: ast.Module, sides: Mapping[str, Mapping[str, str]]) -> dic
       Each call's name as written (`Box.make`), and its declared return.
 
     """
+    if not any(sides.values()):  # most modules: no class-side method declares a return
+        return {}
     values: frozenset[str] = taken_names(tree)[1]
     counts: Counter[str] = Counter(node.name for node in walked.classes(tree))
     return {
