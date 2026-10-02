@@ -321,7 +321,8 @@ class Outside(NamedTuple):
     `constricter.fix.callers`). `plain`: which of its own classes are plain, as the index of checked
     files settles it (`None`: as the file alone sees, see `constricter.fix.classvars`); `members`:
     the variables of the plain classes it imports from them, typed by their values, as it spells
-    each class.
+    each class. `same`: each group of ways it spells one class or alias another module defines
+    (`CoreSchema`, `core_schema.CoreSchema`; see `project.same`).
     """
 
     calls: Mapping[str, str] = {}
@@ -342,6 +343,7 @@ class Outside(NamedTuple):
     checking: Mapping[str, Guarded] = {}
     plain: frozenset[str] | None = None
     members: Mapping[str, Mapping[str, str]] = {}
+    same: tuple[frozenset[str], ...] = ()
 
     def usable(self, taken: frozenset[str]) -> "Outside":
         """Drop what other files offer whose type needs a name imported that the module binds already.
@@ -379,6 +381,7 @@ class Outside(NamedTuple):
             self.checking,
             self.plain,
             self.members,
+            self.same,
         )
 
 

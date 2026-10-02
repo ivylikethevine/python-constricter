@@ -220,7 +220,12 @@ def _bind_declaration(
             span=(stmt.lineno, stmt.col_offset),
         )
         # What the rest of the scope infers from `name` knows its type, as for `name = value`.
-        scope.inferred.learn(name.id, found.annotation, origins if unsafe else None)
+        scope.inferred.learn(
+            name.id,
+            found.annotation,
+            origins if unsafe else None,
+            again=name.id in scope.declared,
+        )
     scope.bind(name.id, at(name), code, fix, None if found is None or unsafe else found.annotation)
 
 

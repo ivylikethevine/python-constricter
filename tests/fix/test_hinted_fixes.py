@@ -96,7 +96,7 @@ def _fixes(source: str, hinted: dict[str, str]) -> _Fixes:
         ("int & ~AlwaysTruthy", "int"),
         ("Color & Sized", None),  # any other intersection isn't an annotation
         ("~AlwaysFalsy", None),
-        ("tuple[str, *tuple[str, ...]]", "tuple[str, *tuple[str, ...]]"),
+        ("tuple[str, *tuple[str, ...]]", None),  # Python 3.11's syntax, and no `Unpack` to write it with
     ],
 )
 def test_a_hint_is_widened_spelled_or_dropped(hint: str, fix: str | None) -> None:
@@ -117,6 +117,39 @@ def test_a_hint_is_widened_spelled_or_dropped(hint: str, fix: str | None) -> Non
         x = q.make()
     """
     assert _fixes(source, {"x": hint}) == [("x", fix, fix is not None)]
+
+
+@pytest.mark.parametrize(
+    ("hint", "fix", "shallow"),
+    [
+        ("tuple[str, *tuple[str, ...]]", "tuple[str, Unpack[tuple[str, ...]]]", False),
+        ("tuple[*tuple[int, ...]]", "tuple[Unpack[tuple[int, ...]]]", False),
+        ("tuple[str, *Pair]", "tuple[str, Unpack[Pair]]", True),
+        ("Callable[[int, *tuple[str, ...]], None]", "Callable[[int, Unpack[tuple[str, ...]]], None]", False),
+        ("tuple[int, str]", "tuple[int, str]", True),
+    ],
+)
+@pytest.mark.parametrize("module", ["typing", "typing_extensions"])
+def test_an_unpacked_tuple_is_written_with_unpack(hint: str, fix: str, module: str, *, shallow: bool) -> None:
+    """Where the module imports `Unpack`: `*tuple[str, ...]` in a subscript is Python 3.11's syntax.
+
+    `Unpack[...]` nests one deeper, as LVA006 counts it: a fix only if still `shallow` enough.
+    """
+    source: str = f"""
+    from collections.abc import Callable
+    from {module} import Unpack
+
+    Pair = tuple[int, str]
+
+
+    def f(q) -> None:
+        x = q.make()
+    """
+    deeper: Checks = Checks(nesting=4)
+    assert [o.fix for o in _checked(source, {"x": hint}, deeper)] == [fix]
+    assert [o.fix for o in _checked(source, {"x": hint})] == [fix if shallow else None]
+    other: str = source.replace("Unpack", "Self")
+    assert [o.fix for o in _checked(other, {"x": hint}, deeper)] == [fix if fix == hint else None]
 
 
 def test_a_type_variable_is_a_fix_only_where_its_function_declares_it() -> None:

@@ -112,3 +112,50 @@ def test_a_branch_rebinding_makes_later_copies_guesses() -> None:
     fixed: dict[str, tuple[str | None, bool]] = {o.name: (o.fix, o.unsafe) for o in check_source(source)}
     assert fixed["y"] == ("str", True)
     assert fixed["z"] == ("int", True)
+
+
+def test_a_name_first_bound_to_no_known_type_is_a_guess_later() -> None:
+    """It may still hold that value (another branch's): what's inferred from a later one's type is a guess."""
+    source: str = textwrap.dedent(
+        """\
+        def f(index, flag, count):
+            if flag:
+                levels = index.multi()
+            else:
+                levels = ["a"]
+            for lvl in levels:
+                pass
+            copy = levels
+            item = index.first()
+            for item in ["a"]:
+                pass
+            kept = item
+            count = 3
+            total = count
+            if flag:
+                size = 1
+            else:
+                size = 2
+            same = size
+        """,
+    )
+    found: list[Offence] = check_source(source)
+    assert {o.name: (o.fix, o.unsafe) for o in found} == {
+        "levels": (None, False),
+        "lvl": ("str", True),
+        "copy": ("list[str]", True),
+        "item": (None, False),
+        "kept": ("str", True),  # a loop's target, bound before
+        "total": ("int", True),  # a parameter no annotation types
+        "size": ("int", False),
+        "same": ("int", False),  # every binding typed: certain
+    }
+    trusting: Checks = Checks(fixes=FixPolicy(unsafe_select=frozenset({"rebound"})))
+    assert {o.name: o.unsafe for o in check_source(source, checks=trusting) if o.fix} == {
+        "lvl": False,
+        "copy": False,
+        "kept": False,
+        "total": False,
+        "size": False,
+        "same": False,
+    }

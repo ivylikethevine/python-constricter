@@ -8,6 +8,8 @@ the checker printed it:
 - a class object printed `<class 'Point'>` (ty's way) is `type[Point]`, a type variable printed with
   its scope (`Model@create_model`) the variable, and an intersection with a truthiness
   (`str & ~AlwaysFalsy`) its other member;
+- an unpacked tuple (`tuple[str, *tuple[str, ...]]`, Python 3.11's syntax) is written with `Unpack`
+  where the module imports it (one level deeper, to LVA006), and dropped where it doesn't;
 - a `Literal` is widened to its values' types (`Literal[1, 2]` is `int`, `Literal[Color.RED]` is
   `Color`), and `LiteralString` to `str`, then a union's repeated members dropped;
 - anything that isn't an annotation (`Module("os")`, a callable's signature, `Self@C`) is dropped,
@@ -46,6 +48,8 @@ _BUILTINS: Final = frozenset(dir(builtins))
 ALIAS: Final = "TypeAlias"  # what a checker hints an alias's assignment as
 _ALIAS_ORIGINS: Final = ("typing.TypeAlias", "typing_extensions.TypeAlias")
 _CLASS: Final = "type["
+_UNPACK: Final = "Unpack"  # what an unpacked tuple (`*tuple[str, ...]`) is written with
+_UNPACK_ORIGINS: Final = frozenset({"typing.Unpack", "typing_extensions.Unpack"})
 # `collections.abc`'s classes, which a checker prints bare (not `Set`: that's `AbstractSet` to it).
 _ABSTRACT: Final = sorted(ABSTRACT | {"Hashable", "MappingView", "Sized"})
 # Classes a checker prints by their bare names, and where each is from.
@@ -213,6 +217,8 @@ def _spelled(
     except SyntaxError:
         return None
     root: ast.expr | None = _widened(parsed)
+    if plan is not None and root is not None:
+        root = _unstarred(root, plan)
     if plan is None or root is None or not _annotation(root) or not _fits(root, nesting, known.max_length):
         return None
     lone: set[str] = _lone(root)
@@ -244,6 +250,36 @@ def _spelled(
         lambda word: spelled.get(word[1], word[1]),
         ast.unparse(root),
     )
+
+
+def _unstarred(root: ast.expr, plan: ImportPlan) -> ast.expr | None:
+    """Write an annotation's unpacked tuples as every Python 3 parses them: `Unpack[tuple[str, ...]]`.
+
+    `*tuple[str, ...]` in a subscript is Python 3.11's syntax, and nothing says the module needs one.
+
+    Returns:
+      The annotation; `None` for one that unpacks, where the module doesn't import `Unpack`.
+
+    """
+    nodes: list[ast.AST] = list(ast.walk(root))
+    if not any(isinstance(node, ast.Starred) for node in nodes):
+        return root
+    if plan.bound.get(_UNPACK) not in _UNPACK_ORIGINS:
+        return None
+    lone: list[ast.expr] = []  # each tuple of one unpacked element: `tuple[*Ts]`'s, its one argument
+    node: ast.AST
+    for node in nodes:
+        if isinstance(node, ast.Tuple | ast.List):
+            if isinstance(node, ast.Tuple) and len(node.elts) == 1 and isinstance(node.elts[0], ast.Starred):
+                lone.append(node)
+            node.elts = [
+                ast.Subscript(ast.Name(_UNPACK), each.value) if isinstance(each, ast.Starred) else each
+                for each in node.elts
+            ]
+    for node in nodes:
+        if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Tuple) and node.slice in lone:
+            node.slice = node.slice.elts[0]
+    return root
 
 
 def _plain(text: str) -> str:

@@ -46,8 +46,8 @@ pydantic's 191 are this environment's (its pinned pyright finds none in its CI).
 `--fix`: 3 are released lines' errors moved by an inserted line, 1 repeats an annotation pyright
 rejects where pydantic wrote it (`'AnyClassMethod'`), and 5 are the checkout's own path in a class's
 name (4 of them one fix, `FieldInfo_: type[FieldInfo]`). pandas's 2 after `--fix` are one loop's
-target in `style_render.py`, typed by what one branch alone binds the name it iterates (see
-[ROADMAP.md](ROADMAP.md#next)).
+target in `style_render.py`, typed by what one branch alone binds the name it iterates, which is now
+a guess.
 
 Earlier suites, on 0.2.4-rc.5:
 

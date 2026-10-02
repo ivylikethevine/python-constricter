@@ -892,6 +892,35 @@ def plain_classes(catalog: Index, path: Path) -> frozenset[str] | None:
     return None if target is None else target.plain
 
 
+def same(catalog: Index, path: Path, guarded: Mapping[str, Guarded]) -> tuple[frozenset[str], ...]:
+    """Group the ways the file at `path` spells one class or alias another module defines.
+
+    `CoreSchema` and `core_schema.CoreSchema`, in a file importing the name and its module, the name
+    perhaps for type checking alone (its own import, or one `guarded` adds): one type, to value flow.
+
+    Returns:
+      Each group of two or more spellings.
+
+    """
+    target: Module | None
+    if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
+        return ()
+    checking: list[tuple[str, Origin]] = [
+        *target.guarded.items(),
+        *((name, found.origin) for name, found in guarded.items()),
+    ]
+    groups: dict[Origin, set[str]] = {}
+    kind: str
+    for kind in (CLASS, ALIAS):
+        name: str
+        origin: Origin
+        for name, origin in (*spellings(catalog, target, kind), *checking):
+            defined: tuple[Module, str] | None
+            if (defined := definition(catalog.modules, origin, kind)) is not None:
+                groups.setdefault((defined[0].name, defined[1]), set()).add(name)
+    return tuple(frozenset(group) for group in groups.values() if len(group) > 1)
+
+
 def with_returned(catalog: Index, found: Mapping[str, Returns]) -> Index:
     """Record what checked modules' unannotated functions return (`found`, by module name).
 

@@ -167,7 +167,11 @@ def _settings(
             ),
             checks.max_length,
         ),
-        Hierarchy.for_module(tree, {name: frozenset(wider) for name, wider in checks.narrower}),
+        Hierarchy.for_module(
+            tree,
+            {name: frozenset(wider) for name, wider in checks.narrower},
+            () if outside is None else outside.same,
+        ),
         owners(tree, says_self),
         tuple(
             sorted(

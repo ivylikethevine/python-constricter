@@ -49,6 +49,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         own.guarded,
         project.plain_classes(modules, path),
         imported.members,
+        project.same(modules, path, imported.guarded),
     )
 
 

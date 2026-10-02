@@ -262,9 +262,14 @@ than the fix says, the fix is changed, made a guess, or not offered:
   on a line of its own before the first binding (annotated there, mypy wouldn't narrow it to the
   `int` it's bound to), and `total = 0` then `total += 0.5` declares `total: float` (fix kind
   `rebound`); another type that doesn't fit (`x = 1` then `x = "a"`, a class and its base) leaves it
-  untyped. A later value whose type isn't known may be anything, which makes the fix a guess;
+  untyped. A later value whose type isn't known may be anything, which makes the fix a guess. A
+  class or alias the file spells two ways is one type (`CoreSchema` and `core_schema.CoreSchema`,
+  after importing the name and its module; the CLI only, whose index says where each is defined);
 - after it's bound again, a name is what it was bound to: certain where that's a member of its
-  declared union (`int | None`, then `1`), which every checker narrows it to; a guess otherwise;
+  declared union (`int | None`, then `1`), which every checker narrows it to; a guess otherwise, and
+  where it was first bound to a value of no known type, which it may still hold
+  (`levels = index.multi()` under an `if`, `levels = ["a"]` under its `else`: `for lvl in levels`
+  declares `lvl: str` as a guess);
 - a value typed the same whatever a guessed name in it is stays certain: `os.path.join(root, "x")`
   is a `str` by its literal, a guessed `root` or not; so does one typed whatever its parts are
   (`x.kind is None`, an f-string);
@@ -321,7 +326,9 @@ A hint is used only as an annotation the file can hold:
 - ty's own spellings are read: a class object (`<class 'Point'>`) is `type[Point]`, a type variable
   printed with its scope (`Model@create_model`) the variable, and an intersection with a truthiness
   (`str & ~AlwaysFalsy`) its other member; any other intersection is dropped. An unpacked tuple
-  (`tuple[str, *tuple[str, ...]]`) is kept as it is: Python 3.11's syntax;
+  (`tuple[str, *tuple[str, ...]]`, Python 3.11's syntax) is written with `Unpack`
+  (`tuple[str, Unpack[tuple[str, ...]]]`, a level deeper to LVA006) where the module imports it from
+  `typing` or `typing_extensions`, and dropped where it doesn't;
 - a type variable of the module's is a fix only where the function's signature, or its class's
   bases, name it: anywhere else it's unbound;
 - anything vague (`Any`, `list[Unknown]`), not an annotation (`Module("os")`, a signature), as deep

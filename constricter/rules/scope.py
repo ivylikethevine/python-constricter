@@ -138,11 +138,24 @@ class Inferred:
     late: dict[str, Late] = field(default_factory=dict[str, "Late"])
     seeded: dict[str, Late] = field(default_factory=dict[str, "Late"])
 
-    def learn(self, name: str, annotation: str, origins: frozenset[str] | None) -> None:
-        """Record `name`'s type, the first time it's typed; `origins`: what it rests on, if it's a guess."""
+    def learn(
+        self,
+        name: str,
+        annotation: str,
+        origins: frozenset[str] | None,
+        *,
+        again: bool = False,
+    ) -> None:
+        """Record `name`'s type, the first time it's typed; `origins`: what it rests on, if it's a guess.
+
+        `again`: whether it was bound before, to a value of no known type, which it may still hold
+        (another branch's): its type is then a guess, resting on `rebound`.
+        """
         if name in self.types:
             return
         self.types[name] = annotation
+        if origins is None and again:
+            origins = frozenset({REBOUND})
         if origins is not None:
             self.guess(name, origins)
 
@@ -285,7 +298,7 @@ class Scope:
             None if fix is None else self.placed(name, fix, origins, unsafe=unsafe),
         )
         if fix is not None:
-            self.inferred.learn(name, fix.annotation, origins if unsafe else None)
+            self.inferred.learn(name, fix.annotation, origins if unsafe else None, again=again)
 
     def _member(self, name: str, fix: Inference | None) -> tuple[Inference | None, bool, frozenset[str]]:
         """Offer a class body's fix only for a plain class's variable typed by its value: a guess.

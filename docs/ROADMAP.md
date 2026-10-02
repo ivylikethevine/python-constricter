@@ -92,19 +92,21 @@
   more of ty's. A type alias the index finds (a name annotated `TypeAlias`, or bound to a subscript
   or a union) is taken as a class is, and a module's own composite alias is declared `TypeAlias`,
   imported from `typing` if it must be: on pydantic, 82 more aliases declared and 12 more fixes
-  naming `CoreSchema`. ty's spellings are read (`Model@create_model`, `str & ~AlwaysFalsy`, an
-  unpacked tuple), and a hint naming a type variable is a fix only where its function's signature or
-  its class names it.
+  naming `CoreSchema`. ty's spellings are read (`Model@create_model`, `str & ~AlwaysFalsy`; an
+  unpacked tuple is written with `Unpack` where the module imports it, else dropped), and a hint
+  naming a type variable is a fix only where its function's signature or its class names it.
 - **No new type errors**: `corpus_suite.py --types` runs pydantic's, sqlalchemy's and pandas's own
   type checkers after `--fix` (none new) and `--fix --unsafe-fixes`. Where a checker would see a
   value otherwise, the fix is changed, made a guess, or not offered (see
-  [FIXES.md](FIXES.md#what-a-type-checker-sees)): a name bound again takes every value; a read of a
-  union, or of what the function tests, is a guess, and one of an `X | None` isn't offered; an
-  ALL_CAPS constant passed to a call is `Final`; a read a test around it narrows isn't offered its
-  declared type; `Self` where the method says so; no generic class written bare, the standard
-  library's included; no alias its module assigns in two branches (a variable, to a checker) written
-  in another file; and a constructor guessed only where its callee is a type. The unsafe runs' new
-  errors went from 20, 76 and 165 (0.2.4) to 2, 5 and 36.
+  [FIXES.md](FIXES.md#what-a-type-checker-sees)): a name bound again takes every value (one type the
+  file spells two ways, `CoreSchema` and `core_schema.CoreSchema`, counting once), and one first
+  bound to no known type is a guess by a later binding's; a read of a union, or of what the function
+  tests, is a guess, and one of an `X | None` isn't offered; an ALL_CAPS constant passed to a call
+  is `Final`; a read a test around it narrows isn't offered its declared type; `Self` where the
+  method says so; no generic class written bare, the standard library's included; no alias its
+  module assigns in two branches (a variable, to a checker) written in another file; and a
+  constructor guessed only where its callee is a type. The unsafe runs' new errors went from 20, 76
+  and 165 (0.2.4) to 2, 5 and 36.
 - **Safe by construction**: touches no class body but a plain class's, and that as a guess (no
   decorator, no metaclass, every base plain or a test case), keeps line endings and encodings, edits
   notebooks' cells in place, nothing broken on any corpus, and the corpus packages' own test suites
@@ -249,20 +251,15 @@ needs `--infer-with`. Each item says what it is, why, how, and when it's done.
    other standard-library generic class's instance (`shelve.Shelf`, `types.MappingProxyType`) has no
    fix, the tables holding no `__getitem__`. Generate it with the methods. Done when `proxy["k"]` on
    a `MappingProxyType[str, int]` is an `int`.
-3. **One type, two spellings in one file.** A file that imports both a class and its module writes
-   it two ways (`CoreSchema`, by a hint, and `core_schema.CoreSchema`, by a declared return), and a
-   name bound to one then the other gets no fix, the two taken for two types (`schema` in
-   `new_handler`, in pydantic's `_generate_schema.py`); so does a file binding the module's name as
-   a value somewhere, where another file's type takes an import for type checking and a hint's the
-   module. Done when a name's later binding of the same class, spelled otherwise, fits its fix.
-4. **An unpacked tuple in older syntax.** A hint's `tuple[str, *tuple[str, ...]]` is written as it
-   is, which Python 3.10 can't parse (3 on pydantic's `v1/fields.py`). Done when a module that may
-   run on one gets `Unpack[...]`, or no fix.
-5. **A name typed in one branch alone.** `levels = index.multi()` in an `if` (no type) and
-   `levels = index.flat()` in its `else` (a `list[str]`) leave `levels` a `list[str]` after it, as
-   certain, and a loop over it declares `lvl: str` (2 new errors on pandas's `style_render.py`). A
-   name bound before with no type may still hold that value: take a later binding's type for a
-   guess. Done when `lvl`'s fix there is one.
+3. **A project's minimum Python.** `--fix` doesn't know which Pythons a project runs on, so a hint's
+   unpacked tuple (`tuple[str, *tuple[str, ...]]`, Python 3.11's syntax) is written with `Unpack`
+   only where the module imports it, a level deeper to LVA006, and dropped anywhere else. On
+   pydantic, with basedpyright's and ty's hints, 16 bindings are hinted one and none is a fix: one
+   is in a module importing `Unpack`, and its hint is vague. With the star, 3 were fixes; with
+   `Unpack` importable, none at the default `nesting` and 6 at 4. Read `requires-python` from the
+   nearest `pyproject.toml`, an option of its own over it, and write the star where every Python the
+   project supports parses it. Done when a project requiring 3.11 gets
+   `tuple[str, *tuple[str, ...]]`, and one allowing 3.10 doesn't.
 
 ### Medium: a few days
 
