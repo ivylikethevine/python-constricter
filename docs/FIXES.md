@@ -163,12 +163,13 @@ in a function or module body:
   what `typing`, `typing_extensions` or `collections.abc` define (`Union[A, B]`, `Callable[..., R]`,
   `Literal["a"]`), of a builtin generic (`dict[str, int]`) or of a generic class the module names
   (its own, another checked file's, the standard library's); or a union of those, of builtin
-  classes, of classes the checked files define and of `None`. Not a bare class's alias
-  (`Alias = Class`), a chained assignment, a name the module binds twice (a variable, to a type
-  checker) or as a value somewhere, nor a function's or a class body's. `TypeAlias` is named as the
-  module's imports can (`TypeAlias`, `t.TypeAlias`, where bound before the alias), else imported
-  from `typing`, which has it from Python 3.10: certain where the module imports the name already
-  (or `typing_extensions`), or `min-python` is 3.10 or later; a guess otherwise;
+  classes, of classes the checked files define and of `None`; or a copy of a name the module
+  declares an alias (`Rows = Table`). Not a bare class's alias (`Alias = Class`), a chained
+  assignment, a name the module binds twice (a variable, to a type checker) or as a value somewhere,
+  nor a function's or a class body's. `TypeAlias` is named as the module's imports can (`TypeAlias`,
+  `t.TypeAlias`, where bound before the alias), else imported from `typing`, which has it from
+  Python 3.10: certain where the module imports the name already (or `typing_extensions`), or
+  `min-python` is 3.10 or later; a guess otherwise;
 - an attribute, property or method of a class another checked file defines, its type imported as a
   declared return's is (the CLI only: the plugins see one file at a time);
 - with `--unsafe-fixes` (the CLI only), what's computed from an unannotated parameter of a plain

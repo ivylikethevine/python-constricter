@@ -10,11 +10,12 @@ Notable changes, newest first. Each release's full notes are generated from its 
   `Json: TypeAlias = dict[str, "Json"]`, a new fix kind, `alias`. Only a value that can be nothing
   but a type made of others: a subscript of what `typing` or `collections.abc` define
   (`Union[A, B]`, `Callable[..., R]`), of a builtin generic or of a generic class the module names,
-  or a union of those, of builtin classes, of classes the checked files define and of `None`; never
-  a bare class's alias, a name bound twice, or a name the module binds as a value somewhere.
-  `TypeAlias` is named as the module's imports can, else imported from `typing`: certain where the
-  module imports the name already or `min-python` is 3.10 or later, a guess otherwise. On pydantic
-  (checked under this project's `requires-python`, 3.11): 128 more certain fixes.
+  or a union of those, of builtin classes, of classes the checked files define and of `None`; or a
+  copy of a name the module declares an alias (`Rows = Table`), so one pass converges; never a bare
+  class's alias, a name bound twice, or a name the module binds as a value somewhere. `TypeAlias` is
+  named as the module's imports can, else imported from `typing`: certain where the module imports
+  the name already or `min-python` is 3.10 or later, a guess otherwise. On pydantic (checked under
+  this project's `requires-python`, 3.11): 128 more certain fixes.
 - `--fix --unsafe-fixes` annotates a class's variables under a builtin exception or value class too
   (`code = "missing"` under `ValueError`, `strip_whitespace = True` under `str`): such a base is one
   a plain class may have. A variable is left alone where a class above it annotates the name as

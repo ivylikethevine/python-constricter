@@ -561,7 +561,7 @@ def _declare(scope: Scope, stmt: ast.stmt) -> None:
         case ast.AnnAssign(target=ast.Name(id=name) as target, annotation=annotation):
             scope.declare(name)
             scope.annotation(name, annotation)
-            _ = scope.inferred.types.setdefault(name, written(annotation))
+            scope.inferred.declare(name, annotation)
             scope.lifetime(name).declare(ast.unparse(annotation), at(target), _span(annotation, target))
             if stmt.value is not None:
                 scope.lifetime(name).bind(at(target), certain_type(scope, stmt.value))

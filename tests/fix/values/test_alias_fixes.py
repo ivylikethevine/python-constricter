@@ -75,9 +75,9 @@ def _fixes(source: str, checks: Checks = _ALL) -> _Fixed:
 def test_a_type_made_of_others_is_declared_an_alias() -> None:
     """A module body's subscript of a generic or a special form, or a union of types, is an alias.
 
-    Not arithmetic on values (`re.I | re.M`), a bare class's alias, a subscript of anything else, a
-    chained assignment, a copy of an alias (nor anything made of one: `TypeAlias` isn't its value's
-    type), a name bound twice, or a function's or a class body's.
+    So is a copy of an alias. Not arithmetic on values (`re.I | re.M`), a bare class's alias, a
+    subscript of anything else, a chained assignment, anything else made of an alias (`TypeAlias`
+    isn't its value's type), a name bound twice, or a function's or a class body's.
     """
     fixes: _Fixed = _fixes(SOURCE)
     aliases: list[str] = [name for name, (fix, _) in fixes.items() if fix == _ALIAS]
@@ -91,11 +91,12 @@ def test_a_type_made_of_others_is_declared_an_alias() -> None:
         "Spelled",
         "Number",
         "Mixed",
+        "Copied",
         "Checked",
     ]
     assert not any(fixes[name][1] for name in aliases)  # the module imports `TypeAlias`
-    untyped: list[str] = ["Inner", "Flags", "First", "Second", "Copied", "Listed", "Bare", "Looked", "Called"]
-    assert [fixes[name][0] for name in (*untyped, "Reached", "Unknown", "Twice", "Local")] == [None] * 13
+    untyped: list[str] = ["Inner", "Flags", "First", "Second", "Listed", "Bare", "Looked", "Called"]
+    assert [fixes[name][0] for name in (*untyped, "Reached", "Unknown", "Twice", "Local")] == [None] * 12
 
 
 @pytest.mark.parametrize(
@@ -132,6 +133,24 @@ def test_an_alias_is_certain_where_every_python_has_typealias(
     assert (table.edit.kinds if table.edit else None) == (None if fix is None else {aliased.KIND})
 
 
+def test_a_declared_alias_is_fixed_as_one_just_declared_is() -> None:
+    """A second pass finds what the first did: a copy of an alias is one, and nothing else is typed by it."""
+    source: str = (
+        "Table = dict[str, int]\nRows = Table\nListed = [Table]\n\ndef f() -> None:\n    local = Table\n"
+    )
+    again: str = source.replace("Table =", "Table: TypeAlias =").replace("Rows =", "Rows: TypeAlias =")
+    first: _Fixed = _fixes(_IMPORT + source)
+    assert first == {
+        _TABLE: (_ALIAS, False),
+        "Rows": (_ALIAS, False),
+        "Listed": (None, False),
+        "local": (None, False),
+    }
+    assert _fixes(_IMPORT + again) == {"Listed": (None, False), "local": (None, False)}
+    spelled: str = "import typing\nTable: typing.TypeAlias = dict[str, int]\nRows = Table\n"
+    assert _fixes(spelled, _MODERN) == {"Rows": ("typing.TypeAlias", False)}
+
+
 def test_a_guessed_alias_can_be_trusted() -> None:
     """`unsafe-fix-select` makes the guess certain; `fix-ignore` drops the fix."""
     source: str = "Table = dict[str, int]\n"
@@ -164,4 +183,7 @@ def test_a_module_not_read_for_its_names_declares_no_alias() -> None:
     assert isinstance(stmt, ast.Assign)
     target: ast.expr = stmt.targets[0]
     assert isinstance(target, ast.Name)
-    assert aliased.declared(target, stmt.value, Known({}, frozenset(), {}, {}), Facts(), None) is None
+    assert (
+        aliased.declared(target, stmt.value, Known({}, frozenset(), {}, {}), Facts(), (frozenset(), None))
+        is None
+    )

@@ -5,8 +5,9 @@ Only a value that can be nothing but a type made of others: a subscript of what 
 `collections.abc` define (`Union[A, B]`, `Callable[..., R]`), of a builtin generic
 (`dict[str, int]`) or of a generic class the module names (its own, another checked file's, the
 standard library's); or a union of those, of builtin classes, of classes the module knows and of
-`None`. Not a bare class's alias (`Alias = Class`), which declared one loses the class's type
-parameters; nor a name the module binds again, which is a variable to a type checker.
+`None`; or a copy of a name the module declares an alias (`Rows = Table`). Not a bare class's alias
+(`Alias = Class`), which declared one loses the class's type parameters; nor a name the module
+binds again, which is a variable to a type checker.
 
 `TypeAlias` is named as the module's imports can, else imported from `typing`, which has it from
 Python 3.10: certain where every Python the module runs on has it there (`min-python`), or the
@@ -21,7 +22,7 @@ from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.libraries import stdlib
 from constricter.fix.values import hinted
 from constricter.fix.values.doubts import Facts
-from constricter.rules.annotations import dotted
+from constricter.rules.annotations import dotted, node_name
 
 KIND: Final = "alias"  # the fix kind
 _SINCE: Final = (3, 10)  # the first Python whose `typing` has `TypeAlias`
@@ -38,14 +39,27 @@ _REASON: Final = "a type alias, written as a type made of others"
 _Valued: TypeAlias = tuple[Inference, bool, frozenset[str]]
 
 
+def declares(annotation: ast.expr) -> bool:
+    """Check whether an annotation declares its name a type alias: `TypeAlias`, however it's spelled.
+
+    Returns:
+      Whether it does.
+
+    """
+    return node_name(annotation) == hinted.ALIAS
+
+
 def declared(
     target: ast.Name,
     value: ast.expr,
     known: Known,
     facts: Facts,
-    min_python: tuple[int, int] | None,
+    scope: tuple[frozenset[str], tuple[int, int] | None],
 ) -> _Valued | None:
     """Declare the type alias a module body's `target = value` binds (see the module docstring).
+
+    `scope`: the names the module body has declared aliases so far, and the oldest Python the
+    module runs on (`min-python`).
 
     Returns:
       `TypeAlias` as the module names it, whether that's a guess, and what the guess rests on; or
@@ -55,8 +69,14 @@ def declared(
     plan: ImportPlan | None = known.names.plan
     if plan is None or facts.rebound is None or target.id in facts.rebound:
         return None
+    aliases: frozenset[str]
+    min_python: tuple[int, int] | None
+    aliases, min_python = scope
+    copied: bool = isinstance(value, ast.Name) and value.id in aliases
     named: str | None = (
-        hinted.type_alias(known, target.lineno) if composite(value, known, plan, facts.generics) else None
+        hinted.type_alias(known, target.lineno)
+        if copied or composite(value, known, plan, facts.generics)
+        else None
     )
     if named is None:
         return None

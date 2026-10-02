@@ -85,16 +85,15 @@
   file's type the module doesn't import, through the module defining it if the file imports that one
   to run (`core_schema.CoreSchema`), else under `if TYPE_CHECKING:` (no import cycle at run time),
   quoted where a module-level annotation is evaluated.
-- **Guesses** apply only with `--unsafe-fixes`: a capitalised call taken to construct its class,
-  LVA008's and LVA010's narrowing, an empty container typed by what's added to it (`append`,
-  `extend`, `update`, ...), a method typed by its `return`s, an instance attribute by its
-  assignments (`assigned`), a plain class's variable by its literal value (`member`: a class under
-  plain classes, test cases and builtin exception or value classes, but for a variable a class above
-  it declares otherwise), a call to a class the checked files define whatever its name's case, an
-  unannotated parameter by what every call in the checked files passes it (`callers`, builtin types
-  alone: callers' classes too would add 10 fixes on the corpora), and what rests on any of these.
-  **Fix levels**: every mechanism has a stable id (`--show-fixes`, JSON), and `fix-select`,
-  `fix-ignore` and `unsafe-fix-select` choose which apply.
+- **Guesses** apply only with `--unsafe-fixes`: a call taken to construct its class (a capitalised
+  name, or a class the checked files define whatever its name's case), LVA008's and LVA010's
+  narrowing, an empty container typed by what's added to it (`append`, `extend`, `update`, ...), a
+  method typed by its `return`s, an instance attribute by its assignments (`assigned`), a plain
+  class's variable by its literal value (`member`: under plain classes, test cases and builtin
+  exception or value classes), an unannotated parameter by what every call in the checked files
+  passes it (`callers`, builtin types alone: callers' classes too would add 10 fixes on the
+  corpora), and what rests on any of these. **Fix levels**: every mechanism has a stable id
+  (`--show-fixes`, JSON), and `fix-select`, `fix-ignore` and `unsafe-fix-select` choose which apply.
 - **Type-checker-backed inference** (`--infer-with basedpyright,ty,pyrefly`): the checkers' inlay
   hints type what `--fix` can't, as guesses, widened, checked and imported; with basedpyright it
   about doubles what `--fix --unsafe-fixes` types on the annotated corpora. A hint naming a class
@@ -103,12 +102,13 @@
   installed packages, or the standard-library tables, define, and no generic one shown without its
   arguments: 27% more of basedpyright's hints are fixes on pydantic, sqlalchemy and django, and 19%
   more of ty's. A type alias the index finds (a name annotated `TypeAlias`, or bound to a subscript
-  or a union) is taken as a class is, and a module's own composite alias is declared `TypeAlias`,
-  imported from `typing` if it must be: on pydantic, 82 more aliases declared and 12 more fixes
-  naming `CoreSchema`. ty's spellings are read (`Model@create_model`, `str & ~AlwaysFalsy`; an
-  unpacked tuple is kept where the project's oldest Python parses it, `min-python` or
-  `requires-python`'s, else written with `Unpack` where the module imports it, else dropped), and a
-  hint naming a type variable is a fix only where its function's signature or its class names it.
+  or a union) is taken as a class is (12 more fixes naming `CoreSchema` on pydantic), and a module's
+  composite alias `--fix` alone can't vouch for (a union of an unchecked package's classes) is
+  declared `TypeAlias` by the checker's hint. ty's spellings are read (`Model@create_model`,
+  `str & ~AlwaysFalsy`; an unpacked tuple is kept where the project's oldest Python parses it,
+  `min-python` or `requires-python`'s, else written with `Unpack` where the module imports it, else
+  dropped), and a hint naming a type variable is a fix only where its function's signature or its
+  class names it.
 - **No new type errors**: `corpus_suite.py --types` runs pydantic's, sqlalchemy's and pandas's own
   type checkers after `--fix` (none new) and `--fix --unsafe-fixes`. Where a checker would see a
   value otherwise, the fix is changed, made a guess, or not offered (see
@@ -118,15 +118,16 @@
   tests, is a guess, and one of an `X | None` isn't offered; an ALL_CAPS constant passed to a call
   is `Final`; a read a test around it narrows isn't offered its declared type; `Self` where the
   method says so; no generic class written bare, the standard library's included; no alias its
-  module assigns in two branches (a variable, to a checker) written in another file; and a
-  constructor guessed only where its callee is a type. The unsafe runs' new errors went from 20, 76
-  and 165 (0.2.4) to 2, 5 and 36.
+  module assigns in two branches (a variable, to a checker) written in another file; a constructor
+  guessed only where its callee is a type; and a class's variable held to what a class above it
+  declares (`limit: int | None`, or a builtin base's own `errno`). The unsafe runs' new errors went
+  from 20, 76 and 165 (0.2.4) to 2, 5 and 36.
 - **Safe by construction**: touches no class body but a plain class's, and that as a guess (no
-  decorator, no metaclass, every base plain or a test case), keeps line endings and encodings, edits
-  notebooks' cells in place, nothing broken on any corpus, and the corpus packages' own test suites
-  pass identically before and after. One pass converges on every corpus, the standard library's
-  tests included: a library type a callee's module doesn't import yet is named for its callers by
-  the import its own fixes add.
+  decorator, no metaclass, every base plain, a test case or a builtin exception or value class),
+  keeps line endings and encodings, edits notebooks' cells in place, nothing broken on any corpus,
+  and the corpus packages' own test suites pass identically before and after. One pass converges on
+  every corpus, the standard library's tests included: a library type a callee's module doesn't
+  import yet is named for its callers by the import its own fixes add.
 - **Fast enough**: the standard library checks in about 8s with `--jobs=1` and 1.5s with `--jobs=0`
   on 16 cores (from 227s profiled at 0.2.4): one shared walk of each module, kept with its tree from
   the cross-file index to the check, and a node's children listed without `ast`'s generators;
@@ -263,9 +264,9 @@
 
 By scope (smallest first) and, within each, by value: the bindings with no fix an item could reach,
 of the 160,085 on the corpora, or of the 26,365 on pydantic, sqlalchemy and django for an item that
-needs `--infer-with`. Each item says what it is, why, how, and when it's done. The counts predate
-the fixes for type aliases, class variables under builtin bases, calls of typed callables and named
-tuples (measured on pydantic alone: 2,042 bindings with no fix to 1,667): they need recounting.
+needs `--infer-with`. Each item says what it is, why, how, and when it's done. The counts need
+recounting: they predate type aliases, class variables under builtin bases, calls of typed callables
+and named tuples (on pydantic alone, 2,042 bindings with no fix to 1,667).
 
 ### Small: a day or less
 
@@ -278,14 +279,12 @@ Nothing open.
    to a hint (a name bound again to another type, a class less exact than the package's checker
    sees). pandas's hasn't been run. Done when it's recorded, and a released line's error an inserted
    line moves is no longer counted as new.
-2. **More context managers.** 4,167 `with` targets had no fix (before a target that unpacks was
-   split, and a `@contextmanager` method typed): `self.assertRaises(...)` and its kin (typeshed's
-   class for them is private), `tarfile.open`, `tempfile.TemporaryDirectory()` and `shelve.open`
-   (generic classes whose arguments the call doesn't say), `warnings.catch_warnings`,
-   `contextlib.closing`, `test.support`'s (not in typeshed), and an `async with`'s by `__aenter__`.
-   All but `test.support`'s are the tables' to hold (`stdlib_tables/`): a constructor whose
-   `__init__` overloads declare `self`, a private class's public path, `__aenter__` beside
-   `__enter__`. Count each first. Done when the three largest are fixes.
+2. **More context managers.** Of the 4,167 `with` targets counted with no fix, what's left is the
+   tables' to hold (`stdlib_tables/`): `self.assertRaises(...)` and its kin (typeshed's class for
+   them is private), `tarfile.open`, `tempfile.TemporaryDirectory()` and `shelve.open` (a
+   constructor whose `__init__` overloads declare `self`), `warnings.catch_warnings`,
+   `contextlib.closing`, and an `async with`'s by `__aenter__`; and `test.support`'s, which typeshed
+   doesn't have. Count each first. Done when the three largest are fixes.
 3. **Operators and iteration by their classes' methods.** `enumerate`, `zip`, `map`, `iter` and
    `reversed` bound to a name have no fix (`enumerate[str]`: at module level, a builtin some Python
    can't subscript at run time needs quoting), nor do `path / "x"`, `min(n, 1.5)` (two number types)
@@ -323,7 +322,6 @@ Nothing open.
 9. **A tuple alias, unpacked.** A named tuple's fields type an unpacking's names; a declared alias
    of a tuple (`Pair: TypeAlias = tuple[int, str]`, or a union of them) doesn't. Count them first.
    Done when `a, b = pair()` under `-> Pair` declares each.
-
 10. **The main process, in a parallel check.** With `--jobs`, what each file knows from outside it
     (`schedule.outside`) is still worked out one file at a time in the main process, which the
     workers wait on: about a third of a parallel check of the standard library. Most of it lists
@@ -347,15 +345,14 @@ Nothing open.
    local. Done when a method returning its parameter types its calls.
 2. **Class bodies of plain classes, past literals.** An annotation in a class body makes a
    dataclass's or a model's variable a field, so `--fix` annotates only a plain class's variable
-   bound to a literal or a display of them (`member`, a guess). Counted without it: 15,336 bindings
-   with no fix, 3,070 of them in a class with no base and no decorator (1,421 bound to a literal)
-   and 2,456 under a test case's. A class under a builtin exception or value class is plain too now
-   (162 more guesses on pydantic, no new basedpyright error there). Left: a value that names
-   something (a call, a copy, an attribute), a name the body binds more than once, and a variable a
-   test case's own class declares otherwise (`maxDiff = 80` under `unittest.TestCase`, typeshed's
-   `int | None`, is still typed `int`: the tables' attributes would say). Done when the corpus
-   packages' test suites and type checkers find nothing new after `--fix --unsafe-fixes`, `member`
-   included.
+   bound to a literal or a display of them (`member`, a guess). Counted without it, and before a
+   builtin base counted as plain: 15,336 bindings with no fix, 3,070 of them in a class with no base
+   and no decorator (1,421 bound to a literal) and 2,456 under a test case's. Left: a value that
+   names something (a call, a copy, an attribute), a name the body binds more than once, and a
+   variable a test case's own class declares otherwise (`maxDiff = 80` under `unittest.TestCase`,
+   typeshed's `int | None`, is still typed `int`: the tables' attributes would say). Done when the
+   corpus packages' test suites and type checkers find nothing new after `--fix --unsafe-fixes`,
+   `member` included.
 
 ## Ongoing
 

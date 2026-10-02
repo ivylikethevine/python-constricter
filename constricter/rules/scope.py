@@ -23,6 +23,7 @@ from constricter.fix.values.doubts import (
 )
 from constricter.fix.values.guesses import guessed, guessing
 from constricter.fix.values.inference import inference, inferred
+from constricter.fix.values.members import parsed
 from constricter.fix.values.narrowed import narrowed_at
 from constricter.offences import (
     LONG_TUPLE,
@@ -47,6 +48,7 @@ from constricter.rules.annotations import (
     roots,
 )
 from constricter.rules.flow import Finding, Hierarchy, Lifetime, findings, members
+from constricter.rules.quoted import written
 from constricter.rules.rebinding import REBOUND
 from constricter.rules.syntax import FunctionDef, Start
 
@@ -138,6 +140,15 @@ class Inferred:
     # type, and what it rests on if a guess; and those it was checked again knowing.
     late: dict[str, Late] = field(default_factory=dict[str, "Late"])
     seeded: dict[str, Late] = field(default_factory=dict[str, "Late"])
+    # The names declared type aliases (`X: TypeAlias = ...`): `TypeAlias` isn't their values' type.
+    aliases: set[str] = field(default_factory=set[str])
+
+    def declare(self, name: str, annotation: ast.expr) -> None:
+        """Record the type `name` is annotated with: its own from here on, or an alias's declaration."""
+        if aliased.declares(annotation):
+            self.aliases.add(name)
+        else:
+            _ = self.types.setdefault(name, written(annotation))
 
     def learn(
         self,
@@ -303,7 +314,9 @@ class Scope:
             code,
             None if fix is None else self.placed(name, fix, origins, unsafe=unsafe),
         )
-        if fix is not None and aliased.KIND not in fix.kinds:  # `TypeAlias` isn't its value's type
+        if fix is not None and aliased.declares(parsed(fix.annotation)):
+            self.inferred.aliases.add(name)  # `TypeAlias` isn't its value's type
+        elif fix is not None:
             self.inferred.learn(name, fix.annotation, origins if unsafe else None, again=again)
 
     def _unvalued(
@@ -321,7 +334,13 @@ class Scope:
         """
         checks: Checks = self.settings.checks
         found: tuple[Inference, bool, frozenset[str]] | None = (
-            aliased.declared(target, value, self.settings.known, self.settings.facts, checks.min_python)
+            aliased.declared(
+                target,
+                value,
+                self.settings.known,
+                self.settings.facts,
+                (frozenset(self.inferred.aliases), checks.min_python),
+            )
             if alias and self.kind.function is None and self.kind.owner is None
             else None
         )
