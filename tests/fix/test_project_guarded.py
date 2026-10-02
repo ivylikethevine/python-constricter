@@ -108,7 +108,6 @@ if typing.TYPE_CHECKING:
     from pkg.handles import Handles
     from pkg.handles import Plain
     from pkg.other import Thing
-    from typing import Literal
     import collections as col
 
 
@@ -121,7 +120,7 @@ def f():
 
 
 top: "Plain" = plain()
-said: 'Literal["it\\'s"]' = quote()
+said: typing.Literal["it's"] = quote()
 """
 BLOCK: Final = """
 from __future__ import annotations
@@ -311,6 +310,128 @@ def test_a_type_is_written_as_the_file_can(tmp_path: Path, source: str, annotati
         outside=Outside(imported.calls, guarded=imported.guarded),
     )
     assert [o.fix for o in offences] == [annotation]
+
+
+def test_a_name_quoted_inside_a_type_is_read_as_the_name(tmp_path: Path) -> None:
+    """Imported for type checking where the file doesn't have it, as an unquoted one is; a value stays one."""
+    quoting: str = """
+    from typing import Annotated, Literal
+
+    from pkg.other import Thing
+
+
+    def things() -> list['Thing']:
+        return []
+
+
+    def mode() -> Literal['r']:
+        return 'r'
+
+
+    def odd() -> list['no way']:
+        return []
+
+
+    def odder() -> 'no way':
+        return []
+
+
+    def tagged() -> Annotated[int, 'meta']:
+        return 1
+    """
+    using: str = """
+    from typing import Annotated, Literal
+
+    from pkg.quoting import mode, odd, odder, tagged, things
+    {}
+
+    def f() -> None:
+        a = things()
+        b = mode()
+        c = odd()
+        d = odder()
+        e = tagged()
+    """
+    _package(tmp_path)
+    _ = _write(tmp_path / "pkg" / "quoting.py", quoting)
+    fixes_by_import: dict[str, list[str | None]] = {}
+    extra: str
+    for extra in ("", "from pkg.other import Thing"):
+        user: Path = _write(tmp_path / "user.py", using.format(extra))
+        imported: project.Imported = project.imported(project.index(sorted(tmp_path.rglob("*.py"))), user)
+        offences: list[Offence] = check_source(
+            user.read_text(encoding="utf-8"),
+            outside=Outside(imported.calls, guarded=imported.guarded),
+        )
+        fixes_by_import[extra] = [o.fix for o in offences]
+        assert set(imported.guarded) == (set() if extra else {"Thing"})
+    # A string that isn't a type stays one; what a name in it means here isn't known, so it isn't written.
+    fixed: list[str | None] = ["list[Thing]", "Literal['r']", "list['no way']", "'no way'", None]
+    assert fixes_by_import == {"": fixed, "from pkg.other import Thing": fixed}
+
+
+REBOUND: Final = """
+import sys
+from typing import List, TypeAlias
+
+MYPY = False
+if MYPY:
+    Either = List[int]
+else:
+    Either = List[str]
+if sys.version_info >= (3, 10):
+    Versioned = list[int]
+else:
+    Versioned = List[int]
+if False:
+    Constant = List[int]
+elif True:
+    Constant = List[str]
+else:
+    Constant = List[bytes]
+try:
+    Tried = List[int]
+except NameError:
+    Tried: TypeAlias = List[str]
+Once: TypeAlias = List[int]
+"""
+ALIASES_USED: Final = """
+from typing import List
+
+from pkg.rebound import Constant, Either, Once, Tried, Versioned
+
+Own = List[int]
+Own = List[str]
+
+
+def either() -> Either: ...
+def versioned() -> Versioned: ...
+def constant() -> Constant: ...
+def tried() -> Tried: ...
+def once() -> Once: ...
+def own() -> Own: ...
+"""
+
+
+def test_an_alias_assigned_twice_isnt_written_in_another_file(tmp_path: Path) -> None:
+    """A name two arms of an `if` assign is a variable to a type checker, unless it decides the `if`."""
+    _package(tmp_path)
+    _ = _write(tmp_path / "pkg" / "rebound.py", REBOUND)
+    _ = _write(tmp_path / "pkg" / "aliased.py", ALIASES_USED)
+    user: Path = _write(
+        tmp_path / "user.py",
+        "from pkg.aliased import constant, either, once, own, tried, versioned\n",
+    )
+    catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
+    assert catalog.modules["pkg.rebound"].rebound == {"Either", "Tried"}
+    assert set(catalog.modules["pkg.rebound"].aliases) == {"Versioned", "Constant", "Once"}
+    assert catalog.modules["pkg.aliased"].rebound == {"Own"}
+    guarded: dict[str, Guarded] = {}
+    assert project.calls(catalog, user, guarded) == {
+        "constant": "Constant",
+        "once": "Once",
+        "versioned": "Versioned",
+    }
 
 
 def test_a_guarded_type_passes_through_an_unannotated_function(tmp_path: Path) -> None:

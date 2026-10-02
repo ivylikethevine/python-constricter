@@ -1,0 +1,217 @@
+# SPDX-License-Identifier: MIT
+"""`--fix` on small shapes typed from their parts: unions, displays that unpack, `type(x)`, and the like."""
+
+import textwrap
+from typing import Final, TypeAlias
+
+from constricter import Offence, check_source
+
+# Each offence's fix and whether it's a guess.
+_Fixed: TypeAlias = dict[str, tuple[str | None, bool]]
+UNIONS: Final = """
+from typing import Final, Literal
+
+
+class Node:
+    name: str | None
+    kind: Literal["a", "b"]
+    size: int | str
+
+
+def is_int(o: object) -> bool:
+    return isinstance(o, int)
+
+
+def f(
+    n: int,
+    maybe: int | None,
+    either: int | str,
+    node: Node,
+    odd: Final,
+    names: list[str],
+    c: bool,
+    q,
+) -> None:
+    a = n if c else None
+    b = None if c else names
+    d = maybe if c else None
+    e = None if c else None
+    g = q if c else None
+    h = either if c else None
+    i = node.kind if c else None
+    j = odd if c else None
+    o = maybe or n
+    p = n or maybe
+    r = node.name or "anon"
+    s = n and n
+    t = maybe and n
+    u = n or q
+    v = n or "x"
+    w = node.size or 3
+    x = odd or odd
+    y = Node() if c else None
+    z = n or n or 0
+
+
+def g(n: int, names: list[str]) -> None:
+    k = n if is_int(n) else None
+    m = len(names) if names else None
+"""
+PARTS: Final = """
+import os
+from os import environ
+
+
+class Node:
+    pass
+
+
+def f(
+    n: int,
+    node: Node,
+    either: int | str,
+    nothing: None,
+    names: list[str],
+    pairs: dict[str, int],
+    q,
+) -> None:
+    a = [*names, "z"]
+    b = {*names}
+    c = (*names, "a")
+    d = {**pairs, "k": 1}
+    e = [*names, n]
+    g = {**pairs, "k": "v"}
+    h = {**names, "k": 1}
+    i = {**q}
+    j = [*q, "z"]
+    k = type(node)
+    m = type(either)
+    o = type(nothing)
+    p = type(q)
+    r = type(*names)
+    s = type("Made", (), {})
+    t = type(Node())
+    u = os.environ["HOME"]
+    v = environ["HOME"]
+    w = os.environ["a":"b"]
+    x = q["HOME"]
+    y = pairs.get("k", Node())
+"""
+
+
+def _fixed(source: str) -> _Fixed:
+    found: list[Offence] = check_source(textwrap.dedent(source))
+    return {o.name: (o.fix, o.unsafe) for o in found if len(o.name) == 1}
+
+
+def test_a_union_the_author_would_write() -> None:
+    """`a if c else None` is `T | None`; `a or b` of one type is that type, an earlier `None` dropped."""
+    assert _fixed(UNIONS) == {
+        "a": ("int | None", False),
+        "b": ("list[str] | None", False),
+        "d": ("int | None", False),  # `None` already
+        "e": (None, False),  # nothing but `None`
+        "g": (None, False),
+        "h": (None, False),  # a read of a union of two types may be narrowed to one
+        "i": (None, False),  # a `Literal`'s string can't take `| None`
+        "j": (None, False),  # a qualifier names no type
+        "k": (None, False),  # the conditional's own test narrows it
+        "m": ("int | None", False),
+        "o": ("int", False),
+        "p": ("int | None", False),  # the last operand's own `None` stays
+        "r": ("str", False),
+        "s": ("int", False),
+        "t": (None, False),  # `and` gives its first operand when it's false: `None`, here
+        "u": (None, False),
+        "v": (None, False),  # two types
+        "w": (None, False),
+        "x": (None, False),
+        "y": ("Node | None", True),  # a guess, as its side is
+        "z": ("int", False),
+    }
+
+
+def test_a_read_in_a_union_the_function_tests_is_a_guess() -> None:
+    """A side read as its declared type is narrowed where the function tests it, as a copy is."""
+    source: str = """
+    def f(n: int, name: str | None, c: bool) -> None:
+        if name:
+            pass
+        assert n
+        a = n if c else None
+        b = name or "x"
+    """
+    assert _fixed(source) == {"a": ("int | None", True), "b": ("str", True)}
+
+
+def test_displays_that_unpack_and_other_shapes() -> None:
+    """A starred element gives what it unpacks; `type(x)`, `os.environ[k]` and `d.get(k, v)` their parts'."""
+    assert _fixed(PARTS) == {
+        "a": ("list[str]", False),
+        "b": ("set[str]", False),
+        "c": ("tuple[str, ...]", False),  # of unknown length
+        "d": ("dict[str, int]", False),
+        "e": (None, False),  # two types
+        "g": (None, False),
+        "h": (None, False),  # `**` of what isn't a `dict`
+        "i": (None, False),
+        "j": (None, False),
+        "k": ("type[Node]", False),
+        "m": (None, False),  # a union's is a union of types
+        "o": (None, False),
+        "p": (None, False),
+        "r": (None, False),
+        "s": (None, False),  # the three-argument form makes a class
+        "t": ("type[Node]", True),  # a guess, as its argument is
+        "u": ("str", False),
+        "v": ("str", False),
+        "w": (None, False),  # a slice
+        "x": (None, False),
+        "y": (None, False),  # a default of another type
+    }
+    rebound: str = "def g(type, pairs: dict[str, int]) -> None:\n    a = type(pairs)\n"
+    assert _fixed(rebound) == {"a": (None, False)}  # not the builtin
+
+
+def test_a_type_fixed_whatever_its_parts_stays_certain() -> None:
+    """`x.kind is None` is a `bool` whatever `x.kind` is: a guess there doesn't make it one."""
+    source: str = """
+    class Box:
+        def __init__(self) -> None:
+            self.kind = make()
+
+    def make() -> int:
+        return 1
+
+    def f(box: Box) -> None:
+        a = box.kind
+        b = box.kind is None
+        c = f"{box.kind}"
+        d = not box.kind
+    """
+    assert _fixed(source) == {
+        "a": ("int", True),
+        "b": ("bool", False),
+        "c": ("str", False),
+        "d": ("bool", False),
+    }
+
+
+def test_type_of_self_is_self_where_the_method_says_so() -> None:
+    """`type(self)` is `type[Self]` in a method whose signature says `Self`, its class's elsewhere."""
+    source: str = """
+    from typing import Self
+
+    class Point:
+        def copy(self) -> Self:
+            a = type(self)
+            return a()
+
+        def plain(self) -> None:
+            b = type(self)
+    """
+    assert _fixed(source) == {"a": ("type[Self]", False), "b": ("type[Point]", False)}
+    assert _fixed(source.replace("from typing import Self", "")) == {
+        "a": (None, False),  # no `Self` to write it with
+        "b": ("type[Point]", False),
+    }

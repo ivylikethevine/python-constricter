@@ -5,7 +5,7 @@ import ast
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
-from constricter.fix import overloads, stdlib
+from constricter.fix import overloads, shapes, stdlib
 from constricter.fix.known import ImportPlan, Inference, Known
 from constricter.fix.library import (
     installed_call,
@@ -24,6 +24,7 @@ from constricter.fix.targets import (
     SAME_ELEMENTS,
     ZIP,
     counted,
+    dict_parts,
     element_type,
     iterated,
     iterator_call,
@@ -88,6 +89,7 @@ ASSIGNED: Final = "assigned"  # the fix kind of an instance attribute typed by i
 _STR: Final = "str"
 COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 _Comprehension: TypeAlias = ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp
+_Pair: TypeAlias = tuple[Inference | None, Inference | None]  # a `dict` display's entry: key, value
 # One part of a loop target (see `looped_parts`): its inference, and the values it came from.
 LoopPart: TypeAlias = tuple[Inference | None, list[ast.expr]]
 _WITH_DEFAULT: Final = 2  # `os.environ.get(key, default)`'s arguments
@@ -215,11 +217,15 @@ def _member_of(
                     lambda arg: inference(arg, known, declared),
                     method,
                 )
-            text = None if found is not None else returned_method(receiver, attr, known)
+            if found is None:
+                found = shapes.defaulted(receiver, value, lambda arg: inference(arg, known, declared))
+            defined: tuple[str, str] | None = (
+                returned_method(receiver, attr, known) if found is None else None
+            )
             return (
                 found
-                if text is None
-                else Inference(text, f"`{receiver}.{attr}`'s `return`s", frozenset({RETURNED}))
+                if defined is None
+                else Inference(defined[1], f"`{defined[0]}.{attr}`'s `return`s", frozenset({RETURNED}))
             )
         case _:
             found = member(receiver, attr, None, known)
@@ -257,7 +263,7 @@ def _from_value(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
 
     """
     found: str | None
-    if found := _scalar(value):
+    if found := scalar(value):
         return Inference(found, _scalar_reason(value), frozenset({"literal"}))
     return (
         _container(value, known, declared)
@@ -269,6 +275,8 @@ def _from_value(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
         or library_call(value, known, lambda arg: inference(arg, known, declared))
         or installed_call(value, known, lambda arg: inference(arg, known, declared))
         or _returns(value, known)
+        or shapes.class_of(value, known, lambda arg: inference(arg, known, declared))
+        or shapes.environment(value, known)
         or _called(value, known)
     )
 
@@ -328,34 +336,21 @@ def _cast(value: ast.expr, spellings: frozenset[str]) -> Inference | None:
 def _computed(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inference | None:
     """Infer a value computed from others whose types are known.
 
-    `a if c else b` when both agree; arithmetic on builtin scalars (`_arithmetic`); a list, set or
-    dict comprehension whose elements' type is known, its targets typed as a loop's; `sorted`,
-    `list`, `set`, `frozenset` or `tuple` of something whose elements are known; and `await` of a
-    call to one of the module's `async def`s.
+    `a if c else b` when both agree, or one is `None`; `a or b` and `a and b` of one type (see
+    `constricter.fix.shapes`); arithmetic on builtin scalars (`_arithmetic`); a list, set or dict
+    comprehension whose elements' type is known, its targets typed as a loop's; `sorted`, `list`,
+    `set`, `frozenset` or `tuple` of something whose elements are known; and `await` of a call to
+    one of the module's `async def`s.
 
     Returns:
       The inference, or `None`.
 
     """
-    body: ast.expr
-    orelse: ast.expr
     name: str
     first: ast.expr
     match value:
-        case ast.IfExp(body=body, orelse=orelse):
-            sides: tuple[Inference | None, Inference | None] = (
-                inference(body, known, declared),
-                inference(orelse, known, declared),
-            )
-            return (
-                Inference(
-                    sides[0].annotation,
-                    "both sides of a conditional",
-                    _kinds(*sides, kind="conditional"),
-                )
-                if sides[0] and sides[1] and sides[0].annotation == sides[1].annotation
-                else None
-            )
+        case ast.IfExp() | ast.BoolOp():
+            return _joined(value, known, declared)
         case ast.BinOp() | ast.Compare():
             return (
                 _arithmetic(value, known, declared)
@@ -386,6 +381,30 @@ def _computed(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
             )
         case _:
             return None
+
+
+def _joined(value: ast.IfExp | ast.BoolOp, known: Known, declared: Mapping[str, str]) -> Inference | None:
+    """Infer `a if c else b`, and `a or b`: the one type their parts have (see `constricter.fix.shapes`).
+
+    A conditional's both sides', or one side's and `None`.
+
+    Returns:
+      The inference, or `None` if the parts' types differ, or one isn't known.
+
+    """
+    if isinstance(value, ast.BoolOp):
+        return shapes.boolean(value, lambda part: inference(part, known, declared))
+    sides: tuple[Inference | None, Inference | None] = (
+        inference(value.body, known, declared),
+        inference(value.orelse, known, declared),
+    )
+    if sides[0] and sides[1] and sides[0].annotation == sides[1].annotation:
+        return Inference(
+            sides[0].annotation,
+            "both sides of a conditional",
+            _kinds(*sides, kind="conditional"),
+        )
+    return shapes.optional(value, lambda part: inference(part, known, declared))
 
 
 def _arithmetic(value: ast.BinOp, known: Known, declared: Mapping[str, str]) -> Inference | None:
@@ -557,7 +576,13 @@ def targets_typed(
     return inside
 
 
-def _scalar(value: ast.expr) -> str | None:
+def scalar(value: ast.expr) -> str | None:
+    """Type a value that is what it is whatever its parts are: a literal, an f-string, `not x`, `x is y`.
+
+    Returns:
+      Its type, or `None` for any other value.
+
+    """
     constant: str | bytes | bool | int | float | complex | EllipsisType | None
     ops: list[ast.cmpop]
     match value:
@@ -581,6 +606,9 @@ def _scalar(value: ast.expr) -> str | None:
 def _container(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inference | None:
     """Infer a list, set, tuple or dict display whose elements' types agree.
 
+    A starred element (`[*names, s]`) gives each of what it unpacks, and `**d` a `dict`'s keys and
+    values; a tuple that unpacks one, whose length then isn't known, is a `tuple[T, ...]`.
+
     Returns:
       The inference, or `None`.
 
@@ -592,20 +620,21 @@ def _container(value: ast.expr, known: Known, declared: Mapping[str, str]) -> In
     parts: list[Inference | None] = []
     match value:
         case ast.List(elts=elements) | ast.Set(elts=elements) if elements:
-            parts = [inference(element, known, declared) for element in elements]
+            parts = [_element(element, known, declared) for element in elements]
             element: str | None = _uniform(parts)
             found = f"{'list' if isinstance(value, ast.List) else 'set'}[{element}]" if element else None
         case ast.Tuple(elts=elements) if elements:
-            parts = [inference(element, known, declared) for element in elements]
-            found = _tuple(parts, known.max_length)
-        case ast.Dict(keys=keys, values=values) if keys and None not in keys:
-            present: list[ast.expr] = [k for k in keys if k is not None]
-            key_parts: list[Inference | None] = [inference(k, known, declared) for k in present]
-            item_parts: list[Inference | None] = [inference(v, known, declared) for v in values]
-            parts = [*key_parts, *item_parts]
-            key: str | None = _uniform(key_parts)
-            item: str | None = _uniform(item_parts)
-            found = f"dict[{key}, {item}]" if key and item else None
+            parts = [_element(element, known, declared) for element in elements]
+            starred: bool = any(isinstance(element, ast.Starred) for element in elements)
+            found = _tuple(parts, -1 if starred else known.max_length)
+        case ast.Dict(keys=keys, values=values) if keys:
+            pairs: list[_Pair] = [
+                _pair(key, item, known, declared) for key, item in zip(keys, values, strict=True)
+            ]
+            parts = [part for pair in pairs for part in pair]
+            key_type: str | None = _uniform([pair[0] for pair in pairs])
+            item_type: str | None = _uniform([pair[1] for pair in pairs])
+            found = f"dict[{key_type}, {item_type}]" if key_type and item_type else None
         case _:
             pass
     return (
@@ -619,12 +648,40 @@ def _container(value: ast.expr, known: Known, declared: Mapping[str, str]) -> In
     )
 
 
+def _element(element: ast.expr, known: Known, declared: Mapping[str, str]) -> Inference | None:
+    """Type one element of a display: itself, or each of those a starred one unpacks.
+
+    Returns:
+      The inference, or `None`.
+
+    """
+    if isinstance(element, ast.Starred):
+        return looped(element.value, known, declared)
+    return inference(element, known, declared)
+
+
+def _pair(key: ast.expr | None, item: ast.expr, known: Known, declared: Mapping[str, str]) -> _Pair:
+    """Type one entry of a `dict` display: its key and value, or (`**item`) those of a `dict` it unpacks.
+
+    Returns:
+      The key's inference and the value's, each `None` if it isn't known.
+
+    """
+    if key is not None:
+        return inference(key, known, declared), inference(item, known, declared)
+    found: Inference | None = inference(item, known, declared)
+    types: tuple[str, str] | None = None if found is None else dict_parts(found.annotation)
+    if found is None or types is None:
+        return None, None
+    return found._replace(annotation=types[0]), found._replace(annotation=types[1])
+
+
 def _tuple(parts: Sequence[Inference | None], max_length: int) -> str | None:
     """Type a tuple display from its elements' types.
 
     One type per element (`tuple[int, str]`), up to `max_length` of them; a longer one (LVA011's)
     is `tuple[T, ...]` when every element is a `T`, and nothing when they differ: its fields need
-    names, not a list of types.
+    names, not a list of types. One that unpacks (`max_length` below 0) is always the longer kind.
 
     Returns:
       The annotation, or `None` if an element's type isn't known or a long tuple's differ.
@@ -788,16 +845,12 @@ def dict_view(receiver: ast.expr, view: str, known: Known, declared: Mapping[str
 
     """
     found: Inference | None = inference(receiver, known, declared)
-    root: ast.expr | None = None if found is None else ast.parse(found.annotation, mode="eval").body
-    key: ast.expr
-    value: ast.expr
-    match root:
-        case ast.Subscript(value=ast.Name(id="dict" | "Dict"), slice=ast.Tuple(elts=[key, value])):
-            by_view: dict[str, str] = {
-                "keys": ast.unparse(key),
-                "values": ast.unparse(value),
-                "items": f"tuple[{ast.unparse(key)}, {ast.unparse(value)}]",
-            }
-            return Inference(by_view[view], f"a `dict`'s `.{view}()`", _kinds(found, kind="loop"))
-        case _:
-            return None
+    types: tuple[str, str] | None
+    if (types := None if found is None else dict_parts(found.annotation)) is None:
+        return None
+    by_view: dict[str, str] = {
+        "keys": types[0],
+        "values": types[1],
+        "items": f"tuple[{types[0]}, {types[1]}]",
+    }
+    return Inference(by_view[view], f"a `dict`'s `.{view}()`", _kinds(found, kind="loop"))

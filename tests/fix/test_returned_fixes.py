@@ -169,6 +169,60 @@ def test_a_methods_guess_rests_on_returned() -> None:
     assert _fixed(Checks(fixes=FixPolicy(unsafe_select=frozenset({"constructor"}))))["r"] == ("int", True)
 
 
+def test_a_signature_in_a_type_comment_is_a_declaration() -> None:
+    """Its `return`s don't type its calls: the comment says what they are, as an annotation would.
+
+    A module body's fix naming what's imported under a flag (unbound, if the flag is false) is quoted.
+    """
+    source: str = textwrap.dedent(
+        """\
+        MYPY = False
+        if MYPY:
+            from typing import Iterable, Optional
+
+
+        def names(count):
+            # type: (int) -> Iterable[str]
+            return ["a"] * count
+
+
+        def nothing():  # type: () -> None
+            return None
+
+
+        def odd():  # type: not a signature
+            return 1
+
+
+        class Box:
+            def one(self):
+                # type: () -> Optional[int]
+                return None
+
+
+        top = names(1)
+
+
+        def f(box: Box) -> None:
+            found = names(2)
+            none = nothing()
+            number = odd()
+            maybe = box.one()
+        """,
+    )
+    fixes: list[tuple[str, str | None]] = [
+        (o.name, o.fix) for o in check_source(source, checks=Checks(all_scopes=True))
+    ]
+    assert fixes == [
+        ("MYPY", "bool"),
+        ("top", '"Iterable[str]"'),
+        ("found", "Iterable[str]"),
+        ("none", None),
+        ("number", None),
+        ("maybe", "Optional[int]"),
+    ]
+
+
 def test_nothing_called_needs_no_second_pass() -> None:
     """A module that never calls its typed functions is checked once, and gets the same result."""
     source: str = "def one():\n    return 1\n\n\ndef f() -> None:\n    x = 2\n"

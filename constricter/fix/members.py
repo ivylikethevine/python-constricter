@@ -16,6 +16,7 @@ from constricter.fix import overloads, stdlib
 from constricter.fix.known import Inference, Known
 from constricter.fix.returns import METHOD_RETURNS, element_method
 from constricter.fix.targets import sole
+from constricter.rules.annotations import roots
 
 _ATTRIBUTE: Final = "attribute"  # the fix kind of an attribute's annotation
 _METHOD: Final = "method"  # the fix kind of a method's return type
@@ -93,7 +94,10 @@ def _fixed(receiver: str, name: str, call: ast.Call | None, _known: Known) -> In
 def _declared(receiver: str, name: str, call: ast.Call | None, known: Known) -> Inference | None:
     """Type an annotated attribute or property, or a method's declared return, of a known class.
 
-    One this module defines, or another checked file does (see `Known.classes`, `Known.methods`).
+    One this module defines, or another checked file does (see `Known.classes`, `Known.methods`). A
+    method the class doesn't define is the base's that does (see `Lineage`); one declared to return
+    `Self` there gives the receiver's own class, and one of another file's class returning that
+    class, which may be its `Self`, nothing.
 
     Returns:
       Its inference, or `None`.
@@ -106,8 +110,15 @@ def _declared(receiver: str, name: str, call: ast.Call | None, known: Known) -> 
             if found is None
             else Inference(found, _annotation_of(receiver, name), frozenset({_ATTRIBUTE}))
         )
-    found = known.methods.get(receiver, {}).get(name)
-    return None if found is None else Inference(found, _declared_return(receiver, name), frozenset({_METHOD}))
+    owner: str | None = known.class_side.lineage.definer(receiver, name)
+    found = known.methods.get(owner or "", {}).get(name)
+    if found is None or owner is None:
+        return None
+    if owner != receiver and name in known.class_side.lineage.selfish.get(owner, ()):
+        found = receiver
+    elif owner != receiver and owner not in known.class_side.lineage.bound and found == owner:
+        return None  # another file's class, or its `Self`: the receiver's own class
+    return Inference(found, _declared_return(owner, name), frozenset({_METHOD}))
 
 
 def _elements(receiver: str, name: str, call: ast.Call | None, _known: Known) -> Inference | None:
@@ -151,14 +162,22 @@ def member(receiver: str, name: str, call: ast.Call | None, known: Known) -> Inf
     return None
 
 
-def returned_method(receiver: str, name: str, known: Known) -> str | None:
+def returned_method(receiver: str, name: str, known: Known) -> tuple[str, str] | None:
     """Look up a method of a value typed `receiver` typed only by its `return`s (a guess, see `Returned`).
 
+    The receiver's class's own, or the base's that defines it (see `Lineage`): but not one whose
+    type names that base, which may be the receiver's own class (`return self`).
+
     Returns:
-      Its type, or `None` if it isn't one (a certain source is asked first, see `member`).
+      The class that defines it and its type, or `None` if it isn't one (a certain source is asked
+      first, see `member`).
 
     """
-    return known.returned.methods.get(receiver, {}).get(name)
+    owner: str | None = known.class_side.lineage.definer(receiver, name)
+    found: str | None = known.returned.methods.get(owner or "", {}).get(name)
+    if found is None or owner is None or (owner != receiver and owner in roots(found)):
+        return None
+    return owner, found
 
 
 def assigned_attribute(receiver: str, name: str, known: Known) -> str | None:

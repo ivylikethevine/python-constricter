@@ -25,7 +25,7 @@ from typing import Final, NamedTuple
 
 from constricter.fix.known import Classes, Guarded, Origin, Returns
 from constricter.fix.modules import SUFFIX, Index, Module, index, indexed, module_name, read
-from constricter.rules.annotations import roots
+from constricter.rules.annotations import node_name, roots
 
 __all__ = [
     "Imported",
@@ -41,8 +41,12 @@ _BUILTINS: Final = frozenset(dir(builtins))
 _STDLIB: Final = sys.stdlib_module_names
 _BUILTINS_MODULE: Final = "builtins"
 _HOPS: Final = 5  # how many re-exports (`from .util import f` in an `__init__`) to follow
+_DOT: Final = "."
 _FUNCTION: Final = "function"
-_CLASS: Final = "class"
+DECORATOR: Final = "decorator"  # a function that gives back the one it decorates
+_LITERAL: Final = "Literal"
+CLASS: Final = "class"
+ALIAS: Final = "alias"  # a type alias (see `modules.Module.aliases`)
 _TYPE_VAR: Final = "type variable"
 _RETURNED: Final = "returned"  # an unannotated function its `return`s type
 _UNANNOTATED: Final = "unannotated"  # an unannotated function, typed or not
@@ -96,10 +100,12 @@ def _kind(module: Module, kind: str) -> Iterable[str]:
     """
     kinds: dict[str, Iterable[str]] = {
         _FUNCTION: module.returns,
-        _CLASS: module.classes,
+        CLASS: module.classes,
+        ALIAS: module.aliases,
         _RETURNED: module.returned.calls,
         _UNANNOTATED: module.unannotated,
         OPEN: module.open,
+        DECORATOR: module.passes,
         "signatures": {} if module.declared is None else module.declared.signatures,
     }
     return kinds.get(kind, module.type_vars)
@@ -119,11 +125,11 @@ def type_vars(catalog: Index, path: Path) -> frozenset[str]:
     if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
         return frozenset()
     return frozenset(
-        local for local in {*target.names, *target.guarded} if _is_type_var(catalog.modules, target, local)
+        local for local in {*target.names, *target.guarded} if is_type_var(catalog.modules, target, local)
     )
 
 
-def _is_type_var(modules: Mapping[str, Module], module: Module, name: str) -> bool:
+def is_type_var(modules: Mapping[str, Module], module: Module, name: str) -> bool:
     """Check whether `name` is a type variable in `module`: its own, or one it imports from a checked file.
 
     Returns:
@@ -255,7 +261,7 @@ def _resolved(catalog: Index, names: Mapping[str, Origin]) -> Iterator[tuple[str
             and submodule in catalog.modules
             and not (
                 (package := catalog.modules.get(origin[0])) is not None
-                and any(origin[1] in _kind(package, kind) for kind in (_FUNCTION, _UNANNOTATED, _CLASS))
+                and any(origin[1] in _kind(package, kind) for kind in (_FUNCTION, _UNANNOTATED, CLASS))
             )
         ):
             yield local, (submodule, None)
@@ -296,15 +302,17 @@ def _respelled(
     As it is, if every name in it means the same in both; else, with `guarded` to record them in,
     each other name as `target` imports what it refers to (under any name), or by an import to add
     under `if TYPE_CHECKING:` (see `Guarded`), if nothing else in `target` has that name. Never one
-    naming a type variable (see `_is_type_var`), a builtin `target` rebinds, what `defined` doesn't
-    import at its top level (nor define), or a checked file's generic class without its arguments.
+    naming a type variable (see `is_type_var`), an alias its module assigns twice (a variable, to a
+    type checker), a builtin `target` rebinds, what `defined` doesn't import at its top level (nor
+    define), a checked file's generic class without its arguments, or
+    in a string left inside it (an `Annotated`'s metadata) what means anything else in `target`.
 
     Returns:
       The type, or `None`.
 
     """
     names: frozenset[str] = roots(annotation)
-    if any(_is_type_var(modules, defined, root) for root in names) or _bare(modules, defined, annotation):
+    if _refused(modules, target, defined, annotation):
         return None
     if all(_same(target, defined, root) for root in names):
         return annotation
@@ -324,12 +332,96 @@ def _respelled(
         ):
             return None
         renamed[root] = name
-        if name in target.guarded:
-            found[name] = Guarded(target.guarded[name], None)
-        elif name not in target.names:
-            found[name] = guarded.get(name) or found.get(name) or Guarded(origin, _statement(origin, name))
+        needed: Guarded | None
+        if (needed := _import_for(target, origin, name, {**found, **guarded})) is not None:
+            found[name] = needed
     guarded.update(found)
     return _renamed(annotation, renamed)
+
+
+def _refused(modules: Mapping[str, Module], target: Module, defined: Module, annotation: str) -> bool:
+    """Check whether a type from module `defined` is one never written in `target` (see `_respelled`).
+
+    Returns:
+      Whether it is.
+
+    """
+    return (
+        any(
+            is_type_var(modules, defined, root) or _is_rebound(modules, defined, root)
+            for root in roots(annotation)
+        )
+        or _bare(modules, defined, annotation)
+        # A name in a string left inside it stays as it is: no import is added for it, and it isn't renamed.
+        or any(not _same(target, defined, root) for root in _quoted(annotation))
+    )
+
+
+def _import_for(target: Module, origin: Origin, name: str, known: Mapping[str, Guarded]) -> Guarded | None:
+    """Find the import for type checking a type's `name`, as `_named` spells `origin`, takes in `target`.
+
+    `known`: those other types' names take already.
+
+    Returns:
+      It: the file's own (no statement), or one to add; `None` for a name an import it runs binds,
+      or one written through a module it imports (`m.Row`).
+
+    """
+    if name in target.guarded:
+        return Guarded(target.guarded[name], None)
+    if _DOT in name or name in target.names:
+        return None
+    return known.get(name) or Guarded(origin, _statement(origin, name))
+
+
+@lru_cache(maxsize=4096)
+def _quoted(annotation: str) -> frozenset[str]:
+    """Find the names in the strings left inside an annotation: `meta` in `Annotated[int, 'meta']`.
+
+    A quoted type is read as its text before it gets here (see `annotations.written`). Not a
+    `Literal`'s strings, nor a whole annotation's own quotes (see `roots`).
+
+    Returns:
+      The names.
+
+    """
+    tree: ast.expr = ast.parse(annotation, mode="eval").body
+    found: set[str] = set()
+    waiting: list[ast.AST | None] = [None, tree]  # `None` at its bottom ends it
+    node: ast.AST
+    for node in iter(waiting.pop, None):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node is not tree:
+            found.update(_names_in(node.value))
+        elif not (isinstance(node, ast.Subscript) and node_name(node.value) == _LITERAL):
+            waiting.extend(ast.iter_child_nodes(node))
+    return frozenset(found)
+
+
+def _names_in(text: str) -> set[str]:
+    """Read the names a quoted part of an annotation is written with.
+
+    Returns:
+      Them; none if it isn't an expression.
+
+    """
+    try:
+        return {node.id for node in ast.walk(ast.parse(text, mode="eval")) if isinstance(node, ast.Name)}
+    except SyntaxError:
+        return set()
+
+
+def _is_rebound(modules: Mapping[str, Module], defined: Module, name: str) -> bool:
+    """Check whether `name`, in module `defined`, is one its own module assigns twice (see `Module.rebound`).
+
+    Returns:
+      Whether it is: `defined`'s own, or what it imports from an indexed module.
+
+    """
+    origin: Origin | None = _where(defined, name)
+    found: Origin | None = None if origin is None else _canonical(modules, origin)
+    return name in defined.rebound or (
+        found is not None and found[0] in modules and found[1] in modules[found[0]].rebound
+    )
 
 
 def _bare(modules: Mapping[str, Module], defined: Module, annotation: str) -> bool:
@@ -361,7 +453,7 @@ def _unsubscripted(annotation: str) -> tuple[str, ...]:
       Them, in order.
 
     """
-    tree: ast.expr = _unquoted(annotation)
+    tree: ast.expr = ast.parse(annotation, mode="eval").body
     subscripted: set[int] = {id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Subscript)}
     return tuple(
         node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and id(node) not in subscripted
@@ -465,9 +557,10 @@ def _named(
 ) -> str | None:
     """Name `origin` in `target`: as an import it has names it (preferring `name`), else `name` if free.
 
-    A new import only from a module certain to resolve: a checked file's, an installed package's public
-    one (not `numpy._typing`), or the standard library's (a third-party one the type's file imports
-    may not be installed where the type checker runs).
+    An import of the thing itself, else of a module that has it (`core_schema.CoreSchema`, as a type
+    checker's hint is written). A new import only from a module certain to resolve: a checked
+    file's, an installed package's public one (not `numpy._typing`), or the standard library's (a
+    third-party one the type's file imports may not be installed where the type checker runs).
 
     Returns:
       The name, or `None` if `target` imports nothing for it and binds `name` to something else, or
@@ -482,10 +575,36 @@ def _named(
     )
     if matches:
         return matches[0]
+    through: str | None
+    if (through := _through(modules, target, wanted)) is not None:
+        return through
     module: Module | None = modules.get(origin[0])
     public: bool = module is not None and not (module.installed and _private(origin[0]))
     resolves: bool = public or origin[0].partition(".")[0] in _STDLIB
     return None if name in known or name in _BUILTINS or not resolves else name
+
+
+def _through(modules: Mapping[str, Module], target: Module, wanted: Origin) -> str | None:
+    """Name `wanted` through the module defining it, if `target` imports that module to run.
+
+    `m.Row`, after `import pkg.m as m` or `from pkg import m`. Not a module's own name, which
+    importing its package needn't bind; nor through a name `target` binds as a value somewhere (a
+    local `m`), which isn't the module there.
+
+    Returns:
+      The dotted name, or `None` if `target` imports no such module.
+
+    """
+    if wanted[1] is None or f"{wanted[0]}.{wanted[1]}" in modules:
+        return None
+    local: str
+    where: Origin
+    for local, where in target.names.items():
+        if local not in target.shadowed and wanted[0] == (
+            where[0] if where[1] is None else f"{where[0]}.{where[1]}"
+        ):
+            return f"{local}.{wanted[1]}"
+    return None
 
 
 def _public(modules: Mapping[str, Module], origin: Origin) -> Origin:
@@ -563,31 +682,18 @@ def _statement(origin: Origin, name: str) -> str:
 
 
 def _renamed(annotation: str, names: Mapping[str, str]) -> str:
-    """Rename names in an annotation (maybe a string one, which comes back unquoted).
+    """Rename names in an annotation.
 
     Returns:
       The annotation.
 
     """
-    tree: ast.expr = _unquoted(annotation)
+    tree: ast.expr = ast.parse(annotation, mode="eval").body
     node: ast.AST
     for node in ast.walk(tree):  # a fresh tree: renamed in place
         if isinstance(node, ast.Name):
             node.id = names.get(node.id, node.id)
     return ast.unparse(tree)
-
-
-def _unquoted(annotation: str) -> ast.expr:
-    """Parse an annotation, and a string one's text.
-
-    Returns:
-      Its expression.
-
-    """
-    tree: ast.expr = ast.parse(annotation, mode="eval").body
-    if isinstance(tree, ast.Constant) and isinstance(tree.value, str):
-        return ast.parse(tree.value, mode="eval").body
-    return tree
 
 
 def _same(target: Module, defined: Module, name: str) -> bool:
@@ -639,7 +745,7 @@ def imported(catalog: Index, path: Path) -> Imported:
         where: Origin
         for key, where in spelled:
             defined: tuple[Module, str] | None
-            if (defined := definition(modules, where, _CLASS)) is not None:
+            if (defined := definition(modules, where, CLASS)) is not None:
                 if defined[1] in defined[0].generics:
                     generics.add(key)
                 attributes[key] = _portable(
@@ -682,7 +788,7 @@ def _reexported_generics(modules: Mapping[str, Module], local: str, name: str) -
         if (
             origin[1] is not None
             and origin[0] != name
-            and (defined := definition(modules, origin, _CLASS)) is not None
+            and (defined := definition(modules, origin, CLASS)) is not None
             and defined[1] in defined[0].generics
         ):
             yield f"{local}.{reexported}"

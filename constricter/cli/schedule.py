@@ -13,7 +13,7 @@ from typing import Final
 
 from constricter.cli.runs import CoverageRun, FileRun
 from constricter.cli.workers import Checking, Workers, check_share, first_done
-from constricter.fix import callers, order, project, stubbed
+from constricter.fix import callers, decorated, offers, order, project, stubbed
 from constricter.fix.known import Hints, Outside
 
 CYCLE_ROUNDS: Final = 3  # how many times to check again files calling each other's functions
@@ -28,14 +28,17 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
     """
     imported: project.Imported = project.imported(modules, path)
     methods: stubbed.Methods = stubbed.methods(modules, path, imported.guarded)
+    hints: tuple[Hints, ...] = offers.vetted(modules, path, hinted.get(path, ()))
+    # What only a hint can name: the classes the file imports for type checking alone.
+    own: offers.Own = offers.own(modules, path) if hints else offers.Own()
     return Outside(
-        imported.calls,
+        {**imported.calls, **decorated.own(modules, path)},
         imported.classes,
-        hinted.get(path, ()),
+        hints,
         project.type_vars(modules, path),
         imported.returned,
         imported.guarded,
-        imported.generics,
+        imported.generics | own.generics,
         callers.callees(modules, path),
         callers.own_parameters(modules, path),
         {**stubbed.overloaded(modules, path), **methods.signatures},
@@ -43,6 +46,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         methods.parameters,
         methods.lineage,
         methods.aliases,
+        own.guarded,
     )
 
 

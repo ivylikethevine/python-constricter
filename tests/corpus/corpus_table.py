@@ -12,7 +12,8 @@ fetches. A version is a release from PyPI, installed with
 `uv` into `local/corpus-table/venvs/`, or `dev`, this checkout (recorded as `<__version__>+dev`, or
 `<label>+dev` with `--label`: a pseudo-version, like a release candidate, without bumping it).
 Each runs isolated (`python -I`, from `local/corpus-table/`), so neither this checkout nor its
-`pyproject.toml` leaks into a release's run.
+`pyproject.toml` leaks into a release's run, and with this Python's environment as its
+`VIRTUAL_ENV`, so a release sees the installed packages `dev` does.
 
 For each corpus and version: a check at every level (with `--all-scopes`), counted per code at
 `suffocate` and as errors and warnings at each level, by that version's own rules and defaults;
@@ -65,6 +66,7 @@ _FIXED: Final = re.compile(r"fixed (\d+)")
 _TYPED: Final = re.compile(r"^Total: (\d+)/(\d+) typed", re.MULTILINE)  # `--coverage`'s summary
 _SECTION: Final = "## constricter "
 _WINDOWS: Final = "nt"
+_VIRTUAL_ENV: Final = "VIRTUAL_ENV"  # where constricter looks for installed packages, beside its own path
 _ERROR: Final = "error"
 _VERSIONS_FLAG: Final = "--versions"
 _WRITE_FLAG: Final = "--write"
@@ -190,6 +192,9 @@ def interpreter(version: str) -> str:
 def _run(python: str, args: Sequence[str]) -> str:
     """Run a version's command, isolated: `-I`, from `WORK`, so no checkout or config leaks in.
 
+    With this Python's environment as its `VIRTUAL_ENV`: a release in a venv of its own reads the
+    types the corpus packages' dependencies declare (numpy's, pydantic_core's) as `dev` does there.
+
     Returns:
       Its standard output.
 
@@ -202,6 +207,7 @@ def _run(python: str, args: Sequence[str]) -> str:
         encoding="utf-8",
         check=False,
         cwd=WORK,
+        env={**os.environ, _VIRTUAL_ENV: sys.prefix},
     )
     return done.stdout
 

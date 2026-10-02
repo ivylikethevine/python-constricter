@@ -4,16 +4,19 @@
 `bind` is what `checker` calls for every statement: a plain `name = value` goes through the scope
 (`Scope.assign`); a loop's or an unpacking's targets are split from the value's type and declared on a
 line of their own before it; a loop typed only by its `# type:` comment (LVA003) declares that type
-instead; `with open(...) as f` declares `f` first; and a `match`'s captures and an augmented
-assignment are bound as they are.
+instead; `with manager as name` declares `name` first; and a `match`'s captures and an augmented
+assignment are bound as they are. `walruses` binds a statement's `:=` targets, each declared before
+it too.
 """
 
 import ast
 from typing import Final, cast
 
 from constricter.fix import hinted
+from constricter.fix.doubts import bare
+from constricter.fix.entered import entered
 from constricter.fix.inference import LoopPart, inference, looped, looped_parts
-from constricter.fix.known import Inference
+from constricter.fix.known import Inference, Known
 from constricter.fix.opened import opened
 from constricter.fix.targets import iterated, unpacked
 from constricter.offences import COMMENT_TYPED_TARGET, UNTYPED_TARGET, Edit, Fix, at
@@ -22,6 +25,9 @@ from constricter.rules.scope import Scope, certain_type, guesses_in
 from constricter.rules.syntax import captures, comment_type, target_names, type_comment_span
 
 _COMMENT: Final = "comment"  # the fix kind of LVA003's declaration
+_COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+# Statements a declaration can't go before: a decorator's line is its definition's.
+_DEFINITIONS: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
 
 def bind(scope: Scope, stmt: ast.stmt) -> None:
@@ -70,6 +76,41 @@ def bind(scope: Scope, stmt: ast.stmt) -> None:
             scope.inferred.rebound(name, bound)
         case _:
             pass
+
+
+def walruses(scope: Scope, part: ast.AST, before: ast.stmt) -> None:
+    """Bind the `:=` targets in `part`, an expression of a statement, each offered a declaration.
+
+    Comprehensions included, lambdas excluded. A name can't be annotated where `:=` binds it: it's
+    declared on a line of its own before `before` (its statement, or the `if` an `elif` belongs to),
+    typed as a plain assignment's is. Not one inside a comprehension, whose value may read the
+    comprehension's own names, nor where a line can't go before the statement: a definition (its
+    decorators' lines are its own), or one that doesn't start its line (`else: x = (y := 1)`).
+    Asked only in a module with a `:=` (`Settings.walruses`).
+    """
+    hidden: set[int] = _inside(part, ast.Lambda)
+    line: bytes = scope.settings.lines[before.lineno - 1].encode() if scope.settings.lines else b""
+    plain: bool = isinstance(before, _DEFINITIONS) or bool(line[: before.col_offset].strip())
+    comprehended: set[int] = set() if plain else _inside(part, *_COMPREHENSIONS)
+    code: str = scope.kind.unannotated
+    node: ast.AST
+    for node in ast.walk(part):
+        if not isinstance(node, ast.NamedExpr) or id(node) in hidden:
+            continue
+        if plain or id(node) in comprehended:
+            scope.bind(node.target.id, at(node.target), code)
+        else:
+            _bind_declaration(scope, before, node.target, code, scope.valued(node.value, node.lineno))
+
+
+def _inside(part: ast.AST, *kinds: type[ast.AST]) -> set[int]:
+    """Find every node inside a node of one of `kinds`, in `part`.
+
+    Returns:
+      Their `id()`s.
+
+    """
+    return {id(inner) for outer in ast.walk(part) if isinstance(outer, kinds) for inner in ast.walk(outer)}
 
 
 def _bind_assigned(scope: Scope, stmt: ast.Assign) -> None:
@@ -180,7 +221,7 @@ def _bind_declaration(
         )
         # What the rest of the scope infers from `name` knows its type, as for `name = value`.
         scope.inferred.learn(name.id, found.annotation, origins if unsafe else None)
-    scope.bind(name.id, at(name), code, fix)
+    scope.bind(name.id, at(name), code, fix, None if found is None or unsafe else found.annotation)
 
 
 def _bind_commented(scope: Scope, stmt: ast.For | ast.AsyncFor, target: ast.expr, comment: str) -> None:
@@ -210,26 +251,49 @@ def _bind_commented(scope: Scope, stmt: ast.For | ast.AsyncFor, target: ast.expr
 
 
 def _bind_with(scope: Scope, stmt: ast.stmt, items: list[ast.withitem], code: str | None) -> None:
-    """Bind each `with` item's target, offering to declare `with open(path, mode) as f`'s `f` first.
+    """Bind each `with` item's target, offering to declare `with manager as name`'s `name` first.
 
-    The file object `open` gives is its context manager's own (`__enter__` returns `self`), typed by
-    its literal mode; any other item's names are bound untyped, as are an `async with`'s (a file
-    object isn't an asynchronous context manager).
+    As what the manager's `__enter__` returns (see `constricter.fix.entered`); the file object
+    `open` gives, which is its own context manager, by its literal mode. A target that unpacks is
+    bound untyped, as is an `async with`'s (`__aenter__`'s return is awaited: not read).
     """
     item: ast.withitem
     name: ast.Name
     target: ast.expr
     for item in items:
-        typed: Inference | None = (
-            opened(item.context_expr, scope.settings.known) if isinstance(stmt, ast.With) else None
+        typed: tuple[Inference | None, bool, frozenset[str]] = (
+            _entered(scope, item.context_expr) if isinstance(stmt, ast.With) else (None, False, frozenset())
         )
         match item.optional_vars:
             case ast.Name() as name:
-                _bind_declaration(scope, stmt, name, code, (typed, False, frozenset()))
+                _bind_declaration(scope, stmt, name, code, typed)
             case None:
                 pass
             case target:
                 _bind_targets(scope, [target], code)
+
+
+def _entered(scope: Scope, manager: ast.expr) -> tuple[Inference | None, bool, frozenset[str]]:
+    """Infer what a `with` statement binds its target to, entering `manager`.
+
+    Returns:
+      The inference, whether it's a guess (the manager's type is one), and what the guess rests on;
+      none for a generic class written without its arguments.
+
+    """
+    known: Known = scope.settings.known
+    file: Inference | None
+    if (file := opened(manager, known)) is not None:
+        return file, False, frozenset()
+    found: tuple[Inference, list[ast.expr]] | None = entered(
+        manager,
+        known,
+        scope.inferred.types,
+        scope.settings.facts.managers,
+    )
+    if found is None or bare(found[0].annotation, scope.settings.facts.generics):
+        return None, False, frozenset()
+    return (found[0], *guesses_in(scope, found[1]))
 
 
 def _bind_targets(scope: Scope, targets: list[ast.expr], code: str | None) -> None:

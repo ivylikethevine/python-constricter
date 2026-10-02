@@ -4,6 +4,7 @@
   local/.venv/bin/python tests/corpus/corpus_suite.py                    # every suite's tests
   local/.venv/bin/python tests/corpus/corpus_suite.py NAME ...           # just these
   local/.venv/bin/python tests/corpus/corpus_suite.py --types [NAME ...] # their type checks instead
+  local/.venv/bin/python tests/corpus/corpus_suite.py --types --infer-with basedpyright,ty [NAME ...]
 
 Each package's source is cloned at its pinned tag into `local/corpus-suites/`, installed there with
 its test dependencies as its CI installs them (its own `uv.lock` where it has one, its pins or
@@ -22,6 +23,11 @@ is new; each new one is traced to the fix whose annotation it's about (the fix o
 nearest one before it in its scope, else the module's, of a name on its line or in its message), and
 counted by the mechanisms that decided that fix (`--format=json`'s `kinds`); the command exits 1 if
 a fixed run has a new error.
+
+`--infer-with CHECKERS` adds a third fixed run, `--fix --unsafe-fixes --infer-with CHECKERS`: the
+checkers' servers (on `PATH`, or beside this Python) see the checkout's own environment, as its
+type checks do. A hint's fix a later round of `--fix` makes isn't in the first round's list: an
+error about one is untraced.
 """
 
 import ast
@@ -185,7 +191,10 @@ _QUOTED: Final = re.compile(r"""["'`]([A-Za-z_]\w*)["'`]""")
 _NAME: Final = re.compile(r"[A-Za-z_]\w*")
 _CONSTRICTER: Final = Path(sys.executable).with_name("constricter")
 _INSERTED: Final = "insert"  # difflib's opcode for lines only the fixed file has
-_MODES: Final = (("--fix", ()), ("--fix --unsafe-fixes", ("--unsafe-fixes",)))
+_Mode: TypeAlias = tuple[str, tuple[str, ...]]  # a fixed run's label, and its options beyond `--fix`
+_MODES: Final[tuple[_Mode, ...]] = (("--fix", ()), ("--fix --unsafe-fixes", ("--unsafe-fixes",)))
+_TYPES: Final = "--types"
+_INFER_WITH: Final = "--infer-with"
 
 
 def _environment(cwd: Path) -> dict[str, str]:
@@ -526,8 +535,8 @@ def _compare_types(
     return not new
 
 
-def check_types(names: Sequence[str]) -> int:
-    """Run each suite's type checks (default: every one's) as released, fixed, and fixed with guesses.
+def check_types(names: Sequence[str], modes: Sequence[_Mode] = _MODES) -> int:
+    """Run each suite's type checks (default: every one's) as released, then fixed in each of `modes`.
 
     Returns:
       0 if no fixed run has an error its released one hasn't, else 1.
@@ -544,24 +553,46 @@ def check_types(names: Sequence[str]) -> int:
         _ = sys.stdout.write(f"{name} {suite.tag}: {checks}: released: {len(released)} errors\n")
         label: str
         options: tuple[str, ...]
-        for label, options in _MODES:
+        for label, options in modes:
             clean = _compare_types(root, suite, released, label, options) and clean
         _ = _output(["git", "checkout", "-q", "--", suite.source], root)
     return 0 if clean else 1
 
 
+def _arguments(argv: Sequence[str]) -> tuple[list[str], list[_Mode]]:
+    """Read the options out of the arguments: `--infer-with CHECKERS` adds a fixed run with their hints.
+
+    Returns:
+      The other arguments, and the fixed runs to make.
+
+    """
+    rest: list[str] = list(argv)
+    modes: list[_Mode] = list(_MODES)
+    if _INFER_WITH in rest:
+        at: int = rest.index(_INFER_WITH)
+        checkers: str = rest.pop(at + 1)
+        _ = rest.pop(at)
+        options: tuple[str, ...] = ("--unsafe-fixes", _INFER_WITH, checkers)
+        modes.append((f"--fix --unsafe-fixes {_INFER_WITH} {checkers}", options))
+    return rest, modes
+
+
 def main(argv: Sequence[str]) -> int:
-    """Run each suite named (default: all) as released, fixed, and fixed with guesses.
+    """Run each suite named (default: all) as released, fixed, and fixed with guesses (and hints).
 
     Returns:
       0 if every fixed run's outcome matches its released one, else 1.
 
     """
-    if argv[:1] == ["--types"]:
-        return check_types(argv[1:])
+    names: list[str]
+    modes: list[_Mode]
+    names, modes = _arguments(argv)
+    if _TYPES in names:
+        names.remove(_TYPES)
+        return check_types(names, modes)
     same: bool = True
     name: str
-    for name in argv or SUITES:
+    for name in names or SUITES:
         suite: Suite = SUITES[name]
         root: Path = checkout(name, suite)
         _ = _output(["git", "checkout", "-q", "--", suite.source], root)
@@ -570,7 +601,7 @@ def main(argv: Sequence[str]) -> int:
         label: str
         options: tuple[str, ...]
         test: str
-        for label, options in _MODES:
+        for label, options in modes:
             change: str = fixed(root, suite, *options)
             outcome: Outcome = tested(root, suite)
             verdict: str = "same" if outcome == released else "DIFFERENT"

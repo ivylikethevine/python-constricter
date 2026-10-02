@@ -9,25 +9,35 @@ to; `constricter.fix.project` looks things up in it for each file.
 
 import ast
 import itertools
+from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.declared import Declarations, declarations
+from constricter.fix.imports import taken_names
+from constricter.fix.inherited import lineage
 from constricter.fix.known import Origin, Passed, Returns
 from constricter.fix.returned import unannotated
 from constricter.rules import parsed
 from constricter.rules.annotations import (
-    Tables,
     defined_type_vars,
     dotted,
     generic_classes,
-    module_tables,
+    is_composite,
+    node_name,
+    self_returns,
 )
+from constricter.rules.decorators import Held, Pass
+from constricter.rules.syntax import child_statements
+from constricter.rules.tables import Tables, module_tables
 from constricter.rules.walked import of_type
 
 _PACKAGE: Final = "__init__"
+_TYPE_ALIAS: Final = "TypeAlias"  # the annotation, and the node class of `type X = ...` (Python 3.12+)
+# What a type checker decides an `if` by, taking one arm alone: `sys.version_info`, `TYPE_CHECKING`.
+_DECIDED: Final = frozenset({"version_info", "platform", "TYPE_CHECKING"})
 SUFFIX: Final = ".py"
 STUB: Final = ".pyi"
 
@@ -43,7 +53,8 @@ _KEYWORD: Final = "k"
 class Module(NamedTuple):
     """What one file offers and uses: its name, functions' return types, names' origins, and classes'.
 
-    `classes` and `methods`: each class's attributes and its methods' returns (see `Classes`).
+    `classes` and `methods`: each class's attributes and its methods' returns (see `Classes`), those
+    it takes from the file's other classes too (see `Lineage`).
     """
 
     name: str
@@ -67,6 +78,19 @@ class Module(NamedTuple):
     open: Mapping[str, tuple[Param, ...]] = {}
     parameters: Mapping[str, Mapping[str, Passed]] = {}  # see `Seeds`
     declared: Declarations | None = None  # an installed module's, for its overloads (see `declared`)
+    # Its functions declaring a return under decorators other modules may vouch for, each with those
+    # decorators as written, and its own decorators that give a function back (see `decorators`).
+    held: Mapping[str, Held] = {}
+    passes: Mapping[str, Pass] = {}
+    vouched: frozenset[str] = frozenset()  # those of `held` they vouched for, now among `returns`
+    aliases: Mapping[
+        str,
+        bool,
+    ] = {}  # its type aliases, and whether each takes type arguments (see `_aliases`)
+    # The names its top level assigns twice or more (see `_assigned`): variables, to a type checker.
+    rebound: frozenset[str] = frozenset()
+    # Its top-level names something in it binds as a value too (a local `m`, under `import pkg.m as m`).
+    shadowed: frozenset[str] = frozenset()
 
 
 class Index(NamedTuple):
@@ -94,7 +118,7 @@ def module_name(path: Path) -> str:
     )
 
 
-def _absolute(name: str, module: str | None, level: int, *, is_package: bool) -> str:
+def absolute(name: str, module: str | None, level: int, *, is_package: bool) -> str:
     """Resolve `from <.level><module> import ...` in module `name`.
 
     Returns:
@@ -144,7 +168,7 @@ def _imported(stmt: ast.Import | ast.ImportFrom, name: str, *, is_package: bool)
         return names
     for alias in stmt.names:
         names[alias.asname or alias.name] = (
-            _absolute(name, stmt.module, stmt.level, is_package=is_package),
+            absolute(name, stmt.module, stmt.level, is_package=is_package),
             alias.name,
         )
     return names
@@ -231,6 +255,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
     except (SyntaxError, ValueError):  # a null byte is a ValueError
         return None
     own: Tables = module_tables(tree)
+    rebound: frozenset[str] = frozenset(bound for bound, count in _assigned(tree.body).items() if count > 1)
     if name is None:
         parsed.keep(source, (tree, own))  # for the check to take, rather than parse it and read it again
     named: str = name or module_name(path)
@@ -240,7 +265,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         own.returns,
         names,
         own.classes,
-        own.methods,
+        lineage(tree, self_returns(tree), frozenset()).flattened(own.methods),
         defined_type_vars(tree),
         _guarded(tree, named, is_package=path.stem == _PACKAGE),
         unannotated(tree.body),
@@ -251,7 +276,101 @@ def read(path: Path, name: str | None = None) -> Module | None:
         installed=name is not None,
         open=open_functions(tree),
         declared=None if name is None else declarations(tree),
+        held=own.held,
+        passes=own.passes,
+        aliases={alias: generic for alias, generic in _aliases(tree).items() if alias not in rebound},
+        rebound=rebound,
+        shadowed=frozenset(names) & taken_names(tree)[1] if name is None else frozenset(),
     )
+
+
+def _aliases(tree: ast.Module) -> dict[str, bool]:
+    """Find a module's type aliases, at its top level or under an `if` or `try` there.
+
+    A name annotated `TypeAlias`, bound to a subscript or a union (`Json = dict[str, "Json"] | str`),
+    or a `type` statement's.
+
+    Returns:
+      Each one's name, and whether it takes type arguments: its value names one of the module's type
+      variables, or it has type parameters of its own.
+
+    """
+    type_vars: frozenset[str] = defined_type_vars(tree)
+    found: dict[str, bool] = {}
+    stmt: ast.stmt
+    name: str
+    value: ast.expr
+    annotation: ast.expr
+    for stmt in _top_level(tree.body):
+        match stmt:
+            case ast.AnnAssign(
+                target=ast.Name(id=name),
+                annotation=annotation,
+                value=ast.expr() as value,
+            ) if node_name(annotation) == _TYPE_ALIAS:
+                found[name] = _names_any(value, type_vars)
+            case ast.Assign(targets=[ast.Name(id=name)], value=value) if is_composite(value):
+                found[name] = _names_any(value, type_vars)
+            case _ if type(stmt).__name__ == _TYPE_ALIAS:
+                named: ast.Name = cast("ast.Name", getattr(stmt, "name", None))
+                found[named.id] = bool(cast("object", getattr(stmt, "type_params", ())))
+            case _:
+                pass
+    return found
+
+
+def _assigned(body: Sequence[ast.stmt]) -> Counter[str]:
+    """Count how many times a run of a module's top level may assign each name, as a type checker reads it.
+
+    Under its `if`s and `try`s too: both arms of an `if`, but one of an `if` a checker decides
+    (`sys.version_info >= (3, 10)`, `TYPE_CHECKING`), and never the arm a constant rules out
+    (`elif False:`). A name assigned twice is a variable to it, not an alias (`if MYPY: X = A` /
+    `else: X = B`).
+
+    Returns:
+      Each name's count.
+
+    """
+    counts: Counter[str] = Counter()
+    stmt: ast.stmt
+    name: str
+    test: ast.expr
+    constant: bool
+    for stmt in body:
+        match stmt:
+            case (
+                ast.Assign(targets=[ast.Name(id=name)])
+                | ast.AnnAssign(target=ast.Name(id=name), value=ast.expr())
+            ):
+                counts[name] += 1
+            case ast.If(test=ast.Constant(value=bool() as constant)):
+                counts += _assigned(stmt.body if constant else stmt.orelse)
+            case ast.If(test=test):
+                arms: tuple[Counter[str], Counter[str]] = (_assigned(stmt.body), _assigned(stmt.orelse))
+                counts += (arms[0] | arms[1]) if _names_any(test, _DECIDED) else (arms[0] + arms[1])
+            case ast.Try() | ast.TryStar():
+                counts += _assigned(child_statements(stmt))
+            case _:
+                pass
+    return counts
+
+
+def _names_any(value: ast.expr, names: frozenset[str]) -> bool:
+    return any(node_name(node) in names for node in ast.walk(value))
+
+
+def _top_level(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
+    """Walk a module's top-level statements, those under its `if`s and `try`s too.
+
+    Yields:
+      Each.
+
+    """
+    stmt: ast.stmt
+    for stmt in body:
+        yield stmt
+        if isinstance(stmt, ast.If | ast.Try | ast.TryStar):
+            yield from _top_level(child_statements(stmt))
 
 
 def open_functions(tree: ast.Module) -> dict[str, tuple[Param, ...]]:

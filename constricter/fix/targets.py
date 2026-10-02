@@ -5,12 +5,16 @@ import ast
 from typing import Final
 
 from constricter.fix.known import Inference
+from constricter.rules.annotations import node_name
 
 # Builtins that iterate over their (first) argument's elements, one to one.
 SAME_ELEMENTS: Final = frozenset({"reversed", "sorted"})
 DICT_VIEWS: Final = frozenset({"keys", "values", "items"})
+_TEXT_ELEMENTS: Final = {"str": "str", "bytes": "int"}  # what iterating each gives
 # Containers whose one type parameter is their elements'.
 _ONE_ELEMENT_TYPE: Final = frozenset({"list", "List", "set", "Set", "frozenset", "FrozenSet"})
+# What yields its first type parameter, however it's named (`Iterator[T]`, `abc.Generator[T, None, None]`).
+_YIELDING: Final = frozenset({"Iterable", "Iterator", "Generator"})
 RANGE: Final = "range"
 ENUMERATE: Final = "enumerate"
 ZIP: Final = "zip"
@@ -53,22 +57,42 @@ def element_type(container: str, reason: str, kinds: frozenset[str]) -> Inferenc
     # `container` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
     root: ast.expr = ast.parse(container, mode="eval").body
     name: str
+    head: ast.expr
     item: ast.expr
     key: ast.expr
     last: ast.expr
     match root:
-        case ast.Name(id="str"):
-            return Inference("str", reason, kinds)
-        case ast.Name(id="bytes"):
-            return Inference("int", reason, kinds)
+        case ast.Name(id=name) if name in _TEXT_ELEMENTS:
+            return Inference(_TEXT_ELEMENTS[name], reason, kinds)
         case ast.Subscript(value=ast.Name(id=name), slice=item) if name in _ONE_ELEMENT_TYPE:
             return Inference(ast.unparse(sole(item)), reason, kinds)
+        case ast.Subscript(value=head, slice=ast.Tuple(elts=[item, *_]) | item) if (
+            node_name(head) in _YIELDING
+        ):
+            return Inference(ast.unparse(item), reason, kinds)
         case ast.Subscript(value=ast.Name(id="dict" | "Dict"), slice=ast.Tuple(elts=[key, _])):
             return Inference(ast.unparse(key), reason, kinds)
         case ast.Subscript(value=ast.Name(id="tuple" | "Tuple"), slice=ast.Tuple(elts=[item, last])) if (
             isinstance(last, ast.Constant) and last.value is Ellipsis
         ):
             return Inference(ast.unparse(item), reason, kinds)
+        case _:
+            return None
+
+
+def dict_parts(annotation: str) -> tuple[str, str] | None:
+    """Read a `dict[K, V]`'s key and value types.
+
+    Returns:
+      Them, as text, or `None` for any other annotation.
+
+    """
+    # `annotation` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
+    key: ast.expr
+    value: ast.expr
+    match ast.parse(annotation, mode="eval").body:
+        case ast.Subscript(value=ast.Name(id="dict" | "Dict"), slice=ast.Tuple(elts=[key, value])):
+            return ast.unparse(key), ast.unparse(value)
         case _:
             return None
 

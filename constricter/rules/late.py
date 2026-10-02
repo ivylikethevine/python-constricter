@@ -2,11 +2,12 @@
 """A scope's late fixes: those that need the whole scope seen, run once it's checked (see `checker`).
 
 `optionals` (`None`, then one type), `rebinds` (a fix refitted to every later value), `fills` (an
-empty container typed by what's added to it), and `finals` (LVA012's `Final`).
+empty container typed by what's added to it), `shadowed` (a fix naming a value of its own scope,
+dropped), and `finals` (LVA012's `Final`).
 """
 
 import ast
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import replace
 from typing import TYPE_CHECKING, Final
 
@@ -23,7 +24,7 @@ from constricter.offences import (
     Fix,
     Offence,
 )
-from constricter.rules.annotations import node_name
+from constricter.rules.annotations import node_name, roots
 from constricter.rules.flow import Binding, Lifetime, members
 from constricter.rules.rebinding import Refit, refit
 from constricter.rules.scope import FINAL_KIND, Late, Scope, imports_of
@@ -158,6 +159,36 @@ def fills(scope: Scope) -> None:
         scope.offences[index] = replace(o, edit=fix)
         # What the scope infers from it (its `return`s) knows its type, a guess.
         scope.inferred.late[o.name] = (found.annotation, frozenset({_FILLED}))
+
+
+def shadowed(scope: Scope) -> None:
+    """Drop each fix whose annotation names a value its scope binds, which the name then is there.
+
+    In a function, a parameter or a local (`text: str = ""` under a parameter `str`); in any scope,
+    the name the fix annotates (`Row: type[Row] = load()`). A module body's other names may be types.
+    """
+    function: FunctionDef | None = scope.kind.function
+    values: frozenset[str] = frozenset(
+        () if function is None else (*scope.first, *_parameters(function.args)),
+    )
+    index: int
+    o: Offence
+    for index, o in enumerate(scope.offences):
+        if o.edit is not None and roots(o.edit.annotation) & (values | {o.name}):
+            scope.offences[index] = replace(o, edit=None)
+
+
+def _parameters(args: ast.arguments) -> Iterator[str]:
+    """Name a function's parameters, `*args` and `**kwargs` too.
+
+    Yields:
+      Each.
+
+    """
+    arg: ast.arg | None
+    for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg):
+        if arg is not None:
+            yield arg.arg
 
 
 def finals(scope: Scope) -> list[Offence]:

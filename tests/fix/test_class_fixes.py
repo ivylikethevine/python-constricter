@@ -130,7 +130,7 @@ def test_cls_is_its_class_in_a_classmethod() -> None:
     assert _fixed(CLASSMETHODS) == {
         "a": ("int", False),
         "b": ("list[str]", False),
-        "c": ("'Config'", False),  # a string annotation stays one, as a method's does
+        "c": ("Config", False),  # a string annotation is read as its text, as a method's is
         "d": ("str", False),
         "e": ("type[Config]", False),
         "f": (None, False),

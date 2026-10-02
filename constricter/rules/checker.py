@@ -6,13 +6,11 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
 from typing import Final, NamedTuple, cast
 
-from constricter.fix import imports, narrowed, returned, stdlib
-from constricter.fix.doubts import Facts, inner_starts, passed, tests
-from constricter.fix.inference import inference
+from constricter.fix import entered, imports, inherited, returned, stdlib
+from constricter.fix.doubts import facts, says_self
 from constricter.fix.known import (
     Classes,
     ClassSide,
-    Inference,
     Known,
     LibraryNames,
     Observed,
@@ -30,27 +28,26 @@ from constricter.offences import (
     Offence,
     at,
 )
-from constricter.rules import binding, late, parsed
+from constricter.rules import binding, late, parsed, recorded
 from constricter.rules.annotations import (
-    Tables,
     awaited_returns,
     casts,
     class_attributes,
     class_methods,
+    defined_type_vars,
     factories,
     free_of,
     free_of_all,
-    generic_classes,
     imported_from,
-    module_tables,
     node_name,
     self_returns,
 )
 from constricter.rules.calls import keyed, observed, seed_parameters, unshadowed
 from constricter.rules.flow import Finding, Hierarchy
 from constricter.rules.narrowing import flow_offences, module_flow, module_names
+from constricter.rules.quoted import written
 from constricter.rules.redundant import redundant
-from constricter.rules.scope import Kind, Late, Scope, Settings, certain_type, guesses_in
+from constricter.rules.scope import Kind, Late, Scope, Settings, certain_type
 from constricter.rules.syntax import (
     BRANCHING,
     FUNCTION_DEFS,
@@ -64,7 +61,8 @@ from constricter.rules.syntax import (
     python2_compatible,
     target_names,
 )
-from constricter.rules.walked import classes, of_type, walk
+from constricter.rules.tables import Tables, module_tables
+from constricter.rules.walked import classes, of_type
 
 # The node class of `type X = ...` statements, by name: Python 3.11's `ast` has no `TypeAlias`.
 _TYPE_ALIAS: Final = "TypeAlias"
@@ -137,6 +135,7 @@ def _settings(
     imported: Classes | None = None if outside is None else outside.classes
     # The file's own types that mention a type variable it imports (`--fix` sees only its own).
     free: frozenset[str] = frozenset() if outside is None else outside.type_vars
+    selfish: dict[str, frozenset[str]] = self_returns(tree)
     return Settings(
         checks._replace(type_comments=checks.type_comments or python2_compatible(tree)),
         lines,
@@ -146,11 +145,19 @@ def _settings(
             {**(imported.attributes if imported else {}), **free_of_all(own.classes, free)},
             {**(imported.methods if imported else {}), **free_of_all(own.methods, free)},
             free_of(awaited_returns(tree), free),
-            ClassSide(free_of_all(class_attributes(tree), free), free_of_all(class_methods(tree), free)),
+            ClassSide(
+                free_of_all(class_attributes(tree), free),
+                free_of_all(class_methods(tree), free),
+                inherited.lineage(tree, selfish, frozenset(imported.methods if imported else ())),
+            ),
             LibraryNames(
                 casts(tree),
                 stdlib.origins(tree),
-                replace(imports.plan(tree), guarded={} if outside is None else outside.guarded),
+                # What annotations alone can name: its own imports for type checking, and other files' types'.
+                replace(
+                    imports.plan(tree),
+                    guarded={} if outside is None else {**outside.checking, **outside.guarded},
+                ),
                 {} if outside is None else outside.overloaded,
                 frozenset() if outside is None else outside.installed_classes,
                 {} if outside is None else outside.installed_parameters,
@@ -160,7 +167,7 @@ def _settings(
             checks.max_length,
         ),
         Hierarchy.for_module(tree, {name: frozenset(wider) for name, wider in checks.narrower}),
-        owners(tree),
+        owners(tree, says_self),
         tuple(
             sorted(
                 (node.lineno, node.col_offset)
@@ -168,15 +175,12 @@ def _settings(
             ),
         ),
         () if outside is None else outside.hints,
-        Facts(
-            self_returns(tree),
-            generic_classes(tree)
-            | stdlib.generics(stdlib.origins(tree))
-            | (frozenset() if outside is None else outside.generics),
-            passed(tree),
-            tests(tree),
-            narrowed.regions(tree),
-            inner_starts(tree),
+        facts(
+            tree,
+            selfish,
+            stdlib.generics(stdlib.origins(tree)) | (outside.generics if outside else frozenset[str]()),
+            entered.managers(tree),
+            defined_type_vars(tree) | free,
         ),
         keyed(tree, {} if outside is None else outside.parameters),
     )
@@ -369,8 +373,8 @@ def _function_scopes(
             settled: bool = not scope.inferred.late.keys() - scope.inferred.seeded.keys()
             table.checked(
                 func,
-                [_recorded(scope, value) for value in scope.inferred.returns] if settled else [],
-                _assigned(scope) if settled else [],
+                recorded.returns(scope, func) if settled else [],
+                recorded.assigned(scope) if settled else [],
             )
         scopes += _function_scopes(nested, scope.settings, table)
     return scopes
@@ -405,10 +409,11 @@ def _function_scope(
     # A copy of a plain, annotated parameter (`*args`/`**kwargs` aren't the type they're annotated
     # with) can be typed the same way, the moment it's assigned.
     scope.inferred.types.update(
-        (arg.arg, ast.unparse(arg.annotation)) for arg in named if arg.annotation is not None
+        (arg.arg, written(arg.annotation)) for arg in named if arg.annotation is not None
     )
+    # A method's `self` is its class's instance; so is the `self` a function defined in it reads.
     owner: str | None = settings.owners.get(id(func))
-    if owner is not None and named and named[0].arg == _SELF:
+    if owner is not None and (_SELF not in params or [arg.arg for arg in named[:1]] == [_SELF]):
         _ = scope.inferred.types.setdefault(_SELF, owner)
     # A classmethod's first parameter is its class (`type[C]`), whatever it's called.
     if owner is not None and named and [node_name(d) for d in func.decorator_list] == [_CLASSMETHOD]:
@@ -435,14 +440,17 @@ def _function_scope(
     return scope
 
 
-def _visit(scope: Scope, stmt: ast.stmt) -> None:
-    """Bind the names `stmt` binds, as Python would, then visit its nested statements."""
+def _visit(scope: Scope, stmt: ast.stmt, head: ast.stmt | None = None) -> None:
+    """Bind the names `stmt` binds, as Python would, then visit its nested statements.
+
+    `head`: for an `elif`, the `if` it belongs to, which a declaration of its `:=`'s goes before.
+    """
     part: ast.AST
     walruses: tuple[Start, ...]
     if walruses := scope.settings.walruses:  # most modules have no `:=`: none of their parts need a look
         for part in expressions(stmt):
             if has_within(walruses, part):  # a `:=` in it
-                scope.walrus(part)
+                binding.walruses(scope, part, head or stmt)
     _declare(scope, stmt)
     binding.bind(scope, stmt)
     if isinstance(stmt, ast.Return):
@@ -463,10 +471,25 @@ def _visit(scope: Scope, stmt: ast.stmt) -> None:
     child: ast.stmt
     for child in child_statements(stmt):
         scope.assignments.looping += id(child) in body
-        _visit(scope, child)
+        _visit(scope, child, (head or stmt) if _is_elif(stmt, child) else None)
         scope.assignments.looping -= id(child) in body
     if before is not None:
         scope.inferred.rejoined(before)
+
+
+def _is_elif(stmt: ast.stmt, child: ast.stmt) -> bool:
+    """Check whether `child` is `stmt`'s `elif`: an `if`'s only `else` statement, an `if` at its own column.
+
+    Returns:
+      Whether it is.
+
+    """
+    return (
+        isinstance(stmt, ast.If)
+        and isinstance(child, ast.If)
+        and stmt.orelse == [child]
+        and child.col_offset == stmt.col_offset
+    )
 
 
 def _declare(scope: Scope, stmt: ast.stmt) -> None:
@@ -495,7 +518,7 @@ def _declare(scope: Scope, stmt: ast.stmt) -> None:
         case ast.AnnAssign(target=ast.Name(id=name) as target, annotation=annotation):
             scope.declare(name)
             scope.annotation(name, annotation)
-            _ = scope.inferred.types.setdefault(name, ast.unparse(annotation))
+            _ = scope.inferred.types.setdefault(name, written(annotation))
             scope.lifetime(name).declare(ast.unparse(annotation), at(target), _span(annotation, target))
             if stmt.value is not None:
                 scope.lifetime(name).bind(at(target), certain_type(scope, stmt.value))
@@ -615,10 +638,8 @@ def _checked_again(
     ]
     renewed: dict[int, Scope] = {id(func): scope for scope, func in fresh}
     _finished(tree, [scope for scope, _ in fresh])
-    table.recorded.update(
-        (id(func), [_recorded(scope, value) for value in scope.inferred.returns]) for scope, func in fresh
-    )
-    table.assigned.update((id(func), _assigned(scope)) for scope, func in fresh)
+    table.recorded.update((id(func), recorded.returns(scope, func)) for scope, func in fresh)
+    table.assigned.update((id(func), recorded.assigned(scope)) for scope, func in fresh)
     return [(renewed.get(id(func), scope), func) for scope, func in functions]
 
 
@@ -670,10 +691,10 @@ def _body_statements(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
 
 
 def _finished(tree: ast.Module, scopes: Sequence[Scope]) -> None:
-    """Finish `scopes` for their late fixes (`None` rebound, filled containers).
+    """Finish `scopes` for their late fixes (`None` rebound, filled containers, shadowed types).
 
     Those need the names written out of sight marked first. Safe to run again: marking is
-    idempotent, and neither fix redoes one it made.
+    idempotent, and no fix redoes one it made.
     """
     scope: Scope
     for scope in scopes:
@@ -681,49 +702,7 @@ def _finished(tree: ast.Module, scopes: Sequence[Scope]) -> None:
         late.optionals(scope)
         late.rebinds(scope)
         late.fills(scope)
-
-
-def _recorded(scope: Scope, value: ast.expr | None) -> returned.Recorded:
-    """Record a `return` statement's value as its finished function's scope sees it.
-
-    Returns:
-      Its inference (`None` for a bare `return`, or an unknown value), and whether that's a guess.
-
-    """
-    if value is None:
-        return None, frozenset()
-    found: Inference | None = inference(value, scope.settings.known, scope.inferred.types)
-    # What it rests on counts only for a typed value (see `returned`).
-    return found, frozenset() if found is None else guesses_in(scope, [value])[1]
-
-
-def _assigned(scope: Scope) -> list[returned.Assigned]:
-    """Record a finished function's `self.x = value` assignments, each value as `_recorded` does a `return`'s.
-
-    But a value reading a local bound more than once is unknown: the scope's type for it is its last
-    binding's, not what reaches the assignment (`x = None`, `if c: x = 1`, then `self.x = x`).
-
-    Returns:
-      Each attribute, and its value's inference and guesses.
-
-    """
-    return [
-        (attr, (None, frozenset()) if _rebound_in(scope, value) else _recorded(scope, value))
-        for attr, value in scope.inferred.assigned
-    ]
-
-
-def _rebound_in(scope: Scope, value: ast.expr) -> bool:
-    """Check whether `value` reads a local of `scope` bound more than once.
-
-    Returns:
-      Whether it does.
-
-    """
-    return any(
-        isinstance(node, ast.Name) and node.id in scope.flow and len(scope.flow[node.id].bindings) > 1
-        for node in walk(value)
-    )
+        late.shadowed(scope)
 
 
 def value_flow(

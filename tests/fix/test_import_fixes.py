@@ -246,6 +246,14 @@ def test_an_import_already_there_isnt_added_again() -> None:
     assert "".join(fixes.apply(lines[1:], [*offences[:1], Offence(2, 0, "y", edit=fix)])).count("import") == 1
 
 
+def test_an_indented_line_isnt_an_import_that_runs() -> None:
+    """The import's text in a string, or in some block, binds nothing at the module's top: it's added."""
+    lines: list[str] = ['text = """\n', "    from io import BytesIO\n", '"""\n', "x = 1\n"]
+    statement: str = "from io import BytesIO"
+    fix: Fix = Fix("BytesIO", imports=(statement,), after=0)
+    assert fixes.apply(lines, [Offence(4, 0, "x", edit=fix)])[0] == f"{statement}\n"
+
+
 def test_a_notebook_fix_that_needs_an_import_isnt_applied(tmp_path: Path) -> None:
     """A notebook's cells have no import block to add to: that fix is left for a person."""
     cells: list[_Cell] = [

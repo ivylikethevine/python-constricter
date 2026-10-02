@@ -75,7 +75,7 @@ def test_fixes_are_offered_only_where_the_value_decides_the_type(value: str, fix
 
 
 def test_fixes_are_offered_only_for_a_single_plain_name() -> None:
-    """`:=` and class bodies are never fixed; module bodies are, unpacking and chained `=` by declarations."""
+    """Class bodies are never fixed; module bodies are, unpacking, chained `=` and `:=` by declarations."""
     source: str = textwrap.dedent(
         """
     LIMIT = 3
@@ -98,7 +98,7 @@ def test_fixes_are_offered_only_for_a_single_plain_name() -> None:
         ("b", "int"),
         ("c", "int"),  # declared before it too
         ("d", "int"),
-        ("e", None),
+        ("e", "int"),  # and `:=`'s: see tests/fix/test_walrus_fixes.py
         ("size", None),
     ]
 
@@ -274,8 +274,11 @@ def test_fixes_infer_a_methods_self_attribute() -> None:
     ]
 
 
-def test_a_nested_functions_self_is_not_typed() -> None:
-    """A function nested in a method isn't itself a method: its closed-over `self` isn't typed."""
+def test_a_nested_functions_self_is_its_methods() -> None:
+    """A function defined in a method reads the method's `self`, unless it takes or binds one of its own.
+
+    Not in a method whose signature says `Self`, where `self` is one.
+    """
     source: str = textwrap.dedent(
         """
     class C:
@@ -284,10 +287,38 @@ def test_a_nested_functions_self_is_not_typed() -> None:
       def method(self) -> None:
         def helper() -> None:
           a = self.x
+          def deeper() -> None:
+            b = self.x
+        def taking(self) -> None:
+          c = self.x
+        def binding() -> None:
+          self = make()
+          d = self.x
+          def below() -> None:
+            e = self.x
         helper()
+
+      def chained(self) -> "Self":
+        def helper() -> None:
+          g = self.x
+        return self
+
+      def rebound(self, other: "C") -> None:
+        self = other
+        def helper() -> None:
+          h = self.x
+
+      def starred(*self) -> None:
+        i = self.x
+
+      def importing(self) -> None:
+        def helper() -> None:
+          import this as self
+          j = self.x
     """,
     )
-    assert [(o.name, o.fix) for o in check_source(source)] == [("a", None)]
+    fixes: dict[str, str | None] = {o.name: o.fix for o in check_source(source) if len(o.name) == 1}
+    assert fixes == dict.fromkeys("cdeghij") | {"a": "int", "b": "int"}
 
 
 def test_a_classmethods_cls_is_not_typed_as_self() -> None:

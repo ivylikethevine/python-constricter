@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, TypeAlias
 
 if TYPE_CHECKING:
-    from constricter.rules.annotations import Tables
+    from constricter.rules.tables import Tables
 
 BUDGET: Final = 40 << 20  # bytes of source whose trees a run keeps, over all its processes (about 1 GB)
 # A kept tree, and the module's own tables the index read from it (the check reads the same).

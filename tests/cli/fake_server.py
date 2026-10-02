@@ -7,8 +7,11 @@ A line `name = value  # hint: T` gets a variable-type hint `: T` after `name` (t
 after a `; `), as long as `name` is unannotated (so fixing it ends its hint, as a real checker's
 does); `# parts: T` gives the label as parts; `# kinds: T` adds a parameter-name hint and a
 return-type one, which `--infer-with` ignores; `# round N: T` hints only from the file's Nth version
-(as a checker's view changes, as a file is annotated). Positions count UTF-16 code units, or UTF-8
-bytes with the `utf-8` behaviour.
+(as a checker's view changes, as a file is annotated); `# edits: T => U @ E @ L:C F` gives the hint
+`T` the edits an editor would apply: the annotation as `U` (`T` itself, without `=> U`), `E` added at
+the top of the file, and `F` inserted at line `L` (from 0), character `C`; `# located: T @ N=P`
+gives the label as parts, the name `N` in it with the file `P` it's defined in. Positions count
+UTF-16 code units, or UTF-8 bytes with the `utf-8` behaviour.
 
 Behaviours: `utf-8` (it negotiates UTF-8 positions), `ask` (before answering `initialize`, it asks
 for its settings, registers a capability and asks something the client can't answer, and logs a
@@ -19,7 +22,8 @@ initialize), `deaf` (asked to initialize, it stops reading, asks for its setting
 `clingy` (it stays, whatever it's told, even once its input ends), `truncate` (asked for hints, it
 writes half an answer and exits), `swap` (it answers each pair of hint requests second first),
 `slow` (it reports its progress for a second before each answer), `modified` (it drops each file's
-first hint request as ty does, "content modified"), `always-modified` (it drops every one). With
+first hint request as ty does, "content modified"), `cancelled` (as pyrefly does, "request
+cancelled"), `always-modified` (it drops every one). With
 `FAKE_SERVER_PID` set, it writes its process id to that file first.
 """
 
@@ -38,11 +42,16 @@ _Json: TypeAlias = dict[str, "_Json"] | list["_Json"] | str | int | float | bool
 _Object: TypeAlias = dict[str, _Json]
 
 # The name bound last on the line: at its start, or after a `; `.
-_HINTED: Final = re.compile(r"^((?:.*; )?\s*)(\w+) = .*#\s*(hint|parts|kinds|round \d+): (.+)$")
+_HINTED: Final = re.compile(
+    r"^((?:.*; )?\s*)(\w+) = .*#\s*(hint|parts|kinds|edits|located|round \d+): (.+)$",
+)
+_PLACED: Final = re.compile(r"^(\d+):(\d+) (.*)$")  # an edit's line and character, and its text
 _BEHAVIOURS: Final = frozenset(sys.argv[1:])
 _UTF8: Final = "utf-8"
 _PARTS: Final = "parts"
 _KINDS: Final = "kinds"
+_EDITS: Final = "edits"
+_LOCATED: Final = "located"
 _ROUND: Final = "round "
 _HEADERS_END: Final = b"\r\n"
 _PAST_END: Final = "past-end"
@@ -60,7 +69,9 @@ _SILENT: Final = "silent"
 _STUBBORN: Final = "stubborn"
 _MODIFIED: Final = "modified"
 _ALWAYS_MODIFIED: Final = "always-modified"
+_CANCELLED: Final = "cancelled"
 _CONTENT_MODIFIED: Final = -32801
+_REQUEST_CANCELLED: Final = -32800
 
 
 @dataclass
@@ -127,6 +138,12 @@ def _hints(text: str, version: int) -> list[_Json]:
         annotation: str
         indent, name, how, annotation = match.groups()
         position: _Object = {"line": number, "character": _column(indent + name)}
+        if how == _EDITS:
+            found.append(_edited(position, annotation))
+            continue
+        if how == _LOCATED:
+            found.append(_located(position, annotation))
+            continue
         label: _Json = [{"value": ": "}, {"value": annotation}] if how == _PARTS else f": {annotation}"
         found.append({"position": position, "label": label, "kind": 1})
         if how == _KINDS:
@@ -139,6 +156,57 @@ def _hints(text: str, version: int) -> list[_Json]:
     if _PAST_END in _BEHAVIOURS:
         found.append({"position": {"line": len(text.splitlines()) + 5, "character": 0}, "label": ": int"})
     return found
+
+
+def _edited(position: _Object, said: str) -> _Object:
+    """Make a hint with edits, as `# edits:` says (`T => U @ E @ L:C F`).
+
+    Returns:
+      The hint.
+
+    """
+    shown: str
+    written: str
+    head: str
+    added: list[str]
+    head, *added = said.split(" @ ")
+    shown, _, written = head.partition(" => ")
+    edits: list[_Json] = [{"range": {"start": position, "end": position}, "newText": f": {written or shown}"}]
+    text: str
+    for text in added:
+        placed: re.Match[str] | None = _PLACED.match(text)
+        start: _Object = (
+            {"line": 0, "character": 0}
+            if placed is None
+            else {"line": int(placed[1]), "character": int(placed[2])}
+        )
+        new: str = f"{text}\n" if placed is None else placed[3]
+        edits.append({"range": {"start": start, "end": start}, "newText": new})
+    return {"position": position, "label": f": {shown}", "kind": 1, "textEdits": edits}
+
+
+def _located(position: _Object, said: str) -> _Object:
+    """Make a hint whose label's parts say where names are defined, as `# located:` says (`T @ N=P`).
+
+    Returns:
+      The hint, without edits.
+
+    """
+    shown: str
+    defined: list[str]
+    shown, *defined = said.split(" @ ")
+    files: dict[str, str] = dict(pair.split("=", 1) for pair in defined)
+    start: _Object = {"line": 0, "character": 0}
+    parts: list[_Json] = [{"value": ": "}]
+    word: str
+    for word in [found for found in re.split(r"(\w+)", shown) if found]:
+        part: _Object = {"value": word}
+        if word in files:
+            # Absolute on Windows too, where a path without a drive has no file URI.
+            uri: str = Path(files[word]).absolute().as_uri()
+            part["location"] = {"uri": uri, "range": {"start": start, "end": start}}
+        parts.append(part)
+    return {"position": position, "label": parts}
 
 
 def _initialize(message: _Object, _documents: _Documents) -> bool:
@@ -212,13 +280,14 @@ def _hinted(message: _Object, documents: _Documents) -> bool:
     uri: str = str(cast("_Object", cast("_Object", message["params"])["textDocument"])["uri"])
     reply: _Object = {"jsonrpc": "2.0", "id": message["id"]}
     modified: bool = _ALWAYS_MODIFIED in _BEHAVIOURS or (
-        _MODIFIED in _BEHAVIOURS and uri not in documents.dropped
+        bool({_MODIFIED, _CANCELLED} & _BEHAVIOURS) and uri not in documents.dropped
     )
     documents.dropped.add(uri)
     if _FAIL in _BEHAVIOURS:
         reply["error"] = {"code": -32603, "message": "it broke"}
     elif modified:
-        reply["error"] = {"code": _CONTENT_MODIFIED, "message": "content modified"}
+        code: int = _REQUEST_CANCELLED if _CANCELLED in _BEHAVIOURS else _CONTENT_MODIFIED
+        reply["error"] = {"code": code, "message": "content modified"}
     else:
         reply["result"] = _hints(documents.texts[uri], documents.versions[uri])
     if _SWAP in _BEHAVIOURS and documents.held is None:

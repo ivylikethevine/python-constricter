@@ -113,6 +113,39 @@ def test_unsafe_fix_select_trusts_a_guess_and_its_copies() -> None:
     assert all(found[2] for found in other.values())
 
 
+def test_a_guessed_name_that_decides_nothing_makes_no_guess() -> None:
+    """A call typed whatever a guessed argument is stays certain; what takes the guess's type doesn't."""
+    source: str = textwrap.dedent(
+        """\
+        import os
+
+
+        class Box:
+            def name(self):
+                return "x"
+
+
+        def f(parts: list[str]) -> None:
+            box = Box()
+            path = os.path.join(box, "x")
+            copy = box
+            name = box.name()
+            joined = os.path.join(name, parts[0])
+            names = [os.path.join(box, part) for part in parts]
+            pair = (box, 1)
+        """,
+    )
+    assert {o.name: (o.fix, o.unsafe) for o in check_source(source)} == {
+        "box": ("Box", True),
+        "path": ("str", False),  # by its literal alone
+        "copy": ("Box", True),
+        "name": ("str", True),
+        "joined": ("str", False),  # by `parts[0]` alone
+        "names": ("list[str]", False),
+        "pair": ("tuple[Box, int]", True),
+    }
+
+
 def test_narrowing_is_its_own_mechanism() -> None:
     """LVA008's rewrite is `narrow`: a guess unless trusted, and never offered if ignored."""
     source: str = "def f() -> None:\n    total: float = 0\n    total = 1\n"

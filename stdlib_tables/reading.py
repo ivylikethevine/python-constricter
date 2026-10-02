@@ -43,6 +43,7 @@ _STR: Final = "str"
 _BYTES: Final = "bytes"
 _NONE: Final = "None"
 _NEW: Final = "__new__"
+_ENTER: Final = "__enter__"
 _CLASS_GETITEM: Final = "__class_getitem__"
 _TYPING: Final = frozenset({"typing", "typing_extensions"})
 # Builtins spelled as themselves; `object` and `type` are vague, `function` and `ellipsis` internal.
@@ -476,7 +477,7 @@ class Reading:
             binding: Binding
             member: Member | None
             for name, binding in self.body(owner).items():
-                if name not in seen and not private(name) and (member := self._member(binding, owner, klass)):
+                if name not in seen and _read(name) and (member := self._member(binding, owner, klass)):
                     found[name] = member
                 seen.add(name)
         return found
@@ -497,7 +498,7 @@ class Reading:
             name: str
             binding: Binding
             for name, binding in self.body(owner).items():
-                if name not in seen and not private(name) and isinstance(binding, Function):
+                if name not in seen and _read(name) and isinstance(binding, Function):
                     found[name] = (binding, owner)
                 seen.add(name)
         return found
@@ -574,6 +575,18 @@ class Reading:
         if isinstance(new, Function):
             return self.returns(new.defs, klass.module, klass) == klass
         return whole and new is None
+
+
+def _read(name: str) -> bool:
+    """Check whether a class's member is one the tables read: a public one, or `__enter__`.
+
+    `with` gives what `__enter__` returns: the one private method a fix reads.
+
+    Returns:
+      Whether it is.
+
+    """
+    return name == _ENTER or not private(name)
 
 
 def readable(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

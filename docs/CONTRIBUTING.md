@@ -72,8 +72,9 @@ installs as a dependency.
 tag, with its test dependencies as its CI installs them, in `local/corpus-suites/`) as released,
 after `--fix`, and after `--fix --unsafe-fixes`, and exits 1 if either differs; with `--types` it
 runs the package's own type checker (as its CI does) the same three times instead, traces each new
-error to the fix mechanism behind it, and exits 1 if there are any. It needs `git`, `uv`, a C
-compiler, Rust and the network.
+error to the fix mechanism behind it, and exits 1 if there are any; `--infer-with CHECKERS` adds a
+run fixed with those checkers' hints too. It needs `git`, `uv`, a C compiler, Rust (a default
+toolchain: `rustup default stable`) and the network.
 
 `tests/corpus/corpus_table.py` measures every corpus with released constricter versions and this
 checkout (each isolated in its own environment), at every level, checked and fixed, and records a

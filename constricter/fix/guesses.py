@@ -5,13 +5,15 @@ import ast
 from collections.abc import Iterator, Mapping
 from typing import Final
 
-from constricter.fix import stdlib
+from constricter.fix import shapes, stdlib
 from constricter.fix.inference import (
     COMPREHENSIONS,
     CONTAINER_BUILDERS,
     RETURNED,
     dict_view,
+    inference,
     inferred,
+    scalar,
     targets_typed,
 )
 from constricter.fix.known import Known
@@ -25,7 +27,9 @@ from constricter.rules.annotations import dotted
 from constricter.rules.walked import children
 
 # Builtins whose call is certain (when the module doesn't rebind the name): see `_is_guess`.
-_CERTAIN_BUILTINS: Final = frozenset(BUILTIN_RETURNS.keys() | CONTAINER_BUILDERS.keys() | ITERATORS)
+_CERTAIN_BUILTINS: Final = frozenset(
+    BUILTIN_RETURNS.keys() | CONTAINER_BUILDERS.keys() | ITERATORS | {"type"},
+)
 
 
 def guessed(
@@ -40,27 +44,23 @@ def guessed(
     function; literals, calls to a module function, a fixed-return builtin (`len`, `isinstance`,
     ...) or a method `members.member` types on a value whose type is known, and another local this
     scope already typed, are certain. Copying a local `inferred` itself only
-    guessed (`guesses`) is no more certain than the guess it copies.
+    guessed (`guesses`) is no more certain than the guess it copies, unless the value's type is the
+    same without it (see `_rests`).
 
     Returns:
-      Whether any call in `value` is to something other than such a certain callee, or any name in
-      it copies such a guess.
+      Whether any call in `value` is to something other than such a certain callee, or its type
+      rests on a name in it that copies such a guess.
 
     """
-    walked: list[ast.AST] = list(_deciding(value, known, declared))
-    inside: Mapping[str, str] = targets_typed(
-        [node for node in walked if isinstance(node, COMPREHENSIONS)],
-        known,
-        declared,
-    )
-    return any(_is_guess(node, known, guesses, inside) for node in walked)
+    return guessing(value, known, guesses, {}, declared)[0]
 
 
 def _deciding(value: ast.AST, known: Known, declared: Mapping[str, str]) -> Iterator[ast.AST]:
     """Walk what decides `value`'s type: all of it, but not the arguments of a call they can't change.
 
     `open(path, "rb")` is a file object by its mode, `logging.getLogger(name)` a `Logger`, whatever
-    `path` or `name` are: a guess there doesn't make the call's type one. Nor does it in a call to a
+    `path` or `name` are: a guess there doesn't make the call's type one; nor in `x.kind is None`, a
+    `bool` whatever `x.kind` is, or an f-string. Nor does it in a call to a
     fixed-return builtin (`len(Box())`), a function declaring its return, or a method a certain
     source types (`"{}".format(Box())`, `self.items.get(key())`), though its receiver still counts.
 
@@ -73,6 +73,8 @@ def _deciding(value: ast.AST, known: Known, declared: Mapping[str, str]) -> Iter
     node: ast.AST
     for node in iter(waiting.pop, None):
         yield node
+        if isinstance(node, ast.expr) and scalar(node) is not None:
+            continue
         if isinstance(node, ast.Call) and (opened(node, known) or library_class(node, known)):
             continue
         if isinstance(node, ast.Call) and _fixed_by_callee(node, known, declared):
@@ -125,18 +127,36 @@ def guessing(
         declared,
     )
     unsafe: bool = False
+    named: bool = True  # only names are guesses, so far
     found: set[str] = set()
     node: ast.AST
     for node in walked:
         if _is_guess(node, known, guesses, inside):
             unsafe = True
+            named = named and isinstance(node, ast.Name)
             if isinstance(node, ast.Call):
                 found.update(_guessed_by(node, known, inside))
             elif isinstance(node, ast.Attribute):
                 found.update(_assigned_origins(node, known, inside) or ())
         if isinstance(node, ast.Name) and node.id in origins:
             found.update(origins[node.id])
-    return unsafe, frozenset(found) if unsafe else frozenset()
+    if not unsafe or (named and not _rests(value, known, guesses, declared)):
+        return False, frozenset()
+    return True, frozenset(found)
+
+
+def _rests(value: ast.expr, known: Known, guesses: frozenset[str], declared: Mapping[str, str]) -> bool:
+    """Check whether `value`'s type rests on the guessed names in it.
+
+    `os.path.join(root, "x")` is a `str` by its literal, whatever `root` is: a guessed `root` doesn't
+    make it a guess.
+
+    Returns:
+      Whether it has another type, or none, with those names' types unknown.
+
+    """
+    sure: dict[str, str] = {name: text for name, text in declared.items() if name not in guesses}
+    return inferred(value, known, sure) != inferred(value, known, declared)
 
 
 def certain_method(call: ast.expr, known: Known, declared: Mapping[str, str]) -> bool:
@@ -163,9 +183,10 @@ def certain_method(call: ast.expr, known: Known, declared: Mapping[str, str]) ->
 
 
 def _overloaded_method(call: ast.Call, known: Known, declared: Mapping[str, str]) -> bool:
-    """Check whether `call` calls a standard-library method its arguments type (`stdlib.overloaded_method`).
+    """Check whether `call` calls a method its arguments type: the standard library's, or `dict.get`.
 
-    Its arguments are walked as its parts: a guessed one makes it a guess.
+    See `stdlib.overloaded_method` and `shapes.defaulted`. Its arguments are walked as its parts: a
+    guessed one makes it a guess.
 
     Returns:
       Whether it does.
@@ -179,6 +200,7 @@ def _overloaded_method(call: ast.Call, known: Known, declared: Mapping[str, str]
             return typed is not None and (
                 stdlib.overloaded_method(typed, method, known) is not None
                 or installed_method(typed, method, known) is not None
+                or shapes.defaulted(typed, call, lambda arg: inference(arg, known, declared)) is not None
             )
         case _:
             return False
@@ -197,6 +219,7 @@ def _guessed_by(call: ast.Call, known: Known, declared: Mapping[str, str]) -> fr
     receiver: ast.expr
     method: str
     typed: str | None
+    defined: tuple[str, str] | None
     match call:
         case ast.Call(func=ast.Name() | ast.Attribute() as func) if (
             callee := dotted(func)
@@ -204,8 +227,8 @@ def _guessed_by(call: ast.Call, known: Known, declared: Mapping[str, str]) -> fr
             return known.returned.guesses[callee or ""]
         case ast.Call(func=ast.Attribute(value=receiver, attr=method)) if (
             typed := inferred(receiver, known, declared)
-        ) is not None and returned_method(typed, method, known) is not None:
-            return frozenset({RETURNED}) | known.returned.guesses.get(f"{typed}.{method}", frozenset())
+        ) is not None and (defined := returned_method(typed, method, known)) is not None:
+            return frozenset({RETURNED}) | known.returned.guesses.get(f"{defined[0]}.{method}", frozenset())
         case _:
             return frozenset({CONSTRUCTOR})
 

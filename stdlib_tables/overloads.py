@@ -91,6 +91,7 @@ _CALLABLE: Final = "Callable"
 _PROPERTIES: Final = frozenset({"property", "cached_property"})
 _INIT: Final = "__init__"
 _NEW: Final = "__new__"
+_ENTER: Final = "__enter__"
 # The builtin containers whose element an argument of the type binds a parameter's type variable to.
 CONTAINERS: Final = ("list", "tuple", "set", "frozenset", "dict")
 
@@ -370,6 +371,20 @@ class Overloads(Templates):
     def _is_self(self, annotation: ast.expr | None, module: str) -> bool:
         found: Found | None = None if annotation is None else self.reading.ref(annotation, module)
         return found is not None and found.module in TYPING and found.name == _SELF_TYPE
+
+    def enters_itself(self, klass: ClassRef) -> bool:
+        """Check whether a class's `__enter__` (its own, or the one it inherits) returns `Self`.
+
+        `with` then gives the instance as it's typed, a generic class's type arguments included.
+
+        Returns:
+          Whether every signature of it does.
+
+        """
+        found: tuple[Function, ClassRef] | None = self.reading.functions(klass).get(_ENTER)
+        return found is not None and all(
+            readable(node) and self._is_self(node.returns, found[1].module) for node in found[0].defs
+        )
 
     def methods(
         self,

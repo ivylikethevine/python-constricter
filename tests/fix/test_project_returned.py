@@ -65,7 +65,7 @@ def run():
     g: int = base()
     return a, b, c, d, e, f, g
 """
-GUESSED: Final = "    e: Row = row(1)\n    f: Local = hidden()\n"
+GUESSED: Final = "    e: Row = row(1)\n    f: util.Local = hidden()\n"
 SHOWN: Final = (
     "fix 'e': `Row`, from `row`'s `return`s [returned] (a guess: --unsafe-fixes)\n",
     "fix 'b': `str`, from `util.helper`'s `return`s [returned]\n",

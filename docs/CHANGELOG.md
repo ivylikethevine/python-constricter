@@ -6,6 +6,101 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types the `self` a function defined in a method reads (one taking and binding none of its
+  own; not in a method whose signature says `Self`), and a call to a function whose signature is a
+  `# type:` comment, by the comment's return: `names = find()` under `# type: () -> List[str]` is a
+  `List[str]`, quoted in a module body where `List` is imported under an `if` on a flag
+  (`if MYPY_CHECK_RUNNING:`). Another file's type is written through the module defining it, where
+  the file imports that module to run (`core_schema.CoreSchema`, `inspect.Signature`), as a hint's
+  is, and no longer by a new import for type checking; not through a name the file binds as a value
+  somewhere. With `--infer-with`, ty's spellings are read (`Model@create_model` is `Model`,
+  `(str & ~AlwaysFalsy) | None` a `str | None`, and `tuple[str, *tuple[str, ...]]` is kept as it is,
+  which is Python 3.11's syntax), and a hint naming a type variable is a fix only where its
+  function's signature or its class names it. On pydantic: 4 fewer bindings with no fix (2,142 to
+  2,138), 3 fewer with basedpyright's hints (1,593 to 1,590); basedpyright finds no new error after
+  `--fix --unsafe-fixes`.
+- Fixed: a type naming an alias its module assigns in two branches a type checker can't decide
+  between (`if MYPY: X = A`, `else: X = B`), a variable to it, isn't written in another file, nor
+  taken for an alias a hint names; an import a fix needs is added even where its text is on an
+  indented line (in a string, in the standard library's `_test_multiprocessing`), which binds
+  nothing; and a quoted `"Self"` in a signature counts as `Self`.
+- `--fix` types six more shapes. A union the author would write: `a if c else None` is a `T | None`,
+  and `a or b` (or `a and b`) with operands of one type is that type, `or` dropping a `None` before
+  its last operand (fix kind `boolean`). A `:=`'s name is declared on a line of its own before its
+  statement (before the `if`, for one in an `elif`), typed as an assignment's is:
+  `if (m := pattern.match(s)) is not None:` declares `m: re.Match[str] | None`. An empty container
+  the function `extend`s or `update`s is typed by that argument's elements (a guess, as `append`'s
+  is). A quoted annotation, or a quoted part of one, is read as its text (`xs: "list[Node]"` types
+  `xs[0]` and `for x in xs`), and a module body's fix naming what isn't bound yet is quoted. Small
+  shapes: `[*names, s]`, `{**d, k: v}`, `type(x)` (a `type[C]`), `d.get(k, 0)` with a default of the
+  values' type, and `os.environ["X"]`. With `--infer-with`, `TypeAlias` is imported for a module's
+  alias written as a subscript or a union (never a bare class's, which declared one loses the
+  class's type parameters), and a hint may name a type alias a checked file or an installed package
+  defines (`schema: core_schema.CoreSchema`). On pydantic, the one corpus measured: 59 fewer
+  bindings with no fix (2,201 to 2,142; 52 more certain fixes, 7 more guesses), and 127 fewer with
+  basedpyright's hints (1,720 to 1,593, 82 of them aliases declared); nothing broken, one pass
+  converges.
+- Fixed: a fix in a line and a declaration before that line no longer land on each other
+  (`x = f(y := 3)`); a fix whose annotation names a parameter or local of its own function, or the
+  name it annotates, isn't offered (`text: str` under a parameter `str`); a value typed whatever its
+  parts are (`x.kind is None`, an f-string) stays certain when a part is a guess; and an annotation
+  that is a string but not an expression (`x: "no way"`) no longer stops the file's check with a
+  syntax error.
+- `--fix` types a call to a decorated function that declares its return, under decorators that give
+  the function back: the standard library's (`functools.cache`, `lru_cache`, `wraps`,
+  `abc.abstractmethod`, `typing.final`, `override`, `deprecated`), and a function whose signature
+  says so (`F -> F`, or a factory's `Callable[[F], F]`), the module's own or one imported from a
+  checked file or an installed package (pandas's `@set_module("pandas")`):
+  `idx = date_range("2020", periods=3)` is a `DatetimeIndex`. 2,216 more certain fixes and 249 more
+  guesses on pandas, sqlalchemy and pydantic; basedpyright finds 30 new errors on pandas, where a
+  name so typed is bound again to another type.
+- Fixed: `--fix` left one fix for a second pass where a loop over an `Iterable[T]` binds names used
+  in `tup += (name, value)`; a loop's target declared before it is still what the loop gives, and a
+  tuple added to isn't taken for the tuple added. A type with a name in quotes inside it
+  (`Dict[str, 'Row']`) is no longer written in a file where the name means nothing (4 new errors on
+  pydantic). A hint's location that isn't a file's no longer raises, and the tests that build file
+  URIs pass on Windows.
+- `--fix` types a method a class inherits: `self.size()`, or `x.size()` on a value typed as the
+  class, is the base's that defines it, in method resolution order among the module's classes and
+  then a class of another checked file. A declared return is certain, a `Self` one the receiver's
+  class, and `return`s a guess. An unannotated generator function's calls are a
+  `Generator[T, None, None]` by its `yield`s, and a loop over an `Iterable[T]`, `Iterator[T]` or
+  `Generator[T, ...]` declares its target `T`. A fix whose type is the same whatever a guessed name
+  in it is stays certain (`os.path.join(root, "x")`), and a function whose signature is a `# type:`
+  comment is no longer typed by its `return`s. On the standard library, django, sqlalchemy,
+  pydantic, pandas and pip, inherited methods add 103 certain fixes and 299 guesses, generators and
+  iterables 178 and 122, and 506 guesses become certain; basedpyright finds 5 new errors after them
+  (4 on pandas, 1 on sqlalchemy). Joining two `return` types into a union was measured and left out:
+  275 more fixes, and 38 new basedpyright errors.
+- `--fix` declares a `with` statement's target by what its context manager's `__enter__` returns: a
+  standard-library manager by the tables (`with zipfile.ZipFile(p) as z:` is a `zipfile.ZipFile`,
+  `with tempfile.TemporaryDirectory() as d:` a `str`), a class's declared `__enter__`, and a
+  `@contextmanager` function's `Iterator[T]`. Of the 5,017 `with` targets with no fix on the
+  corpora, 494 have a certain one and 356 a guess; basedpyright finds no new error after the
+  standard library's 438 certain ones. Not `async with`, nor a target that unpacks.
+- `--infer-with pyrefly`: pyrefly is a third checker (`pyrefly lsp`). With all three, hints type
+  16.3% of the bindings `--fix` can't on pydantic, sqlalchemy and django (13.2% with basedpyright
+  and ty). A request pyrefly cancels is asked again; its hints for a loop's or an unpacking's names,
+  which carry no edits, name each class by the file its label says defines it; and a class in an
+  installed package's private module is no fix. It infers an unannotated function's return only as
+  its configuration says (`infer-return-types = "checked"`).
+- `--infer-with` no longer declares another name for a class (`Pair = tuple[int, str]`, hinted
+  `type[tuple[int, str]]`) a variable, which annotations then couldn't be written with: a module's
+  name, or a function's written as a class's is. `corpus_suite.py --types --infer-with CHECKERS`
+  runs a package's own type checker after the hints' fixes too: sqlalchemy's mypy found 321 new
+  errors with basedpyright's and ty's hints, and finds 47 without a module's such names.
+- `--infer-with` uses a hint that names a class the file doesn't bind where its annotations run: one
+  the hint's own edits import (basedpyright, ty and pyrefly send the import an editor would add with
+  each hint), written through an import the module has or imported under `if TYPE_CHECKING:`, a
+  module body's annotation quoted; and one the module itself imports under `if TYPE_CHECKING:`. Only
+  a class a checked file, an installed package that declares its types or the standard-library
+  tables define: a module basedpyright shows by its name, an alias, and a class of an unchecked
+  package are left. A generic class a hint shows without its arguments (the checker doesn't know
+  them) is no longer written, the module's own included, nor a special form alone (`type[Generic]`),
+  nor `TypeAlias` in a function. On pydantic, sqlalchemy and django, basedpyright's hints type 614
+  more of the 26,716 bindings `--fix` can't (2,253, now 2,867) and ty's 351 more; after
+  `--fix --unsafe-fixes --infer-with basedpyright`, basedpyright finds 14 new errors on pydantic (21
+  before) and 148 on sqlalchemy (134 before, for 411 more fixes).
 - Built with hatchling, and the standard-library tables `--fix` reads are generated from typeshed's
   stubs when the package is built, no longer tracked in git. A release from PyPI installs as before;
   installing from a checkout (the GitHub Action without `version`, the pre-commit hooks,
