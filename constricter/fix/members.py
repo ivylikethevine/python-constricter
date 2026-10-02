@@ -190,6 +190,20 @@ def assigned_attribute(receiver: str, name: str, known: Known) -> str | None:
     return known.returned.attributes.get(receiver, {}).get(name)
 
 
+def class_variable(receiver: str, name: str, known: Known) -> str | None:
+    """Look up a plain class's variable typed by its value alone (see `constricter.fix.classvars`).
+
+    On an instance of the class, or the class itself (`type[C]`); one of a base of the module's that
+    binds it, too.
+
+    Returns:
+      Its type, or `None` if it isn't one (a certain source is asked first, see `member`).
+
+    """
+    owner: str | None = known.class_side.lineage.definer(class_of(receiver) or receiver, name)
+    return known.class_side.variables.get(owner or "", {}).get(name)
+
+
 def subscripted(container: str, node: ast.Subscript, index: str | None) -> str | None:
     """Infer `container[...]`'s type, given `container`'s own type as text, and the index's (`index`).
 

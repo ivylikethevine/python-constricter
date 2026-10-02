@@ -6,6 +6,13 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix --unsafe-fixes` annotates a plain class's variables (`limit = 3` in its body becomes
+  `limit: int = 3`), by a literal value or a display of them, and types what reads them
+  (`self.limit`, `cls.limit`) in the same run: a new fix kind, `member`, always a guess. A plain
+  class has no decorator, metaclass or other keyword, and every base is `object`, a `unittest` test
+  case or another plain class, across the checked files; and no class that isn't plain inherits from
+  it. Every other class body is left alone. On pydantic: 8 more guesses (235 to 243), no new
+  basedpyright error, and one pass converges.
 - `--fix` types the `self` a function defined in a method reads (one taking and binding none of its
   own; not in a method whose signature says `Self`), and a call to a function whose signature is a
   `# type:` comment, by the comment's return: `names = find()` under `# type: () -> List[str]` is a
@@ -18,12 +25,16 @@ Notable changes, newest first. Each release's full notes are generated from its 
   which is Python 3.11's syntax), and a hint naming a type variable is a fix only where its
   function's signature or its class names it. On pydantic: 4 fewer bindings with no fix (2,142 to
   2,138), 3 fewer with basedpyright's hints (1,593 to 1,590); basedpyright finds no new error after
-  `--fix --unsafe-fixes`.
+  `--fix --unsafe-fixes`. On the seven corpora, since 0.3.1: 53,141 certain fixes (from 48,645) and
+  38,622 guesses (from 38,092), 160,085 bindings with no fix (from 165,111); nothing broken, and one
+  pass converges.
 - Fixed: a type naming an alias its module assigns in two branches a type checker can't decide
   between (`if MYPY: X = A`, `else: X = B`), a variable to it, isn't written in another file, nor
   taken for an alias a hint names; an import a fix needs is added even where its text is on an
   indented line (in a string, in the standard library's `_test_multiprocessing`), which binds
-  nothing; and a quoted `"Self"` in a signature counts as `Self`.
+  nothing; a quoted `"Self"` in a signature counts as `Self`; and in a method whose signature says
+  `Self`, a `Self` method called on `type(self)`, one the class inherits, and
+  `self if inplace else self.copy()` are `Self`, not the class (9 errors on pandas).
 - `--fix` types six more shapes. A union the author would write: `a if c else None` is a `T | None`,
   and `a or b` (or `a and b`) with operands of one type is that type, `or` dropping a `None` before
   its last operand (fix kind `boolean`). A `:=`'s name is declared on a line of its own before its

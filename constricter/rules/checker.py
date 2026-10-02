@@ -6,7 +6,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
 from typing import Final, NamedTuple, cast
 
-from constricter.fix import entered, imports, inherited, returned, stdlib
+from constricter.fix import classvars, entered, imports, inherited, returned, stdlib
 from constricter.fix.doubts import facts, says_self
 from constricter.fix.known import (
     Classes,
@@ -149,6 +149,7 @@ def _settings(
                 free_of_all(class_attributes(tree), free),
                 free_of_all(class_methods(tree), free),
                 inherited.lineage(tree, selfish, frozenset(imported.methods if imported else ())),
+                classvars.variables(tree, stdlib.origins(tree), outside),
             ),
             LibraryNames(
                 casts(tree),
@@ -322,17 +323,30 @@ def _body_scopes(tree: ast.Module, settings: Settings) -> list["Scope"]:
 
     """
     imported: frozenset[str] = imported_from(tree, _ENUM_MODULES)
-    class_bodies: list[list[ast.stmt]] = [node.body for node in classes(tree) if not _is_enum(node, imported)]
-    scopes: list[Scope] = []
-    body: list[ast.stmt]
-    for body in (tree.body, *class_bodies):
-        # A class body is never fixed: annotating a dataclass's variable makes it a field.
-        scope: Scope = Scope({"_"}, [], settings, Kind(UNANNOTATED_MEMBER, fixable=body is tree.body))
-        stmt: ast.stmt
-        for stmt in body:
-            _visit(scope, stmt)
-        scopes.append(scope)
-    return scopes
+    # A class body isn't fixed: annotating a dataclass's variable makes it a field. A plain class's
+    # variable typed by its value is (see `Scope.assign`).
+    return [
+        _body_scope(tree.body, settings, Kind(UNANNOTATED_MEMBER, fixable=True)),
+        *(
+            _body_scope(node.body, settings, Kind(UNANNOTATED_MEMBER, fixable=False, owner=node.name))
+            for node in classes(tree)
+            if not _is_enum(node, imported)
+        ),
+    ]
+
+
+def _body_scope(body: list[ast.stmt], settings: Settings, kind: Kind) -> "Scope":
+    """Check one module's or class's body.
+
+    Returns:
+      Its scope.
+
+    """
+    scope: Scope = Scope({"_"}, [], settings, kind)
+    stmt: ast.stmt
+    for stmt in body:
+        _visit(scope, stmt)
+    return scope
 
 
 def _is_enum(node: ast.ClassDef, imported: frozenset[str]) -> bool:

@@ -25,6 +25,7 @@ from constricter.fix.known import Hints, ImportPlan, Inference, Known, Passed
 from constricter.fix.narrowed import narrowed_at
 from constricter.offences import (
     LONG_TUPLE,
+    MEMBER,
     NESTED_TYPE,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
@@ -83,8 +84,11 @@ class Kind(NamedTuple):
     """What kind of body a scope is: the code its unannotated names get, and whether `--fix` fixes it."""
 
     unannotated: str  # LVA001 in a function, LVA004 in a module or class body
-    fixable: bool  # a class body never is: annotating a dataclass's variable makes it a field
+    # A class body isn't: annotating a dataclass's variable makes it a field. Only a plain class's
+    # variable typed by its value is fixed there (see `constricter.fix.classvars`).
+    fixable: bool
     function: FunctionDef | None = None  # a function's own: its body, its returns
+    owner: str | None = None  # a class body's: its class
 
     def body(self) -> Sequence[ast.stmt]:
         """Find the function's body.
@@ -246,13 +250,19 @@ class Scope:
         unsafe: bool
         origins: frozenset[str]
         constant: bool = (
-            self.kind.function is None and is_constant(name) and name in facts.passed and chained is None
+            self.kind.function is None
+            and self.kind.owner is None
+            and is_constant(name)
+            and name in facts.passed
+            and chained is None
         )
         fix, unsafe, origins = self.valued(value, target.lineno, constant=constant)
         if fix is not None and constant and origins == _LITERAL_DOUBT:
             fix = self._constant(fix)
         # Value flow's type is `--fix`'s own, if certain: worked out once, here, for both.
         certain: str | None = certain_type(self, value, (None if fix is None else fix.annotation, unsafe))
+        if self.kind.owner is not None:
+            fix, unsafe, origins = self._member(name, fix)
         if fix is None and (fix := self.hint(target, value)) is not None:
             unsafe, origins = True, frozenset({hinted.KIND})
         self.lifetime(name).bind(
@@ -276,6 +286,19 @@ class Scope:
         )
         if fix is not None:
             self.inferred.learn(name, fix.annotation, origins if unsafe else None)
+
+    def _member(self, name: str, fix: Inference | None) -> tuple[Inference | None, bool, frozenset[str]]:
+        """Offer a class body's fix only for a plain class's variable typed by its value: a guess.
+
+        Returns:
+          The inference, whether it's a guess, and what it rests on, as `valued` does; none for any
+          other binding of a class body.
+
+        """
+        typed: str | None = self.settings.known.class_side.variables.get(self.kind.owner or "", {}).get(name)
+        if fix is None or typed is None or fix.annotation != typed:
+            return None, False, frozenset()
+        return fix._replace(kinds=fix.kinds | {MEMBER}), True, frozenset({MEMBER})
 
     def valued(
         self,
@@ -360,7 +383,7 @@ class Scope:
             or not says_self(function)
         ):
             return None
-        return Owner(owner, args[0].arg, self.settings.facts.selfish.get(owner, frozenset()))
+        return Owner(owner, args[0].arg, self.settings.known.class_side.lineage.selfish_of(owner))
 
     def hint(self, target: ast.Name, value: ast.expr | None = None) -> Inference | None:
         """Type `target` by the type checkers' hints for it (`--infer-with`): the first the file can use.
@@ -480,13 +503,15 @@ class Scope:
     ) -> None:
         """Unless `name` is already bound, record its first binding, reporting `code` (`None`: typed).
 
-        The offence offers `fix`, unless this is a class body (a dataclass's annotation is a field).
+        The offence offers `fix`, unless this is a class body (a dataclass's annotation is a field),
+        where only a plain class's variable's (`_member`) is.
         """
         if name not in self.declared:
             self.declared.add(name)
             self.first.append(name)
             if code is not None:
-                self.offences.append(Offence(*where, name, code, fix if self.kind.fixable else None))
+                offered: bool = self.kind.fixable or (fix is not None and MEMBER in fix.kinds)
+                self.offences.append(Offence(*where, name, code, fix if offered else None))
 
     def declare(self, name: str) -> None:
         """Bind `name` by an annotation (`name: T`, `name: T = ...`): a typed first binding."""

@@ -50,6 +50,20 @@ class Lineage(NamedTuple):
             None,
         )
 
+    def selfish_of(self, owner: str) -> frozenset[str]:
+        """Name the methods an instance of `owner` has that are declared to return a bare `Self`.
+
+        Returns:
+          Its own, and those it takes from its bases in sight.
+
+        """
+        return self.selfish.get(owner, frozenset()).union(
+            name
+            for base in self.order.get(owner, ())
+            for name in self.selfish.get(base, ())
+            if self.definer(owner, name) == base
+        )
+
     def flattened(self, methods: Mapping[str, Mapping[str, str]]) -> dict[str, dict[str, str]]:
         """Add to each class's `methods` (their return types, by name) those it takes from its bases.
 

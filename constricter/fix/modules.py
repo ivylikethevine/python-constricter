@@ -15,6 +15,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
 
+from constricter.fix import classvars
 from constricter.fix.declared import Declarations, declarations
 from constricter.fix.imports import taken_names
 from constricter.fix.inherited import lineage
@@ -91,6 +92,11 @@ class Module(NamedTuple):
     rebound: frozenset[str] = frozenset()
     # Its top-level names something in it binds as a value too (a local `m`, under `import pkg.m as m`).
     shadowed: frozenset[str] = frozenset()
+    # Its classes' bases as written, their variables typed by their values, and which of them are
+    # plain, once the index settles it (see `constricter.fix.classvars`, `project.with_plain`).
+    bases: Mapping[str, tuple[str, ...]] = {}
+    members: Mapping[str, Mapping[str, str]] = {}
+    plain: frozenset[str] = frozenset()
 
 
 class Index(NamedTuple):
@@ -281,6 +287,8 @@ def read(path: Path, name: str | None = None) -> Module | None:
         aliases={alias: generic for alias, generic in _aliases(tree).items() if alias not in rebound},
         rebound=rebound,
         shadowed=frozenset(names) & taken_names(tree)[1] if name is None else frozenset(),
+        bases={} if name is not None else classvars.bases(tree),
+        members={} if name is not None else classvars.members(tree),
     )
 
 

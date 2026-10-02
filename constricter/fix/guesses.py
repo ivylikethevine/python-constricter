@@ -18,11 +18,11 @@ from constricter.fix.inference import (
 )
 from constricter.fix.known import Known
 from constricter.fix.library import installed_method, library_class
-from constricter.fix.members import assigned_attribute, member, returned_method
+from constricter.fix.members import assigned_attribute, class_variable, member, returned_method
 from constricter.fix.opened import opened
 from constricter.fix.returns import BUILTIN_RETURNS
 from constricter.fix.targets import DICT_VIEWS, ITERATORS
-from constricter.offences import CONSTRUCTOR
+from constricter.offences import CONSTRUCTOR, MEMBER
 from constricter.rules.annotations import dotted
 from constricter.rules.walked import children
 
@@ -238,23 +238,27 @@ def _assigned_origins(
     known: Known,
     declared: Mapping[str, str],
 ) -> frozenset[str] | None:
-    """Name what an attribute typed only by its assignments (see `Returned.attributes`) rests on.
+    """Name what an attribute nothing declares rests on: its assignments, or its class's body.
+
+    One typed only by its assignments (see `Returned.attributes`), or a plain class's variable typed
+    by its value (see `ClassSide.variables`).
 
     Returns:
-      `assigned`, and what its values' guesses rest on; or `None` if it isn't one (a certain source
-      types it, or nothing does).
+      `assigned`, and what its values' guesses rest on, or `member`; or `None` if it isn't one (a
+      certain source types it, or nothing does).
 
     """
-    if not any(node.attr in attributes for attributes in known.returned.attributes.values()):
+    if not any(
+        node.attr in attributes
+        for attributes in (*known.returned.attributes.values(), *known.class_side.variables.values())
+    ):
         return None  # most attributes: no receiver to type
     typed: str | None = inferred(node.value, known, declared)
-    if (
-        typed is None
-        or member(typed, node.attr, None, known) is not None
-        or assigned_attribute(typed, node.attr, known) is None
-    ):
+    if typed is None or member(typed, node.attr, None, known) is not None:
         return None
-    return known.returned.guesses[f"{typed}.{node.attr}"]
+    if assigned_attribute(typed, node.attr, known) is not None:
+        return known.returned.guesses[f"{typed}.{node.attr}"]
+    return None if class_variable(typed, node.attr, known) is None else frozenset({MEMBER})
 
 
 def _is_guess(

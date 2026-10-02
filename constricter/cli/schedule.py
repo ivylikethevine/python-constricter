@@ -47,6 +47,8 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         methods.lineage,
         methods.aliases,
         own.guarded,
+        project.plain_classes(modules, path),
+        imported.members,
     )
 
 

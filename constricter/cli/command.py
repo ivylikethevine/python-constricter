@@ -487,7 +487,9 @@ def _checked_all(
             modules = project.Index({}, []) if coverage else project.index(paths)
             collecting.indexed()
         if not coverage:
-            modules = decorated.passed(installed.with_installed(modules, installed.search_path()))
+            modules = project.with_plain(
+                decorated.passed(installed.with_installed(modules, installed.search_path())),
+            )
         return schedule.checked(
             paths,
             check,

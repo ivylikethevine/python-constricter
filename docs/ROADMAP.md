@@ -77,10 +77,11 @@
 - **Guesses** apply only with `--unsafe-fixes`: a capitalised call taken to construct its class,
   LVA008's and LVA010's narrowing, an empty container typed by what's added to it (`append`,
   `extend`, `update`, ...), a method typed by its `return`s, an instance attribute by its
-  assignments (`assigned`), an unannotated parameter by what every call in the checked files passes
-  it (`callers`, builtin types alone: callers' classes too would add 10 fixes on the corpora), and
-  what rests on any of these. **Fix levels**: every mechanism has a stable id (`--show-fixes`,
-  JSON), and `fix-select`, `fix-ignore` and `unsafe-fix-select` choose which apply.
+  assignments (`assigned`), a plain class's variable by its literal value (`member`), an unannotated
+  parameter by what every call in the checked files passes it (`callers`, builtin types alone:
+  callers' classes too would add 10 fixes on the corpora), and what rests on any of these. **Fix
+  levels**: every mechanism has a stable id (`--show-fixes`, JSON), and `fix-select`, `fix-ignore`
+  and `unsafe-fix-select` choose which apply.
 - **Type-checker-backed inference** (`--infer-with basedpyright,ty,pyrefly`): the checkers' inlay
   hints type what `--fix` can't, as guesses, widened, checked and imported; with basedpyright it
   about doubles what `--fix --unsafe-fixes` types on the annotated corpora. A hint naming a class
@@ -104,7 +105,8 @@
   library's included; no alias its module assigns in two branches (a variable, to a checker) written
   in another file; and a constructor guessed only where its callee is a type. The unsafe runs' new
   errors went from 20, 76 and 165 (0.2.4) to 2, 5 and 36.
-- **Safe by construction**: never touches class bodies, keeps line endings and encodings, edits
+- **Safe by construction**: touches no class body but a plain class's, and that as a guess (no
+  decorator, no metaclass, every base plain or a test case), keeps line endings and encodings, edits
   notebooks' cells in place, nothing broken on any corpus, and the corpus packages' own test suites
   pass identically before and after. One pass converges on every corpus, the standard library's
   tests included: a library type a callee's module doesn't import yet is named for its callers by
@@ -159,18 +161,18 @@
   (`python -m tests.corpus.corpus_untyped`; `--rows` writes every binding as JSON lines): each
   untyped binding, classified by the statement that binds it, the shape of its value, its scope,
   whether its function is annotated, and what a call through an import resolves to and where from.
-  On every corpus (0.3.1): 251,848 untyped bindings, 165,111 with no fix at all, 78% of those in
-  functions with no annotations. The items under [Next](#next) are sized by it: each count is the
-  bindings with no fix an item could reach, not what it would fix. Left alone on purpose:
-  `getattr(...)`, a bound method's alias (`append = parts.append`), `dict.get` on a
-  `dict[str, Any]`, and a `TypeVar`'s own declaration. Measured and too small to build: an
-  unannotated parameter typed by its literal default (76 bindings) or its docstring (325); and
-  signatures first, by `pyrefly infer` before `--fix`: 2,254 more certain fixes on the six Python 3
-  corpora (19.8% of their untyped bindings fixed, then 20.8%), since it annotates 8% of the
-  unannotated parameters, most of the returns it adds are `-> None`, and it left one of pydantic's
-  files unparsable; and an unannotated function's `return`s of two types, or of one and `None`,
-  joined into a union: 275 more fixes, and 38 new basedpyright errors (a union one of whose types is
-  wrong, or that the caller never narrows).
+  On every corpus: 251,848 untyped bindings, 160,085 with no fix at all, 77% of those in functions
+  with no annotations. The items under [Next](#next) are sized by it: each count is the bindings
+  with no fix an item could reach, not what it would fix. Left alone on purpose: `getattr(...)`, a
+  bound method's alias (`append = parts.append`), `dict.get` on a `dict[str, Any]`, and a
+  `TypeVar`'s own declaration. Measured and too small to build: an unannotated parameter typed by
+  its literal default (76 bindings) or its docstring (325); and signatures first, by `pyrefly infer`
+  before `--fix`: 2,254 more certain fixes on the six Python 3 corpora (19.8% of their untyped
+  bindings fixed, then 20.8%), since it annotates 8% of the unannotated parameters, most of the
+  returns it adds are `-> None`, and it left one of pydantic's files unparsable; and an unannotated
+  function's `return`s of two types, or of one and `None`, joined into a union: 275 more fixes, and
+  38 new basedpyright errors (a union one of whose types is wrong, or that the caller never
+  narrows).
 - **Why `name = self.method()` has no fix** (8,195 bindings, before the inherited methods): the
   method is the class's own (46%), a base's in the file (12%) or in another (10%), a class attribute
   a subclass sets (`self.type2test()`, `self.dumps()`: 28%, left alone), or a library base's (5%).
@@ -233,7 +235,7 @@
 ## Next
 
 By scope (smallest first) and, within each, by value: the bindings with no fix an item could reach,
-of the 165,111 on the corpora, or of the 26,716 on pydantic, sqlalchemy and django for an item that
+of the 160,085 on the corpora, or of the 26,365 on pydantic, sqlalchemy and django for an item that
 needs `--infer-with`. Each item says what it is, why, how, and when it's done.
 
 ### Small: a day or less
@@ -256,6 +258,11 @@ needs `--infer-with`. Each item says what it is, why, how, and when it's done.
 4. **An unpacked tuple in older syntax.** A hint's `tuple[str, *tuple[str, ...]]` is written as it
    is, which Python 3.10 can't parse (3 on pydantic's `v1/fields.py`). Done when a module that may
    run on one gets `Unpack[...]`, or no fix.
+5. **A name typed in one branch alone.** `levels = index.multi()` in an `if` (no type) and
+   `levels = index.flat()` in its `else` (a `list[str]`) leave `levels` a `list[str]` after it, as
+   certain, and a loop over it declares `lvl: str` (2 new errors on pandas's `style_render.py`). A
+   name bound before with no type may still hold that value: take a later binding's type for a
+   guess. Done when `lvl`'s fix there is one.
 
 ### Medium: a few days
 
@@ -308,20 +315,22 @@ needs `--infer-with`. Each item says what it is, why, how, and when it's done.
 
 ### Large: a week or more
 
-1. **A method's `return` of an untyped value.** 4,078 of the 8,195 `name = self.method()` bindings
-   with no fix call a method whose `return` gives a value `--fix` can't type: a name (1,779), a call
-   on another value (823), another `self.method()` (408), a module function's call (229), a
-   subscript (166). Most of the names are unannotated parameters, which `callers` types for a plain
-   top-level function alone: do so for a method, by what every call on `self` or on a value typed as
-   its class passes (a guess). Count first how many of the 1,779 are parameters, and how many of
-   those every call types. Done when a method returning its parameter types its calls.
-2. **Class bodies of plain classes.** `--fix` never touches a class body, where an annotation makes
-   a dataclass's or a model's variable a field: 15,336 bindings with no fix, 3,070 of them in a
-   class with no base and no decorator (1,421 bound to a literal) and 2,456 under a test case's. As
-   a guess, annotate a class variable where every base is `object`, a test case, or a checked file's
-   class that is itself plain, and never under a metaclass, a decorator, `Enum`, `NamedTuple`,
-   `TypedDict`, `Protocol` or an installed package's base. Done when the corpus packages' test
-   suites and type checkers find nothing new after `--fix --unsafe-fixes`.
+1. **A method's `return` of an untyped value.** Of the 11,959 `self.method()` bindings with no fix,
+   5,617 call a method the class doesn't define itself, and 5,436 one whose `return` gives a value
+   `--fix` can't type: a tuple (1,858), a call (1,455), a local or another name (1,396), a subscript
+   or attribute (272). Only 137 return an unannotated parameter (26 nothing else), and in none of
+   those classes does every `self.method(...)` call pass it a literal: typing a method's parameters
+   by its callers, as `callers` types a plain top-level function's (3 fixes on pandas), reaches
+   almost none of them. What's left is the values themselves: the tuple's parts, the call, the
+   local. Done when a method returning its parameter types its calls.
+2. **Class bodies of plain classes, past literals.** An annotation in a class body makes a
+   dataclass's or a model's variable a field, so `--fix` annotates only a plain class's variable
+   bound to a literal or a display of them (`member`, a guess). Counted without it: 15,336 bindings
+   with no fix, 3,070 of them in a class with no base and no decorator (1,421 bound to a literal)
+   and 2,456 under a test case's. Left: a value that names something (a call, a copy, an attribute),
+   a name the body binds more than once, and a class under a builtin base (`Exception`, `str`). Done
+   when the corpus packages' test suites and type checkers find nothing new after
+   `--fix --unsafe-fixes`, `member` included.
 
 ## Ongoing
 

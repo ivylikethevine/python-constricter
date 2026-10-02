@@ -62,6 +62,7 @@ FIX_KINDS: dict[str, str] = {
     "returned": "an unannotated function's own `return`s (a method's: a guess)",
     "assigned": "an unannotated instance attribute's every `self.x = value` in its class (a guess)",
     "callers": "an unannotated parameter every call in the checked files passes one type (a guess)",
+    "member": "a plain class's variable, by its literal value in the class's body (a guess)",
     "final": "LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)",
     "checker": "a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)",
     "open": "`open(path, mode)`'s file object, by its literal mode (`io.TextIOWrapper`, ...)",
@@ -72,6 +73,7 @@ FIX_KINDS: dict[str, str] = {
     "redundant": "LVA007: the repeated annotation, dropped",
 }
 CONSTRUCTOR: Final = "constructor"
+MEMBER: Final = "member"
 NARROW: Final = "narrow"
 NESTING: Final = 3  # LVA006's default depth
 MAX_LENGTH: Final = 4  # LVA011's default: the longest fixed-length tuple an annotation may list

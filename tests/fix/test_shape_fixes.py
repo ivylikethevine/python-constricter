@@ -215,3 +215,43 @@ def test_type_of_self_is_self_where_the_method_says_so() -> None:
         "a": (None, False),  # no `Self` to write it with
         "b": ("type[Point]", False),
     }
+
+
+def test_a_self_method_on_the_instance_or_its_class_is_self() -> None:
+    """Called on `self` or `type(self)`, the class's own or one it inherits; and a conditional of two."""
+    source: str = """
+    from typing import Self
+
+    class Base:
+        def clone(self) -> Self:
+            return self
+
+    class Point(Base):
+        @classmethod
+        def build(cls) -> Self:
+            return cls()
+
+        def other(self) -> "Point":
+            return self
+
+        def copy(self, inplace: bool) -> Self:
+            a = type(self).build()
+            b = self.clone()
+            c = self if inplace else self.clone()
+            d = self if inplace else self.other()
+            e = self.other()
+            return a
+
+        def plain(self, inplace: bool) -> None:
+            g = type(self).build()
+            h = self if inplace else self.clone()
+    """
+    assert _fixed(source) == {
+        "a": ("Self", False),
+        "b": ("Self", False),  # `Base`'s
+        "c": ("Self", False),
+        "d": ("Point", False),  # one side is declared the class
+        "e": ("Point", False),
+        "g": ("Point", False),  # where the signature doesn't say `Self`, `self` is its class
+        "h": ("Point", False),
+    }

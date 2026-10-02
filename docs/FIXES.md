@@ -120,6 +120,15 @@ in a function or module body:
   may assign it too; an attribute the class body binds, stored any other way (`+=`, an unpacking,
   `del`, a nested function's `self.x = ...`), or assigned a local bound more than once, is left
   alone;
+- with `--unsafe-fixes`, a plain class's variable (`limit = 3` in its body), bound once there to a
+  literal or a display of them, and what reads it (`self.limit`, `cls.limit`, or `limit` on any
+  value typed as the class or one inheriting it): the value's type. A plain class is defined once in
+  its module, with no decorator, metaclass or other keyword, every base `object`, a `unittest` test
+  case or another plain class (another checked file's too, with the CLI), and no class that isn't
+  plain inheriting from it (a model's mixin). A guess (`member`), since a subclass or outside code
+  may bind it to another type; a variable the module stores any other way (`self.limit = ...`) is
+  left alone, and so is every other class body, where an annotation can be more than a type (a
+  dataclass's, a `NamedTuple`'s or a model's field);
 - an attribute, property or method of a class another checked file defines, its type imported as a
   declared return's is (the CLI only: the plugins see one file at a time);
 - with `--unsafe-fixes` (the CLI only), what's computed from an unannotated parameter of a plain
@@ -378,8 +387,8 @@ aren't sent to it. The checker's own configuration (its `[tool.basedpyright]`, `
 returns only where its configuration has it check and infer one (`check-unannotated-defs = true`,
 `infer-return-types = "checked"`), which without a configuration it doesn't.
 
-It never touches class bodies (a dataclass would gain a field), and it leaves what it can't fix
-reported. The standard library and third-party packages are out of reach.
+It touches no class body but a plain class's (a dataclass would gain a field), and it leaves what it
+can't fix reported. The standard library and third-party packages are out of reach.
 
 `--show-fixes` lists, after the report, each fix and how its value decided it (for `b = s.strip()`:
 `str`, from `str.strip`'s fixed return type), marking the guesses `--unsafe-fixes` would add;
@@ -431,6 +440,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `filled`        | an empty container, then only what the function adds to it (a guess)                     |
 | `returned`      | an unannotated function's own `return`s, or a generator's `yield`s (a method's: a guess) |
 | `assigned`      | an unannotated instance attribute's every `self.x = value` in its class (a guess)        |
+| `member`        | a plain class's variable, by its literal value in the class's body (a guess)             |
 | `callers`       | an unannotated parameter every call in the checked files passes one type (a guess)       |
 
 A project chooses which apply, in `[tool.constricter]` or on the command line:

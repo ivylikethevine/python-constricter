@@ -187,12 +187,14 @@ class ClassSide(NamedTuple):
     """What each class the module defines offers beyond its instances' own members.
 
     On the class itself: `class_attributes`, `class_methods`. From its bases: `lineage`, which base
-    an instance takes a method from (see `Lineage`).
+    an instance takes a method from (see `Lineage`). In its body: `variables`, the plain classes'
+    typed by their values, the module's own and those it imports (see `constricter.fix.classvars`).
     """
 
     attributes: Mapping[str, Mapping[str, str]]
     methods: Mapping[str, Mapping[str, str]]
     lineage: Lineage = Lineage()
+    variables: Mapping[str, Mapping[str, str]] = MappingProxyType({})
 
 
 @dataclass(frozen=True)
@@ -316,7 +318,10 @@ class Outside(NamedTuple):
     generic classes it imports from them, which a fix mustn't write bare. `callees`: the functions of
     checked files it may call whose parameters aren't all annotated, as it spells them (`f`, `u.f`);
     `parameters`: for its own such functions, each parameter every call passes one type (see
-    `constricter.fix.callers`).
+    `constricter.fix.callers`). `plain`: which of its own classes are plain, as the index of checked
+    files settles it (`None`: as the file alone sees, see `constricter.fix.classvars`); `members`:
+    the variables of the plain classes it imports from them, typed by their values, as it spells
+    each class.
     """
 
     calls: Mapping[str, str] = {}
@@ -335,6 +340,8 @@ class Outside(NamedTuple):
     installed_aliases: Mapping[str, Expansion] = {}  # see `LibraryNames.aliases`
     # The classes it imports under `if TYPE_CHECKING:` alone, which an annotation can name (see `offers.own`).
     checking: Mapping[str, Guarded] = {}
+    plain: frozenset[str] | None = None
+    members: Mapping[str, Mapping[str, str]] = {}
 
     def usable(self, taken: frozenset[str]) -> "Outside":
         """Drop what other files offer whose type needs a name imported that the module binds already.
@@ -370,6 +377,8 @@ class Outside(NamedTuple):
             self.installed_lineage,
             self.installed_aliases,
             self.checking,
+            self.plain,
+            self.members,
         )
 
 

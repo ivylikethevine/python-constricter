@@ -75,7 +75,10 @@ def test_fixes_are_offered_only_where_the_value_decides_the_type(value: str, fix
 
 
 def test_fixes_are_offered_only_for_a_single_plain_name() -> None:
-    """Class bodies are never fixed; module bodies are, unpacking, chained `=` and `:=` by declarations."""
+    """Module bodies are fixed, unpacking, chained `=` and `:=` by declarations; a class body's as a guess.
+
+    A plain class's variable alone: see tests/fix/test_member_fixes.py.
+    """
     source: str = textwrap.dedent(
         """
     LIMIT = 3
@@ -99,7 +102,7 @@ def test_fixes_are_offered_only_for_a_single_plain_name() -> None:
         ("c", "int"),  # declared before it too
         ("d", "int"),
         ("e", "int"),  # and `:=`'s: see tests/fix/test_walrus_fixes.py
-        ("size", None),
+        ("size", "int"),
     ]
 
 
@@ -214,7 +217,7 @@ def test_fixes_infer_a_typed_locals_attribute() -> None:
     class Point:
       x: int
       y: int
-      label = "origin"  # not class-level annotated: not offered
+      label = "origin"  # not class-level annotated: typed by its value, as a guess
 
     def f() -> None:
       p = Point()
@@ -229,7 +232,7 @@ def test_fixes_infer_a_typed_locals_attribute() -> None:
         ("a", "int"),
         ("b", "int"),
         ("c", None),
-        ("d", None),
+        ("d", "str"),
     ]
 
 

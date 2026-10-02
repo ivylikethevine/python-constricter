@@ -23,6 +23,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Final, NamedTuple
 
+from constricter.fix import classvars
 from constricter.fix.known import Classes, Guarded, Origin, Returns
 from constricter.fix.modules import SUFFIX, Index, Module, index, indexed, module_name, read
 from constricter.rules.annotations import node_name, roots
@@ -61,6 +62,8 @@ class Imported(NamedTuple):
     returned: Returns = Returns()
     guarded: Mapping[str, Guarded] = {}  # names their types need imported to type check (pickled: a `dict`)
     generics: frozenset[str] = frozenset()  # its generic classes, as the file spells them
+    # Its plain classes' variables typed by their values, by class (see `constricter.fix.classvars`).
+    members: Mapping[str, Mapping[str, str]] = {}
 
 
 def _origin(module: Module, name: str) -> Origin | None:
@@ -719,20 +722,20 @@ def imported(catalog: Index, path: Path) -> Imported:
       for a file `catalog` doesn't have (a notebook, standard input).
 
     """
-    name: str = module_name(path)
     modules: dict[str, Module] = catalog.modules
     attributes: dict[str, dict[str, str]] = {}
     methods: dict[str, dict[str, str]] = {}
     guarded: dict[str, Guarded] = {}
     generics: set[str] = set()
+    members: dict[str, Mapping[str, str]] = {}
     target: Module | None
-    if path.suffix != SUFFIX or (target := modules.get(name)) is None:
+    if path.suffix != SUFFIX or (target := modules.get(module_name(path))) is None:
         return Imported({}, Classes(attributes, methods))
     local: str
     origin: Origin
     for local, origin in _resolved(catalog, target.names):
         spelled: list[tuple[str, Origin]] = []
-        if origin[1] is not None and origin[0] != name:
+        if origin[1] is not None and origin[0] != target.name:
             spelled = [(local, origin)]
         elif origin[1] is None:  # a module: `m.Row`, or `pkg.m.Row` after `import pkg.m`
             spelled = [
@@ -748,6 +751,8 @@ def imported(catalog: Index, path: Path) -> Imported:
             if (defined := definition(modules, where, CLASS)) is not None:
                 if defined[1] in defined[0].generics:
                     generics.add(key)
+                if defined[1] in defined[0].plain and defined[1] in defined[0].members:
+                    members[key] = defined[0].members[defined[1]]
                 attributes[key] = _portable(
                     modules,
                     (target, defined),
@@ -768,6 +773,7 @@ def imported(catalog: Index, path: Path) -> Imported:
         returned(catalog, path, guarded),
         guarded,
         frozenset(generics),
+        members,
     )
 
 
@@ -822,6 +828,68 @@ def _portable(
         elif (respelled := _respelled(modules, target, defined[0], annotation, guarded)) is not None:
             kept[member] = respelled
     return kept
+
+
+def with_plain(catalog: Index) -> Index:
+    """Settle which of the checked files' classes are plain, across them all.
+
+    As `constricter.fix.classvars` has it for one module, a base another checked file defines
+    followed there: a class under another file's plain class is plain, and a class that isn't
+    makes what it inherits from, in any file, not plain either.
+
+    Returns:
+      The index, each checked module with its plain classes.
+
+    """
+    found: dict[str, tuple[str, ...]] = {
+        f"{module.name}.{name}": tuple(_base(catalog.modules, module, base) for base in bases)
+        for module in catalog.modules.values()
+        for name, bases in module.bases.items()
+    }
+    if not found:
+        return catalog
+    plain: frozenset[str] = classvars.settled(found, classvars.TEST_CASES.__contains__)
+    return Index(
+        {
+            name: module._replace(plain=frozenset(each for each in module.bases if f"{name}.{each}" in plain))
+            for name, module in catalog.modules.items()
+        },
+        catalog.names,
+    )
+
+
+def _base(modules: Mapping[str, Module], module: Module, base: str) -> str:
+    """Resolve a class's base, as `module` writes it, to where it's defined (`pkg.models.Row`).
+
+    Returns:
+      The defining module and the class, dotted, through imports and re-exports; as far as it's
+      known, for one no indexed module defines (`unittest.TestCase`).
+
+    """
+    first: str
+    rest: str
+    first, _, rest = base.partition(_DOT)
+    if not rest and first in module.bases:
+        return f"{module.name}.{first}"
+    origin: Origin | None
+    if (origin := module.names.get(first)) is None:
+        return base
+    path: list[str] = [*([origin[0]] if origin[0] else []), *([origin[1]] if origin[1] else [])]
+    path += rest.split(_DOT) if rest else []
+    where: Origin = (_DOT.join(path[:-1]), path[-1])
+    defined: tuple[Module, str] | None = definition(modules, where, CLASS)
+    return _DOT.join(path) if defined is None else f"{defined[0].name}.{defined[1]}"
+
+
+def plain_classes(catalog: Index, path: Path) -> frozenset[str] | None:
+    """Find which classes of the file at `path` the index settled as plain (see `with_plain`).
+
+    Returns:
+      Their names; `None` for a file `catalog` doesn't have, whose own classes say.
+
+    """
+    target: Module | None = catalog.modules.get(module_name(path)) if path.suffix == SUFFIX else None
+    return None if target is None else target.plain
 
 
 def with_returned(catalog: Index, found: Mapping[str, Returns]) -> Index:

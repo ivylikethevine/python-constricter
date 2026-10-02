@@ -14,7 +14,13 @@ from constricter.fix.library import (
     library_class,
     library_variable,
 )
-from constricter.fix.members import assigned_attribute, member, returned_method, subscripted
+from constricter.fix.members import (
+    assigned_attribute,
+    class_variable,
+    member,
+    returned_method,
+    subscripted,
+)
 from constricter.fix.opened import opened
 from constricter.fix.returns import BUILTIN_RETURNS
 from constricter.fix.targets import (
@@ -30,7 +36,7 @@ from constricter.fix.targets import (
     iterator_call,
     unpacked,
 )
-from constricter.offences import CONSTRUCTOR
+from constricter.offences import CONSTRUCTOR, MEMBER
 from constricter.rules.annotations import GENERICS, dotted, is_vague, node_name
 from constricter.rules.flow import members
 
@@ -228,13 +234,22 @@ def _member_of(
                 else Inference(defined[1], f"`{defined[0]}.{attr}`'s `return`s", frozenset({RETURNED}))
             )
         case _:
-            found = member(receiver, attr, None, known)
-            text = None if found is not None else assigned_attribute(receiver, attr, known)
-            return (
-                found
-                if text is None
-                else Inference(text, f"`{receiver}.{attr}`'s assignments", frozenset({ASSIGNED}))
-            )
+            return member(receiver, attr, None, known) or _unannotated(receiver, attr, known)
+
+
+def _unannotated(receiver: str, attr: str, known: Known) -> Inference | None:
+    """Type an attribute nothing declares: by its class's assignments, or its value in the class's body.
+
+    Returns:
+      The inference (a guess), or `None`.
+
+    """
+    text: str | None
+    if (text := assigned_attribute(receiver, attr, known)) is not None:
+        return Inference(text, f"`{receiver}.{attr}`'s assignments", frozenset({ASSIGNED}))
+    if (text := class_variable(receiver, attr, known)) is not None:
+        return Inference(text, f"`{attr}`'s value in its class's body", frozenset({MEMBER}))
+    return None
 
 
 def _scalar_reason(value: ast.expr) -> str:
