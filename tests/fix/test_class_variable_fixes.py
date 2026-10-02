@@ -8,7 +8,7 @@ from typing import Final, TypeAlias
 
 from constricter import Checks, FixPolicy, Offence, check_source
 from constricter.cli import command as cli
-from constricter.fix import classvars, project, stdlib
+from constricter.fix import classvars, plain, project, stdlib
 
 # Each offence's fix and whether it's a guess.
 _Fixed: TypeAlias = dict[str, tuple[str | None, bool]]
@@ -313,12 +313,12 @@ def _package(root: Path) -> list[Path]:
 def test_another_files_plain_class_is_a_plain_base(tmp_path: Path) -> None:
     """The index follows a base to its file: plain there, and never a class a model inherits from."""
     paths: list[Path] = _package(tmp_path)
-    catalog: project.Index = project.with_plain(project.index(paths))
+    catalog: project.Index = plain.settled(project.index(paths))
     assert catalog.modules["pkg.bases"].plain == {"Base", "Wide", "Case"}  # `Mixin` is a model's
     assert catalog.modules["pkg.models"].plain == frozenset()
     assert catalog.modules["using"].plain == {"Child", "Tests", "Other"}
-    assert project.plain_classes(catalog, paths[-1]) == frozenset({"Child", "Tests", "Other"})
-    assert project.plain_classes(catalog, tmp_path / "missing.py") is None
+    assert plain.classes(catalog, paths[-1]) == frozenset({"Child", "Tests", "Other"})
+    assert plain.classes(catalog, tmp_path / "missing.py") is None
     assert project.imported(catalog, paths[-1]).members == {
         "Base": {"size": "int"},
         "Case": {"retries": "int"},
@@ -326,7 +326,7 @@ def test_another_files_plain_class_is_a_plain_base(tmp_path: Path) -> None:
         "bases.Wide": {"width": "int"},
         "bases.Case": {"retries": "int"},
     }
-    assert project.with_plain(project.Index({}, [])) == project.Index({}, [])
+    assert plain.settled(project.Index({}, [])) == project.Index({}, [])
 
 
 def test_one_run_fixes_the_class_and_what_reads_it(tmp_path: Path) -> None:
@@ -337,3 +337,128 @@ def test_one_run_fixes_the_class_and_what_reads_it(tmp_path: Path) -> None:
         assert cli.main(arguments) == cli.EXIT_FOUND
         assert paths[-1].read_text(encoding="utf-8") == USED
         assert paths[1].read_text(encoding="utf-8") == FIXED_BASES
+
+
+BUILTINS: Final = """
+class Mixin:
+    code: str
+    limit: int | None = None
+
+    def __init__(self) -> None:
+        self.label: str | None = None
+
+
+class Failed(Mixin, ValueError):
+    code = "failed"
+    limit = 3
+    label = "x"
+    retries = 2
+    args = ("a",)
+
+
+class Missing(Failed):
+    kind = "missing"
+    with_traceback = 1
+
+
+class Io(OSError):
+    errno = 5
+    slow = True
+
+
+class Text(str):
+    strip = "both"
+    lowered = True
+
+
+class Meta(type):
+    registry = 1
+"""
+FAILURES: Final = """
+class Failure(ValueError):
+    status: int | None = None
+"""
+FAILING: Final = """
+from pkg.failures import Failure
+
+
+class Gone(Failure):
+    status = 404
+    reason = "gone"
+
+
+class Lost(Failure):
+    args = ("lost",)
+
+
+class Late(Failure):
+    seconds = 30
+"""
+
+
+def test_a_class_under_a_builtin_exception_or_value_class_is_plain() -> None:
+    """Its variables are its own: but one the builtin has itself, or a class above annotates otherwise.
+
+    A type checker holds a variable to what its base declares: `limit: int | None` above makes
+    `limit: int` an incompatible override, as `errno` under `OSError` is.
+    """
+    fixed: _Fixed = _fixed(BUILTINS)
+    assert {name: fix for name, fix in fixed.items() if fix[0]} == {
+        "code": ("str", True),  # as the mixin declares it
+        "retries": ("int", True),
+        "kind": ("str", True),
+        "slow": ("bool", True),
+        "lowered": ("bool", True),
+    }
+    # Annotated as another type above (`limit`, and `label` by its `self.label: ...`), a builtin
+    # base's own (`args`, `with_traceback` through `Failed`, `errno`, `strip`), and a metaclass's.
+    assert {name for name, fix in fixed.items() if not fix[0]} == {
+        "limit",
+        "label",
+        "args",
+        "with_traceback",
+        "errno",
+        "strip",
+        "registry",
+    }
+    tree: ast.Module = ast.parse(textwrap.dedent(BUILTINS))
+    assert classvars.plain(tree, {}) == {"Mixin", "Failed", "Missing", "Io", "Text"}
+    assert classvars.allowed("KeyError")
+    assert not classvars.allowed("type")
+
+
+def test_a_builtin_the_module_binds_itself_is_no_plain_base() -> None:
+    """`ValueError = ...` somewhere in the module: the base may be anything."""
+    source: str = "def f(ValueError): ...\n\n\nclass Odd(ValueError):\n    odd = 1\n"
+    assert _fixed(source) == {"odd": (None, False)}
+    assert classvars.plain(ast.parse(source), {}) == frozenset()
+
+
+def test_a_class_with_no_typed_variable_has_none() -> None:
+    """A module whose classes bind nothing a value types isn't read for what they annotate."""
+    assert classvars.members(ast.parse("class Empty(ValueError):\n    made = make()\n")) == {}
+
+
+def test_another_files_base_holds_a_variable_to_its_type(tmp_path: Path) -> None:
+    """The index sees what a file can't: its class's bases in other files, and what they declare.
+
+    A class hiding what a base there annotates as another type, or a builtin above that base has
+    itself, isn't plain; one that doesn't is.
+    """
+    files: dict[str, str] = {"pkg/__init__.py": "", "pkg/failures.py": FAILURES, "failing.py": FAILING}
+    paths: list[Path] = []
+    name: str
+    source: str
+    for name, source in files.items():
+        path: Path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _ = path.write_text(source, encoding="utf-8")
+        paths.append(path)
+    catalog: project.Index = plain.settled(project.index(paths))
+    assert catalog.modules["pkg.failures"].plain == {"Failure"}
+    assert catalog.modules["failing"].members == {
+        "Gone": {"status": "int", "reason": "str"},
+        "Lost": {"args": "tuple[str]"},
+        "Late": {"seconds": "int"},
+    }
+    assert catalog.modules["failing"].plain == {"Late"}

@@ -126,7 +126,7 @@ def test_a_property_is_its_declared_return() -> None:
 
 
 def test_cls_is_its_class_in_a_classmethod() -> None:
-    """Class attributes and class-side methods resolve; instance-only ones and `cls()` don't."""
+    """Class attributes and class-side methods resolve, and `cls()` constructs one; not instance-only ones."""
     assert _fixed(CLASSMETHODS) == {
         "a": ("int", False),
         "b": ("list[str]", False),
@@ -135,7 +135,7 @@ def test_cls_is_its_class_in_a_classmethod() -> None:
         "e": ("type[Config]", False),
         "f": (None, False),
         "g": (None, False),
-        "h": (None, False),
+        "h": ("Config", False),
         "i": (None, False),
     }
 

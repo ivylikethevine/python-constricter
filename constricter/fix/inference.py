@@ -6,7 +6,7 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
-from constricter.fix import decided, overloads, shapes, stdlib
+from constricter.fix import called, decided, overloads, shapes, stdlib
 from constricter.fix.known import ImportPlan, Inference, Known
 from constricter.fix.library import (
     installed_call,
@@ -354,6 +354,7 @@ def _from_call(value: ast.Call, known: Known, declared: Mapping[str, str]) -> In
         or _returns(value, known)
         or shapes.class_of(value, known, lambda arg: inference(arg, known, declared))
         or _called(value, known)
+        or called.result(value, known, declared, lambda arg: inference(arg, known, declared))
     )
 
 
@@ -659,7 +660,8 @@ def targets_typed(
             found: Inference | None = looped(generator.iter, known, inside)
             name: ast.Name
             part: str | None
-            for name, part in unpacked(generator.target, None if found is None else found.annotation):
+            annotation: str | None = None if found is None else found.annotation
+            for name, part in unpacked(generator.target, annotation, known.indirect.tuples):
                 if part is None:
                     _ = inside.pop(name.id, None)
                 else:
@@ -811,9 +813,8 @@ def _called(value: ast.expr, known: Known) -> Inference | None:
             )
         case ast.Call(func=ast.Name(id=name)) if name in BUILTIN_RETURNS and known.is_builtin(name):
             return Inference(BUILTIN_RETURNS[name], f"`{name}`'s fixed return type", frozenset({"builtin"}))
-        case ast.Call(func=ast.Name() | ast.Attribute() as func) if constructs(
-            node_name(func),
-            known.factories,
+        case ast.Call(func=ast.Name() | ast.Attribute() as func) if (
+            constructs(node_name(func), known.factories) or dotted(func) in known.classes
         ) and _type_expression(func, known):
             return Inference(
                 ast.unparse(func),

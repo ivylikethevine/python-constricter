@@ -148,7 +148,11 @@ def _settings(
             factories(tree),
             {**(imported.attributes if imported else {}), **free_of_all(own.classes, free)},
             {**(imported.methods if imported else {}), **free_of_all(own.methods, free)},
-            Indirect(free_of(awaited_returns(tree), free), _partial(own, free, outside)),
+            Indirect(
+                free_of(awaited_returns(tree), free),
+                _partial(own, free, outside),
+                {**({} if outside is None else outside.tuples), **free_of(own.tuples, free)},
+            ),
             ClassSide(
                 free_of_all(class_attributes(tree), free),
                 free_of_all(own.sides, free),

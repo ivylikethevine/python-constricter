@@ -15,7 +15,7 @@ from typing import Final, TypeAlias, cast
 
 from constricter.fix import hinted, shapes
 from constricter.fix.doubts import bare
-from constricter.fix.entered import entered
+from constricter.fix.entered import entered, entering
 from constricter.fix.inference import LoopPart, inference, looped, looped_parts
 from constricter.fix.known import Inference, Known
 from constricter.fix.members import parsed
@@ -281,7 +281,8 @@ def _split(
     split: frozenset[str] = frozenset() if isinstance(stmt, ast.For | ast.AsyncFor) else _UNPACK
     name: ast.Name
     annotation: str | None
-    for name, annotation in unpacked(target, None if typed is None else typed.annotation):
+    whole: str | None = None if typed is None else typed.annotation
+    for name, annotation in unpacked(target, whole, scope.settings.known.indirect.tuples):
         part: Inference | None = (
             None
             if typed is None or annotation is None
@@ -357,8 +358,9 @@ def _bind_with(scope: Scope, stmt: ast.stmt, items: list[ast.withitem], code: st
     """Bind each `with` item's target, offering to declare `with manager as name`'s `name` first.
 
     As what the manager's `__enter__` returns (see `constricter.fix.entered`); the file object
-    `open` gives, which is its own context manager, by its literal mode. A target that unpacks is
-    bound untyped, as is an `async with`'s (`__aenter__`'s return is awaited: not read).
+    `open` gives, which is its own context manager, by its literal mode. A target that unpacks takes
+    that type split over its names, as an unpacking's are (but for a vague part). An `async with`'s
+    is bound untyped (`__aenter__`'s return is awaited: not read).
     """
     item: ast.withitem
     name: ast.Name
@@ -372,8 +374,44 @@ def _bind_with(scope: Scope, stmt: ast.stmt, items: list[ast.withitem], code: st
                 _bind_declaration(scope, stmt, name, code, typed)
             case None:
                 pass
+            case target if isinstance(stmt, ast.With):
+                named: _Named
+                for named in _entered_parts(scope, target, item.context_expr, typed):
+                    _bind_declaration(scope, stmt, named[0], code, named[1])
             case target:
                 _bind_targets(scope, [target], code)
+
+
+def _entered_parts(scope: Scope, target: ast.expr, manager: ast.expr, typed: _Valued) -> Iterator[_Named]:
+    """Type each name a `with` statement's unpacking `target` binds, entering `manager`.
+
+    `typed`: what the whole target gets (see `_entered`), split over its names as an unpacking's
+    value is; where that's unknown, an `__enter__` declared to return a tuple with a vague part is
+    split instead (see `shapes.partly`). A vague part's name gets no fix.
+
+    Yields:
+      Each name, with its inference, whether that's a guess, and what the guess rests on.
+
+    """
+    known: Known = scope.settings.known
+    whole: Inference | None = typed[0]
+    doubt: tuple[bool, frozenset[str]] = typed[1:]
+    if whole is None:
+        whole = shapes.partly(
+            entering(manager),
+            known,
+            lambda part: inference(part, known, scope.inferred.types),
+        )
+        doubt = guesses_in(scope, [manager])
+    name: ast.Name
+    part: str | None
+    for name, part in unpacked(target, None if whole is None else whole.annotation, known.indirect.tuples):
+        split: Inference | None = (
+            None
+            if whole is None or part is None or is_vague(parsed(part))
+            else Inference(part, whole.reason, whole.kinds | _UNPACK)
+        )
+        yield name, (split, *doubt)
 
 
 def _entered(scope: Scope, manager: ast.expr) -> _Valued:

@@ -49,6 +49,8 @@ _COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.Generator
 _UNIONS: Final = frozenset({"Optional", "Union"})
 _SELF_ORIGINS: Final = frozenset({"typing.Self", "typing_extensions.Self"})
 _SELF_ITSELF: Final = "{}"  # how a value that is `Self` is written, `{}` standing for it
+_CLASS_OF: Final = "type[{}]"  # how `type(self)` is
+_INSTANCE: Final = "self"  # a method's first parameter: any other name is a classmethod's class
 _TYPING: Final = frozenset({"typing", "typing_extensions"})
 
 
@@ -403,7 +405,8 @@ def _selfish(value: ast.expr, found: Inference, owner: Owner) -> str | None:
     """Find how `value`'s type is written with `Self`, if it's one typed as the class.
 
     `self`, or a `Self` method called on `self`, `cls` or `type(self)`; `type(self)`, a
-    `type[Self]`; and a conditional of two of them (`self if inplace else self.copy()`).
+    `type[Self]`; what `cls()`, `type(self)()` or `__new__` given either constructs; and a
+    conditional of two of them (`self if inplace else self.copy()`).
 
     Returns:
       Its annotation, `{}` standing for `Self`; or `None` if it isn't one.
@@ -411,10 +414,15 @@ def _selfish(value: ast.expr, found: Inference, owner: Owner) -> str | None:
     """
     receiver: ast.expr
     method: str
+    func: ast.expr
     template: str | None = None
     match value:
         case ast.Name() | ast.Call(func=ast.Name()) if (template := _own(value, owner.first)) is not None:
             pass
+        case ast.Call(func=func) if _constructs(func, owner.first):
+            template = _SELF_ITSELF
+        case ast.Call(func=ast.Attribute(attr="__new__"), args=[func, *_]) if _constructs(func, owner.first):
+            template = _SELF_ITSELF
         case ast.Call(func=ast.Attribute(value=receiver, attr=method)) if (
             method in owner.selfish and _own(receiver, owner.first) is not None
         ):
@@ -426,6 +434,16 @@ def _selfish(value: ast.expr, found: Inference, owner: Owner) -> str | None:
         case _:
             pass
     return template if template is not None and found.annotation == template.format(owner.name) else None
+
+
+def _constructs(func: ast.expr, first: str) -> bool:
+    """Check whether a callee is the method's own class: a classmethod's `cls`, or `type(self)`.
+
+    Returns:
+      Whether it is.
+
+    """
+    return (isinstance(func, ast.Name) and func.id == first != _INSTANCE) or _own(func, first) == _CLASS_OF
 
 
 def _own(value: ast.expr, first: str) -> str | None:
@@ -440,7 +458,7 @@ def _own(value: ast.expr, first: str) -> str | None:
         case ast.Name(id=name) if name == first:
             return _SELF_ITSELF
         case ast.Call(func=ast.Name(id="type"), args=[ast.Name(id=name)]) if name == first:
-            return "type[{}]"
+            return _CLASS_OF
         case _:
             return None
 

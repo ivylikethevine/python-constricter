@@ -3,25 +3,31 @@
 
 An annotation in a class body can be more than a type: a dataclass's, a `NamedTuple`'s or a model's
 makes the variable a field. So only a plain class's body is fixed: one defined once in its module,
-with no decorator or metaclass, every base of which is `object`, a `unittest` test case, or another
-plain class; and no class that isn't plain may inherit from it (a mixin of a model's). What the
-module alone sees is `plain`; with the CLI, the index of checked files says which bases other files
-define are plain too (see `constricter.fix.project`).
+with no decorator or metaclass, every base of which is `object`, a `unittest` test case, a builtin
+exception or value class (`ValueError`, `str`: see `BUILTIN_BASES`), or another plain class; and no
+class that isn't plain may inherit from it (a mixin of a model's). What the module alone sees is
+`plain`; with the CLI, the index of checked files says which bases other files define are plain too
+(see `constricter.fix.project`).
 
 A variable counts when it's bound once, by a plain `name = value` directly in the body, to a value
 whose type its own text decides (a literal, or a display of them), and nothing in the module stores
-the attribute any other way (`self.limit = ...`). Its type is that value's, whatever the module
+the attribute any other way (`self.limit = ...`), nor is it one a builtin base has itself (`errno`
+under `OSError`) or a class above it annotates as another type (`limit: int | None`): a type checker
+holds a variable to what its base declares. Its type is that value's, whatever the module
 declares: the same read from the file alone, so the files reading the attribute (`self.limit`,
 `cls.limit`) are typed in the same run as the class is fixed. A guess (`member`): a subclass, or
 code elsewhere, may bind it to another type.
 """
 
 import ast
+import builtins
 from collections.abc import Callable, Mapping, Sequence
 from typing import Final, TypeAlias, cast
 
+from constricter.fix.imports import taken_names
 from constricter.fix.inference import inference
 from constricter.fix.known import Inference, Known, Outside
+from constricter.rules.annotations import classes as annotated
 from constricter.rules.annotations import dotted
 from constricter.rules.walked import classes, of_type
 
@@ -35,6 +41,10 @@ TEST_CASES: Final = frozenset(
         "unittest.async_case.IsolatedAsyncioTestCase",
     },
 )
+# The builtin classes of values whose subclasses' variables are their own, as an exception's are.
+_VALUES: Final = frozenset(
+    {"bytearray", "bytes", "complex", "dict", "float", "frozenset", "int", "list", "set", "str", "tuple"},
+)
 Bases: TypeAlias = Mapping[str, tuple[str, ...]]  # each class's bases as written (see `bases`)
 SPECIAL: Final = ""  # a base no class has: what makes a class one that can't be plain
 # What decides a value's type from its own text: nothing the module declares.
@@ -42,6 +52,33 @@ _OWN_KINDS: Final = frozenset({"literal", "container", "arithmetic", "compare"})
 _NOTHING: Final = Known({}, frozenset(), {}, {})
 _NONE: Final = "None"
 _DEFINITIONS: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+
+def _builtin_bases() -> dict[str, frozenset[str]]:
+    """Find the builtin classes a plain class may inherit from: the exceptions, and `_VALUES`.
+
+    Returns:
+      Each one's name, and the names of what it has itself.
+
+    """
+    return {
+        name: frozenset(dir(cast("object", getattr(builtins, name))))
+        for name in dir(builtins)
+        if _is_base(name, cast("object", getattr(builtins, name)))
+    }
+
+
+def _is_base(name: str, value: object) -> bool:
+    """Check whether a builtin is a class a plain class may inherit from.
+
+    Returns:
+      Whether it is.
+
+    """
+    return isinstance(value, type) and (name in _VALUES or issubclass(value, BaseException))
+
+
+BUILTIN_BASES: Final = _builtin_bases()
 
 
 def member_type(value: ast.expr) -> str | None:
@@ -63,9 +100,10 @@ def bases(tree: ast.Module) -> dict[str, tuple[str, ...]]:
     Returns:
       Each one's bases (`object` left out, a subscripted one by its name); with `SPECIAL` among
       them for a class that can't be plain: decorated, given a metaclass or another keyword, or with
-      a base that isn't a name (`Generic[T]`, `make()`).
+      a base that isn't a name (`Generic[T]`, `make()`) or is a builtin's the module binds itself.
 
     """
+    taken: frozenset[str] = taken_names(tree)[0]
     counts: dict[str, int] = {}
     node: ast.ClassDef
     for node in classes(tree):
@@ -74,7 +112,8 @@ def bases(tree: ast.Module) -> dict[str, tuple[str, ...]]:
     for node in classes(tree):
         if counts[node.name] == 1:
             names: list[str | None] = [dotted(base) for base in node.bases]
-            special: bool = bool(node.keywords or node.decorator_list) or None in names
+            shadowed: bool = any(name in BUILTIN_BASES and name in taken for name in names)
+            special: bool = bool(node.keywords or node.decorator_list) or None in names or shadowed
             under: list[str | None] = [
                 dotted(base.value) if isinstance(base, ast.Subscript) else dotted(base) for base in node.bases
             ]
@@ -94,7 +133,42 @@ def plain(tree: ast.Module, origins: Mapping[str, str]) -> frozenset[str]:
       Their names.
 
     """
-    return settled(bases(tree), lambda base: _resolved(base, origins) in TEST_CASES)
+    return settled(bases(tree), lambda base: allowed(_resolved(base, origins)))
+
+
+def allowed(base: str) -> bool:
+    """Check whether a base no checked file defines is one a plain class may have.
+
+    Returns:
+      Whether it's a test case's (`TEST_CASES`) or a builtin's (`BUILTIN_BASES`), by its origin.
+
+    """
+    return base in TEST_CASES or base in BUILTIN_BASES
+
+
+def ancestors(name: str, found: Bases) -> list[str]:
+    """Name every class of `found` that `name` inherits from, however far.
+
+    Returns:
+      Them, sorted.
+
+    """
+    return sorted(_ancestors(name, found, frozenset({name})))
+
+
+def reserved(name: str, found: Bases) -> frozenset[str]:
+    """Name what the builtin classes `name` inherits from have themselves, as far as `found` sees.
+
+    A variable hiding one would be declared another type than its base declares it.
+
+    Returns:
+      Those names.
+
+    """
+    owners: list[str] = [name, *ancestors(name, found)]
+    return frozenset[str]().union(
+        *(BUILTIN_BASES.get(base, frozenset[str]()) for owner in owners for base in found[owner]),
+    )
 
 
 def settled(found: Bases, outside: Callable[[str], bool]) -> frozenset[str]:
@@ -180,13 +254,40 @@ def members(tree: ast.Module) -> dict[str, dict[str, str]]:
     )
     once: dict[str, tuple[str, ...]] = bases(tree)
     typed: dict[str, dict[str, str]] = {
-        node.name: _typed(node.body, stored) for node in classes(tree) if node.name in once
+        node.name: _typed(node.body, stored | reserved(node.name, once))
+        for node in classes(tree)
+        if node.name in once
     }
-    return {name: each for name, each in typed.items() if each}
+    if not any(typed.values()):
+        return {}
+    declared: Mapping[str, Mapping[str, str]] = annotated(tree)
+    kept: dict[str, dict[str, str]] = {
+        name: agreeing(each, [declared[above] for above in ancestors(name, once)])
+        for name, each in typed.items()
+    }
+    return {name: each for name, each in kept.items() if each}
+
+
+def agreeing(typed: Mapping[str, str], declared: Sequence[Mapping[str, str]]) -> dict[str, str]:
+    """Keep a class's variables that no class above it annotates as another type.
+
+    `declared`: each such class's annotated attributes.
+
+    Returns:
+      Those variables' types, by name.
+
+    """
+    return {
+        name: annotation
+        for name, annotation in typed.items()
+        if all(above.get(name, annotation) == annotation for above in declared)
+    }
 
 
 def _typed(body: Sequence[ast.stmt], stored: frozenset[str]) -> dict[str, str]:
     """Type a class body's variables: each bound once there, to a value its text types.
+
+    `stored`: the names left alone (stored some other way, or a builtin base's own).
 
     Returns:
       Their types, by name.

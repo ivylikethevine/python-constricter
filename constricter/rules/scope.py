@@ -6,7 +6,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix import fills, hinted, stdlib
+from constricter.fix import aliased, fills, hinted, stdlib
 from constricter.fix.doubts import (
     Facts,
     Owner,
@@ -164,16 +164,21 @@ class Inferred:
         self.guesses.add(name)
         self.origins[name] = origins
 
-    def rebound(self, name: str, typed: str | None) -> None:
+    def rebound(self, name: str, typed: str | None, guess: Late | None = None) -> None:
         """Record `name` bound again, to a value of type `typed` (`None`: unknown).
 
         A type checker narrows a name to what it's assigned: from here on it's `typed`, if known. That's
         certain for a member of a declared union (`int | None`, then `1`), which every checker narrows;
         otherwise (mypy narrows nothing else, and an unknown value may be anything) what's inferred
-        from it is a guess, resting on `rebound`.
+        from it is a guess, resting on `rebound`. `guess`: the value's type where it's only a guess
+        (`config = config or Config()`), and what that rests on: the name's from here on, as one.
         """
         current: str | None = self.types.get(name)
         if current is None or typed == current:
+            return
+        if typed is None and guess is not None:
+            self.types[name] = guess[0]
+            self.guess(name, self.origins.get(name, frozenset()) | guess[1])
             return
         if typed is not None:
             self.types[name] = typed
@@ -276,8 +281,8 @@ class Scope:
         certain: str | None = certain_type(self, value, (None if fix is None else fix.annotation, unsafe))
         if self.kind.owner is not None:
             fix, unsafe, origins = self._member(name, fix)
-        if fix is None and (fix := self.hint(target, value)) is not None:
-            unsafe, origins = True, frozenset({hinted.KIND})
+        if fix is None:
+            fix, unsafe, origins = self._unvalued(target, value, alias=chained is None and not again)
         self.lifetime(name).bind(
             at(target),
             certain,
@@ -285,7 +290,7 @@ class Scope:
         )
         self.assigned(name, at(target))
         if again:
-            self.inferred.rebound(name, certain)
+            self.inferred.rebound(name, certain, (fix.annotation, origins) if fix and unsafe else None)
         kind: str | None
         if (kind := fills.empty(value)) is not None:
             _ = self.assignments.empty.setdefault(name, kind)
@@ -297,8 +302,32 @@ class Scope:
             code,
             None if fix is None else self.placed(name, fix, origins, unsafe=unsafe),
         )
-        if fix is not None:
+        if fix is not None and aliased.KIND not in fix.kinds:  # `TypeAlias` isn't its value's type
             self.inferred.learn(name, fix.annotation, origins if unsafe else None, again=again)
+
+    def _unvalued(
+        self,
+        target: ast.Name,
+        value: ast.expr,
+        *,
+        alias: bool,
+    ) -> tuple[Inference | None, bool, frozenset[str]]:
+        """Type a name its value gives no type: a module's type alias (`alias`: it may be one), or a hint.
+
+        Returns:
+          The inference, whether it's a guess, and what it rests on, as `valued` does.
+
+        """
+        checks: Checks = self.settings.checks
+        found: tuple[Inference, bool, frozenset[str]] | None = (
+            aliased.declared(target, value, self.settings.known, self.settings.facts, checks.min_python)
+            if alias and self.kind.function is None and self.kind.owner is None
+            else None
+        )
+        hint: Inference | None
+        if found is None and (hint := self.hint(target, value)) is not None:
+            found = hint, True, frozenset({hinted.KIND})
+        return found or (None, False, frozenset())
 
     def _member(self, name: str, fix: Inference | None) -> tuple[Inference | None, bool, frozenset[str]]:
         """Offer a class body's fix only for a plain class's variable typed by its value: a guess.

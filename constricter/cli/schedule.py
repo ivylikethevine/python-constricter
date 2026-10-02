@@ -13,7 +13,7 @@ from typing import Final
 
 from constricter.cli.runs import CoverageRun, FileRun
 from constricter.cli.workers import Checking, Workers, check_share, first_done
-from constricter.fix import callers, decorated, offers, order, project, sides, stubbed
+from constricter.fix import callers, decorated, offers, order, plain, project, sides, stubbed
 from constricter.fix.known import Guarded, Hints, Outside
 
 CYCLE_ROUNDS: Final = 3  # how many times to check again files calling each other's functions
@@ -50,10 +50,11 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         methods.lineage,
         methods.aliases,
         own.guarded,
-        project.plain_classes(modules, path),
+        plain.classes(modules, path),
         imported.members,
         project.same(modules, path, guarded),
         imported.partial,
+        imported.tuples,
     )
 
 

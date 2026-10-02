@@ -63,6 +63,7 @@ FIX_KINDS: dict[str, str] = {
     "assigned": "an unannotated instance attribute's every `self.x = value` in its class (a guess)",
     "callers": "an unannotated parameter every call in the checked files passes one type (a guess)",
     "member": "a plain class's variable, by its literal value in the class's body (a guess)",
+    "alias": "a module's type alias, a subscript or a union of types: `TypeAlias`",
     "final": "LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)",
     "checker": "a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)",
     "open": "`open(path, mode)`'s file object, by its literal mode (`io.TextIOWrapper`, ...)",

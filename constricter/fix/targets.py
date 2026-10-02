@@ -2,11 +2,15 @@
 """Types split over what a loop or an unpacking binds: a container's elements, a tuple's parts."""
 
 import ast
-from collections.abc import Sequence
+from collections import Counter
+from collections.abc import Mapping, Sequence
+from types import MappingProxyType
 from typing import Final
 
 from constricter.fix.known import Inference
-from constricter.rules.annotations import node_name
+from constricter.rules.annotations import is_vague, node_name
+from constricter.rules.quoted import written
+from constricter.rules.walked import classes
 
 # Builtins that iterate over their (first) argument's elements, one to one.
 SAME_ELEMENTS: Final = frozenset({"reversed", "sorted"})
@@ -45,6 +49,33 @@ _ITERATOR_KEYWORDS: Final = {
 }
 # `tuple[T, ...]`'s two parts: the element type and the ellipsis.
 _ANY_LENGTH: Final = 2
+_NAMED_TUPLE: Final = ["NamedTuple"]  # the one base of a class whose annotated variables are its fields
+_NO_TUPLES: Final[Mapping[str, str]] = MappingProxyType({})
+
+
+def named_tuples(tree: ast.Module) -> dict[str, str]:
+    """Map each `NamedTuple` class the module defines to the tuple unpacking one gives: its fields' types.
+
+    A class defined once, directly under `NamedTuple` alone, with two fields or more.
+
+    Returns:
+      Each class's name, and its fields' types in order as a `tuple[...]`.
+
+    """
+    nodes: Sequence[ast.ClassDef] = classes(tree)
+    counts: Counter[str] = Counter(node.name for node in nodes)
+    found: dict[str, str] = {}
+    node: ast.ClassDef
+    for node in nodes:
+        if counts[node.name] == 1 and [node_name(base) for base in node.bases] == _NAMED_TUPLE:
+            fields: list[str] = [
+                written(stmt.annotation)
+                for stmt in node.body
+                if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name)
+            ]
+            if len(fields) > 1:
+                found[node.name] = f"tuple[{', '.join(fields)}]"
+    return found
 
 
 def sole(argument: ast.expr) -> ast.expr:
@@ -131,13 +162,19 @@ def _is_ellipsis(node: ast.expr) -> bool:
     return isinstance(node, ast.Constant) and node.value is Ellipsis
 
 
-def unpacked(target: ast.expr, annotation: str | None) -> list[tuple[ast.Name, str | None]]:
+def unpacked(
+    target: ast.expr,
+    annotation: str | None,
+    tuples: Mapping[str, str] = _NO_TUPLES,
+) -> list[tuple[ast.Name, str | None]]:
     """Match an unpacking target's names with the parts of a value typed `annotation`.
 
     A plain name takes the whole type; a tuple or list of targets takes a `tuple[A, B, ...]` of the
     same length part by part, or each an element of anything else whose elements are known (a
     `tuple[T, ...]`'s or `list[T]`'s `T`, a `str`'s `str`). A starred name takes a `list` of what's
-    left for it, if that's of one type. A shape that doesn't match gets `None`.
+    left for it, if that's of one type. A shape that doesn't match gets `None`. `tuples`: the named
+    tuples the module names (see `named_tuples`), each split as its fields' tuple, a vague one's
+    name left out.
 
     Returns:
       Each name the target binds, with its type as text (or `None`).
@@ -149,16 +186,32 @@ def unpacked(target: ast.expr, annotation: str | None) -> list[tuple[ast.Name, s
         case ast.Name():
             return [(target, annotation)]
         case ast.Tuple(elts=elements) | ast.List(elts=elements):
-            parts: list[str | None] = _parts(annotation, elements)
+            fields: str | None = tuples.get(annotation or "")
+            parts: list[str | None] = (
+                _parts(annotation, elements) if fields is None else _fields(fields, elements)
+            )
             return [
                 pair
                 for element, part in zip(elements, parts, strict=True)
-                for pair in unpacked(element, part)
+                for pair in unpacked(element, part, tuples)
             ]
         case ast.Starred(value=value):
-            return unpacked(value, annotation)
+            return unpacked(value, annotation, tuples)
         case _:
             return []
+
+
+def _fields(fields: str, targets: Sequence[ast.expr]) -> list[str | None]:
+    """Split a named tuple's `fields` (see `named_tuples`) over the targets one is unpacked into.
+
+    Returns:
+      Each target's type as text, as `_parts` splits a tuple's; `None` for a vague one.
+
+    """
+    return [
+        None if part is None or is_vague(ast.parse(part, mode="eval").body) else part
+        for part in _parts(fields, targets)
+    ]
 
 
 def _parts(annotation: str | None, targets: Sequence[ast.expr]) -> list[str | None]:

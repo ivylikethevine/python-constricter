@@ -6,6 +6,35 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` declares a module's type alias: `Json = dict[str, "Json"]` becomes
+  `Json: TypeAlias = dict[str, "Json"]`, a new fix kind, `alias`. Only a value that can be nothing
+  but a type made of others: a subscript of what `typing` or `collections.abc` define
+  (`Union[A, B]`, `Callable[..., R]`), of a builtin generic or of a generic class the module names,
+  or a union of those, of builtin classes, of classes the checked files define and of `None`; never
+  a bare class's alias, a name bound twice, or a name the module binds as a value somewhere.
+  `TypeAlias` is named as the module's imports can, else imported from `typing`: certain where the
+  module imports the name already or `min-python` is 3.10 or later, a guess otherwise. On pydantic
+  (checked under this project's `requires-python`, 3.11): 128 more certain fixes.
+- `--fix --unsafe-fixes` annotates a class's variables under a builtin exception or value class too
+  (`code = "missing"` under `ValueError`, `strip_whitespace = True` under `str`): such a base is one
+  a plain class may have. A variable is left alone where a class above it annotates the name as
+  another type (`limit: int | None` above makes `limit: int = 3` an incompatible override), or where
+  a builtin base has the name itself (`errno` under `OSError`), across the checked files. On
+  pydantic: 162 more guesses.
+- `--fix` types a call of a value whose type says what calling it gives: a local, an attribute or
+  anything else typed `Callable[..., R]` (`schema = handler(source)`), one typed `type[C]` (`cls()`
+  in a classmethod, `type(self)()`, and `cls.__new__(cls)`: `Self` where the method's signature says
+  so), and an instance of a class declaring `__call__`, another checked file's too. An unpacking's
+  names take a named tuple's fields (`globalns, localns = resolver.namespaces`, declared a
+  `NamedTuple` class, the module's own or another checked file's), and a `with` statement's target
+  that unpacks is split the same way; a `@contextmanager` method types its `with` target on a
+  receiver of a known type, as a function does. A call to a class the checked files define
+  constructs it whatever its name's case (`_Definitions()`, a guess as a capitalised call is), and a
+  name bound again to a guessed value is that value's type from there on
+  (`config = config or Config()`). On pydantic: 51 more certain fixes and 34 more guesses.
+- Together, on pydantic: 179 more certain fixes (878 to 1,057) and 196 more guesses (255 to 451),
+  375 fewer bindings with no fix (2,042 to 1,667); no new basedpyright error after `--fix` or
+  `--fix --unsafe-fixes`, nothing broken, and one pass converges.
 - A check of many files is faster: the standard library with its tests (1,867 files) in 108s with
   `--jobs=1` (from 185s) and 35s with `--jobs=0` on 8 cores (from 62s), pydantic in 4.2s (from
   6.0s). What a file passes other files' functions is read from the module's one shared walk, only

@@ -23,7 +23,7 @@ from constricter.cli.protocol import HintError
 from constricter.cli.report import Format, Result, fix_reasons, render, statistics
 from constricter.cli.runs import BaselineRun, CheckRun, CoverageRun, FileRun
 from constricter.cli.workers import Workers
-from constricter.fix import callers, decorated, fixes, installed, project
+from constricter.fix import callers, decorated, fixes, installed, plain, project
 from constricter.fix.known import Callee, Hints, Outside, Returns
 from constricter.noqa import lines, unsuppressed
 from constricter.offences import (
@@ -511,7 +511,7 @@ def _checked_all(
             modules = project.Index({}, []) if coverage else project.index(paths)
             collecting.indexed()
         if not coverage:
-            modules = project.with_plain(
+            modules = plain.settled(
                 decorated.passed(installed.with_installed(modules, installed.search_path())),
             )
         return schedule.checked(

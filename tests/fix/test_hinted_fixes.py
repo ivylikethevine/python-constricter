@@ -578,6 +578,14 @@ def test_a_composite_alias_is_declared_one(imports: str, fix: str | None, added:
     assert {o.edit.imports for o in offences if o.edit is not None} <= {added}
 
 
+def test_a_hint_declares_an_alias_fix_alone_cant_vouch_for() -> None:
+    """A union of a class an unchecked package defines: only the checker says it's a type (a guess)."""
+    source: str = "from typing import TypeAlias\nfrom other import Thing\nMaybe = Thing | None\n"
+    offences: list[Offence] = _checked(source, {"Maybe": "TypeAlias"}, Checks(all_scopes=True))
+    assert [(o.name, o.fix, o.unsafe) for o in offences] == [("Maybe", "TypeAlias", True)]
+    assert [o.edit.kinds for o in offences if o.edit is not None] == [{"checker"}]
+
+
 def test_an_alias_is_declared_only_where_typealias_is_bound_by_then() -> None:
     """A module body's annotation is evaluated: an import of `TypeAlias` further down doesn't name it."""
     source: str = "Pair = tuple[int, str]\nfrom typing import TypeAlias\nJson = dict[str, int]\n"

@@ -39,6 +39,7 @@ _TYPE_ALIAS: Final = "TypeAlias"  # the annotation, and the node class of `type 
 # What a type checker decides an `if` by, taking one arm alone: `sys.version_info`, `TYPE_CHECKING`.
 _DECIDED: Final = frozenset({"version_info", "platform", "TYPE_CHECKING"})
 SUFFIX: Final = ".py"
+_UNNAMED: Final = frozenset({"__call__", "__enter__"})  # members a statement takes without naming them
 STUB: Final = ".pyi"
 
 
@@ -93,7 +94,7 @@ class Module(NamedTuple):
     # Its top-level names something in it binds as a value too (a local `m`, under `import pkg.m as m`).
     shadowed: frozenset[str] = frozenset()
     # Its classes' bases as written, their variables typed by their values, and which of them are
-    # plain, once the index settles it (see `constricter.fix.classvars`, `project.with_plain`).
+    # plain, once the index settles it (see `constricter.fix.classvars`, `plain.settled`).
     bases: Mapping[str, tuple[str, ...]] = {}
     members: Mapping[str, Mapping[str, str]] = {}
     plain: frozenset[str] = frozenset()
@@ -106,6 +107,7 @@ class Module(NamedTuple):
     # only an unpacking can use (see `known.Partial`): the methods as `methods` has them.
     partial: Mapping[str, str] = {}
     partial_methods: Mapping[str, Mapping[str, str]] = {}
+    tuples: Mapping[str, str] = {}  # its named tuples' fields (see `targets.named_tuples`)
 
 
 class Index(NamedTuple):
@@ -304,6 +306,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         held_sides=own.held_sides,
         partial=own.partial,
         partial_methods=own.order.flattened(own.partial_methods),
+        tuples=own.tuples,
     )
 
 
@@ -507,11 +510,16 @@ def _method_calls(tree: ast.Module) -> frozenset[str]:
 def _attributes(tree: ast.Module) -> frozenset[str]:
     """Name the attributes the module takes of anything: `x` in `a.x`, `astype` in `a.astype(x)`.
 
+    And those its statements take without naming them: a call's `__call__`, a `with`'s `__enter__`.
+
     Returns:
       Them: all of another file's class's members it can use.
 
     """
-    return frozenset(node.attr for node in cast("list[ast.Attribute]", of_type(tree, ast.Attribute)))
+    named: frozenset[str] = frozenset(
+        node.attr for node in cast("list[ast.Attribute]", of_type(tree, ast.Attribute))
+    )
+    return named | _UNNAMED
 
 
 def _source(path: Path) -> str | None:

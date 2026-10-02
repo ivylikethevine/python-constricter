@@ -203,11 +203,13 @@ class Indirect(NamedTuple):
 
     `awaits`: what awaiting a call to each of the module's `async def`s gives (see
     `awaited_returns`); `partial`: those only an unpacking can use (see `Partial`), other checked
-    files' too.
+    files' too. `tuples`: the named tuples the module names, its own and other checked files', each
+    with the tuple unpacking one gives (see `targets.named_tuples`).
     """
 
     awaits: Mapping[str, str] = MappingProxyType({})
     partial: Partial = Partial()
+    tuples: Mapping[str, str] = MappingProxyType({})
 
 
 class ClassSide(NamedTuple):
@@ -350,7 +352,8 @@ class Outside(NamedTuple):
     the variables of the plain classes it imports from them, typed by their values, as it spells
     each class. `same`: each group of ways it spells one class or alias another module defines
     (`CoreSchema`, `core_schema.CoreSchema`; see `project.same`). `partial`: the returns of other
-    checked files' functions and methods that only an unpacking can use (see `Partial`).
+    checked files' functions and methods that only an unpacking can use (see `Partial`). `tuples`:
+    the named tuples it imports from them, as it spells each (see `Indirect.tuples`).
     """
 
     calls: Mapping[str, str] = {}
@@ -373,6 +376,7 @@ class Outside(NamedTuple):
     members: Mapping[str, Mapping[str, str]] = {}
     same: tuple[frozenset[str], ...] = ()
     partial: Partial = Partial()
+    tuples: Mapping[str, str] = {}
 
     def usable(self, taken: frozenset[str]) -> "Outside":
         """Drop what other files offer whose type needs a name imported that the module binds already.
@@ -412,6 +416,7 @@ class Outside(NamedTuple):
             self.members,
             self.same,
             Partial(free_of(self.partial.calls, clashing), free_of_all(self.partial.methods, clashing)),
+            free_of(self.tuples, clashing),
         )
 
 

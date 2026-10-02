@@ -13,21 +13,22 @@ in a function or module body:
   elements agree, and untyped if not (it would be LVA011's). A starred element gives each of what it
   unpacks (`[*names, s]` is a `list[str]`, `(*names, s)` a `tuple[str, ...]`), and `**d` a `dict`'s
   keys and values (`{**d, k: v}`);
-- a call to a capitalised name (`path = Path(...)` gives `Path`, a guess), if it can be written as a
-  type: a name or dotted name whose first name the module binds only by an import or a class
-  statement (not `Klass = ...`, `self.api.X()`, `make().X()`); or to a plain function that declares
-  its return type, by an annotation or a `# type:` signature comment (`# type: () -> List[str]`)
-  (not a generic, async or redefined one, and not a return of `None`, `Any` or one that uses a
-  `TypeVar`), in the same module or, with the CLI, in another file it's checking:
-  `from pkg.util import f`, `import pkg.util as u` or `from pkg import util` then `u.f()`, relative
-  imports and re-exports all work. A name in the type the file doesn't import is imported for type
-  checking alone (see below). A decorated function counts (a method too) only under decorators that
-  give it back: the standard library's (`functools.cache`, `lru_cache`, `wraps(...)`,
-  `abc.abstractmethod`, `typing.final`, `override`, `deprecated(...)`), and a function whose own
-  signature says so, taking `F` and returning `F`, or (called to decorate, as
-  `@set_module("pandas")`) returning a `Callable[[F], F]`, where `F` is a type variable or a
-  `Callable[P, T]` returning one. The module's own such decorators count anywhere; one it imports
-  from a checked file or an installed package, with the CLI, which finds its type variables;
+- a call to a capitalised name (`path = Path(...)` gives `Path`, a guess), or to a class the checked
+  files define whatever its name's case (`_Definitions()`), if it can be written as a type: a name
+  or dotted name whose first name the module binds only by an import or a class statement (not
+  `Klass = ...`, `self.api.X()`, `make().X()`); or to a plain function that declares its return
+  type, by an annotation or a `# type:` signature comment (`# type: () -> List[str]`) (not a
+  generic, async or redefined one, and not a return of `None`, `Any` or one that uses a `TypeVar`),
+  in the same module or, with the CLI, in another file it's checking: `from pkg.util import f`,
+  `import pkg.util as u` or `from pkg import util` then `u.f()`, relative imports and re-exports all
+  work. A name in the type the file doesn't import is imported for type checking alone (see below).
+  A decorated function counts (a method too) only under decorators that give it back: the standard
+  library's (`functools.cache`, `lru_cache`, `wraps(...)`, `abc.abstractmethod`, `typing.final`,
+  `override`, `deprecated(...)`), and a function whose own signature says so, taking `F` and
+  returning `F`, or (called to decorate, as `@set_module("pandas")`) returning a `Callable[[F], F]`,
+  where `F` is a type variable or a `Callable[P, T]` returning one. The module's own such decorators
+  count anywhere; one it imports from a checked file or an installed package, with the CLI, which
+  finds its type variables;
 - a classmethod or staticmethod called on its class, by its declared return: `Box.make()` is a `Box`
   (`Self` is the class), for a top-level class defined once whose name the module binds no other
   way, and a class that takes the method from a base in the module (`Sub.make()` is a `Sub` where
@@ -71,6 +72,12 @@ in a function or module body:
   sight (an installed package's, a subscripted or computed one), or for another file's or the
   standard library's method returning its own class, which may be its `Self` (`self.resolve()` under
   `Path`);
+- a call of a value whose type says what calling it gives: a local, an attribute or anything else
+  typed `Callable[..., R]` is an `R` (`handler(source)`, `self.handler(source)`, `hooks[0](x)`); one
+  typed `type[C]` constructs a `C` (`cls()` in a classmethod, `type(self)()`), as does `__new__`
+  given one (`cls.__new__(cls)`, `object.__new__(Row)`); and an instance of a class declaring
+  `__call__`, what that returns (another checked file's class too). Not a callable that may be
+  `None`, nor an `R` that is `None` or vague;
 - `typing.cast(T, x)`, however `cast` is imported: `T`;
 - the standard library, resolved through the imports (`import m`, `import m as a`,
   `from m import f`), by tables generated from typeshed's stubs when the package is built
@@ -149,7 +156,19 @@ in a function or module body:
   plain inheriting from it (a model's mixin). A guess (`member`), since a subclass or outside code
   may bind it to another type; a variable the module stores any other way (`self.limit = ...`) is
   left alone, and so is every other class body, where an annotation can be more than a type (a
-  dataclass's, a `NamedTuple`'s or a model's field);
+  dataclass's, a `NamedTuple`'s or a model's field). A builtin exception or value class is a base a
+  plain class may have too (`ValueError`, `str`, `dict`; not one the module binds itself);
+- a module's type alias, declared one: `Json = dict[str, "Json"]` becomes `Json: TypeAlias = ...`
+  (fix kind `alias`). Only a value that can be nothing but a type made of others: a subscript of
+  what `typing`, `typing_extensions` or `collections.abc` define (`Union[A, B]`, `Callable[..., R]`,
+  `Literal["a"]`), of a builtin generic (`dict[str, int]`) or of a generic class the module names
+  (its own, another checked file's, the standard library's); or a union of those, of builtin
+  classes, of classes the checked files define and of `None`. Not a bare class's alias
+  (`Alias = Class`), a chained assignment, a name the module binds twice (a variable, to a type
+  checker) or as a value somewhere, nor a function's or a class body's. `TypeAlias` is named as the
+  module's imports can (`TypeAlias`, `t.TypeAlias`, where bound before the alias), else imported
+  from `typing`, which has it from Python 3.10: certain where the module imports the name already
+  (or `typing_extensions`), or `min-python` is 3.10 or later; a guess otherwise;
 - an attribute, property or method of a class another checked file defines, its type imported as a
   declared return's is (the CLI only: the plugins see one file at a time);
 - with `--unsafe-fixes` (the CLI only), what's computed from an unannotated parameter of a plain
@@ -197,7 +216,10 @@ is a `list` of what's left for it, where that's of one type: `first, *rest = nam
 `rest: list[str]`. A call whose declared return is a tuple with a vague part
 (`tuple[Row, dict[str, Any]]`), which types no call whole, still declares the names whose parts
 aren't vague (`row, extra = load()` declares `row: Row`): a function's or a method's, the module's
-own or, with the CLI, another checked file's.
+own or, with the CLI, another checked file's. A value typed as a `NamedTuple` class is split by its
+fields, in order (`globalns, localns = resolver.namespaces`), but for a vague one: a class defined
+once, directly under `NamedTuple` alone, with two fields or more, in the module or (with the CLI)
+another checked file, which the file needn't import itself.
 
 A `:=`'s name can't be annotated where it's bound: it's declared before its statement too, typed as
 a plain assignment's name is (`if (m := pattern.match(s)) is not None:` gets
@@ -217,9 +239,12 @@ returns: `with zipfile.ZipFile(path) as z:` gets `z: zipfile.ZipFile` (a standar
 that returns itself gives its own type, type arguments included: a `subprocess.Popen[str]`),
 `with tempfile.TemporaryDirectory() as d:` a `str`, a class's of the module's or of an installed
 package's what its `__enter__` declares, and a call to one of the module's functions that
-`@contextmanager` makes a manager what it declares it yields (`Iterator[T]`'s `T`).
+`@contextmanager` makes a manager what it declares it yields (`Iterator[T]`'s `T`). A method of the
+module's classes that `@contextmanager` makes one types its call the same way, on a receiver whose
+type is known (`with self.defs.entry(key) as found:`). A target that unpacks is split as an
+unpacking's value is (`with defs.entry(key) as (ref, schema):`), a vague part's name left alone.
 `with open(path, "rb") as f:` declares `f: io.BufferedReader`, by its mode. Not an `async with`'s
-target, nor one that unpacks.
+target.
 
 A type the module can't name yet gets an import. One it already has is reused (with `import io`,
 `io.BufferedReader`); otherwise `from io import BufferedReader` is added after the module's
@@ -293,6 +318,9 @@ A fix is only as certain as a type checker would find it (`tests/corpus/corpus_s
 runs the corpus packages' own checkers after `--fix`), so where a checker sees the value otherwise
 than the fix says, the fix is changed, made a guess, or not offered:
 
+- a variable in a class's body is held to what a class above it declares: annotated there as another
+  type (`limit: int | None`, then `limit = 3` below), or a builtin base's own (`errno` under
+  `OSError`), it isn't typed by its value, across the checked files;
 - a name bound again later must take every value: `x = 1` then `x = None` declares `x: int | None`
   on a line of its own before the first binding (annotated there, mypy wouldn't narrow it to the
   `int` it's bound to), and `total = 0` then `total += 0.5` declares `total: float` (fix kind
@@ -304,7 +332,8 @@ than the fix says, the fix is changed, made a guess, or not offered:
   declared union (`int | None`, then `1`), which every checker narrows it to; a guess otherwise, and
   where it was first bound to a value of no known type, which it may still hold
   (`levels = index.multi()` under an `if`, `levels = ["a"]` under its `else`: `for lvl in levels`
-  declares `lvl: str` as a guess);
+  declares `lvl: str` as a guess); bound again to a value whose type is a guess, it's that type from
+  there on, as a guess (`config = config or Config()`, then `config.limit`);
 - a value typed the same whatever a guessed name in it is stays certain: `os.path.join(root, "x")`
   is a `str` by its literal, a guessed `root` or not; so does one typed whatever its parts are
   (`x.kind is None`, an f-string);
@@ -327,9 +356,10 @@ than the fix says, the fix is changed, made a guess, or not offered:
   only some values), it's declared `MODE: Final = "r"`, which keeps the `Literal`: a guess, as
   something may rebind it, and not offered where the module binds it again;
 - `self`, and a method declared to return `Self` called on `self` or `cls`, is `Self`, not its class
-  (in a subclass, the class isn't `Self`), and `type(self)` there a `type[Self]`: written as the
-  module already imports `Self` (`typing.Self` is Python 3.11's, so no import is added), and not
-  offered without one; a `Self` later bound to anything else isn't offered either;
+  (in a subclass, the class isn't `Self`), as is what `cls()`, `type(self)()` or `cls.__new__(cls)`
+  constructs, and `type(self)` there a `type[Self]`: written as the module already imports `Self`
+  (`typing.Self` is Python 3.11's, so no import is added), and not offered without one; a `Self`
+  later bound to anything else isn't offered either;
 - a generic class is never written bare (`list[Box]`, as `[self]` in `Box` would be; `Box()` guessed
   to construct one): the module's own, another checked file's, or the standard library's
   (`logging.StreamHandler()`), unless every type parameter it has has a default
@@ -485,6 +515,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `returned`      | an unannotated function's own `return`s, or a generator's `yield`s (a method's: a guess) |
 | `assigned`      | an unannotated instance attribute's every `self.x = value` in its class (a guess)        |
 | `member`        | a plain class's variable, by its literal value in the class's body (a guess)             |
+| `alias`         | a module's type alias, a subscript or a union of types: `TypeAlias`                      |
 | `callers`       | an unannotated parameter every call in the checked files passes one type (a guess)       |
 
 A project chooses which apply, in `[tool.constricter]` or on the command line:

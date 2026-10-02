@@ -5,7 +5,7 @@ import ast
 from collections.abc import Iterator, Mapping
 from typing import Final
 
-from constricter.fix import decided, shapes, stdlib
+from constricter.fix import called, decided, shapes, stdlib
 from constricter.fix.inference import (
     COMPREHENSIONS,
     CONTAINER_BUILDERS,
@@ -283,6 +283,7 @@ def _is_guess(
             or opened(node, known) is not None
             or certain_method(node, known, declared)
             or _overloaded_method(node, known, declared)
+            or called.result(node, known, declared, lambda arg: inference(arg, known, declared)) is not None
         ):
             return False
         case ast.Call(func=func):

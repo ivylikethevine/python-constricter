@@ -23,7 +23,6 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix import classvars
 from constricter.fix.known import Classes, Guarded, Origin, Partial, Returns
 from constricter.fix.modules import SUFFIX, Index, Module, index, indexed, module_name, read
 from constricter.rules.annotations import node_name, roots
@@ -66,6 +65,7 @@ class Imported(NamedTuple):
     # Its plain classes' variables typed by their values, by class (see `constricter.fix.classvars`).
     members: Mapping[str, Mapping[str, str]] = {}
     partial: Partial = Partial()  # the returns only an unpacking can use
+    tuples: Mapping[str, str] = {}  # its named tuples' fields, by class (see `targets.named_tuples`)
 
 
 def _origin(module: Module, name: str) -> Origin | None:
@@ -737,6 +737,7 @@ def imported(catalog: Index, path: Path) -> Imported:
     generics: set[str] = set()
     members: dict[str, Mapping[str, str]] = {}
     partial: dict[str, dict[str, str]] = {}
+    tuples: dict[str, str] = {}
     target: Module | None
     if path.suffix != SUFFIX or (target := modules.get(module_name(path))) is None:
         return Imported({}, Classes(attributes, methods))
@@ -747,22 +748,70 @@ def imported(catalog: Index, path: Path) -> Imported:
             generics.add(key)
         if defined[1] in defined[0].plain and defined[1] in defined[0].members:
             members[key] = defined[0].members[defined[1]]
+        tuples.update(_fields(modules, target, key, defined, guarded))
         attributes[key], methods[key], partial[key] = (
             _used(modules, (target, defined), key, table.get(defined[1]), guarded)
             for table in (defined[0].classes, defined[0].methods, defined[0].partial_methods)
         )
-    return Imported(
+    found: tuple[dict[str, str], Returns, Partial] = (
         calls(catalog, path, guarded),
-        Classes(attributes, methods),
         returned(catalog, path, guarded),
+        Partial(
+            {name: each for name, each, _ in _typed_calls(catalog, path, _PARTIAL, guarded)},
+            {name: each for name, each in partial.items() if each},
+        ),
+    )
+    tuples.update(_named_fields(modules, target, guarded))
+    return Imported(
+        found[0],
+        Classes(attributes, methods),
+        found[1],
         guarded,
         frozenset(generics),
         members,
-        Partial(
-            {name: found for name, found, _ in _typed_calls(catalog, path, _PARTIAL, guarded)},
-            {name: found for name, found in partial.items() if found},
-        ),
+        found[2],
+        tuples,
     )
+
+
+def _named_fields(
+    modules: Mapping[str, Module],
+    target: Module,
+    guarded: dict[str, Guarded],
+) -> dict[str, str]:
+    """Spell the fields of the named tuples the types written for a file (`target`) name (see `Guarded`).
+
+    Those it needn't import itself: a property's type, a function's return.
+
+    Returns:
+      Each one's name there, and the tuple unpacking one gives.
+
+    """
+    found: dict[str, str] = {}
+    key: str
+    named: Guarded
+    for key, named in list(guarded.items()):
+        origin: tuple[Module, str] | None = definition(modules, named.origin, CLASS)
+        found.update({} if origin is None else _fields(modules, target, key, origin, guarded))
+    return found
+
+
+def _fields(
+    modules: Mapping[str, Module],
+    target: Module,
+    key: str,
+    defined: tuple[Module, str],
+    guarded: dict[str, Guarded],
+) -> dict[str, str]:
+    """Spell a named tuple's fields (see `targets.named_tuples`) for the file (`target`) naming it `key`.
+
+    Returns:
+      `key`, and the tuple unpacking one gives; nothing for any other class, or types the file
+      can't write.
+
+    """
+    fields: str | None = defined[0].tuples.get(defined[1])
+    return {} if fields is None else portable(modules, (target, defined), key, {key: fields}, guarded)
 
 
 def _used(
@@ -870,68 +919,6 @@ def portable(
         elif (respelled := _respelled(modules, target, defined[0], annotation, guarded)) is not None:
             kept[member] = respelled
     return kept
-
-
-def with_plain(catalog: Index) -> Index:
-    """Settle which of the checked files' classes are plain, across them all.
-
-    As `constricter.fix.classvars` has it for one module, a base another checked file defines
-    followed there: a class under another file's plain class is plain, and a class that isn't
-    makes what it inherits from, in any file, not plain either.
-
-    Returns:
-      The index, each checked module with its plain classes.
-
-    """
-    found: dict[str, tuple[str, ...]] = {
-        f"{module.name}.{name}": tuple(_base(catalog.modules, module, base) for base in bases)
-        for module in catalog.modules.values()
-        for name, bases in module.bases.items()
-    }
-    if not found:
-        return catalog
-    plain: frozenset[str] = classvars.settled(found, classvars.TEST_CASES.__contains__)
-    return Index(
-        {
-            name: module._replace(plain=frozenset(each for each in module.bases if f"{name}.{each}" in plain))
-            for name, module in catalog.modules.items()
-        },
-        catalog.names,
-    )
-
-
-def _base(modules: Mapping[str, Module], module: Module, base: str) -> str:
-    """Resolve a class's base, as `module` writes it, to where it's defined (`pkg.models.Row`).
-
-    Returns:
-      The defining module and the class, dotted, through imports and re-exports; as far as it's
-      known, for one no indexed module defines (`unittest.TestCase`).
-
-    """
-    first: str
-    rest: str
-    first, _, rest = base.partition(_DOT)
-    if not rest and first in module.bases:
-        return f"{module.name}.{first}"
-    origin: Origin | None
-    if (origin := module.names.get(first)) is None:
-        return base
-    path: list[str] = [*([origin[0]] if origin[0] else []), *([origin[1]] if origin[1] else [])]
-    path += rest.split(_DOT) if rest else []
-    where: Origin = (_DOT.join(path[:-1]), path[-1])
-    defined: tuple[Module, str] | None = definition(modules, where, CLASS)
-    return _DOT.join(path) if defined is None else f"{defined[0].name}.{defined[1]}"
-
-
-def plain_classes(catalog: Index, path: Path) -> frozenset[str] | None:
-    """Find which classes of the file at `path` the index settled as plain (see `with_plain`).
-
-    Returns:
-      Their names; `None` for a file `catalog` doesn't have, whose own classes say.
-
-    """
-    target: Module | None = catalog.modules.get(module_name(path)) if path.suffix == SUFFIX else None
-    return None if target is None else target.plain
 
 
 def same(catalog: Index, path: Path, guarded: Mapping[str, Guarded]) -> tuple[frozenset[str], ...]:
