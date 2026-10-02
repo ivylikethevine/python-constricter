@@ -93,6 +93,8 @@ _STDLIB: Final = "stdlib"  # the fix kind of a standard-library call
 RETURNED: Final = "returned"  # the fix kind of an unannotated function's `return`s
 ASSIGNED: Final = "assigned"  # the fix kind of an instance attribute typed by its assignments
 _STR: Final = "str"
+_SUBSCRIPT: Final = "subscript"  # the fix kind of a subscript
+_GET_ITEM: Final = "__getitem__"  # what types one of a class's instance
 COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 _Comprehension: TypeAlias = ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp
 _Pair: TypeAlias = tuple[Inference | None, Inference | None]  # a `dict` display's entry: key, value
@@ -201,12 +203,12 @@ def _member_of(
         case ast.Subscript():
             text = subscripted(receiver, value, inferred(value.slice, known, declared))
             return (
-                None
+                _item(value, receiver, known, declared)
                 if text is None
                 else Inference(
                     text,
                     f"a subscript of `{ast.unparse(value.value)}`, a `{receiver}`",
-                    frozenset({"subscript"}),
+                    frozenset({_SUBSCRIPT}),
                 )
             )
         case ast.Call():
@@ -235,6 +237,37 @@ def _member_of(
             )
         case _:
             return member(receiver, attr, None, known) or _unannotated(receiver, attr, known)
+
+
+def _item(
+    value: ast.Subscript,
+    receiver: str,
+    known: Known,
+    declared: Mapping[str, str],
+) -> Inference | None:
+    """Type a subscript of a standard-library class's instance: what its `__getitem__` gives the index.
+
+    As a call passing it is typed: `proxy["k"]` on a `MappingProxyType[str, int]` is an `int`.
+
+    Returns:
+      The inference, or `None`.
+
+    """
+    call: ast.Call = ast.copy_location(
+        ast.Call(ast.Attribute(value.value, _GET_ITEM, ast.Load()), [value.slice], []),
+        value,
+    )
+    found: Inference | None = stdlib.library_member(receiver, _GET_ITEM, call, known)
+    method: stdlib.Method | None
+    if found is None and (method := stdlib.overloaded_method(receiver, _GET_ITEM, known)) is not None:
+        found = overloads.chosen(
+            method.entry,
+            call,
+            known,
+            lambda arg: inference(arg, known, declared),
+            method,
+        )
+    return None if found is None else found._replace(kinds=found.kinds | {_SUBSCRIPT})
 
 
 def _unannotated(receiver: str, attr: str, known: Known) -> Inference | None:

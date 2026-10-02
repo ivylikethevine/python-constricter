@@ -153,7 +153,9 @@ class LibraryNames(NamedTuple):
     `parameters`: those methods' classes' type parameters, which a receiver's type binds; `lineage`:
     the installed classes it names, each with where it and its ancestors are defined, which a
     receiver's type is matched by; `aliases`: the public aliases of installed generic classes it
-    names, whose methods are their classes' (see `constricter.fix.stubbed`).
+    names, whose methods are their classes' (see `constricter.fix.stubbed`). `starred`: whether
+    every Python the module runs on parses an unpacked tuple in a subscript (`tuple[int, *Ts]`,
+    3.11's syntax), so an annotation may be written with one.
     """
 
     casts: frozenset[str] = frozenset()
@@ -164,6 +166,7 @@ class LibraryNames(NamedTuple):
     parameters: Mapping[str, tuple[str, ...]] = MappingProxyType({})
     lineage: Mapping[str, tuple[str, ...]] = MappingProxyType({})
     aliases: Mapping[str, Expansion] = MappingProxyType({})
+    starred: bool = False
 
 
 class Returned(NamedTuple):

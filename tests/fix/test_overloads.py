@@ -116,6 +116,61 @@ def test_a_generic_receiver_binds_its_class_type_parameters() -> None:
     assert _fixes(RECEIVERS) == {"t": None, "u": "re.Match[str] | None"}
 
 
+SUBSCRIPTS: Final = """
+import array
+import configparser
+import re
+import shelve
+from collections import deque
+from types import MappingProxyType
+
+
+def f(
+    proxy: MappingProxyType[str, int],
+    shelf: shelve.Shelf[list[str]],
+    queue: deque[str],
+    parser: configparser.ConfigParser,
+    match: re.Match[str],
+    numbers: array.array[int],
+    key: str,
+    i: int,
+    unknown,
+) -> None:
+    a = proxy["k"]
+    b = shelf[key]
+    c = queue[0]
+    d = parser["section"]
+    e = d["option"]
+    g = match[0]
+    h = match[i]
+    j = numbers[0]
+    k = numbers[1:2]
+    m = proxy[unknown]
+    n = unknown["k"]
+"""
+
+
+def test_a_subscript_is_what_its_class_getitem_gives() -> None:
+    """A standard-library class's instance's, typed as a call passing `__getitem__` the index is."""
+    found: list[Offence] = check_source(textwrap.dedent(SUBSCRIPTS))
+    assert {o.name: o.fix for o in found} == {
+        "a": "int",  # `MappingProxyType[_KT_co, _VT_co]`'s `_VT_co`
+        "b": "list[str]",
+        "c": "str",
+        "d": "configparser.SectionProxy",  # the same whatever the index
+        "e": "str",
+        "g": "str",  # `Match[AnyStr]`'s whole match
+        "h": None,  # a group that may not have matched: `AnyStr | Any`
+        "j": "int",
+        "k": None,  # a slice: nothing types the index
+        "m": "int",  # the key doesn't decide it
+        "n": None,
+    }
+    assert not any(o.unsafe for o in found)
+    kinds: dict[str, frozenset[str]] = {o.name: o.edit.kinds for o in found if o.edit is not None}
+    assert kinds["a"] == {"stdlib", "subscript"}
+
+
 def test_a_standard_library_generic_class_isnt_written_bare() -> None:
     """Unless every type parameter it has has a default (`io.BufferedReader`'s)."""
     assert _fixes(GENERIC) == {"a": None, "b": None, "c": "io.BufferedReader"}

@@ -21,6 +21,7 @@ from constricter.fix.known import (
 from constricter.jsonc import as_text
 from constricter.offences import (
     DEFAULT_CHECKS,
+    STARRED_SUBSCRIPTS,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
     UNTYPED_TARGET,
@@ -164,6 +165,7 @@ def _settings(
                 {} if outside is None else outside.installed_parameters,
                 {} if outside is None else outside.installed_lineage,
                 {} if outside is None else outside.installed_aliases,
+                checks.min_python is not None and checks.min_python >= STARRED_SUBSCRIPTS,
             ),
             checks.max_length,
         ),

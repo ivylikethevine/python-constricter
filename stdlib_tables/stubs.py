@@ -275,6 +275,7 @@ class Stubs:
         self._versions: dict[str, tuple[int, int | None]] = _read_versions(stdlib / "VERSIONS")
         self._spaces: dict[tuple[str, Config], Namespace | None] = {}
         self._class_spaces: dict[tuple[str, str, Config], Namespace] = {}
+        self._found: dict[tuple[str, str, Config], Found | None] = {}
 
     def modules(self) -> list[str]:
         """List every module the stubs describe.
@@ -335,13 +336,19 @@ class Stubs:
             self._class_spaces[key] = space
         return self._class_spaces[key]
 
-    def lookup(self, module: str, name: str, config: Config, hops: int = 0) -> Found | None:
+    def lookup(self, module: str, name: str, config: Config) -> Found | None:
         """Follow `module.name` through re-exports to its definition, in `config`.
 
         Returns:
           Where it's defined and what it is (a submodule `ModuleRef`), or `None` if it isn't there.
 
         """
+        key: tuple[str, str, Config]
+        if (key := (module, name, config)) not in self._found:
+            self._found[key] = self._followed(module, name, config, 0)
+        return self._found[key]
+
+    def _followed(self, module: str, name: str, config: Config, hops: int) -> Found | None:
         space: Namespace | None
         if (space := self.namespace(module, config)) is None or hops > _MAX_HOPS:
             return None
@@ -355,7 +362,7 @@ class Stubs:
             case None:
                 return None
             case Imported(module=origin, name=imported):
-                return self.lookup(origin, imported, config, hops + 1)
+                return self._followed(origin, imported, config, hops + 1)
             case _:
                 return Found(module, name, binding)
 

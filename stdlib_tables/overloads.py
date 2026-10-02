@@ -234,6 +234,7 @@ class Overloads(Templates):
         """Read with `reading`; `canonical`: every public class's path, generic ones too."""
         super().__init__(reading, canonical)
         self._names: dict[str, frozenset[str] | None] = {}
+        self._taken: dict[tuple[ClassRef, str, bool], str] = {}  # `_klass`'s verdicts
 
     def entry(
         self,
@@ -753,7 +754,12 @@ class Overloads(Templates):
           The verdict.
 
         """
-        klass: ClassRef = ClassRef(found.module, found.name)
+        key: tuple[ClassRef, str, bool]
+        if (key := (ClassRef(found.module, found.name), scalar, subscripted)) not in self._taken:
+            self._taken[key] = self._takes_scalar(key[0], scalar, subscripted=subscripted)
+        return self._taken[key]
+
+    def _takes_scalar(self, klass: ClassRef, scalar: str, *, subscripted: bool) -> str:
         node: ast.ClassDef | None = self.reading.class_node(klass)
         if klass == ClassRef(BUILTINS, OBJECT) or (
             klass.module == BUILTINS and (scalar, klass.name) in _PROMOTED

@@ -152,6 +152,25 @@ def test_an_unpacked_tuple_is_written_with_unpack(hint: str, fix: str, module: s
     assert [o.fix for o in _checked(other, {"x": hint}, deeper)] == [fix if fix == hint else None]
 
 
+@pytest.mark.parametrize(
+    ("oldest", "kept"),
+    [((3, 11), True), ((3, 14), True), ((3, 10), False), (None, False)],
+)
+def test_an_unpacked_tuple_is_kept_where_every_python_parses_it(
+    oldest: tuple[int, int] | None,
+    *,
+    kept: bool,
+) -> None:
+    """As the checker printed it, for a project whose oldest Python (`min-python`) is 3.11 or later."""
+    source: str = """
+    def f(q) -> None:
+        x = q.make()
+    """
+    hint: str = "tuple[str, *tuple[str, ...]]"
+    found: list[Offence] = _checked(source, {"x": hint}, Checks(min_python=oldest))
+    assert [o.fix for o in found] == [hint if kept else None]
+
+
 def test_a_type_variable_is_a_fix_only_where_its_function_declares_it() -> None:
     """A type variable ty prints with its scope is the variable; a fix where its function declares it.
 

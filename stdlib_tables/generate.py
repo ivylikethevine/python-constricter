@@ -9,8 +9,9 @@ They aren't tracked: a build (`hatch_build.py`) generates them where they're mis
 basedpyright version `uv.lock` pins, and a digest of the code that generates them (`INPUTS`).
 
 It reads the typeshed stubs basedpyright bundles (that pinned version, installed), as each platform
-(Linux, macOS, Windows) and each Python version constricter supports (3.11 to 3.14) sees them, and
-keeps what comes out the same for all twelve:
+(Linux, macOS, Windows) and each Python version constricter supports (3.11 to 3.14) sees them (each
+of the twelve in a worker process, where there are cores and processes to have), and keeps what
+comes out the same for all twelve:
 
 - `returns`: functions (and classes' own classmethods and staticmethods) returning a builtin type
   (`int`, `list[str]`, `str | None`), by every public path they're reached through;
@@ -41,11 +42,16 @@ overloads, or is spelled with a class inside a generic (`list[Path]`), is left o
 
 import argparse
 import ast
+import contextlib
 import hashlib
 import importlib.metadata
 import json
+import os
 import tomllib
 from collections.abc import Sequence
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
+from functools import lru_cache
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
 
@@ -181,6 +187,38 @@ def _paths(stubs: Stubs, config: Config) -> dict[str, Found]:
             if not private(name) and path not in modules and (target := stubs.lookup(module, name, config)):
                 found[path] = target
     return found
+
+
+def readings(root: Path) -> list[_Tables]:
+    """Read the stubs under `root` as each of `CONFIGS` sees them: in worker processes, if it can.
+
+    In this process where there's one core, or no process can be started (a sandbox).
+
+    Returns:
+      Each configuration's tables, in `CONFIGS`' order.
+
+    """
+    workers: int = min(len(CONFIGS), os.cpu_count() or 1)
+    pool: ProcessPoolExecutor
+    if workers > 1:
+        with contextlib.suppress(OSError, BrokenProcessPool), ProcessPoolExecutor(workers) as pool:
+            return list(pool.map(read_config, CONFIGS, [root] * len(CONFIGS)))
+    return [read_config(config, root) for config in CONFIGS]
+
+
+def read_config(config: Config, root: Path) -> _Tables:
+    """Build every table as `config` sees the stubs under `root`, parsed once a process.
+
+    Returns:
+      Them.
+
+    """
+    return _read(_parsed(root), config)
+
+
+@lru_cache(maxsize=1)
+def _parsed(root: Path) -> Stubs:
+    return Stubs(root)
 
 
 def _read(stubs: Stubs, config: Config) -> _Tables:
@@ -621,8 +659,7 @@ def generate(stubs_root: Path | None = None) -> dict[Path, str]:
 
     """
     root: Path = typeshed() if stubs_root is None else stubs_root
-    stubs: Stubs = Stubs(root)
-    each: list[_Tables] = [_read(stubs, config) for config in CONFIGS]
+    each: list[_Tables] = readings(root)
     tables: _Tables = _agreed(each)
     document: dict[str, _Json] = {
         "returns": tables.returns,

@@ -77,6 +77,7 @@ MEMBER: Final = "member"
 NARROW: Final = "narrow"
 NESTING: Final = 3  # LVA006's default depth
 MAX_LENGTH: Final = 4  # LVA011's default: the longest fixed-length tuple an annotation may list
+STARRED_SUBSCRIPTS: Final = (3, 11)  # the first Python to parse `tuple[int, *Ts]`
 
 
 class Level(IntEnum):
@@ -229,7 +230,8 @@ class Checks(NamedTuple):
 
     With `type_comments`, `x = 1  # type: int` counts as annotated; with `all_scopes`, module and
     class bodies are checked too (LVA004); an annotation nested `nesting` deep is LVA006, and one
-    listing a fixed-length tuple longer than `max_length` is LVA011.
+    listing a fixed-length tuple longer than `max_length` is LVA011. `min_python`: the oldest Python
+    the code runs on (`None`: not known), whose syntax a fix is written in.
     """
 
     type_comments: bool = False
@@ -240,6 +242,7 @@ class Checks(NamedTuple):
     narrower: tuple[Narrower, ...] = ()
     fixes: FixPolicy = FixPolicy()  # which fixes `--fix` offers; it never changes what's reported
     final: bool = False  # look for LVA012 (opt-in: see `OPT_IN`)
+    min_python: tuple[int, int] | None = None
 
 
 DEFAULT_CHECKS: Final = Checks()

@@ -96,6 +96,10 @@ in a function or module body:
 - a standard-library module's variable, by its annotation in typeshed: `sys.path` is a `list[str]`,
   `os.sep` a `str` (not `sys.stdout`, typeshed's `TextIO | Any`), and `os.environ["X"]` a `str`; a
   name a function binds itself (a parameter `getpid`) isn't the module's import;
+- a subscript of a standard-library class's instance, by its `__getitem__` in typeshed, as a call
+  passing it the index is typed: `proxy["k"]` on a `MappingProxyType[str, int]` is an `int`,
+  `queue[0]` on a `deque[str]` a `str`, `parser["section"]` a `configparser.SectionProxy`, and
+  `match[0]` on an `re.Match[str]` a `str` (not `match[i]`, typeshed's `str | Any`);
 - `open(path, mode)` (or `io.open`), by its literal mode (`r` when there's none): a text mode gives
   an `io.TextIOWrapper`, a binary one an `io.BufferedReader` to read, an `io.BufferedWriter` to
   write, and an `io.BufferedRandom` for both (`+`). Not unbuffered (`buffering`, which gives an
@@ -326,9 +330,11 @@ A hint is used only as an annotation the file can hold:
 - ty's own spellings are read: a class object (`<class 'Point'>`) is `type[Point]`, a type variable
   printed with its scope (`Model@create_model`) the variable, and an intersection with a truthiness
   (`str & ~AlwaysFalsy`) its other member; any other intersection is dropped. An unpacked tuple
-  (`tuple[str, *tuple[str, ...]]`, Python 3.11's syntax) is written with `Unpack`
-  (`tuple[str, Unpack[tuple[str, ...]]]`, a level deeper to LVA006) where the module imports it from
-  `typing` or `typing_extensions`, and dropped where it doesn't;
+  (`tuple[str, *tuple[str, ...]]`, Python 3.11's syntax) is kept where the project's oldest Python
+  parses it: `min-python` (`--min-python`), which defaults to the lower bound of the nearest
+  `pyproject.toml`'s `requires-python`. Where it's older, or not known (the plugins), it's written
+  with `Unpack` (`tuple[str, Unpack[tuple[str, ...]]]`, a level deeper to LVA006) if the module
+  imports it from `typing` or `typing_extensions`, and dropped if it doesn't;
 - a type variable of the module's is a fix only where the function's signature, or its class's
   bases, name it: anywhere else it's unbound;
 - anything vague (`Any`, `list[Unknown]`), not an annotation (`Module("os")`, a signature), as deep

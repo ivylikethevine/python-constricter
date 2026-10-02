@@ -8,6 +8,7 @@ class, or `AnyStr`), a function's return, a class's members in its method resolu
 import ast
 import re
 from collections.abc import Iterable, Sequence
+from functools import cache
 from typing import Final, NamedTuple, TypeAlias
 
 from constricter.offences import MAX_LENGTH, NESTING
@@ -44,6 +45,7 @@ _BYTES: Final = "bytes"
 _NONE: Final = "None"
 _NEW: Final = "__new__"
 _ENTER: Final = "__enter__"
+_GET_ITEM: Final = "__getitem__"
 _CLASS_GETITEM: Final = "__class_getitem__"
 _TYPING: Final = frozenset({"typing", "typing_extensions"})
 # Builtins spelled as themselves; `object` and `type` are vague, `function` and `ellipsis` internal.
@@ -128,6 +130,7 @@ class Reading:
         self.config: Config = config
         self._generic: dict[ClassRef, bool] = {}
         self._mro: dict[ClassRef, list[ClassRef] | None] = {}
+        self._members: dict[ClassRef, dict[str, Member]] = {}
 
     def ref(self, expr: ast.AST, module: str) -> Found | None:
         """Resolve a name or dotted name as `module` spells it (a builtin, if it binds no such name).
@@ -467,9 +470,12 @@ class Reading:
           Each member, by name.
 
         """
+        if klass not in self._members:
+            self._members[klass] = {} if self.typed_dict(klass) else self._resolved(klass)
+        return self._members[klass]
+
+    def _resolved(self, klass: ClassRef) -> dict[str, Member]:
         found: dict[str, Member] = {}
-        if self.typed_dict(klass):
-            return found
         seen: set[str] = set()
         owner: ClassRef
         for owner in self.trusted(klass)[0]:
@@ -578,15 +584,16 @@ class Reading:
 
 
 def _read(name: str) -> bool:
-    """Check whether a class's member is one the tables read: a public one, or `__enter__`.
+    """Check whether a class's member is one the tables read: a public one, `__enter__` or `__getitem__`.
 
-    `with` gives what `__enter__` returns: the one private method a fix reads.
+    `with` gives what `__enter__` returns, and a subscript what `__getitem__` does: the private
+    methods a fix reads.
 
     Returns:
       Whether it is.
 
     """
-    return name == _ENTER or not private(name)
+    return name in {_ENTER, _GET_ITEM} or not private(name)
 
 
 def readable(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
@@ -760,6 +767,7 @@ def _replaced(node: ast.expr, names: dict[str, str]) -> ast.expr:
     return node
 
 
+@cache
 def usable(text: str) -> bool:
     """Check a builtin annotation is one `--fix` may write: not vague, nested or a long tuple, not `None`.
 

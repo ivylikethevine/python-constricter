@@ -8,8 +8,9 @@ the checker printed it:
 - a class object printed `<class 'Point'>` (ty's way) is `type[Point]`, a type variable printed with
   its scope (`Model@create_model`) the variable, and an intersection with a truthiness
   (`str & ~AlwaysFalsy`) its other member;
-- an unpacked tuple (`tuple[str, *tuple[str, ...]]`, Python 3.11's syntax) is written with `Unpack`
-  where the module imports it (one level deeper, to LVA006), and dropped where it doesn't;
+- an unpacked tuple (`tuple[str, *tuple[str, ...]]`, Python 3.11's syntax) is kept where the
+  project's oldest Python parses it (`min-python`); else written with `Unpack` where the module
+  imports it (one level deeper, to LVA006), and dropped where it doesn't;
 - a `Literal` is widened to its values' types (`Literal[1, 2]` is `int`, `Literal[Color.RED]` is
   `Color`), and `LiteralString` to `str`, then a union's repeated members dropped;
 - anything that isn't an annotation (`Module("os")`, a callable's signature, `Self@C`) is dropped,
@@ -217,7 +218,7 @@ def _spelled(
     except SyntaxError:
         return None
     root: ast.expr | None = _widened(parsed)
-    if plan is not None and root is not None:
+    if plan is not None and root is not None and not known.names.starred:
         root = _unstarred(root, plan)
     if plan is None or root is None or not _annotation(root) or not _fits(root, nesting, known.max_length):
         return None
@@ -255,7 +256,8 @@ def _spelled(
 def _unstarred(root: ast.expr, plan: ImportPlan) -> ast.expr | None:
     """Write an annotation's unpacked tuples as every Python 3 parses them: `Unpack[tuple[str, ...]]`.
 
-    `*tuple[str, ...]` in a subscript is Python 3.11's syntax, and nothing says the module needs one.
+    `*tuple[str, ...]` in a subscript is Python 3.11's syntax: for a module that may run on an
+    older one (see `LibraryNames.starred`).
 
     Returns:
       The annotation; `None` for one that unpacks, where the module doesn't import `Unpack`.

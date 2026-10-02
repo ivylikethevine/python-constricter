@@ -6,6 +6,17 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `min-python` (`--min-python VERSION`, and `[tool.constricter]`): the oldest Python the code runs
+  on, whose syntax `--fix` writes. It defaults to the lower bound of the nearest `pyproject.toml`'s
+  `requires-python`. At 3.11 or later, a hint's unpacked tuple is written as the checker printed it
+  (`tuple[str, *tuple[str, ...]]`): 3 more fixes on pydantic with basedpyright's and ty's hints.
+- `--fix` types a subscript of a standard-library class's instance by its `__getitem__` in typeshed:
+  `proxy["k"]` on a `MappingProxyType[str, int]` is an `int`, `queue[0]` on a `deque[str]` a `str`,
+  `parser["section"]` a `configparser.SectionProxy`. Nothing changes on pydantic.
+- A build from a checkout (the Action, a pre-commit hook's install, an editable install) generates
+  the standard-library tables in about 12s on 4 cores, from 70s: each of the twelve configurations
+  is read in a worker process (in the one process where none can start), and what's asked again and
+  again is worked out once. The tables are the same.
 - `--fix --unsafe-fixes` annotates a plain class's variables (`limit = 3` in its body becomes
   `limit: int = 3`), by a literal value or a display of them, and types what reads them
   (`self.limit`, `cls.limit`) in the same run: a new fix kind, `member`, always a guess. A plain
@@ -27,12 +38,13 @@ Notable changes, newest first. Each release's full notes are generated from its 
   is, and no longer by a new import for type checking; not through a name the file binds as a value
   somewhere. With `--infer-with`, ty's spellings are read (`Model@create_model` is `Model`,
   `(str & ~AlwaysFalsy) | None` a `str | None`, and `tuple[str, *tuple[str, ...]]`, Python 3.11's
-  syntax, is written with `Unpack` where the module imports it and dropped where it doesn't), and a
-  hint naming a type variable is a fix only where its function's signature or its class names it. On
-  pydantic: 4 fewer bindings with no fix (2,142 to 2,138), 3 fewer with basedpyright's hints (1,593
-  to 1,590); basedpyright finds no new error after `--fix --unsafe-fixes`. On the seven corpora,
-  since 0.3.1: 53,141 certain fixes (from 48,645) and 38,622 guesses (from 38,092), 160,085 bindings
-  with no fix (from 165,111); nothing broken, and one pass converges.
+  syntax, is kept where the project's oldest Python parses it, else written with `Unpack` where the
+  module imports it and dropped where it doesn't), and a hint naming a type variable is a fix only
+  where its function's signature or its class names it. On pydantic: 4 fewer bindings with no fix
+  (2,142 to 2,138), 3 fewer with basedpyright's hints (1,593 to 1,590); basedpyright finds no new
+  error after `--fix --unsafe-fixes`. On the seven corpora, since 0.3.1: 53,141 certain fixes (from
+  48,645) and 38,622 guesses (from 38,092), 160,085 bindings with no fix (from 165,111); nothing
+  broken, and one pass converges.
 - Fixed: a type naming an alias its module assigns in two branches a type checker can't decide
   between (`if MYPY: X = A`, `else: X = B`), a variable to it, isn't written in another file, nor
   taken for an alias a hint names; an import a fix needs is added even where its text is on an

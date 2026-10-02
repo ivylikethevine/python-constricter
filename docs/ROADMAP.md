@@ -27,18 +27,19 @@
   `cls` in a classmethod as `type[C]`, and `type(x)`; computed values (conditionals, arithmetic on
   builtin scalars, comprehensions, `sorted`/`list`/..., `await`), comparisons by `in` and `is`, or
   of builtin values (a `bool`); a union the author would write (`a if c else None`, `a or b` of one
-  type); displays that unpack (`[*names, s]`, `{**d, k: v}`), `d.get(k, 0)` and `os.environ["X"]`;
-  standard-library module variables (`sys.path`); chained assignments' names, declared before them
-  (`i = j = 0`), and a `:=`'s, before its statement; a quoted annotation read as its text
-  (`xs: "list[Node]"`); the `self` a function defined in a method reads; a `# type:` signature
-  comment's return, as a declared one; `typing.cast`; `x = None` later rebound to one type as
-  `T | None`; loop targets (`enumerate` and `zip` part by part, an `Iterable[T]`'s `T`) and
-  unpackings, declared before the statement, as a `with` statement's target is, by its context
-  manager's `__enter__`; a method a class inherits, from the base that defines it, in the module or
-  another checked file; an unannotated generator function's calls, by its `yield`s; a call to a
-  function decorated by what gives it back (`functools.cache`, pandas's `@set_module("pandas")`, by
-  its declared `Callable[[F], F]`); fixes for LVA003 and LVA007. A tuple longer than `max-length` is
-  `tuple[T, ...]`.
+  type); displays that unpack (`[*names, s]`, `{**d, k: v}`), `d.get(k, 0)` and `os.environ["X"]`; a
+  subscript of a standard-library class's instance by its `__getitem__` (`proxy["k"]` on a
+  `MappingProxyType[str, int]`); standard-library module variables (`sys.path`); chained
+  assignments' names, declared before them (`i = j = 0`), and a `:=`'s, before its statement; a
+  quoted annotation read as its text (`xs: "list[Node]"`); the `self` a function defined in a method
+  reads; a `# type:` signature comment's return, as a declared one; `typing.cast`; `x = None` later
+  rebound to one type as `T | None`; loop targets (`enumerate` and `zip` part by part, an
+  `Iterable[T]`'s `T`) and unpackings, declared before the statement, as a `with` statement's target
+  is, by its context manager's `__enter__`; a method a class inherits, from the base that defines
+  it, in the module or another checked file; an unannotated generator function's calls, by its
+  `yield`s; a call to a function decorated by what gives it back (`functools.cache`, pandas's
+  `@set_module("pandas")`, by its declared `Callable[[F], F]`); fixes for LVA003 and LVA007. A tuple
+  longer than `max-length` is `tuple[T, ...]`.
 - **The standard library, from typeshed**: tables generated from the stubs basedpyright bundles when
   the package is built (`stdlib_tables/`, see [Project](#project)), read as Linux, macOS and Windows
   and Python 3.11 to 3.14 see them, into `constricter/fix/tables/` (one JSON file a table, an entry
@@ -93,8 +94,9 @@
   or a union) is taken as a class is, and a module's own composite alias is declared `TypeAlias`,
   imported from `typing` if it must be: on pydantic, 82 more aliases declared and 12 more fixes
   naming `CoreSchema`. ty's spellings are read (`Model@create_model`, `str & ~AlwaysFalsy`; an
-  unpacked tuple is written with `Unpack` where the module imports it, else dropped), and a hint
-  naming a type variable is a fix only where its function's signature or its class names it.
+  unpacked tuple is kept where the project's oldest Python parses it, `min-python` or
+  `requires-python`'s, else written with `Unpack` where the module imports it, else dropped), and a
+  hint naming a type variable is a fix only where its function's signature or its class names it.
 - **No new type errors**: `corpus_suite.py --types` runs pydantic's, sqlalchemy's and pandas's own
   type checkers after `--fix` (none new) and `--fix --unsafe-fixes`. Where a checker would see a
   value otherwise, the fix is changed, made a guess, or not offered (see
@@ -118,7 +120,9 @@
   the cross-file index to the check, and a node's children listed without `ast`'s generators;
   whether a fix is a guess worked out only where there is a fix; each function's body indexed once
   for its empty containers; functions checked callees first; files in `order.plan`'s order, each as
-  soon as the modules it calls into are done.
+  soon as the modules it calls into are done. A build from a checkout generates the standard-library
+  tables in about 12s on 4 cores (from 70s): each configuration read in a worker process, and what a
+  class takes, a name's definition and a class's members worked out once.
 
 ### Command and output
 
@@ -230,8 +234,8 @@
   modules of `constricter` it imports. An sdist carries them, so a wheel built from it needs
   nothing; a wheel, an sdist and a build from a checkout carry the same tables, byte for byte the
   ones git tracked before. Not compressed: a wheel is a zip already (the tables are 1 MB, the whole
-  wheel 395 KB). A build from a checkout takes about 75s more here: 75 MB to download (60 MB of it
-  Node, which basedpyright depends on and the generator doesn't use), and the generation. The Action
+  wheel 395 KB). A build from a checkout downloads 75 MB (60 MB of it Node, which basedpyright
+  depends on and the generator doesn't use) and generates them, about 12s on 4 cores. The Action
   pays it on every run, and a pre-commit hook once, on install.
 
 ## Next
@@ -242,24 +246,7 @@ needs `--infer-with`. Each item says what it is, why, how, and when it's done.
 
 ### Small: a day or less
 
-1. **Faster table generation.** Every build from a checkout generates the tables in one process: the
-   Action on every run, a pre-commit hook's install, and each CI job's editable install, about 75s
-   here and more on a runner. The twelve configurations it reads the stubs as are independent: read
-   them in parallel, or cache the result by its stamp. Done when a build from a checkout generates
-   them in under 20s on 4 cores.
-2. **A subscript by `__getitem__`.** `os.environ["X"]` is typed by name alone: a subscript of any
-   other standard-library generic class's instance (`shelve.Shelf`, `types.MappingProxyType`) has no
-   fix, the tables holding no `__getitem__`. Generate it with the methods. Done when `proxy["k"]` on
-   a `MappingProxyType[str, int]` is an `int`.
-3. **A project's minimum Python.** `--fix` doesn't know which Pythons a project runs on, so a hint's
-   unpacked tuple (`tuple[str, *tuple[str, ...]]`, Python 3.11's syntax) is written with `Unpack`
-   only where the module imports it, a level deeper to LVA006, and dropped anywhere else. On
-   pydantic, with basedpyright's and ty's hints, 16 bindings are hinted one and none is a fix: one
-   is in a module importing `Unpack`, and its hint is vague. With the star, 3 were fixes; with
-   `Unpack` importable, none at the default `nesting` and 6 at 4. Read `requires-python` from the
-   nearest `pyproject.toml`, an option of its own over it, and write the star where every Python the
-   project supports parses it. Done when a project requiring 3.11 gets
-   `tuple[str, *tuple[str, ...]]`, and one allowing 3.10 doesn't.
+Nothing open.
 
 ### Medium: a few days
 

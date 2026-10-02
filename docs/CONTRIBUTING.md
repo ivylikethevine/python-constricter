@@ -32,8 +32,8 @@ Checks (as CI runs them), on `constricter stdlib_tables tests hatch_build.py` wh
 Everything generated goes in `local/`, but the standard-library tables `--fix` reads
 (`constricter/fix/tables/`) and the tests' `stdlib_tables/partial.json`, which git ignores: a build
 (`hatch_build.py`), the editable install included, generates them from the typeshed stubs of the
-basedpyright `uv.lock` pins, in about a minute, wherever they're missing or stale. After changing
-the generator (`stdlib_tables/`) or the pinned basedpyright, run
+basedpyright `uv.lock` pins, in about 12 seconds on 4 cores (30 on one), wherever they're missing or
+stale. After changing the generator (`stdlib_tables/`) or the pinned basedpyright, run
 `local/.venv/bin/python -m stdlib_tables --if-stale`; `tests/fix/test_stdlib_tables.py` fails until
 then. Python is indented with 4 spaces. An editor running Pyright or basedpyright (Pylance, Neovim's
 Mason) needs no setting of its own: `pyrightconfig.json` points both at `local/.venv` and the code

@@ -121,6 +121,25 @@ def _fix_kinds(text: str) -> list[str]:
     return kinds
 
 
+def _version(text: str) -> tuple[int, int]:
+    """Read `--min-python`: a Python version (`3.11`).
+
+    Returns:
+      It.
+
+    Raises:
+      ArgumentTypeError: It isn't one.
+
+    """
+    major: str
+    minor: str
+    major, _, minor = text.partition(".")
+    if not (major.isdigit() and minor.isdigit()):
+        message: str = f"expected a Python version like 3.11, got {text!r}"
+        raise argparse.ArgumentTypeError(message)
+    return int(major), int(minor)
+
+
 def _gigabytes(text: str) -> float:
     """Read `--infer-memory`: a positive number of gigabytes (GiB).
 
@@ -233,6 +252,12 @@ def _parser() -> argparse.ArgumentParser:
         default=MAX_LENGTH,
         metavar="N",
         help=f"report a fixed-length tuple annotation of more than N types (LVA011; default: {MAX_LENGTH})",
+    )
+    _ = parser.add_argument(
+        "--min-python",
+        type=_version,
+        metavar="VERSION",
+        help="the oldest Python the code runs on, whose syntax --fix writes (default: requires-python's)",
     )
     _ = parser.add_argument(
         "--select",
@@ -528,6 +553,7 @@ class Options:
                     frozenset(cast("list[str]", args.fix_ignore)),
                     frozenset(cast("list[str]", args.unsafe_fix_select)),
                 ),
+                min_python=cast("tuple[int, int] | None", args.min_python),
             ),
             unsafe_fixes=cast("bool", args.unsafe_fixes),
             filter=_filter(parser, args, mode),

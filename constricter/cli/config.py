@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: MIT
 """The command's defaults, from the nearest `pyproject.toml`'s `[tool.constricter]` table."""
 
+import re
 import tomllib
 from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, TypeAlias
+from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
 from constricter.cli.protocol import SERVERS
 from constricter.jsonc import is_int
@@ -30,6 +31,10 @@ def unknown_codes(codes: Sequence[str]) -> list[str]:
 
 
 DEFAULT_BASELINE: Final = "constricter-baseline.json"
+_MIN_PYTHON: Final = "min_python"
+_VERSION: Final = re.compile(r"\d+\.\d+")  # `min-python`'s: `3.11`
+# A lower bound among `requires-python`'s specifiers: `>=3.11`, `~=3.11`, `==3.11.*`, `>3.10`.
+_LOWER_BOUND: Final = re.compile(r"(?:>=|~=|==|>)\s*(\d+)(?:\.(\d+))?")
 
 
 def project_root(start: Path) -> Path:
@@ -58,34 +63,63 @@ def _pyproject(start: Path) -> Path | None:
     return None
 
 
-def _table(path: Path) -> dict[str, _Toml]:
-    """Return `path`'s `[tool.constricter]` table, or an empty one.
+def _document(path: Path) -> dict[str, _Toml]:
+    """Read `path`, a `pyproject.toml`.
+
+    Returns:
+      Its tables, as TOML parsed them.
+
+    Raises:
+      ValueError: The file isn't TOML.
+
+    """
+    file: BufferedReader
+    with path.open("rb") as file:
+        try:
+            return tomllib.load(file)
+        except tomllib.TOMLDecodeError as error:
+            message: str = f"{path}: {error}"
+            raise ValueError(message) from error
+
+
+def _table(path: Path, document: dict[str, _Toml]) -> dict[str, _Toml]:
+    """Return the `[tool.constricter]` table of `document` (`path`'s), or an empty one.
 
     Returns:
       The table's keys and values, as TOML parsed them.
 
     Raises:
-      ValueError: The file isn't TOML, or `tool.constricter` isn't a table.
+      ValueError: `tool.constricter` isn't a table.
 
     """
-    file: BufferedReader
-    document: dict[str, _Toml]
-    message: str
-    with path.open("rb") as file:
-        try:
-            document = tomllib.load(file)
-        except tomllib.TOMLDecodeError as error:
-            message = f"{path}: {error}"
-            raise ValueError(message) from error
     table: dict[str, _Toml]
     match document.get("tool"):
         case {"constricter": dict() as table}:
             return table
         case {"constricter": _}:
-            message = f"{path}: [tool.constricter] isn't a table"
+            message: str = f"{path}: [tool.constricter] isn't a table"
             raise ValueError(message)
         case _:
             return {}
+
+
+def _required(document: dict[str, _Toml]) -> str | None:
+    """Read the oldest Python a project's `requires-python` allows: its highest lower bound.
+
+    Returns:
+      It (`3.11`, for `>=3.11,<4`), or `None` if the project doesn't say.
+
+    """
+    required: str
+    match document.get("project"):
+        case {"requires-python": str() as required}:
+            pass
+        case _:
+            return None
+    found: list[tuple[str, str]] = cast("list[tuple[str, str]]", _LOWER_BOUND.findall(required))
+    bounds: list[tuple[int, int]] = [(int(major), int(minor or 0)) for major, minor in found]
+    oldest: tuple[int, int] | None = max(bounds, default=None)
+    return None if oldest is None else f"{oldest[0]}.{oldest[1]}"
 
 
 def _level(value: _Toml) -> str | None:
@@ -133,6 +167,16 @@ def _fix_kinds(value: _Toml) -> list[str] | None:
 
 def _flag(value: _Toml) -> bool | None:
     return value if isinstance(value, bool) else None
+
+
+def _version(value: _Toml) -> str | None:
+    """Read `min-python`: a Python version, as text (`"3.11"`).
+
+    Returns:
+      It, or `None` for anything else.
+
+    """
+    return value if isinstance(value, str) and _VERSION.fullmatch(value) else None
 
 
 def _gigabytes(value: _Toml) -> float | None:
@@ -208,11 +252,14 @@ _READERS: dict[str, Callable[[_Toml], Default | None]] = {
     "narrower": partial(_lists, read=_strings),  # a type hierarchy: each type, and those it's narrower than
     "infer-with": _checkers,
     "infer-memory": _gigabytes,
+    "min-python": _version,
 }
 
 
 def config_defaults(start: Path) -> dict[str, Default]:
     """Return the option defaults in the nearest `pyproject.toml`'s `[tool.constricter]`.
+
+    And `min-python`'s from the project's `requires-python`, where the table doesn't set it.
 
     Returns:
       Each option's default, keyed by its `argparse` name (`type_comments`, not `type-comments`).
@@ -231,10 +278,14 @@ def config_defaults(start: Path) -> dict[str, Default]:
     defaults: dict[str, Default] = {}
     key: str
     value: _Toml
-    for key, value in _table(path).items():
+    document: dict[str, _Toml] = _document(path)
+    for key, value in _table(path, document).items():
         default: Default | None
         if key not in readers or (default := readers[key](value)) is None:
             message: str = f"{path}: [tool.constricter] has an invalid {key} = {value!r}"
             raise ValueError(message)
         defaults[key.replace("-", "_")] = default
+    required: str | None
+    if _MIN_PYTHON not in defaults and (required := _required(document)) is not None:
+        defaults[_MIN_PYTHON] = required
     return defaults

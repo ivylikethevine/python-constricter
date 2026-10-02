@@ -152,6 +152,7 @@ Options:
 | all scopes       | `--all-scopes`                                                                                                                                                               | `all-scopes`                                    | `--constricter-all-scopes`      | `constricter-all-scopes = yes`    |
 | nesting          | `--nesting N`                                                                                                                                                                | `nesting`                                       | `--constricter-nesting`         | `constricter-nesting`             |
 | max length       | `--max-length N` (LVA011)                                                                                                                                                    | `max-length`                                    | `--constricter-max-length`      | `constricter-max-length`          |
+| min python       | `--min-python VERSION` (the oldest Python the code runs on, whose syntax `--fix` writes; default: `requires-python`'s)                                                       | `min-python`                                    | -                               | -                                 |
 | type hierarchy   | -                                                                                                                                                                            | `narrower` (a table)                            | `--constricter-narrower`        | `constricter-narrower`            |
 | fix              | `--fix` (`--unsafe-fixes` for guesses), `--diff` to preview                                                                                                                  | -                                               | -                               | -                                 |
 | infer with       | `--infer-with CHECKERS` (`basedpyright`, `ty`, `pyrefly`, several: inferred types, as guesses)                                                                               | `infer-with`                                    | -                               | -                                 |
@@ -185,6 +186,7 @@ type-comments = false
 all-scopes = true
 nesting = 3
 max-length = 4
+min-python = "3.11" # the default: your `requires-python`'s lower bound
 jobs = 0
 baseline = "constricter-baseline.json" # the default; relative to this pyproject.toml
 
