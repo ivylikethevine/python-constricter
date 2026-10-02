@@ -8,7 +8,7 @@ import pytest
 
 from constricter.cli import edits
 from constricter.cli.protocol import Json, Object
-from constricter.fix.known import Offered
+from constricter.fix.core.known import Offered
 
 _SOURCE: Final = (
     "from shapes import (\n    make,\n)\nfrom . import util\nfrom ..deep.er import one\n\nx = make()\n"

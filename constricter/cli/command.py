@@ -23,8 +23,9 @@ from constricter.cli.protocol import HintError
 from constricter.cli.report import Format, Result, fix_reasons, render, statistics
 from constricter.cli.runs import BaselineRun, CheckRun, CoverageRun, FileRun
 from constricter.cli.workers import Workers
-from constricter.fix import callers, decorated, fixes, installed, plain, project
-from constricter.fix.known import Callee, Hints, Outside, Returns
+from constricter.fix.core import fixes
+from constricter.fix.core.known import Callee, Hints, Outside, Returns
+from constricter.fix.index import callers, decorated, installed, plain, project
 from constricter.noqa import lines, unsuppressed
 from constricter.offences import (
     DEFAULT_CHECKS,

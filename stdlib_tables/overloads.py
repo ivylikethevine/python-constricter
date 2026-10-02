@@ -3,7 +3,7 @@
 
 `Overloads.entry` reads a function's overloads (or its one signature, when a type variable or a
 class inside a builtin generic puts its return beyond the fixed-return tables) as `--fix` matches
-them against a call (`constricter.fix.overloads`): each parameter's kind, whether it has a default,
+them against a call (`constricter.fix.libraries.overloads`): each parameter's kind, whether it has a default,
 and which argument types it certainly takes or refuses; and the return, as a template.
 
 Argument types are the builtin scalars in `SCALARS`, `LiteralString` standing for a `str` literal.
@@ -19,7 +19,7 @@ import copy
 from collections.abc import Iterable, Iterator, Sequence
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix.signatures import Accepts, Constant, Parameter, Signature
+from constricter.fix.core.signatures import Accepts, Constant, Parameter, Signature
 from stdlib_tables.reading import (
     ClassRef,
     Defs,

@@ -12,7 +12,7 @@ from typing import Final, NamedTuple, TypeAlias
 
 from constricter import __version__
 from constricter.cli.explain import explain
-from constricter.fix.fixes import Replacement
+from constricter.fix.core.fixes import Replacement
 from constricter.offences import MESSAGES, Level, Offence
 
 _URL: Final = "https://github.com/ivylikethevine/python-constricter"

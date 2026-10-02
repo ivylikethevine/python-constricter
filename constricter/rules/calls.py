@@ -16,10 +16,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Final, cast
 
-from constricter.fix import callers
-from constricter.fix.guesses import guessing
-from constricter.fix.inference import inference
-from constricter.fix.known import Call, Callee, Inference, Known, LibraryNames, Observed, Passed, Seeds
+from constricter.fix.core.known import Call, Callee, Inference, Known, LibraryNames, Observed, Passed, Seeds
+from constricter.fix.index import callers
+from constricter.fix.values.guesses import guessing
+from constricter.fix.values.inference import inference
 from constricter.rules.annotations import dotted
 from constricter.rules.flow import members
 from constricter.rules.scope import Scope, Settings, guesses_in
@@ -215,7 +215,7 @@ def keyed(tree: ast.Module, typed: Seeds) -> dict[int, Mapping[str, Passed]]:
 
 
 def seed_parameters(scope: Scope, func: FunctionDef, named: Sequence[ast.arg]) -> None:
-    """Type the unannotated parameters every call passes one type (see `fix.callers`), as guesses.
+    """Type the unannotated parameters every call passes one type (see `fix.index.callers`), as guesses.
 
     Not one the function binds again itself, whose type a guess from its callers wouldn't be after.
     """

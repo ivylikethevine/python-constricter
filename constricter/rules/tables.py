@@ -6,9 +6,9 @@ from collections import Counter
 from collections.abc import Mapping
 from typing import NamedTuple
 
-from constricter.fix.imports import taken_names
-from constricter.fix.inherited import Lineage, lineage
-from constricter.fix.targets import named_tuples
+from constricter.fix.core.imports import taken_names
+from constricter.fix.core.inherited import Lineage, lineage
+from constricter.fix.values.targets import named_tuples
 from constricter.rules import walked
 from constricter.rules.annotations import (
     class_methods,

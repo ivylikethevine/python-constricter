@@ -23,7 +23,7 @@ from constricter import check_source
 from constricter.cli import command as cli
 from constricter.cli import guard, hints, protocol
 from constricter.cli.options import Options
-from constricter.fix.known import Hints, Offered
+from constricter.fix.core.known import Hints, Offered
 
 _FAKE: Final = Path(__file__).with_name("fake_server.py")
 _Found: TypeAlias = dict[Path, tuple[Hints, ...]]

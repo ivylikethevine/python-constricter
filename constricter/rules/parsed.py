@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """Parse a module once: the cross-file index and the check share its tree, in the same process.
 
-The CLI reads every file to index what it offers other files (`fix.project`), then checks each; both
+The CLI reads every file to index what it offers other files (`fix.index.project`), then checks each; both
 parse it the same way (`parse`), and the index's tree is kept (`keep`) for the check to take
 (`take`), which frees it. What's kept is capped (`budget`): a tree takes about 26 bytes of memory for
 each byte of source, so past the cap a file is parsed again, as it always was.

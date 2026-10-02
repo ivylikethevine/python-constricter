@@ -598,7 +598,7 @@ def self_returns(tree: ast.Module) -> dict[str, frozenset[str]]:
     """Map each class to its methods (classmethods and staticmethods too) declared to return a bare `Self`.
 
     `method_returns` types such a call as the class; but called on `self` or `cls` it's `Self`, which
-    a subclass's is too, so `--fix` writes that instead (see `constricter.fix.doubts`).
+    a subclass's is too, so `--fix` writes that instead (see `constricter.fix.values.doubts`).
 
     Returns:
       Each class's name, and those methods' names.

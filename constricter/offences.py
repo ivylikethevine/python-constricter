@@ -136,7 +136,7 @@ class Fix(NamedTuple):
     # With `Edit.DECLARE`: the columns to delete on the statement's line too (the type comment it replaces).
     drop: tuple[int, int] | None = None
     imports: tuple[str, ...] = ()  # statements the annotation needs added (`from io import BytesIO`)
-    after: int = 0  # the line they go after (see `fix.imports.plan`)
+    after: int = 0  # the line they go after (see `fix.core.imports.plan`)
     guarded: tuple[str, ...] = ()  # statements the annotation needs added under `if TYPE_CHECKING:`
     guard: str = ""  # how the module names `TYPE_CHECKING`, for a new such block
     block: tuple[int, int] = (0, 0)  # the first and last line of the body of one there is (see `ImportPlan`)

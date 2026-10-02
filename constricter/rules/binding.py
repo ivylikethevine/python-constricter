@@ -13,14 +13,14 @@ import ast
 from collections.abc import Iterator
 from typing import Final, TypeAlias, cast
 
-from constricter.fix import hinted, shapes
-from constricter.fix.doubts import bare
-from constricter.fix.entered import entered, entering
-from constricter.fix.inference import LoopPart, inference, looped, looped_parts
-from constricter.fix.known import Inference, Known
-from constricter.fix.members import parsed
-from constricter.fix.opened import opened
-from constricter.fix.targets import iterated, unpacked
+from constricter.fix.core.known import Inference, Known
+from constricter.fix.libraries.opened import opened
+from constricter.fix.values import hinted, shapes
+from constricter.fix.values.doubts import bare
+from constricter.fix.values.entered import entered, entering
+from constricter.fix.values.inference import LoopPart, inference, looped, looped_parts
+from constricter.fix.values.members import parsed
+from constricter.fix.values.targets import iterated, unpacked
 from constricter.offences import COMMENT_TYPED_TARGET, UNTYPED_TARGET, Edit, Fix, at
 from constricter.rules.annotations import is_vague
 from constricter.rules.flow import augmented
@@ -357,7 +357,7 @@ def _bind_commented(scope: Scope, stmt: ast.For | ast.AsyncFor, target: ast.expr
 def _bind_with(scope: Scope, stmt: ast.stmt, items: list[ast.withitem], code: str | None) -> None:
     """Bind each `with` item's target, offering to declare `with manager as name`'s `name` first.
 
-    As what the manager's `__enter__` returns (see `constricter.fix.entered`); the file object
+    As what the manager's `__enter__` returns (see `constricter.fix.values.entered`); the file object
     `open` gives, which is its own context manager, by its literal mode. A target that unpacks takes
     that type split over its names, as an unpacking's are (but for a vague part). An `async with`'s
     is bound untyped (`__aenter__`'s return is awaited: not read).

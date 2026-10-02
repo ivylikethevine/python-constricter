@@ -12,10 +12,10 @@ from dataclasses import replace
 from functools import lru_cache
 from typing import Final
 
-from constricter.fix import fills as filling
-from constricter.fix import hinted
-from constricter.fix.doubts import contains_inner, spelled_self
-from constricter.fix.known import ImportPlan, Inference
+from constricter.fix.core.known import ImportPlan, Inference
+from constricter.fix.values import fills as filling
+from constricter.fix.values import hinted
+from constricter.fix.values.doubts import contains_inner, spelled_self
 from constricter.offences import (
     CAN_BE_FINAL,
     UNANNOTATED,
@@ -131,7 +131,7 @@ def _offered(scope: Scope, found: Refit) -> Fix | None:
 def fills(scope: Scope) -> None:
     """Offer an empty container, bound nowhere else, the type of what its function adds to it.
 
-    A guess (see `constricter.fix.fills`), resting on `filled` for `unsafe-fix-select`.
+    A guess (see `constricter.fix.values.fills`), resting on `filled` for `unsafe-fix-select`.
     """
     index: int
     o: Offence

@@ -5,7 +5,7 @@ Each checker's servers are started once, over standard input and output, with th
 their workspace, and work at once (see `Session`); each file is opened with the text constricter
 read, and its inlay hints asked for over the whole file. A variable-type hint (`: int`) sits just
 after the name it types: that end is its key, as the line (from 1) and the UTF-8 byte column `ast`
-gives the name's end. What the hint says is `constricter.fix.hinted`'s to judge: here it's only
+gives the name's end. What the hint says is `constricter.fix.values.hinted`'s to judge: here it's only
 text.
 
 A server that can't be started, exits, times out or answers an error stops the run: the option
@@ -32,7 +32,7 @@ from typing import IO, Final, NamedTuple, Self, TypeAlias, cast
 
 from constricter.cli import edits, guard, protocol
 from constricter.cli.protocol import SERVERS, HintError, Server
-from constricter.fix.known import Hints, Offered
+from constricter.fix.core.known import Hints, Offered
 
 _Json: TypeAlias = protocol.Json
 _Object: TypeAlias = protocol.Object

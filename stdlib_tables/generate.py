@@ -33,7 +33,7 @@ comes out the same for all twelve:
   each class or alias takes, by every path an installed package's stub may import it from
   (`typing.SupportsIndex`, `_typeshed.StrPath`), and `scalar_members`: each of those types'
   members, for its protocols; installed packages' overloads are matched with them
-  (`constricter.fix.stubbed`).
+  (`constricter.fix.index.stubbed`).
 
 A return that names a `TypeVar` (but `AnyStr`), `Any`, or anything else vague, differs between
 overloads, or is spelled with a class inside a generic (`list[Path]`), is left out; so is `typing`
@@ -55,7 +55,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter.fix.signatures import Signature
+from constricter.fix.core.signatures import Signature
 from stdlib_tables.overloads import CONTAINERS, SCALARS, Overloads
 from stdlib_tables.reading import (
     ANY_STR,
@@ -93,7 +93,8 @@ STUBS: Final = "basedpyright"  # the package whose bundled typeshed stubs the ta
 INPUTS: Final = (
     *sorted(path.relative_to(ROOT).as_posix() for path in Path(__file__).parent.glob("*.py")),
     "constricter/fix/__init__.py",
-    "constricter/fix/signatures.py",
+    "constricter/fix/core/__init__.py",
+    "constricter/fix/core/signatures.py",
     "constricter/offences.py",
     "constricter/rules/__init__.py",
     "constricter/rules/annotations.py",

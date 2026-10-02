@@ -13,8 +13,8 @@ from typing import Final
 
 from constricter.cli.runs import CoverageRun, FileRun
 from constricter.cli.workers import Checking, Workers, check_share, first_done
-from constricter.fix import callers, decorated, offers, order, plain, project, sides, stubbed
-from constricter.fix.known import Guarded, Hints, Outside
+from constricter.fix.core.known import Guarded, Hints, Outside
+from constricter.fix.index import callers, decorated, offers, order, plain, project, sides, stubbed
 
 CYCLE_ROUNDS: Final = 3  # how many times to check again files calling each other's functions
 

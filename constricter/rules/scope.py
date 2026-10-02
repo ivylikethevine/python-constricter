@@ -6,8 +6,10 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix import aliased, fills, hinted, stdlib
-from constricter.fix.doubts import (
+from constricter.fix.core.known import Hints, ImportPlan, Inference, Known, Passed
+from constricter.fix.libraries import stdlib
+from constricter.fix.values import aliased, fills, hinted
+from constricter.fix.values.doubts import (
     Facts,
     Owner,
     bare,
@@ -19,10 +21,9 @@ from constricter.fix.doubts import (
     tested,
     undeclared,
 )
-from constricter.fix.guesses import guessed, guessing
-from constricter.fix.inference import inference, inferred
-from constricter.fix.known import Hints, ImportPlan, Inference, Known, Passed
-from constricter.fix.narrowed import narrowed_at
+from constricter.fix.values.guesses import guessed, guessing
+from constricter.fix.values.inference import inference, inferred
+from constricter.fix.values.narrowed import narrowed_at
 from constricter.offences import (
     LONG_TUPLE,
     MEMBER,
@@ -76,7 +77,7 @@ class Settings:
     hints: tuple[Hints, ...] = ()
     facts: Facts = field(default_factory=Facts)  # what a type checker sees otherwise (see `doubts`)
     # What every call passes each unannotated parameter of its top-level functions, by `id()` (see
-    # `constricter.fix.callers`): guesses, for what's computed from them.
+    # `constricter.fix.index.callers`): guesses, for what's computed from them.
     parameters: Mapping[int, Mapping[str, Passed]] = field(default_factory=dict[int, Mapping[str, Passed]])
 
 
@@ -85,7 +86,7 @@ class Kind(NamedTuple):
 
     unannotated: str  # LVA001 in a function, LVA004 in a module or class body
     # A class body isn't: annotating a dataclass's variable makes it a field. Only a plain class's
-    # variable typed by its value is fixed there (see `constricter.fix.classvars`).
+    # variable typed by its value is fixed there (see `constricter.fix.values.classvars`).
     fixable: bool
     function: FunctionDef | None = None  # a function's own: its body, its returns
     owner: str | None = None  # a class body's: its class

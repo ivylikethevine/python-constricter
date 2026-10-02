@@ -18,8 +18,8 @@ from urllib.parse import urlsplit
 from urllib.request import url2pathname
 
 from constricter.cli.protocol import Json, Object
-from constricter.fix.known import Offered
-from constricter.fix.modules import SUFFIX, module_name
+from constricter.fix.core.known import Offered
+from constricter.fix.index.modules import SUFFIX, module_name
 from constricter.rules import parsed
 
 _Where: TypeAlias = tuple[int, int]  # a line (from 1) and a UTF-8 byte column, as `ast` counts

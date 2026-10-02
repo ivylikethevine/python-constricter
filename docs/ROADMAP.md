@@ -26,12 +26,12 @@
   another checked file's `MultiIndex.from_arrays(...)`, or on an instance); fixed-return builtins
   and `str`/`bytes` methods, and builtins their arguments decide (`min`, `max`, `sum`, `abs`,
   `round`, `divmod`, `next`, `dict`); members of any typed value (`self.index.name`,
-  `rows[0].strip()`, however deep, through `constricter.fix.members`); `cls` in a classmethod as
-  `type[C]`, and `type(x)`; computed values (conditionals, arithmetic on builtin scalars and lists,
-  comprehensions, `sorted`/`list`/..., `await`), comparisons by `in` and `is`, or of builtin values
-  (a `bool`); a union the author would write (`a if c else None`, `a or b` of one type); displays
-  that unpack (`[*names, s]`, `{**d, k: v}`), `d.get(k, 0)` and `os.environ["X"]`; a subscript of a
-  standard-library class's instance by its `__getitem__` (`proxy["k"]` on a
+  `rows[0].strip()`, however deep, through `constricter.fix.values.members`); `cls` in a classmethod
+  as `type[C]`, and `type(x)`; computed values (conditionals, arithmetic on builtin scalars and
+  lists, comprehensions, `sorted`/`list`/..., `await`), comparisons by `in` and `is`, or of builtin
+  values (a `bool`); a union the author would write (`a if c else None`, `a or b` of one type);
+  displays that unpack (`[*names, s]`, `{**d, k: v}`), `d.get(k, 0)` and `os.environ["X"]`; a
+  subscript of a standard-library class's instance by its `__getitem__` (`proxy["k"]` on a
   `MappingProxyType[str, int]`); standard-library module variables (`sys.path`); chained
   assignments' names, declared before them (`i = j = 0`), and a `:=`'s, before its statement; a
   quoted annotation read as its text (`xs: "list[Node]"`); the `self` a function defined in a method
@@ -71,9 +71,9 @@
   stub package, a lone stub module) are typed by their declared returns as a checked file's are,
   found as the import system would on this Python's path and `VIRTUAL_ENV`'s; types are imported
   from a public module that re-exports them. Functions whose overloads or type variables their
-  arguments decide are matched as the tables' are (`constricter.fix.stubbed`), through the package's
-  aliases, type variables and protocols, the standard-library classes it names by the `scalars`
-  table, and a class argument binding `type[T]`: 83 more fixes on pandas
+  arguments decide are matched as the tables' are (`constricter.fix.index.stubbed`), through the
+  package's aliases, type variables and protocols, the standard-library classes it names by the
+  `scalars` table, and a class argument binding `type[T]`: 83 more fixes on pandas
   (`np.empty(n, dtype=np.float64)`), no new type error. They're read at run time through the index,
   not by `stdlib_tables/`'s reader, which needs typeshed's standard-library stubs. Their classes'
   methods too, the receiver's type binding the class's type parameters and `Self`, or matched
@@ -234,9 +234,12 @@
 - **Python 3.11+**, the oldest still maintained after 3.10's end of life (October 2026): 3.10 would
   add a runtime dependency (`tomli`) for a month, and 3.6–3.9 would mean dropping `match` from the
   checker. Code for any Python 3 version can still be checked.
-- **Layout**: a flat `constricter/` in `rules/`, `fix/`, `cli/` and `plugins/`, all but seven
-  modules under 750 lines (`fix/stubbed.py`, `overloads.py`, `inference.py` and `project.py`, and
-  `rules/annotations.py`, `checker.py` and `scope.py`); the standard-library tables in
+- **Layout**: `constricter/` in `rules/`, `fix/`, `cli/` and `plugins/`; `fix/` in four layers, each
+  importing only those before it: `core/` (what every part shares), `libraries/` (the standard
+  library's and installed packages' types), `values/` (what a value makes its type) and `index/`
+  (the cross-file index), its tests laid out the same. All but seven modules are under 750 lines
+  (`fix/index/stubbed.py` and `project.py`, `fix/libraries/overloads.py`, `fix/values/inference.py`,
+  and `rules/annotations.py`, `checker.py` and `scope.py`); the standard-library tables in
   `constricter/fix/tables/`, their generator in `stdlib_tables/`; docs in `docs/` (changelog,
   contributing, security, integrations, fixes, runs), release notes grouped by
   `.github/release.yml`, issue and PR templates, CODEOWNERS.
@@ -293,8 +296,8 @@ Nothing open.
    `__iter__`'s. Count each first. Done when each of those is a fix.
 4. **The project's own overloads.** A function the checked files define with `@overload` (pandas'
    `concat`) is skipped as redefined: 1,689 calls. Match its signatures as the standard library's
-   and installed packages' are (`constricter.fix.overloads`). Done when a call the arguments decide
-   is typed, and one they don't is left alone.
+   and installed packages' are (`constricter.fix.libraries.overloads`). Done when a call the
+   arguments decide is typed, and one they don't is left alone.
 5. **Partly vague hints, opt-in.** The largest group of hints dropped is a type with `Any` in it
    (`dict[str, Any]`, `list[Any]`): 4,393 of the three packages' bindings with no fix for
    basedpyright, 16.4% of them. It is the value's type, and LVA005 would report it: a fix kind of

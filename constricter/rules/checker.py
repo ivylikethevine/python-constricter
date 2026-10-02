@@ -6,9 +6,8 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
 from typing import Final, NamedTuple, cast
 
-from constricter.fix import classvars, entered, imports, inherited, returned, stdlib
-from constricter.fix.doubts import facts, says_self
-from constricter.fix.known import (
+from constricter.fix.core import imports, inherited
+from constricter.fix.core.known import (
     Classes,
     ClassSide,
     Indirect,
@@ -20,6 +19,9 @@ from constricter.fix.known import (
     Returned,
     Returns,
 )
+from constricter.fix.libraries import stdlib
+from constricter.fix.values import classvars, entered, returned
+from constricter.fix.values.doubts import facts, says_self
 from constricter.jsonc import as_text
 from constricter.offences import (
     DEFAULT_CHECKS,
@@ -240,7 +242,7 @@ def check_tree(
 class Checked(NamedTuple):
     """A module's offences, what its unannotated functions return, and what it passes others' functions.
 
-    What they return is for the files importing them; what it passes, for `fix.callers`.
+    What they return is for the files importing them; what it passes, for `fix.index.callers`.
     """
 
     offences: list[Offence]

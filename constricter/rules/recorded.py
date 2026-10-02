@@ -1,17 +1,17 @@
 # SPDX-License-Identifier: MIT
 """What a finished function's scope says its `return`s, `yield`s and `self.x = value`s give.
 
-Recorded for `constricter.fix.returned`, which types the function's calls and its class's attributes
+Recorded for `constricter.fix.values.returned`, which types the function's calls and its class's attributes
 from them.
 """
 
 import ast
 from typing import Final
 
-from constricter.fix import returned
-from constricter.fix.inference import RETURNED, inference, looped
-from constricter.fix.known import ImportPlan, Inference
-from constricter.fix.targets import iterated
+from constricter.fix.core.known import ImportPlan, Inference
+from constricter.fix.values import returned
+from constricter.fix.values.inference import RETURNED, inference, looped
+from constricter.fix.values.targets import iterated
 from constricter.rules.scope import Scope, guesses_in
 from constricter.rules.syntax import FunctionDef, own_nodes
 from constricter.rules.walked import walk
