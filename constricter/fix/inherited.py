@@ -3,9 +3,9 @@
 
 A class the module defines takes a member its body doesn't bind from its bases, in method
 resolution order, as far as the module sees: its own classes, each defined once and not generic,
-then a class another checked file defines, whose members are known whole. The order ends there, or
-before the first base out of sight (an installed package's, subscripted, computed), which may
-define anything.
+then a class another checked file or the standard library's tables define, whose members are
+known whole. The order ends there, or before the first base out of sight (an installed package's,
+subscripted, computed), which may define anything.
 """
 
 import ast
@@ -26,9 +26,9 @@ class Lineage(NamedTuple):
     """The module's classes' ancestry, as far as it sees.
 
     `order`: each class's method resolution order after itself, up to the first base out of sight,
-    or a class another checked file defines (as the module spells it), which ends it; `bound`: the
-    names each class's body binds; `selfish`: its methods declared to return a bare `Self` (see
-    `self_returns`), which an inheriting class's instance gives as its own class.
+    or a class another checked file or the standard library defines (as the module spells it), which
+    ends it; `bound`: the names each class's body binds; `selfish`: its methods declared to return a
+    bare `Self` (see `self_returns`), which an inheriting class's instance gives as its own class.
     """
 
     order: Mapping[str, tuple[str, ...]] = MappingProxyType({})
@@ -95,8 +95,8 @@ def lineage(
 ) -> Lineage:
     """Read the ancestry of the classes the module defines once each.
 
-    `selfish`: its `self_returns`; `imported`: the classes other checked files define, as it spells
-    them.
+    `selfish`: its `self_returns`; `imported`: the classes other checked files and the standard
+    library define, as it spells them.
 
     Returns:
       It (see `Lineage`).
@@ -117,7 +117,8 @@ def lineage(
     for name in parents:
         after: list[str] = (_order(name, parents, frozenset()) or [name])[1:]
         hidden: int = next((index for index, base in enumerate(after) if base not in seen), len(after))
-        # Another file's class is the last in sight: what it inherits is its own to say.
+        # Another file's class, or the standard library's, is the last in sight: what it inherits is
+        # its own to say.
         last: int = hidden + (hidden < len(after) and after[hidden] in imported)
         order[name] = tuple(after[:last])
     return Lineage(

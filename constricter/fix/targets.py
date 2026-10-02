@@ -2,6 +2,7 @@
 """Types split over what a loop or an unpacking binds: a container's elements, a tuple's parts."""
 
 import ast
+from collections.abc import Sequence
 from typing import Final
 
 from constricter.fix.known import Inference
@@ -10,15 +11,32 @@ from constricter.rules.annotations import node_name
 # Builtins that iterate over their (first) argument's elements, one to one.
 SAME_ELEMENTS: Final = frozenset({"reversed", "sorted"})
 DICT_VIEWS: Final = frozenset({"keys", "values", "items"})
-_TEXT_ELEMENTS: Final = {"str": "str", "bytes": "int"}  # what iterating each gives
+# What iterating each builtin that takes no type argument gives.
+_ELEMENTS: Final = {"str": "str", "bytes": "int", "bytearray": "int", "range": "int"}
 # Containers whose one type parameter is their elements'.
 _ONE_ELEMENT_TYPE: Final = frozenset({"list", "List", "set", "Set", "frozenset", "FrozenSet"})
 # What yields its first type parameter, however it's named (`Iterator[T]`, `abc.Generator[T, None, None]`).
 _YIELDING: Final = frozenset({"Iterable", "Iterator", "Generator"})
+# Mappings of keys to values, however they're named (`dict[K, V]`, `abc.Mapping[K, V]`).
+_MAPPINGS: Final = frozenset(
+    {
+        "dict",
+        "Dict",
+        "Mapping",
+        "MutableMapping",
+        "OrderedDict",
+        "defaultdict",
+        "DefaultDict",
+        "MappingProxyType",
+        "ChainMap",
+    },
+)
 RANGE: Final = "range"
 ENUMERATE: Final = "enumerate"
 ZIP: Final = "zip"
-ITERATORS: Final = frozenset({RANGE, ENUMERATE, ZIP, *SAME_ELEMENTS})
+MAP: Final = "map"  # yields what its function returns, whatever it's mapped over
+ITER: Final = "iter"  # yields its one argument's elements (with a sentinel, what its callable returns)
+ITERATORS: Final = frozenset({RANGE, ENUMERATE, ZIP, MAP, ITER, *SAME_ELEMENTS})
 # The keywords each of `ITERATORS` takes that don't change what it yields (`sorted`'s only its order).
 _ITERATOR_KEYWORDS: Final = {
     ENUMERATE: frozenset({"start"}),
@@ -60,20 +78,21 @@ def element_type(container: str, reason: str, kinds: frozenset[str]) -> Inferenc
     head: ast.expr
     item: ast.expr
     key: ast.expr
-    last: ast.expr
+    others: list[ast.expr]
     match root:
-        case ast.Name(id=name) if name in _TEXT_ELEMENTS:
-            return Inference(_TEXT_ELEMENTS[name], reason, kinds)
+        case ast.Name(id=name) if name in _ELEMENTS:
+            return Inference(_ELEMENTS[name], reason, kinds)
         case ast.Subscript(value=ast.Name(id=name), slice=item) if name in _ONE_ELEMENT_TYPE:
             return Inference(ast.unparse(sole(item)), reason, kinds)
         case ast.Subscript(value=head, slice=ast.Tuple(elts=[item, *_]) | item) if (
             node_name(head) in _YIELDING
         ):
             return Inference(ast.unparse(item), reason, kinds)
-        case ast.Subscript(value=ast.Name(id="dict" | "Dict"), slice=ast.Tuple(elts=[key, _])):
+        case ast.Subscript(value=head, slice=ast.Tuple(elts=[key, _])) if node_name(head) in _MAPPINGS:
             return Inference(ast.unparse(key), reason, kinds)
-        case ast.Subscript(value=ast.Name(id="tuple" | "Tuple"), slice=ast.Tuple(elts=[item, last])) if (
-            isinstance(last, ast.Constant) and last.value is Ellipsis
+        case ast.Subscript(value=ast.Name(id="tuple" | "Tuple"), slice=ast.Tuple(elts=[item, *others])) if (
+            # `tuple[T, ...]`, or one whose parts agree (`("a", "b")`): whichever it is, a `T`.
+            all(_is_ellipsis(other) or ast.unparse(other) == ast.unparse(item) for other in others)
         ):
             return Inference(ast.unparse(item), reason, kinds)
         case _:
@@ -81,17 +100,18 @@ def element_type(container: str, reason: str, kinds: frozenset[str]) -> Inferenc
 
 
 def dict_parts(annotation: str) -> tuple[str, str] | None:
-    """Read a `dict[K, V]`'s key and value types.
+    """Read a `dict[K, V]`'s key and value types, or another mapping's (`Mapping[K, V]`).
 
     Returns:
       Them, as text, or `None` for any other annotation.
 
     """
     # `annotation` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
+    head: ast.expr
     key: ast.expr
     value: ast.expr
     match ast.parse(annotation, mode="eval").body:
-        case ast.Subscript(value=ast.Name(id="dict" | "Dict"), slice=ast.Tuple(elts=[key, value])):
+        case ast.Subscript(value=head, slice=ast.Tuple(elts=[key, value])) if node_name(head) in _MAPPINGS:
             return ast.unparse(key), ast.unparse(value)
         case _:
             return None
@@ -115,8 +135,9 @@ def unpacked(target: ast.expr, annotation: str | None) -> list[tuple[ast.Name, s
     """Match an unpacking target's names with the parts of a value typed `annotation`.
 
     A plain name takes the whole type; a tuple or list of targets takes a `tuple[A, B, ...]` of the
-    same length part by part, or a `tuple[T, ...]`'s `T` for each. A starred name, or a shape that
-    doesn't match, gets `None`.
+    same length part by part, or each an element of anything else whose elements are known (a
+    `tuple[T, ...]`'s or `list[T]`'s `T`, a `str`'s `str`). A starred name takes a `list` of what's
+    left for it, if that's of one type. A shape that doesn't match gets `None`.
 
     Returns:
       Each name the target binds, with its type as text (or `None`).
@@ -128,38 +149,65 @@ def unpacked(target: ast.expr, annotation: str | None) -> list[tuple[ast.Name, s
         case ast.Name():
             return [(target, annotation)]
         case ast.Tuple(elts=elements) | ast.List(elts=elements):
-            parts: list[str | None] = _parts(annotation, len(elements))
+            parts: list[str | None] = _parts(annotation, elements)
             return [
                 pair
                 for element, part in zip(elements, parts, strict=True)
                 for pair in unpacked(element, part)
             ]
         case ast.Starred(value=value):
-            return unpacked(value, None)
+            return unpacked(value, annotation)
         case _:
             return []
 
 
-def _parts(annotation: str | None, count: int) -> list[str | None]:
-    """Split a tuple type into `count` parts, one per target.
+def _parts(annotation: str | None, targets: Sequence[ast.expr]) -> list[str | None]:
+    """Split a value's type over the targets it's unpacked into.
 
     Returns:
-      Each part's type as text; all `None` if `annotation` isn't a tuple of that many (or of any
-      length, `tuple[T, ...]`).
+      Each target's type as text, a starred one's a `list`; all `None` if `annotation` isn't a tuple
+      of that many, nor anything whose elements are known.
 
     """
-    unknown: list[str | None] = [None] * count
+    unknown: list[str | None] = [None] * len(targets)
     if annotation is None:
         return unknown
-    root: ast.expr = ast.parse(annotation, mode="eval").body
+    star: int | None = next(
+        (at for at, target in enumerate(targets) if isinstance(target, ast.Starred)),
+        None,
+    )
     elements: list[ast.expr]
-    match root:
-        case ast.Subscript(value=ast.Name(id="tuple" | "Tuple"), slice=ast.Tuple(elts=elements)):
-            if len(elements) == _ANY_LENGTH and _is_ellipsis(elements[-1]):
-                return [ast.unparse(elements[0])] * count
-            return [ast.unparse(e) for e in elements] if len(elements) == count else unknown
+    match ast.parse(annotation, mode="eval").body:
+        case ast.Subscript(value=ast.Name(id="tuple" | "Tuple"), slice=ast.Tuple(elts=elements)) if not (
+            len(elements) == _ANY_LENGTH and _is_ellipsis(elements[-1])
+        ):
+            return _fixed([ast.unparse(element) for element in elements], len(targets), star) or unknown
         case _:
-            return unknown
+            found: Inference | None
+            if (found := element_type(annotation, "", frozenset())) is None:
+                return unknown
+            each: list[str | None] = [found.annotation] * len(targets)
+            if star is not None:
+                each[star] = f"list[{found.annotation}]"
+            return each
+
+
+def _fixed(parts: list[str], count: int, star: int | None) -> list[str | None] | None:
+    """Split a fixed-length tuple's `parts` over `count` targets, the one at `star` starred (if any).
+
+    Returns:
+      Each target's type, the starred one's a `list` of the parts left for it where they agree
+      (else `None`); or `None` if the tuple hasn't a part for each target.
+
+    """
+    if star is None:
+        return [*parts] if len(parts) == count else None
+    if len(parts) < count - 1:
+        return None
+    after: int = len(parts) - (count - star - 1)
+    rest: set[str] = set(parts[star:after])
+    starred: str | None = f"list[{rest.pop()}]" if len(rest) == 1 else None
+    return [*parts[:star], starred, *parts[after:]]
 
 
 def iterator_call(iterable: ast.expr) -> tuple[str, list[ast.expr]] | None:
@@ -190,7 +238,7 @@ def iterated(iterable: ast.expr) -> list[ast.expr]:
     """Find the values `looped` typed a loop over `iterable` from, to judge whether it guessed.
 
     Through `enumerate` (its first argument), `zip`, `reversed`, `sorted` and a `dict` view to what
-    they iterate; a `range()` iterates nothing typed.
+    they iterate; a `range()` iterates nothing typed, and a `map()` yields what its function returns.
 
     Returns:
       Those values.
@@ -198,7 +246,7 @@ def iterated(iterable: ast.expr) -> list[ast.expr]:
     """
     call: tuple[str, list[ast.expr]] | None
     if (call := iterator_call(iterable)) is not None:
-        return [] if call[0] == RANGE else [part for arg in counted(*call) for part in iterated(arg)]
+        return [] if call[0] in {RANGE, MAP} else [part for arg in counted(*call) for part in iterated(arg)]
     receiver: ast.expr
     view: str
     match iterable:

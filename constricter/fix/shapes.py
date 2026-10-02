@@ -32,11 +32,17 @@ _ENVIRON: Final = "os.environ"
 _QUOTES: Final = frozenset("'\"")
 
 
-def _is_none(node: ast.expr) -> bool:
+def is_none(node: ast.expr) -> bool:
+    """Check whether a value is the literal `None`.
+
+    Returns:
+      Whether it is.
+
+    """
     return isinstance(node, ast.Constant) and node.value is None
 
 
-def _typed(node: ast.expr, infer: Infer) -> Inference | None:
+def typed(node: ast.expr, infer: Infer) -> Inference | None:
     """Type one part of a shape, a read only as the module docstring has it.
 
     Returns:
@@ -51,7 +57,7 @@ def _typed(node: ast.expr, infer: Infer) -> Inference | None:
     return found._replace(reads=(*found.reads, ast.unparse(node)))
 
 
-def _or_none(annotation: str) -> str | None:
+def or_none(annotation: str) -> str | None:
     """Write `annotation`, or `None`: as it is if it allows `None` already.
 
     Returns:
@@ -73,11 +79,11 @@ def optional(value: ast.IfExp, infer: Infer) -> Inference | None:
       `c` tests it (`x if isinstance(x, C) else None`): it's narrowed there.
 
     """
-    sides: list[ast.expr] = [side for side in (value.body, value.orelse) if not _is_none(side)]
+    sides: list[ast.expr] = [side for side in (value.body, value.orelse) if not is_none(side)]
     tested: set[str] = {ast.unparse(node) for node in ast.walk(value.test) if isinstance(node, _READS)}
     known: bool = len(sides) == 1 and ast.unparse(sides[0]) not in tested
-    found: Inference | None = _typed(sides[0], infer) if known else None
-    annotation: str | None = None if found is None else _or_none(found.annotation)
+    found: Inference | None = typed(sides[0], infer) if known else None
+    annotation: str | None = None if found is None else or_none(found.annotation)
     if found is None or annotation is None:
         return None
     return Inference(
@@ -98,7 +104,7 @@ def boolean(value: ast.BoolOp, infer: Infer) -> Inference | None:
       The last operand's type, or `None` if an operand's isn't known or they differ.
 
     """
-    parts: list[Inference | None] = [_typed(operand, infer) for operand in value.values]
+    parts: list[Inference | None] = [typed(operand, infer) for operand in value.values]
     found: list[Inference] = [part for part in parts if part is not None]
     if len(found) != len(parts):
         return None
@@ -128,7 +134,7 @@ def class_of(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
         case ast.Call(func=ast.Name(id="type"), args=[arg], keywords=[]) if known.is_builtin(
             _TYPE,
         ) and not isinstance(arg, ast.Starred):
-            found: Inference | None = _typed(arg, infer)
+            found: Inference | None = typed(arg, infer)
             types: frozenset[str] = frozenset() if found is None else members(found.annotation) or frozenset()
             if found is None or len(types) != 1 or _NONE in types:
                 return None
@@ -159,8 +165,8 @@ def defaulted(receiver: str, call: ast.Call, infer: Infer) -> Inference | None:
         ) if attr == _GET:
             text: str = ast.unparse(item)
             reason: str = "`dict.get` with a default of its values' type"
-            if _is_none(default):
-                union: str | None = _or_none(text)
+            if is_none(default):
+                union: str | None = or_none(text)
                 return None if union is None else Inference(union, reason, frozenset({_METHOD}))
             found: Inference | None = infer(default)
             same: bool = found is not None and found.annotation == text

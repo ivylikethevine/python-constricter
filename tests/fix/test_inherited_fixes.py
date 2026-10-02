@@ -209,6 +209,102 @@ def test_a_class_binds_what_its_body_stores() -> None:
     }
 
 
+_LIBRARY: Final = """
+import collections
+import threading
+import unittest
+from asyncio.events import Handle
+from pathlib import Path
+from unittest import TestCase
+
+import other
+
+
+class Mixin:
+    def id(self) -> int:
+        return 1
+
+
+class Case(unittest.TestCase):
+    def test(self) -> None:
+        case_id = self.id()
+        case_result = self.defaultTestResult()
+        case_message = self.longMessage
+        case_missing = self.missing()
+        case_nothing = self.nothing
+
+
+class Mixed(Mixin, TestCase):
+    def test(self) -> None:
+        mixed_id = self.id()
+        mixed_count = self.countTestCases()
+
+
+class Later(Case):
+    def test_more(self) -> None:
+        later_id = self.id()
+
+
+class Own(Path):
+    def exists(self) -> int:
+        return 1
+
+    def f(self) -> None:
+        own_resolved = self.resolve()
+        own_exists = self.exists()
+        own_name = self.name
+        own_parent = self.parent
+
+
+class Aliased(Handle):
+    def f(self) -> None:
+        aliased_cancelled = self.cancelled()
+
+
+class Counted(collections.Counter):
+    def f(self) -> None:
+        counted_total = self.total()
+
+
+class Elsewhere(other.Thing, unittest.TestCase):
+    def test(self) -> None:
+        elsewhere_id = self.id()
+
+
+def use(case: Case, worker: threading.Thread) -> None:
+    used_id = case.id()
+    used_alive = worker.is_alive()
+
+
+def shadowing(case: Case, unittest: int) -> None:
+    shadowed_id = case.id()
+"""
+
+
+def test_a_member_of_a_standard_library_base_is_typed_by_the_tables() -> None:
+    """Where no class before it binds the name; not one that is the base itself, which may be `Self`."""
+    assert _fixes(_LIBRARY) == {
+        "case_id": ("str", False),
+        "case_result": ("unittest.TestResult", False),
+        "case_message": ("bool", False),
+        "case_missing": (None, False),
+        "case_nothing": (None, False),
+        "mixed_id": ("int", False),  # `Mixin` comes first
+        "mixed_count": ("int", False),
+        "later_id": ("str", False),
+        "own_resolved": (None, False),  # a `Path`, or the class itself
+        "own_exists": ("int", False),
+        "own_name": ("str", False),
+        "own_parent": (None, False),
+        "aliased_cancelled": ("bool", False),
+        "counted_total": (None, False),  # a generic base's members depend on its arguments
+        "elsewhere_id": (None, False),  # a base out of sight comes first
+        "used_id": ("str", False),
+        "used_alive": ("bool", False),
+        "shadowed_id": (None, False),  # `unittest` isn't the module there
+    }
+
+
 def test_a_class_out_of_sight_defines_its_own() -> None:
     """A receiver the module doesn't define is looked up as itself."""
     found: inherited.Lineage = inherited.lineage(

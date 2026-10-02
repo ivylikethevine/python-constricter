@@ -54,6 +54,8 @@ def f(name: str, data: bytes, unknown, box: "Box") -> None:
     r = os.path.getsize(filename=name)
     p = osp.join(name, data)
     q = box.time()
+    s = os.environ.copy()
+    u = environ.copy()
 """
 
 
@@ -83,6 +85,8 @@ def test_a_table_function_is_typed_however_it_is_imported() -> None:
         "r": ("int", False),  # but not a fixed return's
         "p": (None, False),  # `str` and `bytes` together: no `AnyStr`
         "q": (None, False),
+        "s": ("dict[str, str]", False),  # the environment's own copy, a plain `dict`
+        "u": ("dict[str, str]", False),
     }
 
 

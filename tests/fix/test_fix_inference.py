@@ -22,7 +22,7 @@ ANY_LENGTH: Final = "tuple[int, ...]"
         ("-1.5", "float"),
         ("+2", "int"),
         ("True", "bool"),
-        ("-True", None),
+        ("-True", "int"),  # a `bool`'s negation is an `int`
         ("not y", "bool"),
         ("'r' in y", "bool"),  # `in` and `is` are always a real `bool`
         ("y is not None", "bool"),

@@ -6,6 +6,28 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types more of what a value's parts decide. An unpacking, name by name: a display of as
+  many values gives each name its own value's type (`a, b = x, 1` declares `b: int` whatever `x`
+  is), anything else its elements' (`a, b = s.split(",")`, `q, r = divmod(n, 2)`,
+  `i, j = range(2)`), and a starred name a `list` of them (`first, *rest = names`). More that's
+  iterated: a tuple whose parts agree (`for name in ("a", "b")`), `map(f, xs)` by what `f` returns,
+  `iter(xs)`, a generator expression (so `list(...)`, `sorted(...)` and `tuple(...)` of one), and
+  any mapping's keys, values and items (`Mapping[K, V]`, `OrderedDict`, `defaultdict`,
+  `MappingProxyType`). Builtins their arguments decide: `abs`, `round`, `divmod` and `sum` of
+  builtin numbers, `min` and `max` of values of one type or of something's elements, `next` (with a
+  default of that type, or `None`), `dict` of a mapping, of pairs or of keywords,
+  `dict.fromkeys(keys, value)`, and the builtin classes' classmethods with a fixed return
+  (`bytes.fromhex(...)`, `int.from_bytes(...)`); `os.environ.copy()`, a `dict[str, str]`; `-n`, `+n`
+  and `~n`; and a `list` added to one of its type, or repeated. A classmethod or staticmethod called
+  on its class, by its declared return (`Box.make()`), in the class's own module or another checked
+  file's, however the class is imported or re-exported (`MultiIndex.from_arrays(...)`,
+  `pd.MultiIndex.from_tuples(...)`); a classmethod, staticmethod or property counts under decorators
+  that give it back too (`@classmethod` over `@names_compat`). And a member a class takes from a
+  standard-library base, by the tables: `self.id()` in a `unittest.TestCase` is a `str`, `self.name`
+  in a `threading.Thread` a `str` (not one that is the base itself, which may be `Self`). On
+  pydantic, the one corpus measured: 43 more certain fixes (806 to 849) and 9 more guesses (245 to
+  254), 52 fewer bindings with no fix (2,124 to 2,072); no new basedpyright error after `--fix` or
+  `--fix --unsafe-fixes`, and one pass converges.
 - `min-python` (`--min-python VERSION`, and `[tool.constricter]`): the oldest Python the code runs
   on, whose syntax `--fix` writes. It defaults to the lower bound of the nearest `pyproject.toml`'s
   `requires-python`. At 3.11 or later, a hint's unpacked tuple is written as the checker printed it

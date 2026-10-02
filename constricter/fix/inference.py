@@ -2,10 +2,11 @@
 """What `--fix` infers a value's type from: literals, calls, and the locals a scope already typed."""
 
 import ast
+import re
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
-from constricter.fix import overloads, shapes, stdlib
+from constricter.fix import decided, overloads, shapes, stdlib
 from constricter.fix.known import ImportPlan, Inference, Known
 from constricter.fix.library import (
     installed_call,
@@ -26,6 +27,8 @@ from constricter.fix.returns import BUILTIN_RETURNS
 from constricter.fix.targets import (
     DICT_VIEWS,
     ENUMERATE,
+    ITER,
+    MAP,
     RANGE,
     SAME_ELEMENTS,
     ZIP,
@@ -93,9 +96,11 @@ _STDLIB: Final = "stdlib"  # the fix kind of a standard-library call
 RETURNED: Final = "returned"  # the fix kind of an unannotated function's `return`s
 ASSIGNED: Final = "assigned"  # the fix kind of an instance attribute typed by its assignments
 _STR: Final = "str"
+_LIST: Final = "list"
 _SUBSCRIPT: Final = "subscript"  # the fix kind of a subscript
 _GET_ITEM: Final = "__getitem__"  # what types one of a class's instance
 COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+_UNION: Final = re.compile(r"\||\b(?:None|Optional|Union)\b")  # an annotation with a union in it
 _Comprehension: TypeAlias = ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp
 _Pair: TypeAlias = tuple[Inference | None, Inference | None]  # a `dict` display's entry: key, value
 # One part of a loop target (see `looped_parts`): its inference, and the values it came from.
@@ -316,6 +321,12 @@ def _from_value(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
     return (
         _container(value, known, declared)
         or _computed(value, known, declared)
+        or decided.builtin(
+            value,
+            known,
+            lambda arg: inference(arg, known, declared),
+            lambda arg: looped(arg, known, declared),
+        )
         or _cast(value, known.names.casts)
         or opened(value, known)
         or library_class(value, known)
@@ -385,10 +396,10 @@ def _computed(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
     """Infer a value computed from others whose types are known.
 
     `a if c else b` when both agree, or one is `None`; `a or b` and `a and b` of one type (see
-    `constricter.fix.shapes`); arithmetic on builtin scalars (`_arithmetic`); a list, set or dict
-    comprehension whose elements' type is known, its targets typed as a loop's; `sorted`, `list`,
-    `set`, `frozenset` or `tuple` of something whose elements are known; and `await` of a call to
-    one of the module's `async def`s.
+    `constricter.fix.shapes`); arithmetic on builtin scalars, and their comparisons (`_operated`);
+    a list, set or dict comprehension whose elements' type is known, its targets typed as a loop's;
+    `sorted`, `list`, `set`, `frozenset` or `tuple` of something whose elements are known; and
+    `await` of a call to one of the module's `async def`s.
 
     Returns:
       The inference, or `None`.
@@ -399,12 +410,8 @@ def _computed(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
     match value:
         case ast.IfExp() | ast.BoolOp():
             return _joined(value, known, declared)
-        case ast.BinOp() | ast.Compare():
-            return (
-                _arithmetic(value, known, declared)
-                if isinstance(value, ast.BinOp)
-                else _compared(value, known, declared)
-            )
+        case ast.BinOp() | ast.Compare() | ast.UnaryOp(op=ast.USub() | ast.UAdd() | ast.Invert()):
+            return _operated(value, known, declared)
         case ast.ListComp() | ast.SetComp() | ast.DictComp():
             return _comprehension(value, known, declared)
         case ast.Call(func=ast.Name(id=name), args=[first], keywords=[]) if (
@@ -429,6 +436,24 @@ def _computed(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
             )
         case _:
             return None
+
+
+def _operated(
+    value: ast.BinOp | ast.Compare | ast.UnaryOp,
+    known: Known,
+    declared: Mapping[str, str],
+) -> Inference | None:
+    """Infer an operator's result on builtin values: arithmetic, a comparison, or a number's sign.
+
+    Returns:
+      The inference, or `None`.
+
+    """
+    if isinstance(value, ast.BinOp):
+        return _arithmetic(value, known, declared)
+    if isinstance(value, ast.Compare):
+        return _compared(value, known, declared)
+    return decided.unary(value, lambda operand: inference(operand, known, declared))
 
 
 def _joined(value: ast.IfExp | ast.BoolOp, known: Known, declared: Mapping[str, str]) -> Inference | None:
@@ -456,11 +481,12 @@ def _joined(value: ast.IfExp | ast.BoolOp, known: Known, declared: Mapping[str, 
 
 
 def _arithmetic(value: ast.BinOp, known: Known, declared: Mapping[str, str]) -> Inference | None:
-    """Infer arithmetic on builtin scalars, whose operators nothing can overload.
+    """Infer arithmetic on builtin scalars and lists, whose operators nothing can overload.
 
     Numbers: `/` gives a `float`; `+`, `-`, `*`, `//` and `%` a `float` if either side is one, else
     an `int` (`**` can give a `float` from `int`s, so it's left out). `str` and `bytes`: `+` of two,
-    `*` by an `int`, and `%` formatting give the same type back.
+    `*` by an `int`, and `%` formatting give the same type back; so do a `list[T]`'s `+` of another
+    and `*` by an `int`.
 
     Returns:
       The inference, or `None` for any other operator or operand.
@@ -481,7 +507,7 @@ def _arithmetic(value: ast.BinOp, known: Known, declared: Mapping[str, str]) -> 
         if isinstance(op, ast.Add | ast.Sub | ast.Mult | ast.FloorDiv | ast.Mod):
             return Inference(_FLOAT if _FLOAT in {left, right} else "int", reason, kinds)
         return None
-    text: str | None = left if left in _TEXT_NAMES else None
+    text: str | None = left if left in _TEXT_NAMES or _root(left or "") == _LIST else None
     return Inference(text, reason, kinds) if text is not None and _keeps_text(op, text, right) else None
 
 
@@ -524,17 +550,17 @@ def _root(annotation: str) -> str:
 
 
 def _keeps_text(op: ast.operator, text: str, right: str | None) -> bool:
-    """Check whether `text op right` (`text` a `str` or `bytes`) gives `text` back.
+    """Check whether `text op right` (`text` a `str`, a `bytes` or a `list[T]`) gives `text` back.
 
     Returns:
-      Whether it does: `+` of two, `*` by an integer, or `%` formatting.
+      Whether it does: `+` of two, `*` by an integer, or a `str`'s or `bytes`'s `%` formatting.
 
     """
     if isinstance(op, ast.Add):
         return right == text
     if isinstance(op, ast.Mult):
         return right in _INTEGER_NAMES
-    return isinstance(op, ast.Mod)
+    return isinstance(op, ast.Mod) and text in _TEXT_NAMES
 
 
 def _comprehension(
@@ -813,10 +839,11 @@ def looped(iterable: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
     """Infer what a `for` loop over `iterable` binds each time round, and say how.
 
     `range()` gives `int`s; `enumerate(x)` `tuple[int, T]` and `zip(x, y)` `tuple[T, U]`, given
-    `x`'s and `y`'s; `reversed(x)` and `sorted(x)` what `x` does; a `dict`'s `.keys()`, `.values()`
-    and `.items()` its keys, values and pairs; and anything else whose type is inferred, its
-    elements: a `list`, `set`, `frozenset` or `tuple[T, ...]`'s `T`, a `dict`'s keys, a `str`'s
-    `str`s and a `bytes`'s `int`s.
+    `x`'s and `y`'s; `reversed(x)`, `sorted(x)` and `iter(x)` what `x` does; `map(f, x)` what `f`
+    returns; a generator expression its element; a `dict`'s `.keys()`, `.values()` and `.items()`
+    its keys, values and pairs; and anything else
+    whose type is inferred, its elements: a `list`, `set`, `frozenset` or `tuple[T, ...]`'s `T`, a
+    tuple's parts where they agree, a `dict`'s keys, a `str`'s `str`s and a `bytes`'s `int`s.
 
     Returns:
       The element's annotation as source text and its reason, or `None` if it isn't known.
@@ -830,6 +857,8 @@ def looped(iterable: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
     match iterable:
         case ast.Call(func=ast.Attribute(value=receiver, attr=view), args=[]) if view in DICT_VIEWS:
             return dict_view(receiver, view, known, declared)
+        case ast.GeneratorExp():
+            return _generated(iterable, known, declared)
         case _:
             found: Inference | None = inference(iterable, known, declared)
             return (
@@ -852,14 +881,51 @@ def _iterator(name: str, args: list[ast.expr], known: Known, declared: Mapping[s
     """
     if name == RANGE:
         return Inference("int", "`range`, which yields `int`s", frozenset({"loop"}))
-    if name in SAME_ELEMENTS:
-        return looped(args[0], known, declared)
+    if name == MAP:
+        return _mapped(args[0], known)
+    if name in SAME_ELEMENTS or name == ITER:
+        return looped(args[0], known, declared) if name != ITER or len(args) == 1 else None
     parts: list[Inference | None] = [looped(arg, known, declared) for arg in counted(name, args)]
     found: list[Inference] = [part for part in parts if part is not None]
     if len(found) != len(parts):
         return None
     annotations: list[str] = ["int"] * (name == ENUMERATE) + [part.annotation for part in found]
     return Inference(f"tuple[{', '.join(annotations)}]", f"`{name}`'s tuples", _kinds(*found, kind="loop"))
+
+
+def _generated(value: ast.GeneratorExp, known: Known, declared: Mapping[str, str]) -> Inference | None:
+    """Infer what a generator expression yields: its element, its targets typed as a loop's are.
+
+    Not one with a condition whose element's type has a union in it, which the condition may narrow.
+
+    Returns:
+      The inference, or `None`.
+
+    """
+    found: Inference | None = inference(value.elt, known, comprehended(value, known, declared))
+    filtered: bool = any(generator.ifs for generator in value.generators)
+    if found is None or (filtered and _UNION.search(found.annotation)):
+        return None
+    loops: list[Inference | None] = [looped(g.iter, known, declared) for g in value.generators]
+    return Inference(
+        found.annotation,
+        "a generator expression's elements",
+        _kinds(found, *loops, kind="comprehension"),
+    )
+
+
+def _mapped(function: ast.expr, known: Known) -> Inference | None:
+    """Infer what `map(function, ...)` yields: what `function` returns, whatever it's given.
+
+    Returns:
+      A fixed-return builtin's type (`map(int, parts)`), or a function's declared return; `None`
+      for any other callable.
+
+    """
+    found: Inference | None = _called(ast.copy_location(ast.Call(function, [], []), function), known)
+    if found is None or CONSTRUCTOR in found.kinds:
+        return None
+    return Inference(found.annotation, f"`map`, which yields {found.reason}", _kinds(found, kind="loop"))
 
 
 def looped_parts(

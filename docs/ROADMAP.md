@@ -22,22 +22,27 @@
 
 - **What it infers** (all of it in [FIXES.md](FIXES.md)): literals and containers of them; calls to
   functions that declare their return, or whose `return`s decide it (`returned`), in the same module
-  or another checked file; fixed-return builtins and `str`/`bytes` methods; members of any typed
-  value (`self.index.name`, `rows[0].strip()`, however deep, through `constricter.fix.members`);
-  `cls` in a classmethod as `type[C]`, and `type(x)`; computed values (conditionals, arithmetic on
-  builtin scalars, comprehensions, `sorted`/`list`/..., `await`), comparisons by `in` and `is`, or
-  of builtin values (a `bool`); a union the author would write (`a if c else None`, `a or b` of one
-  type); displays that unpack (`[*names, s]`, `{**d, k: v}`), `d.get(k, 0)` and `os.environ["X"]`; a
-  subscript of a standard-library class's instance by its `__getitem__` (`proxy["k"]` on a
+  or another checked file, and a classmethod or staticmethod called on its class (`Box.make()`,
+  another checked file's `MultiIndex.from_arrays(...)`); fixed-return builtins and `str`/`bytes`
+  methods, and builtins their arguments decide (`min`, `max`, `sum`, `abs`, `round`, `divmod`,
+  `next`, `dict`); members of any typed value (`self.index.name`, `rows[0].strip()`, however deep,
+  through `constricter.fix.members`); `cls` in a classmethod as `type[C]`, and `type(x)`; computed
+  values (conditionals, arithmetic on builtin scalars and lists, comprehensions,
+  `sorted`/`list`/..., `await`), comparisons by `in` and `is`, or of builtin values (a `bool`); a
+  union the author would write (`a if c else None`, `a or b` of one type); displays that unpack
+  (`[*names, s]`, `{**d, k: v}`), `d.get(k, 0)` and `os.environ["X"]`; a subscript of a
+  standard-library class's instance by its `__getitem__` (`proxy["k"]` on a
   `MappingProxyType[str, int]`); standard-library module variables (`sys.path`); chained
   assignments' names, declared before them (`i = j = 0`), and a `:=`'s, before its statement; a
   quoted annotation read as its text (`xs: "list[Node]"`); the `self` a function defined in a method
   reads; a `# type:` signature comment's return, as a declared one; `typing.cast`; `x = None` later
-  rebound to one type as `T | None`; loop targets (`enumerate` and `zip` part by part, an
-  `Iterable[T]`'s `T`) and unpackings, declared before the statement, as a `with` statement's target
-  is, by its context manager's `__enter__`; a method a class inherits, from the base that defines
-  it, in the module or another checked file; an unannotated generator function's calls, by its
-  `yield`s; a call to a function decorated by what gives it back (`functools.cache`, pandas's
+  rebound to one type as `T | None`; loop targets (`enumerate` and `zip` part by part, `map`, a
+  generator expression, any mapping's items, an `Iterable[T]`'s `T`) and unpackings, name by name
+  (`a, b = x, 1`, `a, b = s.split(",")`, `first, *rest = names`), declared before the statement, as
+  a `with` statement's target is, by its context manager's `__enter__`; a method a class inherits,
+  from the base that defines it, in the module, another checked file or the standard library
+  (`self.id()` in a test case); an unannotated generator function's calls, by its `yield`s; a call
+  to a function decorated by what gives it back (`functools.cache`, pandas's
   `@set_module("pandas")`, by its declared `Callable[[F], F]`); fixes for LVA003 and LVA007. A tuple
   longer than `max-length` is `tuple[T, ...]`.
 - **The standard library, from typeshed**: tables generated from the stubs basedpyright bundles when
@@ -217,11 +222,11 @@
 - **Python 3.11+**, the oldest still maintained after 3.10's end of life (October 2026): 3.10 would
   add a runtime dependency (`tomli`) for a month, and 3.6–3.9 would mean dropping `match` from the
   checker. Code for any Python 3 version can still be checked.
-- **Layout**: a flat `constricter/` in `rules/`, `fix/`, `cli/` and `plugins/`, all but four modules
-  under 750 lines (`fix/stubbed.py`, `overloads.py`, `inference.py` and `project.py`); the
-  standard-library tables in `constricter/fix/tables/`, their generator in `stdlib_tables/`; docs in
-  `docs/` (changelog, contributing, security, integrations, fixes, runs), release notes grouped by
-  `.github/release.yml`, issue and PR templates, CODEOWNERS.
+- **Layout**: a flat `constricter/` in `rules/`, `fix/`, `cli/` and `plugins/`, all but five modules
+  under 750 lines (`fix/stubbed.py`, `overloads.py`, `inference.py` and `project.py`, and
+  `rules/annotations.py`); the standard-library tables in `constricter/fix/tables/`, their generator
+  in `stdlib_tables/`; docs in `docs/` (changelog, contributing, security, integrations, fixes,
+  runs), release notes grouped by `.github/release.yml`, issue and PR templates, CODEOWNERS.
 - **Pyright and basedpyright in editors**: `pyrightconfig.json`, which both read first, holds the
   shared settings (`local/.venv`, and the code checked alone) and extends `pyproject.toml`, where
   only basedpyright finds a section (`typeCheckingMode = "all"`). Plain Pyright resolves the dev
@@ -261,41 +266,39 @@ Nothing open.
    `warnings.catch_warnings`, `contextlib.closing`, `test.support`'s (not in typeshed), an
    `async with`'s by `__aenter__`, and a target that unpacks. Count each first. Done when the three
    largest are fixes.
-3. **A classmethod called on its class.** `MultiIndex.from_tuples(pairs)` has no fix, in the class's
-   own file or another: a classmethod's or staticmethod's declared return types only `cls.m()`
-   inside a classmethod. About 1,300 calls on pandas (`from_tuples` 399, `from_arrays` 368,
-   `from_product` 252, `from_breaks`, `from_records`, `from_dict`), most under a decorator that
-   gives the method back (`@classmethod` over `@names_compat`), which a class-side method doesn't
-   take yet. Done when `mi = MultiIndex.from_tuples(pairs)` is a `MultiIndex` on pandas.
-4. **Builtins, operators and iteration by their arguments.** `min(n, 3)`, `max(names)`,
-   `sum(d.values())`, `abs(n)`, `round(x)`, `next(iter(xs))`, `divmod(n, 2)`, and `enumerate`,
-   `zip`, `map`, `iter` and `reversed` bound to a name have no fix with every argument typed (about
-   2,600 bindings), nor do `-n`, `names + names` and `path / "x"`: `builtins.pyi`'s generic
-   functions and the classes' operator methods aren't run through the overload matcher. Nor is a
-   loop over anything but a builtin container (`path.iterdir()`, `os.walk(...)`,
-   `itertools.combinations(...)`), whose element is its `__iter__`'s. Most of the 2,600 have an
-   untyped argument: count those that don't first. Done when each of those is a fix.
-5. **The project's own overloads.** A function the checked files define with `@overload` (pandas'
+3. **Operators and iteration by their classes' methods.** `enumerate`, `zip`, `map`, `iter` and
+   `reversed` bound to a name have no fix (`enumerate[str]`: at module level, a builtin some Python
+   can't subscript at run time needs quoting), nor do `path / "x"`, `min(n, 1.5)` (two number types)
+   and a `tuple` added to another: `builtins.pyi`'s generic functions and the classes' operator
+   methods aren't run through the overload matcher (`abs`, `min`, `sum` and the like are typed by
+   hand, for builtin types alone). Nor is a loop over anything but a builtin container or a mapping
+   (`path.iterdir()`, `os.walk(...)`, `itertools.combinations(...)`), whose element is its
+   `__iter__`'s. Count each first. Done when each of those is a fix.
+4. **The project's own overloads.** A function the checked files define with `@overload` (pandas'
    `concat`) is skipped as redefined: 1,689 calls. Match its signatures as the standard library's
    and installed packages' are (`constricter.fix.overloads`). Done when a call the arguments decide
    is typed, and one they don't is left alone.
-6. **Unpacking by element.** `a, b = s.split(",")` (each a `str`) and `first, *rest = names` (a
-   `str` and a `list[str]`) have no fix; `q, r = divmod(n, 2)` (205) follows from the item above.
-   Done when each name is declared before the statement.
-7. **Partly vague hints, opt-in.** The largest group of hints dropped is a type with `Any` in it
+5. **An unpacked call's known parts.** `infos, to_replace = collect(cls)` has no fix where `collect`
+   declares a `tuple[Infos, list[tuple[str, Any]]]`: a vague return types no call, though the part
+   that isn't vague would type `infos`. 34 unpacked names on pydantic call a module function that
+   declares its return: count those with a vague part first. Done when each name whose part isn't
+   vague is declared.
+6. **Partly vague hints, opt-in.** The largest group of hints dropped is a type with `Any` in it
    (`dict[str, Any]`, `list[Any]`): 4,393 of the three packages' bindings with no fix for
    basedpyright, 16.4% of them. It is the value's type, and LVA005 would report it: a fix kind of
    its own, off by default, trades an LVA001 for an LVA005. Done when `fix-select` can turn it on.
-8. **An unannotated method's type, in another file.** A module's functions' `return`s type their
+7. **An unannotated method's type, in another file.** A module's functions' `return`s type their
    calls in the files importing them; its classes' methods' don't: 132 `self.method()` bindings
    whose base is another file's and whose `return`s give one type (Twisted's `self.mktemp()`), and
    every such call on an imported class's instance. Carry them with the functions', as guesses. Done
    when `path = self.mktemp()` is a `str` under a base class of another file.
-9. **Methods of a library base.** A class under a standard-library or installed class
-   (`unittest.TestCase`) gets nothing for the methods it inherits from it: 412 `self.method()`
-   bindings whose base is no checked file's. End a class's order at a class the tables or an
-   installed package's stubs define, as it ends at another checked file's. Done when
-   `name = self.id()` in a test case is a `str`.
+8. **A library base out of sight.** A class under a standard-library class gets the methods it
+   inherits from it (`self.id()` in a `unittest.TestCase`), but not behind another checked file's
+   class (django's `TestCase`, itself under `unittest.TestCase`: a module's index entry holds its
+   own classes' methods alone), under an installed package's class, or a generic one
+   (`collections.OrderedDict`), nor a method its arguments decide. A class-side method a class
+   inherits (`Sub.make()`, `make` its base's) has no fix either. Done when `name = self.id()` in a
+   class under another file's test case is a `str`.
 
 ### Large: a week or more
 

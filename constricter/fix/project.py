@@ -768,13 +768,53 @@ def imported(catalog: Index, path: Path) -> Imported:
                     guarded,
                 )
     return Imported(
-        calls(catalog, path, guarded),
+        {**calls(catalog, path, guarded), **_side_calls(modules, target, guarded)},
         Classes(attributes, methods),
         returned(catalog, path, guarded),
         guarded,
         frozenset(generics),
         members,
     )
+
+
+def _side_calls(modules: Mapping[str, Module], target: Module, guarded: dict[str, Guarded]) -> dict[str, str]:
+    """Type `target`'s calls to another module's class's classmethod or staticmethod, on the class.
+
+    `MultiIndex.from_arrays(...)`, `pd.MultiIndex.from_arrays(...)`: the class found through the
+    imports and re-exports, the method's declared return kept where `target` can write it.
+
+    Returns:
+      Each call's name as written, mapped to its type.
+
+    """
+    found: dict[str, str] = {}
+    spelled: str
+    for spelled in target.called:
+        receiver: str
+        method: str
+        receiver, _, method = spelled.rpartition(_DOT)
+        defined: tuple[Module, str] | None = _class_named(modules, target, receiver) if receiver else None
+        if defined is not None and method in defined[0].sides.get(defined[1], {}):
+            declared: dict[str, str] = {spelled: defined[0].sides[defined[1]][method]}
+            found.update(_portable(modules, (target, defined), receiver, declared, guarded))
+    return found
+
+
+def _class_named(modules: Mapping[str, Module], target: Module, spelled: str) -> tuple[Module, str] | None:
+    """Find the class another module defines that `target` writes as `spelled` (`Row`, `m.Row`, `pkg.Row`).
+
+    Returns:
+      The module defining it and its name there, through imports and re-exports; or `None`.
+
+    """
+    first: str
+    rest: str
+    first, _, rest = spelled.partition(_DOT)
+    origin: Origin | None = target.names.get(first)
+    if origin is None or origin[0] == target.name or first in target.shadowed:
+        return None
+    path: list[str] = [origin[0], *([origin[1]] if origin[1] else []), *(rest.split(_DOT) if rest else [])]
+    return definition(modules, (_DOT.join(path[:-1]), path[-1]), CLASS)
 
 
 def _reexported_generics(modules: Mapping[str, Module], local: str, name: str) -> Iterator[str]:

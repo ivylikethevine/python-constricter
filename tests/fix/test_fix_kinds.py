@@ -71,8 +71,8 @@ def test_each_mechanism_has_a_stable_id() -> None:
         "u": {"comprehension", "copy", "loop"},
         "v": {"builder", "copy", "loop"},
         "w": {"await"},
-        "x": {"container", "literal", "unpack"},
-        "y": {"container", "literal", "unpack"},
+        "x": {"literal", "unpack"},
+        "y": {"literal", "unpack"},
         "key": {"loop", "copy"},
         "value": {"loop", "copy"},
     }

@@ -97,6 +97,11 @@ class Module(NamedTuple):
     bases: Mapping[str, tuple[str, ...]] = {}
     members: Mapping[str, Mapping[str, str]] = {}
     plain: frozenset[str] = frozenset()
+    # Its classes' classmethods' and staticmethods' declared returns (see `annotations.class_methods`);
+    # those held back as `held` are, and those of them the index vouched for, now among `sides`.
+    sides: Mapping[str, Mapping[str, str]] = {}
+    held_sides: Mapping[str, Mapping[str, Held]] = {}
+    vouched_sides: frozenset[tuple[str, str]] = frozenset()
 
 
 class Index(NamedTuple):
@@ -289,6 +294,8 @@ def read(path: Path, name: str | None = None) -> Module | None:
         shadowed=frozenset(names) & taken_names(tree)[1] if name is None else frozenset(),
         bases={} if name is not None else classvars.bases(tree),
         members={} if name is not None else classvars.members(tree),
+        sides=own.sides,
+        held_sides=own.held_sides,
     )
 
 

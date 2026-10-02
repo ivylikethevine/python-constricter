@@ -271,6 +271,42 @@ def class_methods(tree: ast.Module) -> dict[str, dict[str, str]]:
     return _class_returns(tree, _CLASS_SIDE)
 
 
+def held_class_methods(tree: ast.Module) -> dict[str, dict[str, Held]]:
+    """Find the classmethods and staticmethods declaring a return under decorators the module can't vouch for.
+
+    As `class_methods` reads them, but for those decorators: another module's may give the method
+    back (see `held`).
+
+    Returns:
+      Each class's name, mapped to those methods' names, return annotations and decorators.
+
+    """
+    known: frozenset[str] = _passing(tree)
+    declared: dict[str, dict[str, str]] = _class_returns(tree, _CLASS_SIDE, anything=True)
+    own: dict[str, dict[str, str]] = class_methods(tree)
+    found: dict[str, dict[str, Held]] = {}
+    node: ast.ClassDef
+    for node in _class_nodes(tree):
+        methods: dict[str, Held] = {
+            stmt.name: Held(
+                declared[node.name][stmt.name],
+                tuple(
+                    sorted(
+                        {spelled(d) or "" for d in stmt.decorator_list if node_name(d) not in _CLASS_SIDE}
+                        - known,
+                    ),
+                ),
+            )
+            for stmt in node.body
+            if isinstance(stmt, ast.FunctionDef)
+            and stmt.name in declared.get(node.name, {})
+            and stmt.name not in own[node.name]
+        }
+        if methods:
+            found[node.name] = methods
+    return found
+
+
 def _attributes(node: ast.ClassDef) -> dict[str, str]:
     attrs: dict[str, str] = {}
     stmt: ast.stmt
@@ -495,10 +531,17 @@ def method_returns(tree: ast.Module) -> dict[str, dict[str, str]]:
     return _class_returns(tree, _UNDECORATED)
 
 
-def _class_returns(tree: ast.Module, decorators: frozenset[str]) -> dict[str, dict[str, str]]:
+def _class_returns(
+    tree: ast.Module,
+    decorators: frozenset[str],
+    *,
+    anything: bool = False,
+) -> dict[str, dict[str, str]]:
     """Map each non-generic class to the declared returns of its methods decorated by one of `decorators`.
 
-    None of them (an empty set) means plain methods; see `method_returns` for the rules.
+    None of them (an empty set) means plain methods; see `method_returns` for the rules. Any other
+    decorator must be one the module vouches for (see `decorators.passing`), or (`anything`) one
+    `decorators.spelled` reads.
 
     Returns:
       Each class's name, mapped to those methods' names and return annotation text.
@@ -515,7 +558,7 @@ def _class_returns(tree: ast.Module, decorators: frozenset[str]) -> dict[str, di
                     node.body,
                     type_vars,
                     decorators=decorators,
-                    vouched=_passing(tree),
+                    vouched=None if anything else _passing(tree),
                 ).items()
                 if _is_self(annotation) or _SELF not in _words(annotation)
             }
@@ -651,7 +694,7 @@ def _declared_returns(
     """Find the plain functions (`async` ones if `awaited`) directly in `body` `--fix` can annotate.
 
     Plain means decorated only as `vouched` spells (`None`: by anything `decorators.spelled`
-    reads), or with `decorators`, by exactly one of them. A property's `@name.setter` or
+    reads), and with `decorators`, by exactly one of them too. A property's `@name.setter` or
     `@name.deleter` is the same property, not a redefinition.
 
     Returns:
@@ -698,18 +741,17 @@ def _plain(
     """Check that `func` declares a return type its calls always have, decorated as asked.
 
     Returns:
-      Whether it does: decorated only as `vouched` spells (`None`: by anything spelled), or, with
-      `decorators`, by exactly one of them; not `None`, and not vague.
+      Whether it does: decorated by exactly one of `decorators` (if any), and otherwise only as
+      `vouched` spells (`None`: by anything spelled); not `None`, and not vague.
 
     """
-    spellings: list[str | None] = [spelled(decorator) for decorator in func.decorator_list]
+    others: list[ast.expr] = [d for d in func.decorator_list if node_name(d) not in decorators]
+    spellings: list[str | None] = [spelled(decorator) for decorator in others]
     declared: ast.expr | None = declared_return(func)
     return (
-        (
-            [node_name(decorator) for decorator in func.decorator_list] in ([name] for name in decorators)
-            if decorators
-            else None not in spellings and (vouched is None or vouched.issuperset(spellings))
-        )
+        len(func.decorator_list) - len(others) == bool(decorators)
+        and None not in spellings
+        and (vouched is None or vouched.issuperset(spellings))
         and not cast("object", getattr(func, "type_params", ()))  # Python 3.12+'s `def f[T]()`
         and declared is not None
         and not (isinstance(declared, ast.Constant) and declared.value is None)

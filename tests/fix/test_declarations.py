@@ -45,18 +45,29 @@ def _fixed(source: str, *, unsafe: bool = False) -> str:
     ("iterable", "declared", "expected"),
     [
         ("range(3)", {}, "int"),
-        ("range()", {}, None),  # no arguments: not really a `range`
+        ("range()", {}, "int"),  # a `range`'s, as any call to it gives one
         ("names", {"names": "list[str]"}, "str"),
         ("names", {"names": "frozenset[str]"}, "str"),
         ("names", {"names": "tuple[str, ...]"}, "str"),
         ("names", {"names": "tuple[str, int]"}, None),  # which one varies
+        ("names", {"names": "tuple[str, str]"}, "str"),  # whichever it is
+        ("('a', 'b')", {}, "str"),
+        ("(1, 'b')", {}, None),
+        ("empty", {"empty": "tuple[()]"}, None),
         ("text", {"text": "str"}, "str"),
         ("blob", {"blob": "bytes"}, "int"),
+        ("blob", {"blob": "bytearray"}, "int"),
+        ("span", {"span": "range"}, "int"),
         ("ages", {"ages": "dict[str, int]"}, "str"),
         ("ages.keys()", {"ages": "dict[str, int]"}, "str"),
         ("ages.values()", {"ages": "dict[str, int]"}, "int"),
         ("ages.items()", {"ages": "dict[str, int]"}, "tuple[str, int]"),
         ("things.items()", {"things": "list[int]"}, None),  # not a `dict`
+        ("ages", {"ages": "Mapping[str, int]"}, "str"),  # any mapping, however it's named
+        ("ages.items()", {"ages": "abc.MutableMapping[str, int]"}, "tuple[str, int]"),
+        ("ages.values()", {"ages": "defaultdict[str, list[int]]"}, "list[int]"),
+        ("ages.keys()", {"ages": "MappingProxyType[str, int]"}, "str"),
+        ("ages.items()", {"ages": "Counter[str]"}, None),  # one type argument: not read
         ("enumerate(names)", {"names": "list[str]"}, "tuple[int, str]"),
         ("zip(names, ages)", {"names": "list[str]", "ages": "dict[str, int]"}, "tuple[str, str]"),
         ("zip(names, other)", {"names": "list[str]"}, None),  # `other` isn't known
@@ -67,6 +78,12 @@ def _fixed(source: str, *, unsafe: bool = False) -> str:
         ("zip(*names)", {"names": "list[str]"}, None),  # as many parts as `names` has
         ("sorted(names)", {"names": "set[str]"}, "str"),
         ("reversed(names)", {"names": "list[str]"}, "str"),
+        ("map(int, names)", {"names": "list[str]"}, "int"),
+        ("map(len, unknown())", {}, "int"),  # whatever it's mapped over
+        ("map(parse, names)", {}, None),  # what `parse` returns isn't known
+        ("map(Box, names)", {}, None),  # a capitalised call is only guessed to construct one
+        ("map(int, names, key=None)", {}, None),  # not a keyword `map` takes
+        ("zip(names, map(str, names))", {"names": "list[str]"}, "tuple[str, str]"),
         ("unknown()", {}, None),
     ],
 )
@@ -84,14 +101,28 @@ def test_a_loops_element_type(iterable: str, declared: dict[str, str], expected:
         ("[a, b]", "tuple[int, ...]", [("a", "int"), ("b", "int")]),
         ("a, (b, c)", "tuple[int, tuple[str, bytes]]", [("a", "int"), ("b", "str"), ("c", "bytes")]),
         ("a, b", "tuple[int, str, bytes]", [("a", None), ("b", None)]),  # lengths differ
-        ("a, *rest", "tuple[int, ...]", [("a", "int"), ("rest", None)]),
-        ("a, b", "list[int]", [("a", None), ("b", None)]),
+        ("a, b", "tuple[int, int, int]", [("a", None), ("b", None)]),
+        ("a, *rest", "tuple[int, ...]", [("a", "int"), ("rest", "list[int]")]),
+        ("a, b", "list[int]", [("a", "int"), ("b", "int")]),
+        ("a, b", "str", [("a", "str"), ("b", "str")]),
+        ("a, b", "dict[str, int]", [("a", "str"), ("b", "str")]),  # its keys
+        ("a, b", "Iterator[bytes]", [("a", "bytes"), ("b", "bytes")]),
+        ("a, b", "int", [("a", None), ("b", None)]),  # nothing to unpack
+        ("first, *rest", "list[str]", [("first", "str"), ("rest", "list[str]")]),
+        ("*rest, last", "set[str]", [("rest", "list[str]"), ("last", "str")]),
+        ("a, *rest", "tuple[int, str, str]", [("a", "int"), ("rest", "list[str]")]),
+        ("a, *rest, z", "tuple[int, str, bytes, float]", [("a", "int"), ("rest", None), ("z", "float")]),
+        ("a, *rest, z", "tuple[int, float]", [("a", "int"), ("rest", None), ("z", "float")]),  # none left
+        ("a, *rest, z", "tuple[int, int]", [("a", "int"), ("rest", None), ("z", "int")]),
+        ("a, b, *rest", "tuple[int]", [("a", None), ("b", None), ("rest", None)]),  # too short
+        ("a, b, c, *d", "tuple[int, str]", [("a", None), ("b", None), ("c", None), ("d", None)]),
+        ("a, *(b, c)", "tuple[int, str, str]", [("a", "int"), ("b", "str"), ("c", "str")]),
         ("a, b", None, [("a", None), ("b", None)]),
         ("a.x, b", "tuple[int, str]", [("b", "str")]),  # an attribute binds no local
     ],
 )
 def test_an_unpacking_splits_a_tuple_type(target: str, annotation: str | None, expected: object) -> None:
-    """Each name gets its part of a tuple type; a shape that doesn't match gets nothing."""
+    """Each name gets its part of a tuple, or an element of anything else; a starred one a `list`."""
     statement: ast.stmt = ast.parse(f"{target} = x").body[0]
     assert isinstance(statement, ast.Assign)
     node: ast.expr = statement.targets[0]
@@ -144,7 +175,72 @@ def test_enumerate_and_zip_type_each_known_part_on_its_own() -> None:
         ("j", "int", False),
         ("box", "Box", True),
         ("c", "str", False),  # a starred target: split as a whole, `zip`'s tuple
-        ("d", None, False),
+        ("d", "list[str]", False),
+    ]
+
+
+def test_an_unpacked_display_types_each_name_by_its_own_value() -> None:
+    """As a plain assignment's is, whatever the others are; every value is read before any name is bound."""
+    source: str = """
+    def f(x, n: int, s: str, flag: bool) -> None:
+        a, b = x, 1
+        (c, d), e = (n, s), [s]
+        i, *j = n, s
+        n, s = s, n
+        g, h = Box(), n
+        k, m = flag or None, None
+        self.o, p = 1, 2
+    """
+    offences: list[Offence] = check_source(textwrap.dedent(source))
+    assert [(o.name, o.fix, o.unsafe) for o in offences] == [
+        ("a", None, False),
+        ("b", "int", False),
+        ("c", "int", False),
+        ("d", "str", False),
+        ("e", "list[str]", False),
+        ("i", "int", False),  # a starred name: the display's own type is split
+        ("j", "list[str]", False),
+        ("g", "Box", True),
+        ("h", "str", True),  # `n` is what `s` was, a guess as any name bound again is
+        ("k", None, False),
+        ("m", None, False),
+        ("p", "int", False),
+    ]
+    kinds: list[frozenset[str]] = [o.edit.kinds for o in offences if o.edit is not None]
+    assert kinds[0] == {"literal", "unpack"}
+
+
+def test_an_unpacking_takes_the_elements_of_what_it_iterates() -> None:
+    """`a, b = s.split(",")`: each a `str`; a call that only iterates is unpacked as a loop reads it."""
+    source: str = """
+    def f(s: str, names: list[str], ages: dict[str, int]) -> None:
+        a, b = s.split(",")
+        first, *rest = names
+        c, d = map(int, names)
+        i, j = range(2)
+        (k, v), other = ages.items()
+        box = Box()
+        m, n = box.parts.items()
+        o, p = unknown()
+    """
+    offences: list[Offence] = check_source(textwrap.dedent(source))
+    assert [(o.name, o.fix, o.unsafe) for o in offences] == [
+        ("a", "str", False),
+        ("b", "str", False),
+        ("first", "str", False),
+        ("rest", "list[str]", False),
+        ("c", "int", False),
+        ("d", "int", False),
+        ("i", "int", False),
+        ("j", "int", False),
+        ("k", "str", False),
+        ("v", "int", False),
+        ("other", "tuple[str, int]", False),
+        ("box", "Box", True),
+        ("m", None, False),
+        ("n", None, False),
+        ("o", None, False),
+        ("p", None, False),
     ]
 
 

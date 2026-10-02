@@ -5,7 +5,7 @@ import ast
 from collections.abc import Iterator, Mapping
 from typing import Final
 
-from constricter.fix import shapes, stdlib
+from constricter.fix import decided, shapes, stdlib
 from constricter.fix.inference import (
     COMPREHENSIONS,
     CONTAINER_BUILDERS,
@@ -276,6 +276,7 @@ def _is_guess(
             return False
         case ast.Call(func=func) if (
             _returned_certainly(func, known)
+            or decided.decides(func, known)
             or ast.unparse(func) in known.names.casts
             or stdlib.resolved(func, known.names.stdlib) in stdlib.KNOWN
             or ast.unparse(func) in known.names.installed

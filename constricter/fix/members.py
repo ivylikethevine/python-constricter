@@ -136,6 +136,22 @@ def _elements(receiver: str, name: str, call: ast.Call | None, _known: Known) ->
     )
 
 
+def _library_base(receiver: str, name: str, call: ast.Call | None, known: Known) -> Inference | None:
+    """Type a member a class of the module's takes from a standard-library base (see `stdlib.bases`).
+
+    `self.id()` in a `unittest.TestCase`: the base's that the class's order ends at, where no class
+    before it binds the name (see `Lineage`).
+
+    Returns:
+      Its inference, or `None`.
+
+    """
+    owner: str | None = known.class_side.lineage.definer(receiver, name)
+    if owner is None or owner == receiver:
+        return None
+    return stdlib.library_member(owner, name, call, known, inherited=True)
+
+
 # Where a member's type can come from, in the order they're asked: the one place to add another.
 SOURCES: Final[tuple[MemberSource, ...]] = (
     _class_side,
@@ -144,6 +160,7 @@ SOURCES: Final[tuple[MemberSource, ...]] = (
     _elements,
     stdlib.library_member,
     overloads.generic_member,
+    _library_base,
 )
 
 

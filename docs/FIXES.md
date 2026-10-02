@@ -28,10 +28,22 @@ in a function or module body:
   `@set_module("pandas")`) returning a `Callable[[F], F]`, where `F` is a type variable or a
   `Callable[P, T]` returning one. The module's own such decorators count anywhere; one it imports
   from a checked file or an installed package, with the CLI, which finds its type variables;
+- a classmethod or staticmethod called on its class, by its declared return: `Box.make()` is a `Box`
+  (`Self` is the class), for a top-level class defined once whose name the module binds no other
+  way; with the CLI, another checked file's class too, however it's imported or re-exported
+  (`from pkg import Row`, `m.Row.make()`, `pkg.Row.make()`). Under decorators that give the method
+  back, as a function's (`@classmethod` over `@names_compat`); a property counts under them too;
 - a builtin with a fixed result: `len(x)` is an `int`, `hex(n)` a `str`, `any(xs)` a `bool`, `dir()`
   a `list[str]`, `range(n)` a `range`, and so on; but not where the module binds the name itself (a
   parameter named `format`, a local `input`, its own `def dir()`), anywhere in it. `type(x)` is a
   `type[C]` for an `x` of one type `C` (not a union's, nor `None`'s);
+- a builtin its arguments decide, as typeshed has it: `abs(n)`, `round(x)` (an `int`; with digits,
+  `x`'s type), `divmod(n, 2)` (a `tuple[int, int]`) and `sum(xs)` of builtin numbers; `min` and
+  `max` of several values of one type, or of something's elements (`max(names)`, `key=` or not; with
+  `default=`, a value of that type, or `None` for `T | None`); `next(it)` of what yields a known
+  type (`next(iter(names))`, `next((x for x in xs if x), None)` as `T | None`); and `dict(mapping)`,
+  `dict(pairs)` (`dict(zip(names, ages))`) and `dict(a=1, b=2)` (a `dict[str, int]`). Not with
+  arguments unpacked, nor where the module binds the name;
 - a copy of a local whose type is already known (annotated, a parameter, or fixed earlier in the
   same scope): `y = x`;
 - a member of any value whose type is known, a local or anything else here (`self.index`, `f()`,
@@ -49,11 +61,14 @@ in a function or module body:
 - a method a class doesn't define, called on `self` or any value typed as the class: the base's that
   defines it, in Python's method resolution order, among the module's own classes (each defined
   once, not generic) and then a class another checked file defines (the CLI only), which ends the
-  search with what it takes from its own file's classes. A declared return is certain, and a `Self`
-  one is the receiver's class; `return`s are a guess, and not offered where their type names the
-  base (`return self` gives the receiver's class). Nothing for a name the class's body binds any
-  other way, past a base out of sight (an installed package's, a subscripted or computed one), or
-  for another file's method returning its own class, which may be its `Self`;
+  search with what it takes from its own file's classes, or a standard-library class the tables hold
+  whole, by its members there (`self.id()` in a `unittest.TestCase` is a `str`, `self.name` in a
+  `threading.Thread` a `str`). A declared return is certain, and a `Self` one is the receiver's
+  class; `return`s are a guess, and not offered where their type names the base (`return self` gives
+  the receiver's class). Nothing for a name the class's body binds any other way, past a base out of
+  sight (an installed package's, a subscripted or computed one), or for another file's or the
+  standard library's method returning its own class, which may be its `Self` (`self.resolve()` under
+  `Path`);
 - `typing.cast(T, x)`, however `cast` is imported: `T`;
 - the standard library, resolved through the imports (`import m`, `import m as a`,
   `from m import f`), by tables generated from typeshed's stubs when the package is built
@@ -152,21 +167,32 @@ in a function or module body:
 - a value computed from such: `a if c else b` when both sides agree, and `a if c else None` as
   `T | None` (not where `c` tests `a`, which it narrows); `a or b` and `a and b` with operands of
   one type, `or` dropping a `None` before its last operand (`name or "x"` is a `str` for a
-  `name: str | None`); arithmetic on builtin scalars (`n + 1`, `n / 2`, `"x" * n`, `"%s" % n`; never
-  `**`, whose result can change type); a list, set or dict comprehension whose elements are known;
-  `sorted`, `list`, `set`, `frozenset` or `tuple` of something whose elements are; and `await` of a
-  call to one of the module's `async def`s.
+  `name: str | None`); arithmetic on builtin scalars (`n + 1`, `n / 2`, `-n`, `~n`, `"x" * n`,
+  `"%s" % n`; never `**`, whose result can change type) and lists (`names + names`, `names * 2`); a
+  list, set or dict comprehension whose elements are known; `sorted`, `list`, `set`, `frozenset` or
+  `tuple` of something whose elements are (a generator expression's too:
+  `list(str(i) for i in ns)`); and `await` of a call to one of the module's `async def`s.
 
 A loop's target (LVA002) and an unpacking's names (LVA001) are declared instead, on a line of their
 own before the statement: `for k, v in ages.items():` with `ages: dict[str, int]` gets `k: str` and
 `v: int` above it. The target's type comes from what's iterated: a `range`, `enumerate` and `zip` of
-known things, a `dict`'s `.keys()`/`.values()`/`.items()`, any container whose type is known, or an
-`Iterable[T]`, `Iterator[T]` or `Generator[T, ...]` (a generator function's call included); an
-unpacking splits a tuple type (`a, b = pair`, `pair: tuple[int, str]`) over its names. `enumerate`
-and `zip` type each part of the target on its own: `for i, x in enumerate(xs)` declares `i: int`
-whatever `xs` is, and a guess about `xs` makes only `x`'s fix one. Keywords that don't change what
-they yield are allowed (`enumerate`'s `start=`, `zip`'s `strict=`, `sorted`'s `key=` and
-`reverse=`); a starred argument (`zip(*rows)`) isn't.
+known things, `map(f, xs)` (what `f` returns: a fixed-return builtin, or a function declaring its
+return), `iter(xs)`, a generator expression (not one whose condition may narrow a union), a
+mapping's `.keys()`/`.values()`/`.items()` (`dict[K, V]`, `Mapping[K, V]`, `OrderedDict`,
+`defaultdict`, `MappingProxyType`, ...), any container whose type is known, a tuple whose parts
+agree (`for name in ("a", "b")`), or an `Iterable[T]`, `Iterator[T]` or `Generator[T, ...]` (a
+generator function's call included). `enumerate` and `zip` type each part of the target on its own:
+`for i, x in enumerate(xs)` declares `i: int` whatever `xs` is, and a guess about `xs` makes only
+`x`'s fix one. Keywords that don't change what they yield are allowed (`enumerate`'s `start=`,
+`zip`'s `strict=`, `sorted`'s `key=` and `reverse=`); a starred argument (`zip(*rows)`) isn't.
+
+An unpacking's names are typed one by one. A display of as many values gives each name its own
+value's type, as a plain assignment would (`a, b = x, 1` declares `b: int` whatever `x` is), every
+value read before any name is bound (`a, b = b, a`). Any other value's type is split: a tuple's part
+by part (`a, b = pair`, `pair: tuple[int, str]`), anything else's elements one each
+(`a, b = s.split(",")` are `str`s, `q, r = divmod(n, 2)` `int`s, `i, j = range(2)`). A starred name
+is a `list` of what's left for it, where that's of one type: `first, *rest = names` declares
+`rest: list[str]`.
 
 A `:=`'s name can't be annotated where it's bound: it's declared before its statement too, typed as
 a plain assignment's name is (`if (m := pattern.match(s)) is not None:` gets
@@ -428,18 +454,18 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `subscript`     | a subscript of a container whose type is known                                           |
 | `attribute`     | an attribute of a class the module (or another checked file) defines                     |
 | `method`        | a method with a fixed or declared return type, on a value whose type is known            |
-| `builtin`       | a builtin with a fixed return type (`len`, `str`, ...)                                   |
-| `call`          | a function that declares its return type (this module's, or another checked file's)      |
+| `builtin`       | a builtin with a fixed return type (`len`, `str`), or one its arguments decide (`min`)   |
+| `call`          | a function, classmethod or staticmethod that declares its return type                    |
 | `constructor`   | a call to a capitalised name, taken to construct one (a guess)                           |
 | `conditional`   | both sides of `a if c else b`, or one side and `None`                                    |
 | `boolean`       | `a or b` or `a and b`, its operands of one type                                          |
 | `compare`       | a comparison of builtin values (`n < 3`), always a `bool`                                |
-| `arithmetic`    | arithmetic on builtin scalars                                                            |
+| `arithmetic`    | arithmetic on builtin scalars and lists                                                  |
 | `comprehension` | a list, set or dict comprehension's elements                                             |
 | `builder`       | `sorted`, `list`, `set`, `frozenset` or `tuple` of known elements                        |
 | `await`         | `await` of the module's `async def`                                                      |
 | `loop`          | what a loop (or `sorted`, `list`, ...) iterates over                                     |
-| `unpack`        | an unpacking, split over its names                                                       |
+| `unpack`        | an unpacking, each name by its own value, or the value's type split over them            |
 | `narrow`        | LVA008's or LVA010's narrower annotation (a guess)                                       |
 | `cast`          | `typing.cast(T, x)`: its `T`                                                             |
 | `comment`       | LVA003: the loop's own `# type:` comment, as a declaration                               |

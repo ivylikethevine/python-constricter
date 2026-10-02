@@ -34,7 +34,6 @@ from constricter.rules.annotations import (
     awaited_returns,
     casts,
     class_attributes,
-    class_methods,
     defined_type_vars,
     factories,
     free_of,
@@ -132,8 +131,10 @@ def _settings(
     outside: Outside | None = None,
 ) -> Settings:
     # The functions' declared returns: other checked files' (see `Outside`), then the module's own.
-    calls: dict[str, str] = {**({} if outside is None else outside.calls), **own.returns}
+    calls: dict[str, str] = {**({} if outside is None else outside.calls), **own.returns, **own.side_calls}
     imported: Classes | None = None if outside is None else outside.classes
+    # The bases whose members are known whole: the standard library's, and other checked files' below.
+    bases: frozenset[str] = stdlib.bases(tree, stdlib.origins(tree))
     # The file's own types that mention a type variable it imports (`--fix` sees only its own).
     free: frozenset[str] = frozenset() if outside is None else outside.type_vars
     selfish: dict[str, frozenset[str]] = self_returns(tree)
@@ -148,8 +149,8 @@ def _settings(
             free_of(awaited_returns(tree), free),
             ClassSide(
                 free_of_all(class_attributes(tree), free),
-                free_of_all(class_methods(tree), free),
-                inherited.lineage(tree, selfish, frozenset(imported.methods if imported else ())),
+                free_of_all(own.sides, free),
+                inherited.lineage(tree, selfish, bases.union(imported.methods if imported else ())),
                 classvars.variables(tree, stdlib.origins(tree), outside),
             ),
             LibraryNames(

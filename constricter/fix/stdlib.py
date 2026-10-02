@@ -23,6 +23,7 @@ from typing import Final, NamedTuple, TypeAlias, cast
 from constricter.fix.known import ImportPlan, Inference, Known
 from constricter.fix.signatures import Variant
 from constricter.rules.syntax import import_bindings
+from constricter.rules.walked import classes
 
 
 def _table(name: str) -> object:
@@ -39,7 +40,9 @@ def _table(name: str) -> object:
     )
 
 
-RETURNS: Final = cast("dict[str, str]", _table("returns"))
+# `os.environ`'s own method with a fixed type: a variable's, which the tables' functions don't hold.
+_ENVIRON: Final = {"os.environ.copy": "dict[str, str]"}
+RETURNS: Final = {**cast("dict[str, str]", _table("returns")), **_ENVIRON}
 # Functions whose arguments decide their type: each signature, as each configuration reads them
 # (see `constricter.fix.overloads`).
 OVERLOADS: Final = cast("dict[str, list[Variant]]", _table("overloads"))
@@ -175,13 +178,22 @@ def resolved(func: ast.expr, bound: Mapping[str, str]) -> str | None:
             return None
 
 
-def library_member(receiver: str, name: str, call: ast.Call | None, known: Known) -> Inference | None:
+def library_member(
+    receiver: str,
+    name: str,
+    call: ast.Call | None,
+    known: Known,
+    *,
+    inherited: bool = False,
+) -> Inference | None:
     """Type a standard-library class's attribute or property, or (`call`) its method's return.
 
     `receiver` is the annotation of what it's looked up on, as the module spells it
     (`ArgumentParser`, `argparse.ArgumentParser`), resolved through its imports and the ones `--fix`
     is adding to it; a class the member gives is spelled (and imported, if it must be) as the
     module can. The arguments of a call don't matter: the tables hold only what they can't change.
+    `inherited`: whether it's looked up for a class under `receiver`, where a member that is
+    `receiver` itself may be its `Self` (`Path.resolve()`), the inheriting class.
 
     Returns:
       Its inference, or `None` if the class or its member isn't in the tables, or a class it gives
@@ -192,6 +204,8 @@ def library_member(receiver: str, name: str, call: ast.Call | None, known: Known
     found: str | None = (
         None if path is None else _member(_ATTRIBUTES if call is None else _METHODS, path, name)
     )
+    if found is not None and inherited and found == path:
+        return None
     plan: ImportPlan | None = known.names.plan
     if found is not None and is_class(found):
         found = None if plan is None else plan.spell(found)
@@ -200,6 +214,25 @@ def library_member(receiver: str, name: str, call: ast.Call | None, known: Known
         None
         if found is None
         else Inference(found, f"`{path}.{name}`'s {what} in typeshed", frozenset({_KIND}))
+    )
+
+
+def bases(tree: ast.Module, bound: Mapping[str, str]) -> frozenset[str]:
+    """Spell the standard-library classes the module's classes inherit from (`unittest.TestCase`).
+
+    Those the tables hold whole: not a generic one, whose members' types its arguments decide.
+
+    Returns:
+      Each, as the module's imports (`bound`, see `origins`) name it where it's a base.
+
+    """
+    spelled: dict[str, str | None] = {
+        ast.unparse(base): resolved(base, bound) for node in classes(tree) for base in node.bases
+    }
+    return frozenset(
+        text
+        for text, path in spelled.items()
+        if path is not None and CLASSES.get(_ALIASES.get(path, path)) == _ALIASES.get(path, path)
     )
 
 
