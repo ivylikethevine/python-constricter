@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING, Final, Self, TypeAlias, cast
 from constricter.cli import collecting
 from constricter.cli.paths import shares
 from constricter.cli.runs import FileRun
-from constricter.fix import project
-from constricter.fix.known import Outside
+from constricter.fix.core.known import Outside
+from constricter.fix.index import project
 from constricter.rules import parsed
 
 if TYPE_CHECKING:  # slow to import, and only needed for many files

@@ -8,7 +8,7 @@ import hypothesmith
 from hypothesis import HealthCheck, given, reject, settings
 from hypothesis import strategies as st
 
-from constricter.fix import fixes
+from constricter.fix.core import fixes
 from constricter.noqa import lines
 from constricter.offences import Checks, Offence
 from constricter.rules.checker import check_source

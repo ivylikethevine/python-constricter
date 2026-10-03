@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter import jsonc
-from constricter.fix import fixes
+from constricter.fix.core import fixes
 from constricter.offences import Offence
 
 SUFFIX: Final = ".ipynb"

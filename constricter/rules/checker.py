@@ -6,21 +6,27 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
 from typing import Final, NamedTuple, cast
 
-from constricter.fix import entered, imports, inherited, returned, stdlib
-from constricter.fix.doubts import facts, says_self
-from constricter.fix.known import (
+from constricter.fix.core import imports, inherited
+from constricter.fix.core.known import (
     Classes,
     ClassSide,
+    Indirect,
     Known,
     LibraryNames,
+    Limits,
     Observed,
     Outside,
+    Partial,
     Returned,
     Returns,
 )
+from constricter.fix.libraries import stdlib
+from constricter.fix.values import classvars, entered, returned
+from constricter.fix.values.doubts import facts, says_self
 from constricter.jsonc import as_text
 from constricter.offences import (
     DEFAULT_CHECKS,
+    STARRED_SUBSCRIPTS,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
     UNTYPED_TARGET,
@@ -33,7 +39,6 @@ from constricter.rules.annotations import (
     awaited_returns,
     casts,
     class_attributes,
-    class_methods,
     defined_type_vars,
     factories,
     free_of,
@@ -131,8 +136,10 @@ def _settings(
     outside: Outside | None = None,
 ) -> Settings:
     # The functions' declared returns: other checked files' (see `Outside`), then the module's own.
-    calls: dict[str, str] = {**({} if outside is None else outside.calls), **own.returns}
+    calls: dict[str, str] = {**({} if outside is None else outside.calls), **own.returns, **own.side_calls}
     imported: Classes | None = None if outside is None else outside.classes
+    # The bases whose members are known whole: the standard library's, and other checked files' below.
+    bases: frozenset[str] = stdlib.bases(tree, stdlib.origins(tree))
     # The file's own types that mention a type variable it imports (`--fix` sees only its own).
     free: frozenset[str] = frozenset() if outside is None else outside.type_vars
     selfish: dict[str, frozenset[str]] = self_returns(tree)
@@ -144,11 +151,16 @@ def _settings(
             factories(tree),
             {**(imported.attributes if imported else {}), **free_of_all(own.classes, free)},
             {**(imported.methods if imported else {}), **free_of_all(own.methods, free)},
-            free_of(awaited_returns(tree), free),
+            Indirect(
+                free_of(awaited_returns(tree), free),
+                _partial(own, free, outside),
+                {**({} if outside is None else outside.tuples), **free_of(own.tuples, free)},
+            ),
             ClassSide(
                 free_of_all(class_attributes(tree), free),
-                free_of_all(class_methods(tree), free),
-                inherited.lineage(tree, selfish, frozenset(imported.methods if imported else ())),
+                free_of_all(own.sides, free),
+                inherited.lineage(tree, selfish, bases.union(imported.methods if imported else ())),
+                classvars.variables(tree, classvars.imported(tree), outside, checks.plain_bases),
             ),
             LibraryNames(
                 casts(tree),
@@ -163,10 +175,15 @@ def _settings(
                 {} if outside is None else outside.installed_parameters,
                 {} if outside is None else outside.installed_lineage,
                 {} if outside is None else outside.installed_aliases,
+                checks.min_python is not None and checks.min_python >= STARRED_SUBSCRIPTS,
             ),
-            checks.max_length,
+            Limits(checks.max_length, checks.vague),
         ),
-        Hierarchy.for_module(tree, {name: frozenset(wider) for name, wider in checks.narrower}),
+        Hierarchy.for_module(
+            tree,
+            {name: frozenset(wider) for name, wider in checks.narrower},
+            () if outside is None else outside.same,
+        ),
         owners(tree, says_self),
         tuple(
             sorted(
@@ -183,6 +200,20 @@ def _settings(
             defined_type_vars(tree) | free,
         ),
         keyed(tree, {} if outside is None else outside.parameters),
+    )
+
+
+def _partial(own: Tables, free: frozenset[str], outside: Outside | None) -> Partial:
+    """Gather the returns only an unpacking can use: other checked files', then the module's own.
+
+    Returns:
+      Them, less the module's that mention a type variable it imports (`free`).
+
+    """
+    given: Partial = Partial() if outside is None else outside.partial
+    return Partial(
+        {**given.calls, **free_of(own.partial, free)},
+        {**given.methods, **free_of_all(own.partial_methods, free)},
     )
 
 
@@ -212,7 +243,7 @@ def check_tree(
 class Checked(NamedTuple):
     """A module's offences, what its unannotated functions return, and what it passes others' functions.
 
-    What they return is for the files importing them; what it passes, for `fix.callers`.
+    What they return is for the files importing them; what it passes, for `fix.index.callers`.
     """
 
     offences: list[Offence]
@@ -322,17 +353,30 @@ def _body_scopes(tree: ast.Module, settings: Settings) -> list["Scope"]:
 
     """
     imported: frozenset[str] = imported_from(tree, _ENUM_MODULES)
-    class_bodies: list[list[ast.stmt]] = [node.body for node in classes(tree) if not _is_enum(node, imported)]
-    scopes: list[Scope] = []
-    body: list[ast.stmt]
-    for body in (tree.body, *class_bodies):
-        # A class body is never fixed: annotating a dataclass's variable makes it a field.
-        scope: Scope = Scope({"_"}, [], settings, Kind(UNANNOTATED_MEMBER, fixable=body is tree.body))
-        stmt: ast.stmt
-        for stmt in body:
-            _visit(scope, stmt)
-        scopes.append(scope)
-    return scopes
+    # A class body isn't fixed: annotating a dataclass's variable makes it a field. A plain class's
+    # variable typed by its value is (see `Scope.assign`).
+    return [
+        _body_scope(tree.body, settings, Kind(UNANNOTATED_MEMBER, fixable=True)),
+        *(
+            _body_scope(node.body, settings, Kind(UNANNOTATED_MEMBER, fixable=False, owner=node.name))
+            for node in classes(tree)
+            if not _is_enum(node, imported)
+        ),
+    ]
+
+
+def _body_scope(body: list[ast.stmt], settings: Settings, kind: Kind) -> "Scope":
+    """Check one module's or class's body.
+
+    Returns:
+      Its scope.
+
+    """
+    scope: Scope = Scope({"_"}, [], settings, kind)
+    stmt: ast.stmt
+    for stmt in body:
+        _visit(scope, stmt)
+    return scope
 
 
 def _is_enum(node: ast.ClassDef, imported: frozenset[str]) -> bool:
@@ -373,7 +417,7 @@ def _function_scopes(
             settled: bool = not scope.inferred.late.keys() - scope.inferred.seeded.keys()
             table.checked(
                 func,
-                recorded.returns(scope, func) if settled else [],
+                recorded.returns(scope, func, table.module) if settled else [],
                 recorded.assigned(scope) if settled else [],
             )
         scopes += _function_scopes(nested, scope.settings, table)
@@ -518,7 +562,7 @@ def _declare(scope: Scope, stmt: ast.stmt) -> None:
         case ast.AnnAssign(target=ast.Name(id=name) as target, annotation=annotation):
             scope.declare(name)
             scope.annotation(name, annotation)
-            _ = scope.inferred.types.setdefault(name, written(annotation))
+            scope.inferred.declare(name, annotation)
             scope.lifetime(name).declare(ast.unparse(annotation), at(target), _span(annotation, target))
             if stmt.value is not None:
                 scope.lifetime(name).bind(at(target), certain_type(scope, stmt.value))
@@ -638,7 +682,7 @@ def _checked_again(
     ]
     renewed: dict[int, Scope] = {id(func): scope for scope, func in fresh}
     _finished(tree, [scope for scope, _ in fresh])
-    table.recorded.update((id(func), recorded.returns(scope, func)) for scope, func in fresh)
+    table.recorded.update((id(func), recorded.returns(scope, func, tree)) for scope, func in fresh)
     table.assigned.update((id(func), recorded.assigned(scope)) for scope, func in fresh)
     return [(renewed.get(id(func), scope), func) for scope, func in functions]
 

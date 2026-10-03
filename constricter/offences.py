@@ -62,6 +62,8 @@ FIX_KINDS: dict[str, str] = {
     "returned": "an unannotated function's own `return`s (a method's: a guess)",
     "assigned": "an unannotated instance attribute's every `self.x = value` in its class (a guess)",
     "callers": "an unannotated parameter every call in the checked files passes one type (a guess)",
+    "member": "a plain class's variable, by its literal value in the class's body (a guess)",
+    "alias": "a module's type alias, a subscript or a union of types: `TypeAlias`",
     "final": "LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)",
     "checker": "a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)",
     "open": "`open(path, mode)`'s file object, by its literal mode (`io.TextIOWrapper`, ...)",
@@ -72,9 +74,12 @@ FIX_KINDS: dict[str, str] = {
     "redundant": "LVA007: the repeated annotation, dropped",
 }
 CONSTRUCTOR: Final = "constructor"
+MEMBER: Final = "member"
 NARROW: Final = "narrow"
 NESTING: Final = 3  # LVA006's default depth
 MAX_LENGTH: Final = 4  # LVA011's default: the longest fixed-length tuple an annotation may list
+VAGUE: Final = -1  # LVA005's default level: no vague part at all (see `annotations.vague_fits`)
+STARRED_SUBSCRIPTS: Final = (3, 11)  # the first Python to parse `tuple[int, *Ts]`
 
 
 class Level(IntEnum):
@@ -132,7 +137,7 @@ class Fix(NamedTuple):
     # With `Edit.DECLARE`: the columns to delete on the statement's line too (the type comment it replaces).
     drop: tuple[int, int] | None = None
     imports: tuple[str, ...] = ()  # statements the annotation needs added (`from io import BytesIO`)
-    after: int = 0  # the line they go after (see `fix.imports.plan`)
+    after: int = 0  # the line they go after (see `fix.core.imports.plan`)
     guarded: tuple[str, ...] = ()  # statements the annotation needs added under `if TYPE_CHECKING:`
     guard: str = ""  # how the module names `TYPE_CHECKING`, for a new such block
     block: tuple[int, int] = (0, 0)  # the first and last line of the body of one there is (see `ImportPlan`)
@@ -222,12 +227,27 @@ class Offence:
         return level >= _REPORTED_FROM.get(self.code, Level.RELAXED)
 
 
+# Bases whose class bodies `--fix` annotates as a plain class's (`fix-plain-bases` adds to them): a
+# class, or a package for every class in it; `!` leaves one out. Django reads no annotation in a class
+# body, but its `Choices` are enums, whose members a type checker won't have annotated.
+PLAIN_BASES: Final = (
+    "django",
+    "!django.db.models.Choices",
+    "!django.db.models.IntegerChoices",
+    "!django.db.models.TextChoices",
+    "!django.db.models.enums",
+)
+
+
 class Checks(NamedTuple):
     """What to check, beyond the defaults.
 
     With `type_comments`, `x = 1  # type: int` counts as annotated; with `all_scopes`, module and
     class bodies are checked too (LVA004); an annotation nested `nesting` deep is LVA006, and one
-    listing a fixed-length tuple longer than `max_length` is LVA011.
+    listing a fixed-length tuple longer than `max_length` is LVA011. `min_python`: the oldest Python
+    the code runs on (`None`: not known), whose syntax a fix is written in. `vague`: how vague an
+    annotation may be before it's LVA005, and a fix isn't offered (see `annotations.vague_fits`).
+    `plain_bases`: the bases a plain class may have besides the builtin ones (see `PLAIN_BASES`).
     """
 
     type_comments: bool = False
@@ -238,6 +258,9 @@ class Checks(NamedTuple):
     narrower: tuple[Narrower, ...] = ()
     fixes: FixPolicy = FixPolicy()  # which fixes `--fix` offers; it never changes what's reported
     final: bool = False  # look for LVA012 (opt-in: see `OPT_IN`)
+    min_python: tuple[int, int] | None = None
+    vague: int = VAGUE
+    plain_bases: tuple[str, ...] = PLAIN_BASES
 
 
 DEFAULT_CHECKS: Final = Checks()

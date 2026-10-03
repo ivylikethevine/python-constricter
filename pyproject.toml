@@ -142,14 +142,14 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 # Hatchling's build hook interface: generating the tables needs neither the version nor the build data.
 "hatch_build.py" = ["unused-method-argument"]
 # The generator imports `constricter`'s modules without its `__init__`: its tests import it apart.
-"tests/fix/test_stdlib_tables.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
+"tests/fix/libraries/test_stdlib_tables.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The census of what `--fix` can't type runs this checkout's constricter on each corpus.
 "tests/corpus/corpus_untyped.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The local CI runner runs the workflow's own steps (and git) as subprocesses.
 "tests/ci_local.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
 # Installed modules' reads are cached as pickles, written and read by constricter alone in the
 # user's own cache directory.
-"constricter/fix/installed.py" = ["suspicious-pickle-import", "suspicious-pickle-usage"]
+"constricter/fix/index/installed.py" = ["suspicious-pickle-import", "suspicious-pickle-usage"]
 # `--infer-with` starts the type checker's language server, from a fixed table of commands (and
 # asks it its version, to see it runs).
 "constricter/cli/{hints,guard,protocol}.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]

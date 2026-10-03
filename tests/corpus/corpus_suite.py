@@ -19,10 +19,10 @@ A local variable's annotation is never evaluated at runtime (PEP 526), so these 
 that breaks the code itself (a declaration, a dropped comment or annotation, a module's
 `__annotations__`), not a wrong type: that's a type checker's job, and `--types` runs each package's
 own, as its CI does, the same three times. An error a fixed run has that the released one hasn't
-is new; each new one is traced to the fix whose annotation it's about (the fix on its line, else the
-nearest one before it in its scope, else the module's, of a name on its line or in its message), and
-counted by the mechanisms that decided that fix (`--format=json`'s `kinds`); the command exits 1 if
-a fixed run has a new error.
+is new (of a file's alike errors, those on a line a fix wrote first); each new one is traced to the
+fix whose annotation it's about (the fix on its line, else the nearest one before it in its scope,
+else the module's, of a name on its line or in its message), and counted by the mechanisms that
+decided that fix (`--format=json`'s `kinds`); the command exits 1 if a fixed run has a new error.
 
 `--infer-with CHECKERS` adds a third fixed run, `--fix --unsafe-fixes --infer-with CHECKERS`: the
 checkers' servers (on `PATH`, or beside this Python) see the checkout's own environment, as its
@@ -191,6 +191,7 @@ _QUOTED: Final = re.compile(r"""["'`]([A-Za-z_]\w*)["'`]""")
 _NAME: Final = re.compile(r"[A-Za-z_]\w*")
 _CONSTRICTER: Final = Path(sys.executable).with_name("constricter")
 _INSERTED: Final = "insert"  # difflib's opcode for lines only the fixed file has
+_EQUAL: Final = "equal"  # and for lines both have
 _Mode: TypeAlias = tuple[str, tuple[str, ...]]  # a fixed run's label, and its options beyond `--fix`
 _MODES: Final[tuple[_Mode, ...]] = (("--fix", ()), ("--fix --unsafe-fixes", ("--unsafe-fixes",)))
 _TYPES: Final = "--types"
@@ -224,14 +225,14 @@ def _environment(cwd: Path) -> dict[str, str]:
     return environment
 
 
-def _run(args: Sequence[str], cwd: Path, given: str = "") -> tuple[int, str]:
+def _completed(args: Sequence[str], cwd: Path, given: str = "") -> subprocess.CompletedProcess[str]:
     """Run a command in `cwd`, with `given` as its standard input.
 
     Returns:
-      Its exit status, and its standard output and error, together.
+      What it did: its exit status, and its standard output and error.
 
     """
-    done: subprocess.CompletedProcess[str] = subprocess.run(
+    return subprocess.run(
         list(args),
         input=given,
         capture_output=True,
@@ -242,6 +243,16 @@ def _run(args: Sequence[str], cwd: Path, given: str = "") -> tuple[int, str]:
         cwd=cwd,
         env=_environment(cwd),
     )
+
+
+def _run(args: Sequence[str], cwd: Path, given: str = "") -> tuple[int, str]:
+    """Run a command in `cwd`, with `given` as its standard input.
+
+    Returns:
+      Its exit status, and its standard output and error, together.
+
+    """
+    done: subprocess.CompletedProcess[str] = _completed(args, cwd, given)
     return done.returncode, done.stdout + done.stderr
 
 
@@ -367,10 +378,12 @@ def planned(root: Path, suite: Suite, *extra: str) -> dict[str, list[Fix]]:
 
     """
     _ = _output(["git", "checkout", "-q", "--", suite.source], root)
-    results: list[dict[str, _Json]] = cast(
-        "list[dict[str, _Json]]",
-        json.loads(_output([str(_CONSTRICTER), "--format=json", *extra, *_EVERYWHERE, suite.source], root)),
+    done: subprocess.CompletedProcess[str] = _completed(
+        [str(_CONSTRICTER), "--format=json", *extra, *_EVERYWHERE, suite.source],
+        root,
     )
+    _ = sys.stdout.write(done.stderr)  # its warnings: a file a checker's server hung on, say
+    results: list[dict[str, _Json]] = cast("list[dict[str, _Json]]", json.loads(done.stdout))
     fixes: dict[str, list[Fix]] = {}
     result: dict[str, _Json]
     for result in results:
@@ -390,17 +403,19 @@ def planned(root: Path, suite: Suite, *extra: str) -> dict[str, list[Fix]]:
     return fixes
 
 
-def _origins(original: list[str], changed: list[str]) -> list[int]:
+def _origins(original: list[str], changed: list[str]) -> tuple[list[int], frozenset[int]]:
     """Map each line of a fixed file to the original line it came from (1-based).
 
     A changed line maps to the line it replaced; an inserted one (a declaration) to the statement
     after it, which it declares a name for.
 
     Returns:
-      The original line of each fixed one, the first at index 1.
+      The original line of each fixed one, the first at index 1; and the fixed lines a fix changed
+      or inserted.
 
     """
     origins: list[int] = [0] * (len(changed) + 1)
+    edited: set[int] = set()
     tag: str
     i1: int
     i2: int
@@ -410,7 +425,9 @@ def _origins(original: list[str], changed: list[str]) -> list[int]:
         j: int
         for j in range(j1, j2):
             origins[j + 1] = i1 + 1 if tag == _INSERTED else i1 + 1 + min(j - j1, max(i2 - i1 - 1, 0))
-    return origins
+            if tag != _EQUAL:
+                edited.add(j + 1)
+    return origins, frozenset(edited)
 
 
 def _scopes(source: str) -> list[int]:
@@ -436,10 +453,11 @@ def _scopes(source: str) -> list[int]:
 
 
 class _Fixed(NamedTuple):
-    """A fixed file: its lines, each's original line, and each original line's scope."""
+    """A fixed file: its lines, each's original line, those a fix wrote, and each original line's scope."""
 
     lines: list[str]
     origins: list[int]
+    edited: frozenset[int]
     scopes: list[int]
 
 
@@ -452,7 +470,52 @@ def _fixed_file(root: Path, path: str) -> _Fixed:
     """
     original: str = _output(["git", "show", f"HEAD:{path}"], root)
     lines: list[str] = (root / path).read_text("utf-8").splitlines()
-    return _Fixed(lines, _origins(original.splitlines(), lines), _scopes(original))
+    return _Fixed(lines, *_origins(original.splitlines(), lines), _scopes(original))
+
+
+def _file(root: Path, files: dict[str, _Fixed], path: str) -> _Fixed:
+    """Read a fixed file (see `_fixed_file`), once: `files` keeps each read.
+
+    Returns:
+      It.
+
+    """
+    if path not in files:
+        files[path] = _fixed_file(root, path)
+    return files[path]
+
+
+def _new(
+    root: Path,
+    after: list[Complaint],
+    added: Counter[tuple[str, str]],
+    files: dict[str, _Fixed],
+) -> list[Complaint]:
+    """Pick the errors of `after` that are new: `added`'s count of each file's alike ones (see `_key`).
+
+    Which of a file's alike errors are new can't be told for sure: those on a line a fix changed or
+    inserted first, then the first in the file.
+
+    Returns:
+      Them.
+
+    """
+    alike: dict[tuple[str, str], list[Complaint]] = {}
+    complaint: Complaint
+    for complaint in after:
+        alike.setdefault(_key(complaint), []).append(complaint)
+    new: list[Complaint] = []
+    key: tuple[str, str]
+    count: int
+    for key, count in added.items():
+        found: list[Complaint] = alike[key]
+        if count < len(found):
+            edited: frozenset[int] = _file(root, files, key[0]).edited
+            found = [each for each in found if each.line in edited] + [
+                each for each in found if each.line not in edited
+            ]
+        new.extend(found[:count])
+    return new
 
 
 def _blamed(complaint: Complaint, file: _Fixed, fixes: list[Fix]) -> Fix | None:
@@ -483,16 +546,19 @@ def _blamed(complaint: Complaint, file: _Fixed, fixes: list[Fix]) -> Fix | None:
     return max(candidates, key=lambda fix: fix.line) if candidates else None
 
 
-def _report_new(root: Path, new: list[Complaint], fixes: dict[str, list[Fix]]) -> None:
+def _report_new(
+    root: Path,
+    new: list[Complaint],
+    fixes: dict[str, list[Fix]],
+    files: dict[str, _Fixed],
+) -> None:
     """Print each new error with the fix it's traced to, and their count per mechanism."""
     per_kind: Counter[str] = Counter()
     lines: list[str] = []
-    files: dict[str, _Fixed] = {}
     complaint: Complaint
     for complaint in new:
-        if complaint.path not in files:
-            files[complaint.path] = _fixed_file(root, complaint.path)
-        fix: Fix | None = _blamed(complaint, files[complaint.path], fixes.get(complaint.path, []))
+        file: _Fixed = _file(root, files, complaint.path)
+        fix: Fix | None = _blamed(complaint, file, fixes.get(complaint.path, []))
         kind: str = "(untraced)" if fix is None else fix.kinds + (" (guess)" if fix.unsafe else "")
         per_kind[kind] += 1
         what: str = "" if fix is None else f" [{fix.name}: {fix.annotation}, line {fix.line}]"
@@ -521,17 +587,12 @@ def _compare_types(
     after: list[Complaint] = complaints(root, suite)
     before: Counter[tuple[str, str]] = Counter(_key(complaint) for complaint in released)
     now: Counter[tuple[str, str]] = Counter(_key(complaint) for complaint in after)
-    added: Counter[tuple[str, str]] = now - before
-    new: list[Complaint] = []
-    complaint: Complaint
-    for complaint in after:  # which of a file's alike errors are new can't be told: say the first
-        if added[_key(complaint)]:
-            new.append(complaint)
-            added[_key(complaint)] -= 1
+    files: dict[str, _Fixed] = {}
+    new: list[Complaint] = _new(root, after, now - before, files)
     _ = sys.stdout.write(
         f"  {label} ({change}): {len(after)} errors: {len(new)} new, {(before - now).total()} gone\n",
     )
-    _report_new(root, new, fixes)
+    _report_new(root, new, fixes, files)
     return not new
 
 

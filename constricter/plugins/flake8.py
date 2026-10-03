@@ -7,7 +7,7 @@ from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING, ClassVar, Final, cast, final
 
 from constricter import __version__
-from constricter.offences import LEVELS, MAX_LENGTH, NESTING, OPT_IN, Checks, Level, Offence
+from constricter.offences import LEVELS, MAX_LENGTH, NESTING, OPT_IN, VAGUE, Checks, Level, Offence
 from constricter.rules.checker import check_source, check_tree
 from constricter.rules.flow import Narrower, parse_narrower
 
@@ -28,6 +28,7 @@ class ConstricterChecker:
     all_scopes: ClassVar[bool] = False
     nesting: ClassVar[int] = NESTING
     max_length: ClassVar[int] = MAX_LENGTH
+    vague: ClassVar[int] = VAGUE
     narrower: ClassVar[tuple[Narrower, ...]] = ()
     can_be_final: ClassVar[bool] = False  # report LVA012
 
@@ -73,6 +74,13 @@ class ConstricterChecker:
             help=f"report a fixed-length tuple annotation listing more types (LVA011; default: {MAX_LENGTH})",
         )
         parser.add_option(
+            "--constricter-vague",
+            type=int,
+            default=VAGUE,
+            parse_from_config=True,
+            help=f"how vague an annotation may be before it's LVA005 (default: {VAGUE}, none)",
+        )
+        parser.add_option(
             "--constricter-narrower",
             default="",
             parse_from_config=True,
@@ -87,6 +95,7 @@ class ConstricterChecker:
         cls.all_scopes = cast("bool", options.constricter_all_scopes)
         cls.nesting = cast("int", options.constricter_nesting)
         cls.max_length = cast("int", options.constricter_max_length)
+        cls.vague = cast("int", options.constricter_vague)
         cls.narrower = parse_narrower(cast("str", options.constricter_narrower))
         # An opt-in code only when `select` or `extend-select` names it in full, as the CLI does.
         chosen: list[str] = [
@@ -109,6 +118,7 @@ class ConstricterChecker:
             all_scopes=self.all_scopes,
             nesting=self.nesting,
             max_length=self.max_length,
+            vague=self.vague,
             narrower=self.narrower,
             final=self.can_be_final,
         )

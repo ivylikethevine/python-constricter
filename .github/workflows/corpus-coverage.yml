@@ -129,7 +129,9 @@ jobs:
           # pct <count>: the typed share, one decimal, or nothing
           pct() { [ -z "$1" ] || awk -v t="${1% *}" -v n="${1#* }" 'BEGIN { printf "%.1f", 100 * t / n }'; }
           whens=(released fixed guessed)
-          # row <label> <side>: its share at each point
+          # bindings <side>: how many it counts, as released, or nothing
+          bindings() { local v; v="$(count "$1" released)"; printf '%s' "${v#* }"; }
+          # row <label> <side>: its share at each point, then its bindings
           row() {
             local when v
             printf '| %s |' "$1"
@@ -137,9 +139,10 @@ jobs:
               v="$(pct "$(count "$2" "$when")")"
               printf ' %s |' "${v:-not measured}${v:+%}"
             done
-            printf '\n'
+            v="$(bindings "$2")"
+            printf ' %s |\n' "${v:-not measured}"
           }
-          # change_row: this PR's share less the base's, at each point
+          # change_row: this PR's share less the base's, at each point, then its bindings less the base's
           change_row() {
             local when now was
             printf '| Change |'
@@ -152,12 +155,17 @@ jobs:
                 printf ' - |'
               fi
             done
-            printf '\n'
+            now="$(bindings head)"
+            was="$(bindings base)"
+            if [ -n "$now" ] && [ -n "$was" ]; then
+              printf ' %+d |\n' "$((now - was))"
+            else
+              printf ' - |\n'
+            fi
           }
           version="$(jq -r '.version // ""' "$file" || true)"
           [[ "$version" =~ ^[0-9A-Za-z.+-]{1,32}$ ]] || version=""
           [[ "$BASE_REF" =~ ^[0-9A-Za-z._/-]{1,64}$ ]] || BASE_REF=base
-          total="$(count head released)"
           if [ "$CORPUS" = stdlib ]; then
             title="Python ${version:-3.14}'s standard library"
           else
@@ -166,12 +174,12 @@ jobs:
           # shellcheck disable=SC2016 # the backticks are Markdown's
           body="$(
             printf '%s\n### Annotation coverage on %s\n\n' "$marker" "$title"
-            printf '| | Typed as released | After `--fix` | After `--fix --unsafe-fixes` |\n| --- | ---: | ---: | ---: |\n'
-            row 'This PR' head
+            printf '| | Typed as released | After `--fix` | After `--fix --unsafe-fixes` | Bindings |\n'
+            printf '| --- | ---: | ---: | ---: | ---: |\n'
             row "\`$BASE_REF\`" base
+            row 'This PR' head
             change_row
             printf '\n'
-            [ -z "$total" ] || printf 'Of %s bindings. ' "${total#* }"
             printf 'Each side fixes with its own constricter; this PR counts both, with `--coverage` and `all-scopes`. '
             printf 'Measured at %s by [this run](%s).\n' "$HEAD_SHA" \
               "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"

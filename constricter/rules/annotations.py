@@ -16,6 +16,7 @@ from constricter.rules.quoted import parsed, written
 from constricter.rules.syntax import child_statements, declared_return
 
 _VAGUE: Final = frozenset({"Any", "object"})
+_UNIONS: Final = frozenset({"Optional", "Union"})  # a union's members, as a subscript's arguments
 # `collections.abc`'s generic classes (`typing` has each too).
 ABSTRACT: Final = frozenset(
     {
@@ -271,6 +272,42 @@ def class_methods(tree: ast.Module) -> dict[str, dict[str, str]]:
     return _class_returns(tree, _CLASS_SIDE)
 
 
+def held_class_methods(tree: ast.Module) -> dict[str, dict[str, Held]]:
+    """Find the classmethods and staticmethods declaring a return under decorators the module can't vouch for.
+
+    As `class_methods` reads them, but for those decorators: another module's may give the method
+    back (see `held`).
+
+    Returns:
+      Each class's name, mapped to those methods' names, return annotations and decorators.
+
+    """
+    known: frozenset[str] = _passing(tree)
+    declared: dict[str, dict[str, str]] = _class_returns(tree, _CLASS_SIDE, anything=True)
+    own: dict[str, dict[str, str]] = class_methods(tree)
+    found: dict[str, dict[str, Held]] = {}
+    node: ast.ClassDef
+    for node in _class_nodes(tree):
+        methods: dict[str, Held] = {
+            stmt.name: Held(
+                declared[node.name][stmt.name],
+                tuple(
+                    sorted(
+                        {spelled(d) or "" for d in stmt.decorator_list if node_name(d) not in _CLASS_SIDE}
+                        - known,
+                    ),
+                ),
+            )
+            for stmt in node.body
+            if isinstance(stmt, ast.FunctionDef)
+            and stmt.name in declared.get(node.name, {})
+            and stmt.name not in own[node.name]
+        }
+        if methods:
+            found[node.name] = methods
+    return found
+
+
 def _attributes(node: ast.ClassDef) -> dict[str, str]:
     attrs: dict[str, str] = {}
     stmt: ast.stmt
@@ -372,6 +409,63 @@ def is_vague(annotation: ast.expr) -> bool:
         if name in _VAGUE or (name in GENERICS and id(node) not in subscripted):
             return True
     return False
+
+
+def vague_parts(annotation: ast.expr) -> tuple[int, bool]:
+    """Count an annotation's vague parts (see `is_vague`), and say whether one stands alone.
+
+    Alone: the annotation itself or a member of its union (`Any`, `Any | None`, `Optional[object]`),
+    where it says nothing at all. Anywhere else it's inside a type that says the rest
+    (`tuple[str, Any]`), as a generic without its parameters is (`list`).
+
+    Returns:
+      How many there are, and whether one does.
+
+    """
+    root: ast.expr = parsed(annotation)
+    subscripted: set[int] = {id(node.value) for node in ast.walk(root) if isinstance(node, ast.Subscript)}
+    count: int = sum(
+        node_name(node) in _VAGUE or (node_name(node) in GENERICS and id(node) not in subscripted)
+        for node in ast.walk(root)
+    )
+    return count, any(node_name(member) in _VAGUE for member in _union_members(root))
+
+
+def _union_members(node: ast.expr) -> list[ast.expr]:
+    """Flatten an annotation's outermost union: `A | B`, `Optional[A]`, `Union[A, B]`.
+
+    Returns:
+      Its members; the annotation itself, if it's no union.
+
+    """
+    left: ast.expr
+    right: ast.expr
+    head: ast.expr
+    inner: ast.expr
+    match node:
+        case ast.BinOp(op=ast.BitOr(), left=left, right=right):
+            return [*_union_members(left), *_union_members(right)]
+        case ast.Subscript(value=head, slice=inner) if node_name(head) in _UNIONS:
+            parts: list[ast.expr] = inner.elts if isinstance(inner, ast.Tuple) else [inner]
+            return [member for part in parts for member in _union_members(part)]
+        case _:
+            return [node]
+
+
+def vague_fits(annotation: ast.expr, level: int) -> bool:
+    """Check whether an annotation is no vaguer than `level` allows (`vague`, LVA005's).
+
+    Below 0, no vague part at all. At 0, one, inside a type that says the rest (`tuple[str, Any]`).
+    From 1, `level + 1` of them (`tuple[Any, Any]` at 1), and one alone (`Any`).
+
+    Returns:
+      Whether it is.
+
+    """
+    count: int
+    alone: bool
+    count, alone = vague_parts(annotation)
+    return not count or (count <= level + 1 and (level > 0 or not alone))
 
 
 def length(annotation: ast.expr) -> int:
@@ -495,10 +589,47 @@ def method_returns(tree: ast.Module) -> dict[str, dict[str, str]]:
     return _class_returns(tree, _UNDECORATED)
 
 
-def _class_returns(tree: ast.Module, decorators: frozenset[str]) -> dict[str, dict[str, str]]:
+def partial_returns(tree: ast.Module) -> dict[str, str]:
+    """Return the declared return of each function `returns` leaves out for a vague part.
+
+    `tuple[Row, dict[str, Any]]` types a call only as far as `vague` allows (see `vague_fits`), and
+    an unpacking's names part by part.
+
+    Returns:
+      Each such function's name, and its return annotation as source text.
+
+    """
+    return _partial_returns(tree.body, defined_type_vars(tree), vouched=_passing(tree))
+
+
+def partial_method_returns(tree: ast.Module) -> dict[str, dict[str, str]]:
+    """Map each non-generic class to its methods' declared returns that have a vague part.
+
+    As `partial_returns` reads functions': its plain methods', and its classmethods' and staticmethods'.
+
+    Returns:
+      Each class's name, mapped to those methods' names and return annotation text.
+
+    """
+    sides: dict[str, dict[str, str]] = _class_returns(tree, _CLASS_SIDE, partly=True)
+    return {
+        owner: {**sides[owner], **methods}
+        for owner, methods in _class_returns(tree, _UNDECORATED, partly=True).items()
+    }
+
+
+def _class_returns(
+    tree: ast.Module,
+    decorators: frozenset[str],
+    *,
+    anything: bool = False,
+    partly: bool = False,
+) -> dict[str, dict[str, str]]:
     """Map each non-generic class to the declared returns of its methods decorated by one of `decorators`.
 
-    None of them (an empty set) means plain methods; see `method_returns` for the rules.
+    None of them (an empty set) means plain methods; see `method_returns` for the rules. Any other
+    decorator must be one the module vouches for (see `decorators.passing`), or (`anything`) one
+    `decorators.spelled` reads. `partly`: those left out for a vague part, instead.
 
     Returns:
       Each class's name, mapped to those methods' names and return annotation text.
@@ -511,11 +642,11 @@ def _class_returns(tree: ast.Module, decorators: frozenset[str]) -> dict[str, di
         if not _generic(node):
             found[node.name] = {
                 name: node.name if _is_self(annotation) else annotation
-                for name, annotation in _declared_returns(
+                for name, annotation in (_partial_returns if partly else _declared_returns)(
                     node.body,
                     type_vars,
                     decorators=decorators,
-                    vouched=_passing(tree),
+                    vouched=None if anything else _passing(tree),
                 ).items()
                 if _is_self(annotation) or _SELF not in _words(annotation)
             }
@@ -526,7 +657,7 @@ def self_returns(tree: ast.Module) -> dict[str, frozenset[str]]:
     """Map each class to its methods (classmethods and staticmethods too) declared to return a bare `Self`.
 
     `method_returns` types such a call as the class; but called on `self` or `cls` it's `Self`, which
-    a subclass's is too, so `--fix` writes that instead (see `constricter.fix.doubts`).
+    a subclass's is too, so `--fix` writes that instead (see `constricter.fix.values.doubts`).
 
     Returns:
       Each class's name, and those methods' names.
@@ -651,29 +782,85 @@ def _declared_returns(
     """Find the plain functions (`async` ones if `awaited`) directly in `body` `--fix` can annotate.
 
     Plain means decorated only as `vouched` spells (`None`: by anything `decorators.spelled`
-    reads), or with `decorators`, by exactly one of them. A property's `@name.setter` or
-    `@name.deleter` is the same property, not a redefinition.
+    reads), and with `decorators`, by exactly one of them too. A property's `@name.setter` or
+    `@name.deleter` is the same property, not a redefinition. Not one whose return has a vague
+    part (see `_partial_returns`).
 
     Returns:
       Each such function's name, and its return annotation as source text.
 
     """
+    found: dict[str, tuple[str, bool]] = _every_return(
+        body,
+        type_vars,
+        awaited=awaited,
+        decorators=decorators,
+        vouched=vouched,
+    )
+    return {name: annotation for name, (annotation, partial) in found.items() if not partial}
+
+
+def _partial_returns(
+    body: Sequence[ast.stmt],
+    type_vars: frozenset[str],
+    *,
+    decorators: frozenset[str] = _UNDECORATED,
+    vouched: frozenset[str] | None = _UNDECORATED,
+) -> dict[str, str]:
+    """Find the plain functions directly in `body` whose declared return has a vague part.
+
+    As `_declared_returns` finds the others.
+
+    Returns:
+      Each such function's name, and its return annotation as source text.
+
+    """
+    found: dict[str, tuple[str, bool]] = _every_return(
+        body,
+        type_vars,
+        awaited=False,
+        decorators=decorators,
+        vouched=vouched,
+    )
+    return {name: annotation for name, (annotation, partial) in found.items() if partial}
+
+
+def _every_return(
+    body: Sequence[ast.stmt],
+    type_vars: frozenset[str],
+    *,
+    awaited: bool,
+    decorators: frozenset[str],
+    vouched: frozenset[str] | None,
+) -> dict[str, tuple[str, bool]]:
+    """Read the declared return of each plain function directly in `body` (see `_declared_returns`).
+
+    Returns:
+      Each one's name, its return annotation as source text, and whether that has a vague
+      part.
+
+    """
     counts: dict[str, int] = {}
-    found: dict[str, str] = {}
+    found: dict[str, tuple[str, bool]] = {}
     stmt: ast.stmt
     name: str
     for stmt in body:
         match stmt:
             case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) if not _accessor(stmt):
                 counts[name] = counts.get(name, 0) + 1
-                if isinstance(stmt, ast.AsyncFunctionDef) == awaited and _plain(stmt, decorators, vouched):
-                    found[name] = written(cast("ast.expr", declared_return(stmt)))
+                declared: tuple[str, bool] | None = _usable_return(stmt)
+                if (
+                    declared is not None
+                    and isinstance(stmt, ast.AsyncFunctionDef) == awaited
+                    and _plain(stmt, decorators, vouched)
+                ):
+                    found[name] = declared
             case _:
                 pass
     return {
-        name: annotation
-        for name, annotation in found.items()
-        if counts[name] == 1 and not type_vars & set(_words(annotation))
+        name: read
+        for name, read in found.items()
+        if counts[name] == 1 and not type_vars & set(_words(read[0]))
     }
 
 
@@ -695,26 +882,41 @@ def _plain(
     decorators: frozenset[str],
     vouched: frozenset[str] | None,
 ) -> bool:
-    """Check that `func` declares a return type its calls always have, decorated as asked.
+    """Check that `func` is decorated as asked, for its declared return to type its calls.
 
     Returns:
-      Whether it does: decorated only as `vouched` spells (`None`: by anything spelled), or, with
-      `decorators`, by exactly one of them; not `None`, and not vague.
+      Whether it is: decorated by exactly one of `decorators` (if any), and otherwise only as
+      `vouched` spells (`None`: by anything spelled).
 
     """
-    spellings: list[str | None] = [spelled(decorator) for decorator in func.decorator_list]
-    declared: ast.expr | None = declared_return(func)
+    others: list[ast.expr] = [d for d in func.decorator_list if node_name(d) not in decorators]
+    spellings: list[str | None] = [spelled(decorator) for decorator in others]
     return (
-        (
-            [node_name(decorator) for decorator in func.decorator_list] in ([name] for name in decorators)
-            if decorators
-            else None not in spellings and (vouched is None or vouched.issuperset(spellings))
-        )
-        and not cast("object", getattr(func, "type_params", ()))  # Python 3.12+'s `def f[T]()`
-        and declared is not None
-        and not (isinstance(declared, ast.Constant) and declared.value is None)
-        and not is_vague(declared)
+        len(func.decorator_list) - len(others) == bool(decorators)
+        and None not in spellings
+        and (vouched is None or vouched.issuperset(spellings))
     )
+
+
+# By the function alone: each class's body is read for its methods, its properties, its
+# classmethods and those held back, and a function's declared return is the same to them all.
+@lru_cache(maxsize=4096)
+def _usable_return(func: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[str, bool] | None:
+    """Read the return type `func` declares, if its calls always have it.
+
+    Returns:
+      Its annotation as source text, and whether it has a vague part (`tuple[Row, dict[str, Any]]`,
+      `Any`); `None` for a generic function, no return, or `None`.
+
+    """
+    declared: ast.expr | None = declared_return(func)
+    if (
+        cast("object", getattr(func, "type_params", ()))  # Python 3.12+'s `def f[T]()`
+        or declared is None
+        or (isinstance(declared, ast.Constant) and declared.value is None)
+    ):
+        return None
+    return written(declared), is_vague(declared)
 
 
 def _words(annotation: str) -> list[str]:

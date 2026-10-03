@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import TypeAlias
 
 from constricter.cli.report import Result
-from constricter.fix.known import Observed, Returns
+from constricter.fix.core.known import Observed, Returns
 from constricter.offences import Offence
 from constricter.rules.checker import Coverage
 

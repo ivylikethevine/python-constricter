@@ -70,7 +70,7 @@ class bodies too. Statements are read in source order, and only a name's first b
 | `LVA002` | an untyped `for` target or `match` capture                                                | `name: T` first (or a type comment)            |
 | `LVA003` | a `for` target typed only by `# type: T`                                                  | `name: T` first                                |
 | `LVA004` | with `all-scopes`: the same as `LVA001`, in a module or class body                        | `name: T = ...` (`ClassVar[T]` in a dataclass) |
-| `LVA005` | an annotation with `Any`, `object` or a generic without its parameters                    | name the real type                             |
+| `LVA005` | an annotation with `Any`, `object` or a generic without its parameters, past `vague`      | name the real type                             |
 | `LVA006` | an annotation nested `nesting` deep (3 by default)                                        | a `type` alias for a part of it                |
 | `LVA007` | a name annotated again with the type it already has, in the same block                    | drop the second annotation                     |
 | `LVA008` | with every value the name ever holds known: an annotation that could narrow to them       | narrow it (`total: int`)                       |
@@ -82,7 +82,10 @@ class bodies too. Statements are read in source order, and only a name's first b
 Exempt: comprehensions, `except ... as`, imports, `def`/`class`, `type` aliases, parameters,
 `global`/`nonlocal`, and `_`; in module and class bodies, dunder names (`__all__`, `__slots__`) and
 enum members (a base imported from `enum`, however it's aliased, or else whose name ends in `Enum`
-or `Flag`).
+or `Flag`). And what makes a type, not a value, which an annotation would turn into a variable to a
+type checker: `T = TypeVar("T")`, a `ParamSpec`, a `TypeVarTuple`, a `NewType`, and a functional
+`NamedTuple`, `TypedDict`, `Enum` or `collections.namedtuple`, however `typing`,
+`typing_extensions`, `enum` or `collections` is imported.
 
 A `# type:` comment (`x = 1  # type: int`, `with f() as x:  # type: T`) counts as an annotation with
 `type-comments`, or automatically in a module written to run on Python 2: one that imports
@@ -152,11 +155,14 @@ Options:
 | all scopes       | `--all-scopes`                                                                                                                                                               | `all-scopes`                                    | `--constricter-all-scopes`      | `constricter-all-scopes = yes`    |
 | nesting          | `--nesting N`                                                                                                                                                                | `nesting`                                       | `--constricter-nesting`         | `constricter-nesting`             |
 | max length       | `--max-length N` (LVA011)                                                                                                                                                    | `max-length`                                    | `--constricter-max-length`      | `constricter-max-length`          |
+| vague            | `--vague LEVEL` (LVA005, and the fixes offered): -1 none (the default), 0 one `Any` inside a type that says the rest (`tuple[str, Any]`), N from 1 N + 1, or one alone       | `vague`                                         | `--constricter-vague`           | `constricter-vague`               |
+| min python       | `--min-python VERSION` (the oldest Python the code runs on, whose syntax `--fix` writes; default: `requires-python`'s)                                                       | `min-python`                                    | -                               | -                                 |
 | type hierarchy   | -                                                                                                                                                                            | `narrower` (a table)                            | `--constricter-narrower`        | `constricter-narrower`            |
 | fix              | `--fix` (`--unsafe-fixes` for guesses), `--diff` to preview                                                                                                                  | -                                               | -                               | -                                 |
 | infer with       | `--infer-with CHECKERS` (`basedpyright`, `ty`, `pyrefly`, several: inferred types, as guesses)                                                                               | `infer-with`                                    | -                               | -                                 |
 | show fixes       | `--show-fixes` (each fix and how it was decided, text)                                                                                                                       | -                                               | -                               | -                                 |
 | fix levels       | `--fix-select`, `--fix-ignore`, `--unsafe-fix-select` (mechanisms: [docs/FIXES.md](https://github.com/ivylikethevine/python-constricter/blob/main/docs/FIXES.md#fix-levels)) | `fix-select`, `fix-ignore`, `unsafe-fix-select` | -                               | -                                 |
+| fix plain bases  | `--fix-plain-bases BASES` (frameworks' classes whose subclasses' bodies `--fix` annotates; django's are built in)                                                            | `fix-plain-bases`                               | -                               | -                                 |
 | select           | `--select CODES` (codes or prefixes)                                                                                                                                         | `select`                                        | flake8's own `select`           | pylint's own `enable`             |
 | extend select    | `--extend-select CODES` (also report these; an opt-in code by its full code)                                                                                                 | `extend-select`                                 | flake8's own `extend-select`    | pylint's own `enable`             |
 | ignore           | `--ignore CODES`                                                                                                                                                             | `ignore`                                        | flake8's own `extend-ignore`    | pylint's own `disable`            |
@@ -185,6 +191,8 @@ type-comments = false
 all-scopes = true
 nesting = 3
 max-length = 4
+vague = -1 # the default: no `Any`; 0 lets `dict[str, Any]` through, 1 `Any` itself
+min-python = "3.11" # the default: your `requires-python`'s lower bound
 jobs = 0
 baseline = "constricter-baseline.json" # the default; relative to this pyproject.toml
 
@@ -237,7 +245,7 @@ pre-commit, after ruff's hooks (or `constricter-fix`, which runs `--fix` first):
 
 ```yaml
 - repo: https://github.com/ivylikethevine/python-constricter
-  rev: v0.3.1
+  rev: v0.3.2
   hooks:
     - id: constricter
 ```

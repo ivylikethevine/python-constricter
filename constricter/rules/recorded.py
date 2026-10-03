@@ -1,17 +1,17 @@
 # SPDX-License-Identifier: MIT
 """What a finished function's scope says its `return`s, `yield`s and `self.x = value`s give.
 
-Recorded for `constricter.fix.returned`, which types the function's calls and its class's attributes
+Recorded for `constricter.fix.values.returned`, which types the function's calls and its class's attributes
 from them.
 """
 
 import ast
 from typing import Final
 
-from constricter.fix import returned
-from constricter.fix.inference import RETURNED, inference, looped
-from constricter.fix.known import ImportPlan, Inference
-from constricter.fix.targets import iterated
+from constricter.fix.core.known import ImportPlan, Inference
+from constricter.fix.values import returned
+from constricter.fix.values.inference import RETURNED, inference, looped
+from constricter.fix.values.targets import iterated
 from constricter.rules.scope import Scope, guesses_in
 from constricter.rules.syntax import FunctionDef, own_nodes
 from constricter.rules.walked import walk
@@ -19,14 +19,16 @@ from constricter.rules.walked import walk
 _GENERATOR: Final = "collections.abc.Generator"
 
 
-def returns(scope: Scope, func: FunctionDef) -> list[returned.Recorded]:
+def returns(scope: Scope, func: FunctionDef, module: ast.Module) -> list[returned.Recorded]:
     """Record a finished function's `return` statements; a generator's one type instead (see `_generator`).
+
+    `module`: the function's, whose `yield`s say which functions to look in for one.
 
     Returns:
       Each one's value.
 
     """
-    if isinstance(func, ast.FunctionDef) and returned.yields_itself(func):
+    if isinstance(func, ast.FunctionDef) and returned.is_generator(module, func):
         return _generator(scope, func)
     return [
         (None, frozenset()) if value is None else _recorded(scope, value) for value in scope.inferred.returns

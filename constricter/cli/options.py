@@ -29,6 +29,8 @@ from constricter.offences import (
     MESSAGES,
     NESTING,
     OPT_IN,
+    PLAIN_BASES,
+    VAGUE,
     Checks,
     FixPolicy,
     Level,
@@ -39,7 +41,7 @@ _ALL: Final = 100  # percent
 
 
 def _at_least(minimum: int) -> Callable[[str], int]:
-    """Make a reader of whole numbers, for `--nesting` and `--jobs`.
+    """Make a reader of whole numbers, for `--nesting`, `--vague` and `--jobs`.
 
     Returns:
       A reader that rejects numbers below `minimum`.
@@ -56,7 +58,7 @@ def _at_least(minimum: int) -> Callable[[str], int]:
           argparse.ArgumentTypeError: It isn't one.
 
         """
-        if not text.isdigit() or int(text) < minimum:
+        if not text.removeprefix("-").isdigit() or int(text) < minimum:
             message: str = f"expected a whole number of at least {minimum}, not {text!r}"
             raise argparse.ArgumentTypeError(message)
         return int(text)
@@ -103,6 +105,16 @@ def _codes(text: str) -> list[str]:
     return codes
 
 
+def _listed(text: str) -> list[str]:
+    """Read a comma-separated list of names (`pkg.Base,!pkg.Enum`).
+
+    Returns:
+      Them.
+
+    """
+    return [name.strip() for name in text.split(",") if name.strip()]
+
+
 def _fix_kinds(text: str) -> list[str]:
     """Read a comma-separated list of `--fix` mechanisms (`copy,constructor`).
 
@@ -119,6 +131,25 @@ def _fix_kinds(text: str) -> list[str]:
         message: str = f"no --fix mechanism is called {', '.join(unknown)} (see docs/FIXES.md)"
         raise argparse.ArgumentTypeError(message)
     return kinds
+
+
+def _version(text: str) -> tuple[int, int]:
+    """Read `--min-python`: a Python version (`3.11`).
+
+    Returns:
+      It.
+
+    Raises:
+      ArgumentTypeError: It isn't one.
+
+    """
+    major: str
+    minor: str
+    major, _, minor = text.partition(".")
+    if not (major.isdigit() and minor.isdigit()):
+        message: str = f"expected a Python version like 3.11, got {text!r}"
+        raise argparse.ArgumentTypeError(message)
+    return int(major), int(minor)
 
 
 def _gigabytes(text: str) -> float:
@@ -235,6 +266,22 @@ def _parser() -> argparse.ArgumentParser:
         help=f"report a fixed-length tuple annotation of more than N types (LVA011; default: {MAX_LENGTH})",
     )
     _ = parser.add_argument(
+        "--vague",
+        type=_at_least(-1),
+        default=VAGUE,
+        metavar="LEVEL",
+        help=(
+            "how vague an annotation may be before it's LVA005 (and a fix isn't offered): -1 none, 0 one "
+            f"Any inside a type that says the rest, N >= 1 N+1 of them, or one alone (default: {VAGUE})"
+        ),
+    )
+    _ = parser.add_argument(
+        "--min-python",
+        type=_version,
+        metavar="VERSION",
+        help="the oldest Python the code runs on, whose syntax --fix writes (default: requires-python's)",
+    )
+    _ = parser.add_argument(
         "--select",
         type=_codes,
         default=[],
@@ -285,6 +332,13 @@ def _parser() -> argparse.ArgumentParser:
         default=[],
         metavar="KINDS",
         help="treat guesses from these mechanisms (constructor, narrow) as certain",
+    )
+    _ = parser.add_argument(
+        "--fix-plain-bases",
+        type=_listed,
+        default=[],
+        metavar="BASES",
+        help="bases whose class bodies --fix annotates as a plain class's (pkg.Base,pkg,!pkg.Enum)",
     )
     _ = parser.add_argument(
         "--infer-with",
@@ -518,6 +572,7 @@ class Options:
                 all_scopes=cast("bool", args.all_scopes),
                 nesting=cast("int", args.nesting),
                 max_length=cast("int", args.max_length),
+                vague=cast("int", args.vague),
                 narrower=tuple(
                     (name, tuple(wider))
                     for name, wider in cast("dict[str, list[str]]", getattr(args, "narrower", {})).items()
@@ -528,6 +583,8 @@ class Options:
                     frozenset(cast("list[str]", args.fix_ignore)),
                     frozenset(cast("list[str]", args.unsafe_fix_select)),
                 ),
+                min_python=cast("tuple[int, int] | None", args.min_python),
+                plain_bases=(*PLAIN_BASES, *cast("list[str]", args.fix_plain_bases)),
             ),
             unsafe_fixes=cast("bool", args.unsafe_fixes),
             filter=_filter(parser, args, mode),

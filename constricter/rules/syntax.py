@@ -5,11 +5,11 @@ import ast
 import bisect
 import re
 from collections.abc import Callable, Iterable, Iterator, Sequence
-from typing import Final, TypeAlias
+from typing import Final, TypeAlias, cast
 
 from constricter.offences import at
 from constricter.rules.walked import children as child_nodes
-from constricter.rules.walked import classes
+from constricter.rules.walked import classes, of_type
 
 # A `# type:` comment, as a loop header writes one (LVA003).
 _TYPE_COMMENT: Final = re.compile(rb"#\s*type:")
@@ -81,6 +81,7 @@ def owners(tree: ast.Module, selfish: Callable[[FunctionDef], bool]) -> dict[int
 
     """
     found: dict[int, str] = {}
+    bindings: list[Start] = _self_bindings(tree)
     node: ast.AST
     methods: list[FunctionDef]
     method: FunctionDef
@@ -89,9 +90,31 @@ def owners(tree: ast.Module, selfish: Callable[[FunctionDef], bool]) -> dict[int
         _direct_methods(node.body, methods)
         for method in methods:
             found[id(method)] = node.name
-            if _SELF in _first_parameter(method) and not _binds_self(method) and not selfish(method):
-                found.update((id(inner), node.name) for inner in _self_readers(method))
+            if (
+                _SELF in _first_parameter(method)
+                and not _binds_self(method, bindings)
+                and not selfish(method)
+            ):
+                found.update((id(inner), node.name) for inner in _self_readers(method, bindings))
     return found
+
+
+def _self_bindings(tree: ast.Module) -> list[Start]:
+    """Find where the module binds a name `self` other than as a parameter (few do, anywhere).
+
+    Returns:
+      Where each such store, deletion or import starts, in source order.
+
+    """
+    return sorted(
+        (node.lineno, node.col_offset)
+        for node in cast("list[ast.Name | ast.alias]", of_type(tree, ast.Name, ast.alias))
+        if (
+            (node.id == _SELF and not isinstance(node.ctx, ast.Load))
+            if isinstance(node, ast.Name)
+            else (node.asname or node.name) == _SELF
+        )
+    )
 
 
 def _first_parameter(function: FunctionDef) -> list[str]:
@@ -104,11 +127,11 @@ def _first_parameter(function: FunctionDef) -> list[str]:
     return [arg.arg for arg in (*function.args.posonlyargs, *function.args.args)][:1]
 
 
-def _self_readers(function: FunctionDef) -> Iterator[FunctionDef]:
+def _self_readers(function: FunctionDef, bindings: Sequence[Start]) -> Iterator[FunctionDef]:
     """Walk the functions defined in `function`, however deep, that read its `self`.
 
     One taking no parameter `self` and binding none, in a function that does neither (but
-    `function` itself, whose `self` it is).
+    `function` itself, whose `self` it is). `bindings`: the module's `_self_bindings`.
 
     Yields:
       Each.
@@ -126,19 +149,25 @@ def _self_readers(function: FunctionDef) -> Iterator[FunctionDef]:
             args.vararg,
             args.kwarg,
         ]
-        if not any(arg is not None and arg.arg == _SELF for arg in params) and not _binds_self(inner):
+        if not any(arg is not None and arg.arg == _SELF for arg in params) and not _binds_self(
+            inner,
+            bindings,
+        ):
             yield inner
-            yield from _self_readers(inner)
+            yield from _self_readers(inner, bindings)
 
 
-def _binds_self(function: FunctionDef) -> bool:
+def _binds_self(function: FunctionDef, bindings: Sequence[Start]) -> bool:
     """Check whether a function's own body binds `self` (an assignment, a loop, an import, ...).
+
+    `bindings`: where the module binds one at all (see `_self_bindings`): a function none is in
+    isn't walked.
 
     Returns:
       Whether it does.
 
     """
-    return any(
+    return has_within(bindings, function) and any(
         (isinstance(node, ast.Name) and node.id == _SELF and not isinstance(node.ctx, ast.Load))
         or (isinstance(node, ast.alias) and (node.asname or node.name) == _SELF)
         for node in own_nodes(function.body)
@@ -243,6 +272,20 @@ def own_nodes(found: Sequence[ast.AST], parents: dict[int, ast.AST] | None = Non
             if parents is not None:
                 parents.update((id(child), node) for child in below)
             waiting.extend(reversed(below))
+
+
+def top_level(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
+    """Walk a module's top-level statements, those under its `if`s and `try`s too.
+
+    Yields:
+      Each.
+
+    """
+    stmt: ast.stmt
+    for stmt in body:
+        yield stmt
+        if isinstance(stmt, ast.If | ast.Try | ast.TryStar):
+            yield from top_level(child_statements(stmt))
 
 
 def child_statements(stmt: ast.stmt) -> list[ast.stmt]:

@@ -43,7 +43,8 @@ _WHY: Final = {
     ),
     VAGUE_TYPE: (
         "`Any`, `object` and generics without their parameters (`list`, `dict`) say almost nothing\n"
-        "about the value. Name the real type: `list[str]`, a `TypedDict`, a union."
+        "about the value. Name the real type: `list[str]`, a `TypedDict`, a union. `vague` lets some\n"
+        "through: at 0 one inside a type that says the rest (`tuple[str, Any]`), at N N+1 or one alone."
     ),
     NESTED_TYPE: (
         "An annotation nested `nesting` deep (3 by default) is hard to read and to change. Name a part\n"

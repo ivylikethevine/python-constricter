@@ -5,11 +5,14 @@ Each checker's servers are started once, over standard input and output, with th
 their workspace, and work at once (see `Session`); each file is opened with the text constricter
 read, and its inlay hints asked for over the whole file. A variable-type hint (`: int`) sits just
 after the name it types: that end is its key, as the line (from 1) and the UTF-8 byte column `ast`
-gives the name's end. What the hint says is `constricter.fix.hinted`'s to judge: here it's only
+gives the name's end. What the hint says is `constricter.fix.values.hinted`'s to judge: here it's only
 text.
 
-A server that can't be started, exits, times out or answers an error stops the run: the option
-asked for its types, and silently offering none would look like a checker that found nothing.
+A server that can't be started, exits or answers an error stops the run: the option asked for its
+types, and silently offering none would look like a checker that found nothing. One that hangs is
+restarted and asked about each of its unanswered files alone; a file it hangs on again gets no hints
+(`Session.abandoned`, which the command reports), and a checker that hangs on more than
+`_MOST_ABANDONED` files stops the run.
 """
 
 import contextlib
@@ -31,8 +34,8 @@ from pathlib import Path
 from typing import IO, Final, NamedTuple, Self, TypeAlias, cast
 
 from constricter.cli import edits, guard, protocol
-from constricter.cli.protocol import SERVERS, HintError, Server
-from constricter.fix.known import Hints, Offered
+from constricter.cli.protocol import SERVERS, HintError, HungError, Server
+from constricter.fix.core.known import Hints, Offered
 
 _Json: TypeAlias = protocol.Json
 _Object: TypeAlias = protocol.Object
@@ -52,6 +55,7 @@ _FILES_PER_SERVER: Final = 32  # fewer files than this each don't pay for anothe
 # first answer took basedpyright 410s, but it reports its progress (`$/progress`) all the while.
 _TIMEOUT: Final = 120.0
 _POLL: Final = 1.0  # seconds between looks at how long it's been silent, while waiting
+_MOST_ABANDONED: Final = 3  # files a checker may hang on twice before the run stops
 # The guard's interpreter: the one a venv's is made from, if it's one. A Windows venv's `python.exe`
 # is a launcher that starts that one as a child, which then outlives a kill of the launcher.
 _GUARD_PYTHON: Final = str(getattr(sys, "_base_executable", "") or sys.executable)
@@ -98,6 +102,9 @@ class _Asked(NamedTuple):
 
     numbers: dict[int, Path]
     lines: dict[Path, list[str]]
+
+
+_Sent: TypeAlias = tuple[dict[Path, str], _Asked]  # a batch of files, and its hint requests
 
 
 class Session:
@@ -151,7 +158,9 @@ class Session:
         work: list[tuple[Checker, _Task]] = [
             (checker, task) for checker in self.checkers for task in checker.tasks(files)
         ]
-        found: dict[str, _Found] = {checker.name: {} for checker in self.checkers}
+        found: dict[str, _Found] = {
+            checker.name: {path: {} for path in checker.abandoned & files.keys()} for checker in self.checkers
+        }
         pool: ThreadPoolExecutor
         with ThreadPoolExecutor(len(work)) as pool:
             futures: list[Future[_Found]] = [pool.submit(task) for _, task in work]
@@ -163,6 +172,16 @@ class Session:
             path: tuple(_hints(checker.name, found[checker.name][path]) for checker in self.checkers)
             for path in files
         }
+
+    @property
+    def abandoned(self) -> list[tuple[str, Path]]:
+        """List the files a checker's server hung on twice, which it has no hints for.
+
+        Returns:
+          Each checker's name and file, in the order the checkers were named.
+
+        """
+        return [(checker.name, path) for checker in self.checkers for path in sorted(checker.abandoned)]
 
     def _start(self, files: Mapping[Path, str]) -> None:
         """Start the servers `files` need that aren't running yet, all at once.
@@ -229,6 +248,7 @@ class Checker:
         self.memory: int = budget(memory, available_memory())
         self.servers: list[Connection] = []
         self.assigned: dict[Path, int] = {}  # each file's server, by its place in `servers`
+        self.abandoned: set[Path] = set()  # the files a server hung on twice: never asked about again
 
     def wanted(self, files: Mapping[Path, str]) -> int:
         """Count the servers `files` want, as many as fit in memory (never fewer than it has).
@@ -244,13 +264,15 @@ class Checker:
     def tasks(self, files: Mapping[Path, str]) -> list[_Task]:
         """Make each server's work on `files`: its own files first, then new ones as it's free for them.
 
+        A file abandoned (see `_alone`) isn't asked about again.
+
         Returns:
           A task per server, giving the hints of every file it was sent.
 
         """
         own: dict[int, dict[Path, str]] = {}
         path: Path
-        for path in files.keys() & self.assigned.keys():
+        for path in files.keys() & self.assigned.keys() - self.abandoned:
             own.setdefault(self.assigned[path], {})[path] = files[path]
         fresh: list[Path] = sorted(
             files.keys() - self.assigned.keys(),
@@ -275,21 +297,72 @@ class Checker:
           Each file's hints.
 
         """
-        server: Connection = self.servers[index]
         found: _Found = {}
-        waiting: _Asked | None = None
+        pending: list[_Sent] = []
         batch: dict[Path, str]
         # Two batches in flight: the next is asked before the last's answers are read, so the server
         # always has work while they're read and the next batch is taken.
         for batch in itertools.chain([own] if own else [], iter(partial(_taken, batches), None)):
-            asked: _Asked = server.ask(batch)
+            pending.append((batch, self.servers[index].ask(batch)))
             self.assigned.update(dict.fromkeys(batch, index))  # each file's taken once: no two write one
-            if waiting is not None:
-                found.update(server.answers(waiting))
-            waiting = asked
-        if waiting is not None:
-            found.update(server.answers(waiting))
+            if len(pending) > 1:
+                found.update(self._answers(index, pending))
+        if pending:
+            found.update(self._answers(index, pending))
         return found
+
+    def _answers(self, index: int, pending: list[_Sent]) -> _Found:
+        """Collect the answers to the first of `pending`'s batches from server `index`, and take it off.
+
+        If the server hangs, every pending file is asked about again alone (see `_alone`).
+
+        Returns:
+          Each file's hints: the batch's, or every pending file's.
+
+        """
+        try:
+            found: _Found = self.servers[index].answers(pending[0][1])
+        except HungError:
+            unanswered: dict[Path, str] = {path: text for batch, _ in pending for path, text in batch.items()}
+            pending.clear()
+            return self._alone(index, unanswered)
+        del pending[0]
+        return found
+
+    def _alone(self, index: int, files: Mapping[Path, str]) -> _Found:
+        """Restart server `index`, which hung, and ask it about each of `files` alone.
+
+        A file it hangs on again is abandoned, with no hints, and the server restarted for the rest:
+        one file's analysis needn't cost every other file's hints.
+
+        Returns:
+          Each file's hints.
+
+        Raises:
+          HintError: It hung on more than `_MOST_ABANDONED` files, or can't be restarted.
+
+        """
+        self._restart(index)
+        found: _Found = {}
+        path: Path
+        text: str
+        for path, text in files.items():
+            server: Connection = self.servers[index]
+            try:
+                found.update(server.answers(server.ask({path: text})))
+            except HungError as hung:
+                self.abandoned.add(path)
+                if len(self.abandoned) > _MOST_ABANDONED:
+                    error: str = f"{self.name} hung on {len(self.abandoned)} file(s), each asked about alone"
+                    raise HintError(error) from hung
+                found[path] = {}
+                self._restart(index)
+        return found
+
+    def _restart(self, index: int) -> None:
+        """Stop server `index` and start another in its place, which opens each file it's asked about."""
+        self.servers[index].close(graceful=False)
+        self.servers[index] = Connection(self.command, self.root)
 
 
 def _taken(batches: "queue.SimpleQueue[dict[Path, str]]") -> dict[Path, str] | None:
@@ -677,7 +750,7 @@ class Connection:
           It (`None` at the end of its output), or `_SILENCE` if none came yet.
 
         Raises:
-          HintError: It has said nothing at all for `_TIMEOUT` seconds: it's hung.
+          HungError: It has said nothing at all for `_TIMEOUT` seconds.
 
         """
         try:
@@ -685,7 +758,7 @@ class Connection:
         except queue.Empty:
             if time.monotonic() - self.inbox.heard >= _TIMEOUT:
                 error: str = f"{self.name} said nothing for {_TIMEOUT:.0f}s while answering `{method}`"
-                raise HintError(error) from None
+                raise HungError(error) from None
             return _SILENCE
 
     def _listen(self) -> None:

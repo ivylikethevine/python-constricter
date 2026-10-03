@@ -1,0 +1,490 @@
+# SPDX-License-Identifier: MIT
+"""`--fix` beyond `name: T = value`: declarations before a loop or an unpacking, and rewrites.
+
+A loop's target (LVA002) and an unpacking's names (LVA001) are declared (`name: T`) on a line of
+their own before the statement; an annotation LVA008 or LVA010 would narrow is rewritten, as a
+guess.
+"""
+
+import ast
+import json
+import textwrap
+from pathlib import Path
+from typing import Final, TypeAlias, cast
+
+import pytest
+
+from constricter import check_source, check_tree
+from constricter.cli import command as cli
+from constricter.fix.core import fixes
+from constricter.fix.core.known import Inference, Known
+from constricter.fix.values.inference import looped
+from constricter.fix.values.targets import unpacked
+from constricter.offences import COMMENT_TYPED_TARGET as COMMENT_TYPED
+from constricter.offences import Edit, Fix, Offence
+
+_NOTHING_KNOWN: Known = Known({}, frozenset(), {}, {})
+# A notebook cell as written, and as read back (only its `source` is looked at).
+_Cell: TypeAlias = dict[str, str | list[str] | dict[str, str]]
+_Sources: TypeAlias = dict[str, list[str]]
+
+
+def _fixed(source: str, *, unsafe: bool = False) -> str:
+    """Apply every fix `check_source` offers (guesses too, if `unsafe`).
+
+    Returns:
+      The fixed source.
+
+    """
+    text: str = textwrap.dedent(source)
+    offences: list[Offence] = [o for o in check_source(text) if o.fix and (unsafe or not o.unsafe)]
+    return "".join(fixes.apply(text.splitlines(keepends=True), offences))
+
+
+@pytest.mark.parametrize(
+    ("iterable", "declared", "expected"),
+    [
+        ("range(3)", {}, "int"),
+        ("range()", {}, "int"),  # a `range`'s, as any call to it gives one
+        ("names", {"names": "list[str]"}, "str"),
+        ("names", {"names": "frozenset[str]"}, "str"),
+        ("names", {"names": "tuple[str, ...]"}, "str"),
+        ("names", {"names": "tuple[str, int]"}, None),  # which one varies
+        ("names", {"names": "tuple[str, str]"}, "str"),  # whichever it is
+        ("('a', 'b')", {}, "str"),
+        ("(1, 'b')", {}, None),
+        ("empty", {"empty": "tuple[()]"}, None),
+        ("text", {"text": "str"}, "str"),
+        ("blob", {"blob": "bytes"}, "int"),
+        ("blob", {"blob": "bytearray"}, "int"),
+        ("span", {"span": "range"}, "int"),
+        ("ages", {"ages": "dict[str, int]"}, "str"),
+        ("ages.keys()", {"ages": "dict[str, int]"}, "str"),
+        ("ages.values()", {"ages": "dict[str, int]"}, "int"),
+        ("ages.items()", {"ages": "dict[str, int]"}, "tuple[str, int]"),
+        ("things.items()", {"things": "list[int]"}, None),  # not a `dict`
+        ("ages", {"ages": "Mapping[str, int]"}, "str"),  # any mapping, however it's named
+        ("ages.items()", {"ages": "abc.MutableMapping[str, int]"}, "tuple[str, int]"),
+        ("ages.values()", {"ages": "defaultdict[str, list[int]]"}, "list[int]"),
+        ("ages.keys()", {"ages": "MappingProxyType[str, int]"}, "str"),
+        ("ages.items()", {"ages": "Counter[str]"}, None),  # one type argument: not read
+        ("enumerate(names)", {"names": "list[str]"}, "tuple[int, str]"),
+        ("zip(names, ages)", {"names": "list[str]", "ages": "dict[str, int]"}, "tuple[str, str]"),
+        ("zip(names, other)", {"names": "list[str]"}, None),  # `other` isn't known
+        ("enumerate(names, start=1)", {"names": "list[str]"}, "tuple[int, str]"),
+        ("zip(names, names, strict=True)", {"names": "list[str]"}, "tuple[str, str]"),
+        ("sorted(names, key=len, reverse=True)", {"names": "list[str]"}, "str"),
+        ("sorted(names, cmp=None)", {"names": "list[str]"}, None),  # not a keyword `sorted` takes
+        ("zip(*names)", {"names": "list[str]"}, None),  # as many parts as `names` has
+        ("sorted(names)", {"names": "set[str]"}, "str"),
+        ("reversed(names)", {"names": "list[str]"}, "str"),
+        ("map(int, names)", {"names": "list[str]"}, "int"),
+        ("map(len, unknown())", {}, "int"),  # whatever it's mapped over
+        ("map(parse, names)", {}, None),  # what `parse` returns isn't known
+        ("map(Box, names)", {}, None),  # a capitalised call is only guessed to construct one
+        ("map(int, names, key=None)", {}, None),  # not a keyword `map` takes
+        ("zip(names, map(str, names))", {"names": "list[str]"}, "tuple[str, str]"),
+        ("unknown()", {}, None),
+    ],
+)
+def test_a_loops_element_type(iterable: str, declared: dict[str, str], expected: str | None) -> None:
+    """What each time round a loop over `iterable` binds."""
+    found: Inference | None = looped(ast.parse(iterable, mode="eval").body, _NOTHING_KNOWN, declared)
+    assert (None if found is None else found.annotation) == expected
+
+
+@pytest.mark.parametrize(
+    ("target", "annotation", "expected"),
+    [
+        ("a", "int", [("a", "int")]),
+        ("a, b", "tuple[int, str]", [("a", "int"), ("b", "str")]),
+        ("[a, b]", "tuple[int, ...]", [("a", "int"), ("b", "int")]),
+        ("a, (b, c)", "tuple[int, tuple[str, bytes]]", [("a", "int"), ("b", "str"), ("c", "bytes")]),
+        ("a, b", "tuple[int, str, bytes]", [("a", None), ("b", None)]),  # lengths differ
+        ("a, b", "tuple[int, int, int]", [("a", None), ("b", None)]),
+        ("a, *rest", "tuple[int, ...]", [("a", "int"), ("rest", "list[int]")]),
+        ("a, b", "list[int]", [("a", "int"), ("b", "int")]),
+        ("a, b", "str", [("a", "str"), ("b", "str")]),
+        ("a, b", "dict[str, int]", [("a", "str"), ("b", "str")]),  # its keys
+        ("a, b", "Iterator[bytes]", [("a", "bytes"), ("b", "bytes")]),
+        ("a, b", "int", [("a", None), ("b", None)]),  # nothing to unpack
+        ("first, *rest", "list[str]", [("first", "str"), ("rest", "list[str]")]),
+        ("*rest, last", "set[str]", [("rest", "list[str]"), ("last", "str")]),
+        ("a, *rest", "tuple[int, str, str]", [("a", "int"), ("rest", "list[str]")]),
+        ("a, *rest, z", "tuple[int, str, bytes, float]", [("a", "int"), ("rest", None), ("z", "float")]),
+        ("a, *rest, z", "tuple[int, float]", [("a", "int"), ("rest", None), ("z", "float")]),  # none left
+        ("a, *rest, z", "tuple[int, int]", [("a", "int"), ("rest", None), ("z", "int")]),
+        ("a, b, *rest", "tuple[int]", [("a", None), ("b", None), ("rest", None)]),  # too short
+        ("a, b, c, *d", "tuple[int, str]", [("a", None), ("b", None), ("c", None), ("d", None)]),
+        ("a, *(b, c)", "tuple[int, str, str]", [("a", "int"), ("b", "str"), ("c", "str")]),
+        ("a, b", None, [("a", None), ("b", None)]),
+        ("a.x, b", "tuple[int, str]", [("b", "str")]),  # an attribute binds no local
+    ],
+)
+def test_an_unpacking_splits_a_tuple_type(target: str, annotation: str | None, expected: object) -> None:
+    """Each name gets its part of a tuple, or an element of anything else; a starred one a `list`."""
+    statement: ast.stmt = ast.parse(f"{target} = x").body[0]
+    assert isinstance(statement, ast.Assign)
+    node: ast.expr = statement.targets[0]
+    assert [(name.id, part) for name, part in unpacked(node, annotation)] == expected
+
+
+def test_loops_and_unpackings_are_declared_before_their_statement() -> None:
+    """At the statement's indentation, each name on its own line, in order."""
+    source: str = """
+    def f(names: list[str], ages: dict[str, int], pair: tuple[int, str]) -> None:
+        if names:
+            for index, name in enumerate(names):
+                pass
+        first, second = pair
+    """
+    assert _fixed(source) == textwrap.dedent(
+        """
+    def f(names: list[str], ages: dict[str, int], pair: tuple[int, str]) -> None:
+        if names:
+            index: int
+            name: str
+            for index, name in enumerate(names):
+                pass
+        first: int
+        second: str
+        first, second = pair
+    """,
+    )
+
+
+def test_enumerate_and_zip_type_each_known_part_on_its_own() -> None:
+    """`enumerate`'s index is an `int` whatever it counts; a guess makes only its own part one."""
+    source: str = """
+    def f(xs, names: list[str]) -> None:
+        for i, x in enumerate(xs):
+            pass
+        for a, b in zip(names, xs):
+            pass
+        for j, box in enumerate([Box()]):
+            pass
+        for c, *d in zip(names, names):
+            pass
+    """
+    offences: list[Offence] = check_source(textwrap.dedent(source))
+    assert [(o.name, o.fix, o.unsafe) for o in offences] == [
+        ("i", "int", False),
+        ("x", None, False),
+        ("a", "str", False),
+        ("b", None, False),
+        ("j", "int", False),
+        ("box", "Box", True),
+        ("c", "str", False),  # a starred target: split as a whole, `zip`'s tuple
+        ("d", "list[str]", False),
+    ]
+
+
+def test_an_unpacked_display_types_each_name_by_its_own_value() -> None:
+    """As a plain assignment's is, whatever the others are; every value is read before any name is bound."""
+    source: str = """
+    def f(x, n: int, s: str, flag: bool) -> None:
+        a, b = x, 1
+        (c, d), e = (n, s), [s]
+        i, *j = n, s
+        n, s = s, n
+        g, h = Box(), n
+        k, m = flag or None, None
+        self.o, p = 1, 2
+    """
+    offences: list[Offence] = check_source(textwrap.dedent(source))
+    assert [(o.name, o.fix, o.unsafe) for o in offences] == [
+        ("a", None, False),
+        ("b", "int", False),
+        ("c", "int", False),
+        ("d", "str", False),
+        ("e", "list[str]", False),
+        ("i", "int", False),  # a starred name: the display's own type is split
+        ("j", "list[str]", False),
+        ("g", "Box", True),
+        ("h", "str", True),  # `n` is what `s` was, a guess as any name bound again is
+        ("k", None, False),
+        ("m", None, False),
+        ("p", "int", False),
+    ]
+    kinds: list[frozenset[str]] = [o.edit.kinds for o in offences if o.edit is not None]
+    assert kinds[0] == {"literal", "unpack"}
+
+
+def test_an_unpacking_takes_the_elements_of_what_it_iterates() -> None:
+    """`a, b = s.split(",")`: each a `str`; a call that only iterates is unpacked as a loop reads it."""
+    source: str = """
+    def f(s: str, names: list[str], ages: dict[str, int]) -> None:
+        a, b = s.split(",")
+        first, *rest = names
+        c, d = map(int, names)
+        i, j = range(2)
+        (k, v), other = ages.items()
+        box = Box()
+        m, n = box.parts.items()
+        o, p = unknown()
+    """
+    offences: list[Offence] = check_source(textwrap.dedent(source))
+    assert [(o.name, o.fix, o.unsafe) for o in offences] == [
+        ("a", "str", False),
+        ("b", "str", False),
+        ("first", "str", False),
+        ("rest", "list[str]", False),
+        ("c", "int", False),
+        ("d", "int", False),
+        ("i", "int", False),
+        ("j", "int", False),
+        ("k", "str", False),
+        ("v", "int", False),
+        ("other", "tuple[str, int]", False),
+        ("box", "Box", True),
+        ("m", None, False),
+        ("n", None, False),
+        ("o", None, False),
+        ("p", None, False),
+    ]
+
+
+def test_a_loop_over_a_guess_is_declared_only_with_unsafe_fixes() -> None:
+    """A loop over a value only guessed (`Box()` may be generic) offers a guess."""
+    source: str = """
+    class Box:
+        def items(self) -> list[int]: ...
+
+    def f() -> None:
+        box = Box()
+        things = box.items()
+        for thing in things:
+            pass
+    """
+    declaration: str = "    thing: int\n"
+    assert declaration not in _fixed(source)
+    assert declaration in _fixed(source, unsafe=True)
+
+
+def test_a_declared_loop_target_types_what_follows_in_the_same_pass() -> None:
+    """A later `x = target...` is inferred at once, so a second `--fix` pass has nothing left."""
+    source: str = """
+    def f(ages: dict[str, int]) -> None:
+        for name, age in ages.items():
+            label = name.upper()
+    """
+    fixed: str = "        label: str = name.upper()\n"
+    assert fixed in _fixed(source)
+
+
+def test_a_type_commented_loop_target_is_declared_from_its_comment(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """LVA003's fix declares the comment's type before the loop and drops the comment.
+
+    A tuple target takes the comment's parts; a comment after it stays; a header over several lines,
+    or a comment that isn't an annotation, gets no fix; a second pass has nothing left.
+    """
+    source: str = (
+        "def f(items: list[int]) -> None:\n"
+        "    for x in items:  # type: int\n"
+        "        pass\n"
+        "    for a, b in pairs():  # type: int, str  # noqa: E501\n"
+        "        pass\n"
+        "    for c in (\n"
+        "        items\n"
+        "    ):  # type: int\n"
+        "        pass\n"
+        "    for d in items:  # type: not an annotation(\n"
+        "        pass\n"
+    )
+    fixed: dict[str, str | None] = {o.name: o.fix for o in check_source(source) if o.code == COMMENT_TYPED}
+    assert fixed == {"x": "int", "a": "int", "b": "str", "c": None, "d": None}
+    path: Path = tmp_path / "loops.py"
+    _ = path.write_text(source, encoding="utf-8", newline="\n")
+    assert cli.main(["--fix", "-q", "--level=suffocate", str(path)]) == cli.EXIT_FOUND
+    assert path.read_text(encoding="utf-8").startswith(
+        (
+            "def f(items: list[int]) -> None:\n"
+            "    x: int\n"
+            "    for x in items:\n"
+            "        pass\n"
+            "    a: int\n"
+            "    b: str\n"
+            "    for a, b in pairs():  # noqa: E501\n"
+        ),
+    )
+    _ = capsys.readouterr()
+    assert cli.main(["--diff", "--level=suffocate", str(path)]) == cli.EXIT_CLEAN
+    assert not capsys.readouterr().out  # nothing left to fix
+
+
+def test_a_declaration_keeps_the_files_line_endings() -> None:
+    """A file with Windows line endings gets its declarations with them too."""
+    lines: list[str] = ["def f() -> None:\r\n", "    for i in range(3):\r\n", "        pass\r\n"]
+    offence: Offence = Offence(2, 8, "i", edit=Fix("int", edit=Edit.DECLARE, span=(2, 4)))
+    declaration: str = "    i: int\r\n"
+    assert fixes.apply(lines, [offence])[1] == declaration
+
+
+def test_a_notebook_declaration_lands_in_its_cell(tmp_path: Path) -> None:
+    """In a notebook, the declaration goes before the statement in the statement's own cell."""
+    cells: list[_Cell] = [
+        {"cell_type": "code", "metadata": {}, "source": ["x: int = 1\n"]},
+        {"cell_type": "code", "metadata": {}, "source": ["for i in range(3):\n", "    pass\n"]},
+    ]
+    path: Path = tmp_path / "demo.ipynb"
+    _ = path.write_text(json.dumps({"cells": cells, "metadata": {}, "nbformat": 4}), encoding="utf-8")
+    assert cli.main(["-q", "--fix", "--all-scopes", str(path)]) == cli.EXIT_CLEAN
+    notebook: dict[str, list[_Sources]] = cast(
+        "dict[str, list[_Sources]]",
+        json.loads(path.read_text(encoding="utf-8")),
+    )
+    fixed: list[str] = notebook["cells"][1]["source"]
+    assert fixed == ["i: int\n", "for i in range(3):\n", "    pass\n"]
+
+
+def test_narrowing_rewrites_the_annotation_only_with_unsafe_fixes() -> None:
+    """LVA008's narrowed type, or LVA010's union without its unused members, replaces the annotation."""
+    source: str = """
+    def f() -> None:
+        total: float = 0
+        total += 1
+        label: int | str | None = 3
+        label = 4
+        both: float | bytes = 1
+    """
+    assert _fixed(source) == textwrap.dedent(source)
+    assert _fixed(source, unsafe=True) == textwrap.dedent(
+        """
+    def f() -> None:
+        total: int = 0
+        total += 1
+        label: int = 3
+        label = 4
+        both: int = 1
+    """,
+    )
+
+
+def test_a_multi_line_annotation_isnt_rewritten() -> None:
+    """An annotation that doesn't sit on its name's line is left to rewrite by hand."""
+    source: str = "def f() -> None:\n    x: (\n        float\n    ) = 0\n"
+    offences: list[Offence] = check_source(source)
+    assert [(o.code, o.fix) for o in offences] == [("LVA008", None)]
+
+
+def test_replacing_writes_over_the_annotations_columns() -> None:
+    """An `Edit.REPLACE` writes its annotation between its span's columns."""
+    offence: Offence = Offence(1, 0, "x", edit=Fix("int", edit=Edit.REPLACE, span=(3, 8)))
+    assert fixes.apply(["x: float = 0\n"], [offence]) == ["x: int = 0\n"]
+
+
+def test_a_chained_assignment_binds_only_its_names() -> None:
+    """`x = o.y = 1` binds `x`, not `o.y` (an attribute isn't a local); a starred name is a name."""
+    assert [o.name for o in check_source("def f(o: object) -> None:\n    x = o.y = 1\n")] == ["x"]
+    source: str = "def f(values: list[int]) -> None:\n    x = a, *rest = values\n"
+    assert [o.name for o in check_source(source)] == ["x", "a", "rest"]
+
+
+def test_a_drop_left_unmade_where_it_cant_be() -> None:
+    """A drop whose columns split a character, or a comment not on the header's line, is no edit."""
+    split: Offence = Offence(1, 0, "x", edit=Fix("int", edit=Edit.DECLARE, span=(1, 0), drop=(1, 2)))
+    assert fixes.dropped(["é = 1\n"], split) is None
+    tree: ast.Module = ast.parse(
+        "def f(y: list[int]) -> None:\n    for x in y:  # type: int\n        pass\n",
+        type_comments=True,
+    )
+    lines: list[str] = [
+        "def f(y: list[int]) -> None:",
+        "    for x in y:",
+        "        pass",
+    ]  # no comment in them
+    assert [(o.code, o.edit) for o in check_tree(tree, lines=lines)] == [(COMMENT_TYPED, None)]
+
+
+def test_a_type_argument_with_a_trailing_comma_is_still_the_element() -> None:
+    """`list[int,]` (a formatter's split) subscripts `list` with `(int,)`: its element is still `int`."""
+    source: str = """
+    def f(nums: list[
+        int,
+    ], names: set[
+        str,
+    ]) -> None:
+        for num in nums:
+            pass
+        first = nums[0]
+        last = nums.pop()
+        name = names.pop()
+    """
+    assert {o.name: o.fix for o in check_source(textwrap.dedent(source))} == {
+        "num": "int",
+        "first": "int",
+        "last": "int",
+        "name": "str",
+    }
+
+
+CHAINED: Final = """
+LEFT = RIGHT = None
+SIZE = WIDTH = 3
+
+
+def f():
+    i = j = 0
+    first = last = ""
+    return i, j, first, last
+"""
+CHAINED_FIXED: Final = """
+LEFT = RIGHT = None
+SIZE: int
+WIDTH: int
+SIZE = WIDTH = 3
+
+
+def f():
+    i: int
+    j: int
+    i = j = 0
+    first: str
+    last: str
+    first = last = ""
+    return i, j, first, last
+"""
+
+
+def test_a_chained_assignments_names_are_declared_before_it(tmp_path: Path) -> None:
+    """`a = b = 0` can't be annotated: each name is declared before it; `None` still says nothing."""
+    path: Path = tmp_path / "chained.py"
+    _ = path.write_text(CHAINED, encoding="utf-8", newline="\n")
+    _ = cli.main(["--fix", "-q", "--all-scopes", str(path)])
+    assert path.read_text(encoding="utf-8") == CHAINED_FIXED
+
+
+CHAINED_LATE: Final = """
+def f(flag):
+    first = last = None
+    if flag:
+        first = last = "x"
+    other = None
+    if flag:
+        other = spare = 1
+    return first, last, other, spare
+"""
+CHAINED_LATE_FIXED: Final = """
+def f(flag):
+    first: str | None
+    last: str | None
+    first = last = None
+    if flag:
+        first = last = "x"
+    other: int | None = None
+    if flag:
+        spare: int
+        other = spare = 1
+    return first, last, other, spare
+"""
+
+
+def test_a_late_fix_for_a_chained_name_is_declared_before_its_first_binding(tmp_path: Path) -> None:
+    """`None`, then only `str`: `str | None`, declared; a name bound first elsewhere is fixed there."""
+    path: Path = tmp_path / "late.py"
+    _ = path.write_text(CHAINED_LATE, encoding="utf-8", newline="\n")
+    _ = cli.main(["--fix", "-q", str(path)])
+    assert path.read_text(encoding="utf-8") == CHAINED_LATE_FIXED

@@ -9,8 +9,9 @@ They aren't tracked: a build (`hatch_build.py`) generates them where they're mis
 basedpyright version `uv.lock` pins, and a digest of the code that generates them (`INPUTS`).
 
 It reads the typeshed stubs basedpyright bundles (that pinned version, installed), as each platform
-(Linux, macOS, Windows) and each Python version constricter supports (3.11 to 3.14) sees them, and
-keeps what comes out the same for all twelve:
+(Linux, macOS, Windows) and each Python version constricter supports (3.11 to 3.14) sees them (each
+of the twelve in a worker process, where there are cores and processes to have), and keeps what
+comes out the same for all twelve:
 
 - `returns`: functions (and classes' own classmethods and staticmethods) returning a builtin type
   (`int`, `list[str]`, `str | None`), by every public path they're reached through;
@@ -26,32 +27,41 @@ keeps what comes out the same for all twelve:
 - `type_parameters` and `subscriptable`: each generic class's type parameters, and whether every
   Python can subscript it at run time; `generic_attributes`: its own attributes and properties, as
   templates its instance's type arguments bind;
+- `functions`: capitalised functions no other table types (`xml.etree.ElementTree.Comment`), so
+  a call to one isn't taken to construct a class;
 - `variables`: module-level variables' types (`sys.path`, `os.sep`), as `returns` and `classes` hold
   a function's;
 - `scalars`: which builtin scalar types (`overloads.SCALARS`), then containers (`CONTAINERS`),
   each class or alias takes, by every path an installed package's stub may import it from
   (`typing.SupportsIndex`, `_typeshed.StrPath`), and `scalar_members`: each of those types'
   members, for its protocols; installed packages' overloads are matched with them
-  (`constricter.fix.stubbed`).
+  (`constricter.fix.index.stubbed`).
 
-A return that names a `TypeVar` (but `AnyStr`), `Any`, or anything else vague, differs between
-overloads, or is spelled with a class inside a generic (`list[Path]`), is left out; so is `typing`
-(its factories), `enum`'s classes (their functional API makes a class), and what `_RUNTIME` lists.
+A return that names a `TypeVar` (but `AnyStr`), or anything vague but `Any` alone (`json.loads`'s,
+under `returns`, for `vague` to judge), differs between overloads, or is spelled with a class inside
+a generic (`list[Path]`), is left out; so is `typing` (its factories), `enum`'s classes (their
+functional API makes a class), and what `_RUNTIME` lists.
 """
 
 import argparse
 import ast
+import contextlib
 import hashlib
 import importlib.metadata
 import json
+import os
 import tomllib
 from collections.abc import Sequence
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
+from functools import lru_cache
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter.fix.signatures import Signature
+from constricter.fix.core.signatures import Signature
 from stdlib_tables.overloads import CONTAINERS, SCALARS, Overloads
 from stdlib_tables.reading import (
+    ANY,
     ANY_STR,
     ATTRIBUTE,
     CLASSMETHOD,
@@ -87,7 +97,8 @@ STUBS: Final = "basedpyright"  # the package whose bundled typeshed stubs the ta
 INPUTS: Final = (
     *sorted(path.relative_to(ROOT).as_posix() for path in Path(__file__).parent.glob("*.py")),
     "constricter/fix/__init__.py",
-    "constricter/fix/signatures.py",
+    "constricter/fix/core/__init__.py",
+    "constricter/fix/core/signatures.py",
     "constricter/offences.py",
     "constricter/rules/__init__.py",
     "constricter/rules/annotations.py",
@@ -120,6 +131,7 @@ _RUNTIME: Final = frozenset(
 # Modules whose names installed packages' stubs annotate with, private or not (`scalars`).
 _ANNOTATING: Final = frozenset({"typing", "typing_extensions", "builtins", "_typeshed", "collections.abc"})
 _YES: Final = "y"
+_FUNCTION: Final = "def"  # a `functions` entry: what the path names
 _ENTER: Final = "__enter__"
 
 
@@ -155,6 +167,7 @@ class _Tables(NamedTuple):
     variables: Table  # module-level variables' types: builtin annotations, or classes' paths
     scalars: Table  # each class's and alias's verdict (`y`, `n`, `?`) per `SCALARS`, then `CONTAINERS`, type
     scalar_members: dict[str, list[str]]  # each scalar's members, its class's and its bases'
+    functions: Table  # capitalised functions no other table types, each to `_FUNCTION`
 
 
 def _paths(stubs: Stubs, config: Config) -> dict[str, Found]:
@@ -183,6 +196,38 @@ def _paths(stubs: Stubs, config: Config) -> dict[str, Found]:
     return found
 
 
+def readings(root: Path) -> list[_Tables]:
+    """Read the stubs under `root` as each of `CONFIGS` sees them: in worker processes, if it can.
+
+    In this process where there's one core, or no process can be started (a sandbox).
+
+    Returns:
+      Each configuration's tables, in `CONFIGS`' order.
+
+    """
+    workers: int = min(len(CONFIGS), os.cpu_count() or 1)
+    pool: ProcessPoolExecutor
+    if workers > 1:
+        with contextlib.suppress(OSError, BrokenProcessPool), ProcessPoolExecutor(workers) as pool:
+            return list(pool.map(read_config, CONFIGS, [root] * len(CONFIGS)))
+    return [read_config(config, root) for config in CONFIGS]
+
+
+def read_config(config: Config, root: Path) -> _Tables:
+    """Build every table as `config` sees the stubs under `root`, parsed once a process.
+
+    Returns:
+      Them.
+
+    """
+    return _read(_parsed(root), config)
+
+
+@lru_cache(maxsize=1)
+def _parsed(root: Path) -> Stubs:
+    return Stubs(root)
+
+
 def _read(stubs: Stubs, config: Config) -> _Tables:
     """Build every table as `config` sees the stubs.
 
@@ -201,7 +246,7 @@ def _read(stubs: Stubs, config: Config) -> _Tables:
     canonical: dict[ClassRef, str] = {
         klass: path for klass, path in every.items() if not reading.generic(klass)
     }
-    tables: _Tables = _Tables({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+    tables: _Tables = _Tables({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
     reader: _Reader = _Reader(reading, Overloads(reading, every), canonical)
     _enter_scalars(tables, reader, stubs, config)
     for path, found in paths.items():
@@ -378,13 +423,20 @@ def _enter_constructor(tables: _Tables, reader: _Reader, path: str, klass: Class
 
 
 def _function(tables: _Tables, reader: _Reader, path: str, module: str, defs: Defs) -> None:
-    """Enter a function: under `returns` or `classes` if it always returns the same, else `overloads`."""
+    """Enter a function: under `returns` or `classes` if it always returns the same, else `overloads`.
+
+    One none of them can hold is under `functions`, if its name is capitalised.
+    """
     form: Form | None = reader.reading.returns(defs, module, None)
     signatures: Signatures | None
     if form != ANY_STR and form is not None and _value(form, reader.canonical) is not None:
         _entry(tables, path, form, reader.canonical)
+    elif reader.reading.returns_any(defs, module):
+        tables.returns[path] = ANY
     elif (signatures := reader.overloads.entry(defs, module)) is not None:
         tables.overloads[path] = [signatures]
+    elif path.rpartition(".")[2][:1].isupper():
+        tables.functions[path] = _FUNCTION
 
 
 def _enter_members(
@@ -506,6 +558,7 @@ def _agreed(tables: list[_Tables]) -> _Tables:
         _common([one.variables for one in tables]),
         _common([one.scalars for one in tables]),
         _common_lists([one.scalar_members for one in tables]),
+        _common([one.functions for one in tables]),
     )
 
 
@@ -621,8 +674,7 @@ def generate(stubs_root: Path | None = None) -> dict[Path, str]:
 
     """
     root: Path = typeshed() if stubs_root is None else stubs_root
-    stubs: Stubs = Stubs(root)
-    each: list[_Tables] = [_read(stubs, config) for config in CONFIGS]
+    each: list[_Tables] = readings(root)
     tables: _Tables = _agreed(each)
     document: dict[str, _Json] = {
         "returns": tables.returns,
@@ -641,6 +693,7 @@ def generate(stubs_root: Path | None = None) -> dict[Path, str]:
         "variables": tables.variables,
         "scalars": tables.scalars,
         "scalar_members": tables.scalar_members,
+        "functions": tables.functions,
     }
     source: dict[str, str | list[str]] = {
         **stamp(),
@@ -735,7 +788,7 @@ def _partial(each: list[_Tables]) -> dict[str, list[str]]:
     tables: _Tables
     for config, tables in zip(CONFIGS, each, strict=True):
         path: str
-        for path in {*tables.returns, *tables.overloads, *tables.classes}:
+        for path in {*tables.returns, *tables.overloads, *tables.classes, *tables.functions}:
             found.setdefault(path, []).append(f"{config[0]}-3.{config[1]}")
     return {path: configs for path, configs in sorted(found.items()) if len(configs) < len(CONFIGS)}
 

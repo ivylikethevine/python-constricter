@@ -10,8 +10,10 @@ return-type one, which `--infer-with` ignores; `# round N: T` hints only from th
 (as a checker's view changes, as a file is annotated); `# edits: T => U @ E @ L:C F` gives the hint
 `T` the edits an editor would apply: the annotation as `U` (`T` itself, without `=> U`), `E` added at
 the top of the file, and `F` inserted at line `L` (from 0), character `C`; `# located: T @ N=P`
-gives the label as parts, the name `N` in it with the file `P` it's defined in. Positions count
-UTF-16 code units, or UTF-8 bytes with the `utf-8` behaviour.
+gives the label as parts, the name `N` in it with the file `P` it's defined in. A file with a line
+`# hang` is never answered; with `# hang once`, only by a server started after one has hung on it
+(the first creates the file `FAKE_SERVER_HUNG` names). Positions count UTF-16 code units, or UTF-8
+bytes with the `utf-8` behaviour.
 
 Behaviours: `utf-8` (it negotiates UTF-8 positions), `ask` (before answering `initialize`, it asks
 for its settings, registers a capability and asks something the client can't answer, and logs a
@@ -70,6 +72,8 @@ _STUBBORN: Final = "stubborn"
 _MODIFIED: Final = "modified"
 _ALWAYS_MODIFIED: Final = "always-modified"
 _CANCELLED: Final = "cancelled"
+_HANG: Final = "# hang"
+_HANG_ONCE: Final = "# hang once"
 _CONTENT_MODIFIED: Final = -32801
 _REQUEST_CANCELLED: Final = -32800
 
@@ -267,17 +271,11 @@ def _hinted(message: _Object, documents: _Documents) -> bool:
         _ = sys.stdout.buffer.write(b'Content-Length: 100\r\n\r\n{"jsonrpc": "2.0", "id": ')
         _ = sys.stdout.buffer.flush()
         return False
-    if _SLOW in _BEHAVIOURS:  # a second's work, reporting its progress, before answering
-        for _ in range(10):
-            _send(
-                {
-                    "jsonrpc": "2.0",
-                    "method": "$/progress",
-                    "params": {"token": 1, "value": {"kind": "report"}},
-                },
-            )
-            time.sleep(0.1)
+    if _SLOW in _BEHAVIOURS:
+        _work()
     uri: str = str(cast("_Object", cast("_Object", message["params"])["textDocument"])["uri"])
+    if _hangs(documents.texts[uri]):
+        return True
     reply: _Object = {"jsonrpc": "2.0", "id": message["id"]}
     modified: bool = _ALWAYS_MODIFIED in _BEHAVIOURS or (
         bool({_MODIFIED, _CANCELLED} & _BEHAVIOURS) and uri not in documents.dropped
@@ -297,6 +295,31 @@ def _hinted(message: _Object, documents: _Documents) -> bool:
         if documents.held is not None:
             _send(documents.held)
             documents.held = None
+    return True
+
+
+def _work() -> None:
+    """Work for a second, reporting its progress."""
+    for _ in range(10):
+        _send({"jsonrpc": "2.0", "method": "$/progress", "params": {"token": 1, "value": {"kind": "report"}}})
+        time.sleep(0.1)
+
+
+def _hangs(text: str) -> bool:
+    """Decide whether to leave a file's hint request unanswered, as its `# hang` line says.
+
+    Returns:
+      Whether to.
+
+    """
+    if _HANG not in text:
+        return False
+    if _HANG_ONCE not in text:
+        return True
+    hung: Path = Path(os.environ["FAKE_SERVER_HUNG"])
+    if hung.exists():
+        return False
+    hung.touch()
     return True
 
 

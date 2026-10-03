@@ -1,0 +1,279 @@
+# SPDX-License-Identifier: MIT
+"""Small shapes `--fix` types from their parts' types.
+
+A union the author would write (`a if c else None`, `a or b`), `type(x)`, `d.get(key, default)`,
+`os.environ[key]`, and a call an unpacking alone can use (`partly`). `infer` types a part as
+`constricter.fix.values.inference` does.
+
+A part that is a read (`x`, `self.x`, `d[k]`) is taken as its declared type, which a type checker
+narrows where the function tests it: it's named in the inference's `reads` (see `doubts`), and one
+whose type is a union of two types or more isn't taken at all.
+"""
+
+import ast
+from collections.abc import Callable
+from typing import Final, TypeAlias
+
+from constricter.fix.core.known import ImportPlan, Inference, Known, Partial
+from constricter.fix.libraries import stdlib
+from constricter.fix.values.members import parsed, partial_method
+from constricter.rules.annotations import vague_fits
+from constricter.rules.flow import members
+
+Infer: TypeAlias = Callable[[ast.expr], Inference | None]
+_NONE: Final = "None"
+_READS: Final = (ast.Name, ast.Attribute, ast.Subscript)
+_CONDITIONAL: Final = "conditional"  # the fix kind of `a if c else b`
+_BOOLEAN: Final = "boolean"  # the fix kind of `a or b`
+_BUILTIN: Final = "builtin"
+_CALL: Final = "call"
+_METHOD: Final = "method"
+_STDLIB: Final = "stdlib"
+_TYPE: Final = "type"
+_GET: Final = "get"
+_ENVIRON: Final = "os.environ"
+_QUOTES: Final = frozenset("'\"")
+_GETATTR: Final = "getattr"
+_TYPING_ANY: Final = "typing.Any"
+_WITH_DEFAULT: Final = 2  # `getattr(obj, name)`'s arguments; a third is its default
+
+
+def is_none(node: ast.expr) -> bool:
+    """Check whether a value is the literal `None`.
+
+    Returns:
+      Whether it is.
+
+    """
+    return isinstance(node, ast.Constant) and node.value is None
+
+
+def typed(node: ast.expr, infer: Infer) -> Inference | None:
+    """Type one part of a shape, a read only as the module docstring has it.
+
+    Returns:
+      Its inference, a read named in its `reads`; or `None`.
+
+    """
+    found: Inference | None = infer(node)
+    if found is None or not isinstance(node, _READS):
+        return found
+    if len((members(found.annotation) or frozenset()) - {_NONE}) > 1:
+        return None
+    return found._replace(reads=(*found.reads, ast.unparse(node)))
+
+
+def or_none(annotation: str) -> str | None:
+    """Write `annotation`, or `None`: as it is if it allows `None` already.
+
+    Returns:
+      The union, or `None` for an annotation that can't be read, or holds a string (a forward
+      reference can't take `| None` where it's evaluated).
+
+    """
+    found: frozenset[str] | None = members(annotation)
+    if found is None or _QUOTES.intersection(annotation):
+        return None
+    return annotation if _NONE in found else f"{annotation} | {_NONE}"
+
+
+def optional(value: ast.IfExp, infer: Infer) -> Inference | None:
+    """Infer `a if c else None` (or `None if c else a`): `a`'s type, or `None`.
+
+    Returns:
+      The inference, or `None` if neither side or both are `None`, the other's type isn't known, or
+      `c` tests it (`x if isinstance(x, C) else None`): it's narrowed there.
+
+    """
+    sides: list[ast.expr] = [side for side in (value.body, value.orelse) if not is_none(side)]
+    tested: set[str] = {ast.unparse(node) for node in ast.walk(value.test) if isinstance(node, _READS)}
+    known: bool = len(sides) == 1 and ast.unparse(sides[0]) not in tested
+    found: Inference | None = typed(sides[0], infer) if known else None
+    annotation: str | None = None if found is None else or_none(found.annotation)
+    if found is None or annotation is None:
+        return None
+    return Inference(
+        annotation,
+        "one side of a conditional, or `None`",
+        found.kinds | {_CONDITIONAL},
+        found.reads,
+    )
+
+
+def boolean(value: ast.BoolOp, infer: Infer) -> Inference | None:
+    """Infer `a or b` and `a and b` whose operands have one type: that type.
+
+    `or` gives an operand before its last only if it's true, which `None` never is: `a or b` with
+    `a: T | None` and `b: T` is a `T`.
+
+    Returns:
+      The last operand's type, or `None` if an operand's isn't known or they differ.
+
+    """
+    parts: list[Inference | None] = [typed(operand, infer) for operand in value.values]
+    found: list[Inference] = [part for part in parts if part is not None]
+    if len(found) != len(parts):
+        return None
+    dropped: frozenset[str] = frozenset({_NONE}) if isinstance(value.op, ast.Or) else frozenset()
+    types: set[frozenset[str]] = {(members(part.annotation) or frozenset()) - dropped for part in found}
+    if len(types) != 1 or not next(iter(types)):
+        return None
+    operator: str = "or" if dropped else "and"
+    return Inference(
+        found[-1].annotation,
+        f"the operands of `{operator}`, of one type",
+        frozenset({_BOOLEAN}).union(*(part.kinds for part in found)),
+        tuple(read for part in found for read in part.reads),
+    )
+
+
+def class_of(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
+    """Infer `type(x)`, with `x`'s type `C` known: `type[C]`.
+
+    Returns:
+      The inference, or `None` for anything else, a module that binds `type` itself, or an `x`
+      whose type is a union or `None`.
+
+    """
+    arg: ast.expr
+    match value:
+        case ast.Call(func=ast.Name(id="type"), args=[arg], keywords=[]) if known.is_builtin(
+            _TYPE,
+        ) and not isinstance(arg, ast.Starred):
+            found: Inference | None = typed(arg, infer)
+            types: frozenset[str] = frozenset() if found is None else members(found.annotation) or frozenset()
+            if found is None or len(types) != 1 or _NONE in types:
+                return None
+            return Inference(
+                f"{_TYPE}[{found.annotation}]",
+                f"`type` of {found.reason}",
+                found.kinds | {_BUILTIN},
+                found.reads,
+            )
+        case _:
+            return None
+
+
+def defaulted(receiver: str, call: ast.Call, infer: Infer) -> Inference | None:
+    """Infer `d.get(key, default)` on a `dict[K, V]`, by a default of type `V`: `V` (`V | None`, by `None`).
+
+    Returns:
+      The inference, or `None` for any other call, or a default of another type.
+
+    """
+    item: ast.expr
+    default: ast.expr
+    attr: str
+    match parsed(receiver), call:
+        case (
+            ast.Subscript(value=ast.Name(id="dict" | "Dict"), slice=ast.Tuple(elts=[_, item])),
+            ast.Call(func=ast.Attribute(attr=attr), args=[_, default], keywords=[]),
+        ) if attr == _GET:
+            text: str = ast.unparse(item)
+            reason: str = "`dict.get` with a default of its values' type"
+            if is_none(default):
+                union: str | None = or_none(text)
+                return None if union is None else Inference(union, reason, frozenset({_METHOD}))
+            found: Inference | None = infer(default)
+            same: bool = found is not None and found.annotation == text
+            return Inference(text, reason, found.kinds | {_METHOD}) if found and same else None
+        case _:
+            return None
+
+
+def partly(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
+    """Infer a call whose declared return has a vague part, for an unpacking to split.
+
+    A function's, or a method's on a receiver whose type is known (see `known.Partial`).
+
+    Returns:
+      The whole return, vague parts and all; or `None` for any other value.
+
+    """
+    func: ast.expr
+    receiver: ast.expr
+    name: str
+    partial: Partial = known.indirect.partial
+    match value:
+        case ast.Call(func=ast.Name() | ast.Attribute() as func) if ast.unparse(func) in partial.calls:
+            callee: str = ast.unparse(func)
+            return Inference(partial.calls[callee], f"`{callee}`'s declared return type", frozenset({_CALL}))
+        case ast.Call(func=ast.Attribute(value=receiver, attr=name)):
+            owner: Inference | None = infer(receiver)
+            found: str | None = None if owner is None else partial_method(owner.annotation, name, known)
+            if owner is None or found is None:
+                return None
+            return Inference(
+                found,
+                f"`{owner.annotation}.{name}`'s declared return type",
+                frozenset({_METHOD}) if isinstance(receiver, ast.Name) else owner.kinds | {_METHOD},
+            )
+        case _:
+            return None
+
+
+def vaguely(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
+    """Infer a call whose declared return has a vague part, whole, where `vague` allows it.
+
+    Returns:
+      `partly`'s inference, or `None` if it's vaguer than `Limits.vague` allows.
+
+    """
+    found: Inference | None = partly(value, known, infer)
+    return found if found is not None and vague_fits(parsed(found.annotation), known.limits.vague) else None
+
+
+def attribute_of(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
+    """Infer `getattr(obj, name)`: an `Any`; with a default of a known type `T`, an `Any | T`.
+
+    Where `vague` lets it be written (from 1), `Any` named as the module can.
+
+    Returns:
+      The inference, or `None` for anything else, a module that binds `getattr` itself, or a
+      default of no known type.
+
+    """
+    args: list[ast.expr]
+    match value:
+        case ast.Call(func=ast.Name(id="getattr"), args=[_, _, *_] as args, keywords=[]) if (
+            len(args) <= _WITH_DEFAULT + 1
+            and known.is_builtin(_GETATTR)
+            and known.limits.vague > 0
+            and not any(isinstance(arg, ast.Starred) for arg in args)
+        ):
+            pass
+        case _:
+            return None
+    plan: ImportPlan | None = known.names.plan
+    spelled: str | None = None if plan is None else plan.spell(_TYPING_ANY)
+    default: Inference | None = infer(args[2]) if len(args) > _WITH_DEFAULT else None
+    if spelled is None or (len(args) > _WITH_DEFAULT and default is None and not is_none(args[2])):
+        return None
+    union: str = (
+        spelled
+        if len(args) == _WITH_DEFAULT
+        else f"{spelled} | {_NONE if default is None else default.annotation}"
+    )
+    return Inference(
+        union,
+        "`getattr`'s return type",
+        frozenset({_BUILTIN}) | (default.kinds if default else frozenset()),
+    )
+
+
+def environment(value: ast.expr, known: Known) -> Inference | None:
+    """Infer `os.environ[key]`, however the module names `os.environ`: a `str`.
+
+    Returns:
+      The inference, or `None` for anything else, a slice included.
+
+    """
+    mapping: ast.expr
+    index: ast.expr
+    match value:
+        case ast.Subscript(value=ast.Name() | ast.Attribute() as mapping, slice=index) if (
+            not isinstance(index, ast.Slice) and stdlib.resolved(mapping, known.names.stdlib) == _ENVIRON
+        ):
+            return Inference("str", f"`{_ENVIRON}`'s values", frozenset({_STDLIB}))
+        case _:
+            return None

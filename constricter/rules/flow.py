@@ -144,12 +144,18 @@ class Hierarchy:
         self.classes: frozenset[str] = frozenset(classes)
 
     @classmethod
-    def for_module(cls, tree: ast.Module, narrower: Parents | None = None) -> "Hierarchy":
+    def for_module(
+        cls,
+        tree: ast.Module,
+        narrower: Parents | None = None,
+        same: Iterable[frozenset[str]] = (),
+    ) -> "Hierarchy":
         """Build the default hierarchy, plus each class the module defines under the bases it names.
 
         A project's own `narrower` entries (each type's wider types) replace whatever the defaults
         or the module say for that type (`int = []` stops `int` fitting `float`); every type they
-        name counts as `closed`, since the project vouches for its ancestry.
+        name counts as `closed`, since the project vouches for its ancestry. `same`: each group of
+        ways the module spells one type (`C`, `m.C`), each of which fits the others.
 
         Returns:
           The hierarchy.
@@ -164,6 +170,9 @@ class Hierarchy:
             defined[node.name] = node.bases
             if bases := frozenset(b.id for b in node.bases if isinstance(b, ast.Name)):
                 parents[node.name] = bases
+        group: frozenset[str]
+        for group in same:
+            parents.update((name, parents.get(name, frozenset()) | (group - {name})) for name in group)
         parents.update(own)
         vouched: frozenset[str] = frozenset(own).union(*own.values())
         return cls(parents, vouched | {name for name in defined if _visible(name, defined, frozenset())})

@@ -23,8 +23,9 @@ from constricter.cli.protocol import HintError
 from constricter.cli.report import Format, Result, fix_reasons, render, statistics
 from constricter.cli.runs import BaselineRun, CheckRun, CoverageRun, FileRun
 from constricter.cli.workers import Workers
-from constricter.fix import callers, decorated, fixes, installed, project
-from constricter.fix.known import Callee, Hints, Outside, Returns
+from constricter.fix.core import fixes
+from constricter.fix.core.known import Callee, Hints, Outside, Returns
+from constricter.fix.index import callers, decorated, installed, plain, project
 from constricter.noqa import lines, unsuppressed
 from constricter.offences import (
     DEFAULT_CHECKS,
@@ -397,6 +398,11 @@ def _check_all(options: Options) -> tuple[list[Path], list[FileRun]]:
             for index, run in zip(again, redone, strict=True):
                 runs[index] = _merged(runs[index], run)
             again = [index for index, run in zip(again, redone, strict=True) if cast("CheckRun", run).fixed]
+        checker: str
+        path: Path
+        for checker, path in session.abandoned:
+            name: Path = options.input.name(path)
+            _ = sys.stderr.write(f"constricter: warning: {checker} hung on {name} twice: no hints for it\n")
     return names, runs
 
 
@@ -430,16 +436,40 @@ def _called_again(
     if not (again := [at for at, name in enumerate(names) if name in found and names.count(name) == 1]):
         return runs, modules
     calling: list[int] = _calling(runs, found, again)
-    modules = callers.with_parameters(modules, found)
-    which: list[int]
-    for which in (again, calling):
-        redone: list[FileRun]
-        redone, modules = _checked_all([paths[at] for at in which], check, options, session, modules)
-        at: int
-        run: FileRun
-        for at, run in zip(which, redone, strict=True):
-            runs[at] = _merged(runs[at], run) if options.mode is Mode.FIX else run
-    return runs, modules
+    before: project.Index = callers.with_parameters(modules, found)
+    modules = _checked_more(paths, runs, again, (check, options, session), before)
+    # A caller is checked again only if a function it imports now returns something else.
+    calling = [
+        at
+        for at in calling
+        if project.returned(modules, paths[at], {}) != project.returned(before, paths[at], {})
+    ]
+    return runs, _checked_more(paths, runs, calling, (check, options, session), modules)
+
+
+def _checked_more(
+    paths: Sequence[Path],
+    runs: list[FileRun],
+    which: Sequence[int],
+    how: "tuple[Callable[[Path, Outside], FileRun], Options, hints.Session | None]",
+    modules: project.Index,
+) -> project.Index:
+    """Check the files of `paths` at `which` again, knowing `modules`, into `runs`.
+
+    `how`: the check, the options and the type checkers' session. With `--fix` a file's rounds are
+    joined; otherwise the later one stands.
+
+    Returns:
+      The index, with what their functions now return.
+
+    """
+    redone: list[FileRun]
+    redone, modules = _checked_all([paths[at] for at in which], how[0], how[1], how[2], modules)
+    at: int
+    run: FileRun
+    for at, run in zip(which, redone, strict=True):
+        runs[at] = _merged(runs[at], run) if how[1].mode is Mode.FIX else run
+    return modules
 
 
 def _calling(
@@ -487,7 +517,10 @@ def _checked_all(
             modules = project.Index({}, []) if coverage else project.index(paths)
             collecting.indexed()
         if not coverage:
-            modules = decorated.passed(installed.with_installed(modules, installed.search_path()))
+            modules = plain.settled(
+                decorated.passed(installed.with_installed(modules, installed.search_path())),
+                options.checks.plain_bases,
+            )
         return schedule.checked(
             paths,
             check,

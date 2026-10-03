@@ -2,7 +2,7 @@
 """Test collection and isolation.
 
 The fuzz tests need hypothesmith, which the `test` group leaves out; and every test caches
-installed modules' reads (`constricter.fix.installed`) in a directory of its own, never the user's.
+installed modules' reads (`constricter.fix.index.installed`) in a directory of its own, never the user's.
 """
 
 import importlib.util

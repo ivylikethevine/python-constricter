@@ -9,7 +9,7 @@ import ast
 from collections.abc import Iterator, Sequence
 from typing import Final
 
-from constricter.fix.signatures import Constant
+from constricter.fix.core.signatures import Constant
 from stdlib_tables.reading import ARITY, TYPING_GENERICS, ClassRef, Reading, usable
 from stdlib_tables.stubs import Alias, Found, Klass, TypeVariable
 
@@ -74,7 +74,7 @@ class Templates:
         names: list[ast.Name] = [node for node in ast.walk(expr) if isinstance(node, ast.Name)]
         found: list[Found | None] = [self.reading.ref(node, module) for node in names]
         return [
-            node.id + ("=" if target.binding.default else "")
+            node.id + ("=" if target.binding.default is not None else "")
             for node, target in zip(names, found, strict=True)
             if target is not None and isinstance(target.binding, TypeVariable)
         ]
@@ -127,12 +127,42 @@ class Templates:
             case Alias(value=value):
                 return self._spelled(value, found.module, hops + 1)
             case Klass():
-                klass: ClassRef = ClassRef(found.module, found.name)
-                if self.reading.generic(klass) or klass.name in _UNWRITTEN:
-                    return None
-                return klass.name if klass.module == BUILTINS else self.canonical.get(klass)
+                return self._spelled_class(ClassRef(found.module, found.name), hops)
             case _:
                 return None
+
+    def _spelled_class(self, klass: ClassRef, hops: int) -> str | None:
+        if self.reading.generic(klass):
+            return self._defaulted(klass, hops)
+        if klass.name in _UNWRITTEN:
+            return None
+        return klass.name if klass.module == BUILTINS else self.canonical.get(klass)
+
+    def _defaulted(self, klass: ClassRef, hops: int) -> str | None:
+        """Spell a generic class named bare as a type checker reads it: with its type parameters' defaults.
+
+        `xml.etree.ElementTree.Element`, whose `_Tag` defaults to `str`, is an `Element[str]`.
+
+        Returns:
+          It, or `None` if a parameter has no default, or one can't be written.
+
+        """
+        path: str | None = self.canonical.get(klass)
+        params: list[str] | None = self.type_parameters(klass)
+        if path is None or klass.module == BUILTINS or not params:
+            return None
+        defaults: list[str | None] = []
+        param: str
+        for param in params:
+            found: Found | None = self.reading.ref(ast.Name(param.rstrip("=")), klass.module)
+            variable: TypeVariable | None = (
+                found.binding if found is not None and isinstance(found.binding, TypeVariable) else None
+            )
+            default: ast.expr | None = None if variable is None else variable.default
+            defaults.append(None if default is None else self._spelled(default, klass.module, hops + 1))
+        if None in defaults:
+            return None
+        return f"{path}[{', '.join(default for default in defaults if default is not None)}]"
 
     def _spelled_subscript(self, expr: ast.Subscript, module: str, hops: int) -> str | None:
         found: Found | None = self.reading.ref(expr.value, module)

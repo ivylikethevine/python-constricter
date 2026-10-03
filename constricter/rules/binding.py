@@ -10,21 +10,29 @@ it too.
 """
 
 import ast
-from typing import Final, cast
+from collections.abc import Iterator
+from typing import Final, TypeAlias, cast
 
-from constricter.fix import hinted
-from constricter.fix.doubts import bare
-from constricter.fix.entered import entered
-from constricter.fix.inference import LoopPart, inference, looped, looped_parts
-from constricter.fix.known import Inference, Known
-from constricter.fix.opened import opened
-from constricter.fix.targets import iterated, unpacked
+from constricter.fix.core.known import Inference, Known
+from constricter.fix.libraries.opened import opened
+from constricter.fix.values import hinted, shapes
+from constricter.fix.values.doubts import bare
+from constricter.fix.values.entered import entered, entering
+from constricter.fix.values.inference import LoopPart, inference, looped, looped_parts
+from constricter.fix.values.members import parsed
+from constricter.fix.values.targets import iterated, unpacked
 from constricter.offences import COMMENT_TYPED_TARGET, UNTYPED_TARGET, Edit, Fix, at
+from constricter.rules.annotations import vague_fits
 from constricter.rules.flow import augmented
 from constricter.rules.scope import Scope, certain_type, guesses_in
 from constricter.rules.syntax import captures, comment_type, target_names, type_comment_span
 
 _COMMENT: Final = "comment"  # the fix kind of LVA003's declaration
+_UNPACK: Final = frozenset({"unpack"})  # the fix kind of an unpacking's split
+# A name's inference (`None`: unknown), whether it's a guess, and what the guess rests on.
+# What `Scope.valued` gives.
+_Valued: TypeAlias = tuple[Inference | None, bool, frozenset[str]]
+_Named: TypeAlias = tuple[ast.Name, _Valued]
 _COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 # Statements a declaration can't go before: a decorator's line is its definition's.
 _DEFINITIONS: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
@@ -43,9 +51,8 @@ def bind(scope: Scope, stmt: ast.stmt) -> None:
     match stmt:
         case ast.Assign(targets=[ast.Name() as single], value=value, type_comment=comment):
             scope.assign(single, scope.unannotated(comment), value)
-        case ast.Assign(targets=[ast.Tuple() | ast.List() as target], value=value, type_comment=comment):
-            typed: Inference | None = inference(value, scope.settings.known, scope.inferred.types)
-            _bind_declared(scope, stmt, target, typed, [value])
+        case ast.Assign(targets=[ast.Tuple() | ast.List() as target], value=value):
+            _bind_unpacked(scope, stmt, target, value)
         case ast.Assign():
             _bind_assigned(scope, stmt)
         case ast.With(items=items, type_comment=comment) | ast.AsyncWith(items=items, type_comment=comment):
@@ -157,39 +164,132 @@ def _bind_loop(scope: Scope, stmt: ast.For | ast.AsyncFor, target: ast.expr, val
             )
 
 
+def _bind_unpacked(scope: Scope, stmt: ast.Assign, target: ast.expr, value: ast.expr) -> None:
+    """Bind an unpacking's names, offering to declare each before `stmt` (see `_unpacked`).
+
+    Every name is typed before any is bound, as its value is evaluated: `a, b = b, a`.
+    """
+    code: str | None = scope.unannotated(stmt.type_comment)
+    name: ast.Name
+    typed: _Valued
+    for name, typed in list(_unpacked(scope, stmt, target, value)):
+        _bind_declaration(scope, stmt, name, code, typed)
+
+
+def _unpacked(scope: Scope, stmt: ast.Assign, target: ast.expr, value: ast.expr) -> Iterator[_Named]:
+    """Type each name an unpacking of `value` into `target` binds.
+
+    A display of as many values is split with its target, each name typed by its own value as a
+    plain assignment's is (`a, b = x, 1` declares `b: int` whatever `x` is); any other value's type
+    is split over the names (see `unpacked`), or its elements' is (`a, b = range(2)`).
+
+    Yields:
+      Each name, with its inference, whether that's a guess, and what the guess rests on.
+
+    """
+    targets: list[ast.expr]
+    values: list[ast.expr]
+    name: ast.Name
+    match (target, value):
+        case (
+            ast.Tuple(elts=targets) | ast.List(elts=targets),
+            ast.Tuple(elts=values) | ast.List(elts=values),
+        ) if len(targets) == len(values) and not any(
+            isinstance(part, ast.Starred) for part in (*targets, *values)
+        ):
+            part: ast.expr
+            item: ast.expr
+            for part, item in zip(targets, values, strict=True):
+                yield from _unpacked(scope, stmt, part, item)
+        case (ast.Name() as name, _):
+            fix: Inference | None
+            unsafe: bool
+            origins: frozenset[str]
+            fix, unsafe, origins = scope.valued(value, stmt.lineno)
+            yield name, (None if fix is None else fix._replace(kinds=fix.kinds | _UNPACK), unsafe, origins)
+        case _:
+            yield from _unpacked_whole(scope, stmt, target, value)
+
+
+def _unpacked_whole(scope: Scope, stmt: ast.Assign, target: ast.expr, value: ast.expr) -> Iterator[_Named]:
+    """Type each name an unpacking of `value` binds by `value`'s own type, split over them.
+
+    Its type as any value's is inferred; else what iterating it gives, each name an element; else a
+    call's declared return with a vague part (see `partly`), each name its part if that's no vaguer
+    than `vague` allows.
+
+    Yields:
+      Each name, with its inference, whether that's a guess, and what the guess rests on.
+
+    """
+    known: Known = scope.settings.known
+    typed: Inference | None = inference(value, known, scope.inferred.types)
+    element: Inference | None
+    if (element := None if typed else looped(value, known, scope.inferred.types)) is not None:
+        typed = element._replace(annotation=f"tuple[{element.annotation}, ...]")
+        yield from _split(scope, stmt, target, typed, iterated(value))
+        return
+    if typed is not None:
+        yield from _split(scope, stmt, target, typed, [value])
+        return
+    typed = shapes.partly(value, known, lambda part: inference(part, known, scope.inferred.types))
+    # A method's return is a guess if its receiver's type is; a function's is declared.
+    receiver: list[ast.expr] = (
+        [value.func.value] if isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute) else []
+    )
+    name: ast.Name
+    part: _Valued
+    for name, part in _split(scope, stmt, target, typed, receiver):
+        vague: bool = part[0] is not None and not vague_fits(parsed(part[0].annotation), known.limits.vague)
+        yield name, ((None, False, frozenset()) if vague else part)
+
+
 def _bind_declared(
+    scope: Scope,
+    stmt: ast.For | ast.AsyncFor,
+    target: ast.expr,
+    typed: Inference | None,
+    bases: list[ast.expr],
+) -> None:
+    """Bind each name in a loop's `target`, offering to declare each before `stmt` (see `_split`)."""
+    name: ast.Name
+    part: _Valued
+    for name, part in _split(scope, stmt, target, typed, bases):
+        _bind_declaration(scope, stmt, name, UNTYPED_TARGET, part)
+
+
+def _split(
     scope: Scope,
     stmt: ast.stmt,
     target: ast.expr,
     typed: Inference | None,
     bases: list[ast.expr],
-) -> None:
-    """Bind each name in `target` (a loop's, or an unpacking's), offering to declare each before `stmt`.
+) -> Iterator[_Named]:
+    """Type each name in `target` (a loop's, or an unpacking's).
 
     `typed` is what the whole target gets (a loop's element, an unpacked value's type), split over
     its names (see `unpacked`); a name whose part isn't known gets no fix. The fixes are guesses if
-    any of `bases`, the values `typed` came from, is. A loop's untyped target is LVA002, an
-    unpacking's LVA001 (or LVA004), unless a type comment types it.
+    any of `bases`, the values `typed` came from, is.
+
+    Yields:
+      Each name, with its inference, whether that's a guess, and what the guess rests on.
+
     """
     unsafe: bool
     origins: frozenset[str]
     unsafe, origins = (False, frozenset()) if typed is None else guesses_in(scope, bases)
     # An unpacking's names are split from the value's type; a loop's are what it iterates (`loop`).
-    split: frozenset[str] = frozenset() if isinstance(stmt, ast.For | ast.AsyncFor) else frozenset({"unpack"})
-    code: str | None = (
-        UNTYPED_TARGET
-        if isinstance(stmt, ast.For | ast.AsyncFor)
-        else scope.unannotated(cast("ast.Assign", stmt).type_comment)
-    )
+    split: frozenset[str] = frozenset() if isinstance(stmt, ast.For | ast.AsyncFor) else _UNPACK
     name: ast.Name
     annotation: str | None
-    for name, annotation in unpacked(target, None if typed is None else typed.annotation):
+    whole: str | None = None if typed is None else typed.annotation
+    for name, annotation in unpacked(target, whole, scope.settings.known.indirect.tuples):
         part: Inference | None = (
             None
             if typed is None or annotation is None
             else Inference(annotation, typed.reason, typed.kinds | split)
         )
-        _bind_declaration(scope, stmt, name, code, (part, unsafe, origins))
+        yield name, (part, unsafe, origins)
 
 
 def _bind_declaration(
@@ -197,7 +297,7 @@ def _bind_declaration(
     stmt: ast.stmt,
     name: ast.Name,
     code: str | None,
-    typed: tuple[Inference | None, bool, frozenset[str]],
+    typed: _Valued,
 ) -> None:
     """Bind one name a statement binds, offering to declare it before `stmt` as `typed` has it.
 
@@ -220,7 +320,12 @@ def _bind_declaration(
             span=(stmt.lineno, stmt.col_offset),
         )
         # What the rest of the scope infers from `name` knows its type, as for `name = value`.
-        scope.inferred.learn(name.id, found.annotation, origins if unsafe else None)
+        scope.inferred.learn(
+            name.id,
+            found.annotation,
+            origins if unsafe else None,
+            again=name.id in scope.declared,
+        )
     scope.bind(name.id, at(name), code, fix, None if found is None or unsafe else found.annotation)
 
 
@@ -253,15 +358,16 @@ def _bind_commented(scope: Scope, stmt: ast.For | ast.AsyncFor, target: ast.expr
 def _bind_with(scope: Scope, stmt: ast.stmt, items: list[ast.withitem], code: str | None) -> None:
     """Bind each `with` item's target, offering to declare `with manager as name`'s `name` first.
 
-    As what the manager's `__enter__` returns (see `constricter.fix.entered`); the file object
-    `open` gives, which is its own context manager, by its literal mode. A target that unpacks is
-    bound untyped, as is an `async with`'s (`__aenter__`'s return is awaited: not read).
+    As what the manager's `__enter__` returns (see `constricter.fix.values.entered`); the file object
+    `open` gives, which is its own context manager, by its literal mode. A target that unpacks takes
+    that type split over its names, as an unpacking's are (but for a vague part). An `async with`'s
+    is bound untyped (`__aenter__`'s return is awaited: not read).
     """
     item: ast.withitem
     name: ast.Name
     target: ast.expr
     for item in items:
-        typed: tuple[Inference | None, bool, frozenset[str]] = (
+        typed: _Valued = (
             _entered(scope, item.context_expr) if isinstance(stmt, ast.With) else (None, False, frozenset())
         )
         match item.optional_vars:
@@ -269,11 +375,47 @@ def _bind_with(scope: Scope, stmt: ast.stmt, items: list[ast.withitem], code: st
                 _bind_declaration(scope, stmt, name, code, typed)
             case None:
                 pass
+            case target if isinstance(stmt, ast.With):
+                named: _Named
+                for named in _entered_parts(scope, target, item.context_expr, typed):
+                    _bind_declaration(scope, stmt, named[0], code, named[1])
             case target:
                 _bind_targets(scope, [target], code)
 
 
-def _entered(scope: Scope, manager: ast.expr) -> tuple[Inference | None, bool, frozenset[str]]:
+def _entered_parts(scope: Scope, target: ast.expr, manager: ast.expr, typed: _Valued) -> Iterator[_Named]:
+    """Type each name a `with` statement's unpacking `target` binds, entering `manager`.
+
+    `typed`: what the whole target gets (see `_entered`), split over its names as an unpacking's
+    value is; where that's unknown, an `__enter__` declared to return a vague part is split instead
+    (see `shapes.partly`). A part vaguer than `vague` allows gives its name no fix.
+
+    Yields:
+      Each name, with its inference, whether that's a guess, and what the guess rests on.
+
+    """
+    known: Known = scope.settings.known
+    whole: Inference | None = typed[0]
+    doubt: tuple[bool, frozenset[str]] = typed[1:]
+    if whole is None:
+        whole = shapes.partly(
+            entering(manager),
+            known,
+            lambda part: inference(part, known, scope.inferred.types),
+        )
+        doubt = guesses_in(scope, [manager])
+    name: ast.Name
+    part: str | None
+    for name, part in unpacked(target, None if whole is None else whole.annotation, known.indirect.tuples):
+        split: Inference | None = (
+            None
+            if whole is None or part is None or not vague_fits(parsed(part), known.limits.vague)
+            else Inference(part, whole.reason, whole.kinds | _UNPACK)
+        )
+        yield name, (split, *doubt)
+
+
+def _entered(scope: Scope, manager: ast.expr) -> _Valued:
     """Infer what a `with` statement binds its target to, entering `manager`.
 
     Returns:

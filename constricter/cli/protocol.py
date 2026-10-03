@@ -108,6 +108,10 @@ class HintError(Exception):
     """The type checker couldn't be started, or failed to answer."""
 
 
+class HungError(HintError):
+    """The type checker's server said nothing for too long."""
+
+
 def write(stream: IO[bytes], data: bytes) -> None:
     """Write `data` to `stream`, and flush it: the server reads it now."""
     _ = stream.write(data)

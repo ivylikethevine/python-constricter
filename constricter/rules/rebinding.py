@@ -11,7 +11,7 @@ a guess.
 
 from typing import Final, NamedTuple
 
-from constricter.fix.known import Inference
+from constricter.fix.core.known import Inference
 from constricter.offences import Edit, Fix, Offence
 from constricter.rules.flow import Binding, Hierarchy, members
 

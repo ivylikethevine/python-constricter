@@ -6,8 +6,10 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix import fills, hinted, stdlib
-from constricter.fix.doubts import (
+from constricter.fix.core.known import Hints, ImportPlan, Inference, Known, Passed
+from constricter.fix.libraries import stdlib
+from constricter.fix.values import aliased, fills, hinted
+from constricter.fix.values.doubts import (
     Facts,
     Owner,
     bare,
@@ -19,12 +21,13 @@ from constricter.fix.doubts import (
     tested,
     undeclared,
 )
-from constricter.fix.guesses import guessed, guessing
-from constricter.fix.inference import inference, inferred
-from constricter.fix.known import Hints, ImportPlan, Inference, Known, Passed
-from constricter.fix.narrowed import narrowed_at
+from constricter.fix.values.guesses import guessed, guessing
+from constricter.fix.values.inference import inference, inferred
+from constricter.fix.values.members import parsed
+from constricter.fix.values.narrowed import narrowed_at
 from constricter.offences import (
     LONG_TUPLE,
+    MEMBER,
     NESTED_TYPE,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
@@ -39,12 +42,13 @@ from constricter.offences import (
 from constricter.rules.annotations import (
     depth,
     is_composite,
-    is_vague,
     length,
     node_name,
     roots,
+    vague_fits,
 )
 from constricter.rules.flow import Finding, Hierarchy, Lifetime, findings, members
+from constricter.rules.quoted import written
 from constricter.rules.rebinding import REBOUND
 from constricter.rules.syntax import FunctionDef, Start
 
@@ -75,7 +79,7 @@ class Settings:
     hints: tuple[Hints, ...] = ()
     facts: Facts = field(default_factory=Facts)  # what a type checker sees otherwise (see `doubts`)
     # What every call passes each unannotated parameter of its top-level functions, by `id()` (see
-    # `constricter.fix.callers`): guesses, for what's computed from them.
+    # `constricter.fix.index.callers`): guesses, for what's computed from them.
     parameters: Mapping[int, Mapping[str, Passed]] = field(default_factory=dict[int, Mapping[str, Passed]])
 
 
@@ -83,8 +87,11 @@ class Kind(NamedTuple):
     """What kind of body a scope is: the code its unannotated names get, and whether `--fix` fixes it."""
 
     unannotated: str  # LVA001 in a function, LVA004 in a module or class body
-    fixable: bool  # a class body never is: annotating a dataclass's variable makes it a field
+    # A class body isn't: annotating a dataclass's variable makes it a field. Only a plain class's
+    # variable typed by its value is fixed there (see `constricter.fix.values.classvars`).
+    fixable: bool
     function: FunctionDef | None = None  # a function's own: its body, its returns
+    owner: str | None = None  # a class body's: its class
 
     def body(self) -> Sequence[ast.stmt]:
         """Find the function's body.
@@ -133,12 +140,34 @@ class Inferred:
     # type, and what it rests on if a guess; and those it was checked again knowing.
     late: dict[str, Late] = field(default_factory=dict[str, "Late"])
     seeded: dict[str, Late] = field(default_factory=dict[str, "Late"])
+    # The names declared type aliases (`X: TypeAlias = ...`): `TypeAlias` isn't their values' type.
+    aliases: set[str] = field(default_factory=set[str])
 
-    def learn(self, name: str, annotation: str, origins: frozenset[str] | None) -> None:
-        """Record `name`'s type, the first time it's typed; `origins`: what it rests on, if it's a guess."""
+    def declare(self, name: str, annotation: ast.expr) -> None:
+        """Record the type `name` is annotated with: its own from here on, or an alias's declaration."""
+        if aliased.declares(annotation):
+            self.aliases.add(name)
+        else:
+            _ = self.types.setdefault(name, written(annotation))
+
+    def learn(
+        self,
+        name: str,
+        annotation: str,
+        origins: frozenset[str] | None,
+        *,
+        again: bool = False,
+    ) -> None:
+        """Record `name`'s type, the first time it's typed; `origins`: what it rests on, if it's a guess.
+
+        `again`: whether it was bound before, to a value of no known type, which it may still hold
+        (another branch's): its type is then a guess, resting on `rebound`.
+        """
         if name in self.types:
             return
         self.types[name] = annotation
+        if origins is None and again:
+            origins = frozenset({REBOUND})
         if origins is not None:
             self.guess(name, origins)
 
@@ -147,16 +176,21 @@ class Inferred:
         self.guesses.add(name)
         self.origins[name] = origins
 
-    def rebound(self, name: str, typed: str | None) -> None:
+    def rebound(self, name: str, typed: str | None, guess: Late | None = None) -> None:
         """Record `name` bound again, to a value of type `typed` (`None`: unknown).
 
         A type checker narrows a name to what it's assigned: from here on it's `typed`, if known. That's
         certain for a member of a declared union (`int | None`, then `1`), which every checker narrows;
         otherwise (mypy narrows nothing else, and an unknown value may be anything) what's inferred
-        from it is a guess, resting on `rebound`.
+        from it is a guess, resting on `rebound`. `guess`: the value's type where it's only a guess
+        (`config = config or Config()`), and what that rests on: the name's from here on, as one.
         """
         current: str | None = self.types.get(name)
         if current is None or typed == current:
+            return
+        if typed is None and guess is not None:
+            self.types[name] = guess[0]
+            self.guess(name, self.origins.get(name, frozenset()) | guess[1])
             return
         if typed is not None:
             self.types[name] = typed
@@ -240,21 +274,31 @@ class Scope:
         is offered a declaration before it instead (`a: int`); not a `Final` one, which needs its value.
         """
         name: str = target.id
+        if aliased.factory(value, self.settings.known):  # a type: nothing to annotate it with
+            self.declared.add(name)
+            self.opaque([name])
+            return
         again: bool = name in self.declared
         facts: Facts = self.settings.facts
         fix: Inference | None
         unsafe: bool
         origins: frozenset[str]
         constant: bool = (
-            self.kind.function is None and is_constant(name) and name in facts.passed and chained is None
+            self.kind.function is None
+            and self.kind.owner is None
+            and is_constant(name)
+            and name in facts.passed
+            and chained is None
         )
         fix, unsafe, origins = self.valued(value, target.lineno, constant=constant)
         if fix is not None and constant and origins == _LITERAL_DOUBT:
             fix = self._constant(fix)
         # Value flow's type is `--fix`'s own, if certain: worked out once, here, for both.
         certain: str | None = certain_type(self, value, (None if fix is None else fix.annotation, unsafe))
-        if fix is None and (fix := self.hint(target, value)) is not None:
-            unsafe, origins = True, frozenset({hinted.KIND})
+        if self.kind.owner is not None:
+            fix, unsafe, origins = self._member(name, fix)
+        if fix is None:
+            fix, unsafe, origins = self._unvalued(target, value, alias=chained is None and not again)
         self.lifetime(name).bind(
             at(target),
             certain,
@@ -262,7 +306,7 @@ class Scope:
         )
         self.assigned(name, at(target))
         if again:
-            self.inferred.rebound(name, certain)
+            self.inferred.rebound(name, certain, (fix.annotation, origins) if fix and unsafe else None)
         kind: str | None
         if (kind := fills.empty(value)) is not None:
             _ = self.assignments.empty.setdefault(name, kind)
@@ -274,8 +318,53 @@ class Scope:
             code,
             None if fix is None else self.placed(name, fix, origins, unsafe=unsafe),
         )
-        if fix is not None:
-            self.inferred.learn(name, fix.annotation, origins if unsafe else None)
+        if fix is not None and aliased.declares(parsed(fix.annotation)):
+            self.inferred.aliases.add(name)  # `TypeAlias` isn't its value's type
+        elif fix is not None:
+            self.inferred.learn(name, fix.annotation, origins if unsafe else None, again=again)
+
+    def _unvalued(
+        self,
+        target: ast.Name,
+        value: ast.expr,
+        *,
+        alias: bool,
+    ) -> tuple[Inference | None, bool, frozenset[str]]:
+        """Type a name its value gives no type: a module's type alias (`alias`: it may be one), or a hint.
+
+        Returns:
+          The inference, whether it's a guess, and what it rests on, as `valued` does.
+
+        """
+        checks: Checks = self.settings.checks
+        found: tuple[Inference, bool, frozenset[str]] | None = (
+            aliased.declared(
+                target,
+                value,
+                self.settings.known,
+                self.settings.facts,
+                (frozenset(self.inferred.aliases), checks.min_python),
+            )
+            if alias and self.kind.function is None and self.kind.owner is None
+            else None
+        )
+        hint: Inference | None
+        if found is None and (hint := self.hint(target, value)) is not None:
+            found = hint, True, frozenset({hinted.KIND})
+        return found or (None, False, frozenset())
+
+    def _member(self, name: str, fix: Inference | None) -> tuple[Inference | None, bool, frozenset[str]]:
+        """Offer a class body's fix only for a plain class's variable typed by its value: a guess.
+
+        Returns:
+          The inference, whether it's a guess, and what it rests on, as `valued` does; none for any
+          other binding of a class body.
+
+        """
+        typed: str | None = self.settings.known.class_side.variables.get(self.kind.owner or "", {}).get(name)
+        if fix is None or typed is None or fix.annotation != typed:
+            return None, False, frozenset()
+        return fix._replace(kinds=fix.kinds | {MEMBER}), True, frozenset({MEMBER})
 
     def valued(
         self,
@@ -360,7 +449,7 @@ class Scope:
             or not says_self(function)
         ):
             return None
-        return Owner(owner, args[0].arg, self.settings.facts.selfish.get(owner, frozenset()))
+        return Owner(owner, args[0].arg, self.settings.known.class_side.lineage.selfish_of(owner))
 
     def hint(self, target: ast.Name, value: ast.expr | None = None) -> Inference | None:
         """Type `target` by the type checkers' hints for it (`--infer-with`): the first the file can use.
@@ -444,11 +533,12 @@ class Scope:
         """Offer `fix` as the project's fix policy has it: selected, and a guess unless trusted.
 
         Returns:
-          The fix, or `None` if a mechanism that decided it isn't selected, or is ignored.
+          The fix, or `None` if a mechanism that decided it isn't selected, or is ignored, or it's
+          vaguer than `vague` allows (it would be LVA005).
 
         """
         policy: FixPolicy = self.settings.checks.fixes
-        if not policy.allows(fix.kinds):
+        if not policy.allows(fix.kinds) or not vague_fits(parsed(fix.annotation), self.settings.checks.vague):
             return None
         certain: bool = not unsafe or policy.trusts(origins)
         plan: ImportPlan = self.settings.known.names.plan or ImportPlan({}, frozenset(), 0)
@@ -480,13 +570,15 @@ class Scope:
     ) -> None:
         """Unless `name` is already bound, record its first binding, reporting `code` (`None`: typed).
 
-        The offence offers `fix`, unless this is a class body (a dataclass's annotation is a field).
+        The offence offers `fix`, unless this is a class body (a dataclass's annotation is a field),
+        where only a plain class's variable's (`_member`) is.
         """
         if name not in self.declared:
             self.declared.add(name)
             self.first.append(name)
             if code is not None:
-                self.offences.append(Offence(*where, name, code, fix if self.kind.fixable else None))
+                offered: bool = self.kind.fixable or (fix is not None and MEMBER in fix.kinds)
+                self.offences.append(Offence(*where, name, code, fix if offered else None))
 
     def declare(self, name: str) -> None:
         """Bind `name` by an annotation (`name: T`, `name: T = ...`): a typed first binding."""
@@ -586,13 +678,16 @@ class Scope:
         return [name for name in self.first if self._covered(name)]
 
     def annotation(self, name: str, annotation: ast.expr) -> None:
-        """Report a vague annotation (LVA005), too deep a one (LVA006), or too long a tuple (LVA011)."""
-        if is_vague(annotation):
+        """Report a vague annotation (LVA005), too deep a one (LVA006), or too long a tuple (LVA011).
+
+        Vague as far as `vague` allows (see `vague_fits`) isn't LVA005.
+        """
+        if not vague_fits(annotation, self.settings.checks.vague):
             self.offences.append(Offence(*at(annotation), name, VAGUE_TYPE))
         if depth(annotation) >= self.settings.checks.nesting:
             self.offences.append(Offence(*at(annotation), name, NESTED_TYPE))
         longest: int
-        if (longest := length(annotation)) > self.settings.known.max_length:
+        if (longest := length(annotation)) > self.settings.known.limits.max_length:
             self.offences.append(Offence(*at(annotation), name, LONG_TUPLE, detail=str(longest)))
 
     def unannotated(self, type_comment: str | None) -> str | None:

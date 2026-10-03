@@ -3,7 +3,7 @@
 
 `Overloads.entry` reads a function's overloads (or its one signature, when a type variable or a
 class inside a builtin generic puts its return beyond the fixed-return tables) as `--fix` matches
-them against a call (`constricter.fix.overloads`): each parameter's kind, whether it has a default,
+them against a call (`constricter.fix.libraries.overloads`): each parameter's kind, whether it has a default,
 and which argument types it certainly takes or refuses; and the return, as a template.
 
 Argument types are the builtin scalars in `SCALARS`, `LiteralString` standing for a `str` literal.
@@ -19,7 +19,7 @@ import copy
 from collections.abc import Iterable, Iterator, Sequence
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix.signatures import Accepts, Constant, Parameter, Signature
+from constricter.fix.core.signatures import Accepts, Constant, Parameter, Signature
 from stdlib_tables.reading import (
     ClassRef,
     Defs,
@@ -234,6 +234,7 @@ class Overloads(Templates):
         """Read with `reading`; `canonical`: every public class's path, generic ones too."""
         super().__init__(reading, canonical)
         self._names: dict[str, frozenset[str] | None] = {}
+        self._taken: dict[tuple[ClassRef, str, bool], str] = {}  # `_klass`'s verdicts
 
     def entry(
         self,
@@ -753,7 +754,12 @@ class Overloads(Templates):
           The verdict.
 
         """
-        klass: ClassRef = ClassRef(found.module, found.name)
+        key: tuple[ClassRef, str, bool]
+        if (key := (ClassRef(found.module, found.name), scalar, subscripted)) not in self._taken:
+            self._taken[key] = self._takes_scalar(key[0], scalar, subscripted=subscripted)
+        return self._taken[key]
+
+    def _takes_scalar(self, klass: ClassRef, scalar: str, *, subscripted: bool) -> str:
         node: ast.ClassDef | None = self.reading.class_node(klass)
         if klass == ClassRef(BUILTINS, OBJECT) or (
             klass.module == BUILTINS and (scalar, klass.name) in _PROMOTED

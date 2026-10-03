@@ -6,6 +6,139 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix --unsafe-fixes` annotates a class's variables under a framework's base that reads no
+  annotation in a class body, as a plain class's: `per_page = 20` under django's `models.Model`,
+  `template_name = "x.html"` under a view, a form, an admin or a command. Django's classes are built
+  in, but its `Choices`, enums whose members a type checker won't have annotated; `fix-plain-bases`
+  (`--fix-plain-bases BASES`) lists more: a class by its dotted path, or a package for every class
+  in it, `!` before one to leave it out. A listed base counts where a checked file defines it too
+  (django's own, decorated or under a metaclass). A check of one file alone now resolves a base
+  through any import, not the standard library's alone. On django: 563 more guesses (4,632 fixes to
+  5,195).
+- `--fix` writes a standard-library function's bare generic return with its type parameters'
+  defaults, as a type checker reads it: `ET.SubElement(root, "x")` is an `ET.Element[str]`, as is
+  `ET.XML(text)`. It was guessed a constructor, `SubElement`, which isn't a type. A capitalised
+  standard-library function the tables can't type (`ET.Comment`, `doctest.DocTestSuite`,
+  `turtle.Screen`) is no longer guessed to construct a class: a new table, `functions`, lists them.
+- `--infer-with`: a server that says nothing for 120s no longer ends the run. It's restarted, and
+  each file it hadn't answered is asked about again alone; a file it hangs on again gets no hints,
+  named on standard error
+  (`constricter: warning: basedpyright hung on FILE twice: no hints for it`). A checker that hangs
+  on more than three files still stops the run.
+- What makes a type, not a value, isn't reported, nor counted by `--coverage`: `T = TypeVar("T")`, a
+  `ParamSpec`, `TypeVarTuple` or `NewType`, and a functional `NamedTuple`, `TypedDict`, `Enum` or
+  `collections.namedtuple`. An annotation there would make a type checker take the name for a
+  variable. On pydantic: 83 fewer bindings reported.
+- `--fix` splits a value typed as an alias of a tuple (`Pair: TypeAlias = tuple[int, str]`) over an
+  unpacking's names, as a named tuple's fields are: the module's own, or another checked file's,
+  however it's imported. On pydantic: 5 more certain fixes.
+- At `vague` 1 and above, `getattr(obj, name)` is an `Any` (`Any | T` with a default of type `T`),
+  and a standard-library function declared to return `Any` alone (`json.loads`, `pickle.loads`) an
+  `Any`: the tables now hold those 34 functions' returns. On pydantic at 1: 1,241 certain fixes and
+  464 guesses, from 1,188 and 466.
+- `vague` (`--vague LEVEL`, `[tool.constricter]`, and both plugins' `constricter-vague`): how vague
+  an annotation may be before it's LVA005, and how vague a fix may be. -1, the default, allows no
+  `Any`, `object` or generic without its parameters; 0, one inside a type that says the rest
+  (`tuple[str, Any]`); N from 1, N + 1 of them, or one alone (`Any`). A function's or method's
+  declared return with a vague part now types its calls where the level allows, and a type checker's
+  hint is taken the same way. At the default, no fix writes a vague type any more: one did where a
+  copy or an element of a vague value was typed (59 fixes on pydantic, 37 of them certain, now
+  none). On pydantic: 1,017 certain fixes and 429 guesses at -1, 1,120 and 452 at 0, 1,188 and 466
+  at 1; no new basedpyright error at any of them.
+- `--fix` declares a module's type alias: `Json = dict[str, "Json"]` becomes
+  `Json: TypeAlias = dict[str, "Json"]`, a new fix kind, `alias`. Only a value that can be nothing
+  but a type made of others: a subscript of what `typing` or `collections.abc` define
+  (`Union[A, B]`, `Callable[..., R]`), of a builtin generic or of a generic class the module names,
+  or a union of those, of builtin classes, of classes the checked files define and of `None`; or a
+  copy of a name the module declares an alias (`Rows = Table`), so one pass converges; never a bare
+  class's alias, a name bound twice, or a name the module binds as a value somewhere. `TypeAlias` is
+  named as the module's imports can, else imported from `typing`: certain where the module imports
+  the name already or `min-python` is 3.10 or later, a guess otherwise. On pydantic (checked under
+  this project's `requires-python`, 3.11): 128 more certain fixes.
+- `--fix --unsafe-fixes` annotates a class's variables under a builtin exception or value class too
+  (`code = "missing"` under `ValueError`, `strip_whitespace = True` under `str`): such a base is one
+  a plain class may have. A variable is left alone where a class above it annotates the name as
+  another type (`limit: int | None` above makes `limit: int = 3` an incompatible override), or where
+  a builtin base has the name itself (`errno` under `OSError`), across the checked files. On
+  pydantic: 162 more guesses.
+- `--fix` types a call of a value whose type says what calling it gives: a local, an attribute or
+  anything else typed `Callable[..., R]` (`schema = handler(source)`), one typed `type[C]` (`cls()`
+  in a classmethod, `type(self)()`, and `cls.__new__(cls)`: `Self` where the method's signature says
+  so), and an instance of a class declaring `__call__`, another checked file's too. An unpacking's
+  names take a named tuple's fields (`globalns, localns = resolver.namespaces`, declared a
+  `NamedTuple` class, the module's own or another checked file's), and a `with` statement's target
+  that unpacks is split the same way; a `@contextmanager` method types its `with` target on a
+  receiver of a known type, as a function does. A call to a class the checked files define
+  constructs it whatever its name's case (`_Definitions()`, a guess as a capitalised call is), and a
+  name bound again to a guessed value is that value's type from there on
+  (`config = config or Config()`). On pydantic: 51 more certain fixes and 34 more guesses.
+- Together, on pydantic: 179 more certain fixes (878 to 1,057) and 196 more guesses (255 to 451),
+  375 fewer bindings with no fix (2,042 to 1,667); no new basedpyright error after `--fix` or
+  `--fix --unsafe-fixes`, nothing broken, and one pass converges.
+- A check of many files is faster: the standard library with its tests (1,867 files) in 108s with
+  `--jobs=1` (from 185s) and 35s with `--jobs=0` on 8 cores (from 62s), pydantic in 4.2s (from
+  6.0s). What a file passes other files' functions is read from the module's one shared walk, only
+  the functions that name one walked; a function is walked for a `yield`, a rebound `self` or a
+  shadowed import only where the module has one in it; a caller is checked again only where what it
+  imports now returns something else; a function's declared return is read once for every class
+  table; a value is asked only of what types its kind (a call, a name, a display); and another
+  file's function or class member is written for a file only where the file uses it. The results are
+  the same, but for what an unused member's type no longer holds back: a name it would have needed
+  imported is free for an import a fix adds (`Final`, `Iterator`: 15 more fixes on the standard
+  library).
+- `--fix` types an unpacked call whose declared return is a tuple with a vague part
+  (`schema, metadata = self.common(...)`, declared `tuple[CoreSchema, dict[str, Any]]`): each name
+  whose part isn't vague is declared (`schema: CoreSchema`), for a function or a method, the
+  module's own or another checked file's; the call whole still has no fix. A classmethod or
+  staticmethod types its calls on an instance too (`self.info(stmt)`), and on a class that takes it
+  from a base in the same module (`Sub.make()`, a `Sub` where `make` returns `Self`). On pydantic:
+  29 more certain fixes (849 to 878) and 1 more guess, 30 fewer bindings with no fix (2,072 to
+  2,042); no new basedpyright error, and one pass converges.
+- `--fix` types more of what a value's parts decide. An unpacking, name by name: a display of as
+  many values gives each name its own value's type (`a, b = x, 1` declares `b: int` whatever `x`
+  is), anything else its elements' (`a, b = s.split(",")`, `q, r = divmod(n, 2)`,
+  `i, j = range(2)`), and a starred name a `list` of them (`first, *rest = names`). More that's
+  iterated: a tuple whose parts agree (`for name in ("a", "b")`), `map(f, xs)` by what `f` returns,
+  `iter(xs)`, a generator expression (so `list(...)`, `sorted(...)` and `tuple(...)` of one), and
+  any mapping's keys, values and items (`Mapping[K, V]`, `OrderedDict`, `defaultdict`,
+  `MappingProxyType`). Builtins their arguments decide: `abs`, `round`, `divmod` and `sum` of
+  builtin numbers, `min` and `max` of values of one type or of something's elements, `next` (with a
+  default of that type, or `None`), `dict` of a mapping, of pairs or of keywords,
+  `dict.fromkeys(keys, value)`, and the builtin classes' classmethods with a fixed return
+  (`bytes.fromhex(...)`, `int.from_bytes(...)`); `os.environ.copy()`, a `dict[str, str]`; `-n`, `+n`
+  and `~n`; and a `list` added to one of its type, or repeated. A classmethod or staticmethod called
+  on its class, by its declared return (`Box.make()`), in the class's own module or another checked
+  file's, however the class is imported or re-exported (`MultiIndex.from_arrays(...)`,
+  `pd.MultiIndex.from_tuples(...)`); a classmethod, staticmethod or property counts under decorators
+  that give it back too (`@classmethod` over `@names_compat`). And a member a class takes from a
+  standard-library base, by the tables: `self.id()` in a `unittest.TestCase` is a `str`, `self.name`
+  in a `threading.Thread` a `str` (not one that is the base itself, which may be `Self`). On
+  pydantic, the one corpus measured: 43 more certain fixes (806 to 849) and 9 more guesses (245 to
+  254), 52 fewer bindings with no fix (2,124 to 2,072); no new basedpyright error after `--fix` or
+  `--fix --unsafe-fixes`, and one pass converges.
+- `min-python` (`--min-python VERSION`, and `[tool.constricter]`): the oldest Python the code runs
+  on, whose syntax `--fix` writes. It defaults to the lower bound of the nearest `pyproject.toml`'s
+  `requires-python`. At 3.11 or later, a hint's unpacked tuple is written as the checker printed it
+  (`tuple[str, *tuple[str, ...]]`): 3 more fixes on pydantic with basedpyright's and ty's hints.
+- `--fix` types a subscript of a standard-library class's instance by its `__getitem__` in typeshed:
+  `proxy["k"]` on a `MappingProxyType[str, int]` is an `int`, `queue[0]` on a `deque[str]` a `str`,
+  `parser["section"]` a `configparser.SectionProxy`. Nothing changes on pydantic.
+- A build from a checkout (the Action, a pre-commit hook's install, an editable install) generates
+  the standard-library tables in about 12s on 4 cores, from 70s: each of the twelve configurations
+  is read in a worker process (in the one process where none can start), and what's asked again and
+  again is worked out once. The tables are the same.
+- `--fix --unsafe-fixes` annotates a plain class's variables (`limit = 3` in its body becomes
+  `limit: int = 3`), by a literal value or a display of them, and types what reads them
+  (`self.limit`, `cls.limit`) in the same run: a new fix kind, `member`, always a guess. A plain
+  class has no decorator, metaclass or other keyword, and every base is `object`, a `unittest` test
+  case or another plain class, across the checked files; and no class that isn't plain inherits from
+  it. Every other class body is left alone. On pydantic: 8 more guesses (235 to 243), no new
+  basedpyright error, and one pass converges.
+- `--fix` takes a class or alias a file spells two ways for one type: `CoreSchema` and
+  `core_schema.CoreSchema`, in a file importing the name and its module (the name perhaps for type
+  checking alone), as the index of checked files and installed packages resolves them. A name bound
+  to one, then the other, keeps its fix. On pydantic: 6 more fixes (5 of them certain), 8 with
+  basedpyright's and ty's hints; no new basedpyright error.
 - `--fix` types the `self` a function defined in a method reads (one taking and binding none of its
   own; not in a method whose signature says `Self`), and a call to a function whose signature is a
   `# type:` comment, by the comment's return: `names = find()` under `# type: () -> List[str]` is a
@@ -14,16 +147,24 @@ Notable changes, newest first. Each release's full notes are generated from its 
   the file imports that module to run (`core_schema.CoreSchema`, `inspect.Signature`), as a hint's
   is, and no longer by a new import for type checking; not through a name the file binds as a value
   somewhere. With `--infer-with`, ty's spellings are read (`Model@create_model` is `Model`,
-  `(str & ~AlwaysFalsy) | None` a `str | None`, and `tuple[str, *tuple[str, ...]]` is kept as it is,
-  which is Python 3.11's syntax), and a hint naming a type variable is a fix only where its
-  function's signature or its class names it. On pydantic: 4 fewer bindings with no fix (2,142 to
-  2,138), 3 fewer with basedpyright's hints (1,593 to 1,590); basedpyright finds no new error after
-  `--fix --unsafe-fixes`.
+  `(str & ~AlwaysFalsy) | None` a `str | None`, and `tuple[str, *tuple[str, ...]]`, Python 3.11's
+  syntax, is kept where the project's oldest Python parses it, else written with `Unpack` where the
+  module imports it and dropped where it doesn't), and a hint naming a type variable is a fix only
+  where its function's signature or its class names it. On pydantic: 4 fewer bindings with no fix
+  (2,142 to 2,138), 3 fewer with basedpyright's hints (1,593 to 1,590); basedpyright finds no new
+  error after `--fix --unsafe-fixes`. On the seven corpora, since 0.3.1: 53,141 certain fixes (from
+  48,645) and 38,622 guesses (from 38,092), 160,085 bindings with no fix (from 165,111); nothing
+  broken, and one pass converges.
 - Fixed: a type naming an alias its module assigns in two branches a type checker can't decide
   between (`if MYPY: X = A`, `else: X = B`), a variable to it, isn't written in another file, nor
   taken for an alias a hint names; an import a fix needs is added even where its text is on an
   indented line (in a string, in the standard library's `_test_multiprocessing`), which binds
-  nothing; and a quoted `"Self"` in a signature counts as `Self`.
+  nothing; a quoted `"Self"` in a signature counts as `Self`; and in a method whose signature says
+  `Self`, a `Self` method called on `type(self)`, one the class inherits, and
+  `self if inplace else self.copy()` are `Self`, not the class (9 errors on pandas); and what's
+  inferred from a name first bound to a value of no known type, then to a typed one, is a guess,
+  since it may still hold the first (`levels` bound under an `if` and its `else`, then looped over:
+  2 errors on pandas's `style_render.py`; on pydantic, 1 certain fix becomes a guess).
 - `--fix` types six more shapes. A union the author would write: `a if c else None` is a `T | None`,
   and `a or b` (or `a and b`) with operands of one type is that type, `or` dropping a `None` before
   its last operand (fix kind `boolean`). A `:=`'s name is declared on a line of its own before its
