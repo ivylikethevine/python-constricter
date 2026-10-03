@@ -24,8 +24,8 @@ def fields(catalog: Index, path: Path, guarded: dict[str, Guarded]) -> dict[str,
       have.
 
     """
-    target: Module | None = catalog.modules.get(module_name(path)) if path.suffix == SUFFIX else None
-    if target is None:
+    target: Module | None
+    if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
         return {}
     modules: dict[str, Module] = catalog.modules
     named: list[tuple[str, Origin]] = [
@@ -42,8 +42,9 @@ def fields(catalog: Index, path: Path, guarded: dict[str, Guarded]) -> dict[str,
             ALIAS,
         )
         found.update({} if defined is None else _fields(modules, target, key, defined, guarded))
-        module: Module | None = modules.get(origin[0]) if origin[1] is None else None
-        if module is not None:  # `shapes.Pair`, after `import pkg.shapes as shapes`
+        module: Module | None
+        # `shapes.Pair`, after `import pkg.shapes as shapes`
+        if origin[1] is None and (module := modules.get(origin[0])) is not None:
             found.update(_module_fields(modules, target, key, module, guarded))
     return found
 

@@ -111,7 +111,7 @@ def test_what_only_a_vague_type_describes_is_typed_from_1() -> None:
     shadowed: str = "def f(o, getattr) -> None:\n    a = getattr(o, 'x')\n"
     taken: str = "import json\nAny = typing = 1\ndef f(s: str) -> None:\n    a = json.loads(s)\n"
     assert [o.fix for o in check_source(shadowed, checks=Checks(vague=1))] == [None]
-    assert [o.fix for o in check_source(taken, checks=Checks(vague=1)) if o.name == "a"] == [None]
+    assert [o.fix for o in check_source(taken, checks=Checks(vague=1))] == [None]
 
 
 def test_a_hint_is_taken_only_as_vague_as_the_level_allows() -> None:
