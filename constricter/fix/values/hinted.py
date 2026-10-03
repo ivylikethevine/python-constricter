@@ -532,7 +532,8 @@ def _widened(node: ast.expr) -> ast.expr | None:
         case ast.Subscript(value=value, slice=inner):
             widened: ast.expr | None = _widened(inner)
             # A class's own argument may be bound to the literals (`Reader[Literal["frame"]]`).
-            same: bool = widened is not None and (_holds(value) or ast.dump(widened) == ast.dump(inner))
+            # Compared as written: a node built here has no `ctx` before Python 3.13, so its dump differs.
+            same: bool = widened is not None and (_holds(value) or ast.unparse(widened) == ast.unparse(inner))
             return ast.Subscript(value, widened) if widened is not None and same else None
         case ast.Tuple(elts=elements) | ast.List(elts=elements):
             parts: list[ast.expr | None] = [_widened(element) for element in elements]
