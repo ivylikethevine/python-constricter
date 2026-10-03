@@ -6,12 +6,13 @@ wouldn't narrow it to the `int` it's bound to), and `total = 0` then `total += 0
 `float`; another type that doesn't fit (`x = 1` then `x = "a"`, a class and its base) leaves it
 untyped: a union is better left to the author. A `Self` takes only `Self`. A later binding whose
 type isn't known may be anything, and one whose type is a guess may be wrong: either makes the fix
-a guess.
+a guess, and leaves a type checker's hint (`--infer-with`) no fix at all.
 """
 
 from typing import Final, NamedTuple
 
 from constricter.fix.core.known import Inference
+from constricter.fix.values.hinted import KIND as CHECKER
 from constricter.offences import Edit, Fix, Offence
 from constricter.rules.flow import Binding, Hierarchy, members
 
@@ -59,7 +60,8 @@ def refit(
     # `--fix`'s annotations are always readable; one that weren't would be its own one member.
     declared: frozenset[str] = members(fix.annotation) or frozenset({fix.annotation})
     later: _Later = _later(rest, declared, hierarchy)
-    if (later.misfits or later.unknown) and self_type in declared:
+    # A checker's hint is the first value's type alone: it says nothing of a later one's.
+    if (later.misfits or later.unknown) and (self_type in declared or CHECKER in fix.kinds):
         return None
     if not (later.misfits or later.unknown or later.origins):
         return fix

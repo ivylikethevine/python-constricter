@@ -85,7 +85,12 @@ def _fixes(source: str, hinted: dict[str, str]) -> _Fixes:
         ("dict[str, dict[str, list[int]]]", None),  # as deep as LVA006 reports
         ("tuple[int, int, int, int, int]", None),  # as long as LVA011 reports
         ("_T", None),  # a type variable, or anything private
-        ("list[<class 'int'> | <class 'Color'>]", "list[type[int] | type[Color]]"),  # ty's class objects
+        ("dict[<class 'int'>, <class 'Color'>]", "dict[type[int], type[Color]]"),  # ty's class objects
+        ("list[int | str]", None),  # a mixed container's elements: read as one member or another
+        ("dict[str, list[int | None]]", None),
+        ("Callable[[int], Literal['a']]", "Callable[[int], str]"),
+        ("Box[Literal['a']]", None),  # a class's argument may be bound to the literals
+        ("Box[int]", "Box[int]"),
         ("<class '<unknown>'>", None),
         ("type[_]", None),  # `_` is gettext's, or a throwaway: never the checker's class
         ("dict[int, <class 'A'> | ... omitted 11 union elements]", None),  # cut short
@@ -113,10 +118,64 @@ def test_a_hint_is_widened_spelled_or_dropped(hint: str, fix: str | None) -> Non
         RED = 1
 
 
+    class Box: ...
+
+
     def f(q) -> None:
         x = q.make()
+        if x is None:
+            return
     """
     assert _fixes(source, {"x": hint}) == [("x", fix, fix is not None)]
+
+
+def test_a_union_is_a_fix_only_for_a_name_its_function_tests() -> None:
+    """Untested, the name is used as one member of the union, which declared would be an error."""
+    untested: str = "def f(q) -> None:\n    x = q.find()\n    x.run()\n"
+    assert _fixes(untested, {"x": "int | None"}) == [("x", None, False)]
+    assert _fixes(untested, {"x": "int | str"}) == [("x", None, False)]
+    read: str = "def f(q) -> None:\n    x = q.find()\n    if x.ready and len(x) > 1:\n        x.run()\n"
+    assert _fixes(read, {"x": "int | None"}) == [("x", None, False)]
+    test: str
+    for test in ("x is not None", "not x", "q and isinstance(x, int)", "x"):
+        tested: str = f"def f(q) -> None:\n    x = q.find()\n    if {test}:\n        x.run()\n"
+        assert _fixes(tested, {"x": "int | None"}) == [("x", "int | None", True)]
+    assert [o.fix for o in _checked("x = find()\n", {"x": "int | None"}, Checks(all_scopes=True))] == [
+        "int | None",
+    ]
+
+
+def test_a_name_returned_as_self_has_no_fix() -> None:
+    """The checker hints the class, which a signature saying `Self` doesn't take."""
+    source: str = """
+    from typing import Self
+
+
+    class Box:
+        def copy(self, q) -> Self:
+            new = q.make()
+            other = q.make()
+            return new
+
+        def plain(self, q) -> "Box":
+            new = q.make()
+            return new
+    """
+    assert _fixes(source, {"new": "Box", "other": "Box"}) == [
+        ("new", None, False),
+        ("other", "Box", True),
+        ("new", "Box", True),
+    ]
+
+
+def test_a_name_bound_again_to_another_or_no_known_type_has_no_fix() -> None:
+    """A hint is the first value's type: a later value the checker wasn't asked about may be any."""
+    source: str = "def f(q) -> None:\n    x = q.make()\n    x = q.other()\n"
+    first: Hints = Hints(_CHECKER, {(2, 5): "int"})
+    assert [o.fix for o in check_source(source, checks=_DEFAULT, outside=Outside(hints=(first,)))] == [None]
+    assert _fixes(source, {"x": "int"}) == [("x", "int", True)]
+    wider: str = "def f(q) -> None:\n    x = q.make()\n    x = 1.5\n"
+    assert _fixes(wider, {"x": "int"}) == [("x", None, False)]
 
 
 @pytest.mark.parametrize(
@@ -469,6 +528,28 @@ def test_an_annotation_is_written_as_the_hint_shows_it_or_as_its_edit_spells_it(
     spelled: list[Offence] = _offering("import things\n" + _USE, {"x": thing}, shown="Thing[str]")
     assert [o.fix for o in spelled] == ["things.Thing[str]"]
     assert [o.fix for o in _offering(_USE, {"x": thing}, shown="Thing[str]")] == [None]
+
+
+def test_an_edit_writing_a_generic_under_another_name_is_no_fix() -> None:
+    """A generic alias ty's edit writes as its class keeps the alias's arguments: not the class's."""
+    numpy: str = "import numpy as np\n" + _USE
+    array: Offered = Offered("np.ndarray[np.float64]")
+    assert [o.fix for o in _offering(numpy, {"x": array}, shown="NDArray[float64]")] == [None]
+    nested: Offered = Offered("list[np.ndarray[np.float64]]")
+    assert [o.fix for o in _offering(numpy, {"x": nested}, shown="list[_Array1D[float64]]")] == [None]
+    both: Offered = Offered("np.ndarray[tuple[int], np.dtype[np.float64]]")
+    shown: str = "ndarray[tuple[int], dtype[float64]]"
+    assert [o.fix for o in _offering(numpy, {"x": both}, shown=shown)] == [both.text]
+
+
+def test_an_edit_writing_a_generic_by_the_files_name_for_it_is_a_fix() -> None:
+    """A name the file, or the edit's own import, binds to the class shown is that class."""
+    renamed: Offered = Offered("T[str]")
+    source: str = "from things import Thing as T\n" + _USE
+    assert [o.fix for o in _offering(source, {"x": renamed}, shown="Thing[str]")] == ["T[str]"]
+    imported: Offered = Offered("S[str]", ("from shapes import Shape as S",))
+    assert [o.fix for o in _offering(_USE, {"x": imported}, shown="Shape[str]")] == ["S[str]"]
+    assert [o.fix for o in _offering(_USE, {"x": Offered("Thing[")}, shown="Thing[")] == [None]
 
 
 def test_a_well_known_class_is_imported_to_run_unless_the_edit_says_another() -> None:

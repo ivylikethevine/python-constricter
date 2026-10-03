@@ -349,6 +349,22 @@ def _respelled(
     return _renamed(annotation, renamed)
 
 
+def spelled_in(
+    catalog: Index,
+    target: Module,
+    defined: Module,
+    annotation: str,
+    guarded: dict[str, Guarded],
+) -> str | None:
+    """Write a type from module `defined` in `target` (see `_respelled`).
+
+    Returns:
+      The type, or `None`.
+
+    """
+    return _respelled(catalog.modules, target, defined, annotation, guarded)
+
+
 def _refused(modules: Mapping[str, Module], target: Module, defined: Module, annotation: str) -> bool:
     """Check whether a type from module `defined` is one never written in `target` (see `_respelled`).
 

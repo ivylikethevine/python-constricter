@@ -9,7 +9,7 @@ from constricter.fix.core.known import Known
 from constricter.fix.libraries import stdlib
 from constricter.fix.libraries.library import installed_method, library_class
 from constricter.fix.libraries.opened import opened
-from constricter.fix.values import called, decided, shapes
+from constricter.fix.values import called, decided, displays, shapes
 from constricter.fix.values.inference import (
     COMPREHENSIONS,
     CONTAINER_BUILDERS,
@@ -17,6 +17,7 @@ from constricter.fix.values.inference import (
     dict_view,
     inference,
     inferred,
+    joined,
     scalar,
     targets_typed,
 )
@@ -134,6 +135,9 @@ def guessing(
     found: set[str] = set()
     node: ast.AST
     for node in walked:
+        if joined(node, known, declared):
+            unsafe, named = True, False
+            found.add(displays.JOINED)
         if _is_guess(node, known, guesses, inside):
             unsafe = True
             named = named and isinstance(node, ast.Name)

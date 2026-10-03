@@ -57,13 +57,19 @@ ANY_LENGTH: Final = "tuple[int, ...]"
         ("None", None),
         ("[1]", "list[int]"),
         ("[]", None),
-        ("[1, 'a']", None),
+        ("[1, 'a']", "list[int | str]"),  # joined: a guess
+        ("[1, 'a', None]", "list[int | str | None]"),
+        ("[1, 'a', b'', 1.5]", None),  # too many to join
+        ("[1, [2]]", None),  # not plain types
+        ("[None, None]", None),
         ("[[1], [2]]", "list[list[int]]"),
         ("{1, 2}", "set[int]"),
         ("(1, 'a', b'')", "tuple[int, str, bytes]"),
         ("(1, *[])", None),
         ("{'a': 1}", "dict[str, int]"),
-        ("{'a': 1, 'b': 'c'}", None),
+        ("{'a': 1, 'b': 'c'}", "dict[str, int | str]"),
+        ("{'a': 1, 2: None}", "dict[str | int, int | None]"),
+        ("{1, 'a'}", "set[int | str]"),
         ("{**{}}", None),
         ("{}", None),
     ],

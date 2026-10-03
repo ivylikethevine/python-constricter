@@ -41,17 +41,21 @@ Unreleased:
 | ---------- | --------------: | ------------: | ---------------------------: | --------------------: |
 | pydantic   |             191 |             9 |                           10 |                    21 |
 | sqlalchemy |               0 |             0 |                           12 |                    36 |
-| pandas     |              70 |             0 |                           32 |                   444 |
+| pandas     |              70 |             0 |                           32 |                    84 |
 
 pydantic's 191 are this environment's (its pinned pyright finds none in its CI). Its 9 after `--fix`
 are released errors in a new place, each traced to its fix: 4 repeat an annotation pyright rejects
 where pydantic wrote it (`'AnyClassMethod'`, an alias its module binds in two branches, three times,
 and `Union[str]`), and 5 are the checkout's own path in a class's name, now caught at the annotation
 (4 of them one fix, `FieldInfo_: type[FieldInfo]`). Its one more after `--fix --unsafe-fixes` is a
-guess's (`PydanticExtraInfo`, for a name bound again to an `X | None`). pandas's 444 with the hints'
-fixes are 339 a hint's own fix's (`checker`), 19 untraced and 86 other mechanisms' (32 without the
-hints); basedpyright's server hung twice on `pandas/tests/apply/test_series_apply.py`, which has no
-hints from it, and the run took 32 minutes.
+guess's (`PydanticExtraInfo`, for a name bound again to an `X | None`). pandas's 84 with the hints'
+fixes are 26 a hint's own fix's (`checker`), 12 untraced and 46 other mechanisms' (32 without the
+hints); it had 444 before a hint was held to what its function does with the name (see
+[FIXES.md](FIXES.md#a-type-checkers-types---infer-with)), which pydantic's and sqlalchemy's counts
+here predate. The checkers' hints vary from run to run: one function's 13 errors came and went
+between runs of the same code. basedpyright's server hangs twice on
+`pandas/tests/apply/test_series_apply.py` (on `np.array([np.sum, np.mean])`, as its command line
+does), which has no hints from it, and the run takes 32 minutes.
 
 Earlier suites, on 0.2.4-rc.5:
 

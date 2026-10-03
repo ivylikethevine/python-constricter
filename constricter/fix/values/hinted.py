@@ -16,7 +16,10 @@ the checker printed it:
 - anything that isn't an annotation (`Module("os")`, a callable's signature, `Self@C`) is dropped,
   as is a vague one (`Any`, `list[Unknown]`), a bare `None`, one nested as deep as LVA006 reports,
   or a tuple as long as LVA011 does;
-- a special form alone (`type[Generic]`) is dropped;
+- a special form alone (`type[Generic]`) is dropped, as is a union inside the hint
+  (`dict[str, int | bytes]`), and a `Literal` in a class's own arguments, which may be bound to it
+  (a union for a name its function doesn't narrow, a name it returns as `Self` and one bound again
+  are `constricter.rules`' to drop);
 - `TypeAlias`, hinted for an alias's assignment, declares a module's alias written as a subscript or
   a union (see `type_alias`), and is dropped anywhere else;
 - every name in it must be one the file can use: a builtin, a name the module binds at its top
@@ -144,8 +147,11 @@ def hinted(
 
     """
     imports: tuple[str, ...] = () if offered is None else offered.imports
+    candidates: list[str] = [text]
+    if offered is not None and not _renamed(text, offered.text, known.names.plan, _origins(imports)):
+        candidates.append(offered.text)
     candidate: str
-    for candidate in dict.fromkeys([text] if offered is None else [text, offered.text]):
+    for candidate in dict.fromkeys(candidates):
         annotation: str | None
         if (annotation := _spelled(candidate, known, imports, nesting=nesting, before=before)) is not None:
             return annotation
@@ -196,6 +202,45 @@ def renames(name: str, annotation: str, *, local: bool) -> bool:
 
     """
     return annotation.startswith(_CLASS) and not (local and name[:1].islower())
+
+
+def _renamed(shown: str, written: str, plan: ImportPlan | None, origins: _Origins) -> bool:
+    """Check whether a hint's edit writes a generic `shown` under one name under another.
+
+    ty shows a generic alias (`NDArray[bool]`) and writes the class it stands for with the alias's
+    own arguments (`np.ndarray[np.bool]`), which aren't the class's. A name the file or the edit's
+    imports bind to the one shown (`from shapes import Shape as S`) is the same one.
+
+    Returns:
+      Whether it does.
+
+    """
+    try:
+        pairs: list[tuple[ast.expr, ast.expr]] = list(zip(_heads(shown), _heads(written), strict=False))
+    except SyntaxError:
+        return False
+    was: ast.expr
+    now: ast.expr
+    for was, now in pairs:
+        name: str = now.attr if isinstance(now, ast.Attribute) else ast.unparse(now)
+        if name in origins and isinstance(now, ast.Name):
+            name = origins[name][2]
+        elif isinstance(now, ast.Name):
+            name = (name if plan is None else plan.bound.get(name, name)).rpartition(_DOT)[2]
+        if name != (was.attr if isinstance(was, ast.Attribute) else ast.unparse(was)):
+            return True
+    return False
+
+
+def _heads(text: str) -> list[ast.expr]:
+    """List what a hint's `text` subscripts (`dict` and `list` in `dict[str, list[int]]`), outermost first.
+
+    Returns:
+      Them.
+
+    """
+    root: ast.expr = ast.parse(_plain(text), mode="eval").body
+    return [node.value for node in ast.walk(root) if isinstance(node, ast.Subscript)]
 
 
 def _spelled(
@@ -409,7 +454,31 @@ def _annotation(root: ast.expr) -> bool:
         all(isinstance(node, _ANNOTATION_NODES) for node in ast.walk(root))
         and all(node.value in {None, Ellipsis} for node in ast.walk(root) if isinstance(node, ast.Constant))
         and not (isinstance(root, ast.Constant) and root.value is None)
+        and not _mixes(root)
     )
+
+
+def _mixes(root: ast.expr) -> bool:
+    """Check whether an annotation has a union inside it (`dict[str, int | bytes]`): a mixed container's.
+
+    Its elements are read as one member or another, which no test of the name narrows.
+
+    Returns:
+      Whether it does.
+
+    """
+    chain: set[int] = _chain(root)
+    return any(isinstance(node, ast.BinOp) and id(node) not in chain for node in ast.walk(root))
+
+
+def _chain(root: ast.expr) -> set[int]:
+    """Find the nodes joining an annotation's outermost union: `A | B` in `A | B | C`.
+
+    Returns:
+      Their identities.
+
+    """
+    return {id(root)} | _chain(root.left) if isinstance(root, ast.BinOp) else set()
 
 
 def _fits(root: ast.expr, nesting: int, known: Known) -> bool:
@@ -462,7 +531,10 @@ def _widened(node: ast.expr) -> ast.expr | None:
             return _joined(node)
         case ast.Subscript(value=value, slice=inner):
             widened: ast.expr | None = _widened(inner)
-            return None if widened is None else ast.Subscript(value, widened)
+            # A class's own argument may be bound to the literals (`Reader[Literal["frame"]]`).
+            # Compared as written: a node built here has no `ctx` before Python 3.13, so its dump differs.
+            same: bool = widened is not None and (_holds(value) or ast.unparse(widened) == ast.unparse(inner))
+            return ast.Subscript(value, widened) if widened is not None and same else None
         case ast.Tuple(elts=elements) | ast.List(elts=elements):
             parts: list[ast.expr | None] = [_widened(element) for element in elements]
             kept: list[ast.expr] = [part for part in parts if part is not None]
@@ -472,6 +544,16 @@ def _widened(node: ast.expr) -> ast.expr | None:
             return ast.Name(_WIDER.get(name, name))
         case _:
             return node
+
+
+def _holds(head: ast.expr) -> bool:
+    """Check whether a subscript's head is a container of any type: a builtin, or `collections.abc`'s.
+
+    Returns:
+      Whether it is.
+
+    """
+    return isinstance(head, ast.Name) and (head.id in _BUILTINS or head.id in WELL_KNOWN)
 
 
 def _joined(node: ast.BinOp) -> ast.expr | None:

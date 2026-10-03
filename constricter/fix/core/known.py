@@ -10,7 +10,7 @@ from typing import Final, NamedTuple, TypeAlias
 from constricter.fix.core.inherited import Lineage
 from constricter.fix.core.signatures import Expansion, ReadSignature
 from constricter.offences import MAX_LENGTH, VAGUE
-from constricter.rules.annotations import free_of, free_of_all
+from constricter.rules.annotations import free_of, free_of_all, roots
 
 _BUILTINS: Final = frozenset(dir(builtins))
 _DOT: Final = "."
@@ -389,6 +389,8 @@ class Outside(NamedTuple):
     same: tuple[frozenset[str], ...] = ()
     partial: Partial = Partial()
     tuples: Mapping[str, str] = {}
+    # The pytest fixtures its tests can take: each one's value's type (see `constricter.fix.index.fixtures`).
+    fixtures: Mapping[str, Passed] = {}
 
     def usable(self, taken: frozenset[str]) -> "Outside":
         """Drop what other files offer whose type needs a name imported that the module binds already.
@@ -429,6 +431,7 @@ class Outside(NamedTuple):
             self.same,
             Partial(free_of(self.partial.calls, clashing), free_of_all(self.partial.methods, clashing)),
             free_of(self.tuples, clashing),
+            {name: typed for name, typed in self.fixtures.items() if not roots(typed[0]) & clashing},
         )
 
 

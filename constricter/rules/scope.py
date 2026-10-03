@@ -17,6 +17,7 @@ from constricter.fix.values.doubts import (
     doubts,
     is_constant,
     narrowed_first,
+    narrowing,
     says_self,
     tested,
     undeclared,
@@ -78,9 +79,19 @@ class Settings:
     # Type checkers' types, for what `--fix` can't type (`--infer-with`): each checker's, in order.
     hints: tuple[Hints, ...] = ()
     facts: Facts = field(default_factory=Facts)  # what a type checker sees otherwise (see `doubts`)
-    # What every call passes each unannotated parameter of its top-level functions, by `id()` (see
-    # `constricter.fix.index.callers`): guesses, for what's computed from them.
-    parameters: Mapping[int, Mapping[str, Passed]] = field(default_factory=dict[int, Mapping[str, Passed]])
+    parameters: "Seeded | None" = None  # what its functions' parameters are given from outside them
+
+
+class Seeded(NamedTuple):
+    """The types a module's functions' unannotated parameters are given from outside them: guesses.
+
+    `callers`: what every call passes each parameter of its top-level functions, by `id()` (see
+    `constricter.fix.index.callers`); `fixtures`: the pytest fixtures its tests can take, each one's
+    value's type (see `constricter.fix.index.fixtures`).
+    """
+
+    callers: Mapping[int, Mapping[str, Passed]] = {}
+    fixtures: Mapping[str, Passed] = {}
 
 
 class Kind(NamedTuple):
@@ -490,10 +501,33 @@ class Scope:
                 # A generic class a checker prints bare has arguments it doesn't know.
                 and not bare(typed, self.settings.facts.generics)
                 and not hinted.renames(target.id, typed, local=self.kind.function is not None)
-                and not self._undeclared(typed)
+                and not (self._undeclared(typed) or self._misread(target.id, typed))
             ):
                 return hinted.inference(typed, found.checker)
         return None
+
+    def _misread(self, name: str, annotation: str) -> bool:
+        """Check whether a hint is one this scope's function reads otherwise than declared.
+
+        A union for a name it never tests: used as it is, it's taken for one of its members
+        (`opt.cb`, hinted `Option | None`), which the union declared would make an error; tested
+        (`if opt is None`), a checker narrows it. And any hint for a name it returns where its
+        signature says `Self`: the checker hints the class, which isn't `Self`.
+
+        Returns:
+          Whether it is.
+
+        """
+        function: FunctionDef | None
+        if (function := self.kind.function) is None:
+            return False
+        if len(members(annotation) or ()) > 1:
+            return name not in narrowing(function)
+        return says_self(function) and any(
+            isinstance(node.value, ast.Name) and node.value.id == name
+            for node in ast.walk(function)
+            if isinstance(node, ast.Return)
+        )
 
     def _undeclared(self, annotation: str) -> bool:
         """Check whether a hint names a type variable this scope's function doesn't declare.

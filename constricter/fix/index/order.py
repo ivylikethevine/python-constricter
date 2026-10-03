@@ -9,7 +9,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix.index import project
+from constricter.fix.index import fixtures, project
 from constricter.fix.index.project import Index
 
 _SUFFIX: Final = ".py"
@@ -48,7 +48,10 @@ def plan(catalog: Index, paths: Sequence[Path]) -> Plan:
         if name is not None and counts[name] == 1 and name in catalog.modules
     }
     graph: dict[str, list[str]] = {
-        name: sorted(project.needs(catalog, catalog.modules[name]) & unique.keys()) for name in sorted(unique)
+        name: sorted(
+            (project.needs(catalog, catalog.modules[name]) | fixtures.needed(catalog, name)) & unique.keys(),
+        )
+        for name in sorted(unique)
     }
     components: list[list[int]] = []
     after: list[frozenset[int]] = []

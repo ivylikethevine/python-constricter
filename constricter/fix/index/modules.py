@@ -20,7 +20,7 @@ from constricter.fix.core.imports import taken_names
 from constricter.fix.core.known import Origin, Passed, Returns
 from constricter.fix.index.declared import Declarations, declarations
 from constricter.fix.values import classvars
-from constricter.fix.values.returned import unannotated
+from constricter.fix.values.returned import unannotated, yields_itself
 from constricter.rules import parsed
 from constricter.rules.annotations import (
     defined_type_vars,
@@ -29,7 +29,7 @@ from constricter.rules.annotations import (
     is_composite,
     node_name,
 )
-from constricter.rules.decorators import Held, Pass
+from constricter.rules.decorators import Held, Pass, is_fixture
 from constricter.rules.syntax import child_statements, top_level
 from constricter.rules.tables import Tables, module_tables
 from constricter.rules.walked import of_type
@@ -108,6 +108,8 @@ class Module(NamedTuple):
     partial: Mapping[str, str] = {}
     partial_methods: Mapping[str, Mapping[str, str]] = {}
     tuples: Mapping[str, str] = {}  # its named tuples' fields (see `targets.named_tuples`)
+    # Its top-level pytest fixtures, and whether each is a generator (its value is what it yields).
+    fixtures: Mapping[str, bool] = {}
 
 
 class Index(NamedTuple):
@@ -307,7 +309,22 @@ def read(path: Path, name: str | None = None) -> Module | None:
         partial=own.partial,
         partial_methods=own.order.flattened(own.partial_methods),
         tuples=own.tuples,
+        fixtures={} if name is not None else _fixtures(tree),
     )
+
+
+def _fixtures(tree: ast.Module) -> dict[str, bool]:
+    """Find the module's top-level pytest fixtures.
+
+    Returns:
+      Each one's name, and whether it's a generator.
+
+    """
+    return {
+        stmt.name: yields_itself(stmt)
+        for stmt in tree.body
+        if isinstance(stmt, ast.FunctionDef) and is_fixture(stmt)
+    }
 
 
 def _aliases(tree: ast.Module) -> dict[str, bool]:

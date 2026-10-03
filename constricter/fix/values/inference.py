@@ -16,7 +16,7 @@ from constricter.fix.libraries.library import (
     library_variable,
 )
 from constricter.fix.libraries.opened import opened
-from constricter.fix.values import called, decided, shapes
+from constricter.fix.values import called, decided, displays, shapes
 from constricter.fix.values.members import (
     assigned_attribute,
     class_variable,
@@ -715,34 +715,37 @@ def _container(value: ast.expr, known: Known, declared: Mapping[str, str]) -> In
     values: list[ast.expr]
     found: str | None = None
     parts: list[Inference | None] = []
+    mixed: bool = False  # whether the elements' types differ, and are joined
     match value:
         case ast.List(elts=elements) | ast.Set(elts=elements) if elements:
             parts = [_element(element, known, declared) for element in elements]
-            element: str | None = _uniform(parts)
+            element: str | None
+            element, mixed = displays.element_type(elements, parts)
             found = f"{'list' if isinstance(value, ast.List) else 'set'}[{element}]" if element else None
         case ast.Tuple(elts=elements) if elements:
             parts = [_element(element, known, declared) for element in elements]
             starred: bool = any(isinstance(element, ast.Starred) for element in elements)
-            found = _tuple(parts, -1 if starred else known.limits.max_length)
+            found = displays.tuple_type(parts, -1 if starred else known.limits.max_length)
         case ast.Dict(keys=keys, values=values) if keys:
             pairs: list[_Pair] = [
                 _pair(key, item, known, declared) for key, item in zip(keys, values, strict=True)
             ]
             parts = [part for pair in pairs for part in pair]
-            key_type: str | None = _uniform([pair[0] for pair in pairs])
-            item_type: str | None = _uniform([pair[1] for pair in pairs])
-            found = f"dict[{key_type}, {item_type}]" if key_type and item_type else None
+            sides: list[tuple[str | None, bool]] = [
+                displays.element_type(keys, [pair[0] for pair in pairs]),
+                displays.element_type(values, [pair[1] for pair in pairs]),
+            ]
+            found = f"dict[{sides[0][0]}, {sides[1][0]}]" if sides[0][0] and sides[1][0] else None
+            mixed = sides[0][1] or sides[1][1]
         case _:
             pass
-    return (
-        None
-        if found is None
-        else Inference(
-            found,
-            f"a {found.partition('[')[0]} whose elements' types agree",
-            _kinds(*parts, kind="container"),
-        )
-    )
+    if found is None:
+        return None
+    kinds: frozenset[str] = _kinds(*parts, kind="container")
+    built: str = found.partition("[")[0]
+    if mixed:
+        return Inference(found, f"a {built} of its elements' types, joined", kinds | {displays.JOINED})
+    return Inference(found, f"a {built} whose elements' types agree", kinds)
 
 
 def _element(element: ast.expr, known: Known, declared: Mapping[str, str]) -> Inference | None:
@@ -773,35 +776,19 @@ def _pair(key: ast.expr | None, item: ast.expr, known: Known, declared: Mapping[
     return found._replace(annotation=types[0]), found._replace(annotation=types[1])
 
 
-def _tuple(parts: Sequence[Inference | None], max_length: int) -> str | None:
-    """Type a tuple display from its elements' types.
+def joined(value: ast.AST, known: Known, declared: Mapping[str, str]) -> bool:
+    """Check whether `value` is a display typed by its elements' joined types: a guess.
 
-    One type per element (`tuple[int, str]`), up to `max_length` of them; a longer one (LVA011's)
-    is `tuple[T, ...]` when every element is a `T`, and nothing when they differ: its fields need
-    names, not a list of types. One that unpacks (`max_length` below 0) is always the longer kind.
+    A checker joins them too, but not always to the same union (mypy to their common base).
 
     Returns:
-      The annotation, or `None` if an element's type isn't known or a long tuple's differ.
+      Whether it is.
 
     """
-    known_parts: list[Inference] = [part for part in parts if part is not None]
-    if len(known_parts) != len(parts):
-        return None
-    if len(parts) <= max_length:
-        return f"tuple[{', '.join(part.annotation for part in known_parts)}]"
-    element: str | None = _uniform(parts)
-    return None if element is None else f"tuple[{element}, ...]"
-
-
-def _uniform(parts: Sequence[Inference | None]) -> str | None:
-    """Find the one type every element has.
-
-    Returns:
-      That type, or `None` if they differ or any is unknown.
-
-    """
-    types: set[str | None] = {None if part is None else part.annotation for part in parts}
-    return next(iter(types)) if len(types) == 1 else None
+    if not isinstance(value, ast.List | ast.Set | ast.Dict):
+        return False
+    found: Inference | None = _container(value, known, declared)
+    return found is not None and displays.JOINED in found.kinds
 
 
 def _called(value: ast.expr, known: Known) -> Inference | None:
