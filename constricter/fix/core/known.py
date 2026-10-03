@@ -9,7 +9,7 @@ from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.core.inherited import Lineage
 from constricter.fix.core.signatures import Expansion, ReadSignature
-from constricter.offences import MAX_LENGTH
+from constricter.offences import MAX_LENGTH, VAGUE
 from constricter.rules.annotations import free_of, free_of_all
 
 _BUILTINS: Final = frozenset(dir(builtins))
@@ -187,10 +187,11 @@ class Returned(NamedTuple):
 
 
 class Partial(NamedTuple):
-    """Declared returns that are tuples with a vague part (`tuple[Row, dict[str, Any]]`).
+    """Declared returns that have a vague part (`tuple[Row, dict[str, Any]]`, `Any`).
 
-    One types no call whole; an unpacking takes the parts that aren't vague. `calls`: functions',
-    by the call's name as written; `methods`: classes' methods', by the class's name as spelled.
+    One types a call only as far as `vague` allows (see `Limits.vague`); an unpacking takes its
+    parts. `calls`: functions', by the call's name as written; `methods`: classes' methods', by the
+    class's name as spelled.
     """
 
     # Plain `dict`s, not `MappingProxyType`s: the CLI's worker processes are sent them, pickled.
@@ -226,6 +227,17 @@ class ClassSide(NamedTuple):
     variables: Mapping[str, Mapping[str, str]] = MappingProxyType({})
 
 
+class Limits(NamedTuple):
+    """What the rules let an annotation be, which `--fix` writes no further than.
+
+    `max_length`: the longest tuple display typed element by element (LVA011's); `vague`: how vague a
+    type may be (LVA005's level, see `annotations.vague_fits`).
+    """
+
+    max_length: int = MAX_LENGTH
+    vague: int = VAGUE
+
+
 @dataclass(frozen=True)
 class Known:
     """What a module declares that `--fix` can infer a value's type from.
@@ -247,7 +259,7 @@ class Known:
     indirect: Indirect = field(default_factory=Indirect)
     class_side: "ClassSide" = field(default_factory=lambda: ClassSide({}, {}))
     names: LibraryNames = field(default_factory=LibraryNames)
-    max_length: int = MAX_LENGTH  # the longest tuple display typed element by element (LVA011's)
+    limits: Limits = field(default_factory=Limits)
     returned: Returned = field(default_factory=Returned)
 
     def is_builtin(self, name: str) -> bool:

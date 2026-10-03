@@ -63,7 +63,8 @@ def test_a_read_of_a_union_may_be_narrowed_where_it_is_so_is_a_guess() -> None:
 def test_a_read_of_what_the_function_tests_may_be_narrowed_so_is_a_guess() -> None:
     """`isinstance`, a `TypeGuard`, an `assert`, a `match`: a read of what's tested is a guess.
 
-    Inside the branch a check governs, it isn't offered at all: it's the narrowed type there.
+    Inside the branch a check governs, it isn't offered at all: it's the narrowed type there. (With
+    `vague` at 1, which lets `object` be written.)
     """
     source: str = """
     class C:
@@ -85,7 +86,7 @@ def test_a_read_of_what_the_function_tests_may_be_narrowed_so_is_a_guess() -> No
         h = r
         k = s
     """
-    assert {name: fix for name, fix in _found(source).items() if len(name) == 1} == {
+    assert {name: fix for name, fix in _found(source, Checks(vague=1)).items() if len(name) == 1} == {
         "a": (None, False),  # inside the `isinstance`'s branch: an `int` there
         "b": (None, False),
         "d": ("object", True),  # a truth test narrows only a union

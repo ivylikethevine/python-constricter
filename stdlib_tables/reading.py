@@ -98,6 +98,7 @@ _TEXTS: Final[frozenset[Form | None]] = frozenset({Text(_STR), Text(_BYTES)})
 _STR_ONLY: Final[frozenset[Form | None]] = frozenset({Text(_STR)})
 _SELF: Final = "Self"
 # `typing`'s names an annotation may use: a `LiteralString` is a `str`; `Self` is the class it's on.
+ANY: Final = "Any"  # `typing.Any`, as a function's whole return (see `Reading.returns_any`)
 _TYPING_FORMS: Final[dict[str, Form | None]] = {"LiteralString": Text(_STR), "AnyStr": ANY_STR, _SELF: None}
 Table: TypeAlias = dict[str, str]  # each entry's annotation, or a class's dotted path, by name
 Defs: TypeAlias = Sequence[ast.FunctionDef | ast.AsyncFunctionDef]  # a function's overloads
@@ -462,6 +463,21 @@ class Reading:
         if first is None or any(form != first for form in forms):
             return None
         return None if first == ANY_STR and not _mentions(defs, "AnyStr") else first
+
+    def returns_any(self, defs: Defs, module: str) -> bool:
+        """Check whether a function (each of its overloads) is declared to return `typing.Any` alone.
+
+        Returns:
+          Whether it is: a call of it is an `Any` (`json.loads`), which `vague` judges.
+
+        """
+        found: list[Found | None] = [
+            None if node.returns is None or not readable(node) else self.ref(node.returns, module)
+            for node in defs
+        ]
+        return bool(found) and all(
+            each is not None and each.module in _TYPING and each.name == ANY for each in found
+        )
 
     def members(self, klass: ClassRef) -> dict[str, Member]:
         """Read a class's public members, inherited ones included, as the class resolves them.

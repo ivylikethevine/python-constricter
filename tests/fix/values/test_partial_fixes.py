@@ -121,10 +121,14 @@ def test_an_unpacked_call_takes_the_parts_that_arent_vague() -> None:
     assert kinds["q"] == {"method", "unpack"}
 
 
-def test_partial_returns_are_tuples_with_a_vague_part() -> None:
-    """Not one all vague, of any length, or with none: those are no return, or a plain one."""
+def test_partial_returns_are_those_with_a_vague_part() -> None:
+    """Of any shape, all vague or in part; one with none is a plain return."""
     tree: ast.Module = ast.parse(textwrap.dedent(_LOCAL))
-    assert annotations.partial_returns(tree) == {"collect": "tuple[list[str], dict[str, Any]]"}
+    assert annotations.partial_returns(tree) == {
+        "collect": "tuple[list[str], dict[str, Any]]",
+        "all_vague": "Tuple[Any, dict[str, Any]]",
+        "anything": "tuple[Any, ...]",
+    }
     assert annotations.partial_method_returns(tree) == {
         "Schema": {"common": "tuple[int, dict[str, Any]]", "info": "Tuple[Any, bool]"},
         "Child": {},

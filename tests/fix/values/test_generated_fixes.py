@@ -4,7 +4,7 @@
 import textwrap
 from typing import Final, TypeAlias
 
-from constricter import Offence, check_source
+from constricter import Checks, Offence, check_source
 from constricter.fix.core import fixes
 
 _Fixes: TypeAlias = dict[str, tuple[str | None, bool]]
@@ -137,7 +137,10 @@ def test_a_generator_is_typed_by_its_yields() -> None:
 
 
 def test_a_loop_over_an_iterable_is_fixed_in_one_pass() -> None:
-    """Its targets, once declared, are still what it gives: a second pass finds nothing more."""
+    """Its targets, once declared, are still what it gives: a second pass finds nothing more.
+
+    With `vague` at 1, which lets `Any` be written.
+    """
     source: str = textwrap.dedent(
         """\
         from collections.abc import Iterable
@@ -151,7 +154,7 @@ def test_a_loop_over_an_iterable_is_fixed_in_one_pass() -> None:
                 copy = name
         """,
     )
-    first: list[Offence] = check_source(source)
+    first: list[Offence] = check_source(source, checks=Checks(vague=1))
     assert {o.name: (o.fix, o.unsafe) for o in first} == {
         "tup": ("tuple[Any, ...]", True),  # added to: by what isn't known
         "name": ("str", False),
@@ -160,7 +163,7 @@ def test_a_loop_over_an_iterable_is_fixed_in_one_pass() -> None:
         "copy": ("str", False),
     }
     fixed: str = "".join(fixes.apply(source.splitlines(keepends=True), first))
-    assert [o.name for o in check_source(fixed) if o.fix is not None] == []
+    assert [o.name for o in check_source(fixed, checks=Checks(vague=1)) if o.fix is not None] == []
 
 
 def test_the_generator_class_is_imported_for_the_fix() -> None:

@@ -27,6 +27,7 @@ from constricter.offences import (
     UNANNOTATED_MEMBER,
     UNTYPED_TARGET,
     UNUSED_UNION_MEMBER,
+    VAGUE,
     VAGUE_TYPE,
     Checks,
     Level,
@@ -115,6 +116,15 @@ class ConstricterChecker(BaseRawFileChecker):
             },
         ),
         (
+            "constricter-vague",
+            {
+                "default": VAGUE,
+                "type": "int",
+                "metavar": "<n>",
+                "help": "How vague an annotation may be before it's LVA005 (-1: none).",
+            },
+        ),
+        (
             "constricter-narrower",
             {
                 "default": "",
@@ -154,6 +164,7 @@ class ConstricterChecker(BaseRawFileChecker):
             all_scopes=cast("bool", self.linter.config.constricter_all_scopes),
             nesting=cast("int", self.linter.config.constricter_nesting),
             max_length=cast("int", self.linter.config.constricter_max_length),
+            vague=cast("int", self.linter.config.constricter_vague),
             narrower=parse_narrower(cast("str", self.linter.config.constricter_narrower)),
             final=self.linter.is_message_enabled(SYMBOLS[CAN_BE_FINAL].symbol),
         )

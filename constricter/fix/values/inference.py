@@ -41,7 +41,7 @@ from constricter.fix.values.targets import (
     unpacked,
 )
 from constricter.offences import CONSTRUCTOR, MEMBER
-from constricter.rules.annotations import GENERICS, dotted, is_vague, node_name
+from constricter.rules.annotations import GENERICS, dotted, node_name, vague_fits
 from constricter.rules.flow import members
 
 if TYPE_CHECKING:
@@ -347,7 +347,7 @@ def _from_call(value: ast.Call, known: Known, declared: Mapping[str, str]) -> In
             lambda arg: inference(arg, known, declared),
             lambda arg: looped(arg, known, declared),
         )
-        or _cast(value, known.names.casts)
+        or _cast(value, known.names.casts, known.limits.vague)
         or opened(value, known)
         or library_class(value, known)
         or library_call(value, known, lambda arg: inference(arg, known, declared))
@@ -356,6 +356,8 @@ def _from_call(value: ast.Call, known: Known, declared: Mapping[str, str]) -> In
         or shapes.class_of(value, known, lambda arg: inference(arg, known, declared))
         or _called(value, known)
         or called.result(value, known, declared, lambda arg: inference(arg, known, declared))
+        or shapes.vaguely(value, known, lambda arg: inference(arg, known, declared))
+        or shapes.attribute_of(value, known, lambda arg: inference(arg, known, declared))
     )
 
 
@@ -381,11 +383,12 @@ def _returns(value: ast.expr, known: Known) -> Inference | None:
             return None
 
 
-def _cast(value: ast.expr, spellings: frozenset[str]) -> Inference | None:
+def _cast(value: ast.expr, spellings: frozenset[str], vague: int) -> Inference | None:
     """Infer `typing.cast(T, x)`: `T` as written, or a string's contents.
 
     Returns:
-      The inference, or `None` if `value` isn't such a call, or `T` is vague or not an expression.
+      The inference, or `None` if `value` isn't such a call, or `T` is vaguer than `vague` allows or
+      not an expression.
 
     """
     func: ast.expr
@@ -405,9 +408,9 @@ def _cast(value: ast.expr, spellings: frozenset[str]) -> Inference | None:
     except SyntaxError:
         return None
     return (
-        None
-        if is_vague(parsed)
-        else Inference(ast.unparse(parsed), "`cast`'s target type", frozenset({"cast"}))
+        Inference(ast.unparse(parsed), "`cast`'s target type", frozenset({"cast"}))
+        if vague_fits(parsed, vague)
+        else None
     )
 
 
@@ -720,7 +723,7 @@ def _container(value: ast.expr, known: Known, declared: Mapping[str, str]) -> In
         case ast.Tuple(elts=elements) if elements:
             parts = [_element(element, known, declared) for element in elements]
             starred: bool = any(isinstance(element, ast.Starred) for element in elements)
-            found = _tuple(parts, -1 if starred else known.max_length)
+            found = _tuple(parts, -1 if starred else known.limits.max_length)
         case ast.Dict(keys=keys, values=values) if keys:
             pairs: list[_Pair] = [
                 _pair(key, item, known, declared) for key, item in zip(keys, values, strict=True)

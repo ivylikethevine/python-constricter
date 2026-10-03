@@ -218,9 +218,13 @@ is a `list` of what's left for it, where that's of one type: `first, *rest = nam
 (`tuple[Row, dict[str, Any]]`), which types no call whole, still declares the names whose parts
 aren't vague (`row, extra = load()` declares `row: Row`): a function's or a method's, the module's
 own or, with the CLI, another checked file's. A value typed as a `NamedTuple` class is split by its
-fields, in order (`globalns, localns = resolver.namespaces`), but for a vague one: a class defined
-once, directly under `NamedTuple` alone, with two fields or more, in the module or (with the CLI)
-another checked file, which the file needn't import itself.
+fields, in order (`globalns, localns = resolver.namespaces`): a class defined once, directly under
+`NamedTuple` alone, with two fields or more. So is one typed as an alias of a tuple
+(`Pair: TypeAlias = tuple[int, str]`, `Pair = tuple[int, str]`, `type Pair = tuple[int, str]`) at
+its module's top level, bound once there and generic in nothing. Either in the module or (with the
+CLI) another checked file, imported, reached through a module the file imports (`shapes.Pair`), or
+named by a type written for it, which it needn't import itself. A part vaguer than `vague` allows
+gives its name no fix.
 
 A `:=`'s name can't be annotated where it's bound: it's declared before its statement too, typed as
 a plain assignment's name is (`if (m := pattern.match(s)) is not None:` gets
@@ -299,6 +303,16 @@ declared before it (`i: int`), as an unpacking's are; not as `Final`, which need
 
 An added import never binds a name the module binds anywhere, or a builtin's; with no name free,
 there's no fix. In a notebook, which has no import block, such a fix is reported but not applied.
+
+A fix is never vaguer than `vague` (`--vague LEVEL`) lets an annotation be, which LVA005 reports
+past: by default (-1) it has no `Any`, `object` or generic without its parameters in it. At 0 it may
+have one, inside a type that says the rest (`dict[str, Any]`, `tuple[Row, Any]`); at a level N from
+1, N + 1 of them (`tuple[Any, Any]` at 1), or one alone (`Any`, `Any | None`). Every source answers
+to it: a declared return (a function's, a method's, another checked file's), a copy, a loop's
+element, `typing.cast`, a callable's call and a type checker's hint. What only a vague type
+describes is typed from 1, `Any` imported from `typing` if it must be: `getattr(obj, name)` is an
+`Any`, with a default of a known type `T` an `Any | T`; and a standard-library function declared to
+return `Any` alone (`json.loads`, `pickle.loads`, `ast.literal_eval`) an `Any`.
 
 LVA012 (opt-in) offers `Final`: around the annotation there (`x: int = 1` becomes
 `x: Final[int] = 1`), with LVA001's type for an unannotated name (whose own fix it then replaces),

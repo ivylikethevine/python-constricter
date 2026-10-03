@@ -14,10 +14,10 @@ without `member` (Python 3.14.7):
 
 | Package    | Version | Released                                                  | After `--fix`                           | After `--fix --unsafe-fixes`   |
 | ---------- | ------- | --------------------------------------------------------- | --------------------------------------- | ------------------------------ |
-| pydantic   | 2.13.5  | 6,439 passed, 329 skipped, 27 xfailed                     | the same (72 files changed, +191 lines) | the same (76 files, +234)      |
-| sqlalchemy | 2.0.54  | 26,643 passed, 985 skipped                                | the same (166 files, +331)              | the same (179 files, +410)     |
-| django     | 5.2.17  | 17,578 run, 1,149 skipped, 5 expected failures, 1 failure | the same (387 files, +259)              | the same (459 files, +441)     |
-| pandas     | 3.0.6   | 165,407 passed, 24,659 skipped, 753 xfailed, 84 xpassed   | the same (1,009 files, +1,895)          | the same (1,182 files, +2,546) |
+| pydantic   | 2.13.5  | 6,439 passed, 329 skipped, 27 xfailed                     | the same (73 files changed, +239 lines) | the same (79 files, +332)      |
+| sqlalchemy | 2.0.54  | 26,643 passed, 985 skipped                                | the same (161 files, +333)              | the same (188 files, +436)     |
+| django     | 5.2.17  | 17,578 run, 1,149 skipped, 5 expected failures, 1 failure | the same (389 files, +288)              | the same (543 files, +495)     |
+| pandas     | 3.0.6   | 165,407 passed, 24,659 skipped, 753 xfailed, 84 xpassed   | the same (1,036 files, +2,104)          | the same (1,190 files, +2,808) |
 
 django's one failure is a message check that fails as released too (this machine's `msgfmt` words
 the error differently). pandas runs its CI's selection (not `slow`, `network` or `single_cpu`).
@@ -29,9 +29,9 @@ CI has none. On 0.2.4, and since (Unreleased: see [FIXES.md](FIXES.md#what-a-typ
 
 | Package    | Checker                            | Released errors | New after `--fix` | New after `--fix --unsafe-fixes` |
 | ---------- | ---------------------------------- | --------------: | ----------------: | -------------------------------: |
-| pydantic   | `pyright pydantic`                 |               0 |         18, now 0 |                        20, now 2 |
-| sqlalchemy | `mypy noxfile.py ./lib/sqlalchemy` |               0 |         61, now 0 |                       76, now 11 |
-| pandas     | mypy and pyright, as configured    |             259 |        117, now 2 |                      165, now 31 |
+| pydantic   | `pyright pydantic`                 |               0 |         18, now 0 |                        20, now 1 |
+| sqlalchemy | `mypy noxfile.py ./lib/sqlalchemy` |               0 |         61, now 0 |                       76, now 12 |
+| pandas     | mypy and pyright, as configured    |             259 |        117, now 0 |                      165, now 32 |
 
 `--types --infer-with CHECKERS` adds a run with the checkers' hints' fixes
 (`--fix --unsafe-fixes --infer-with CHECKERS`), here basedpyright's and ty's. New errors,
@@ -39,15 +39,19 @@ Unreleased:
 
 | Package    | Released errors | After `--fix` | After `--fix --unsafe-fixes` | With the hints' fixes |
 | ---------- | --------------: | ------------: | ---------------------------: | --------------------: |
-| pydantic   |             191 |             9 |                           12 |                    21 |
-| sqlalchemy |               0 |             0 |                           11 |                    36 |
+| pydantic   |             191 |             9 |                           10 |                    21 |
+| sqlalchemy |               0 |             0 |                           12 |                    36 |
+| pandas     |              70 |             0 |                           32 |                     — |
 
-pydantic's 191 are this environment's (its pinned pyright finds none in its CI). Its 9 after
-`--fix`: 3 are released lines' errors moved by an inserted line, 1 repeats an annotation pyright
-rejects where pydantic wrote it (`'AnyClassMethod'`), and 5 are the checkout's own path in a class's
-name (4 of them one fix, `FieldInfo_: type[FieldInfo]`). pandas's 2 after `--fix` are one loop's
-target in `style_render.py`, typed by what one branch alone binds the name it iterates, which is now
-a guess.
+pydantic's 191 are this environment's (its pinned pyright finds none in its CI). Its 9 after `--fix`
+are released errors in a new place: 4 repeat an annotation pyright rejects where pydantic wrote it
+(`'AnyClassMethod'`, an alias its module binds in two branches, three times, and `Union[str]`; the
+suite blames the first of a file's alike errors, so 3 show as untraced), and 5 are the checkout's
+own path in a class's name, now caught at the annotation (4 of them one fix,
+`FieldInfo_: type[FieldInfo]`). Its one more after `--fix --unsafe-fixes` is a guess's
+(`PydanticExtraInfo`, for a name bound again to an `X | None`). pandas's run with the hints' fixes
+stops after two minutes: basedpyright's server goes 120s without answering an inlay hint request,
+and a hung server ends the run.
 
 Earlier suites, on 0.2.4-rc.5:
 

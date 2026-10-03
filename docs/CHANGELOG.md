@@ -6,6 +6,26 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- What makes a type, not a value, isn't reported, nor counted by `--coverage`: `T = TypeVar("T")`, a
+  `ParamSpec`, `TypeVarTuple` or `NewType`, and a functional `NamedTuple`, `TypedDict`, `Enum` or
+  `collections.namedtuple`. An annotation there would make a type checker take the name for a
+  variable. On pydantic: 83 fewer bindings reported.
+- `--fix` splits a value typed as an alias of a tuple (`Pair: TypeAlias = tuple[int, str]`) over an
+  unpacking's names, as a named tuple's fields are: the module's own, or another checked file's,
+  however it's imported. On pydantic: 5 more certain fixes.
+- At `vague` 1 and above, `getattr(obj, name)` is an `Any` (`Any | T` with a default of type `T`),
+  and a standard-library function declared to return `Any` alone (`json.loads`, `pickle.loads`) an
+  `Any`: the tables now hold those 34 functions' returns. On pydantic at 1: 1,241 certain fixes and
+  464 guesses, from 1,188 and 466.
+- `vague` (`--vague LEVEL`, `[tool.constricter]`, and both plugins' `constricter-vague`): how vague
+  an annotation may be before it's LVA005, and how vague a fix may be. -1, the default, allows no
+  `Any`, `object` or generic without its parameters; 0, one inside a type that says the rest
+  (`tuple[str, Any]`); N from 1, N + 1 of them, or one alone (`Any`). A function's or method's
+  declared return with a vague part now types its calls where the level allows, and a type checker's
+  hint is taken the same way. At the default, no fix writes a vague type any more: one did where a
+  copy or an element of a vague value was typed (59 fixes on pydantic, 37 of them certain, now
+  none). On pydantic: 1,017 certain fixes and 429 guesses at -1, 1,120 and 452 at 0, 1,188 and 466
+  at 1; no new basedpyright error at any of them.
 - `--fix` declares a module's type alias: `Json = dict[str, "Json"]` becomes
   `Json: TypeAlias = dict[str, "Json"]`, a new fix kind, `alias`. Only a value that can be nothing
   but a type made of others: a subscript of what `typing` or `collections.abc` define

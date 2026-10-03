@@ -14,9 +14,10 @@ import ast
 from collections.abc import Callable
 from typing import Final, TypeAlias
 
-from constricter.fix.core.known import Inference, Known, Partial
+from constricter.fix.core.known import ImportPlan, Inference, Known, Partial
 from constricter.fix.libraries import stdlib
 from constricter.fix.values.members import parsed, partial_method
+from constricter.rules.annotations import vague_fits
 from constricter.rules.flow import members
 
 Infer: TypeAlias = Callable[[ast.expr], Inference | None]
@@ -32,6 +33,9 @@ _TYPE: Final = "type"
 _GET: Final = "get"
 _ENVIRON: Final = "os.environ"
 _QUOTES: Final = frozenset("'\"")
+_GETATTR: Final = "getattr"
+_TYPING_ANY: Final = "typing.Any"
+_WITH_DEFAULT: Final = 2  # `getattr(obj, name)`'s arguments; a third is its default
 
 
 def is_none(node: ast.expr) -> bool:
@@ -178,7 +182,7 @@ def defaulted(receiver: str, call: ast.Call, infer: Infer) -> Inference | None:
 
 
 def partly(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
-    """Infer a call whose declared return is a tuple with a vague part, for an unpacking to split.
+    """Infer a call whose declared return has a vague part, for an unpacking to split.
 
     A function's, or a method's on a receiver whose type is known (see `known.Partial`).
 
@@ -206,6 +210,55 @@ def partly(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
             )
         case _:
             return None
+
+
+def vaguely(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
+    """Infer a call whose declared return has a vague part, whole, where `vague` allows it.
+
+    Returns:
+      `partly`'s inference, or `None` if it's vaguer than `Limits.vague` allows.
+
+    """
+    found: Inference | None = partly(value, known, infer)
+    return found if found is not None and vague_fits(parsed(found.annotation), known.limits.vague) else None
+
+
+def attribute_of(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
+    """Infer `getattr(obj, name)`: an `Any`; with a default of a known type `T`, an `Any | T`.
+
+    Where `vague` lets it be written (from 1), `Any` named as the module can.
+
+    Returns:
+      The inference, or `None` for anything else, a module that binds `getattr` itself, or a
+      default of no known type.
+
+    """
+    args: list[ast.expr]
+    match value:
+        case ast.Call(func=ast.Name(id="getattr"), args=[_, _, *_] as args, keywords=[]) if (
+            len(args) <= _WITH_DEFAULT + 1
+            and known.is_builtin(_GETATTR)
+            and known.limits.vague > 0
+            and not any(isinstance(arg, ast.Starred) for arg in args)
+        ):
+            pass
+        case _:
+            return None
+    plan: ImportPlan | None = known.names.plan
+    spelled: str | None = None if plan is None else plan.spell(_TYPING_ANY)
+    default: Inference | None = infer(args[2]) if len(args) > _WITH_DEFAULT else None
+    if spelled is None or (len(args) > _WITH_DEFAULT and default is None and not is_none(args[2])):
+        return None
+    union: str = (
+        spelled
+        if len(args) == _WITH_DEFAULT
+        else f"{spelled} | {_NONE if default is None else default.annotation}"
+    )
+    return Inference(
+        union,
+        "`getattr`'s return type",
+        frozenset({_BUILTIN}) | (default.kinds if default else frozenset()),
+    )
 
 
 def environment(value: ast.expr, known: Known) -> Inference | None:

@@ -16,6 +16,7 @@ from constricter.rules.quoted import parsed, written
 from constricter.rules.syntax import child_statements, declared_return
 
 _VAGUE: Final = frozenset({"Any", "object"})
+_UNIONS: Final = frozenset({"Optional", "Union"})  # a union's members, as a subscript's arguments
 # `collections.abc`'s generic classes (`typing` has each too).
 ABSTRACT: Final = frozenset(
     {
@@ -410,6 +411,63 @@ def is_vague(annotation: ast.expr) -> bool:
     return False
 
 
+def vague_parts(annotation: ast.expr) -> tuple[int, bool]:
+    """Count an annotation's vague parts (see `is_vague`), and say whether one stands alone.
+
+    Alone: the annotation itself or a member of its union (`Any`, `Any | None`, `Optional[object]`),
+    where it says nothing at all. Anywhere else it's inside a type that says the rest
+    (`tuple[str, Any]`), as a generic without its parameters is (`list`).
+
+    Returns:
+      How many there are, and whether one does.
+
+    """
+    root: ast.expr = parsed(annotation)
+    subscripted: set[int] = {id(node.value) for node in ast.walk(root) if isinstance(node, ast.Subscript)}
+    count: int = sum(
+        node_name(node) in _VAGUE or (node_name(node) in GENERICS and id(node) not in subscripted)
+        for node in ast.walk(root)
+    )
+    return count, any(node_name(member) in _VAGUE for member in _union_members(root))
+
+
+def _union_members(node: ast.expr) -> list[ast.expr]:
+    """Flatten an annotation's outermost union: `A | B`, `Optional[A]`, `Union[A, B]`.
+
+    Returns:
+      Its members; the annotation itself, if it's no union.
+
+    """
+    left: ast.expr
+    right: ast.expr
+    head: ast.expr
+    inner: ast.expr
+    match node:
+        case ast.BinOp(op=ast.BitOr(), left=left, right=right):
+            return [*_union_members(left), *_union_members(right)]
+        case ast.Subscript(value=head, slice=inner) if node_name(head) in _UNIONS:
+            parts: list[ast.expr] = inner.elts if isinstance(inner, ast.Tuple) else [inner]
+            return [member for part in parts for member in _union_members(part)]
+        case _:
+            return [node]
+
+
+def vague_fits(annotation: ast.expr, level: int) -> bool:
+    """Check whether an annotation is no vaguer than `level` allows (`vague`, LVA005's).
+
+    Below 0, no vague part at all. At 0, one, inside a type that says the rest (`tuple[str, Any]`).
+    From 1, `level + 1` of them (`tuple[Any, Any]` at 1), and one alone (`Any`).
+
+    Returns:
+      Whether it is.
+
+    """
+    count: int
+    alone: bool
+    count, alone = vague_parts(annotation)
+    return not count or (count <= level + 1 and (level > 0 or not alone))
+
+
 def length(annotation: ast.expr) -> int:
     """Measure the longest fixed-length tuple an annotation lists, one type per element.
 
@@ -532,9 +590,10 @@ def method_returns(tree: ast.Module) -> dict[str, dict[str, str]]:
 
 
 def partial_returns(tree: ast.Module) -> dict[str, str]:
-    """Return the declared return of each function `returns` leaves out for a tuple with a vague part.
+    """Return the declared return of each function `returns` leaves out for a vague part.
 
-    `tuple[Row, dict[str, Any]]` types no call whole, but an unpacking's names part by part.
+    `tuple[Row, dict[str, Any]]` types a call only as far as `vague` allows (see `vague_fits`), and
+    an unpacking's names part by part.
 
     Returns:
       Each such function's name, and its return annotation as source text.
@@ -544,7 +603,7 @@ def partial_returns(tree: ast.Module) -> dict[str, str]:
 
 
 def partial_method_returns(tree: ast.Module) -> dict[str, dict[str, str]]:
-    """Map each non-generic class to its methods' declared returns that are tuples with a vague part.
+    """Map each non-generic class to its methods' declared returns that have a vague part.
 
     As `partial_returns` reads functions': its plain methods', and its classmethods' and staticmethods'.
 
@@ -570,7 +629,7 @@ def _class_returns(
 
     None of them (an empty set) means plain methods; see `method_returns` for the rules. Any other
     decorator must be one the module vouches for (see `decorators.passing`), or (`anything`) one
-    `decorators.spelled` reads. `partly`: those left out for a tuple with a vague part, instead.
+    `decorators.spelled` reads. `partly`: those left out for a vague part, instead.
 
     Returns:
       Each class's name, mapped to those methods' names and return annotation text.
@@ -724,8 +783,8 @@ def _declared_returns(
 
     Plain means decorated only as `vouched` spells (`None`: by anything `decorators.spelled`
     reads), and with `decorators`, by exactly one of them too. A property's `@name.setter` or
-    `@name.deleter` is the same property, not a redefinition. Not one whose return is a tuple with
-    a vague part (see `_partial_returns`).
+    `@name.deleter` is the same property, not a redefinition. Not one whose return has a vague
+    part (see `_partial_returns`).
 
     Returns:
       Each such function's name, and its return annotation as source text.
@@ -748,7 +807,7 @@ def _partial_returns(
     decorators: frozenset[str] = _UNDECORATED,
     vouched: frozenset[str] | None = _UNDECORATED,
 ) -> dict[str, str]:
-    """Find the plain functions directly in `body` whose return is a tuple with a vague part.
+    """Find the plain functions directly in `body` whose declared return has a vague part.
 
     As `_declared_returns` finds the others.
 
@@ -777,8 +836,8 @@ def _every_return(
     """Read the declared return of each plain function directly in `body` (see `_declared_returns`).
 
     Returns:
-      Each one's name, its return annotation as source text, and whether that's a tuple with a
-      vague part.
+      Each one's name, its return annotation as source text, and whether that has a vague
+      part.
 
     """
     counts: dict[str, int] = {}
@@ -846,8 +905,8 @@ def _usable_return(func: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[str, b
     """Read the return type `func` declares, if its calls always have it.
 
     Returns:
-      Its annotation as source text, and whether it's a tuple with a vague part (see `_partial`);
-      `None` for a generic function, no return, `None`, or any other vague one.
+      Its annotation as source text, and whether it has a vague part (`tuple[Row, dict[str, Any]]`,
+      `Any`); `None` for a generic function, no return, or `None`.
 
     """
     declared: ast.expr | None = declared_return(func)
@@ -857,25 +916,7 @@ def _usable_return(func: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[str, b
         or (isinstance(declared, ast.Constant) and declared.value is None)
     ):
         return None
-    partial: bool = _partial(declared)
-    return None if is_vague(declared) and not partial else (written(declared), partial)
-
-
-def _partial(declared: ast.expr) -> bool:
-    """Check whether a declared return is a tuple listing its parts, some vague and some not.
-
-    Returns:
-      Whether it is: `tuple[Row, dict[str, Any]]`, not `tuple[Any, ...]`.
-
-    """
-    name: str
-    parts: list[ast.expr]
-    match parsed(declared):
-        case ast.Subscript(value=ast.Name(id=name), slice=ast.Tuple(elts=parts)) if name in _TUPLES:
-            vague: list[bool] = [is_vague(part) for part in parts]
-            return any(vague) and not all(vague) and not _variadic(parts)
-        case _:
-            return False
+    return written(declared), is_vague(declared)
 
 
 def _words(annotation: str) -> list[str]:

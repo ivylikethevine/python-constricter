@@ -5,11 +5,13 @@ import ast
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from types import MappingProxyType
-from typing import Final
+from typing import Final, cast
 
+from constricter.fix.core.imports import rebound_names
 from constricter.fix.core.known import Inference
-from constricter.rules.annotations import is_vague, node_name
+from constricter.rules.annotations import defined_type_vars, node_name
 from constricter.rules.quoted import written
+from constricter.rules.syntax import top_level
 from constricter.rules.walked import classes
 
 # Builtins that iterate over their (first) argument's elements, one to one.
@@ -50,21 +52,26 @@ _ITERATOR_KEYWORDS: Final = {
 # `tuple[T, ...]`'s two parts: the element type and the ellipsis.
 _ANY_LENGTH: Final = 2
 _NAMED_TUPLE: Final = ["NamedTuple"]  # the one base of a class whose annotated variables are its fields
+_TUPLES: Final = frozenset({"tuple", "Tuple"})
+_TYPE_ALIAS: Final = "TypeAlias"
 _NO_TUPLES: Final[Mapping[str, str]] = MappingProxyType({})
 
 
 def named_tuples(tree: ast.Module) -> dict[str, str]:
-    """Map each `NamedTuple` class the module defines to the tuple unpacking one gives: its fields' types.
+    """Map each tuple type the module names to the tuple unpacking one gives.
 
-    A class defined once, directly under `NamedTuple` alone, with two fields or more.
+    A class defined once, directly under `NamedTuple` alone, with two fields or more: its fields'
+    types. A type alias of a tuple (`Pair: TypeAlias = tuple[int, str]`, `Pair = tuple[int, str]`,
+    `type Pair = tuple[int, str]`) at the module's top level, bound once there and naming none of
+    its type variables: the tuple.
 
     Returns:
-      Each class's name, and its fields' types in order as a `tuple[...]`.
+      Each one's name, and the tuple's type as text.
 
     """
+    found: dict[str, str] = _aliased_tuples(tree)
     nodes: Sequence[ast.ClassDef] = classes(tree)
     counts: Counter[str] = Counter(node.name for node in nodes)
-    found: dict[str, str] = {}
     node: ast.ClassDef
     for node in nodes:
         if counts[node.name] == 1 and [node_name(base) for base in node.bases] == _NAMED_TUPLE:
@@ -76,6 +83,57 @@ def named_tuples(tree: ast.Module) -> dict[str, str]:
             if len(fields) > 1:
                 found[node.name] = f"tuple[{', '.join(fields)}]"
     return found
+
+
+def _aliased_tuples(tree: ast.Module) -> dict[str, str]:
+    """Find the module's type aliases of a tuple (see `named_tuples`).
+
+    Returns:
+      Each one's name, and the tuple's type as text.
+
+    """
+    rebound: frozenset[str] = frozenset(rebound_names(tree))
+    type_vars: frozenset[str] = defined_type_vars(tree)
+    found: dict[str, str] = {}
+    stmt: ast.stmt
+    for stmt in top_level(tree.body):
+        aliased: tuple[str, ast.expr] | None = _alias(stmt)
+        if (
+            aliased is not None
+            and aliased[0] not in rebound
+            and isinstance(aliased[1], ast.Subscript)
+            and node_name(aliased[1].value) in _TUPLES
+            and not type_vars & {node.id for node in ast.walk(aliased[1]) if isinstance(node, ast.Name)}
+        ):
+            found[aliased[0]] = written(aliased[1])
+    return found
+
+
+def _alias(stmt: ast.stmt) -> tuple[str, ast.expr] | None:
+    """Read the name and value a statement binds as a type alias, if it may be one.
+
+    Returns:
+      Them: an assignment's to one name (annotated `TypeAlias`, or not at all), or a `type`
+      statement's; `None` for any other statement.
+
+    """
+    name: str
+    value: ast.expr
+    annotation: ast.expr
+    match stmt:
+        case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation, value=ast.expr() as value) if (
+            node_name(annotation) == _TYPE_ALIAS
+        ):
+            return name, value
+        case ast.Assign(targets=[ast.Name(id=name)], value=value):
+            return name, value
+        case _ if type(stmt).__name__ == _TYPE_ALIAS:  # Python 3.12+'s `type X = ...`
+            return cast("ast.Name", getattr(stmt, "name", None)).id, cast(
+                "ast.expr",
+                getattr(stmt, "value", None),
+            )
+        case _:
+            return None
 
 
 def sole(argument: ast.expr) -> ast.expr:
@@ -173,8 +231,7 @@ def unpacked(
     same length part by part, or each an element of anything else whose elements are known (a
     `tuple[T, ...]`'s or `list[T]`'s `T`, a `str`'s `str`). A starred name takes a `list` of what's
     left for it, if that's of one type. A shape that doesn't match gets `None`. `tuples`: the named
-    tuples the module names (see `named_tuples`), each split as its fields' tuple, a vague one's
-    name left out.
+    tuples the module names (see `named_tuples`), each split as its fields' tuple.
 
     Returns:
       Each name the target binds, with its type as text (or `None`).
@@ -186,10 +243,7 @@ def unpacked(
         case ast.Name():
             return [(target, annotation)]
         case ast.Tuple(elts=elements) | ast.List(elts=elements):
-            fields: str | None = tuples.get(annotation or "")
-            parts: list[str | None] = (
-                _parts(annotation, elements) if fields is None else _fields(fields, elements)
-            )
+            parts: list[str | None] = _parts(tuples.get(annotation or "", annotation), elements)
             return [
                 pair
                 for element, part in zip(elements, parts, strict=True)
@@ -199,19 +253,6 @@ def unpacked(
             return unpacked(value, annotation, tuples)
         case _:
             return []
-
-
-def _fields(fields: str, targets: Sequence[ast.expr]) -> list[str | None]:
-    """Split a named tuple's `fields` (see `named_tuples`) over the targets one is unpacked into.
-
-    Returns:
-      Each target's type as text, as `_parts` splits a tuple's; `None` for a vague one.
-
-    """
-    return [
-        None if part is None or is_vague(ast.parse(part, mode="eval").body) else part
-        for part in _parts(fields, targets)
-    ]
 
 
 def _parts(annotation: str | None, targets: Sequence[ast.expr]) -> list[str | None]:

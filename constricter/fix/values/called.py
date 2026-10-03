@@ -14,7 +14,7 @@ from typing import Final, TypeAlias
 
 from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.values.members import member, parsed
-from constricter.rules.annotations import is_vague, node_name
+from constricter.rules.annotations import node_name, vague_fits
 
 _Infer: TypeAlias = Callable[[ast.expr], Inference | None]
 _CALLABLE: Final = "Callable"
@@ -59,25 +59,27 @@ def _made(given: ast.expr, known: Known, infer: _Infer) -> Inference | None:
     if spelled in known.classes and plan is not None and spelled.partition(".")[0] not in plan.values:
         return Inference(spelled, f"`{NEW}` of `{spelled}`", _KIND)
     found: Inference | None = infer(given)
-    made: ast.expr | None = None if found is None else _constructed(parsed(found.annotation))
+    made: ast.expr | None = (
+        None if found is None else _constructed(parsed(found.annotation), known.limits.vague)
+    )
     if found is None or made is None:
         return None
     reason: str = f"`{NEW}` of `{spelled}`, a `{found.annotation}`"
     return Inference(ast.unparse(made), reason, found.kinds - {"copy"} | _KIND)
 
 
-def _constructed(callee: ast.expr) -> ast.expr | None:
+def _constructed(callee: ast.expr, vague: int) -> ast.expr | None:
     """Read the class a `type[C]` constructs.
 
     Returns:
-      `C`, or `None` for any other type, or a vague or quoted `C`.
+      `C`, or `None` for any other type, or a `C` in quotes or vaguer than `vague` allows.
 
     """
     head: ast.expr
     made: ast.expr
     match callee:
         case ast.Subscript(value=head, slice=made) if node_name(head) in _TYPE:
-            return None if is_vague(made) or isinstance(made, ast.Constant) else made
+            return made if vague_fits(made, vague) and not isinstance(made, ast.Constant) else None
         case _:
             return None
 
@@ -95,11 +97,11 @@ def _returned(callee: str, spelled: str, call: ast.Call, known: Known) -> Infere
     made: ast.expr | None
     match parsed(callee):
         case ast.Subscript(value=head, slice=ast.Tuple(elts=[_, returns])) if node_name(head) == _CALLABLE:
-            if is_vague(returns) or isinstance(returns, ast.Constant):  # `None`, or a name in quotes
-                return None
+            if not vague_fits(returns, known.limits.vague) or isinstance(returns, ast.Constant):
+                return None  # `None`, a name in quotes, or vaguer than `vague` allows
             return Inference(ast.unparse(returns), f"what `{spelled}`, a `{callee}`, returns", _KIND)
         case ast.Subscript(value=head) if node_name(head) in _TYPE:
-            made = _constructed(parsed(callee))
+            made = _constructed(parsed(callee), known.limits.vague)
             reason: str = f"a call of `{spelled}`, a `{callee}`"
             return None if made is None else Inference(ast.unparse(made), reason, _KIND)
         case _:

@@ -35,8 +35,39 @@ _CLASSES: Final = frozenset(
 # Imports that bind `TypeAlias`, or a module that has it, on every Python.
 _ALWAYS: Final = frozenset({"typing.TypeAlias", "typing_extensions.TypeAlias", "typing_extensions"})
 _REASON: Final = "a type alias, written as a type made of others"
+# What makes a type of a call's result, by where it's from.
+_FACTORIES: Final = frozenset(
+    {
+        *(
+            f"{module}.{name}"
+            for module in ("typing", "typing_extensions")
+            for name in ("NamedTuple", "NewType", "ParamSpec", "TypeVar", "TypeVarTuple", "TypedDict")
+        ),
+        *(f"enum.{name}" for name in ("Enum", "Flag", "IntEnum", "IntFlag", "StrEnum")),
+        "collections.namedtuple",
+    },
+)
 # An inference, whether it's a guess, and what the guess rests on: what `Scope.valued` gives.
 _Valued: TypeAlias = tuple[Inference, bool, frozenset[str]]
+
+
+def factory(value: ast.expr, known: Known) -> bool:
+    """Check whether `value` makes a type, not a value: a `TypeVar`, a `NewType`, a functional `NamedTuple`.
+
+    What it's bound to can't be annotated: a type checker would take the name for a variable. However
+    the factory is imported (`TypeVar`, `typing.TypeVar`, `t.TypeVar`), as long as it's `typing`'s,
+    `typing_extensions`', `enum`'s or `collections.namedtuple`.
+
+    Returns:
+      Whether it does.
+
+    """
+    plan: ImportPlan | None = known.names.plan
+    return (
+        isinstance(value, ast.Call)
+        and plan is not None
+        and stdlib.resolved(value.func, plan.bound) in _FACTORIES
+    )
 
 
 def declares(annotation: ast.expr) -> bool:

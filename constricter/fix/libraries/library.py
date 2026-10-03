@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Final
 
 from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.libraries import overloads, stdlib
-from constricter.rules.annotations import dotted
+from constricter.rules.annotations import dotted, vague_fits
 
 if TYPE_CHECKING:
     from constricter.fix.core.signatures import Expansion
@@ -21,6 +21,7 @@ _STDLIB: Final = "stdlib"  # the fix kind
 _STR: Final = "str"
 _SELF: Final = "Self"  # a method's own class, in a template
 _WITH_DEFAULT: Final = 2  # `os.environ.get(key, default)`'s arguments
+_TYPING_ANY: Final = "typing.Any"
 
 
 def library_class(value: ast.Call, known: Known) -> Inference | None:
@@ -118,6 +119,25 @@ def installed_method(receiver: str, name: str, known: Known) -> stdlib.Method | 
     return stdlib.Method(entry, None, {**dict(zip(params, texts, strict=False)), _SELF: receiver})
 
 
+def _any(text: str, known: Known, found: Inference) -> Inference | None:
+    """Spell a table's bare `Any` (`json.loads`'s) as the module can, where `vague` lets it be written.
+
+    Returns:
+      `found`, as the module names `Any`; `None` where it's vaguer than `vague` allows, or `Any`
+      can't be named. Any other type as it is.
+
+    """
+    if text != stdlib.ANY:
+        return found
+    plan: ImportPlan | None = known.names.plan
+    spelled: str | None = (
+        None
+        if plan is None or not vague_fits(ast.Name(text), known.limits.vague)
+        else plan.spell(_TYPING_ANY)
+    )
+    return None if spelled is None else found._replace(annotation=spelled)
+
+
 def library_call(
     call: ast.Call,
     known: Known,
@@ -139,7 +159,7 @@ def library_call(
     reason: str = f"`{name}`'s return type"
     kinds: frozenset[str] = frozenset({_STDLIB})
     if name in stdlib.RETURNS:
-        return Inference(stdlib.RETURNS[name], reason, kinds)
+        return _any(stdlib.RETURNS[name], known, Inference(stdlib.RETURNS[name], reason, kinds))
     if name is not None and name in stdlib.OVERLOADS:
         return overloads.chosen(name, call, known, infer)
     # `os.environ.get`, decided by its positional arguments' types, worked out only for it.

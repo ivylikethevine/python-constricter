@@ -274,6 +274,20 @@ def own_nodes(found: Sequence[ast.AST], parents: dict[int, ast.AST] | None = Non
             waiting.extend(reversed(below))
 
 
+def top_level(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
+    """Walk a module's top-level statements, those under its `if`s and `try`s too.
+
+    Yields:
+      Each.
+
+    """
+    stmt: ast.stmt
+    for stmt in body:
+        yield stmt
+        if isinstance(stmt, ast.If | ast.Try | ast.TryStar):
+            yield from top_level(child_statements(stmt))
+
+
 def child_statements(stmt: ast.stmt) -> list[ast.stmt]:
     """Collect the statements nested directly in `stmt`.
 

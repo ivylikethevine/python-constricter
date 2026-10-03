@@ -40,7 +40,7 @@ from typing import Final, TypeAlias
 
 from constricter.fix.core.known import ImportPlan, Inference, Known, Offered
 from constricter.fix.libraries import stdlib
-from constricter.rules.annotations import ABSTRACT, depth, is_vague, length
+from constricter.rules.annotations import ABSTRACT, depth, length, vague_fits
 
 KIND: Final = "checker"  # the fix kind, and what the guess rests on
 _LITERAL: Final = "Literal"
@@ -220,7 +220,7 @@ def _spelled(
     root: ast.expr | None = _widened(parsed)
     if plan is not None and root is not None and not known.names.starred:
         root = _unstarred(root, plan)
-    if plan is None or root is None or not _annotation(root) or not _fits(root, nesting, known.max_length):
+    if plan is None or root is None or not _annotation(root) or not _fits(root, nesting, known):
         return None
     lone: set[str] = _lone(root)
     # `TypeAlias` is `type_alias`'s to write. A special form alone isn't a type.
@@ -412,14 +412,18 @@ def _annotation(root: ast.expr) -> bool:
     )
 
 
-def _fits(root: ast.expr, nesting: int, max_length: int) -> bool:
+def _fits(root: ast.expr, nesting: int, known: Known) -> bool:
     """Check the rules accept an annotation: not vague (LVA005), too deep (LVA006) or long (LVA011).
 
     Returns:
       Whether it is.
 
     """
-    return not is_vague(root) and depth(root) < nesting and length(root) <= max_length
+    return (
+        vague_fits(root, known.limits.vague)
+        and depth(root) < nesting
+        and length(root) <= known.limits.max_length
+    )
 
 
 def _usable(name: str, plan: ImportPlan, before: int | None) -> bool:

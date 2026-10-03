@@ -103,7 +103,10 @@ def test_a_walrus_without_its_source_lines_is_declared_too() -> None:
 
 
 def test_a_walrus_is_typed_as_an_assignment_would_see_it() -> None:
-    """A read the function tests is a guess, and a type checker's hint types what `--fix` can't."""
+    """A read the function tests is a guess, and a type checker's hint types what `--fix` can't.
+
+    With `vague` at 1, which lets `object` be written.
+    """
     source: str = textwrap.dedent(
         """
     def f(o: object, q) -> None:
@@ -116,5 +119,5 @@ def test_a_walrus_is_typed_as_an_assignment_would_see_it() -> None:
     """,
     )
     hints: Hints = Hints("basedpyright", {(7, 9): "int"})
-    offences: list[Offence] = check_source(source, checks=Checks(), outside=Outside(hints=(hints,)))
+    offences: list[Offence] = check_source(source, checks=Checks(vague=1), outside=Outside(hints=(hints,)))
     assert [(o.name, o.fix, o.unsafe) for o in offences] == [("a", "object", True), ("b", "int", True)]

@@ -237,6 +237,7 @@ _READERS: dict[str, Callable[[_Toml], Default | None]] = {
     "level": _level,
     "nesting": partial(_whole, minimum=1),
     "max-length": partial(_whole, minimum=1),
+    "vague": partial(_whole, minimum=-1),
     "jobs": partial(_whole, minimum=0),
     "exclude": _strings,
     "select": _codes,

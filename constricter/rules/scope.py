@@ -42,10 +42,10 @@ from constricter.offences import (
 from constricter.rules.annotations import (
     depth,
     is_composite,
-    is_vague,
     length,
     node_name,
     roots,
+    vague_fits,
 )
 from constricter.rules.flow import Finding, Hierarchy, Lifetime, findings, members
 from constricter.rules.quoted import written
@@ -274,6 +274,10 @@ class Scope:
         is offered a declaration before it instead (`a: int`); not a `Final` one, which needs its value.
         """
         name: str = target.id
+        if aliased.factory(value, self.settings.known):  # a type: nothing to annotate it with
+            self.declared.add(name)
+            self.opaque([name])
+            return
         again: bool = name in self.declared
         facts: Facts = self.settings.facts
         fix: Inference | None
@@ -529,11 +533,12 @@ class Scope:
         """Offer `fix` as the project's fix policy has it: selected, and a guess unless trusted.
 
         Returns:
-          The fix, or `None` if a mechanism that decided it isn't selected, or is ignored.
+          The fix, or `None` if a mechanism that decided it isn't selected, or is ignored, or it's
+          vaguer than `vague` allows (it would be LVA005).
 
         """
         policy: FixPolicy = self.settings.checks.fixes
-        if not policy.allows(fix.kinds):
+        if not policy.allows(fix.kinds) or not vague_fits(parsed(fix.annotation), self.settings.checks.vague):
             return None
         certain: bool = not unsafe or policy.trusts(origins)
         plan: ImportPlan = self.settings.known.names.plan or ImportPlan({}, frozenset(), 0)
@@ -673,13 +678,16 @@ class Scope:
         return [name for name in self.first if self._covered(name)]
 
     def annotation(self, name: str, annotation: ast.expr) -> None:
-        """Report a vague annotation (LVA005), too deep a one (LVA006), or too long a tuple (LVA011)."""
-        if is_vague(annotation):
+        """Report a vague annotation (LVA005), too deep a one (LVA006), or too long a tuple (LVA011).
+
+        Vague as far as `vague` allows (see `vague_fits`) isn't LVA005.
+        """
+        if not vague_fits(annotation, self.settings.checks.vague):
             self.offences.append(Offence(*at(annotation), name, VAGUE_TYPE))
         if depth(annotation) >= self.settings.checks.nesting:
             self.offences.append(Offence(*at(annotation), name, NESTED_TYPE))
         longest: int
-        if (longest := length(annotation)) > self.settings.known.max_length:
+        if (longest := length(annotation)) > self.settings.known.limits.max_length:
             self.offences.append(Offence(*at(annotation), name, LONG_TUPLE, detail=str(longest)))
 
     def unannotated(self, type_comment: str | None) -> str | None:

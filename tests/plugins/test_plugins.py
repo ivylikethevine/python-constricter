@@ -15,7 +15,7 @@ from pylint.lint import PyLinter, Run
 from pylint.reporters import CollectingReporter
 from pylint.reporters.text import TextReporter
 
-from constricter.offences import MAX_LENGTH, NESTING, Level
+from constricter.offences import MAX_LENGTH, NESTING, VAGUE, Level
 from constricter.plugins.flake8 import ConstricterChecker
 from constricter.plugins.pylint import ConstricterChecker as PylintChecker
 
@@ -58,6 +58,7 @@ def _flake8_fixture(
     monkeypatch.setattr(ConstricterChecker, "nesting", NESTING)
     monkeypatch.setattr(ConstricterChecker, "narrower", ())
     monkeypatch.setattr(ConstricterChecker, "max_length", MAX_LENGTH)
+    monkeypatch.setattr(ConstricterChecker, "vague", VAGUE)
     monkeypatch.setattr(ConstricterChecker, "can_be_final", False)
 
     def _run(*args: str) -> list[str]:
@@ -234,6 +235,18 @@ def test_both_plugins_take_a_max_length(tmp_path: Path, flake8: Callable[..., li
     assert _pylint(path, "--constricter-level=suffocate", "--constricter-max-length=2") == [
         f"2:5: C9111 long-tuple-annotation {message}",
     ]
+
+
+def test_both_plugins_take_a_vague_level(tmp_path: Path, flake8: Callable[..., list[str]]) -> None:
+    """`constricter-vague` reaches both plugins: LVA005 / C9105 only past it."""
+    path: Path = tmp_path / "vague.py"
+    source: str = "from typing import Any\n\n\ndef f() -> None:\n  a: tuple[str, Any] = t()\n"
+    _ = path.write_text(source, encoding="utf-8", newline="\n")
+    message: str = "the annotation of 'a' is vague: Any, object, or a generic without its parameters"
+    assert flake8("--constricter-level=suffocate", str(path)) == [f"{path}:5:6: LVA005 {message}"]
+    assert flake8("--constricter-level=suffocate", "--constricter-vague=0", str(path)) == []
+    assert _pylint(path, "--constricter-level=suffocate") == [f"5:5: C9105 vague-annotation {message}"]
+    assert _pylint(path, "--constricter-level=suffocate", "--constricter-vague=0") == []
 
 
 def test_lva012_only_when_selected_by_its_full_code(

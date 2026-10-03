@@ -29,6 +29,7 @@ from constricter.offences import (
     MESSAGES,
     NESTING,
     OPT_IN,
+    VAGUE,
     Checks,
     FixPolicy,
     Level,
@@ -39,7 +40,7 @@ _ALL: Final = 100  # percent
 
 
 def _at_least(minimum: int) -> Callable[[str], int]:
-    """Make a reader of whole numbers, for `--nesting` and `--jobs`.
+    """Make a reader of whole numbers, for `--nesting`, `--vague` and `--jobs`.
 
     Returns:
       A reader that rejects numbers below `minimum`.
@@ -56,7 +57,7 @@ def _at_least(minimum: int) -> Callable[[str], int]:
           argparse.ArgumentTypeError: It isn't one.
 
         """
-        if not text.isdigit() or int(text) < minimum:
+        if not text.removeprefix("-").isdigit() or int(text) < minimum:
             message: str = f"expected a whole number of at least {minimum}, not {text!r}"
             raise argparse.ArgumentTypeError(message)
         return int(text)
@@ -252,6 +253,16 @@ def _parser() -> argparse.ArgumentParser:
         default=MAX_LENGTH,
         metavar="N",
         help=f"report a fixed-length tuple annotation of more than N types (LVA011; default: {MAX_LENGTH})",
+    )
+    _ = parser.add_argument(
+        "--vague",
+        type=_at_least(-1),
+        default=VAGUE,
+        metavar="LEVEL",
+        help=(
+            "how vague an annotation may be before it's LVA005 (and a fix isn't offered): -1 none, 0 one "
+            f"Any inside a type that says the rest, N >= 1 N+1 of them, or one alone (default: {VAGUE})"
+        ),
     )
     _ = parser.add_argument(
         "--min-python",
@@ -543,6 +554,7 @@ class Options:
                 all_scopes=cast("bool", args.all_scopes),
                 nesting=cast("int", args.nesting),
                 max_length=cast("int", args.max_length),
+                vague=cast("int", args.vague),
                 narrower=tuple(
                     (name, tuple(wider))
                     for name, wider in cast("dict[str, list[str]]", getattr(args, "narrower", {})).items()

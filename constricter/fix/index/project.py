@@ -65,7 +65,6 @@ class Imported(NamedTuple):
     # Its plain classes' variables typed by their values, by class (see `constricter.fix.values.classvars`).
     members: Mapping[str, Mapping[str, str]] = {}
     partial: Partial = Partial()  # the returns only an unpacking can use
-    tuples: Mapping[str, str] = {}  # its named tuples' fields, by class (see `targets.named_tuples`)
 
 
 def _origin(module: Module, name: str) -> Origin | None:
@@ -737,7 +736,6 @@ def imported(catalog: Index, path: Path) -> Imported:
     generics: set[str] = set()
     members: dict[str, Mapping[str, str]] = {}
     partial: dict[str, dict[str, str]] = {}
-    tuples: dict[str, str] = {}
     target: Module | None
     if path.suffix != SUFFIX or (target := modules.get(module_name(path))) is None:
         return Imported({}, Classes(attributes, methods))
@@ -748,7 +746,6 @@ def imported(catalog: Index, path: Path) -> Imported:
             generics.add(key)
         if defined[1] in defined[0].plain and defined[1] in defined[0].members:
             members[key] = defined[0].members[defined[1]]
-        tuples.update(_fields(modules, target, key, defined, guarded))
         attributes[key], methods[key], partial[key] = (
             _used(modules, (target, defined), key, table.get(defined[1]), guarded)
             for table in (defined[0].classes, defined[0].methods, defined[0].partial_methods)
@@ -761,7 +758,6 @@ def imported(catalog: Index, path: Path) -> Imported:
             {name: each for name, each in partial.items() if each},
         ),
     )
-    tuples.update(_named_fields(modules, target, guarded))
     return Imported(
         found[0],
         Classes(attributes, methods),
@@ -770,48 +766,7 @@ def imported(catalog: Index, path: Path) -> Imported:
         frozenset(generics),
         members,
         found[2],
-        tuples,
     )
-
-
-def _named_fields(
-    modules: Mapping[str, Module],
-    target: Module,
-    guarded: dict[str, Guarded],
-) -> dict[str, str]:
-    """Spell the fields of the named tuples the types written for a file (`target`) name (see `Guarded`).
-
-    Those it needn't import itself: a property's type, a function's return.
-
-    Returns:
-      Each one's name there, and the tuple unpacking one gives.
-
-    """
-    found: dict[str, str] = {}
-    key: str
-    named: Guarded
-    for key, named in list(guarded.items()):
-        origin: tuple[Module, str] | None = definition(modules, named.origin, CLASS)
-        found.update({} if origin is None else _fields(modules, target, key, origin, guarded))
-    return found
-
-
-def _fields(
-    modules: Mapping[str, Module],
-    target: Module,
-    key: str,
-    defined: tuple[Module, str],
-    guarded: dict[str, Guarded],
-) -> dict[str, str]:
-    """Spell a named tuple's fields (see `targets.named_tuples`) for the file (`target`) naming it `key`.
-
-    Returns:
-      `key`, and the tuple unpacking one gives; nothing for any other class, or types the file
-      can't write.
-
-    """
-    fields: str | None = defined[0].tuples.get(defined[1])
-    return {} if fields is None else portable(modules, (target, defined), key, {key: fields}, guarded)
 
 
 def _used(

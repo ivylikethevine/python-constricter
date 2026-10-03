@@ -138,7 +138,20 @@ class Owner:
             pass
 """
 _SHAPES: Final = """
-from typing import NamedTuple
+from typing import NamedTuple, TypeAlias, TypeVar
+
+T = TypeVar("T")
+Pair: TypeAlias = tuple[int, str]
+Plain = tuple[bytes, float]
+Generic = tuple[T, T]
+Twice = tuple[int, int]
+Twice = tuple[str, str]
+if T:
+    Nested = tuple[float, float]
+
+
+def pair() -> Pair:
+    return 1, ""
 
 
 class Namespaces(NamedTuple):
@@ -160,12 +173,14 @@ def f(resolver: Resolver) -> None:
 """
 _SPELLING: Final = """
 import pkg.shapes as shapes
-from pkg.shapes import Namespaces
+from pkg.shapes import Namespaces, Plain, pair
 
 
-def f(pair: shapes.Namespaces, other: Namespaces) -> None:
+def f(pair: shapes.Namespaces, other: Namespaces, plain: Plain) -> None:
     first, second = pair
     third, fourth = other
+    left, right = pair()
+    raw, ratio = plain
 """
 _SMALL: Final = """
 class _stack:
@@ -268,8 +283,15 @@ def test_another_files_named_tuple_is_unpacked_too(tmp_path: Path) -> None:
     spelling: Path = tmp_path / "spelling.py"
     catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
     fields: str = "tuple[dict[str, int], list[str]]"
-    assert project.imported(catalog, using).tuples == {"Namespaces": fields}
-    assert project.imported(catalog, spelling).tuples == {"shapes.Namespaces": fields, "Namespaces": fields}
+    assert schedule.outside(catalog, using, {}).tuples == {"Namespaces": fields}
+    assert schedule.outside(catalog, spelling, {}).tuples == {
+        "shapes.Namespaces": fields,
+        "Namespaces": fields,
+        "Plain": "tuple[bytes, float]",
+        "shapes.Pair": "tuple[int, str]",
+        "shapes.Plain": "tuple[bytes, float]",
+        "shapes.Nested": "tuple[float, float]",
+    }
     found: list[Offence] = check_source(_USING, outside=schedule.outside(catalog, using, {}))
     assert {o.name: o.fix for o in found} == {"globalns": "dict[str, int]", "localns": "list[str]"}
     found = check_source(_SPELLING, outside=schedule.outside(catalog, spelling, {}))
@@ -278,6 +300,16 @@ def test_another_files_named_tuple_is_unpacked_too(tmp_path: Path) -> None:
         "second": "list[str]",
         "third": "dict[str, int]",
         "fourth": "list[str]",
+        "left": "int",
+        "right": "str",
+        "raw": "bytes",
+        "ratio": "float",
+    }
+    assert targets.named_tuples(ast.parse(textwrap.dedent(_SHAPES))) == {
+        "Namespaces": fields,
+        "Pair": "tuple[int, str]",
+        "Plain": "tuple[bytes, float]",
+        "Nested": "tuple[float, float]",
     }
 
 

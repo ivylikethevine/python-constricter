@@ -35,9 +35,10 @@ comes out the same for all twelve:
   members, for its protocols; installed packages' overloads are matched with them
   (`constricter.fix.index.stubbed`).
 
-A return that names a `TypeVar` (but `AnyStr`), `Any`, or anything else vague, differs between
-overloads, or is spelled with a class inside a generic (`list[Path]`), is left out; so is `typing`
-(its factories), `enum`'s classes (their functional API makes a class), and what `_RUNTIME` lists.
+A return that names a `TypeVar` (but `AnyStr`), or anything vague but `Any` alone (`json.loads`'s,
+under `returns`, for `vague` to judge), differs between overloads, or is spelled with a class inside
+a generic (`list[Path]`), is left out; so is `typing` (its factories), `enum`'s classes (their
+functional API makes a class), and what `_RUNTIME` lists.
 """
 
 import argparse
@@ -58,6 +59,7 @@ from typing import Final, NamedTuple, TypeAlias, cast
 from constricter.fix.core.signatures import Signature
 from stdlib_tables.overloads import CONTAINERS, SCALARS, Overloads
 from stdlib_tables.reading import (
+    ANY,
     ANY_STR,
     ATTRIBUTE,
     CLASSMETHOD,
@@ -422,6 +424,8 @@ def _function(tables: _Tables, reader: _Reader, path: str, module: str, defs: De
     signatures: Signatures | None
     if form != ANY_STR and form is not None and _value(form, reader.canonical) is not None:
         _entry(tables, path, form, reader.canonical)
+    elif reader.reading.returns_any(defs, module):
+        tables.returns[path] = ANY
     elif (signatures := reader.overloads.entry(defs, module)) is not None:
         tables.overloads[path] = [signatures]
 

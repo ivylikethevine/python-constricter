@@ -124,6 +124,7 @@ _KIND: Final = "stdlib"  # the fix kind of what the tables type
 _BUILTIN_NAMES: Final = frozenset({*dir(builtins), "None"})
 _DOT: Final = "."
 _ENTER: Final = "__enter__"
+ANY: Final = "Any"  # a function's whole return in `RETURNS`, declared `typing.Any` (`json.loads`)
 KNOWN: Final = frozenset({*RETURNS, *OVERLOADS, ENVIRONMENT, *CLASSES})  # every function the tables type
 # Module-level variables' types (`sys.path`: `list[str]`): builtin annotations, or classes' paths.
 VARIABLES: Final = cast("dict[str, str]", _table("variables"))

@@ -30,7 +30,7 @@ from constricter.rules.annotations import (
     node_name,
 )
 from constricter.rules.decorators import Held, Pass
-from constricter.rules.syntax import child_statements
+from constricter.rules.syntax import child_statements, top_level
 from constricter.rules.tables import Tables, module_tables
 from constricter.rules.walked import of_type
 
@@ -327,7 +327,7 @@ def _aliases(tree: ast.Module) -> dict[str, bool]:
     name: str
     value: ast.expr
     annotation: ast.expr
-    for stmt in _top_level(tree.body):
+    for stmt in top_level(tree.body):
         match stmt:
             case ast.AnnAssign(
                 target=ast.Name(id=name),
@@ -383,20 +383,6 @@ def _assigned(body: Sequence[ast.stmt]) -> Counter[str]:
 
 def _names_any(value: ast.expr, names: frozenset[str]) -> bool:
     return any(node_name(node) in names for node in ast.walk(value))
-
-
-def _top_level(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
-    """Walk a module's top-level statements, those under its `if`s and `try`s too.
-
-    Yields:
-      Each.
-
-    """
-    stmt: ast.stmt
-    for stmt in body:
-        yield stmt
-        if isinstance(stmt, ast.If | ast.Try | ast.TryStar):
-            yield from _top_level(child_statements(stmt))
 
 
 def open_functions(tree: ast.Module) -> dict[str, tuple[Param, ...]]:

@@ -271,7 +271,7 @@ def test_an_import_joins_the_files_type_checking_block(tmp_path: Path, source: s
     _package(tmp_path)
     user: Path = _write(tmp_path / "user.py", source)
     for _ in range(2):
-        assert cli.main(["--fix", "-q", *_SELECT, str(tmp_path)]) == cli.EXIT_FOUND  # `T`, in `pkg`
+        assert cli.main(["--fix", "-q", *_SELECT, str(tmp_path)]) == cli.EXIT_CLEAN
         assert user.read_text(encoding="utf-8") == textwrap.dedent(fixed)
 
 

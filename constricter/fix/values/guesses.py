@@ -29,7 +29,7 @@ from constricter.rules.walked import children
 
 # Builtins whose call is certain (when the module doesn't rebind the name): see `_is_guess`.
 _CERTAIN_BUILTINS: Final = frozenset(
-    BUILTIN_RETURNS.keys() | CONTAINER_BUILDERS.keys() | ITERATORS | {"type"},
+    BUILTIN_RETURNS.keys() | CONTAINER_BUILDERS.keys() | ITERATORS | {"type", "getattr"},
 )
 
 
@@ -97,7 +97,9 @@ def _fixed_by_callee(call: ast.Call, known: Known, declared: Mapping[str, str]) 
     match call:
         case ast.Call(func=ast.Name(id=name)) if name in BUILTIN_RETURNS and known.is_builtin(name):
             return True
-        case ast.Call(func=ast.Name() | ast.Attribute() as func) if dotted(func) in known.calls:
+        case ast.Call(func=ast.Name() | ast.Attribute() as func) if (
+            dotted(func) in known.calls or dotted(func) in known.indirect.partial.calls
+        ):
             return True
         case _:
             return certain_method(call, known, declared)
@@ -285,6 +287,7 @@ def _is_guess(
             or certain_method(node, known, declared)
             or _overloaded_method(node, known, declared)
             or called.result(node, known, declared, lambda arg: inference(arg, known, declared)) is not None
+            or shapes.vaguely(node, known, lambda arg: inference(arg, known, declared)) is not None
         ):
             return False
         case ast.Call(func=func):

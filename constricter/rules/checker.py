@@ -13,6 +13,7 @@ from constricter.fix.core.known import (
     Indirect,
     Known,
     LibraryNames,
+    Limits,
     Observed,
     Outside,
     Partial,
@@ -176,7 +177,7 @@ def _settings(
                 {} if outside is None else outside.installed_aliases,
                 checks.min_python is not None and checks.min_python >= STARRED_SUBSCRIPTS,
             ),
-            checks.max_length,
+            Limits(checks.max_length, checks.vague),
         ),
         Hierarchy.for_module(
             tree,
