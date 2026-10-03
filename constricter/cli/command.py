@@ -519,6 +519,7 @@ def _checked_all(
         if not coverage:
             modules = plain.settled(
                 decorated.passed(installed.with_installed(modules, installed.search_path())),
+                options.checks.plain_bases,
             )
         return schedule.checked(
             paths,

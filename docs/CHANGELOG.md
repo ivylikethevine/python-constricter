@@ -6,6 +6,15 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix --unsafe-fixes` annotates a class's variables under a framework's base that reads no
+  annotation in a class body, as a plain class's: `per_page = 20` under django's `models.Model`,
+  `template_name = "x.html"` under a view, a form, an admin or a command. Django's classes are built
+  in, but its `Choices`, enums whose members a type checker won't have annotated; `fix-plain-bases`
+  (`--fix-plain-bases BASES`) lists more: a class by its dotted path, or a package for every class
+  in it, `!` before one to leave it out. A listed base counts where a checked file defines it too
+  (django's own, decorated or under a metaclass). A check of one file alone now resolves a base
+  through any import, not the standard library's alone. On django: 563 more guesses (4,632 fixes to
+  5,195).
 - `--fix` writes a standard-library function's bare generic return with its type parameters'
   defaults, as a type checker reads it: `ET.SubElement(root, "x")` is an `ET.Element[str]`, as is
   `ET.XML(text)`. It was guessed a constructor, `SubElement`, which isn't a type. A capitalised

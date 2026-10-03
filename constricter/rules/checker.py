@@ -160,7 +160,7 @@ def _settings(
                 free_of_all(class_attributes(tree), free),
                 free_of_all(own.sides, free),
                 inherited.lineage(tree, selfish, bases.union(imported.methods if imported else ())),
-                classvars.variables(tree, stdlib.origins(tree), outside),
+                classvars.variables(tree, classvars.imported(tree), outside, checks.plain_bases),
             ),
             LibraryNames(
                 casts(tree),

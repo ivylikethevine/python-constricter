@@ -159,7 +159,13 @@ in a function or module body:
   may bind it to another type; a variable the module stores any other way (`self.limit = ...`) is
   left alone, and so is every other class body, where an annotation can be more than a type (a
   dataclass's, a `NamedTuple`'s or a model's field). A builtin exception or value class is a base a
-  plain class may have too (`ValueError`, `str`, `dict`; not one the module binds itself);
+  plain class may have too (`ValueError`, `str`, `dict`; not one the module binds itself), and so is
+  a framework's that reads no annotation in a class body: django's are built in (`per_page = 20`
+  under `models.Model`, `paginate_by = 10` under a `ListView`; not its `Choices`, enums whose
+  members a type checker won't have annotated), and `fix-plain-bases` lists more
+  (`--fix-plain-bases BASES`): a class by its dotted path, or a package for every class in it, `!`
+  before one to leave it out. A listed base counts where a checked file defines it too, decorated or
+  under a metaclass as it may be (django's own files, checked);
 - a module's type alias, declared one: `Json = dict[str, "Json"]` becomes `Json: TypeAlias = ...`
   (fix kind `alias`). Only a value that can be nothing but a type made of others: a subscript of
   what `typing`, `typing_extensions` or `collections.abc` define (`Union[A, B]`, `Callable[..., R]`,
@@ -548,6 +554,7 @@ A project chooses which apply, in `[tool.constricter]` or on the command line:
 [tool.constricter]
 fix-ignore = ["arithmetic"]          # never annotate from arithmetic
 unsafe-fix-select = ["constructor"]  # this codebase's capitalised calls construct what they name
+fix-plain-bases = ["rest_framework"]  # its classes read no annotation in a class body
 ```
 
 None of them changes what's reported: an offence whose fix isn't offered is still reported, without

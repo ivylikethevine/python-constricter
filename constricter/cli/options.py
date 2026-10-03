@@ -29,6 +29,7 @@ from constricter.offences import (
     MESSAGES,
     NESTING,
     OPT_IN,
+    PLAIN_BASES,
     VAGUE,
     Checks,
     FixPolicy,
@@ -102,6 +103,16 @@ def _codes(text: str) -> list[str]:
         message: str = f"no code starts with {', '.join(unknown)}"
         raise argparse.ArgumentTypeError(message)
     return codes
+
+
+def _listed(text: str) -> list[str]:
+    """Read a comma-separated list of names (`pkg.Base,!pkg.Enum`).
+
+    Returns:
+      Them.
+
+    """
+    return [name.strip() for name in text.split(",") if name.strip()]
 
 
 def _fix_kinds(text: str) -> list[str]:
@@ -321,6 +332,13 @@ def _parser() -> argparse.ArgumentParser:
         default=[],
         metavar="KINDS",
         help="treat guesses from these mechanisms (constructor, narrow) as certain",
+    )
+    _ = parser.add_argument(
+        "--fix-plain-bases",
+        type=_listed,
+        default=[],
+        metavar="BASES",
+        help="bases whose class bodies --fix annotates as a plain class's (pkg.Base,pkg,!pkg.Enum)",
     )
     _ = parser.add_argument(
         "--infer-with",
@@ -566,6 +584,7 @@ class Options:
                     frozenset(cast("list[str]", args.unsafe_fix_select)),
                 ),
                 min_python=cast("tuple[int, int] | None", args.min_python),
+                plain_bases=(*PLAIN_BASES, *cast("list[str]", args.fix_plain_bases)),
             ),
             unsafe_fixes=cast("bool", args.unsafe_fixes),
             filter=_filter(parser, args, mode),

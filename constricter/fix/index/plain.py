@@ -7,7 +7,7 @@ A module alone can't see past a base another file defines: the index can, throug
 re-exports, to what that base inherits from and what it declares.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -21,12 +21,14 @@ if TYPE_CHECKING:
 _DOT: Final = "."
 
 
-def settled(catalog: Index) -> Index:
+def settled(catalog: Index, entries: Sequence[str] = ()) -> Index:
     """Settle which of the checked files' classes are plain, across them all.
 
     As `constricter.fix.values.classvars` has it for one module, a base another checked file defines
     followed there: a class under another file's plain class is plain, and a class that isn't
-    makes what it inherits from, in any file, not plain either.
+    makes what it inherits from, in any file, not plain either. A base `entries` list
+    (`classvars.listed`) is one a plain class may have even where a checked file defines it, plain
+    or not: the framework's own files, checked.
 
     Returns:
       The index, each checked module with its plain classes.
@@ -39,7 +41,11 @@ def settled(catalog: Index) -> Index:
     }
     if not found:
         return catalog
-    plain: frozenset[str] = classvars.settled(found, classvars.allowed)
+    unlisted: dict[str, tuple[str, ...]] = {
+        name: tuple(base for base in bases if not classvars.listed(base, entries))
+        for name, bases in found.items()
+    }
+    plain: frozenset[str] = classvars.settled(unlisted, classvars.allowed)
     declared: dict[str, Mapping[str, str]] = {
         f"{module.name}.{name}": module.classes.get(name, {})
         for module in catalog.modules.values()

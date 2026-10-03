@@ -4,7 +4,8 @@
 An annotation in a class body can be more than a type: a dataclass's, a `NamedTuple`'s or a model's
 makes the variable a field. So only a plain class's body is fixed: one defined once in its module,
 with no decorator or metaclass, every base of which is `object`, a `unittest` test case, a builtin
-exception or value class (`ValueError`, `str`: see `BUILTIN_BASES`), or another plain class; and no
+exception or value class (`ValueError`, `str`: see `BUILTIN_BASES`), a listed one (`listed`: a
+framework's that reads no annotations, as `fix-plain-bases` says), or another plain class; and no
 class that isn't plain may inherit from it (a mixin of a model's). What the module alone sees is
 `plain`; with the CLI, the index of checked files says which bases other files define are plain too
 (see `constricter.fix.index.project`).
@@ -29,6 +30,7 @@ from constricter.fix.core.known import Inference, Known, Outside
 from constricter.fix.values.inference import inference
 from constricter.rules.annotations import classes as annotated
 from constricter.rules.annotations import dotted
+from constricter.rules.syntax import import_bindings
 from constricter.rules.walked import classes, of_type
 
 OBJECT: Final = "object"
@@ -51,6 +53,7 @@ SPECIAL: Final = ""  # a base no class has: what makes a class one that can't be
 _OWN_KINDS: Final = frozenset({"literal", "container", "arithmetic", "compare"})
 _NOTHING: Final = Known({}, frozenset(), {}, {})
 _NONE: Final = "None"
+_NOT: Final = "!"  # an entry that leaves a base out (see `listed`)
 _DEFINITIONS: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
 
@@ -124,26 +127,57 @@ def bases(tree: ast.Module) -> dict[str, tuple[str, ...]]:
     return found
 
 
-def plain(tree: ast.Module, origins: Mapping[str, str]) -> frozenset[str]:
+def imported(tree: ast.Module) -> dict[str, str]:
+    """Map each top-level name the module's absolute imports bind to what it is (`models.Model`'s `models`).
+
+    Returns:
+      Each bound name's dotted origin, to resolve a base by (see `plain`).
+
+    """
+    return {name: origin for name, origin, _ in import_bindings(tree.body)}
+
+
+def plain(tree: ast.Module, origins: Mapping[str, str], entries: Sequence[str] = ()) -> frozenset[str]:
     """Find the module's plain classes, as far as the module alone sees (see the module docstring).
 
-    `origins`: what each name its imports bind refers to (`stdlib.origins`), to know a test case.
+    `origins`: what each name its imports bind refers to (see `imported`), to know a test case;
+    `entries`: the listed bases (see `listed`).
 
     Returns:
       Their names.
 
     """
-    return settled(bases(tree), lambda base: allowed(_resolved(base, origins)))
+    return settled(bases(tree), lambda base: allowed(_resolved(base, origins), entries))
 
 
-def allowed(base: str) -> bool:
+def allowed(base: str, entries: Sequence[str] = ()) -> bool:
     """Check whether a base no checked file defines is one a plain class may have.
 
     Returns:
-      Whether it's a test case's (`TEST_CASES`) or a builtin's (`BUILTIN_BASES`), by its origin.
+      Whether it's a test case's (`TEST_CASES`), a builtin's (`BUILTIN_BASES`) or a listed one
+      (`listed`), by its origin.
 
     """
-    return base in TEST_CASES or base in BUILTIN_BASES
+    return base in TEST_CASES or base in BUILTIN_BASES or listed(base, entries)
+
+
+def listed(base: str, entries: Sequence[str]) -> bool:
+    """Check whether `entries` list a base, by its dotted origin (`django.db.models.Model`).
+
+    An entry names a class, or a package for every class in it (`django`); one starting `!` leaves
+    out what it names, whatever else lists it.
+
+    Returns:
+      Whether one lists it, and none leaves it out.
+
+    """
+    left_out: list[str] = [entry[1:] for entry in entries if entry.startswith(_NOT)]
+    kept: list[str] = [entry for entry in entries if not entry.startswith(_NOT)]
+    return _under(base, kept) and not _under(base, left_out)
+
+
+def _under(base: str, paths: Sequence[str]) -> bool:
+    return any(base == path or base.startswith(f"{path}.") for path in paths)
 
 
 def ancestors(name: str, found: Bases) -> list[str]:
@@ -220,17 +254,19 @@ def variables(
     tree: ast.Module,
     origins: Mapping[str, str],
     outside: Outside | None,
+    entries: Sequence[str] = (),
 ) -> dict[str, Mapping[str, str]]:
     """Type the plain classes' variables a module reads: its own, and those it imports.
 
-    Which of its own are plain is the index's to say (`Outside.plain`), or else the module's alone.
+    Which of its own are plain is the index's to say (`Outside.plain`), or else the module's alone,
+    with `entries` the listed bases (see `listed`).
 
     Returns:
       Each class's variables' types, as the module spells the class.
 
     """
     indexed: frozenset[str] | None = None if outside is None else outside.plain
-    own: frozenset[str] = plain(tree, origins) if indexed is None else indexed
+    own: frozenset[str] = plain(tree, origins, entries) if indexed is None else indexed
     typed: dict[str, dict[str, str]] = members(tree) if own else {}
     return {
         **({} if outside is None else outside.members),

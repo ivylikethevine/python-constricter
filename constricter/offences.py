@@ -227,6 +227,18 @@ class Offence:
         return level >= _REPORTED_FROM.get(self.code, Level.RELAXED)
 
 
+# Bases whose class bodies `--fix` annotates as a plain class's (`fix-plain-bases` adds to them): a
+# class, or a package for every class in it; `!` leaves one out. Django reads no annotation in a class
+# body, but its `Choices` are enums, whose members a type checker won't have annotated.
+PLAIN_BASES: Final = (
+    "django",
+    "!django.db.models.Choices",
+    "!django.db.models.IntegerChoices",
+    "!django.db.models.TextChoices",
+    "!django.db.models.enums",
+)
+
+
 class Checks(NamedTuple):
     """What to check, beyond the defaults.
 
@@ -235,6 +247,7 @@ class Checks(NamedTuple):
     listing a fixed-length tuple longer than `max_length` is LVA011. `min_python`: the oldest Python
     the code runs on (`None`: not known), whose syntax a fix is written in. `vague`: how vague an
     annotation may be before it's LVA005, and a fix isn't offered (see `annotations.vague_fits`).
+    `plain_bases`: the bases a plain class may have besides the builtin ones (see `PLAIN_BASES`).
     """
 
     type_comments: bool = False
@@ -247,6 +260,7 @@ class Checks(NamedTuple):
     final: bool = False  # look for LVA012 (opt-in: see `OPT_IN`)
     min_python: tuple[int, int] | None = None
     vague: int = VAGUE
+    plain_bases: tuple[str, ...] = PLAIN_BASES
 
 
 DEFAULT_CHECKS: Final = Checks()

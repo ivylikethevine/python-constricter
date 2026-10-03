@@ -6,6 +6,8 @@ import textwrap
 from pathlib import Path
 from typing import Final, TypeAlias
 
+import pytest
+
 from constricter import Checks, FixPolicy, Offence, check_source
 from constricter.cli import command as cli
 from constricter.fix.index import plain, project
@@ -464,3 +466,133 @@ def test_another_files_base_holds_a_variable_to_its_type(tmp_path: Path) -> None
         "Late": {"seconds": "int"},
     }
     assert catalog.modules["failing"].plain == {"Late"}
+
+
+FRAMEWORK: Final = """
+import enum
+
+from django.db import models
+from django.views.generic import ListView
+from rest import Serializer
+
+
+class Status(models.TextChoices):
+    DRAFT = "draft"
+
+
+class Article(models.Model):
+    per_page = 20
+    title = models.CharField(max_length=10)
+
+
+class Articles(ListView):
+    paginate_by = 10
+
+
+class Colour(enum.Enum):
+    RED = 1
+
+
+class Row(Serializer):
+    many = True
+"""
+
+
+def test_a_listed_base_is_one_a_plain_class_may_have() -> None:
+    """Django's classes read no annotation in a class body, but its `Choices`, which are enums.
+
+    Other bases are listed by `plain_bases`: a class, or a package; `!` leaves one out.
+    """
+    assert _fixed(FRAMEWORK) == {
+        "DRAFT": (None, False),
+        "per_page": ("int", True),
+        "title": (None, False),
+        "paginate_by": ("int", True),
+        "many": (None, False),
+    }
+    bases: tuple[str, ...] = ("rest", "django.db", "!django.db.models.TextChoices")
+    found: _Fixed = _fixed(FRAMEWORK, Checks(all_scopes=True, plain_bases=bases))
+    assert {name for name, fix in found.items() if fix[0]} == {"per_page", "many"}
+    assert classvars.listed("pkg.Base", ["pkg.Base"])
+    assert not classvars.listed("pkg.Based", ["pkg.Base"])
+    assert not classvars.listed("pkg.Base", [])
+
+
+WEB: Final = """
+def registered(cls):
+    return cls
+
+
+@registered
+class View:
+    limit: int | None = None
+
+
+class Mixin:
+    shared = 1
+
+
+@registered
+class Mixed(Mixin):
+    pass
+"""
+PAGES: Final = """
+from web.base import View
+
+
+class Page(View):
+    title = "page"
+
+
+class Short(View):
+    limit = 3
+"""
+
+
+def test_a_listed_base_a_checked_file_defines_is_one_too(tmp_path: Path) -> None:
+    """A framework's own files, checked: a class under its decorated base is plain where it's listed.
+
+    What the base annotates still holds its subclasses' variables, and a listed class's mixin is plain.
+    """
+    files: dict[str, str] = {"web/__init__.py": "", "web/base.py": WEB, "pages.py": PAGES}
+    paths: list[Path] = []
+    name: str
+    source: str
+    for name, source in files.items():
+        path: Path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _ = path.write_text(source, encoding="utf-8")
+        paths.append(path)
+    catalog: project.Index = project.index(paths)
+    unlisted: project.Index = plain.settled(catalog)
+    assert unlisted.modules["pages"].plain == frozenset()
+    assert unlisted.modules["web.base"].plain == frozenset()
+    listed: project.Index = plain.settled(catalog, ["web"])
+    assert listed.modules["pages"].plain == {"Page"}
+    assert listed.modules["web.base"].plain == {"Mixin"}
+
+
+def test_the_command_takes_listed_bases_from_a_flag_and_pyproject(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`--fix-plain-bases`, or `[tool.constricter]`'s `fix-plain-bases`, adds to the built-in ones."""
+    monkeypatch.chdir(tmp_path)
+    path: Path = tmp_path / "rows.py"
+    source: str = "from rest import Serializer\n\n\nclass Row(Serializer):\n    many = True\n"
+    _ = path.write_text(source, encoding="utf-8")
+    arguments: list[str] = ["--fix", "--unsafe-fixes", "--all-scopes", "-q", "rows.py"]
+    assert cli.main(arguments) == cli.EXIT_FOUND
+    assert path.read_text(encoding="utf-8") == source
+    fixed: str = source.replace("many = True", "many: bool = True")
+    assert cli.main([*arguments, "--fix-plain-bases=rest.Serializer, !rest.Enum"]) == cli.EXIT_CLEAN
+    assert path.read_text(encoding="utf-8") == fixed
+    _ = path.write_text(source, encoding="utf-8")
+    _ = (tmp_path / "pyproject.toml").write_text(
+        '[tool.constricter]\nfix-plain-bases = ["rest"]\n',
+        encoding="utf-8",
+    )
+    assert cli.main(arguments) == cli.EXIT_CLEAN
+    assert path.read_text(encoding="utf-8") == fixed
+    _ = capsys.readouterr()

@@ -246,6 +246,7 @@ _READERS: dict[str, Callable[[_Toml], Default | None]] = {
     "fix-select": _fix_kinds,
     "fix-ignore": _fix_kinds,
     "unsafe-fix-select": _fix_kinds,
+    "fix-plain-bases": _strings,
     "type-comments": _flag,
     "all-scopes": _flag,
     "per-path-levels": _levels,
