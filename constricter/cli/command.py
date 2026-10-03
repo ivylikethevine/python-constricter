@@ -398,6 +398,11 @@ def _check_all(options: Options) -> tuple[list[Path], list[FileRun]]:
             for index, run in zip(again, redone, strict=True):
                 runs[index] = _merged(runs[index], run)
             again = [index for index, run in zip(again, redone, strict=True) if cast("CheckRun", run).fixed]
+        checker: str
+        path: Path
+        for checker, path in session.abandoned:
+            name: Path = options.input.name(path)
+            _ = sys.stderr.write(f"constricter: warning: {checker} hung on {name} twice: no hints for it\n")
     return names, runs
 
 

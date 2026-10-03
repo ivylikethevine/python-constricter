@@ -67,8 +67,9 @@
   (`m.string`). `defaultdict(list)` and `Counter()` stay untyped: their parameters come from later
   use. Generic classes' constructors are read from their `__new__` or `__init__`
   (`collections.deque(names)` is a `collections.deque[str]`, `array.array("i")` an
-  `array.array[int]`); at module level, one some Python can't subscript at run time is quoted. What
-  only some platforms or versions have is kept (`os.getuid()`).
+  `array.array[int]`); at module level, one some Python can't subscript at run time is quoted. A
+  generic class returned bare is written with its type parameters' defaults (`ET.SubElement(...)` is
+  an `ET.Element[str]`). What only some platforms or versions have is kept (`os.getuid()`).
 - **Installed packages**: calls into an installed package that declares its types (`py.typed`, a
   stub package, a lone stub module) are typed by their declared returns as a checked file's are,
   found as the import system would on this Python's path and `VIRTUAL_ENV`'s; types are imported
@@ -88,14 +89,15 @@
   to run (`core_schema.CoreSchema`), else under `if TYPE_CHECKING:` (no import cycle at run time),
   quoted where a module-level annotation is evaluated.
 - **Guesses** apply only with `--unsafe-fixes`: a call taken to construct its class (a capitalised
-  name, or a class the checked files define whatever its name's case), LVA008's and LVA010's
-  narrowing, an empty container typed by what's added to it (`append`, `extend`, `update`, ...), a
-  method typed by its `return`s, an instance attribute by its assignments (`assigned`), a plain
-  class's variable by its literal value (`member`: under plain classes, test cases and builtin
-  exception or value classes), an unannotated parameter by what every call in the checked files
-  passes it (`callers`, builtin types alone: callers' classes too would add 10 fixes on the
-  corpora), and what rests on any of these. **Fix levels**: every mechanism has a stable id
-  (`--show-fixes`, JSON), and `fix-select`, `fix-ignore` and `unsafe-fix-select` choose which apply.
+  name but a standard-library function's, which the `functions` table lists, or a class the checked
+  files define whatever its name's case), LVA008's and LVA010's narrowing, an empty container typed
+  by what's added to it (`append`, `extend`, `update`, ...), a method typed by its `return`s, an
+  instance attribute by its assignments (`assigned`), a plain class's variable by its literal value
+  (`member`: under plain classes, test cases and builtin exception or value classes), an unannotated
+  parameter by what every call in the checked files passes it (`callers`, builtin types alone:
+  callers' classes too would add 10 fixes on the corpora), and what rests on any of these. **Fix
+  levels**: every mechanism has a stable id (`--show-fixes`, JSON), and `fix-select`, `fix-ignore`
+  and `unsafe-fix-select` choose which apply.
 - **Type-checker-backed inference** (`--infer-with basedpyright,ty,pyrefly`): the checkers' inlay
   hints type what `--fix` can't, as guesses, widened, checked and imported; with basedpyright it
   about doubles what `--fix --unsafe-fixes` types on the annotated corpora. A hint naming a class
@@ -111,6 +113,8 @@
   `min-python` or `requires-python`'s, else written with `Unpack` where the module imports it, else
   dropped), and a hint naming a type variable is a fix only where its function's signature or its
   class names it.
+- **A hung server is restarted**: one silent for 120s is restarted and each file it hadn't answered
+  asked about alone; a file it hangs on again has no hints, named on standard error.
 - **No new type errors**: `corpus_suite.py --types` runs pydantic's, sqlalchemy's and pandas's own
   type checkers after `--fix` (none new but released errors in a new place) and
   `--fix --unsafe-fixes`. Where a checker would see a value otherwise, the fix is changed, made a
@@ -176,8 +180,8 @@
 - **`tests/corpus/corpus_suite.py`** clones a corpus package at its pinned tag, installs its test
   dependencies as its CI does, and runs its test suite as released, after `--fix`, and after
   `--fix --unsafe-fixes` (see [RUNS.md](RUNS.md)); `--types` runs each one's own type checker the
-  same way and traces each new error to its fix mechanism, and `--infer-with CHECKERS` adds a run
-  with their hints' fixes.
+  same way and traces each new error to its fix mechanism (of a file's alike errors, the one on a
+  line a fix wrote), and `--infer-with CHECKERS` adds a run with their hints' fixes.
 - **Python 3**: the standard library, `django` (the 5.2 LTS, for 3.11), `sqlalchemy`, `pydantic` and
   `pandas` 3.0.6 (1,421 files with its tests: overloads, generics, `TYPE_CHECKING` imports).
 - **Python 2**: Twisted 12.3.0 (pure Python 2, 147 of 819 files unparsable) and pip 20.3.4 (the most
@@ -240,11 +244,11 @@
 - **Layout**: `constricter/` in `rules/`, `fix/`, `cli/` and `plugins/`; `fix/` in four layers, each
   importing only those before it: `core/` (what every part shares), `libraries/` (the standard
   library's and installed packages' types), `values/` (what a value makes its type) and `index/`
-  (the cross-file index), its tests laid out the same. All but seven modules are under 750 lines
-  (`fix/index/stubbed.py` and `project.py`, `fix/libraries/overloads.py`, `fix/values/inference.py`,
-  and `rules/annotations.py`, `checker.py` and `scope.py`); the standard-library tables in
-  `constricter/fix/tables/`, their generator in `stdlib_tables/`; docs in `docs/` (changelog,
-  contributing, security, integrations, fixes, runs), release notes grouped by
+  (the cross-file index), its tests laid out the same. All but eight modules are under 750 lines
+  (`cli/hints.py`, `fix/index/stubbed.py` and `project.py`, `fix/libraries/overloads.py`,
+  `fix/values/inference.py`, and `rules/annotations.py`, `checker.py` and `scope.py`); the
+  standard-library tables in `constricter/fix/tables/`, their generator in `stdlib_tables/`; docs in
+  `docs/` (changelog, contributing, security, integrations, fixes, runs), release notes grouped by
   `.github/release.yml`, issue and PR templates, CODEOWNERS.
 - **Pyright and basedpyright in editors**: `pyrightconfig.json`, which both read first, holds the
   shared settings (`local/.venv`, and the code checked alone) and extends `pyproject.toml`, where
@@ -278,24 +282,29 @@ fix.
 
 ### Small: 3 hours or less
 
-1. **A hung checker's server, restarted.** pandas's `corpus_suite.py --types --infer-with` run stops
-   after two minutes: basedpyright's server goes 120s without answering an inlay hint request, and
-   one hung server ends the whole run with no output. Restart it, and give up only that file's hints
-   after a second hang. Done when pandas's run with basedpyright's and ty's hints finishes and is in
-   [RUNS.md](RUNS.md) beside pydantic's and sqlalchemy's. About 3 hours, apart from the run;
+1. **A hint's `ndarray` with one argument.** pandas's run with basedpyright's and ty's hints has 444
+   new type errors (pydantic's 21, sqlalchemy's 36): 255 of them are about one annotation,
+   `mask: np.ndarray[np.bool[bool]]`, the array's scalar type where its shape goes (mypy: "must be a
+   subtype of `tuple[int, ...]`", then every use of the name). Find which checker's hint it is and
+   what the hint said, and write both parameters or leave the hint. Then the next largest: a hint's
+   `X | None` read without a test (18), and a method's result hinted as its class where it returns
+   `Self` (12). Done when pandas's run has under 100 new errors. About 3 hours, apart from the run;
    coverage unchanged.
-2. **A new type error blamed on its own line.** `corpus_suite.py --types` matches errors by file and
-   message, and blames the first of a file's alike ones: pydantic's 3 untraced errors after `--fix`
-   are a fixed line's (an annotation repeating pydantic's own `'AnyClassMethod'`), reported at a
-   released line. Blame the one on a line the fix changed or inserted, by `_origins`. Done when
-   pydantic's 9 are each traced to their fix. About 2 hours; coverage unchanged.
-3. **No constructor guess for a capitalised function.** pandas's
-   `elem_row: SubElement = SubElement(...)` is guessed a constructor (mypy: not valid as a type):
-   `xml.etree.ElementTree.SubElement` returns a bare `Element`, a generic class, so the tables leave
-   it out and nothing says it's a function. Keep the standard library's functions whose return is
-   dropped, so a capital doesn't make one a constructor, and write a bare generic return whose type
-   parameters all have defaults with them (`Element[str]`). Done when `SubElement(...)` is an
-   `Element[str]`. About 2 hours; coverage unchanged.
+2. **A checker that never answers a file.** basedpyright has no hints for pandas's
+   `tests/apply/test_series_apply.py`: it spins on `np.array([np.sum, np.mean])` (numpy 2.5.3), 15
+   minutes at full CPU without an answer, from its command line too, as plain Pyright 1.1.404 does
+   (ty answers at once; `np.array([np.sum])` takes 3s). Each such file costs a run four minutes: two
+   120s waits and two restarts. Report the two-line file to Pyright, and note it in
+   [RUNS.md](RUNS.md). Done when it's reported. About an hour; coverage unchanged.
+3. **Whose settings an `--infer-with` server reads.** basedpyright, run by hand in pandas's checkout
+   under `local/corpus-suites/`, loads this project's `pyrightconfig.json` from the directories
+   above: if the servers do too, every corpus checkout's hints (and the shares and error counts in
+   [RUNS.md](RUNS.md)) are computed under this project's settings (`typeCheckingMode = "all"`, its
+   `venv` and `include`), not the package's own. Log which configuration each checker's server loads
+   for a checkout with a `[tool.pyright]` of its own, one with none, and ty's and pyrefly's; then
+   keep a server to its workspace's, or move the checkouts out from under this one. Done when each
+   server reads the checkout's own settings, or none, and the runs it changes are run again. About 3
+   hours, apart from the runs; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 

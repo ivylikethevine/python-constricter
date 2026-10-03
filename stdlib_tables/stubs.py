@@ -86,7 +86,7 @@ class TypeVariable(NamedTuple):
     name: str
     constraints: tuple[ast.expr, ...] = ()
     bound: ast.expr | None = None
-    default: bool = False  # whether it has one (PEP 696): a class it parameterises may go without
+    default: ast.expr | None = None  # its default (PEP 696): a class it parameterises may go without
 
 
 class Unknown(NamedTuple):
@@ -463,7 +463,7 @@ def _assign(stmt: ast.stmt, space: Namespace) -> None:
             value=ast.Call(func=func, args=args, keywords=keywords),
         ) if decorator_name(func).removeprefix("_") in _TYPE_VARIABLES:  # `TypeVar as _TypeVar` too
             bound: ast.expr | None = next((k.value for k in keywords if k.arg == _BOUND), None)
-            default: bool = any(k.arg == _DEFAULT for k in keywords)
+            default: ast.expr | None = next((k.value for k in keywords if k.arg == _DEFAULT), None)
             _bind(space, name, TypeVariable(name, tuple(args[1:]), bound, default))
         case (
             ast.Assign(targets=[ast.Name(id=name)], value=value)

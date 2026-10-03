@@ -126,6 +126,8 @@ _DOT: Final = "."
 _ENTER: Final = "__enter__"
 ANY: Final = "Any"  # a function's whole return in `RETURNS`, declared `typing.Any` (`json.loads`)
 KNOWN: Final = frozenset({*RETURNS, *OVERLOADS, ENVIRONMENT, *CLASSES})  # every function the tables type
+# Capitalised functions the tables don't type (`xml.etree.ElementTree.Comment`): no constructors.
+FUNCTIONS: Final = frozenset(cast("Mapping[str, str]", _table("functions")))
 # Module-level variables' types (`sys.path`: `list[str]`): builtin annotations, or classes' paths.
 VARIABLES: Final = cast("dict[str, str]", _table("variables"))
 _TABLE_MODULES: Final = frozenset(

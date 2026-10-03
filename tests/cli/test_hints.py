@@ -123,7 +123,6 @@ def test_a_file_asked_about_again_is_changed(monkeypatch: pytest.MonkeyPatch, tm
     [
         ("fail", "failed `textDocument/inlayHint`: it broke"),
         ("exit", "exited while answering `textDocument/inlayHint`"),
-        ("silent", "said nothing for 0s while answering `textDocument/inlayHint`"),
         ("truncate", "exited while answering `textDocument/inlayHint`"),
         ("always-modified", "failed `textDocument/inlayHint`: dropped 6 times"),
     ],
@@ -139,6 +138,56 @@ def test_a_failing_server_stops_the_run(
     monkeypatch.setattr(hints, "_TIMEOUT", 0.5)
     with pytest.raises(protocol.HintError, match=message):
         _ = _session_hints(tmp_path, "x = 1  # hint: int\n")
+
+
+def test_a_file_a_restarted_server_hangs_on_again_has_no_hints(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A hung server is restarted and asked about each unanswered file alone; one it hangs on again is left.
+
+    The rest keep their hints, the file is never asked about again, and one it hangs on only once,
+    the restarted server answers.
+    """
+    _fake(monkeypatch)
+    monkeypatch.setattr(hints, "_TIMEOUT", 0.5)
+    monkeypatch.setenv("FAKE_SERVER_HUNG", str(tmp_path / "hung"))
+    hung: Path = tmp_path / "hung.py"
+    once: Path = tmp_path / "once.py"
+    files: dict[Path, str] = {
+        tmp_path / "fine.py": "x = 1  # hint: int\n",
+        hung: "y = 1  # hint: int\n# hang\n",
+        once: "z = 1  # hint: str\n# hang once\n",
+    }
+    session: hints.Session
+    with hints.Session([_CHECKER], tmp_path) as session:
+        found: dict[Path, tuple[Hints, ...]] = session.hints(files)
+        assert {path: each.types for path, (each,) in found.items()} == {
+            tmp_path / "fine.py": {(1, 1): "int"},
+            hung: {},
+            once: {(1, 1): "str"},
+        }
+        assert session.abandoned == [(_CHECKER, hung)]
+        started: hints.Connection = session.checkers[0].servers[0]
+        assert session.hints({hung: files[hung]})[hung][0].types == {}
+        assert session.checkers[0].servers[0] is started  # not asked: it would have hung again
+
+
+def test_a_checker_that_hangs_on_too_many_files_stops_the_run(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A server that hangs on every file, each alone, is broken: the run stops."""
+    _fake(monkeypatch, "silent")
+    monkeypatch.setattr(hints, "_TIMEOUT", 0.5)
+    monkeypatch.setattr(hints, "_MOST_ABANDONED", 1)
+    files: dict[Path, str] = {tmp_path / f"m{n}.py": "x = 1  # hint: int\n" for n in range(2)}
+    session: hints.Session
+    with (
+        hints.Session([_CHECKER], tmp_path) as session,
+        pytest.raises(protocol.HintError, match=r"hung on 2 file\(s\), each asked about alone"),
+    ):
+        _ = session.hints(files)
 
 
 @pytest.mark.parametrize("behaviour", ["modified", "cancelled"])
@@ -402,6 +451,21 @@ def test_a_failing_checker_is_the_commands_error(
         f"constricter: error: {Path(sys.executable).name} failed `textDocument/inlayHint`: it broke\n"
     )
     assert capsys.readouterr().err == expected
+
+
+def test_a_file_the_checker_hung_on_is_the_commands_warning(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A file left without hints is named on standard error; the run goes on, its status the check's."""
+    _fake(monkeypatch)
+    monkeypatch.setattr(hints, "_TIMEOUT", 0.5)
+    path: Path = tmp_path / "module.py"
+    _ = path.write_text("x: int = 1\n# hang\n", encoding="utf-8")
+    assert cli.main(["--infer-with", _CHECKER, str(path)]) == cli.EXIT_CLEAN
+    warning: str = f"constricter: warning: {_CHECKER} hung on {path} twice: no hints for it\n"
+    assert capsys.readouterr().err == warning
 
 
 def test_only_files_it_can_read_are_asked_about(

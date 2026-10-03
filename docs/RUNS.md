@@ -41,17 +41,17 @@ Unreleased:
 | ---------- | --------------: | ------------: | ---------------------------: | --------------------: |
 | pydantic   |             191 |             9 |                           10 |                    21 |
 | sqlalchemy |               0 |             0 |                           12 |                    36 |
-| pandas     |              70 |             0 |                           32 |                     — |
+| pandas     |              70 |             0 |                           32 |                   444 |
 
 pydantic's 191 are this environment's (its pinned pyright finds none in its CI). Its 9 after `--fix`
-are released errors in a new place: 4 repeat an annotation pyright rejects where pydantic wrote it
-(`'AnyClassMethod'`, an alias its module binds in two branches, three times, and `Union[str]`; the
-suite blames the first of a file's alike errors, so 3 show as untraced), and 5 are the checkout's
-own path in a class's name, now caught at the annotation (4 of them one fix,
-`FieldInfo_: type[FieldInfo]`). Its one more after `--fix --unsafe-fixes` is a guess's
-(`PydanticExtraInfo`, for a name bound again to an `X | None`). pandas's run with the hints' fixes
-stops after two minutes: basedpyright's server goes 120s without answering an inlay hint request,
-and a hung server ends the run.
+are released errors in a new place, each traced to its fix: 4 repeat an annotation pyright rejects
+where pydantic wrote it (`'AnyClassMethod'`, an alias its module binds in two branches, three times,
+and `Union[str]`), and 5 are the checkout's own path in a class's name, now caught at the annotation
+(4 of them one fix, `FieldInfo_: type[FieldInfo]`). Its one more after `--fix --unsafe-fixes` is a
+guess's (`PydanticExtraInfo`, for a name bound again to an `X | None`). pandas's 444 with the hints'
+fixes are 339 a hint's own fix's (`checker`), 19 untraced and 86 other mechanisms' (32 without the
+hints); basedpyright's server hung twice on `pandas/tests/apply/test_series_apply.py`, which has no
+hints from it, and the run took 32 minutes.
 
 Earlier suites, on 0.2.4-rc.5:
 

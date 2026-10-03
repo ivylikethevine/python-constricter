@@ -6,6 +6,16 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` writes a standard-library function's bare generic return with its type parameters'
+  defaults, as a type checker reads it: `ET.SubElement(root, "x")` is an `ET.Element[str]`, as is
+  `ET.XML(text)`. It was guessed a constructor, `SubElement`, which isn't a type. A capitalised
+  standard-library function the tables can't type (`ET.Comment`, `doctest.DocTestSuite`,
+  `turtle.Screen`) is no longer guessed to construct a class: a new table, `functions`, lists them.
+- `--infer-with`: a server that says nothing for 120s no longer ends the run. It's restarted, and
+  each file it hadn't answered is asked about again alone; a file it hangs on again gets no hints,
+  named on standard error
+  (`constricter: warning: basedpyright hung on FILE twice: no hints for it`). A checker that hangs
+  on more than three files still stops the run.
 - What makes a type, not a value, isn't reported, nor counted by `--coverage`: `T = TypeVar("T")`, a
   `ParamSpec`, `TypeVarTuple` or `NewType`, and a functional `NamedTuple`, `TypedDict`, `Enum` or
   `collections.namedtuple`. An annotation there would make a type checker take the name for a

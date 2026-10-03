@@ -91,7 +91,37 @@ def test_a_table_function_is_typed_however_it_is_imported() -> None:
     }
 
 
-@pytest.mark.parametrize("name", sorted(stdlib.KNOWN))
+def test_a_bare_generic_return_is_written_with_its_defaults() -> None:
+    """`SubElement` returns a bare `Element`, whose `_Tag` defaults to `str`: an `Element[str]`.
+
+    A capitalised function the tables can't type (`Comment`) isn't guessed to construct one.
+    """
+    source: str = """
+    import xml.etree.ElementTree as ET
+    from xml.etree.ElementTree import Comment, SubElement
+
+
+    def f(root: ET.Element) -> None:
+        a = SubElement(root, "a")
+        b = ET.SubElement(root, "b")
+        c = Comment("c")
+        d = ET.Comment("d")
+        e = Thing()
+    """
+    found: list[Offence] = check_source(textwrap.dedent(source))
+    fixed: dict[str, tuple[str | None, bool]] = {
+        o.name: (o.fix, o.unsafe) for o in found if o.code == UNANNOTATED
+    }
+    assert fixed == {
+        "a": ("ET.Element[str]", False),
+        "b": ("ET.Element[str]", False),
+        "c": (None, False),
+        "d": (None, False),
+        "e": ("Thing", True),
+    }
+
+
+@pytest.mark.parametrize("name", sorted(stdlib.KNOWN | stdlib.FUNCTIONS))
 def test_every_table_function_exists(name: str) -> None:
     """Each table entry names a real standard-library function, as Linux CPython has it.
 

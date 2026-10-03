@@ -818,8 +818,10 @@ def _called(value: ast.expr, known: Known) -> Inference | None:
         case ast.Call(func=ast.Name(id=name)) if name in BUILTIN_RETURNS and known.is_builtin(name):
             return Inference(BUILTIN_RETURNS[name], f"`{name}`'s fixed return type", frozenset({"builtin"}))
         case ast.Call(func=ast.Name() | ast.Attribute() as func) if (
-            constructs(node_name(func), known.factories) or dotted(func) in known.classes
-        ) and _type_expression(func, known):
+            (constructs(node_name(func), known.factories) or dotted(func) in known.classes)
+            and _type_expression(func, known)
+            and stdlib.resolved(func, known.names.stdlib) not in stdlib.FUNCTIONS
+        ):
             return Inference(
                 ast.unparse(func),
                 f"a call to `{ast.unparse(func)}`, taken to construct one",

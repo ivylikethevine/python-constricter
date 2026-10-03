@@ -13,22 +13,23 @@ in a function or module body:
   elements agree, and untyped if not (it would be LVA011's). A starred element gives each of what it
   unpacks (`[*names, s]` is a `list[str]`, `(*names, s)` a `tuple[str, ...]`), and `**d` a `dict`'s
   keys and values (`{**d, k: v}`);
-- a call to a capitalised name (`path = Path(...)` gives `Path`, a guess), or to a class the checked
-  files define whatever its name's case (`_Definitions()`), if it can be written as a type: a name
-  or dotted name whose first name the module binds only by an import or a class statement (not
-  `Klass = ...`, `self.api.X()`, `make().X()`); or to a plain function that declares its return
-  type, by an annotation or a `# type:` signature comment (`# type: () -> List[str]`) (not a
-  generic, async or redefined one, and not a return of `None`, `Any` or one that uses a `TypeVar`),
-  in the same module or, with the CLI, in another file it's checking: `from pkg.util import f`,
-  `import pkg.util as u` or `from pkg import util` then `u.f()`, relative imports and re-exports all
-  work. A name in the type the file doesn't import is imported for type checking alone (see below).
-  A decorated function counts (a method too) only under decorators that give it back: the standard
-  library's (`functools.cache`, `lru_cache`, `wraps(...)`, `abc.abstractmethod`, `typing.final`,
-  `override`, `deprecated(...)`), and a function whose own signature says so, taking `F` and
-  returning `F`, or (called to decorate, as `@set_module("pandas")`) returning a `Callable[[F], F]`,
-  where `F` is a type variable or a `Callable[P, T]` returning one. The module's own such decorators
-  count anywhere; one it imports from a checked file or an installed package, with the CLI, which
-  finds its type variables;
+- a call to a capitalised name (`path = Path(...)` gives `Path`, a guess; not a standard-library
+  function, `ET.Comment(...)`), or to a class the checked files define whatever its name's case
+  (`_Definitions()`), if it can be written as a type: a name or dotted name whose first name the
+  module binds only by an import or a class statement (not `Klass = ...`, `self.api.X()`,
+  `make().X()`); or to a plain function that declares its return type, by an annotation or a
+  `# type:` signature comment (`# type: () -> List[str]`) (not a generic, async or redefined one,
+  and not a return of `None`, `Any` or one that uses a `TypeVar`), in the same module or, with the
+  CLI, in another file it's checking: `from pkg.util import f`, `import pkg.util as u` or
+  `from pkg import util` then `u.f()`, relative imports and re-exports all work. A name in the type
+  the file doesn't import is imported for type checking alone (see below). A decorated function
+  counts (a method too) only under decorators that give it back: the standard library's
+  (`functools.cache`, `lru_cache`, `wraps(...)`, `abc.abstractmethod`, `typing.final`, `override`,
+  `deprecated(...)`), and a function whose own signature says so, taking `F` and returning `F`, or
+  (called to decorate, as `@set_module("pandas")`) returning a `Callable[[F], F]`, where `F` is a
+  type variable or a `Callable[P, T]` returning one. The module's own such decorators count
+  anywhere; one it imports from a checked file or an installed package, with the CLI, which finds
+  its type variables;
 - a classmethod or staticmethod called on its class, by its declared return: `Box.make()` is a `Box`
   (`Self` is the class), for a top-level class defined once whose name the module binds no other
   way, and a class that takes the method from a base in the module (`Sub.make()` is a `Sub` where
@@ -96,25 +97,26 @@ in a function or module body:
   `os.getenv("X", 3)` a `str | int`, `re.compile("x")` a `re.Pattern[str]` (its type variable bound
   by the argument), `parser.parse_args()` an `argparse.Namespace`, and on a `re.Pattern[str]`,
   `pat.match(s)` a `re.Match[str] | None` (the class's type parameter bound by the receiver's type).
-  A generic class's constructor is read the same way, from its `__new__` or `__init__`:
-  `collections.deque(names)` with `names: list[str]` is a `collections.deque[str]`,
-  `itertools.product(a, b)` an `itertools.product[tuple[str, int]]`, `array.array("i")` an
-  `array.array[int]`, `weakref.ref(obj)` a `weakref.ReferenceType[Foo]`. Only when that's certain:
-  every signature that may be the one (not certainly refusing the arguments, up to the first that
-  certainly takes them) gives the same type, on every platform and version, with every type variable
-  bound (`collections.deque()` isn't typed). An argument binds a type variable by its type: a
-  builtin scalar (`str`, `bytes`, `int`, a literal, `None`, ...) wherever the parameter takes it;
-  any other type only where the parameter is nothing but an unbounded type variable
-  (`copy.copy(obj)` is a `Foo`); a builtin container (`list[str]`, `dict[str, int]`'s keys,
-  `tuple[str, ...]`) or a `str` by its element, where the parameter is a generic class of one
-  (`Iterable[_T]`); a scalar by its method's return, where the parameter is a generic protocol
-  (`math.floor(x)` is an `int` for a `float`, by `float.__floor__`); and a function by its declared
-  return, where the parameter is a `Callable[..., _T]` (`functools.partial(helper, 1)` is a
-  `functools.partial[str]`). Two arguments binding one differently leave the call alone
-  (`itertools.chain(names, ids)`), as does unpacking `*args` or `**kwargs`. At module level, where
-  an annotation is evaluated when the module runs, a class some supported Python can't subscript at
-  run time is quoted (`counter: "itertools.count[int]"`), unless the module has
-  `from __future__ import annotations`;
+  A generic class returned bare is written with its type parameters' defaults, as a type checker
+  reads it: `ET.SubElement(root, "x")` is an `ET.Element[str]`. A generic class's constructor is
+  read the same way, from its `__new__` or `__init__`: `collections.deque(names)` with
+  `names: list[str]` is a `collections.deque[str]`, `itertools.product(a, b)` an
+  `itertools.product[tuple[str, int]]`, `array.array("i")` an `array.array[int]`, `weakref.ref(obj)`
+  a `weakref.ReferenceType[Foo]`. Only when that's certain: every signature that may be the one (not
+  certainly refusing the arguments, up to the first that certainly takes them) gives the same type,
+  on every platform and version, with every type variable bound (`collections.deque()` isn't typed).
+  An argument binds a type variable by its type: a builtin scalar (`str`, `bytes`, `int`, a literal,
+  `None`, ...) wherever the parameter takes it; any other type only where the parameter is nothing
+  but an unbounded type variable (`copy.copy(obj)` is a `Foo`); a builtin container (`list[str]`,
+  `dict[str, int]`'s keys, `tuple[str, ...]`) or a `str` by its element, where the parameter is a
+  generic class of one (`Iterable[_T]`); a scalar by its method's return, where the parameter is a
+  generic protocol (`math.floor(x)` is an `int` for a `float`, by `float.__floor__`); and a function
+  by its declared return, where the parameter is a `Callable[..., _T]`
+  (`functools.partial(helper, 1)` is a `functools.partial[str]`). Two arguments binding one
+  differently leave the call alone (`itertools.chain(names, ids)`), as does unpacking `*args` or
+  `**kwargs`. At module level, where an annotation is evaluated when the module runs, a class some
+  supported Python can't subscript at run time is quoted (`counter: "itertools.count[int]"`), unless
+  the module has `from __future__ import annotations`;
 - a generic standard-library class's own attribute or property, by the receiver's type arguments:
   `m.string` on an `re.Match[str]` is a `str`, `p.pattern` on an `re.Pattern[bytes]` a `bytes`;
 - a standard-library module's variable, by its annotation in typeshed: `sys.path` is a `list[str]`,
