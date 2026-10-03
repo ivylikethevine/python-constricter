@@ -6,6 +6,14 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix --unsafe-fixes` types what a test computes from the parameters pytest gives it: one named
+  as a fixture its module or a `conftest.py` of a package above it defines, by what the fixture
+  returns or yields, and one `@pytest.mark.parametrize` gives literals of one type.
+  `def test_copy(float_frame)` types `result = float_frame.copy()`. Guesses (fix kind `fixture`). On
+  pandas's `tests/frame`, about 60 more fixes of 4,492 bindings with none.
+- `--fix --unsafe-fixes` types a list, set or dict display whose elements' types differ as their
+  union: `[1, "a"]` is a `list[int | str]`, `{"k": 1, "j": None}` a `dict[str, int | None]`. Up to
+  three types, each a plain name; a guess (fix kind `joined`).
 - `--infer-with ty`: a hint showing a generic alias (`NDArray[float64]`) is no longer written as
   ty's edit spells it, the alias's class with the alias's arguments (`np.ndarray[np.float64]`, the
   scalar type where the shape goes). A name the file binds to what the hint shows

@@ -13,6 +13,8 @@ from typing import Final, NamedTuple, TypeAlias
 from constricter.rules.syntax import import_bindings
 
 _CALLED: Final = "()"  # after a decorator's name, as it's spelled when it's called to decorate
+# How a pytest fixture's decorator is spelled (see `spelled`).
+FIXTURES: Final = frozenset({"pytest.fixture", "pytest.fixture()", "fixture", "fixture()"})
 _CALLABLE: Final = "Callable"
 _DOTTED: Final = re.compile(r"[^\W\d]\w*(?:\.[^\W\d]\w*)*")  # `name`, `pkg.util.name`
 _Use: TypeAlias = tuple[bool, bool]  # whether a decorator decorates bare, and called
@@ -58,6 +60,16 @@ class Held(NamedTuple):
 
     returns: str
     decorators: tuple[str, ...]
+
+
+def is_fixture(function: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Check whether a function is a pytest fixture: decorated `pytest.fixture`, called or not.
+
+    Returns:
+      Whether it is.
+
+    """
+    return any(spelled(decorator) in FIXTURES for decorator in function.decorator_list)
 
 
 def spelled(decorator: ast.expr) -> str | None:

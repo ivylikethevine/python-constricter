@@ -20,6 +20,7 @@ from constricter.fix.core import imports
 from constricter.fix.core.known import Guarded, Inference, Origin, Returned, Returns
 from constricter.fix.values.inference import ASSIGNED
 from constricter.rules.annotations import roots
+from constricter.rules.decorators import FIXTURES, spelled
 from constricter.rules.syntax import FunctionDef, Start, has_within, own_nodes, within
 from constricter.rules.walked import classes, of_type
 
@@ -111,7 +112,7 @@ def unannotated(body: Sequence[ast.stmt]) -> frozenset[str]:
       Each plain function's name that has no decorator or declared return.
 
     """
-    return frozenset(func.name for func in _plain(body) if not func.decorator_list and func.returns is None)
+    return frozenset(func.name for func in _plain(body) if not _decorated(func) and func.returns is None)
 
 
 @lru_cache(maxsize=4)  # asked once per round, of the same module
@@ -378,6 +379,18 @@ def slots(module: ast.Module) -> dict[int, Slot]:
     }
 
 
+def _decorated(func: FunctionDef) -> bool:
+    """Check whether a function has a decorator that may change what calling it gives.
+
+    Not a pytest fixture's alone: the fixture's value is what the function returns (or yields).
+
+    Returns:
+      Whether it has.
+
+    """
+    return bool(func.decorator_list) and not all(spelled(each) in FIXTURES for each in func.decorator_list)
+
+
 def _plain(body: Sequence[ast.stmt]) -> list[ast.FunctionDef]:
     """Find the plain functions directly in `body`: a `def` (not `async`) no other there shares a name with.
 
@@ -605,7 +618,7 @@ def _return_type(
 
     """
     if (
-        func.decorator_list
+        _decorated(func)
         or func.returns is not None
         or func.type_comment
         or not returns

@@ -52,7 +52,7 @@ from constricter.rules.flow import Finding, Hierarchy
 from constricter.rules.narrowing import flow_offences, module_flow, module_names
 from constricter.rules.quoted import written
 from constricter.rules.redundant import redundant
-from constricter.rules.scope import Kind, Late, Scope, Settings, certain_type
+from constricter.rules.scope import Kind, Late, Scope, Seeded, Settings, certain_type
 from constricter.rules.syntax import (
     BRANCHING,
     FUNCTION_DEFS,
@@ -199,7 +199,10 @@ def _settings(
             entered.managers(tree),
             defined_type_vars(tree) | free,
         ),
-        keyed(tree, {} if outside is None else outside.parameters),
+        Seeded(
+            keyed(tree, {} if outside is None else outside.parameters),
+            {} if outside is None else outside.fixtures,
+        ),
     )
 
 

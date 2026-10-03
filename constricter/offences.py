@@ -40,6 +40,7 @@ OPT_IN: Final = frozenset({CAN_BE_FINAL})
 FIX_KINDS: dict[str, str] = {
     "literal": "a literal, an f-string, `not x`, or `x in y` or `x is y`",
     "container": "a list, set, tuple or dict display whose elements' types agree",
+    "joined": "a list, set or dict display whose elements' types differ, as their union (a guess)",
     "copy": "a copy of a local whose type is known",
     "subscript": "a subscript of a known container",
     "attribute": "an attribute of a class the module defines",
@@ -63,6 +64,7 @@ FIX_KINDS: dict[str, str] = {
     "assigned": "an unannotated instance attribute's every `self.x = value` in its class (a guess)",
     "callers": "an unannotated parameter every call in the checked files passes one type (a guess)",
     "member": "a plain class's variable, by its literal value in the class's body (a guess)",
+    "fixture": "a test's parameter, by its pytest fixture's value or its `parametrize` literals (a guess)",
     "alias": "a module's type alias, a subscript or a union of types: `TypeAlias`",
     "final": "LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)",
     "checker": "a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)",

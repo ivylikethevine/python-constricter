@@ -151,8 +151,8 @@ def test_displays_that_unpack_and_other_shapes() -> None:
         "b": ("set[str]", False),
         "c": ("tuple[str, ...]", False),  # of unknown length
         "d": ("dict[str, int]", False),
-        "e": (None, False),  # two types
-        "g": (None, False),
+        "e": ("list[str | int]", True),  # two types, joined: a guess
+        "g": ("dict[str, int | str]", True),
         "h": (None, False),  # `**` of what isn't a `dict`
         "i": (None, False),
         "j": (None, False),

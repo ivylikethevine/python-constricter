@@ -17,16 +17,18 @@ from dataclasses import replace
 from typing import Final, cast
 
 from constricter.fix.core.known import Call, Callee, Inference, Known, LibraryNames, Observed, Passed, Seeds
-from constricter.fix.index import callers
+from constricter.fix.index import callers, fixtures
 from constricter.fix.values.guesses import guessing
-from constricter.fix.values.inference import inference
+from constricter.fix.values.inference import inference, scalar
 from constricter.rules.annotations import dotted
+from constricter.rules.decorators import is_fixture
 from constricter.rules.flow import members
-from constricter.rules.scope import Scope, Settings, guesses_in
+from constricter.rules.scope import Scope, Seeded, Settings, guesses_in
 from constricter.rules.syntax import FunctionDef, Start, has_within, own_nodes
 from constricter.rules.walked import of_type
 
 _BUILTINS: Final = frozenset(dir(builtins))
+_TEST: Final = "test"  # how pytest's test functions' names start
 _NONE: Final = "None"  # says nothing of what the parameter's other callers pass, nor what it's for
 _DEFINED: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)  # what binds a name, inside
 
@@ -219,8 +221,10 @@ def seed_parameters(scope: Scope, func: FunctionDef, named: Sequence[ast.arg]) -
 
     Not one the function binds again itself, whose type a guess from its callers wouldn't be after.
     """
-    typed: Mapping[str, Passed]
-    if not (typed := scope.settings.parameters.get(id(func), {})):
+    seeded: Seeded = scope.settings.parameters or Seeded()
+    typed: Mapping[str, Passed] = seeded.callers.get(id(func), {})
+    injected: Mapping[str, Passed] = _injected(seeded, func)
+    if not (typed or injected):
         return
     rebound: set[str] = {
         node.id
@@ -230,13 +234,83 @@ def seed_parameters(scope: Scope, func: FunctionDef, named: Sequence[ast.arg]) -
     arg: ast.arg
     for arg in named:
         given: Passed | None = typed.get(arg.arg)
-        if (
-            arg.annotation is None
-            and given is not None
-            and arg.arg not in rebound
-            and plain(given[0], scope.settings.known)
-        ):
+        if arg.annotation is not None or arg.arg in rebound:
+            continue
+        if arg.arg in injected:
+            scope.inferred.learn(arg.arg, *injected[arg.arg])
+        elif given is not None and plain(given[0], scope.settings.known):
             scope.inferred.learn(arg.arg, given[0], frozenset({callers.KIND}) | given[1])
+
+
+def _injected(seeded: Seeded, func: FunctionDef) -> Mapping[str, Passed]:
+    """Type the parameters pytest gives a test or a fixture: its fixtures' values, and `parametrize`'s.
+
+    A fixture the module's tests can take (see `fix.index.fixtures`), by its name; and, before it, a
+    name `@pytest.mark.parametrize` gives literals of one type. Guesses (`fixture`).
+
+    Returns:
+      Each such parameter's type and what it rests on; nothing for any other function.
+
+    """
+    if not (func.name.startswith(_TEST) or is_fixture(func)):
+        return {}
+    return {**seeded.fixtures, **_parametrized(func)}
+
+
+def _parametrized(func: FunctionDef) -> dict[str, Passed]:
+    """Type the names `@pytest.mark.parametrize` gives a function literals of one type each.
+
+    `"n"` with `[1, 2]`, or `"n, s"` (or `("n", "s")`) with `[(1, "a"), (2, "b")]`.
+
+    Returns:
+      Each one's type, a guess resting on `fixture`.
+
+    """
+    found: dict[str, Passed] = {}
+    decorator: ast.expr
+    for decorator in func.decorator_list:
+        names: list[str]
+        rows: list[list[ast.expr]]
+        names, rows = _cases(decorator)
+        at: int
+        name: str
+        for at, name in enumerate(names):
+            types: set[str | None] = {scalar(row[at]) if len(row) == len(names) else None for row in rows}
+            only: str | None = types.pop() if len(types) == 1 else None
+            if only is not None and only != _NONE:
+                found[name] = (only, frozenset({fixtures.KIND}))
+    return found
+
+
+def _cases(decorator: ast.expr) -> tuple[list[str], list[list[ast.expr]]]:
+    """Read a `parametrize` decorator: the names it gives values, and each case's values.
+
+    Returns:
+      Them; no names for any other decorator, or one whose names or cases aren't written out.
+
+    """
+    names: ast.expr
+    cases: list[ast.expr]
+    parts: list[ast.expr]
+    text: str
+    match decorator:
+        case ast.Call(func=ast.Attribute(attr="parametrize"), args=[names, ast.List(elts=cases), *_]):
+            pass
+        case _:
+            return [], []
+    found: list[str]
+    match names:
+        case ast.Constant(value=str() as text):
+            found = [part.strip() for part in text.split(",")]
+        case ast.Tuple(elts=parts) | ast.List(elts=parts) if all(
+            isinstance(part, ast.Constant) and isinstance(part.value, str) for part in parts
+        ):
+            found = [str(cast("ast.Constant", part).value) for part in parts]
+        case _:
+            return [], []
+    if len(found) == 1:
+        return found, [[case] for case in cases]
+    return found, [list(case.elts) if isinstance(case, ast.Tuple | ast.List) else [] for case in cases]
 
 
 def unshadowed(settings: Settings, function: FunctionDef) -> Settings:

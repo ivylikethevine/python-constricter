@@ -79,9 +79,19 @@ class Settings:
     # Type checkers' types, for what `--fix` can't type (`--infer-with`): each checker's, in order.
     hints: tuple[Hints, ...] = ()
     facts: Facts = field(default_factory=Facts)  # what a type checker sees otherwise (see `doubts`)
-    # What every call passes each unannotated parameter of its top-level functions, by `id()` (see
-    # `constricter.fix.index.callers`): guesses, for what's computed from them.
-    parameters: Mapping[int, Mapping[str, Passed]] = field(default_factory=dict[int, Mapping[str, Passed]])
+    parameters: "Seeded | None" = None  # what its functions' parameters are given from outside them
+
+
+class Seeded(NamedTuple):
+    """The types a module's functions' unannotated parameters are given from outside them: guesses.
+
+    `callers`: what every call passes each parameter of its top-level functions, by `id()` (see
+    `constricter.fix.index.callers`); `fixtures`: the pytest fixtures its tests can take, each one's
+    value's type (see `constricter.fix.index.fixtures`).
+    """
+
+    callers: Mapping[int, Mapping[str, Passed]] = {}
+    fixtures: Mapping[str, Passed] = {}
 
 
 class Kind(NamedTuple):
