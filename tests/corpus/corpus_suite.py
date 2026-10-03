@@ -25,9 +25,10 @@ else the module's, of a name on its line or in its message), and counted by the 
 decided that fix (`--format=json`'s `kinds`); the command exits 1 if a fixed run has a new error.
 
 `--infer-with CHECKERS` adds a third fixed run, `--fix --unsafe-fixes --infer-with CHECKERS`: the
-checkers' servers (on `PATH`, or beside this Python) see the checkout's own environment, as its
-type checks do. A hint's fix a later round of `--fix` makes isn't in the first round's list: an
-error about one is untraced.
+checkers' servers (on `PATH`, or beside this Python) see the checkout's own environment and settings,
+as its type checks do (a checkout with no settings for Pyright or pyrefly is given empty ones, or
+their servers read this project's, above it). A hint's fix a later round of `--fix` makes isn't in the
+first round's list: an error about one is untraced.
 """
 
 import ast
@@ -42,7 +43,7 @@ import sys
 from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Final, NamedTuple, TypeAlias, cast
+from typing import IO, Final, NamedTuple, TypeAlias, cast
 
 _Json: TypeAlias = "str | int | bool | list[_Json] | dict[str, _Json] | None"
 
@@ -176,6 +177,12 @@ SUITES: Final = {
 }
 _EVERYWHERE: Final = ("--level=suffocate", "--all-scopes", "--jobs=0")
 _INSTALLED: Final = ".venv/corpus-suite-installed"  # written once every install command has succeeded
+# Each checker's settings file, what an empty one holds, and the `pyproject.toml` sections that stand
+# for it: pyrefly reads mypy's or Pyright's where it has none of its own.
+_SETTINGS: Final = (
+    ("pyrightconfig.json", "{}\n", ("pyright", "basedpyright")),
+    ("pyrefly.toml", "", ("pyrefly", "mypy", "pyright")),
+)
 # pytest's `-rfE` lines, and unittest's (Django's runner's) headers of each failure and error
 _FAILED: Final = re.compile(r"^(?:FAILED |ERROR |FAIL: |ERROR: )(\S+(?: \([\w.]+\))?)", re.MULTILINE)
 _COUNTS: Final = re.compile(r"(\d+) (passed|failed|skipped|xfailed|xpassed|errors?|warnings?)")
@@ -276,6 +283,27 @@ def _venv(root: Path, command: Sequence[str]) -> list[str]:
     return [str(root / ".venv" / "bin" / command[0]), *command[1:]]
 
 
+def _settled(root: Path) -> None:
+    """Keep the checkers' servers to checkout `root`'s settings: an empty file of them, where it has none.
+
+    With none in its workspace, Pyright's server reads the nearest above it, and pyrefly takes the
+    project above that has some (this one) for the root it resolves imports from. Git is told to
+    pass each file over.
+    """
+    project: Path = root / "pyproject.toml"
+    own: str = project.read_text(encoding="utf-8") if project.is_file() else ""
+    name: str
+    empty: str
+    tools: tuple[str, ...]
+    for name, empty, tools in _SETTINGS:
+        if (root / name).exists() or any(f"[tool.{tool}]" in own for tool in tools):
+            continue
+        _ = (root / name).write_text(empty, encoding="utf-8")
+        stream: IO[str]
+        with (root / ".git" / "info" / "exclude").open("a", encoding="utf-8") as stream:
+            _ = stream.write(f"/{name}\n")
+
+
 def checkout(name: str, suite: Suite) -> Path:
     """Clone (once) `suite` at its tag and install it and its test dependencies (once).
 
@@ -294,6 +322,7 @@ def checkout(name: str, suite: Suite) -> Path:
             ["git", "clone", "-q", "--depth", "1", "--branch", suite.tag, suite.repository, str(root)],
             WORK,
         )
+    _settled(root)
     if not (root / _INSTALLED).exists():
         command: tuple[str, ...]
         for command in suite.install:

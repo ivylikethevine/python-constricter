@@ -6,6 +6,17 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--infer-with ty`: a hint showing a generic alias (`NDArray[float64]`) is no longer written as
+  ty's edit spells it, the alias's class with the alias's arguments (`np.ndarray[np.float64]`, the
+  scalar type where the shape goes). A name the file binds to what the hint shows
+  (`from things import Thing as T`) is still used.
+- `--infer-with`: a hint is no longer a fix for a name bound again later to a value of another type,
+  or of none `--fix` knows (the hint is the first value's type alone), nor a union hint
+  (`Option | None`) for a name its function never narrows (`is None`, `isinstance`, its truth),
+  which the code uses as one member. Nor one with a union inside it (`dict[str, int | bytes]`), one
+  whose `Literal` is a class's own argument (`Reader[Literal["frame"]]`, once widened to
+  `Reader[str]`), or one for a name returned from a function whose signature says `Self`. On
+  pydantic, 70 fewer fixes of 1,863.
 - `--fix --unsafe-fixes` annotates a class's variables under a framework's base that reads no
   annotation in a class body, as a plain class's: `per_page = 20` under django's `models.Model`,
   `template_name = "x.html"` under a view, a form, an admin or a command. Django's classes are built

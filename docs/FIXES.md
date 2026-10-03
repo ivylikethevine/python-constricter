@@ -430,6 +430,16 @@ A hint is used only as an annotation the file can hold:
   what the name means, and the hint is dropped;
 - a generic class without its arguments is dropped (a checker prints one so when it doesn't know
   them), as is a special form alone (`type[Generic]`, `Annotated`);
+- a union (`Option | None`, `Series | bool`) is a fix only for a name its function narrows somewhere
+  (`if opt is None`, `if opt`, `isinstance`): untested, the code uses it as one member (`opt.cb`),
+  which the union declared would make an error; a union inside the hint (`dict[str, int | bytes]`, a
+  mixed container's) is dropped anywhere, since no test of the name narrows its elements;
+- a `Literal` isn't widened inside a class's own arguments (`Reader[Literal["frame"]]`), which may
+  be bound to the literals: the hint is dropped. A builtin's or `collections.abc`'s are;
+- a name its function returns has no fix where the function's signature says `Self`: the checker
+  hints the class;
+- a name bound again later has no fix unless every later value is known to fit the hint: the hint is
+  the first value's type alone (`n = values.mean()`, hinted `np.float64`, then `n = len(values)`);
 - `TypeAlias`, which a checker hints an alias's assignment as, declares a module body's alias
   written as a subscript or a union (`Json: TypeAlias = dict[str, "Json"] | str`): named as the
   module's imports can (`typing`'s or `typing_extensions`'s), else imported from `typing`. Never a
@@ -445,9 +455,11 @@ module body's annotation quoted. Never by an import that runs: the checker's Pyt
 the project's oldest doesn't. The first hint to import a name decides what it means in the file: a
 later one importing it from elsewhere is dropped. Where what a hint shows names something the file
 can't, the annotation as its edit spells it is judged too (`things.Thing[str]`, through
-`import things`). pyrefly's hint for a loop's target or an unpacking's names has no edits: its label
-says which file defines each class, and the import is from the module that file is (an installed
-package's, a stub pyrefly bundles, or a checked file's).
+`import things`), unless it writes a generic under another name than the hint shows: ty's edit for a
+generic alias (`NDArray[float64]`) is the class it stands for with the alias's arguments
+(`np.ndarray[np.float64]`), which aren't the class's. pyrefly's hint for a loop's target or an
+unpacking's names has no edits: its label says which file defines each class, and the import is from
+the module that file is (an installed package's, a stub pyrefly bundles, or a checked file's).
 
 A hint is text, and a name in it needn't be a type (basedpyright shows a value that is a module by
 the module's name): one an edit imports, or the file imports under `if TYPE_CHECKING:`, is taken

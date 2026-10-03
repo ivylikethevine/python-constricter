@@ -291,6 +291,50 @@ def tested(function: FunctionDef, found: Tests) -> frozenset[str]:
     return frozenset(found.texts[within(found.starts, function, begin)])
 
 
+@lru_cache(maxsize=64)  # asked by each hinted union in the function's scope
+def narrowing(function: FunctionDef) -> frozenset[str]:
+    """List the names a function's tests narrow themselves: `x is None`, `isinstance(x, C)`, `if x`.
+
+    Not one a test only reads (`if x.ready`), as `tested` lists too.
+
+    Returns:
+      Them.
+
+    """
+    return frozenset(
+        name
+        for node in walk(function)
+        if isinstance(node, _TESTS)
+        for test in _tested_parts(node)
+        for name in _narrowed(test)
+    )
+
+
+def _narrowed(test: ast.expr) -> list[str]:
+    """Find the names one test narrows, through `and`, `or` and `not`.
+
+    Returns:
+      Them.
+
+    """
+    name: str
+    values: list[ast.expr]
+    operand: ast.expr
+    match test:
+        case ast.BoolOp(values=values):
+            return [name for value in values for name in _narrowed(value)]
+        case ast.UnaryOp(op=ast.Not(), operand=operand):
+            return _narrowed(operand)
+        case (
+            ast.Name(id=name)
+            | ast.Compare(left=ast.Name(id=name), comparators=[ast.Constant(value=None)])
+            | ast.Call(func=ast.Name(id="isinstance"), args=[ast.Name(id=name), *_])
+        ):
+            return [name]
+        case _:
+            return []
+
+
 def _tested_parts(node: ast.AST) -> list[ast.expr]:
     """Find what one of `_TESTS` tests: an `if`'s condition, a comprehension's, a `match`'s subject.
 
