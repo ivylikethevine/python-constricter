@@ -53,6 +53,7 @@ _RETURNED: Final = "returned"  # an unannotated function its `return`s type
 _UNANNOTATED: Final = "unannotated"  # an unannotated function, typed or not
 _PARTIAL: Final = "partial"  # a function whose declared return only an unpacking can use
 OPEN: Final = "open"  # a function with a parameter left unannotated (see `modules.open_functions`)
+_Named: TypeAlias = tuple[Mapping[str, Origin], frozenset[str]]  # see `_spelled_classes`
 
 
 class Imported(NamedTuple):
@@ -753,63 +754,66 @@ def imported(
     spelled that way too. `seeded`: the names its fixtures' types are written with, imported for type
     checking alone (see `fixtures.visible`), whose classes' members it takes as well; and the
     attributes those types take of a module it imports (`MonkeyPatch`, in `pytest.MonkeyPatch`).
-    A class those types name through an import the fixes will add gives its members as well: a
-    return type spelled through one is a receiver's.
 
     Returns:
       Them, and the names their types need imported for type checking alone (see `Guarded`); nothing
       for a file `catalog` doesn't have (a notebook, standard input).
 
     """
-    modules: dict[str, Module] = catalog.modules
-    attributes: dict[str, dict[str, str]] = {}
-    methods: dict[str, dict[str, str]] = {}
+    taken: _Taken = _Taken({}, {}, {}, {}, set())
     guarded: dict[str, Guarded] = {} if seeded is None else dict(seeded[0])
-    generics: set[str] = set()
-    members: dict[str, Mapping[str, str]] = {}
-    partial: dict[str, dict[str, str]] = {}
     target: Module | None
-    if path.suffix != SUFFIX or (target := modules.get(module_name(path))) is None:
-        return Imported({}, Classes(attributes, methods))
-    named: tuple[Mapping[str, Origin], frozenset[str]] = (
+    if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
+        return Imported({}, Classes(taken.attributes, taken.methods))
+    named: _Named = (
         {**{name: found.origin for name, found in guarded.items()}, **target.names},
         target.attributes if seeded is None else target.attributes | seeded[1],
     )
-    fresh: Mapping[str, Origin] = named[0]
-    known: set[str] = set()
-    found: tuple[dict[str, str], Returns, dict[str, str]] | None = None
-    key: str
-    defined: tuple[Module, str]
-    while True:
-        for key, defined in _spelled_classes(catalog, target, (fresh, named[1]), generics):
-            if defined[1] in defined[0].generics:
-                generics.add(key)
-            if defined[1] in defined[0].plain and defined[1] in defined[0].members:
-                members[key] = defined[0].members[defined[1]]
-            attributes[key], methods[key], partial[key] = (
-                _used(modules, (target, defined), key, table.get(defined[1]), guarded)
-                for table in (defined[0].classes, defined[0].methods, defined[0].partial_methods)
-            )
+    _take(catalog, target, named, taken, guarded)
+    found: tuple[dict[str, str], Returns, dict[str, str]] = (
+        calls(catalog, path, guarded),
+        returned(catalog, path, guarded),
+        {name: each for name, each, _ in _typed_calls(catalog, path, _PARTIAL, guarded)},
+    )
+    known: set[str] = set(named[0])
+    for _ in range(_HOPS):  # a class those types need imported is a receiver's too, needing more in turn
+        fresh: dict[str, Origin] = {name: each.origin for name, each in guarded.items() if name not in known}
+        _take(catalog, target, (fresh, named[1]), taken, guarded)
         known.update(fresh)
-        if found is None:
-            found = (
-                calls(catalog, path, guarded),
-                returned(catalog, path, guarded),
-                {name: each for name, each, _ in _typed_calls(catalog, path, _PARTIAL, guarded)},
-            )
-        # The classes those types need imported: their members' types can need more.
-        fresh = {name: needed.origin for name, needed in guarded.items() if name not in known}
-        if not fresh:
-            break
     return Imported(
         found[0],
-        Classes(attributes, methods),
+        Classes(taken.attributes, taken.methods),
         found[1],
         guarded,
-        frozenset(generics),
-        members,
-        Partial(found[2], {name: each for name, each in partial.items() if each}),
+        frozenset(taken.generics),
+        taken.members,
+        Partial(found[2], {name: each for name, each in taken.partial.items() if each}),
     )
+
+
+class _Taken(NamedTuple):
+    """What `imported` takes of the classes a file names, each keyed as the file spells the class."""
+
+    attributes: dict[str, dict[str, str]]
+    methods: dict[str, dict[str, str]]
+    partial: dict[str, dict[str, str]]
+    members: dict[str, Mapping[str, str]]
+    generics: set[str]
+
+
+def _take(catalog: Index, target: Module, named: _Named, taken: _Taken, guarded: dict[str, Guarded]) -> None:
+    """Add to `taken` the members `target` uses of the classes `named` finds (see `_spelled_classes`)."""
+    key: str
+    defined: tuple[Module, str]
+    for key, defined in _spelled_classes(catalog, target, named, taken.generics):
+        if defined[1] in defined[0].generics:
+            taken.generics.add(key)
+        if defined[1] in defined[0].plain and defined[1] in defined[0].members:
+            taken.members[key] = defined[0].members[defined[1]]
+        taken.attributes[key], taken.methods[key], taken.partial[key] = (
+            _used(catalog.modules, (target, defined), key, table.get(defined[1]), guarded)
+            for table in (defined[0].classes, defined[0].methods, defined[0].partial_methods)
+        )
 
 
 def _used(
@@ -834,7 +838,7 @@ def _used(
 def _spelled_classes(
     catalog: Index,
     target: Module,
-    named: tuple[Mapping[str, Origin], frozenset[str]],
+    named: _Named,
     generics: set[str],
 ) -> Iterator[tuple[str, tuple[Module, str]]]:
     """Find the classes other checked files define that `target` names, each as it spells it.

@@ -66,8 +66,8 @@ def _left(extra: Sequence[str]) -> list[str]:
 
     """
     diff: str = _run(["--diff", *FIX, *extra, str(COPY)])[1]
-    files: list[str] = [line.removeprefix(_NEW) for line in diff.splitlines() if line.startswith(_NEW)]
-    if not files:
+    files: list[str]
+    if not (files := [line.removeprefix(_NEW) for line in diff.splitlines() if line.startswith(_NEW)]):
         return []
     shown: list[str] = _run(["--show-fixes", *FIX, *extra, str(COPY)])[1].splitlines()
     left: list[str] = []
