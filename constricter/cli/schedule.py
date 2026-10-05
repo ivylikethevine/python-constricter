@@ -56,7 +56,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         imported.generics | own.generics,
         callers.callees(modules, path),
         callers.own_parameters(modules, path),
-        {**stubbed.overloaded(modules, path), **methods.signatures},
+        {**stubbed.overloaded(modules, path, guarded), **methods.signatures},
         stubbed.classes(modules, path),
         methods.parameters,
         methods.lineage,

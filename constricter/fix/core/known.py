@@ -16,6 +16,9 @@ _BUILTINS: Final = frozenset(dir(builtins))
 _DOT: Final = "."
 # What a name refers to: a module and an attribute of it (`None`: the module itself).
 Origin: TypeAlias = tuple[str, str | None]
+# How a return template starts that's the type itself, as the module calling it writes it: a
+# checked file's overload's (see `constricter.fix.index.stubbed.overloaded`).
+SPELLED: Final = "="
 
 
 class Guarded(NamedTuple):

@@ -117,7 +117,7 @@ _KINDS: Final[Mapping[str, _Defined]] = {
     OPEN: lambda module: module.open,
     _PARTIAL: lambda module: module.partial,
     DECORATOR: lambda module: module.passes,
-    "signatures": lambda module: {} if module.declared is None else module.declared.signatures,
+    "signatures": lambda module: module.overloads if module.declared is None else module.declared.signatures,
 }
 
 

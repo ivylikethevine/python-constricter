@@ -19,7 +19,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from functools import lru_cache
 from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter.fix.core.known import Inference, Known
+from constricter.fix.core.known import SPELLED, Inference, Known
 from constricter.fix.core.signatures import (
     CLASS_BINDS,
     CLASS_VERDICT,
@@ -759,12 +759,14 @@ def _written(picked: tuple[str, dict[str, str]], known: Known) -> str | None:
 
     Returns:
       The annotation, each union member once; or `None` if a type variable is unbound, a builtin
-      rebound, or a class can't be named.
+      rebound, or a class can't be named. A template that's spelled already (`SPELLED`) is its own.
 
     """
     template: str
     types: dict[str, str]
     template, types = picked
+    if template.startswith(SPELLED):
+        return template.removeprefix(SPELLED)
     tree: ast.expr | None = _rewritten(ast.parse(template, mode="eval").body, types, known)
     return None if tree is None else " | ".join(dict.fromkeys(_members(tree)))
 

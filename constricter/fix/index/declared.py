@@ -92,6 +92,22 @@ class Declarations(NamedTuple):
     classes: Mapping[str, Class] = {}  # every class, for its methods
 
 
+def overloads(tree: ast.Module) -> dict[str, tuple[Signature, ...]]:
+    """Read a checked module's top-level functions defined with `@overload`, as `declarations` reads a stub's.
+
+    Returns:
+      Each one's overloads' signatures, as written.
+
+    """
+    signatures: dict[str, list[Signature]] = {}
+    overloaded: set[str] = set()
+    stmt: ast.stmt
+    for stmt in tree.body:
+        if isinstance(stmt, ast.FunctionDef):
+            _signature(stmt, signatures, overloaded, frozenset())
+    return {name: tuple(signatures[name]) for name in sorted(overloaded)}
+
+
 def declarations(tree: ast.Module) -> Declarations:
     """Read a stub's declarations (see the module docstring).
 

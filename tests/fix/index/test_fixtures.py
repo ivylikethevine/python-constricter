@@ -248,6 +248,31 @@ def test_one_of_several_conftests_outside_a_package_is_not(tmp_path: Path) -> No
     assert fixtures.visible(catalog, beside, {}) == {}
 
 
+PATH_CONFTEST: Final = """
+from pathlib import Path
+
+import pytest
+
+
+@pytest.fixture
+def data() -> Path:
+    return Path("data")
+"""
+PATH_TEST: Final = "def test_it(data, tmp_path):\n    made = data / 'x'\n    kept = tmp_path / 'y'\n"
+PATH_FIXED: Final = "    made: Path = data / 'x'\n    kept: pathlib.Path = tmp_path / 'y'\n"
+
+
+def test_a_fixtures_library_class_is_one_from_the_first_pass(tmp_path: Path) -> None:
+    """Named through the import for type checking the fix adds, as the next pass would by an import."""
+    _ = _write(tmp_path, "tests/conftest.py", PATH_CONFTEST)
+    tests: Path = _write(tmp_path, "tests/test_paths.py", PATH_TEST)
+    _ = cli.main(["--fix", "-q", "--unsafe-fixes", str(tmp_path)])
+    fixed: str = tests.read_text(encoding="utf-8")
+    assert PATH_FIXED in fixed, fixed
+    _ = cli.main(["--fix", "-q", "--unsafe-fixes", str(tmp_path)])
+    assert tests.read_text(encoding="utf-8") == fixed
+
+
 def _fixes(source: str) -> list[tuple[str, str | None]]:
     """Check `source`, alone.
 

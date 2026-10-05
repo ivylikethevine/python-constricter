@@ -70,6 +70,10 @@
   `array.array[int]`); at module level, one some Python can't subscript at run time is quoted. A
   generic class returned bare is written with its type parameters' defaults (`ET.SubElement(...)` is
   an `ET.Element[str]`). What only some platforms or versions have is kept (`os.getuid()`).
+- **The checked files' own overloads**: a call to a function defined with `@overload` is typed by
+  the overload its arguments match (`constricter.fix.index.own_overloads`), where builtin,
+  standard-library and `Literal` parameters decide it; each return is written as another checked
+  file's type is.
 - **Installed packages**: calls into an installed package that declares its types (`py.typed`, a
   stub package, a lone stub module) are typed by their declared returns as a checked file's are,
   found as the import system would on this Python's path and `VIRTUAL_ENV`'s; types are imported
@@ -330,11 +334,18 @@ fix.
    `subprocess.Popen` 48, and 1,366 others, mostly a project's own. Done when the three largest the
    tables can hold (`assertRaises` and its kin, `tempfile`'s, the archives') are fixes. About 8
    hours, for about 0.4% (some 1,000 fixes).
-4. **The project's own overloads.** A function the checked files define with `@overload` (pandas'
-   `concat`) is skipped as redefined: 1,689 calls. Match its signatures as the standard library's
-   and installed packages' are (`constricter.fix.libraries.overloads`). Done when a call the
-   arguments decide is typed, and one they don't is left alone. About 6 hours, for about 0.3% (some
-   700 fixes).
+4. **The project's own overloads, by the project's own types.** A call to a function the checked
+   files define with `@overload` is typed by the overload its arguments match, as the standard
+   library's and installed packages' are: 355 more fixes on pandas (`read_csv`, `read_json`,
+   `read_fwf`, `import_optional_dependency`), of its 1,995 bindings to such a call. A parameter
+   typed as a checked file's class, alias or type variable takes any argument, so it decides
+   nothing: `concat` (562 bindings, by `Iterable[DataFrame]` or `Iterable[Series]`) and
+   `to_datetime` (291, by `DatetimeScalar` and the like) are left. Read a checked file's aliases,
+   type variables and protocols as an installed package's are (`constricter.fix.index.declared`),
+   and match an argument's class by its bases. Also left: a method's overloads, and a function
+   called through its module (`frame.concat(...)` after `from pkg import frame`). Done when
+   `concat([df, df])` is a `DataFrame`, and pandas's own type checkers find nothing new. About 8
+   hours, for about 0.3% (some 700 fixes).
 5. **Callables as values.** A lambda, a function and a bound method bound to a name have no fix
    (`eq = self.assertEqual`, `key = lambda row: row.id`: some 210 of the sampled 28,931; the bound
    method's alias was left alone on purpose). Write the `Callable[[A], R]` its signature declares,

@@ -463,7 +463,28 @@ def _path(root: ast.expr, known: Known) -> str | None:
     plan: ImportPlan | None = known.names.plan
     if path is None and plan is not None and plan.added:
         path = resolved(root, _added(tuple(plan.added.values())))
+    if path is None and plan is not None and plan.guarded:
+        path = _guarded(root, plan)
     return None if path is None else _ALIASES.get(path, path)
+
+
+def _guarded(root: ast.expr, plan: ImportPlan) -> str | None:
+    """Resolve a class's name or dotted path through an import for type checking (`ImportPlan.guarded`).
+
+    One the module has, or `--fix` is adding for another file's type: the next run would resolve it
+    by the import, so this one does.
+
+    Returns:
+      Its dotted origin, or `None` if its first name isn't such an import's.
+
+    """
+    first: str | None = next(
+        (node.id for node in ast.walk(root) if isinstance(node, ast.Name) and node.id in plan.guarded),
+        None,
+    )
+    if first is None:
+        return None
+    return resolved(root, {first: ".".join(part for part in plan.guarded[first].origin if part)})
 
 
 @lru_cache(maxsize=256)

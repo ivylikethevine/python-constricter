@@ -295,8 +295,15 @@ re-exports it (`from typed import Thing`, not `typed._types`; a module exports w
 or else what it defines and imports as itself, `from m import x as x`), or not written; and one of
 its generic classes is never written bare (`np.ndarray`).
 
-Its functions whose arguments decide their type (overloads, or a return naming a type variable) are
-matched as the standard library's are: `np.empty(n, dtype=np.float64)` is an
+A checked file's function defined with `@overload` is matched the same way, in the file defining it
+and in those importing it: `load(path, raw=True)` is a `bytes` where `raw: Literal[True]` returns
+one. What a parameter takes is read as below, but a checked file's own class or alias takes any
+argument (it decides nothing), and each return is written as another checked file's type is: none of
+the function's calls is typed if one of its overloads declares no return, or returns a type variable
+or a generic class without its arguments.
+
+An installed package's functions whose arguments decide their type (overloads, or a return naming a
+type variable) are matched as the standard library's are: `np.empty(n, dtype=np.float64)` is an
 `np.ndarray[tuple[int], np.dtype[np.float64]]` with numpy 2.5's stubs. What each parameter takes is
 read from its annotation through the package's aliases, type variables and protocols; a
 standard-library class it names (`SupportsIndex`) by the `scalars` table; and a class passed as the

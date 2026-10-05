@@ -33,7 +33,7 @@ from constricter.fix.core.signatures import (
     Parameter,
     ReadSignature,
 )
-from constricter.fix.index import classnames, project
+from constricter.fix.index import classnames, own_overloads, project
 from constricter.fix.index.atoms import (
     ANYTHING,
     BUILTINS_MODULE,
@@ -147,10 +147,14 @@ class _Memo:
 
 
 _MEMO: Final = _Memo()
+_Read: TypeAlias = dict[str, tuple[ReadSignature, ...]]  # functions' signatures, by a call's name
 
 
-def overloaded(catalog: Index, path: Path) -> dict[str, tuple[ReadSignature, ...]]:
-    """Find the installed functions the file at `path` calls whose arguments decide their type.
+def overloaded(catalog: Index, path: Path, guarded: dict[str, Guarded] | None = None) -> _Read:
+    """Find the functions the file at `path` calls whose arguments decide their type.
+
+    An installed package's, and a checked file's defined with `@overload` (see `own_overloads`):
+    `guarded` records the names their returns need imported for type checking.
 
     Returns:
       Each one's signatures (one variant, see `overloads.chosen`), by the call's name as written
@@ -173,7 +177,9 @@ def overloaded(catalog: Index, path: Path) -> dict[str, tuple[ReadSignature, ...
         if (where := (defined[0].name, defined[1])) not in memo:
             memo[where] = _signatures(modules, *defined)
         found[key] = memo[where]
-    return found
+        if not defined[0].installed:
+            found[key] = own_overloads.spelled(catalog, target, defined, memo[where], guarded)
+    return {key: read for key, read in found.items() if read}
 
 
 def classes(catalog: Index, path: Path) -> frozenset[str]:
@@ -314,9 +320,8 @@ def _signatures(modules: Mapping[str, Module], module: Module, name: str) -> tup
       Them.
 
     """
-    # Found by its declared signatures (`project.definition`): only an installed module has them.
-    declared: Declarations = cast("Declarations", module.declared)
-    return _read_all(_Reader(modules), module, declared.signatures[name], frozenset(), {})
+    # Found by its signatures (`project.definition`): an installed module's, or a checked file's overloads.
+    return _read_all(_Reader(modules), module, own_overloads.written(module, name), frozenset(), {})
 
 
 def _read_all(
@@ -335,14 +340,14 @@ def _read_all(
       Them.
 
     """
-    declared: Declarations = cast("Declarations", module.declared)
+    declared: Declarations | None = module.declared  # none: a checked file's (see `_signatures`)
     shared: set[tuple[str, str, bool, str | None]] = set(written[0].params)
     signature: Signature
     for signature in written[1:]:
         shared &= set(signature.params)
     named: frozenset[str] = frozenset(
         {
-            *declared.variables,
+            *(() if declared is None else declared.variables),
             *module.type_vars,
             *variables,
             *(param for each in written for param, _ in each.type_params),

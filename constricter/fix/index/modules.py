@@ -18,7 +18,7 @@ from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.core.imports import taken_names
 from constricter.fix.core.known import Origin, Passed, Returns
-from constricter.fix.index.declared import Declarations, declarations
+from constricter.fix.index.declared import Declarations, Signature, declarations, overloads
 from constricter.fix.values import classvars
 from constricter.fix.values.returned import unannotated, yields_itself
 from constricter.rules import parsed
@@ -110,6 +110,8 @@ class Module(NamedTuple):
     tuples: Mapping[str, str] = {}  # its named tuples' fields (see `targets.named_tuples`)
     # Its top-level pytest fixtures, and whether each is a generator (its value is what it yields).
     fixtures: Mapping[str, bool] = {}
+    # A checked file's functions defined with `@overload`, each with its overloads' signatures.
+    overloads: Mapping[str, tuple[Signature, ...]] = {}
     folder: str = ""  # a checked file's directory: where pytest looks for the `conftest.py`s above it
 
 
@@ -318,6 +320,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         partial_methods=own.order.flattened(own.partial_methods),
         tuples=own.tuples,
         fixtures={} if name is not None else _fixtures(tree),
+        overloads={} if name is not None else overloads(tree),
         folder="" if name is not None else str(path.resolve().parent),
     )
 

@@ -6,6 +6,13 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types a call to a checked file's function defined with `@overload` by the overload its
+  arguments match, as an installed package's is: `load(path, raw=True)` is a `bytes` where
+  `raw: Literal[True]` returns one. Only where the arguments decide it, and no overload returns a
+  type variable or a generic class without its arguments; a parameter typed as a checked file's
+  class or alias takes any argument, so it decides nothing.
+- `--fix` resolves a standard-library class named through an import for type checking that the same
+  run adds: a fixture's `Path`, joined by `/`, is typed on the first pass, not the second.
 - `--fix --unsafe-fixes` takes a test's fixtures from a `conftest.py` outside any package too (most
   projects' `tests/conftest.py`), for the tests beside it and under it, where it's the only checked
   file of that name; and pytest's own `tmp_path` is a `Path`. Guesses (fix kind `fixture`).
