@@ -9,7 +9,8 @@ one:
 It copies PATH's Python files to local/corpus-fix/ (a package into a folder of its name, so its
 absolute imports resolve across files), runs `--fix --unsafe-fixes --all-scopes` on the copy, then
 compiles every file that compiled before and checks a second `--diff` has nothing left to change.
-It prints what broke, if anything, and exits 1 then.
+It prints what broke, if anything, and exits 1 then: each file that no longer compiles, and each fix
+the second pass still makes, as `--show-fixes` words it (where, the type, and what decided it).
 """
 
 import contextlib
@@ -28,6 +29,8 @@ from constricter.cli import paths
 
 COPY: Final = Path("local/corpus-fix")
 FIX: Final = ["--unsafe-fixes", "--all-scopes", "--jobs=0"]
+_NEW: Final = "+++ "  # a changed file's header in `--diff`
+_FIX: Final = ": fix "  # a `--show-fixes` line, after its place
 
 
 def _compiles(path: Path) -> bool:
@@ -54,6 +57,27 @@ def _run(args: Sequence[str]) -> tuple[int, str]:
     return status, out.getvalue()
 
 
+def _left(extra: Sequence[str]) -> list[str]:
+    """Find what a second pass over the fixed copy would still change.
+
+    Returns:
+      A `--show-fixes` line for each fix in a file a second `--diff` changes; the file alone, for one
+      whose change is no listed fix's.
+
+    """
+    diff: str = _run(["--diff", *FIX, *extra, str(COPY)])[1]
+    files: list[str] = [line.removeprefix(_NEW) for line in diff.splitlines() if line.startswith(_NEW)]
+    if not files:
+        return []
+    shown: list[str] = _run(["--show-fixes", *FIX, *extra, str(COPY)])[1].splitlines()
+    left: list[str] = []
+    name: str
+    for name in files:
+        fixes: list[str] = [line for line in shown if line.startswith(f"{name}:") and _FIX in line]
+        left += fixes or [name]
+    return left
+
+
 def main(argv: Sequence[str]) -> int:
     """Fix the copy and check it.
 
@@ -78,15 +102,16 @@ def main(argv: Sequence[str]) -> int:
     summary: str = _run(["--fix", *FIX, *extra, str(COPY)])[1].splitlines()[-1]
     seconds: float = time.perf_counter() - start
     broken: list[Path] = [path for path in valid if not _compiles(path)]
-    diff: str
-    diff = _run(["--diff", *FIX, *extra, str(COPY)])[1]
-    left: int = diff.count(chr(10) + "+++ ")
+    left: list[str] = _left(extra)
     _ = sys.stdout.write(f"{root}: {len(valid)} valid files fixed in {seconds:.1f}s. {summary}\n")
     _ = sys.stdout.write(f"  no longer compile: {len(broken)}\n")
     path: Path
     for path in broken[:10]:
         _ = sys.stdout.write(f"    {path}\n")
-    _ = sys.stdout.write(f"  left to fix on a second pass: {left}\n")
+    _ = sys.stdout.write(f"  left to fix on a second pass: {len(left)}\n")
+    line: str
+    for line in left:
+        _ = sys.stdout.write(f"    {line}\n")
     return 1 if broken or left else 0
 
 

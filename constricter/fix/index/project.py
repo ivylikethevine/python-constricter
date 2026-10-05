@@ -753,6 +753,8 @@ def imported(
     spelled that way too. `seeded`: the names its fixtures' types are written with, imported for type
     checking alone (see `fixtures.visible`), whose classes' members it takes as well; and the
     attributes those types take of a module it imports (`MonkeyPatch`, in `pytest.MonkeyPatch`).
+    A class those types name through an import the fixes will add gives its members as well: a
+    return type spelled through one is a receiver's.
 
     Returns:
       Them, and the names their types need imported for type checking alone (see `Guarded`); nothing
@@ -773,25 +775,32 @@ def imported(
         {**{name: found.origin for name, found in guarded.items()}, **target.names},
         target.attributes if seeded is None else target.attributes | seeded[1],
     )
+    fresh: Mapping[str, Origin] = named[0]
+    known: set[str] = set()
+    found: tuple[dict[str, str], Returns, dict[str, str]] | None = None
     key: str
     defined: tuple[Module, str]
-    for key, defined in _spelled_classes(catalog, target, named, generics):
-        if defined[1] in defined[0].generics:
-            generics.add(key)
-        if defined[1] in defined[0].plain and defined[1] in defined[0].members:
-            members[key] = defined[0].members[defined[1]]
-        attributes[key], methods[key], partial[key] = (
-            _used(modules, (target, defined), key, table.get(defined[1]), guarded)
-            for table in (defined[0].classes, defined[0].methods, defined[0].partial_methods)
-        )
-    found: tuple[dict[str, str], Returns, Partial] = (
-        calls(catalog, path, guarded),
-        returned(catalog, path, guarded),
-        Partial(
-            {name: each for name, each, _ in _typed_calls(catalog, path, _PARTIAL, guarded)},
-            {name: each for name, each in partial.items() if each},
-        ),
-    )
+    while True:
+        for key, defined in _spelled_classes(catalog, target, (fresh, named[1]), generics):
+            if defined[1] in defined[0].generics:
+                generics.add(key)
+            if defined[1] in defined[0].plain and defined[1] in defined[0].members:
+                members[key] = defined[0].members[defined[1]]
+            attributes[key], methods[key], partial[key] = (
+                _used(modules, (target, defined), key, table.get(defined[1]), guarded)
+                for table in (defined[0].classes, defined[0].methods, defined[0].partial_methods)
+            )
+        known.update(fresh)
+        if found is None:
+            found = (
+                calls(catalog, path, guarded),
+                returned(catalog, path, guarded),
+                {name: each for name, each, _ in _typed_calls(catalog, path, _PARTIAL, guarded)},
+            )
+        # The classes those types need imported: their members' types can need more.
+        fresh = {name: needed.origin for name, needed in guarded.items() if name not in known}
+        if not fresh:
+            break
     return Imported(
         found[0],
         Classes(attributes, methods),
@@ -799,7 +808,7 @@ def imported(
         guarded,
         frozenset(generics),
         members,
-        found[2],
+        Partial(found[2], {name: each for name, each in partial.items() if each}),
     )
 
 
