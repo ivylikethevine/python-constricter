@@ -306,6 +306,8 @@ class Offered(NamedTuple):
 class Hints(NamedTuple):
     """A type checker's inlay hints for one file (`--infer-with`): which checker, and each type.
 
+    Or a traced run's types for it (`--infer-from`), of `kind` `traced`: what its fixes rest on.
+
     Each hint's type is its text as the checker printed it (`int`, `list[str]`), by where the name
     it types ends: its line (from 1) and UTF-8 byte column, as `ast`'s `end_col_offset`.
     `offered`: what each hint that has edits would write (see `Offered`), by the same place.
@@ -315,6 +317,7 @@ class Hints(NamedTuple):
     # Plain `dict`s, not `MappingProxyType`s: the CLI's worker processes are sent them, pickled.
     types: Mapping[tuple[int, int], str] = {}
     offered: Mapping[tuple[int, int], Offered] = {}
+    kind: str = "checker"
 
 
 # An argument's type, and what it rests on if it's a guess (`FIX_KINDS`; none: it's certain).

@@ -543,6 +543,50 @@ The type hierarchy LVA008–LVA010 compare through is the numeric tower (`bool` 
 those say for each type it names, and vouches for the types it names: an imported type the rules
 would never compare otherwise is compared.
 
+## A traced run's types (`--infer-from`)
+
+What a run binds a name to says what the source doesn't: most bindings with no fix are in functions
+with no annotations, computed from parameters nothing types. Those are the ones it types.
+
+```bash
+python -m constricter.trace -m pytest          # or a script: writes constricter-trace.json
+constricter --fix --unsafe-fixes --infer-from constricter-trace.json .
+```
+
+`python -m constricter.trace [--output FILE] [--root DIR] (-m MODULE | SCRIPT) [ARG ...]` runs the
+module or script as `python` would, and each time a function defined under DIR (default: the working
+directory; nothing installed there) returns or yields, notes the type of every local it holds: a
+builtin scalar, a builtin container or one of `collections`' by its first 20 elements' types (up to
+three, two levels deep), a tuple by its parts' one type or part by part (up to four), a class as
+`type[C]`, anything else by its class. A mock, a class defined in a function or in another class,
+and a container of more types or deeper have no spelling, and leave their name untyped; an empty
+container says nothing. A function that returns 20 times with nothing new is no longer looked at.
+Only the process itself is recorded, with the threads `threading` starts: not pytest-xdist's
+workers.
+
+`--infer-from FILE` (`infer-from` in `[tool.constricter]`, relative to the `pyproject.toml`) takes
+those types as a type checker's hints are taken, after the checkers' own where `--infer-with` is
+given too: for the bindings `--fix` can't type itself, each a guess (fix kind `traced`), judged as a
+hint is (not vague, not too deep, no generic class bare, every name one the file can use). A class
+the file doesn't name is imported under `if TYPE_CHECKING:`, where the checked files or an installed
+package's public module define it. Up to three types seen for one name are their union, which is a
+fix only where the function tests the name, as a checker's union is.
+
+Only a local no annotation types gets one: a name assigned a value taken from a parameter its
+function leaves unannotated (`row = rows[0].load()`, `made = make(n)`; not `self` or `cls`, which
+the class types). Anything else a type checker may type wider than the run saw (an `X | None` that
+was never `None`, a base class, a `TypedDict` seen as a `dict[str, str]`), and the narrower
+annotation would be an error: hints for every local brought 32 new basedpyright errors with 127
+fixes on pydantic, and none with none under this rule. And only a name its function binds once,
+outside any loop: the trace says what it held when the function returned, not where. A file is
+matched by its SHA-256: one edited since the run has no types (`--fix`'s own second round, for one),
+and a copy of it has them all.
+
+What the run saw can still be narrower than what the code means (a subclass, an `int` where a
+`float` may come): a guess, like the rest. And a name typed at last is checked at last: on pandas's
+`tests/frame/methods`, traced, 128 more fixes (5%) and 29 new basedpyright errors, each at a later
+use of a rightly typed `DataFrame` (`df.join(other, how="foo")`, in a test of that error).
+
 ## Fix levels
 
 Each fix names the mechanisms that decided it, parts included (`[1, 2]` is a `container` of
@@ -578,6 +622,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `open`          | `open(path, mode)`'s file object, by its literal mode (`io.TextIOWrapper`, ...)           |
 | `final`         | LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)             |
 | `checker`       | a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)            |
+| `traced`        | what a traced run bound the name to (`--infer-from`; a guess)                             |
 | `rebound`       | a name later bound to a wider type: the type every value fits (`int`, then `float`)       |
 | `optional`      | `x = None`, then only ever a value of one known type `T`: `T \| None`                     |
 | `filled`        | an empty container, then only what the function adds to it (a guess)                      |

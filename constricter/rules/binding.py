@@ -15,7 +15,7 @@ from typing import Final, TypeAlias, cast
 
 from constricter.fix.core.known import Inference, Known
 from constricter.fix.libraries.opened import opened
-from constricter.fix.values import hinted, shapes
+from constricter.fix.values import shapes
 from constricter.fix.values.doubts import bare
 from constricter.fix.values.entered import entered, entering
 from constricter.fix.values.inference import LoopPart, inference, looped, looped_parts
@@ -309,7 +309,7 @@ def _bind_declaration(
     origins: frozenset[str]
     found, unsafe, origins = typed
     if found is None and (found := scope.hint(name)) is not None:
-        unsafe, origins = True, frozenset({hinted.KIND})
+        unsafe, origins = True, found.kinds
     fix: Fix | None = None
     if found is not None:
         fix = scope.offer(

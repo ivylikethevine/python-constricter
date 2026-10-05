@@ -223,7 +223,7 @@ def _lists(value: _Toml, read: Callable[[_Toml], list[str] | None]) -> dict[str,
 
 
 def _baseline(value: _Toml, root: Path) -> str | None:
-    """Read a baseline path, relative to `root` (the pyproject.toml that names it).
+    """Read a baseline's or a trace's path, relative to `root` (the pyproject.toml that names it).
 
     Returns:
       The resolved path, or `None` if `value` isn't a non-empty string.
@@ -276,6 +276,7 @@ def config_defaults(start: Path) -> dict[str, Default]:
     readers: dict[str, Callable[[_Toml], Default | None]] = {
         **_READERS,
         "baseline": partial(_baseline, root=path.parent),
+        "infer-from": partial(_baseline, root=path.parent),
     }
     defaults: dict[str, Default] = {}
     key: str

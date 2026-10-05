@@ -68,6 +68,7 @@ FIX_KINDS: dict[str, str] = {
     "alias": "a module's type alias, a subscript or a union of types: `TypeAlias`",
     "final": "LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)",
     "checker": "a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)",
+    "traced": "what a traced run bound the name to (`--infer-from`; a guess)",
     "open": "`open(path, mode)`'s file object, by its literal mode (`io.TextIOWrapper`, ...)",
     "loop": "what a loop (or `sorted`, `list`, ...) iterates over",
     "unpack": "an unpacking, split over its names",

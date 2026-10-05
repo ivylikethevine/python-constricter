@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, NamedTuple, TextIO, TypeAlias, cast
 
 from constricter import notebook
-from constricter.cli import baseline, collecting, schedule
+from constricter.cli import baseline, collecting, schedule, traced
 from constricter.cli.options import Mode, Options, Output
 from constricter.cli.paths import STDIN, python_files
 from constricter.cli.protocol import HintError
@@ -505,6 +505,8 @@ def _checked_all(
 
     """
     hinted: dict[Path, tuple[Hints, ...]] = {} if session is None else session.hints(_texts(paths))
+    if options.input.trace is not None:
+        hinted = traced.merged(hinted, traced.load(options.input.trace), paths)
     coverage: bool = options.mode is Mode.COVERAGE  # needs nothing from the other files
     stack: contextlib.ExitStack
     with contextlib.ExitStack() as stack:

@@ -160,6 +160,7 @@ Options:
 | type hierarchy   | -                                                                                                                                                                            | `narrower` (a table)                            | `--constricter-narrower`        | `constricter-narrower`            |
 | fix              | `--fix` (`--unsafe-fixes` for guesses), `--diff` to preview                                                                                                                  | -                                               | -                               | -                                 |
 | infer with       | `--infer-with CHECKERS` (`basedpyright`, `ty`, `pyrefly`, several: inferred types, as guesses)                                                                               | `infer-with`                                    | -                               | -                                 |
+| infer from       | `--infer-from FILE` (the types `python -m constricter.trace -m pytest` recorded from a run, as guesses)                                                                      | `infer-from`                                    | -                               | -                                 |
 | show fixes       | `--show-fixes` (each fix and how it was decided, text)                                                                                                                       | -                                               | -                               | -                                 |
 | fix levels       | `--fix-select`, `--fix-ignore`, `--unsafe-fix-select` (mechanisms: [docs/FIXES.md](https://github.com/ivylikethevine/python-constricter/blob/main/docs/FIXES.md#fix-levels)) | `fix-select`, `fix-ignore`, `unsafe-fix-select` | -                               | -                                 |
 | fix plain bases  | `--fix-plain-bases BASES` (frameworks' classes whose subclasses' bodies `--fix` annotates; django's are built in)                                                            | `fix-plain-bases`                               | -                               | -                                 |
@@ -219,7 +220,8 @@ method call of a local whose type is known, and values computed from those; a lo
 unpacking's names get a declaration on the line before. `--unsafe-fixes` adds guesses, and
 `--show-fixes` lists each fix and how its value decided it. `--infer-with basedpyright` (or `ty`, or
 `pyrefly`, or several: `basedpyright,ty`; each installed alongside) asks those type checkers for
-what `--fix` can't type itself, as guesses. The full list is in
+what `--fix` can't type itself, as guesses; `--infer-from FILE` takes the types a run bound each
+name to, recorded by `python -m constricter.trace -m pytest`, the same way. The full list is in
 [docs/FIXES.md](https://github.com/ivylikethevine/python-constricter/blob/main/docs/FIXES.md).
 
 ### Installing and running

@@ -361,7 +361,7 @@ class Scope:
         )
         hint: Inference | None
         if found is None and (hint := self.hint(target, value)) is not None:
-            found = hint, True, frozenset({hinted.KIND})
+            found = hint, True, hint.kinds
         return found or (None, False, frozenset())
 
     def _member(self, name: str, fix: Inference | None) -> tuple[Inference | None, bool, frozenset[str]]:
@@ -473,18 +473,18 @@ class Scope:
           The inference (a guess), or `None`.
 
         """
-        # Not used at all where not offered: what follows from it would rest on it unseen.
-        if not self.settings.checks.fixes.allows(frozenset({hinted.KIND})):
-            return None
         where: tuple[int, int] = (target.lineno, target.end_col_offset or 0)
         composite: bool = value is not None and self.kind.function is None and is_composite(value)
         found: Hints
         for found in self.settings.hints:
-            text: str | None = found.types.get(where)
+            # Not used at all where not offered: what follows from it would rest on it unseen.
+            text: str | None = (
+                found.types.get(where) if self.settings.checks.fixes.allows(frozenset({found.kind})) else None
+            )
             typed: str | None
             if text == hinted.ALIAS:
                 if composite and (typed := hinted.type_alias(self.settings.known, target.lineno)) is not None:
-                    return hinted.inference(typed, found.checker)
+                    return hinted.inference(typed, found)
                 continue
             if (
                 text is not None
@@ -503,7 +503,7 @@ class Scope:
                 and not hinted.renames(target.id, typed, local=self.kind.function is not None)
                 and not (self._undeclared(typed) or self._misread(target.id, typed))
             ):
-                return hinted.inference(typed, found.checker)
+                return hinted.inference(typed, found)
         return None
 
     def _misread(self, name: str, annotation: str) -> bool:

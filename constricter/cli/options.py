@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Final, cast
 
 from constricter import __version__
-from constricter.cli import baseline
+from constricter.cli import baseline, traced
 from constricter.cli.config import (
     DEFAULT_BASELINE,
     config_defaults,
@@ -354,6 +354,12 @@ def _parser() -> argparse.ArgumentParser:
         help="with --infer-with: the most memory each checker's servers use together (default: 8)",
     )
     _ = parser.add_argument(
+        "--infer-from",
+        type=Path,
+        metavar="FILE",
+        help="type what --fix can't with the types `python -m constricter.trace` recorded, as guesses",
+    )
+    _ = parser.add_argument(
         "--diff",
         action="store_true",
         help="print what --fix would change, and change nothing",
@@ -440,6 +446,7 @@ class Input:
     paths: list[Path]
     exclude: list[str]
     stdin_name: Path = STDIN
+    trace: Path | None = None  # the trace whose types `--fix` guesses with (`--infer-from`)
 
     def name(self, path: Path) -> Path:
         """Name `path` for reports.
@@ -566,7 +573,12 @@ class Options:
             parser.error("`-` (standard input) must be the only path")
         mode: Mode = _mode(parser, args)
         return cls(
-            input=Input(paths, cast("list[str]", args.exclude), cast("Path", args.stdin_filename)),
+            input=Input(
+                paths,
+                cast("list[str]", args.exclude),
+                cast("Path", args.stdin_filename),
+                _trace(parser, cast("Path | None", args.infer_from)),
+            ),
             checks=Checks(
                 type_comments=cast("bool", args.type_comments),
                 all_scopes=cast("bool", args.all_scopes),
@@ -603,6 +615,20 @@ class Options:
             infer_with=tuple(cast("list[str]", args.infer_with)),
             infer_memory=_bytes(cast("float | None", args.infer_memory)),
         )
+
+
+def _trace(parser: argparse.ArgumentParser, path: Path | None) -> Path | None:
+    """Check that `--infer-from`'s file is a trace, read here once for the run.
+
+    Returns:
+      The path.
+
+    """
+    try:
+        _ = None if path is None else traced.load(path)
+    except ValueError as error:
+        parser.error(str(error))
+    return path
 
 
 def _maximal(args: argparse.Namespace) -> argparse.Namespace:

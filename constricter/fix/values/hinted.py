@@ -41,11 +41,13 @@ import sys
 from functools import lru_cache
 from typing import Final, TypeAlias
 
-from constricter.fix.core.known import ImportPlan, Inference, Known, Offered
+from constricter.fix.core.known import Hints, ImportPlan, Inference, Known, Offered
 from constricter.fix.libraries import stdlib
 from constricter.rules.annotations import ABSTRACT, depth, length, vague_fits
 
 KIND: Final = "checker"  # the fix kind, and what the guess rests on
+TRACED: Final = "traced"  # the same, for a traced run's types (`--infer-from`)
+KINDS: Final = frozenset({KIND, TRACED})
 _LITERAL: Final = "Literal"
 _NONE: Final = "None"
 _BUILTINS: Final = frozenset(dir(builtins))
@@ -158,14 +160,17 @@ def hinted(
     return None
 
 
-def inference(annotation: str, checker: str) -> Inference:
-    """Make the fix `checker`'s hint gives, as `hinted` wrote it.
+def inference(annotation: str, found: Hints) -> Inference:
+    """Make the fix a hint of `found` gives, as `hinted` wrote it.
 
     Returns:
       It.
 
     """
-    return Inference(annotation, f"{checker}'s inferred type", frozenset({KIND}))
+    reason: str = (
+        "what a traced run bound it to" if found.kind == TRACED else f"{found.checker}'s inferred type"
+    )
+    return Inference(annotation, reason, frozenset({found.kind}))
 
 
 def type_alias(known: Known, before: int) -> str | None:

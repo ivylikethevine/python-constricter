@@ -6,6 +6,16 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `python -m constricter.trace -m pytest` (or a script) records the types a run binds each
+  function's locals to, and `--fix --unsafe-fixes --infer-from FILE` (`infer-from` in
+  `[tool.constricter]`) takes them for the bindings `--fix` can't type itself, as a type checker's
+  hints are taken: guesses (fix kind `traced`), for a local bound once to a value taken from an
+  unannotated parameter, a class the file doesn't name imported under `if TYPE_CHECKING:`. A file is
+  matched by its SHA-256, so one edited since the run has none. See
+  [FIXES.md](FIXES.md#a-traced-runs-types---infer-from).
+- `--fix` types a call on a value whose class the same run imports for type checking: with
+  `df = series.to_frame()` typed `DataFrame` by an import the fix adds, `df.shift()` is typed on the
+  first pass, not the second. `tests/corpus/corpus_fix.py` lists each fix a second pass still makes.
 - `--fix --unsafe-fixes` types a test's parameter named as one of pytest's own fixtures, read from
   pytest as installed where a checked file imports it: `capsys` is a `pytest.CaptureFixture[str]`,
   `monkeypatch` a `pytest.MonkeyPatch`, and `text = caplog.text` a `str`. Each `conftest.py` outside

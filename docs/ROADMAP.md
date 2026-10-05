@@ -125,6 +125,13 @@
   generic alias ty's edit writes as its class (`np.ndarray[np.bool]` for an `NDArray[bool]`).
   pandas's own type checkers find 84 new errors after the hints' fixes, from 444 (32 without the
   hints).
+- **Types observed at run time** (`python -m constricter.trace -m pytest`, then
+  `--infer-from FILE`): a profile function notes the type of each local a function under the root
+  holds as it returns (builtin containers by their first elements, a class by its module and name),
+  written by each file's SHA-256; `--fix` takes them as a checker's hints are taken, as guesses of
+  kind `traced`, for a local bound once, outside any loop, to a value taken from an unannotated
+  parameter (what no checker types wider than the run saw), a class the file doesn't name imported
+  under `if TYPE_CHECKING:`. On pandas's `tests/frame/methods`: 128 more fixes of 4,616 bindings.
 - **A hung server is restarted**: one silent for 120s is restarted and each file it hadn't answered
   asked about alone; a file it hangs on again has no hints, named on standard error.
 - **No new type errors**: `corpus_suite.py --types` runs pydantic's, sqlalchemy's and pandas's own
@@ -412,16 +419,23 @@ fix.
 
 ### Large: more than 8 hours
 
-1. **Types observed at run time.** 77% of the bindings with no fix are in functions with no
-   annotations: what they bind comes from parameters and attributes nothing in the source types (in
-   the 41 sampled directories, 13,992 of 28,931 are a method call, an attribute, a subscript or a
-   copy of such a value). Running the code says what they are.
-   `python -m constricter.trace -m pytest` records each function's locals' types as it returns, and
-   `--infer-from FILE` takes them as a type checker's hints are taken: guesses, widened, checked and
-   imported. Then the parameters' types, as `callers`' seeds, so `--fix`'s own inference types
-   what's computed from them. Done when pydantic's suite, traced, types its untyped locals with no
-   new basedpyright error. About 20 hours, for perhaps 15% (some 38,000 guesses): not counted, and
-   only where tests run the code.
+1. **Types observed at run time, past what a parameter gives.** `python -m constricter.trace`
+   records what each function's locals held as it returned, and `--infer-from` takes them as hints
+   ([Done](#--fix)): only for a local bound once, outside any loop, to a value taken from an
+   unannotated parameter. Hints for every local brought 32 new basedpyright errors with 127 fixes on
+   pydantic (a checker types the value wider than the run saw); under that rule none, and no fix
+   there, and on pandas's `tests/frame/methods` 128 fixes with 29 new errors, each at a later use of
+   a rightly typed name. Left: the parameters' types, which the trace already holds, as `callers`'
+   seeds, so `--fix`'s own inference types what's computed from them (a loop's target, a name bound
+   again, a local taken from another); `self.attr` where the class declares nothing; a type per
+   binding, not per function, by `sys.monitoring`'s line events; a class nested in another, and a
+   generic one by its elements; pytest-xdist's workers; and `corpus_suite.py` tracing each package's
+   suite before its `--fix`, to count the new errors on every corpus. 77% of the bindings with no
+   fix are in functions with no annotations (in the 41 sampled directories, 13,992 of 28,931 are a
+   method call, an attribute, a subscript or a copy of such a value). Done when a traced suite types
+   a loop's target, with no new error at a traced binding itself on any corpus. About 12 hours, for
+   perhaps 5% (some 12,000 guesses): a guess from the one directory measured, and only where tests
+   run the code.
 2. **Class bodies of plain classes, past literals.** An annotation in a class body makes a
    dataclass's or a model's variable a field, so `--fix` annotates only a plain class's variable
    bound to a literal or a display of them (`member`, a guess). First counted without it, and before

@@ -318,7 +318,7 @@ def _fixed(offence: Offence) -> bool:
     """Check whether an offence already has a fix a late one (`optionals`, `fills`) mustn't replace.
 
     Returns:
-      Whether it has one, other than a type checker's hint (`--infer-with`), which one would.
+      Whether it has one, other than a hint's (`--infer-with`, `--infer-from`), which one would.
 
     """
-    return offence.edit is not None and hinted.KIND not in offence.edit.kinds
+    return offence.edit is not None and not hinted.KINDS & offence.edit.kinds
