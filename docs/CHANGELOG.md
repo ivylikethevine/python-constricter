@@ -6,6 +6,19 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix --unsafe-fixes` types a test's parameter named as one of pytest's own fixtures, read from
+  pytest as installed where a checked file imports it: `capsys` is a `pytest.CaptureFixture[str]`,
+  `monkeypatch` a `pytest.MonkeyPatch`, and `text = caplog.text` a `str`. Each `conftest.py` outside
+  a package is looked in by where it is, the nearest first, not only where it's the one checked file
+  of that name (a fixture of one of several by its declared return alone). And a fixture's class the
+  test file doesn't import has its members: `copy = float_frame.copy()` is typed where only the
+  `conftest.py` imports `Frame`. Guesses (fix kind `fixture`).
+- `--fix` reads an installed package's private twin through it (`pytest`'s classes, defined in
+  `_pytest`), types the members of a class named through a module that re-exports it
+  (`pytest.LogCaptureFixture`, `pkg.Row`), and writes a type through such a module where the file
+  imports it (`typed.Thing` after `import typed`) before adding an import for type checking.
+- Fixed: with an installed package's types read, a module name two checked files share was no longer
+  known to be shared, so one's fixtures could type the other's tests.
 - `--fix` types a call to a checked file's function defined with `@overload` by the overload its
   arguments match, as an installed package's is: `load(path, raw=True)` is a `bytes` where
   `raw: Literal[True]` returns one. Only where the arguments decide it, and no overload returns a

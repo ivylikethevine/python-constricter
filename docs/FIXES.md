@@ -196,17 +196,19 @@ in a function or module body:
   those types, then the files calling them, knowing what they now return;
 - with `--unsafe-fixes`, what's computed from a parameter pytest gives a test (a function named
   `test...`) or a fixture. One named as a fixture: its module's own, else the one in the
-  `conftest.py` of the nearest package above it, else in the one `conftest.py` outside any package,
-  if it's in the file's directory (or its top package's) or above (the CLI only), typed by the
-  fixture's declared return or the one its `return`s give, a generator's by what it yields
-  (`Iterator[Frame]` gives a `Frame`), its class imported for type checking as another file's type
-  is; else pytest's own `tmp_path`, a `Path`. And one `@pytest.mark.parametrize` gives literals of
-  one type (`"n, s"` with `[(1, "a"), (2, "b")]`): on the function itself, names and cases written
-  out. `def test_copy(float_frame)` types `result = float_frame.copy()`. A guess (`fixture`), since
-  a plugin's fixture of the name, or a `conftest.py` out of the checked files, may be the one pytest
-  takes; not a parameter the test annotates or binds again, nor one of several `conftest.py`s
-  outside a package, or any for a test file whose name another checked file has (a module's name
-  says nothing of where it is);
+  `conftest.py` of the nearest package above it, else in a `conftest.py` outside any package, the
+  file's directory's (or its top package's) then each one's above (the CLI only), typed by the
+  fixture's declared return or the one its `return`s give (its declared return alone, in one of
+  several `conftest.py`s outside a package), a generator's by what it yields (`Iterator[Frame]`
+  gives a `Frame`), its class imported for type checking as another file's type is, with its
+  members; else pytest's own, read from pytest as installed where a checked file imports it
+  (`capsys` is a `pytest.CaptureFixture[str]`, `caplog.text` a `str`), and its `tmp_path`, a `Path`,
+  anywhere. And one `@pytest.mark.parametrize` gives literals of one type (`"n, s"` with
+  `[(1, "a"), (2, "b")]`): on the function itself, names and cases written out.
+  `def test_copy(float_frame)` types `result = float_frame.copy()`. A guess (`fixture`), since a
+  plugin's fixture of the name, or a `conftest.py` out of the checked files, may be the one pytest
+  takes; not a parameter the test annotates or binds again, nor any for a test file whose name
+  another checked file has (a module's name says nothing of where it is);
 - with `--unsafe-fixes`, an empty container (`[]`, `{}`, `set()`, `list()`, `dict()`) the function
   then only adds to, every addition typed alike (`append`, `insert`, `add`, `setdefault`,
   `x[k] = v`; `extend` and `update` with one argument, by its elements, or a `dict`'s keys and
@@ -290,10 +292,13 @@ An installed package that declares its types (a `py.typed` package, its stubs fi
 `pkg-stubs`; a lone `mod.pyi`) is read the same way for the calls into it, and never fixed: found on
 this Python's path and the active virtual environment's (`VIRTUAL_ENV`), as the import system would
 (an untyped copy earlier on the path shadows a typed one later), with the modules it re-exports
-from. `pydantic_core.to_json(x)` is a `bytes`. A type it names is imported from a public module that
-re-exports it (`from typed import Thing`, not `typed._types`; a module exports what `__all__` lists,
-or else what it defines and imports as itself, `from m import x as x`), or not written; and one of
-its generic classes is never written bare (`np.ndarray`).
+from, its private twin's too (`pytest`'s, from `_pytest`). `pydantic_core.to_json(x)` is a `bytes`.
+A type it names is written through a public module re-exporting it that the file imports
+(`typed.Thing`, after `import typed`), else imported from one (`from typed import Thing`, not
+`typed._types`; a module exports what `__all__` lists, or else what it defines and imports as
+itself, `from m import x as x`), or not written; and one of its generic classes is never written
+bare (`np.ndarray`). A class a module the file imports re-exports has its members there
+(`pytest.LogCaptureFixture`'s `text`, `pkg.Row`'s).
 
 A checked file's function defined with `@overload` is matched the same way, in the file defining it
 and in those importing it: `load(path, raw=True)` is a `bytes` where `raw: Literal[True]` returns

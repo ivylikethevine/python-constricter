@@ -19,6 +19,11 @@ SITE: Final = {
     "typed/_impl.pyi": "from typed._types import Thing\ndef make() -> int: ...\ndef thing() -> Thing: ...\n",
     "typed/_types.pyi": "class Thing: ...\n",
     "typed/sub.py": "def sub() -> float:\n    return 1.0\n",
+    "twin/py.typed": "",
+    "twin/__init__.py": "from _twin.impl import Kept as Kept, keep as keep\n",
+    "_twin/py.typed": "",
+    "_twin/__init__.py": "",
+    "_twin/impl.py": "class Kept:\n    pass\n\n\ndef keep() -> Kept:\n    return Kept()\n",
     "stubbed/__init__.py": "def g():\n    return 'x'\n",
     "stubbed-stubs/__init__.pyi": "def g() -> str: ...\n",
     "lone.pyi": "def k() -> bytes: ...\n",
@@ -35,9 +40,11 @@ from plain import h
 from broken import b
 from . import sibling
 import os
+from twin import keep
 
 
 def run():
+    k = keep()
     a = make()
     b2 = g()
     c = lone.k()
@@ -47,13 +54,14 @@ def run():
     return a, b2, c, d, e, f
 """
 FIXED: Final = (
+    "    k: Kept = keep()\n",  # a package's private twin's, read through it
+    "    from twin import Kept\n",  # named by the public package
     "    a: int = make()\n",
     "    b2: str = g()\n",
     "    c: bytes = lone.k()\n",
     "    d = h()\n",  # untyped: no `py.typed`
     "    e: float = typed.sub.sub()\n",
-    "    f: Thing = thing()\n",
-    "    from typed import Thing\n",  # the public re-export, not `typed._types`
+    "    f: typed.Thing = thing()\n",  # through the public module it imports, not `typed._types`
 )
 
 

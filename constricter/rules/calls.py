@@ -40,8 +40,6 @@ from constricter.rules.walked import of_type
 _BUILTINS: Final = frozenset(dir(builtins))
 _TEST: Final = "test"  # how pytest's test functions' names start
 _NONE: Final = "None"  # says nothing of what the parameter's other callers pass, nor what it's for
-# pytest's own fixtures whose value is a standard-library class's instance: each one's class.
-_OWN_FIXTURES: Final = {"tmp_path": "pathlib.Path"}
 _DEFINED: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)  # what binds a name, inside
 
 
@@ -258,7 +256,7 @@ def _injected(seeded: Seeded, func: FunctionDef, known: Known) -> Mapping[str, P
     """Type the parameters pytest gives a test or a fixture: its fixtures' values, and `parametrize`'s.
 
     A fixture the module's tests can take (see `fix.index.fixtures`), by its name, or else one of
-    pytest's own (`tmp_path`, a `Path`: see `_OWN_FIXTURES`); and, before them, a name
+    pytest's own (`tmp_path`, a `Path`: see `fixtures.STDLIB_OWN`); and, before them, a name
     `@pytest.mark.parametrize` gives literals of one type. Guesses (`fixture`).
 
     Returns:
@@ -271,7 +269,7 @@ def _injected(seeded: Seeded, func: FunctionDef, known: Known) -> Mapping[str, P
 
 
 def _own(func: FunctionDef, known: Known) -> dict[str, Passed]:
-    """Type the parameters of `func` that name pytest's own fixtures (see `_OWN_FIXTURES`).
+    """Type the parameters of `func` that name pytest's own fixtures (see `fixtures.STDLIB_OWN`).
 
     Returns:
       Each one's type, as the module can write it, a guess resting on `fixture`.
@@ -282,9 +280,9 @@ def _own(func: FunctionDef, known: Known) -> dict[str, Passed]:
     named: set[str] = {arg.arg for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs)}
     found: dict[str, Passed] = {}
     name: str
-    for name in sorted(_OWN_FIXTURES.keys() & named):
+    for name in sorted(fixtures.STDLIB_OWN.keys() & named):
         spelled: str | None
-        if (spelled := None if plan is None else plan.spell(_OWN_FIXTURES[name])) is not None:
+        if (spelled := None if plan is None else plan.spell(fixtures.STDLIB_OWN[name])) is not None:
             found[name] = (spelled, frozenset({fixtures.KIND}))
     return found
 

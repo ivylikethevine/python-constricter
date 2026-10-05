@@ -39,6 +39,7 @@ _TYPE_ALIAS: Final = "TypeAlias"  # the annotation, and the node class of `type 
 # What a type checker decides an `if` by, taking one arm alone: `sys.version_info`, `TYPE_CHECKING`.
 _DECIDED: Final = frozenset({"version_info", "platform", "TYPE_CHECKING"})
 SUFFIX: Final = ".py"
+CONFTEST: Final = "conftest"  # the module pytest reads a directory's fixtures from
 _UNNAMED: Final = frozenset({"__call__", "__enter__"})  # members a statement takes without naming them
 STUB: Final = ".pyi"
 
@@ -121,6 +122,8 @@ class Index(NamedTuple):
     modules: dict[str, Module]
     names: list[str]  # modules, sorted by name
     repeated: frozenset[str] = frozenset()  # the names more than one file has: `modules` has the last
+    # Each checked `conftest.py` outside any package, by its directory: several share the one name.
+    conftests: Mapping[str, Module] = {}
 
 
 @lru_cache(maxsize=65536)  # asked of each checked file a dozen times: its folders are looked at once
@@ -257,12 +260,16 @@ def indexed(found: Iterable[Module | None]) -> Index:
     """
     counts: Counter[str] = Counter()
     modules: dict[str, Module] = {}
+    conftests: dict[str, Module] = {}
     module: Module | None
     for module in found:
         if module is not None:
             counts[module.name] += 1
             modules[module.name] = module
-    return Index(modules, sorted(modules), frozenset(name for name, count in counts.items() if count > 1))
+            if module.name == CONFTEST and module.folder:
+                conftests[module.folder] = module
+    repeated: frozenset[str] = frozenset(name for name, count in counts.items() if count > 1)
+    return Index(modules, sorted(modules), repeated, conftests)
 
 
 def read(path: Path, name: str | None = None) -> Module | None:
@@ -319,7 +326,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         partial=own.partial,
         partial_methods=own.order.flattened(own.partial_methods),
         tuples=own.tuples,
-        fixtures={} if name is not None else _fixtures(tree),
+        fixtures=_fixtures(tree),
         overloads={} if name is not None else overloads(tree),
         folder="" if name is not None else str(path.resolve().parent),
     )

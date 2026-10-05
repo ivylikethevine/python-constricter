@@ -1,9 +1,12 @@
 # SPDX-License-Identifier: MIT
 """`--fix` for a test's parameters: typed by the pytest fixtures it names and `parametrize`'s literals."""
 
+import sys
 import textwrap
 from pathlib import Path
 from typing import Final
+
+import pytest
 
 from constricter import Offence, check_source
 from constricter.cli import command as cli
@@ -133,7 +136,7 @@ UNFIXED: Final = (
 PLAIN_FIXED: Final = (
     "    from pkg.frame import Frame\n",
     "    result: Frame = float_frame\n",
-    "    copy = float_frame.copy()\n",
+    "    copy: Frame = float_frame.copy()\n",
 )
 CLASHING: Final = "    result = float_frame\n"
 
@@ -171,7 +174,7 @@ def test_a_tests_parameters_are_its_fixtures_values(tmp_path: Path) -> None:
 
 
 def test_a_fixtures_class_the_file_doesnt_import_is_imported_for_type_checking(tmp_path: Path) -> None:
-    """Its methods aren't known there, though: only what the file imports has members."""
+    """And its members are known there, as an imported class's are."""
     _ = _project(tmp_path)
     source: str = "def test_copy(float_frame):\n    result = float_frame\n    copy = float_frame.copy()\n"
     plain: Path = _write(tmp_path, "pkg/tests/test_plain.py", source)
@@ -235,17 +238,163 @@ def test_a_lone_conftest_outside_any_package_is_looked_in(tmp_path: Path) -> Non
     assert FLAT_FIXED in fixed, fixed
 
 
-def test_one_of_several_conftests_outside_a_package_is_not(tmp_path: Path) -> None:
-    """Nor are any, by a test whose module's name another file has: neither can be told from the other."""
+MORE_CONFTEST: Final = """
+import pytest
+
+
+@pytest.fixture
+def count() -> str:
+    return "a"
+"""
+ROOT_FLAT_CONFTEST: Final = """
+import pytest
+
+
+@pytest.fixture
+def count() -> bytes:
+    return b""
+
+
+@pytest.fixture
+def depth() -> int:
+    return 0
+"""
+DEEP_TEST: Final = "def test_it(count, depth, ratio):\n    n = count\n    d = depth\n    r = ratio\n"
+# The nearest `count`; `ratio`'s `return` isn't known of one of several.
+DEEP_FIXED: Final = "    n: int = count\n    d: int = depth\n    r = ratio\n"
+MORE_FIXED: Final = "    n: str = count\n    r = ratio\n"
+
+
+def test_each_of_several_conftests_outside_a_package_is_looked_in(tmp_path: Path) -> None:
+    """By the tests beside it or under it, the nearest first: each by its directory."""
+    _ = _write(tmp_path, "conftest.py", ROOT_FLAT_CONFTEST)
     _ = _write(tmp_path, "tests/conftest.py", FLAT_CONFTEST)
-    _ = _write(tmp_path, "more/conftest.py", FLAT_CONFTEST)
+    _ = _write(tmp_path, "more/conftest.py", MORE_CONFTEST)
+    beside: Path = _write(tmp_path, "tests/test_beside.py", DEEP_TEST)
+    other: Path = _write(tmp_path, "more/test_other.py", FLAT_TEST)
+    _ = cli.main(["--fix", "-q", "--unsafe-fixes", str(tmp_path)])
+    fixed: str = beside.read_text(encoding="utf-8")
+    assert DEEP_FIXED in fixed, fixed
+    fixed = other.read_text(encoding="utf-8")
+    assert MORE_FIXED in fixed, fixed
+
+
+def test_a_test_whose_modules_name_another_file_has_takes_none(tmp_path: Path) -> None:
+    """Neither file can be told from the other by its module's name."""
+    _ = _write(tmp_path, "tests/conftest.py", FLAT_CONFTEST)
     beside: Path = _write(tmp_path, "tests/test_beside.py", FLAT_TEST)
+    _ = _write(tmp_path, "more/test_beside.py", "")
     catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
     assert fixtures.visible(catalog, beside, {}) == {}
-    _ = _write(tmp_path, "more/conftest.py", "")
-    _ = (tmp_path / "more" / "conftest.py").rename(tmp_path / "more" / "test_beside.py")
-    catalog = project.index(sorted(tmp_path.rglob("*.py")))
-    assert fixtures.visible(catalog, beside, {}) == {}
+
+
+# pytest, as installed: its public package re-exports what its private one defines, fixtures included.
+PYTEST_SITE: Final = {
+    "pytest/py.typed": "",
+    "pytest/__init__.py": """
+        from _pytest.capture import CaptureFixture as CaptureFixture
+        from _pytest.fixtures import fixture as fixture
+        from _pytest.logging import LogCaptureFixture as LogCaptureFixture
+        from _pytest.tmpdir import TempPathFactory as TempPathFactory
+    """,
+    "_pytest/py.typed": "",
+    "_pytest/__init__.py": "",
+    "_pytest/fixtures.py": "def fixture(function=None):\n    return function\n",
+    "_pytest/capture.py": """
+        from collections.abc import Generator
+        from typing import AnyStr, Generic
+
+        from .fixtures import fixture
+
+
+        class CaptureFixture(Generic[AnyStr]):
+            def close(self) -> None: ...
+
+
+        @fixture
+        def capsys() -> Generator[CaptureFixture[str]]:
+            yield CaptureFixture()
+    """,
+    "_pytest/logging.py": """
+        from collections.abc import Generator
+
+        from .fixtures import fixture
+
+
+        class LogCaptureFixture:
+            @property
+            def text(self) -> str:
+                return ""
+
+
+        @fixture
+        def caplog() -> Generator[LogCaptureFixture]:
+            yield LogCaptureFixture()
+    """,
+    "_pytest/tmpdir.py": """
+        from collections.abc import Generator
+        from pathlib import Path
+
+        from .fixtures import fixture
+
+
+        class TempPathFactory:
+            pass
+
+
+        @fixture
+        def tmp_path() -> Generator[Path]:
+            yield Path()
+    """,
+}
+OWN_TEST: Final = """
+import pytest
+
+
+def test_it(capsys, caplog, tmp_path, count):
+    c = capsys
+    text = caplog.text
+    p = tmp_path
+    n = count
+"""
+OWN_FIXED: Final = (
+    "    c: pytest.CaptureFixture[str] = capsys\n",  # through the module the file imports
+    "    text: str = caplog.text\n",
+    "    p: Path = tmp_path\n",  # a standard-library class's: without the index
+    "    n: int = count\n",
+)
+SHADOWING: Final = "import pytest\n\n\n@pytest.fixture\ndef capsys() -> int:\n    return 1\n"
+SHADOWED_FIXED: Final = "    c: int = capsys\n"
+BARE_FIXED: Final = (
+    "    from pytest import CaptureFixture\n",
+    "    c: CaptureFixture[str] = capsys\n",
+    "    text: str = caplog.text\n",
+)
+
+
+def test_pytests_own_fixtures_are_read_from_its_installed_modules(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Where a checked file imports `pytest`; a fixture of the project's own of the name is the one taken."""
+    site: Path = tmp_path / "site"
+    name: str
+    text: str
+    for name, text in PYTEST_SITE.items():
+        _ = _write(site, name, text)
+    monkeypatch.setattr(sys, "path", [str(site), *sys.path])
+    root: Path = tmp_path / "project"
+    _ = _write(root, "tests/conftest.py", FLAT_CONFTEST)
+    tests: Path = _write(root, "tests/test_own.py", OWN_TEST)
+    bare: Path = _write(root, "tests/test_bare.py", OWN_TEST.replace("import pytest\n", ""))
+    shadowed: Path = _write(root, "tests/test_shadowed.py", SHADOWING + OWN_TEST.lstrip().partition("\n")[2])
+    _ = cli.main(["--fix", "-q", "--unsafe-fixes", str(root)])
+    fixed: str = tests.read_text(encoding="utf-8")
+    assert all(line in fixed for line in OWN_FIXED), fixed
+    fixed = bare.read_text(encoding="utf-8")
+    assert all(line in fixed for line in BARE_FIXED), fixed
+    fixed = shadowed.read_text(encoding="utf-8")
+    assert SHADOWED_FIXED in fixed, fixed
 
 
 PATH_CONFTEST: Final = """

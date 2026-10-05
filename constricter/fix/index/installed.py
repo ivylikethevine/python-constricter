@@ -25,13 +25,14 @@ from pathlib import Path
 from typing import Final, cast
 
 from constricter import __version__
-from constricter.fix.index.modules import STUB, SUFFIX, Index, Module, indexed, read
+from constricter.fix.index.modules import STUB, SUFFIX, Index, Module, read
 
 LIMIT: Final = 2000  # the most installed modules one run reads
 _HOPS: Final = 5  # re-exports followed to a type variable
 _STUBS: Final = "-stubs"
 _TYPED: Final = "py.typed"
 _PACKAGE: Final = "__init__"
+_UNDERSCORE: Final = "_"
 _VIRTUAL_ENV: Final = "VIRTUAL_ENV"
 _STDLIB: Final = sys.stdlib_module_names
 _CACHE_HOME: Final = "XDG_CACHE_HOME"
@@ -89,15 +90,17 @@ def with_installed(catalog: Index, search: Sequence[Path]) -> Index:
             continue
         seen.add(name)
         found[name] = module
-        top: str = name.partition(".")[0]
-        # Walked as it grows: the modules this one re-exports from.
+        top: str = name.partition(".")[0].lstrip(_UNDERSCORE)
+        # Walked as it grows: the modules this one re-exports from, its package's private twin's
+        # too (`pytest`'s, from `_pytest`).
         wanted.extend(  # ruff: ignore[loop-iterator-mutation]
-            other for other in _imported([module]) if other.partition(".")[0] == top
+            other for other in _imported([module]) if other.partition(".")[0].lstrip(_UNDERSCORE) == top
         )
     if not found:
         return catalog
     every: dict[str, Module] = {**catalog.modules, **found}
-    return indexed([*catalog.modules.values(), *(_generics(every, module) for module in found.values())])
+    every.update((name, _generics(every, module)) for name, module in found.items())
+    return catalog._replace(modules=every, names=sorted(every))  # the checked files' repeated names kept
 
 
 def _generics(modules: Mapping[str, Module], module: Module) -> Module:

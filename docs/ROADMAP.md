@@ -101,7 +101,7 @@
   class's variable by its literal value (`member`: under plain classes, test cases and builtin
   exception or value classes), an unannotated parameter by what every call in the checked files
   passes it (`callers`, builtin types alone: callers' classes too would add 10 fixes on the
-  corpora), a test's by the pytest fixture it names (its `conftest.py`s', or pytest's own
+  corpora), a test's by the pytest fixture it names (its `conftest.py`s', or pytest's own: `capsys`,
   `tmp_path`) or its `parametrize` literals (`fixture`), and what rests on any of these. **Fix
   levels**: every mechanism has a stable id (`--show-fixes`, JSON), and `fix-select`, `fix-ignore`
   and `unsafe-fix-select` choose which apply.
@@ -310,18 +310,20 @@ fix.
    find nothing new after `--fix --unsafe-fixes`. About 6 hours, for about 2% (some 5,000 guesses).
 2. **Pytest fixtures, past the ones a test's files define.** A test's parameter named as a fixture
    is typed by what the fixture returns or yields: its module's, a `conftest.py`'s of a package
-   above it, or the one `conftest.py` outside any package, in its directory or above; pytest's own
-   `tmp_path` is a `Path`; and one `parametrize` gives literals by their type. Guesses (`fixture`).
-   On pandas's `tests/frame` the fixtures were about 60 more fixes of 4,492 bindings with none, and
-   on its `tests/io` `tmp_path`, with a path's `/`, 43 more of 4,505 fixes; the whole of pandas,
-   whose 10,873 such bindings name a parameter, hasn't run. Left: one of several `conftest.py`s
-   outside a package (the index knows a module by its name, not where it is), pytest's fixtures of
-   its own classes (`capsys`, `monkeypatch`, `caplog`: an installed package's, whose members the
-   index reads), a `parametrize` on the test's class or with its names or cases held in a variable,
-   a fixture that returns `request.param` (238 of pandas's 905), and the methods of a fixture's
-   class the test file doesn't import itself. Done when two directories' `conftest.py`s each type
-   the tests beside them, and `out = capsys.readouterr().out` is a `str`. About 5 hours, for perhaps
-   0.3% (some 800 guesses).
+   above it or of a directory outside any, the nearest first, or pytest's own, read from its
+   installed modules (`capsys`, `monkeypatch`, `caplog`; `tmp_path` is a `Path`), its class's
+   members known whether or not the test file imports it; and one `parametrize` gives literals by
+   their type. Guesses (`fixture`). On pandas's `tests/frame` the fixtures were about 60 more fixes
+   of 4,492 bindings with none, and on its `tests/io` `tmp_path`, with a path's `/`, 43 more of
+   4,505 fixes; the whole of pandas, whose 10,873 such bindings name a parameter, hasn't run. Left:
+   `out = capsys.readouterr().out` (pytest's `CaptureResult` is private to `_pytest`, so no test can
+   name the call's type, and defined under an `if`, where the index reads no class; nor is a generic
+   installed class's attribute bound by its receiver), the `return`s of an unannotated fixture in
+   one of several `conftest.py`s outside a package (the index keeps what a module returns by its
+   name), a test file whose name another has, a `parametrize` on the test's class or with its names
+   or cases held in a variable, and a fixture that returns `request.param` (238 of pandas's 905).
+   Done when `out = capsys.readouterr().out` is a `str`. About 4 hours, for perhaps 0.2% (some 500
+   guesses).
 3. **More context managers.** Of the 4,218 `with` targets with no fix, what's left is the tables' to
    hold (`stdlib_tables/`): `self.assertRaises(...)` and its kin (typeshed's class for them is
    private), `tarfile.open`, `tempfile.TemporaryDirectory()` and `shelve.open` (a constructor whose
@@ -351,11 +353,16 @@ fix.
    method's alias was left alone on purpose). Write the `Callable[[A], R]` its signature declares,
    where it declares all of it. Done when `parse = json.loads` and a declared method's alias are
    typed, and an undeclared one isn't. About 4 hours, for about 0.3% (some 700 fixes).
-6. **Awaited calls.** `await` types only a call to one of the module's own `async def`s: not a
-   method's (`await self.fetch()`), another checked file's, nor the standard library's
-   (`await asyncio.open_connection(...)`, `await reader.readline()`), which the tables don't hold.
-   464 bindings with no fix are an `await`, most of them in `asyncio` and its tests. Done when
-   `line = await reader.readline()` is a `bytes`. About 6 hours, for about 0.2% (some 400 fixes).
+6. **Awaited calls, the standard library's.** `await` types only a call to one of the module's own
+   `async def`s. Counted on the Python 3 corpora: of the 313 names bound to an `await`, 4 await a
+   method whose class, in the file, declares its return, and one a function of the module's; 39
+   await a method or function defined with no return declared, 53 an `asyncio` function
+   (`asyncio.gather(...)`, `asyncio.wait_for(...)`), 129 a method of another value
+   (`await reader.readline()`, `await request.auser()`), 55 an imported or local name, and 23 no
+   call at all. So methods and other checked files' functions aren't worth building alone: what's
+   left is the standard library's coroutines, which the tables don't hold as such
+   (`stdlib_tables/`). Done when `line = await reader.readline()` is a `bytes`. About 6 hours, for
+   under 0.1% (some 150 fixes).
 7. **An unannotated method's type, in another file.** A module's functions' `return`s type their
    calls in the files importing them; its classes' methods' don't: 132 `self.method()` bindings
    whose base is another file's and whose `return`s give one type (Twisted's `self.mktemp()`), and
@@ -454,8 +461,11 @@ fix.
    truth tests through a function's branches, and offer the narrowed type where every path to the
    read agrees. Counted: of the 13,972 bindings with no fix that copy a name or an attribute in a
    function, 424 follow a test of what they copy in it: `is None` (159), `isinstance` (148) or its
-   truth (117); 16 more are guesses now. Done when `conn = self.conn` after the `return` is a
-   `Connection`. About 12 hours, for about 0.2% (some 400 fixes).
+   truth (117); 16 more are guesses now. On sqlalchemy, at most 168 reads of an `X | None` are
+   withheld, 72 of them (68 an attribute's) in a function with no function or lambda inside that
+   tests nothing of what they read before it: those a checker types as declared, with or without the
+   annotation. Done when `conn = self.conn` after the `return` is a `Connection`. About 12 hours,
+   for about 0.2% (some 400 fixes).
 6. **The project's own generic classes.** A generic class the checked files define is skipped whole:
    its methods' returns and attributes depend on how it's parameterised (sqlalchemy's `Mapped[T]`,
    `Select[T]`). Bind its type parameters by the receiver's arguments, as a standard-library or

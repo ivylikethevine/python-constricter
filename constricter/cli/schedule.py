@@ -37,12 +37,17 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
       It.
 
     """
-    imported: project.Imported = project.imported(modules, path)
+    seeded: dict[str, Guarded] = {}
+    seeds: dict[str, Passed] = fixtures.visible(modules, path, seeded)
+    imported: project.Imported = project.imported(
+        modules,
+        path,
+        (seeded, fixtures.attributes(seeds)),
+    )
     side_calls: dict[str, str]
     guarded: dict[str, Guarded]
     side_calls, guarded = sides.calls(modules, path, imported.guarded)
     methods: stubbed.Methods = stubbed.methods(modules, path, guarded)
-    seeds: dict[str, Passed] = fixtures.visible(modules, path, guarded)
     hints: tuple[Hints, ...] = offers.vetted(modules, path, hinted.get(path, ()))
     # What only a hint can name: the classes the file imports for type checking alone.
     own: offers.Own = offers.own(modules, path) if hints else offers.Own()
