@@ -152,7 +152,9 @@ in a function or module body:
   widen to the widest: `int`, then `float`): that type. A guess, since a subclass or outside code
   may assign it too; an attribute the class body binds, stored any other way (`+=`, an unpacking,
   `del`, a nested function's `self.x = ...`), or assigned a local bound more than once, is left
-  alone;
+  alone. One bound to an empty container (`self.items = []`) is typed by what the class's own
+  methods add to it, as a function's is below (`self.items.append(row)` in another method: a
+  `list[Row]`), with any other value it's assigned; every read of it in the class counts as a use;
 - with `--unsafe-fixes`, a plain class's variable (`limit = 3` in its body), bound once there to a
   literal or a display of them, and what reads it (`self.limit`, `cls.limit`, or `limit` on any
   value typed as the class or one inheriting it): the value's type. A plain class is defined once in
@@ -207,7 +209,9 @@ in a function or module body:
   then only adds to, every addition typed alike (`append`, `insert`, `add`, `setdefault`,
   `x[k] = v`; `extend` and `update` with one argument, by its elements, or a `dict`'s keys and
   values): `list[T]`, `set[T]` or `dict[K, V]`. A guess, since something else could add to it; any
-  use that could (passing it to another function, aliasing it, a nested function) leaves it alone;
+  use that could (passing it to another function, aliasing it, a nested function) leaves it alone,
+  but not one that only reads it (`x[0]`, `len(x)`, `sep.join(x)`, `x + more`, `[*x]`,
+  `return x, n`);
 - a value computed from such: `a if c else b` when both sides agree, and `a if c else None` as
   `T | None` (not where `c` tests `a`, which it narrows); `a or b` and `a and b` with operands of
   one type, `or` dropping a `None` before its last operand (`name or "x"` is a `str` for a

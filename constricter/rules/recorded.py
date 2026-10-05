@@ -1,20 +1,23 @@
 # SPDX-License-Identifier: MIT
-"""What a finished function's scope says its `return`s, `yield`s and `self.x = value`s give.
+"""What a finished function's scope says its `return`s, `yield`s and stores to `self`'s attributes give.
 
 Recorded for `constricter.fix.values.returned`, which types the function's calls and its class's attributes
 from them.
 """
 
 import ast
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from constricter.fix.core.known import ImportPlan, Inference
-from constricter.fix.values import returned
+from constricter.fix.values import fills, returned
 from constricter.fix.values.inference import RETURNED, inference, looped
 from constricter.fix.values.targets import iterated
 from constricter.rules.scope import Scope, guesses_in
 from constricter.rules.syntax import FunctionDef, own_nodes
 from constricter.rules.walked import walk
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 _GENERATOR: Final = "collections.abc.Generator"
 
@@ -49,6 +52,42 @@ def assigned(scope: Scope) -> list[returned.Assigned]:
         (attr, (None, frozenset()) if _rebound_in(scope, value) else _recorded(scope, value))
         for attr, value in scope.inferred.assigned
     ]
+
+
+def used(scope: Scope, func: FunctionDef, module: ast.Module) -> list[returned.Used]:
+    """Record a finished method's reads of the attributes its class binds to an empty container.
+
+    Each as `fills.stored` judges it; what one adds is typed as an assigned value is (see `assigned`).
+
+    Returns:
+      Each attribute, and what the read adds to it.
+
+    """
+    kinds: Mapping[str, str]
+    if not (kinds := returned.empties(module, func)):
+        return []
+    return [
+        (attr, _added(scope, use, kinds[attr]) if isinstance(use, fills.Fill) else (() if use else None))
+        for attr, use in fills.stored(func.body, kinds)
+    ]
+
+
+def _added(scope: Scope, use: fills.Fill, kind: str) -> returned.Added:
+    """Record what one fill of an empty container's attribute adds to it.
+
+    Returns:
+      Each part's inference and guesses (a `dict`'s key and value, any other's element).
+
+    """
+    values: list[ast.expr] = (
+        iterated(use.value) if use.spread else [part for part in (use.key, use.value) if part is not None]
+    )
+    if any(_rebound_in(scope, value) for value in values):
+        return ((None, frozenset()),)
+    origins: frozenset[str] = guesses_in(scope, values)[1]
+    return tuple(
+        (part, origins) for part in fills.added(use, kind, scope.settings.known, scope.inferred.types)
+    )
 
 
 def _recorded(scope: Scope, value: ast.expr) -> returned.Recorded:

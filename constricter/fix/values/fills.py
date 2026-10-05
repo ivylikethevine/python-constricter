@@ -4,13 +4,17 @@
 A guess (`--unsafe-fixes`): only this function's own uses are seen, and something else could still
 add to it. So every use of the name must be one of a few that can't: a fill whose value's type is
 known (`append`, `insert`, `add`, `setdefault`, `x[k] = v`; `extend` and `update`, by their one
-argument's elements), a read (`x[k]`, `x.get(k)`, iterating it, `len(x)`, `", ".join(x)`, returning
-it), or one that only shrinks or reorders it (`pop`, `sort`, `clear`). Anything else (passing it to
-another function, aliasing it, a nested function that sees it) leaves it alone.
+argument's elements), a read (`x[k]`, `x.get(k)`, iterating it, `len(x)`, `", ".join(x)`,
+`x + more`, `[*x]`, returning it, alone or in a tuple), or one that only shrinks or reorders it
+(`pop`, `sort`, `clear`). Anything else (passing it to another function, aliasing it, a nested
+function that sees it) leaves it alone.
+
+An instance attribute bound to one (`self.items = []`) is judged the same way, each read of it in its
+class's methods a use (`stored`): `constricter.fix.values.returned` types it from them all.
 """
 
 import ast
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from typing import Final, NamedTuple
 
 from constricter.fix.core.known import Inference, Known
@@ -44,7 +48,7 @@ _PURE: Final = frozenset(
 _JOIN: Final = "join"
 
 
-class _Fill(NamedTuple):
+class Fill(NamedTuple):
     """One addition: its key (a `dict`'s), and its value.
 
     `spread`: the value isn't what's added, but holds it: its elements (`extend`), or a `dict`'s
@@ -123,18 +127,39 @@ def filled(
     """
     if name in found.nested:
         return None
-    fills: list[_Fill] = []
+    fills: list[Fill] = []
     node: ast.Name
     for node in found.names.get(name, []):
-        fill: _Fill | bool
+        fill: Fill | bool
         if (fill := _use(node, kind, found.parents)) is False:
             return None
-        if isinstance(fill, _Fill):
+        if isinstance(fill, Fill):
             fills.append(fill)
     return _typed(fills, kind, known, declared) if fills else None
 
 
-def _use(node: ast.Name, kind: str, parents: Mapping[int, ast.AST]) -> _Fill | bool:
+def stored(body: Sequence[ast.stmt], kinds: Mapping[str, str]) -> Iterator[tuple[str, Fill | bool]]:
+    """Judge each read of `self`'s attributes bound to an empty container, in one method's body.
+
+    `kinds`: each such attribute's kind. A nested function's or lambda's reads aren't judged.
+
+    Yields:
+      The attribute, and its use as `filled` judges a name's: a fill, `True` for one that adds
+      nothing, `False` for one that might add something unseen.
+
+    """
+    parents: dict[int, ast.AST] = {}
+    node: ast.AST
+    attr: str
+    for node in own_nodes(body, parents):
+        match node:
+            case ast.Attribute(value=ast.Name(id="self"), attr=attr, ctx=ast.Load()) if attr in kinds:
+                yield attr, _use(node, kinds[attr], parents)
+            case _:
+                pass
+
+
+def _use(node: ast.expr, kind: str, parents: Mapping[int, ast.AST]) -> Fill | bool:
     """Judge one read of the container.
 
     Returns:
@@ -151,15 +176,16 @@ def _use(node: ast.Name, kind: str, parents: Mapping[int, ast.AST]) -> _Fill | b
         case ast.Subscript(ctx=ast.Store()):
             return _stored(parent, grandparent, kind)
         case _:
-            return _reads(parent)
+            return _reads(parent, grandparent)
 
 
-def _reads(parent: ast.AST | None) -> bool:
-    """Judge a use by the node it's in: one that can't add to the container.
+def _reads(parent: ast.AST | None, grandparent: ast.AST | None) -> bool:
+    """Judge a use by the node it's in (and the one that's in): one that can't add to the container.
 
     Returns:
-      Whether it only reads it: indexed, compared, returned, iterated, tested, formatted, or passed to
-      a builtin that doesn't change it (`len`, `sorted`, ...) or to `str.join`.
+      Whether it only reads it: indexed, compared, returned (in a tuple too), iterated, tested,
+      formatted, an operand (`x + more`), unpacked (`[*x]`), or passed to a builtin that doesn't
+      change it (`len`, `sorted`, ...) or to a `join`.
 
     """
     func: str
@@ -174,17 +200,22 @@ def _reads(parent: ast.AST | None) -> bool:
             | ast.BoolOp()
             | ast.UnaryOp(op=ast.Not())
             | ast.FormattedValue()
+            | ast.BinOp()
+            | ast.Starred()
+            | ast.YieldFrom()
         ):
             return True
         case ast.Call(func=ast.Name(id=func)):
             return func in _PURE
-        case ast.Call(func=ast.Attribute(value=ast.Constant(value=str()), attr=attr)):
+        case ast.Call(func=ast.Attribute(attr=attr)):
             return attr == _JOIN
+        case ast.Tuple():
+            return isinstance(grandparent, ast.Return)
         case _:
             return False
 
 
-def _method(attr: str, call: ast.Call, kind: str) -> _Fill | bool:
+def _method(attr: str, call: ast.Call, kind: str) -> Fill | bool:
     """Judge a method called on the container.
 
     Returns:
@@ -194,13 +225,13 @@ def _method(attr: str, call: ast.Call, kind: str) -> _Fill | bool:
     """
     position: int | None = _ADDERS[kind].get(attr)
     if position is not None and not call.keywords and len(call.args) == position + 1:
-        return _Fill(call.args[0] if kind == _DICT else None, call.args[position])
+        return Fill(call.args[0] if kind == _DICT else None, call.args[position])
     if attr == _SPREADERS[kind] and not call.keywords and len(call.args) == 1:
-        return _Fill(None, call.args[0], spread=True)
+        return Fill(None, call.args[0], spread=True)
     return attr in _READERS
 
 
-def _stored(target: ast.Subscript, statement: ast.AST | None, kind: str) -> _Fill | bool:
+def _stored(target: ast.Subscript, statement: ast.AST | None, kind: str) -> Fill | bool:
     """Judge `x[k] = v`: a `dict`'s fill (key and value), a `list`'s element replaced.
 
     Returns:
@@ -213,20 +244,20 @@ def _stored(target: ast.Subscript, statement: ast.AST | None, kind: str) -> _Fil
         and kind != _SET
         and not isinstance(target.slice, ast.Slice)
     ):
-        return _Fill(target.slice if kind == _DICT else None, statement.value)
+        return Fill(target.slice if kind == _DICT else None, statement.value)
     return False
 
 
-def _typed(fills: Sequence[_Fill], kind: str, known: Known, declared: Mapping[str, str]) -> Inference | None:
+def _typed(fills: Sequence[Fill], kind: str, known: Known, declared: Mapping[str, str]) -> Inference | None:
     """Type the container from its fills, if they agree.
 
     Returns:
       The inference, or `None` if a key or value isn't typed, or they differ.
 
     """
-    added: list[list[Inference | None]] = [_added(fill, kind, known, declared) for fill in fills]
-    rows: list[list[Inference]] = [[part for part in each if part is not None] for each in added]
-    if [len(row) for row in rows] != [len(each) for each in added]:
+    each: list[list[Inference | None]] = [added(fill, kind, known, declared) for fill in fills]
+    rows: list[list[Inference]] = [[part for part in row if part is not None] for row in each]
+    if [len(row) for row in rows] != [len(row) for row in each]:
         return None
     parts: list[Inference] = [part for row in rows for part in row]
     # A `dict`'s keys, then its values; any other container's elements.
@@ -238,7 +269,7 @@ def _typed(fills: Sequence[_Fill], kind: str, known: Known, declared: Mapping[st
     return Inference(annotation, reason, frozenset({"filled"}).union(*(part.kinds for part in parts)))
 
 
-def _added(fill: _Fill, kind: str, known: Known, declared: Mapping[str, str]) -> list[Inference | None]:
+def added(fill: Fill, kind: str, known: Known, declared: Mapping[str, str]) -> list[Inference | None]:
     """Type what one fill adds: a `dict`'s key and value, any other container's element.
 
     Returns:

@@ -421,7 +421,7 @@ def _function_scopes(
             table.checked(
                 func,
                 recorded.returns(scope, func, table.module) if settled else [],
-                recorded.assigned(scope) if settled else [],
+                (recorded.assigned(scope), recorded.used(scope, func, table.module)) if settled else ([], []),
             )
         scopes += _function_scopes(nested, scope.settings, table)
     return scopes
@@ -612,7 +612,7 @@ def _returned(
       checked with them, and what its own return.
 
     """
-    found: Returned = returned.returned(tree, table.recorded, table.assigned)
+    found: Returned = returned.returned(tree, table.recorded, table.assigned, table.used)
     settings = replace(settings, known=replace(settings.known, returned=returned.joined(imported, found)))
     functions: list[tuple[Scope, FunctionDef]] = [
         (scope, scope.kind.function) for scope in scopes if scope.kind.function is not None
@@ -632,7 +632,7 @@ def _returned(
         if not again:
             break
         functions = _checked_again(tree, functions, again, settings, table)
-        latest: Returned = returned.returned(tree, table.recorded, table.assigned)
+        latest: Returned = returned.returned(tree, table.recorded, table.assigned, table.used)
         typed: bool = latest != found and returned.called(tree, tree, latest)  # even if only a body calls one
         # Attributes typed anew: what reads one, of any value, may be typed now.
         newly: set[str] = returned.retyped(found, latest)
@@ -687,6 +687,7 @@ def _checked_again(
     _finished(tree, [scope for scope, _ in fresh])
     table.recorded.update((id(func), recorded.returns(scope, func, tree)) for scope, func in fresh)
     table.assigned.update((id(func), recorded.assigned(scope)) for scope, func in fresh)
+    table.used.update((id(func), recorded.used(scope, func, tree)) for scope, func in fresh)
     return [(renewed.get(id(func), scope), func) for scope, func in functions]
 
 

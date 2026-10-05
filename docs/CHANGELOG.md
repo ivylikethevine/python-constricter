@@ -6,6 +6,13 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix --unsafe-fixes` types an instance attribute bound to an empty container by what its class's
+  own methods add to it: `self.items = []` in `__init__` and `self.items.append(row)` in another
+  method make `for item in self.items` a loop over `Row`s. Guesses (fix kinds `assigned` and
+  `filled`).
+- `--fix --unsafe-fixes`: an empty container is still typed by its fills where it's also an operand
+  (`parts + more`), unpacked (`[*parts]`, `f(*parts)`), passed to any `join`, or returned in a tuple
+  (`return parts, count`).
 - `--fix --unsafe-fixes` types what a test computes from the parameters pytest gives it: one named
   as a fixture its module or a `conftest.py` of a package above it defines, by what the fixture
   returns or yields, and one `@pytest.mark.parametrize` gives literals of one type.
