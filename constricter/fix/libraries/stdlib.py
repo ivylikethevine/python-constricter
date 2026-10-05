@@ -49,6 +49,11 @@ OVERLOADS: Final = cast("dict[str, list[Variant]]", _table("overloads"))
 # Classes, and functions (constructors, classmethods) returning one: typed by that class's dotted
 # path, spelled (and imported, if it must be) the way the module can.
 CLASSES: Final = cast("dict[str, str]", _table("classes"))
+# The `pathlib` classes: each one's `/` joins another part onto it.
+_PATHS: Final = frozenset(
+    f"pathlib.{name}"
+    for name in ("Path", "PosixPath", "PurePath", "PurePosixPath", "PureWindowsPath", "WindowsPath")
+)
 _ALIASES: Final = cast("Mapping[str, str]", _table("aliases"))  # a class's other public paths, to its own
 # Each class's methods' returns and attributes' types apart from its public ancestors' (`_BASES`),
 # `None` where it hides one of theirs: `_member` resolves the rest through them.
@@ -424,6 +429,16 @@ def evaluable(annotation: str, known: Known) -> bool:
         if path in _TYPE_PARAMETERS and path not in _SUBSCRIPTABLE:
             return False
     return True
+
+
+def joins_path(left: str, right: str | None, known: Known) -> bool:
+    """Check whether `left / right` joins a path: a `pathlib` class's `/` gives its own class back.
+
+    Returns:
+      Whether `left` is a `pathlib` path class's annotation, and `right` a `str`'s or the same.
+
+    """
+    return right in {"str", left} and _class_path(left, known) in _PATHS
 
 
 def _class_path(receiver: str, known: Known) -> str | None:

@@ -934,7 +934,7 @@ def with_returned(catalog: Index, found: Mapping[str, Returns]) -> Index:
     for name, returns in found.items():
         if name in modules:
             modules[name] = modules[name]._replace(returned=returns)
-    return Index(modules, catalog.names)
+    return catalog._replace(modules=modules)
 
 
 def needs(catalog: Index, module: Module) -> set[str]:

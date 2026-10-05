@@ -6,8 +6,9 @@ finds each in the test's module, then in the `conftest.py` of each package above
 first. A fixture's value is what its function returns, or yields: its declared return, or the one
 its `return`s give (see `constricter.fix.values.returned`). A parameter so typed is a guess
 (`fixture`): a plugin's fixture, or one a `conftest.py` out of the checked files defines, may be
-the one pytest takes. A `conftest.py` in a directory that isn't a package isn't looked in: its
-module's name says nothing of where it is.
+the one pytest takes. A `conftest.py` in a directory that isn't a package is looked in last, if it's
+the only checked file of that name and the test's directory, or its top package's, is its own or
+under it: a module's name says nothing of where it is, so one of several can't be told apart.
 """
 
 import ast
@@ -29,15 +30,33 @@ def providers(catalog: Index, name: str) -> list[Module]:
     """Find the modules whose fixtures module `name`'s tests can take, the nearest first.
 
     Returns:
-      It, then its packages' `conftest`s, those `catalog` has.
+      It, then its packages' `conftest`s, those `catalog` has, then the one outside any package
+      (see `_above`).
 
     """
     parts: list[str] = name.split(_DOT)
     names: list[str] = [
         name,
         *(_DOT.join([*parts[:depth], _CONFTEST]) for depth in range(len(parts) - 1, 0, -1)),
+        *([_CONFTEST] if _above(catalog, name) else []),
     ]
     return [catalog.modules[each] for each in dict.fromkeys(names) if each in catalog.modules]
+
+
+def _above(catalog: Index, name: str) -> bool:
+    """Check whether the `conftest.py` outside any package is one module `name`'s tests take fixtures from.
+
+    Returns:
+      Whether it's the only checked file named so, in the directory of `name`'s file, or of its top
+      package, or in one above it.
+
+    """
+    target: Module | None = catalog.modules.get(name)
+    flat: Module | None = catalog.modules.get(_CONFTEST)
+    if target is None or flat is None or not (target.folder and flat.folder) or _CONFTEST in catalog.repeated:
+        return False
+    top: Path = Path(target.folder).joinpath(*[".."] * name.count(_DOT)).resolve()
+    return Path(flat.folder) in {top, *top.parents}
 
 
 def needed(catalog: Index, name: str) -> set[str]:
@@ -62,6 +81,8 @@ def visible(catalog: Index, path: Path, guarded: dict[str, Guarded]) -> dict[str
     """
     target: Module | None
     if path.suffix != SUFFIX or (target := catalog.modules.get(project.module_name(path))) is None:
+        return {}
+    if target.name in catalog.repeated:  # another file's module, maybe: its `conftest.py`s aren't this one's
         return {}
     found: dict[str, Passed | None] = {}
     module: Module

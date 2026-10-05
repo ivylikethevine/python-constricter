@@ -6,6 +6,11 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix --unsafe-fixes` takes a test's fixtures from a `conftest.py` outside any package too (most
+  projects' `tests/conftest.py`), for the tests beside it and under it, where it's the only checked
+  file of that name; and pytest's own `tmp_path` is a `Path`. Guesses (fix kind `fixture`).
+- `--fix` types a `pathlib` path joined by `/`: `root / "data"` is `root`'s class (`Path`), with a
+  `str` or another path on its right.
 - `--fix --unsafe-fixes` types an instance attribute bound to an empty container by what its class's
   own methods add to it: `self.items = []` in `__init__` and `self.items.append(row)` in another
   method make `for item in self.items` a loop over `Row`s. Guesses (fix kinds `assigned` and

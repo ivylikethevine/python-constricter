@@ -110,6 +110,7 @@ class Module(NamedTuple):
     tuples: Mapping[str, str] = {}  # its named tuples' fields (see `targets.named_tuples`)
     # Its top-level pytest fixtures, and whether each is a generator (its value is what it yields).
     fixtures: Mapping[str, bool] = {}
+    folder: str = ""  # a checked file's directory: where pytest looks for the `conftest.py`s above it
 
 
 class Index(NamedTuple):
@@ -117,6 +118,7 @@ class Index(NamedTuple):
 
     modules: dict[str, Module]
     names: list[str]  # modules, sorted by name
+    repeated: frozenset[str] = frozenset()  # the names more than one file has: `modules` has the last
 
 
 @lru_cache(maxsize=65536)  # asked of each checked file a dozen times: its folders are looked at once
@@ -251,8 +253,14 @@ def indexed(found: Iterable[Module | None]) -> Index:
       Each module's name, mapped to what it offers and uses.
 
     """
-    modules: dict[str, Module] = {module.name: module for module in found if module is not None}
-    return Index(modules, sorted(modules))
+    counts: Counter[str] = Counter()
+    modules: dict[str, Module] = {}
+    module: Module | None
+    for module in found:
+        if module is not None:
+            counts[module.name] += 1
+            modules[module.name] = module
+    return Index(modules, sorted(modules), frozenset(name for name, count in counts.items() if count > 1))
 
 
 def read(path: Path, name: str | None = None) -> Module | None:
@@ -310,6 +318,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         partial_methods=own.order.flattened(own.partial_methods),
         tuples=own.tuples,
         fixtures={} if name is not None else _fixtures(tree),
+        folder="" if name is not None else str(path.resolve().parent),
     )
 
 

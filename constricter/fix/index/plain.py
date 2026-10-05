@@ -51,8 +51,8 @@ def settled(catalog: Index, entries: Sequence[str] = ()) -> Index:
         for module in catalog.modules.values()
         for name in module.bases
     }
-    return Index(
-        {
+    return catalog._replace(
+        modules={
             name: module._replace(
                 plain=frozenset(
                     each
@@ -62,7 +62,6 @@ def settled(catalog: Index, entries: Sequence[str] = ()) -> Index:
             )
             for name, module in catalog.modules.items()
         },
-        catalog.names,
     )
 
 

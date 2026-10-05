@@ -196,15 +196,17 @@ in a function or module body:
   those types, then the files calling them, knowing what they now return;
 - with `--unsafe-fixes`, what's computed from a parameter pytest gives a test (a function named
   `test...`) or a fixture. One named as a fixture: its module's own, else the one in the
-  `conftest.py` of the nearest package above it (the CLI only), typed by the fixture's declared
-  return or the one its `return`s give, a generator's by what it yields (`Iterator[Frame]` gives a
-  `Frame`), its class imported for type checking as another file's type is. And one
-  `@pytest.mark.parametrize` gives literals of one type (`"n, s"` with `[(1, "a"), (2, "b")]`): on
-  the function itself, names and cases written out. `def test_copy(float_frame)` types
-  `result = float_frame.copy()`. A guess (`fixture`), since a plugin's fixture of the name, or a
-  `conftest.py` out of the checked files, may be the one pytest takes; not a parameter the test
-  annotates or binds again, nor a `conftest.py` in a directory that isn't a package (its module's
-  name says nothing of where it is);
+  `conftest.py` of the nearest package above it, else in the one `conftest.py` outside any package,
+  if it's in the file's directory (or its top package's) or above (the CLI only), typed by the
+  fixture's declared return or the one its `return`s give, a generator's by what it yields
+  (`Iterator[Frame]` gives a `Frame`), its class imported for type checking as another file's type
+  is; else pytest's own `tmp_path`, a `Path`. And one `@pytest.mark.parametrize` gives literals of
+  one type (`"n, s"` with `[(1, "a"), (2, "b")]`): on the function itself, names and cases written
+  out. `def test_copy(float_frame)` types `result = float_frame.copy()`. A guess (`fixture`), since
+  a plugin's fixture of the name, or a `conftest.py` out of the checked files, may be the one pytest
+  takes; not a parameter the test annotates or binds again, nor one of several `conftest.py`s
+  outside a package, or any for a test file whose name another checked file has (a module's name
+  says nothing of where it is);
 - with `--unsafe-fixes`, an empty container (`[]`, `{}`, `set()`, `list()`, `dict()`) the function
   then only adds to, every addition typed alike (`append`, `insert`, `add`, `setdefault`,
   `x[k] = v`; `extend` and `update` with one argument, by its elements, or a `dict`'s keys and
@@ -217,9 +219,10 @@ in a function or module body:
   one type, `or` dropping a `None` before its last operand (`name or "x"` is a `str` for a
   `name: str | None`); arithmetic on builtin scalars (`n + 1`, `n / 2`, `-n`, `~n`, `"x" * n`,
   `"%s" % n`; never `**`, whose result can change type) and lists (`names + names`, `names * 2`); a
-  list, set or dict comprehension whose elements are known; `sorted`, `list`, `set`, `frozenset` or
-  `tuple` of something whose elements are (a generator expression's too:
-  `list(str(i) for i in ns)`); and `await` of a call to one of the module's `async def`s.
+  `pathlib` path's `/` with a `str` or another path (`root / "x"`: `root`'s class); a list, set or
+  dict comprehension whose elements are known; `sorted`, `list`, `set`, `frozenset` or `tuple` of
+  something whose elements are (a generator expression's too: `list(str(i) for i in ns)`); and
+  `await` of a call to one of the module's `async def`s.
 
 A loop's target (LVA002) and an unpacking's names (LVA001) are declared instead, on a line of their
 own before the statement: `for k, v in ages.items():` with `ages: dict[str, int]` gets `k: str` and
@@ -549,7 +552,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `conditional`   | both sides of `a if c else b`, or one side and `None`                                     |
 | `boolean`       | `a or b` or `a and b`, its operands of one type                                           |
 | `compare`       | a comparison of builtin values (`n < 3`), always a `bool`                                 |
-| `arithmetic`    | arithmetic on builtin scalars and lists                                                   |
+| `arithmetic`    | arithmetic on builtin scalars and lists, and a `pathlib` path's `/`                       |
 | `comprehension` | a list, set or dict comprehension's elements                                              |
 | `builder`       | `sorted`, `list`, `set`, `frozenset` or `tuple` of known elements                         |
 | `await`         | `await` of the module's `async def`                                                       |

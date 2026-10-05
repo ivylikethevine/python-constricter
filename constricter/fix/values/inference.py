@@ -508,7 +508,7 @@ def _arithmetic(value: ast.BinOp, known: Known, declared: Mapping[str, str]) -> 
     Numbers: `/` gives a `float`; `+`, `-`, `*`, `//` and `%` a `float` if either side is one, else
     an `int` (`**` can give a `float` from `int`s, so it's left out). `str` and `bytes`: `+` of two,
     `*` by an `int`, and `%` formatting give the same type back; so do a `list[T]`'s `+` of another
-    and `*` by an `int`.
+    and `*` by an `int`, and a `pathlib` path's `/` with a `str` or another (`stdlib.joins_path`).
 
     Returns:
       The inference, or `None` for any other operator or operand.
@@ -523,6 +523,8 @@ def _arithmetic(value: ast.BinOp, known: Known, declared: Mapping[str, str]) -> 
     op: ast.operator = value.op
     reason: str = "arithmetic on builtin types"
     kinds: frozenset[str] = _kinds(*sides, kind="arithmetic")
+    if isinstance(op, ast.Div) and left is not None and stdlib.joins_path(left, right, known):
+        return Inference(left, "a path joined by `/`", kinds)
     if left in _NUMBER_NAMES and right in _NUMBER_NAMES:
         if isinstance(op, ast.Div):
             return Inference("float", reason, kinds)
