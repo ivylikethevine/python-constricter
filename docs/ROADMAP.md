@@ -425,17 +425,18 @@ fix.
    unannotated parameter. Hints for every local brought 32 new basedpyright errors with 127 fixes on
    pydantic (a checker types the value wider than the run saw); under that rule none, and no fix
    there, and on pandas's `tests/frame/methods` 128 fixes with 29 new errors, each at a later use of
-   a rightly typed name. Left: the parameters' types, which the trace already holds, as `callers`'
-   seeds, so `--fix`'s own inference types what's computed from them (a loop's target, a name bound
-   again, a local taken from another); `self.attr` where the class declares nothing; a type per
-   binding, not per function, by `sys.monitoring`'s line events; a class nested in another, and a
-   generic one by its elements; pytest-xdist's workers; and `corpus_suite.py` tracing each package's
-   suite before its `--fix`, to count the new errors on every corpus. 77% of the bindings with no
-   fix are in functions with no annotations (in the 41 sampled directories, 13,992 of 28,931 are a
-   method call, an attribute, a subscript or a copy of such a value). Done when a traced suite types
-   a loop's target, with no new error at a traced binding itself on any corpus. About 12 hours, for
-   perhaps 5% (some 12,000 guesses): a guess from the one directory measured, and only where tests
-   run the code.
+   a rightly typed name. Measured and not worth building: the parameters' types, which the trace
+   already holds, as `callers`' seeds, for `--fix`'s own inference to type what's computed from
+   them: 47 more fixes there and 125 more errors (a parametrized `str` passed where pandas declares
+   a `Literal`); a class's alone, 4 and 2. Left: `self.attr` where the class declares nothing; a
+   type per binding, not per function, by `sys.monitoring`'s line events (a loop's target, a name
+   bound again); a class nested in another, and a generic one by its elements; pytest-xdist's
+   workers; and `corpus_suite.py` tracing each package's suite before its `--fix`, to count the new
+   errors on every corpus. 77% of the bindings with no fix are in functions with no annotations (in
+   the 41 sampled directories, 13,992 of 28,931 are a method call, an attribute, a subscript or a
+   copy of such a value). Done when a traced suite types a loop's target, with no new error at a
+   traced binding itself on any corpus. About 10 hours, for perhaps 5% (some 12,000 guesses): a
+   guess from the one directory measured, and only where tests run the code.
 2. **Class bodies of plain classes, past literals.** An annotation in a class body makes a
    dataclass's or a model's variable a field, so `--fix` annotates only a plain class's variable
    bound to a literal or a display of them (`member`, a guess). First counted without it, and before
