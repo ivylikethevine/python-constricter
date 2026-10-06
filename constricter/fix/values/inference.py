@@ -18,7 +18,7 @@ from constricter.fix.libraries.library import (
     library_variable,
 )
 from constricter.fix.libraries.opened import opened
-from constricter.fix.values import called, decided, displays, shapes
+from constricter.fix.values import called, decided, displays, operated, shapes
 from constricter.fix.values.members import (
     assigned_attribute,
     class_variable,
@@ -71,11 +71,6 @@ _FACTORIES: Final = frozenset(
 
 
 _NUMBERS: Final = (int, float, complex)
-# The builtin scalars arithmetic on which nothing can overload: numbers, and text.
-_FLOAT: Final = "float"
-_NUMBER_NAMES: Final = frozenset({"bool", "int", _FLOAT})
-_INTEGER_NAMES: Final = frozenset({"bool", "int"})
-_TEXT_NAMES: Final = frozenset({"str", "bytes"})
 # The builtin classes whose comparisons (`==`, `<`, ...) give a real `bool` (`None`'s, by identity).
 _COMPARABLE: Final = frozenset(
     {
@@ -95,11 +90,8 @@ _COMPARABLE: Final = frozenset(
         "None",
     },
 )
-_STDLIB: Final = "stdlib"  # the fix kind of a standard-library call
 RETURNED: Final = "returned"  # the fix kind of an unannotated function's `return`s
 ASSIGNED: Final = "assigned"  # the fix kind of an instance attribute typed by its assignments
-_STR: Final = "str"
-_LIST: Final = "list"
 _SUBSCRIPT: Final = "subscript"  # the fix kind of a subscript
 _GET_ITEM: Final = "__getitem__"  # what types one of a class's instance
 COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
@@ -108,7 +100,6 @@ _Comprehension: TypeAlias = ast.ListComp | ast.SetComp | ast.DictComp | ast.Gene
 _Pair: TypeAlias = tuple[Inference | None, Inference | None]  # a `dict` display's entry: key, value
 # One part of a loop target (see `looped_parts`): its inference, and the values it came from.
 LoopPart: TypeAlias = tuple[Inference | None, list[ast.expr]]
-_WITH_DEFAULT: Final = 2  # `os.environ.get(key, default)`'s arguments
 # Builtins that build a container of their argument's elements, and the type they build.
 CONTAINER_BUILDERS: Final = {
     "sorted": "list[{}]",
@@ -336,7 +327,7 @@ def _from_value(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
         case ast.Call():
             return _computed(value, known, declared) or _from_call(value, known, declared)
         case ast.Name() | ast.Attribute():
-            return library_variable(value, known)
+            return shapes.module_text(value, known) or library_variable(value, known)
         case ast.Subscript():
             return shapes.environment(value, known)
         case ast.List() | ast.Set() | ast.Tuple() | ast.Dict():
@@ -441,6 +432,7 @@ def _computed(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
     """
     name: str
     first: ast.expr
+    keywords: list[ast.keyword]
     match value:
         case ast.IfExp() | ast.BoolOp():
             return _joined(value, known, declared)
@@ -448,8 +440,11 @@ def _computed(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
             return _operated(value, known, declared)
         case ast.ListComp() | ast.SetComp() | ast.DictComp():
             return _comprehension(value, known, declared)
-        case ast.Call(func=ast.Name(id=name), args=[first], keywords=[]) if (
-            name in CONTAINER_BUILDERS and known.is_builtin(name)
+        case ast.Call(func=ast.Name(id=name), args=[first], keywords=keywords) if (
+            name in CONTAINER_BUILDERS
+            and known.is_builtin(name)
+            # `sorted`'s keywords only order what it gives.
+            and (not keywords or (name in SAME_ELEMENTS and iterator_call(value) is not None))
         ):
             found: Inference | None = looped(first, known, declared)
             built: str = CONTAINER_BUILDERS[name]
@@ -512,16 +507,16 @@ def _joined(value: ast.IfExp | ast.BoolOp, known: Known, declared: Mapping[str, 
             "both sides of a conditional",
             _kinds(*sides, kind="conditional"),
         )
-    return shapes.optional(value, lambda part: inference(part, known, declared))
+    return shapes.optional(value, lambda part: inference(part, known, declared)) or shapes.emptied(
+        value,
+        lambda part: inference(part, known, declared),
+    )
 
 
 def _arithmetic(value: ast.BinOp, known: Known, declared: Mapping[str, str]) -> Inference | None:
-    """Infer arithmetic on builtin scalars and lists, whose operators nothing can overload.
+    """Infer arithmetic on builtin values, whose operators nothing can overload (see `operated`).
 
-    Numbers: `/` gives a `float`; `+`, `-`, `*`, `//` and `%` a `float` if either side is one, else
-    an `int` (`**` can give a `float` from `int`s, so it's left out). `str` and `bytes`: `+` of two,
-    `*` by an `int`, and `%` formatting give the same type back; so do a `list[T]`'s `+` of another
-    and `*` by an `int`, and a `pathlib` path's `/` with a `str` or another (`stdlib.joins_path`).
+    And a `pathlib` path's `/` with a `str` or another (`stdlib.joins_path`).
 
     Returns:
       The inference, or `None` for any other operator or operand.
@@ -533,19 +528,11 @@ def _arithmetic(value: ast.BinOp, known: Known, declared: Mapping[str, str]) -> 
     )
     left: str | None = None if sides[0] is None else sides[0].annotation
     right: str | None = None if sides[1] is None else sides[1].annotation
-    op: ast.operator = value.op
-    reason: str = "arithmetic on builtin types"
     kinds: frozenset[str] = _kinds(*sides, kind="arithmetic")
-    if isinstance(op, ast.Div) and left is not None and stdlib.joins_path(left, right, known):
+    if isinstance(value.op, ast.Div) and left is not None and stdlib.joins_path(left, right, known):
         return Inference(left, "a path joined by `/`", kinds)
-    if left in _NUMBER_NAMES and right in _NUMBER_NAMES:
-        if isinstance(op, ast.Div):
-            return Inference("float", reason, kinds)
-        if isinstance(op, ast.Add | ast.Sub | ast.Mult | ast.FloorDiv | ast.Mod):
-            return Inference(_FLOAT if _FLOAT in {left, right} else "int", reason, kinds)
-        return None
-    text: str | None = left if left in _TEXT_NAMES or _root(left or "") == _LIST else None
-    return Inference(text, reason, kinds) if text is not None and _keeps_text(op, text, right) else None
+    text: str | None = operated.operated(value, left, right, known.limits.max_length)
+    return None if text is None else Inference(text, "arithmetic on builtin types", kinds)
 
 
 def _compared(value: ast.Compare, known: Known, declared: Mapping[str, str]) -> Inference | None:
@@ -584,20 +571,6 @@ def _root(annotation: str) -> str:
 
     """
     return annotation.partition("[")[0]
-
-
-def _keeps_text(op: ast.operator, text: str, right: str | None) -> bool:
-    """Check whether `text op right` (`text` a `str`, a `bytes` or a `list[T]`) gives `text` back.
-
-    Returns:
-      Whether it does: `+` of two, `*` by an integer, or a `str`'s or `bytes`'s `%` formatting.
-
-    """
-    if isinstance(op, ast.Add):
-        return right == text
-    if isinstance(op, ast.Mult):
-        return right in _INTEGER_NAMES
-    return isinstance(op, ast.Mod) and text in _TEXT_NAMES
 
 
 def _comprehension(

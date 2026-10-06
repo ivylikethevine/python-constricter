@@ -51,7 +51,12 @@
   tuple), and a `with` target that unpacks; a `@contextmanager` method's `with` target; `getattr`
   and the standard library's functions declared to return `Any`, from `vague` 1; a module's type
   alias, declared `TypeAlias` (`alias`: certain where every Python the module runs on has it); fixes
-  for LVA003 and LVA007. A tuple longer than `max-length` is `tuple[T, ...]`.
+  for LVA003 and LVA007. A tuple longer than `max-length` is `tuple[T, ...]`. A name the module
+  binds once, at its top level, as it's typed there, in every function (`n = LIMIT + 1`,
+  `for name in NAMES`), and the module's own `__file__` and `__name__`; integers' `**` by a literal,
+  shifts and bitwise operators, a tuple's `+` and `*`, a `set`'s operators and a `dict`'s `|`; a
+  fixed-length tuple's part by a literal index; `a or []`; `min` and `max` of an `int` and a
+  `float`; `await` of a task held in a name.
 - **The standard library, from typeshed**: tables generated from the stubs basedpyright bundles when
   the package is built (`stdlib_tables/`, see [Project](#project)), read as Linux, macOS and Windows
   and Python 3.11 to 3.14 see them, into `constricter/fix/tables/` (one JSON file a table, an entry
@@ -367,11 +372,10 @@ fix.
    `await asyncio.gather(a(), b())`), as is what a coroutine's call gives a task or a run function
    (`asyncio.create_task(fetch())`, `asyncio.run(main())`) and an `async with`'s target. Left: a
    generic class's own coroutine (`await queue.get()`), `asyncio.ensure_future` (its overloads take
-   a future and an awaitable alike), a task or a future held in a name and awaited later
-   (`await task`), and a project's own method or another checked file's function (39 of the 313
-   names bound to an `await` on the Python 3 corpora await one with no return declared). Done when
-   `item = await queue.get()` on an `asyncio.Queue[Item]` is an `Item`. About 4 hours, for under
-   0.1% (some 100 fixes).
+   a future and an awaitable alike), and a project's own method or another checked file's function
+   (39 of the 313 names bound to an `await` on the Python 3 corpora await one with no return
+   declared). Done when `item = await queue.get()` on an `asyncio.Queue[Item]` is an `Item`. About 4
+   hours, for under 0.1% (some 100 fixes).
 7. **An unannotated method's type, in another file.** A module's functions' `return`s type their
    calls in the files importing them; its classes' methods' don't: 132 `self.method()` bindings
    whose base is another file's and whose `return`s give one type (Twisted's `self.mktemp()`), and
@@ -444,12 +448,14 @@ fix.
    dataclass's or a model's variable a field, so `--fix` annotates only a plain class's variable
    bound to a literal or a display of them (`member`, a guess). First counted without it, and before
    a builtin base counted as plain: 15,336 bindings with no fix (12,012 now), 3,070 of them in a
-   class with no base and no decorator (1,421 bound to a literal) and 2,456 under a test case's.
-   Left: a value that names something (a call, a copy, an attribute), a name the body binds more
-   than once, and a variable a test case's own class declares otherwise (`maxDiff = 80` under
-   `unittest.TestCase`, typeshed's `int | None`, is still typed `int`: the tables' attributes would
-   say). Done when the corpus packages' test suites and type checkers find nothing new after
-   `--fix --unsafe-fixes`, `member` included. About 10 hours, for about 0.6% (some 1,500 guesses).
+   class with no base and no decorator (1,421 bound to a literal) and 2,456 under a test case's. A
+   class under `Generic[T]`, `abc.ABC` or a plain class's subscript is plain now, and a variable the
+   module stores is typed where every store keeps its type (`self.closed = True`). Left: a value
+   that names something (a call, a copy, an attribute), a name the body binds more than once, and a
+   variable a test case's own class declares otherwise (`maxDiff = 80` under `unittest.TestCase`,
+   typeshed's `int | None`, is still typed `int`: the tables' attributes would say). Done when the
+   corpus packages' test suites and type checkers find nothing new after `--fix --unsafe-fixes`,
+   `member` included. About 10 hours, for about 0.6% (some 1,500 guesses).
 3. **A method's `return` of an untyped value.** Of the 11,959 `self.method()` bindings with no fix,
    5,617 call a method the class doesn't define itself, and 5,436 one whose `return` gives a value
    `--fix` can't type: a tuple (1,858), a call (1,455), a local or another name (1,396), a subscript
@@ -461,10 +467,10 @@ fix.
    (some 800 guesses).
 4. **Operators and iteration by their classes' methods.** `enumerate`, `zip`, `map`, `iter` and
    `reversed` bound to a name have no fix (`enumerate[str]`: at module level, a builtin some Python
-   can't subscript at run time needs quoting), nor do `min(n, 1.5)` (two number types) and a `tuple`
-   added to another: `builtins.pyi`'s generic functions and the classes' operator methods aren't run
-   through the overload matcher (`abs`, `min`, `sum` and the like are typed by hand, for builtin
-   types alone). Nor is a loop over anything but a builtin container or a mapping (`path.iterdir()`,
+   can't subscript at run time needs quoting): `builtins.pyi`'s generic functions and the classes'
+   operator methods aren't run through the overload matcher (`abs`, `min`, `sum` and the like, and
+   the builtin numbers', sequences' and sets' operators, are typed by hand, for builtin types
+   alone). Nor is a loop over anything but a builtin container or a mapping (`path.iterdir()`,
    `os.walk(...)`, `itertools.combinations(...)`), whose element is its `__iter__`'s. Counted, among
    the bindings with no fix: `iter(...)` bound to a name 155, `zip` 37, `map` 32, `reversed` 19;
    `max` and `min` 168, `sum` 29; a `/` with a string on its right 365 (a fix now where its left is

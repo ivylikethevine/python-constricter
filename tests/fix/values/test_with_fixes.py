@@ -249,6 +249,10 @@ async def main(reader: asyncio.StreamReader, loop: asyncio.AbstractEventLoop) ->
     slept = await asyncio.sleep(1, "done")
     pair = await asyncio.open_connection("h", 1)
     other = await loop.sock_accept(reader)
+    held = await task
+    kept = await both
+    lost = await unknown
+    read = await reader
 
 
 def run(loop: asyncio.AbstractEventLoop) -> None:
@@ -342,6 +346,10 @@ def test_a_coroutines_call_binds_what_awaiting_it_gives() -> None:
         "slept": ("str", False),
         "pair": ("tuple[asyncio.StreamReader, asyncio.StreamWriter]", False),
         "other": (None, False),
+        "held": ("bytes", False),  # a task held in a name, awaited later
+        "kept": ("tuple[bytes, int]", False),
+        "lost": (None, False),
+        "read": (None, False),  # not an awaitable of anything
         "result": ("bytes", False),
         "number": ("int", False),
     }

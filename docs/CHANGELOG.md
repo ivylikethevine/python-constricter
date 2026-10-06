@@ -6,6 +6,26 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types what a function reads of the names its module binds once, at its top level: with
+  `LIMIT = 10` and `NAMES = ["a"]` there, `n = LIMIT + 1` is an `int` and `for name in NAMES` a loop
+  over `str`s, in every function. By the name's annotation (a `Final[T]`'s `T`, a bare `Final`'s
+  value's type) or its one value's type, a guess where that is one. Not a name anything in the
+  module binds again (a parameter or a local of that name, a `global` statement's).
+- `--fix` types more operators on builtin values: an integer's `**` by a literal (`2 ** 32 - 1`), a
+  `float`'s by an integer, `<<`, `>>`, `&`, `|` and `^` of integers (`1 << 30`; of two `bool`s, a
+  `bool`), an integer times a `str`, `bytes` or `list` (`3 * "ab"`), a tuple's `+` and `*`
+  (`pair + (n,)` is a `tuple[int, str, int]`, `(0,) * n` a `tuple[int, ...]`), a `set`'s or
+  `frozenset`'s `|`, `&`, `-` and `^` with another of its type, and a `dict`'s `|`.
+- `--fix` types a fixed-length tuple's part by a literal index (`pair[0]`, `pair[-1]`), a slice of a
+  `tuple[T, ...]`, `a or []` and `a if c else {}` by `a`'s `list` or `dict` (`a if a else []` is
+  never `None`), `sorted(xs, key=..., reverse=True)`, `min` and `max` of an `int` and a `float` (a
+  `float`), a module's own `__file__` and `__name__` (`os.path.dirname(__file__)` is a `str`),
+  `await` of a task or a future held in a name (`done = await task`), and, from `vague` 1,
+  `object()`.
+- `--fix --unsafe-fixes` types more class variables: a class under `Generic[T]`, `abc.ABC` or a
+  plain class's subscript (`class Wide(Box[int])`) is plain, where none of them made one before, nor
+  any class above it; and a variable the module stores is typed where every store keeps its type
+  (`closed = False` with `self.closed = True`, `count = 0` with `self.count += 1`).
 - `--fix` types what a coroutine's call gives the standard library's task and run functions:
   `asyncio.create_task(fetch(url))` is an `asyncio.Task[bytes]` where `fetch` declares `bytes`
   (`loop.create_task` and a task group's too), `asyncio.gather(a(), b())` an

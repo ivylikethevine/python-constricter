@@ -146,17 +146,20 @@ def library_awaited(
     """Infer `await` of a call of a standard-library coroutine (see `stdlib.awaited_call`).
 
     A function's, by its arguments where they decide it (`await asyncio.wait_for(fetch(), 1)`), or a
-    method's on a receiver whose type `infer` knows; or of any call typed as an awaitable of
-    something (`await asyncio.gather(a(), b())`, an `asyncio.Future[tuple[A, B]]`).
+    method's on a receiver whose type `infer` knows; or of any value typed as an awaitable of
+    something (`await asyncio.gather(a(), b())`, an `asyncio.Future[tuple[A, B]]`; `await task`).
 
     Returns:
       The inference, or `None` for any other value.
 
     """
     call: ast.Call
+    held: ast.expr
     match value:
         case ast.Await(value=ast.Call() as call):
             return _awaited_call(call, known, infer) or _awaited_value(call, known, infer)
+        case ast.Await(value=held):
+            return _awaited_value(held, known, infer)
         case _:
             return None
 
@@ -186,11 +189,11 @@ def _awaited_call(
 
 
 def _awaited_value(
-    call: ast.Call,
+    value: ast.expr,
     known: Known,
     infer: Callable[[ast.expr], Inference | None],
 ) -> Inference | None:
-    made: Inference | None = infer(call)
+    made: Inference | None = infer(value)
     given: str | None = None if made is None else stdlib.awaited_value(made.annotation, known)
     return (
         None

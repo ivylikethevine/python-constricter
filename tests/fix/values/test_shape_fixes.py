@@ -255,3 +255,82 @@ def test_a_self_method_on_the_instance_or_its_class_is_self() -> None:
         "g": ("Point", False),  # where the signature doesn't say `Self`, `self` is its class
         "h": ("Point", False),
     }
+
+
+def test_an_empty_display_takes_the_type_of_the_container_beside_it() -> None:
+    """`a or []` and `a if c else {}` are `a`'s `list` or `dict`; a read that may be `None`, a guess."""
+    source: str = """
+    def f(
+        n: int,
+        names: list[str],
+        maybe: list[str] | None,
+        ages: dict[str, int],
+        either: list[str] | list[int],
+        c: bool,
+        q,
+    ) -> None:
+        a = names or []
+        b = maybe or []
+        d = ages or {}
+        e = names or {}
+        g = n or []
+        h = q or []
+        i = names and []
+        j = either or []
+        k = maybe or names or []
+        m = [] if c else names
+        o = ages if c else {}
+        p = maybe if maybe else []
+        r = maybe if maybe is not None else []
+        s = [] if maybe else maybe
+        t = [] if c else maybe
+        u = [] if c else {}
+        v = n if c else []
+        w = q if c else []
+        x = names if c else {}
+        y = [n][:1] or []
+    """
+    assert _fixed(source) == {
+        "a": ("list[str]", False),
+        "b": ("list[str]", True),  # never `None`: `or` passes it over
+        "d": ("dict[str, int]", False),
+        "e": (None, False),  # a `dict` display beside a `list`
+        "g": (None, False),
+        "h": (None, False),
+        "i": (None, False),  # `and` gives the display itself
+        "j": (None, False),  # a union of two types may be narrowed to one
+        "k": ("list[str]", True),
+        "m": ("list[str]", False),
+        "o": ("dict[str, int]", False),
+        "p": ("list[str]", True),  # where it's true, it isn't `None`
+        "r": (None, False),  # tested another way: narrowed there
+        "s": (None, False),
+        "t": ("list[str] | None", True),
+        "u": (None, False),
+        "v": (None, False),
+        "w": (None, False),
+        "x": (None, False),
+        "y": ("list[int]", False),
+    }
+
+
+def test_a_modules_own_file_and_name_are_text() -> None:
+    """`__file__` and `__name__` are `str`s, and type what's made of them; not where the module binds one."""
+    source: str = """
+    import os
+
+
+    def f() -> None:
+        a = __file__
+        b = __name__
+        c = os.path.dirname(os.path.abspath(__file__))
+        d = __doc__
+    """
+    assert _fixed(source) == {
+        "a": ("str", False),
+        "b": ("str", False),
+        "c": ("str", False),
+        "d": (None, False),
+    }
+    bound: str = "__file__ = None\n\n\ndef f() -> None:\n    a = __file__\n    b = __name__\n"
+    assert _fixed(bound) == {"a": (None, False), "b": ("str", False)}

@@ -84,7 +84,7 @@ def test_an_attribute_is_typed_by_its_assignments() -> None:
         "d": (None, False),  # two types
         "e": (None, False),  # `+=`
         "f": (None, False),  # `None`: no type of its own
-        "g": (None, False),  # a class attribute too
+        "g": ("int", True),  # a class variable too, stored as its own type
         "h": ("float", False),  # its annotation, as before
         "i": ("Thing", True),
         "j": (None, False),  # a nested function assigns it too

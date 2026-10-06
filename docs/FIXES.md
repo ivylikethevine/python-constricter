@@ -46,25 +46,34 @@ in a function or module body:
   `type[C]` for an `x` of one type `C` (not a union's, nor `None`'s);
 - a builtin its arguments decide, as typeshed has it: `abs(n)`, `round(x)` (an `int`; with digits,
   `x`'s type), `divmod(n, 2)` (a `tuple[int, int]`) and `sum(xs)` of builtin numbers; `min` and
-  `max` of several values of one type, or of something's elements (`max(names)`, `key=` or not; with
-  `default=`, a value of that type, or `None` for `T | None`); `next(it)` of what yields a known
-  type (`next(iter(names))`, `next((x for x in xs if x), None)` as `T | None`); and `dict(mapping)`,
-  `dict(pairs)` (`dict(zip(names, ages))`) and `dict(a=1, b=2)` (a `dict[str, int]`). Not with
-  arguments unpacked, nor where the module binds the name;
+  `max` of several values of one type (of an `int` and a `float`, a `float`), or of something's
+  elements (`max(names)`, `key=` or not; with `default=`, a value of that type, or `None` for
+  `T | None`); `next(it)` of what yields a known type (`next(iter(names))`,
+  `next((x for x in xs if x), None)` as `T | None`); and `dict(mapping)`, `dict(pairs)`
+  (`dict(zip(names, ages))`) and `dict(a=1, b=2)` (a `dict[str, int]`). Not with arguments unpacked,
+  nor where the module binds the name;
 - a copy of a local whose type is already known (annotated, a parameter, or fixed earlier in the
   same scope): `y = x`;
+- a name the module binds once, anywhere in it, at its top level, read in a function as it's typed
+  there: `LIMIT = 10` is an `int` in every function, and `for name in NAMES` loops over what
+  `NAMES = ["a", "b"]` holds. By its annotation (a `Final[T]`'s or a `ClassVar[T]`'s `T`; a bare
+  `Final`'s value's type), or its one value's type, a guess where that's one; a name bound to what
+  an unannotated function returns is typed in the same run. Not a name bound again anywhere (a
+  parameter or a local of that name in any function, a `global` statement's), a type alias, nor one
+  first `None`. A module's own `__file__` and `__name__` are `str`s;
 - a member of any value whose type is known, a local or anything else here (`self.index`, `f()`,
   `xs[0]`, `", "`), however deep (`self.index.name.upper()`): a subscript (`nums[0]`; a slice, or an
-  index typed `slice`, is the container's own type), an attribute (an annotated one, or a
-  `@property` declaring its return) or method call of a class defined in the same module or another
-  checked file (`p.x`, `p.norm()`), a `str`/`bytes` method with a fixed return (`s.strip()`,
-  `", ".join(parts)`, `"k=v".partition("=")` as `tuple[str, str, str]`), or a `list`/`set`/`dict`
-  method that returns its own element type (`nums.pop()`, `d.get(k)` as `V | None`, `d.get(k, 0)` as
-  `V` with a default of that type); `self` is its class's instance in a method, and in a function
-  defined in one that takes and binds no `self` of its own (not under a method whose signature says
-  `Self`); in a classmethod, `cls` is `type[C]`, whose class attributes (`limit: int = 3`,
-  `ClassVar[T]`) and classmethods' and staticmethods' declared returns type `cls.x` and `cls.m()`. A
-  member of a guessed value is a guess too (`Box().name`), and its fix kinds include the value's;
+  index typed `slice`, is the container's own type; a fixed-length tuple's part by a literal index,
+  `pair[0]` or `pair[-1]`), an attribute (an annotated one, or a `@property` declaring its return)
+  or method call of a class defined in the same module or another checked file (`p.x`, `p.norm()`),
+  a `str`/`bytes` method with a fixed return (`s.strip()`, `", ".join(parts)`,
+  `"k=v".partition("=")` as `tuple[str, str, str]`), or a `list`/`set`/`dict` method that returns
+  its own element type (`nums.pop()`, `d.get(k)` as `V | None`, `d.get(k, 0)` as `V` with a default
+  of that type); `self` is its class's instance in a method, and in a function defined in one that
+  takes and binds no `self` of its own (not under a method whose signature says `Self`); in a
+  classmethod, `cls` is `type[C]`, whose class attributes (`limit: int = 3`, `ClassVar[T]`) and
+  classmethods' and staticmethods' declared returns type `cls.x` and `cls.m()`. A member of a
+  guessed value is a guess too (`Box().name`), and its fix kinds include the value's;
 - a method a class doesn't define, called on `self` or any value typed as the class: the base's that
   defines it, in Python's method resolution order, among the module's own classes (each defined
   once, not generic) and then a class another checked file defines (the CLI only), which ends the
@@ -163,18 +172,19 @@ in a function or module body:
   literal or a display of them, and what reads it (`self.limit`, `cls.limit`, or `limit` on any
   value typed as the class or one inheriting it): the value's type. A plain class is defined once in
   its module, with no decorator, metaclass or other keyword, every base `object`, a `unittest` test
-  case or another plain class (another checked file's too, with the CLI), and no class that isn't
-  plain inheriting from it (a model's mixin). A guess (`member`), since a subclass or outside code
-  may bind it to another type; a variable the module stores any other way (`self.limit = ...`) is
-  left alone, and so is every other class body, where an annotation can be more than a type (a
-  dataclass's, a `NamedTuple`'s or a model's field). A builtin exception or value class is a base a
-  plain class may have too (`ValueError`, `str`, `dict`; not one the module binds itself), and so is
-  a framework's that reads no annotation in a class body: django's are built in (`per_page = 20`
-  under `models.Model`, `paginate_by = 10` under a `ListView`; not its `Choices`, enums whose
-  members a type checker won't have annotated), and `fix-plain-bases` lists more
-  (`--fix-plain-bases BASES`): a class by its dotted path, or a package for every class in it, `!`
-  before one to leave it out. A listed base counts where a checked file defines it too, decorated or
-  under a metaclass as it may be (django's own files, checked);
+  case, `Generic[T]`, `abc.ABC` or another plain class, subscripted or not (`Box[int]`; another
+  checked file's too, with the CLI), and no class that isn't plain inheriting from it (a model's
+  mixin). A guess (`member`), since a subclass or outside code may bind it to another type; a
+  variable the module stores as anything else is left alone (`self.limit = size`; not
+  `self.limit = 5` or `self.limit += 1`, which keep an `int`), and so is every other class body,
+  where an annotation can be more than a type (a dataclass's, a `NamedTuple`'s or a model's field).
+  A builtin exception or value class is a base a plain class may have too (`ValueError`, `str`,
+  `dict`; not one the module binds itself), and so is a framework's that reads no annotation in a
+  class body: django's are built in (`per_page = 20` under `models.Model`, `paginate_by = 10` under
+  a `ListView`; not its `Choices`, enums whose members a type checker won't have annotated), and
+  `fix-plain-bases` lists more (`--fix-plain-bases BASES`): a class by its dotted path, or a package
+  for every class in it, `!` before one to leave it out. A listed base counts where a checked file
+  defines it too, decorated or under a metaclass as it may be (django's own files, checked);
 - a module's type alias, declared one: `Json = dict[str, "Json"]` becomes `Json: TypeAlias = ...`
   (fix kind `alias`). Only a value that can be nothing but a type made of others: a subscript of
   what `typing`, `typing_extensions` or `collections.abc` define (`Union[A, B]`, `Callable[..., R]`,
@@ -223,19 +233,24 @@ in a function or module body:
 - a value computed from such: `a if c else b` when both sides agree, and `a if c else None` as
   `T | None` (not where `c` tests `a`, which it narrows); `a or b` and `a and b` with operands of
   one type, `or` dropping a `None` before its last operand (`name or "x"` is a `str` for a
-  `name: str | None`); arithmetic on builtin scalars (`n + 1`, `n / 2`, `-n`, `~n`, `"x" * n`,
-  `"%s" % n`; never `**`, whose result can change type) and lists (`names + names`, `names * 2`); a
-  `pathlib` path's `/` with a `str` or another path (`root / "x"`: `root`'s class); a list, set or
-  dict comprehension whose elements are known; `sorted`, `list`, `set`, `frozenset` or `tuple` of
-  something whose elements are (a generator expression's too: `list(str(i) for i in ns)`); and
-  `await` of a call to one of the module's `async def`s, or to a standard-library coroutine with one
-  declared return (`line = await reader.readline()` is a `bytes`, on a receiver typed
-  `asyncio.StreamReader`; `await asyncio.start_server(...)` an `asyncio.Server`), or one its
-  arguments decide (`await asyncio.wait_for(fetch(url), 5)`), or of a call typed a future or a task
-  (`await asyncio.gather(a(), b())` is a `tuple[A, B]`). A coroutine's call passed where a parameter
-  is an awaitable of a type variable binds it to what awaiting it gives:
-  `asyncio.create_task(fetch(url))` is an `asyncio.Task[bytes]` where `fetch` declares `bytes`, and
-  `asyncio.run(main())` what `main` does.
+  `name: str | None`), and `a or []`, `a if c else {}` by `a`'s `list` or `dict` (`a if a else []`
+  is never `None`); arithmetic on builtin scalars (`n + 1`, `n / 2`, `-n`, `~n`, `"x" * n`,
+  `3 * "x"`, `"%s" % n`; `n << 2`, `n | 1` and `n & mask` of integers; `**` only where its result
+  can't change type, an integer's by a literal, `2 ** 32`, or a `float`'s by an integer), lists
+  (`names + names`, `names * 2`), tuples (`pair + (n,)` lists both sides' parts, up to `max-length`;
+  `row * 2` is a `tuple[T, ...]`), and a `set`'s `|`, `&`, `-` and `^` or a `dict`'s `|` with
+  another of its type; a `pathlib` path's `/` with a `str` or another path (`root / "x"`: `root`'s
+  class); a list, set or dict comprehension whose elements are known; `sorted` (with `key=` and
+  `reverse=` or not), `list`, `set`, `frozenset` or `tuple` of something whose elements are (a
+  generator expression's too: `list(str(i) for i in ns)`); and `await` of a call to one of the
+  module's `async def`s, or to a standard-library coroutine with one declared return
+  (`line = await reader.readline()` is a `bytes`, on a receiver typed `asyncio.StreamReader`;
+  `await asyncio.start_server(...)` an `asyncio.Server`), or one its arguments decide
+  (`await asyncio.wait_for(fetch(url), 5)`), or of anything typed a future or a task
+  (`await asyncio.gather(a(), b())` is a `tuple[A, B]`, as `await task` is what `task` holds). A
+  coroutine's call passed where a parameter is an awaitable of a type variable binds it to what
+  awaiting it gives: `asyncio.create_task(fetch(url))` is an `asyncio.Task[bytes]` where `fetch`
+  declares `bytes`, and `asyncio.run(main())` what `main` does.
 
 A loop's target (LVA002) and an unpacking's names (LVA001) are declared instead, on a line of their
 own before the statement: `for k, v in ages.items():` with `ages: dict[str, int]` gets `k: str` and
@@ -375,7 +390,8 @@ to it: a declared return (a function's, a method's, another checked file's), a c
 element, `typing.cast`, a callable's call and a type checker's hint. What only a vague type
 describes is typed from 1, `Any` imported from `typing` if it must be: `getattr(obj, name)` is an
 `Any`, with a default of a known type `T` an `Any | T`; and a standard-library function declared to
-return `Any` alone (`json.loads`, `pickle.loads`, `ast.literal_eval`) an `Any`.
+return `Any` alone (`json.loads`, `pickle.loads`, `ast.literal_eval`) an `Any`; and `object()` is an
+`object`.
 
 LVA012 (opt-in) offers `Final`: around the annotation there (`x: int = 1` becomes
 `x: Final[int] = 1`), with LVA001's type for an unannotated name (whose own fix it then replaces),

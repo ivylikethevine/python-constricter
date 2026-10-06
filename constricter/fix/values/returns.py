@@ -31,6 +31,7 @@ BUILTIN_RETURNS: Final = {
     "isinstance": "bool",
     "issubclass": "bool",
     "len": "int",
+    "object": "object",
     "oct": "str",
     "ord": "int",
     "range": "range",
