@@ -17,7 +17,7 @@ from constricter.fix.core.known import Inference, Known
 from constricter.fix.libraries.opened import opened
 from constricter.fix.values import shapes
 from constricter.fix.values.doubts import bare
-from constricter.fix.values.entered import entered, entering
+from constricter.fix.values.entered import entered, entered_async, entering
 from constricter.fix.values.inference import LoopPart, inference, looped, looped_parts
 from constricter.fix.values.members import parsed
 from constricter.fix.values.targets import iterated, unpacked
@@ -361,15 +361,13 @@ def _bind_with(scope: Scope, stmt: ast.stmt, items: list[ast.withitem], code: st
     As what the manager's `__enter__` returns (see `constricter.fix.values.entered`); the file object
     `open` gives, which is its own context manager, by its literal mode. A target that unpacks takes
     that type split over its names, as an unpacking's are (but for a vague part). An `async with`'s
-    is bound untyped (`__aenter__`'s return is awaited: not read).
+    is typed by a standard-library manager's `__aenter__` alone, and not split.
     """
     item: ast.withitem
     name: ast.Name
     target: ast.expr
     for item in items:
-        typed: _Valued = (
-            _entered(scope, item.context_expr) if isinstance(stmt, ast.With) else (None, False, frozenset())
-        )
+        typed: _Valued = _entered(scope, item.context_expr, asynchronous=isinstance(stmt, ast.AsyncWith))
         match item.optional_vars:
             case ast.Name() as name:
                 _bind_declaration(scope, stmt, name, code, typed)
@@ -415,7 +413,7 @@ def _entered_parts(scope: Scope, target: ast.expr, manager: ast.expr, typed: _Va
         yield name, (split, *doubt)
 
 
-def _entered(scope: Scope, manager: ast.expr) -> _Valued:
+def _entered(scope: Scope, manager: ast.expr, *, asynchronous: bool = False) -> _Valued:
     """Infer what a `with` statement binds its target to, entering `manager`.
 
     Returns:
@@ -425,13 +423,12 @@ def _entered(scope: Scope, manager: ast.expr) -> _Valued:
     """
     known: Known = scope.settings.known
     file: Inference | None
-    if (file := opened(manager, known)) is not None:
+    if not asynchronous and (file := opened(manager, known)) is not None:
         return file, False, frozenset()
-    found: tuple[Inference, list[ast.expr]] | None = entered(
-        manager,
-        known,
-        scope.inferred.types,
-        scope.settings.facts.managers,
+    found: tuple[Inference, list[ast.expr]] | None = (
+        entered_async(manager, known, scope.inferred.types)
+        if asynchronous
+        else entered(manager, known, scope.inferred.types, scope.settings.facts.managers)
     )
     if found is None or bare(found[0].annotation, scope.settings.facts.generics):
         return None, False, frozenset()

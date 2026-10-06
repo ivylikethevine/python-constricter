@@ -31,7 +31,9 @@ class Accepts(TypedDict, total=False):
     a parameter that is a generic class of one type variable (`Iterable[_T]`): that variable, which
     an argument of a builtin container in `of` (`list[str]`) binds to its type argument at that index.
     `r`: the type variable a callable parameter returns (`Callable[..., _T]`), which a function
-    argument binds to its declared return (`functools.partial(helper, 1)`). `k`: for an installed
+    argument binds to its declared return (`functools.partial(helper, 1)`). `w`: the type variable
+    an awaitable parameter gives awaited (`Coroutine[Any, Any, _T]`), which a coroutine's call binds
+    to what awaiting it gives (`asyncio.run(main())`). `k`: for an installed
     package's parameter, a verdict for a class passed as the argument (`dtype=np.float64`), and `kv`
     the type variable it binds to that class (`type[_T]`'s `_T`). `b`: a verdict per builtin container
     argument (`tuple`), and `be`, where the parameter says what its elements must be, a verdict per
@@ -46,6 +48,7 @@ class Accepts(TypedDict, total=False):
     e: str
     of: dict[str, int]
     r: str
+    w: str
     k: str
     kv: str
     b: dict[str, str]

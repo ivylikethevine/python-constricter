@@ -38,6 +38,8 @@ _CLASS_SIDE: Final = frozenset({"classmethod", "staticmethod"})
 ATTRIBUTE: Final = "attribute"
 CLASSMETHOD: Final = "classmethod"
 _METHOD: Final = "method"
+AWAITED: Final = "awaited"  # an `async def` method: its form is what awaiting its call gives
+_AENTER: Final = "__aenter__"
 _BUILTINS: Final = "builtins"
 _TUPLE: Final = "tuple"
 _STR: Final = "str"
@@ -445,14 +447,21 @@ class Reading:
         member: Member | None = self.members(klass).get(name) if isinstance(klass, ClassRef) else None
         return member.form if member is not None and member.kind != ATTRIBUTE else None
 
-    def returns(self, defs: Defs, module: str, owner: ClassRef | None) -> Form | None:
-        """Read what a function (each of its overloads) returns.
+    def returns(
+        self,
+        defs: Defs,
+        module: str,
+        owner: ClassRef | None,
+        *,
+        awaited: bool = False,
+    ) -> Form | None:
+        """Read what a function (each of its overloads) returns: an `async def`'s, awaited, if `awaited`.
 
         Returns:
           The form every overload agrees on, `ANY_STR` for `str`/`bytes` overloads, or `None`.
 
         """
-        if any(not readable(node) for node in defs):
+        if any(not readable(node, awaited=awaited) for node in defs):
             return None
         forms: list[Form | None] = [
             None if node.returns is None else self.form(node.returns, module, owner) for node in defs
@@ -551,6 +560,8 @@ class Reading:
                 names: set[str] = {decorator_name(d) for d in defs[0].decorator_list}
                 kind = ATTRIBUTE if names & _PROPERTIES else CLASSMETHOD if names & _CLASS_SIDE else _METHOD
                 form = self.returns(defs, owner.module, klass)
+                if isinstance(defs[0], ast.AsyncFunctionDef) and kind == _METHOD:
+                    kind, form = AWAITED, self.returns(defs, owner.module, klass, awaited=True)
             case Variable(annotation=annotation):
                 form = self.form(annotation, owner.module, klass)
             case _:
@@ -600,20 +611,22 @@ class Reading:
 
 
 def _read(name: str) -> bool:
-    """Check whether a class's member is one the tables read: a public one, `__enter__` or `__getitem__`.
+    """Check whether a class's member is one the tables read: a public one, or one a statement calls.
 
-    `with` gives what `__enter__` returns, and a subscript what `__getitem__` does: the private
-    methods a fix reads.
+    `with` gives what `__enter__` returns (`async with`, what `__aenter__` does, awaited), and a
+    subscript what `__getitem__` does: the private methods a fix reads.
 
     Returns:
       Whether it is.
 
     """
-    return name in {_ENTER, _GET_ITEM} or not private(name)
+    return name in {_ENTER, _AENTER, _GET_ITEM} or not private(name)
 
 
-def readable(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Check a function is one the tables read: not async, annotated, only known decorators.
+def readable(node: ast.FunctionDef | ast.AsyncFunctionDef, *, awaited: bool = False) -> bool:
+    """Check a function is one the tables read: annotated, only known decorators, and not async.
+
+    Or, if `awaited`, async: its declared return is then what awaiting its call gives.
 
     Returns:
       Whether it is.
@@ -621,7 +634,9 @@ def readable(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     """
     names: set[str] = {decorator_name(decorator) for decorator in node.decorator_list}
     return (
-        isinstance(node, ast.FunctionDef) and node.returns is not None and names <= _DECORATORS | _PROPERTIES
+        isinstance(node, ast.AsyncFunctionDef) == awaited
+        and node.returns is not None
+        and names <= _DECORATORS | _PROPERTIES
     )
 
 

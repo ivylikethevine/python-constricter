@@ -62,6 +62,15 @@ _ALIASES: Final = cast("Mapping[str, str]", _table("aliases"))  # a class's othe
 _Own: TypeAlias = Mapping[str, Mapping[str, str | None]]
 _METHODS: Final = cast("_Own", _table("methods"))
 _ATTRIBUTES: Final = cast("_Own", _table("attributes"))
+# What awaiting a call of each `async def` gives: a function's by its path, a method's by its
+# class's path and its name (a class's own path: its instance).
+_AWAITED: Final = cast("Mapping[str, str]", _table("awaited"))
+# The `async def`s whose arguments decide what awaiting their call gives, as `OVERLOADS` holds a
+# function's; `AWAIT` before a path names one's entry to `overloads.chosen`.
+AWAITED_OVERLOADS: Final = cast("dict[str, list[Variant]]", _table("awaited_overloads"))
+AWAIT: Final = "await "
+# The generic classes awaiting an instance of gives its last type argument.
+_AWAITABLE: Final = frozenset({"asyncio.Future", "asyncio.Task"})
 # Each class's public ancestors in the tables, nearest first, comma-separated.
 _BASES: Final = cast("Mapping[str, str]", _table("bases"))
 # Classes' methods whose arguments decide their type: each one's entry in `method_signatures` (its
@@ -225,6 +234,57 @@ def library_member(
         if found is None
         else Inference(found, f"`{path}.{name}`'s {what} in typeshed", frozenset({_KIND}))
     )
+
+
+def awaited_call(func: ast.expr, known: Known) -> Inference | None:
+    """Type what awaiting a call of a standard-library `async def` gives (`await asyncio.start_server(...)`).
+
+    Returns:
+      Its inference, or `None` if `func` isn't one the tables hold, or its class can't be named.
+
+    """
+    path: str | None = resolved(func, known.names.stdlib)
+    return None if path is None else _awaited(path, path, known)
+
+
+def awaited_member(receiver: str, name: str, known: Known) -> Inference | None:
+    """Type what awaiting a call of a standard-library class's `async def` method gives.
+
+    `await reader.readline()`, on a receiver typed `asyncio.StreamReader`; and what `async with`
+    binds, by `__aenter__`: the receiver's own type, where that returns `Self`.
+
+    Returns:
+      Its inference, or `None` if the class or its method isn't in the tables, or a class it gives
+      can't be named.
+
+    """
+    path: str | None = _class_path(receiver, known)
+    return None if path is None else _awaited(f"{path}.{name}", path, known, receiver)
+
+
+def _awaited(entry: str, path: str, known: Known, receiver: str | None = None) -> Inference | None:
+    found: str | None = _AWAITED.get(entry)
+    plan: ImportPlan | None = known.names.plan
+    if found is not None and found == path and receiver is not None:
+        found = receiver  # its `Self`: the instance, as the module wrote its type
+    elif found is not None and is_class(found):
+        found = None if plan is None else plan.spell(found)
+    return (
+        None if found is None else Inference(found, f"`{entry}`'s return type, awaited", frozenset({_KIND}))
+    )
+
+
+def awaited_value(annotation: str, known: Known) -> str | None:
+    """Find what awaiting a value typed `annotation` gives: `T`, of an `asyncio.Future[T]` or a `Task[T]`.
+
+    Returns:
+      It, as the annotation writes it; `None` for any other type.
+
+    """
+    path: str | None
+    args: list[ast.expr]
+    path, args = _receiver(annotation, known)
+    return ast.unparse(args[-1]) if path in _AWAITABLE and args else None
 
 
 def bases(tree: ast.Module, bound: Mapping[str, str]) -> frozenset[str]:

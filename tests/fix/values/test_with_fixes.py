@@ -192,6 +192,70 @@ def f(KeyError, case: unittest.TestCase):
         pass
 """
 
+_AWAITED: Final = """
+import asyncio
+
+
+async def serve(reader: asyncio.StreamReader, lock: asyncio.Lock, cmd):
+    line = await reader.readline()
+    proc = await asyncio.create_subprocess_exec(cmd)
+    out = await proc.communicate()
+    held = await lock.acquire()
+    server = await asyncio.start_server(serve, "h", 1)
+    async with asyncio.TaskGroup() as group:
+        pass
+    async with asyncio.timeout(1) as limit:
+        pass
+    async with lock as nothing:
+        pass
+    async with server as serving:
+        pass
+    unknown = await cmd.run()
+    waited = await cmd
+    async with cmd as other:
+        pass
+    async with group as (first, second):
+        pass
+    pending = reader.readline()
+"""
+
+_TASKS: Final = """
+import asyncio
+
+
+async def fetch(url: str) -> bytes:
+    return b""
+
+
+async def count() -> int:
+    return 1
+
+
+async def untyped():
+    return object()
+
+
+async def main(reader: asyncio.StreamReader, loop: asyncio.AbstractEventLoop) -> None:
+    task = asyncio.create_task(fetch("u"))
+    line = asyncio.create_task(reader.readline())
+    unknown = asyncio.create_task(untyped())
+    both = asyncio.gather(fetch("u"), count())
+    looped = loop.create_task(count())
+    async with asyncio.TaskGroup() as group:
+        grouped = group.create_task(fetch("u"))
+    done = await asyncio.gather(fetch("u"), count())
+    waited = await asyncio.wait_for(count(), 1)
+    made = await asyncio.create_task(count())
+    slept = await asyncio.sleep(1, "done")
+    pair = await asyncio.open_connection("h", 1)
+    other = await loop.sock_accept(reader)
+
+
+def run(loop: asyncio.AbstractEventLoop) -> None:
+    result = asyncio.run(fetch("u"))
+    number = loop.run_until_complete(count())
+"""
+
 
 def _fixes(source: str) -> _Fixes:
     """Check `source`.
@@ -242,6 +306,44 @@ def test_a_managers_arguments_decide_what_it_enters() -> None:
         "proc": ("subprocess.Popen[str]", False),
         "same": (None, False),
         "shadowed": (None, False),  # the module's own `KeyError`, a parameter
+    }
+
+
+def test_a_library_coroutine_awaited_gives_what_it_declares() -> None:
+    """A standard-library `async def` awaited: a function's, a method's, an `async with`'s `__aenter__`."""
+    assert _fixes(_AWAITED) == {
+        "line": ("bytes", False),
+        "proc": ("Process", False),
+        "out": ("tuple[bytes, bytes]", False),
+        "held": ("bool", False),
+        "server": ("asyncio.Server", False),
+        "group": ("asyncio.TaskGroup", False),
+        "limit": ("asyncio.Timeout", False),
+        "nothing": (None, False),  # a lock enters as `None`
+        "serving": ("asyncio.Server", False),
+        **dict.fromkeys(("unknown", "waited", "other", "first", "second"), (None, False)),
+        "pending": (None, False),  # not awaited: a coroutine
+    }
+
+
+def test_a_coroutines_call_binds_what_awaiting_it_gives() -> None:
+    """An awaitable parameter's variable, by the coroutine passed; a task or a future awaited, its own."""
+    assert _fixes(_TASKS) == {
+        "task": ("asyncio.Task[bytes]", False),
+        "line": ("asyncio.Task[bytes]", False),
+        "unknown": (None, False),  # nothing declared: a task of what isn't known
+        "both": ("asyncio.Future[tuple[bytes, int]]", False),
+        "looped": ("asyncio.Task[int]", False),
+        "group": ("asyncio.TaskGroup", False),
+        "grouped": ("asyncio.Task[bytes]", False),
+        "done": ("tuple[bytes, int]", False),
+        "waited": ("int", False),
+        "made": ("int", False),
+        "slept": ("str", False),
+        "pair": ("tuple[asyncio.StreamReader, asyncio.StreamWriter]", False),
+        "other": (None, False),
+        "result": ("bytes", False),
+        "number": ("int", False),
     }
 
 

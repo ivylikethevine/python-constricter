@@ -21,6 +21,7 @@ from constricter.rules.annotations import defined_type_vars, is_vague, node_name
 from constricter.rules.walked import classes
 
 _ENTER: Final = "__enter__"
+_AENTER: Final = "__aenter__"
 _NONE: Final = "None"
 _MANAGER: Final = ["contextmanager"]  # the one decorator that makes a generator function a manager
 # What such a function declares it returns: its first argument is what it yields.
@@ -105,6 +106,24 @@ def entering(manager: ast.expr) -> ast.Call:
     """
     method: ast.Attribute = ast.copy_location(ast.Attribute(manager, _ENTER, ast.Load()), manager)
     return ast.copy_location(ast.Call(method, [], []), manager)
+
+
+def entered_async(
+    manager: ast.expr,
+    known: Known,
+    declared: Mapping[str, str],
+) -> tuple[Inference, list[ast.expr]] | None:
+    """Infer what `async with manager as name:` binds `name` to: a standard-library manager's `__aenter__`'s.
+
+    Returns:
+      The inference, and the value it rests on; or `None`.
+
+    """
+    own: Inference | None = inference(manager, known, declared)
+    found: Inference | None = None if own is None else stdlib.awaited_member(own.annotation, _AENTER, known)
+    return (
+        None if own is None or found is None else (found._replace(kinds=found.kinds | own.kinds), [manager])
+    )
 
 
 def entered(

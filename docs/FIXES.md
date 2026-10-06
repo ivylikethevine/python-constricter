@@ -228,7 +228,14 @@ in a function or module body:
   `pathlib` path's `/` with a `str` or another path (`root / "x"`: `root`'s class); a list, set or
   dict comprehension whose elements are known; `sorted`, `list`, `set`, `frozenset` or `tuple` of
   something whose elements are (a generator expression's too: `list(str(i) for i in ns)`); and
-  `await` of a call to one of the module's `async def`s.
+  `await` of a call to one of the module's `async def`s, or to a standard-library coroutine with one
+  declared return (`line = await reader.readline()` is a `bytes`, on a receiver typed
+  `asyncio.StreamReader`; `await asyncio.start_server(...)` an `asyncio.Server`), or one its
+  arguments decide (`await asyncio.wait_for(fetch(url), 5)`), or of a call typed a future or a task
+  (`await asyncio.gather(a(), b())` is a `tuple[A, B]`). A coroutine's call passed where a parameter
+  is an awaitable of a type variable binds it to what awaiting it gives:
+  `asyncio.create_task(fetch(url))` is an `asyncio.Task[bytes]` where `fetch` declares `bytes`, and
+  `asyncio.run(main())` what `main` does.
 
 A loop's target (LVA002) and an unpacking's names (LVA001) are declared instead, on a line of their
 own before the statement: `for k, v in ages.items():` with `ages: dict[str, int]` gets `k: str` and
@@ -283,8 +290,9 @@ package's what its `__enter__` declares, and a call to one of the module's funct
 module's classes that `@contextmanager` makes one types its call the same way, on a receiver whose
 type is known (`with self.defs.entry(key) as found:`). A target that unpacks is split as an
 unpacking's value is (`with defs.entry(key) as (ref, schema):`), a vague part's name left alone.
-`with open(path, "rb") as f:` declares `f: io.BufferedReader`, by its mode. Not an `async with`'s
-target.
+`with open(path, "rb") as f:` declares `f: io.BufferedReader`, by its mode. An `async with`'s target
+is typed by a standard-library manager's `__aenter__` (`async with asyncio.TaskGroup() as group:`),
+where that has one declared return; no other manager's, and not split over an unpacking.
 
 A standard-library manager its arguments decide is matched as any such call is: a constructor whose
 `__init__` overloads declare the instance (`subprocess.Popen(cmd, text=True)` is a

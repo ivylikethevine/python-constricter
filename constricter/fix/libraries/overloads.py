@@ -51,6 +51,7 @@ _KIND: Final = "stdlib"
 _TUPLE: Final = "tuple"
 _ANYTHING: Final = "t"  # `Accepts`' key for a parameter any argument binds
 _RETURNED: Final = "r"  # `Accepts`' key for a callable parameter a function's return binds
+_AWAITED: Final = "w"  # and for an awaitable one, which what awaiting a coroutine's call gives binds
 _CALL: Final = "call"  # the fix kind of a declared return
 # The builtin containers whose type arguments bind a parameter's type variable (`Iterable[_T]`'s).
 CONTAINERS: Final = ("list", _TUPLE, "set", "frozenset", "dict")  # in the `scalars` table's order
@@ -81,7 +82,8 @@ class Argument(NamedTuple):
     for a builtin container (`list[str]`), its name and type arguments (`tuple[str, ...]`'s `str`);
     `reads`: the names, attributes and subscripts in it, as source text; `returns`: for a function
     the module knows the declared return of (`helper`, `u.helper`), that return; `klass`: for a class
-    passed as it is (`np.float64`), its name as written.
+    passed as it is (`np.float64`), its name as written; `awaited`: for a coroutine's call, what
+    awaiting it gives.
     """
 
     type: str | None
@@ -91,6 +93,7 @@ class Argument(NamedTuple):
     reads: tuple[str, ...] = ()
     returns: Inference | None = None
     klass: str | None = None
+    awaited: Inference | None = None
 
     @property
     def text(self) -> str | None:
@@ -114,7 +117,8 @@ def chosen(
 ) -> Inference | None:
     """Type a call to standard-library function `name` by the signatures its arguments may match.
 
-    `name` is an entry of `OVERLOADS`, or `method_signatures` for a `method`'s call on an instance
+    `name` is an entry of `OVERLOADS` (of `AWAITED_OVERLOADS`, after `AWAIT`: an `async def`'s call,
+    awaited), or `method_signatures` for a `method`'s call on an instance
     (whose type binds its class's type parameters); or an installed package's function, as the
     module calls it (`np.empty`: see `LibraryNames.installed`). `infer` types an argument.
 
@@ -268,6 +272,7 @@ def _argument(value: ast.expr, infer: _Infer, known: Known) -> Argument:
                     if isinstance(node, ast.Name | ast.Attribute | ast.Subscript)
                 ),
                 returns=_function_return(value, known),
+                awaited=infer(ast.Await(value)) if isinstance(value, ast.Call) else None,
             )
 
 
@@ -316,7 +321,11 @@ def _signatures(name: str) -> tuple[tuple[ReadSignature, ...], ...]:
       Each variant's signatures.
 
     """
-    variants: list[Variant] = stdlib.OVERLOADS.get(name) or stdlib.method_signatures()[name]
+    variants: list[Variant] = (
+        stdlib.AWAITED_OVERLOADS[name.removeprefix(stdlib.AWAIT)]
+        if name.startswith(stdlib.AWAIT)
+        else stdlib.OVERLOADS.get(name) or stdlib.method_signatures()[name]
+    )
     return tuple(
         tuple(
             ReadSignature(
@@ -663,6 +672,7 @@ def _binding(accepts: Accepts | None, arg: Argument) -> tuple[str, str] | None:
     for named, text in (
         (accepts.get(_ANYTHING), arg.text),
         (accepts.get(_RETURNED), None if arg.returns is None else arg.returns.annotation),
+        (accepts.get(_AWAITED), None if arg.awaited is None else arg.awaited.annotation),
     ):
         if named is not None and text is not None:
             return named, text
@@ -729,6 +739,7 @@ def _verdict(accepts: Accepts | None, arg: Argument) -> str:
         (_ANYTHING in accepts and arg.text is not None)
         or (arg.elements is not None and arg.elements[0] in accepts.get("of", {}))
         or (_RETURNED in accepts and arg.returns is not None)
+        or (_AWAITED in accepts and arg.awaited is not None)
     )
     return _YES if taken else _container_verdict(accepts, arg)
 

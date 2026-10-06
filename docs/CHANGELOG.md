@@ -6,6 +6,19 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types what a coroutine's call gives the standard library's task and run functions:
+  `asyncio.create_task(fetch(url))` is an `asyncio.Task[bytes]` where `fetch` declares `bytes`
+  (`loop.create_task` and a task group's too), `asyncio.gather(a(), b())` an
+  `asyncio.Future[tuple[A, B]]`, and `asyncio.run(main())` and `loop.run_until_complete(main())`
+  what `main` declares. And `await` of a future or a task (`done = await asyncio.gather(a(), b())`)
+  and of a coroutine its arguments decide (`asyncio.wait_for`, `asyncio.sleep(1, result)`,
+  `asyncio.open_connection`, whose reader and writer an unpacking takes).
+- `--fix` types `await` of a standard-library coroutine's call, and an `async with`'s target by a
+  standard-library manager's `__aenter__`: `line = await reader.readline()` is a `bytes`,
+  `proc = await asyncio.create_subprocess_exec(...)` an `asyncio.subprocess.Process`, and
+  `async with asyncio.TaskGroup() as group:` an `asyncio.TaskGroup`. The tables hold what awaiting
+  each `async def` with one declared return gives (`awaited`): not a generic class's (`Queue.get`),
+  nor one its arguments decide (`asyncio.gather`, `asyncio.wait_for`).
 - Faster, with the same output: a value's inferred type is kept until its scope types another name
   (it's asked for again as a guess, and as part of the next value), a module's bound names and class
   tables are read once for the index and the check, an installed package is looked for on disk once

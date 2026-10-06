@@ -12,6 +12,7 @@ from constricter.fix.libraries import overloads, stdlib
 from constricter.fix.libraries.library import (
     installed_call,
     installed_method,
+    library_awaited,
     library_call,
     library_class,
     library_variable,
@@ -468,7 +469,8 @@ def _computed(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
                 frozenset({"await"}),
             )
         case _:
-            return None
+            # What awaiting a standard-library coroutine's call gives, or nothing.
+            return library_awaited(value, known, lambda arg: inference(arg, known, declared))
 
 
 def _operated(

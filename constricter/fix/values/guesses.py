@@ -7,7 +7,7 @@ from typing import Final
 
 from constricter.fix.core.known import Known
 from constricter.fix.libraries import stdlib
-from constricter.fix.libraries.library import installed_method, library_class
+from constricter.fix.libraries.library import installed_method, library_awaited, library_class
 from constricter.fix.libraries.opened import opened
 from constricter.fix.values import called, decided, displays, shapes
 from constricter.fix.values.inference import (
@@ -294,6 +294,9 @@ def _is_guess(
             or _overloaded_method(node, known, declared)
             or called.result(node, known, declared, lambda arg: inference(arg, known, declared)) is not None
             or shapes.vaguely(node, known, lambda arg: inference(arg, known, declared)) is not None
+            # A standard-library coroutine's: awaited, what it declares.
+            or library_awaited(ast.Await(node), known, lambda arg: inference(arg, known, declared))
+            is not None
         ):
             return False
         case ast.Call(func=func):

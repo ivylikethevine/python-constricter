@@ -340,11 +340,11 @@ fix.
    the standard library's test files. Left, of the 4,218 `with` targets first counted with no fix:
    `test.support`'s, which typeshed doesn't have (563), an `open` that isn't the builtin's with a
    literal mode (`self.open(...)`, `path.open()`: 457), another `self.method()` (445), `mock.patch`
-   (185), an `async with`'s by `__aenter__` (112: the tables read no `async def`),
-   `contextlib.closing` (80), `shelve.open` (a `Shelf` of what isn't known),
-   `tempfile.SpooledTemporaryFile` (a private base), `assertLogs` (it enters as a private named
-   tuple), and 1,366 others, mostly a project's own. Done when an `async with`'s target and
-   `contextlib.closing`'s are fixes. About 4 hours, for about 0.1% (some 200 fixes).
+   (185), an `async with`'s of a project's own class or a generic one (of 112), `contextlib.closing`
+   (80), `shelve.open` (a `Shelf` of what isn't known), `tempfile.SpooledTemporaryFile` (a private
+   base), `assertLogs` (it enters as a private named tuple), and 1,366 others, mostly a project's
+   own. Done when `contextlib.closing`'s target is a fix. About 3 hours, for under 0.1% (some 100
+   fixes).
 4. **The project's own overloads, by the project's own types.** A call to a function the checked
    files define with `@overload` is typed by the overload its arguments match, as the standard
    library's and installed packages' are: 355 more fixes on pandas (`read_csv`, `read_json`,
@@ -362,16 +362,16 @@ fix.
    method's alias was left alone on purpose). Write the `Callable[[A], R]` its signature declares,
    where it declares all of it. Done when `parse = json.loads` and a declared method's alias are
    typed, and an undeclared one isn't. About 4 hours, for about 0.3% (some 700 fixes).
-6. **Awaited calls, the standard library's.** `await` types only a call to one of the module's own
-   `async def`s. Counted on the Python 3 corpora: of the 313 names bound to an `await`, 4 await a
-   method whose class, in the file, declares its return, and one a function of the module's; 39
-   await a method or function defined with no return declared, 53 an `asyncio` function
-   (`asyncio.gather(...)`, `asyncio.wait_for(...)`), 129 a method of another value
-   (`await reader.readline()`, `await request.auser()`), 55 an imported or local name, and 23 no
-   call at all. So methods and other checked files' functions aren't worth building alone: what's
-   left is the standard library's coroutines, which the tables don't hold as such
-   (`stdlib_tables/`). Done when `line = await reader.readline()` is a `bytes`. About 6 hours, for
-   under 0.1% (some 150 fixes).
+6. **Awaited calls, past the standard library's.** `await` of a standard-library coroutine's call is
+   typed (`line = await reader.readline()`, `await asyncio.wait_for(fetch(), 5)`,
+   `await asyncio.gather(a(), b())`), as is what a coroutine's call gives a task or a run function
+   (`asyncio.create_task(fetch())`, `asyncio.run(main())`) and an `async with`'s target. Left: a
+   generic class's own coroutine (`await queue.get()`), `asyncio.ensure_future` (its overloads take
+   a future and an awaitable alike), a task or a future held in a name and awaited later
+   (`await task`), and a project's own method or another checked file's function (39 of the 313
+   names bound to an `await` on the Python 3 corpora await one with no return declared). Done when
+   `item = await queue.get()` on an `asyncio.Queue[Item]` is an `Item`. About 4 hours, for under
+   0.1% (some 100 fixes).
 7. **An unannotated method's type, in another file.** A module's functions' `return`s type their
    calls in the files importing them; its classes' methods' don't: 132 `self.method()` bindings
    whose base is another file's and whose `return`s give one type (Twisted's `self.mktemp()`), and
