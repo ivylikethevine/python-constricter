@@ -118,6 +118,14 @@ def test_a_type_of_a_module_only_a_function_imports_is_imported_for_type_checkin
     assert taken.spell("pwd.struct_passwd") is None
 
 
+def test_a_plan_spells_a_class_by_the_import_it_guards() -> None:
+    """A name to import for type checking alone already names its class: no second import, or pass."""
+    plan: ImportPlan = _plan("")
+    assert plan.guard("BytesIO", ("io", "BytesIO"), "from io import BytesIO")
+    assert [plan.spell("io.BytesIO"), plan.spell("other.BytesIO")] == ["BytesIO", "other.BytesIO"]
+    assert plan.added == {"other": "import other"}
+
+
 def test_a_plan_adds_each_import_once() -> None:
     """A name the plan imported is free to it again, but not for another import."""
     plan: ImportPlan = _plan("")

@@ -10,6 +10,8 @@ from constricter.fix.core import imports, inherited
 from constricter.fix.core.known import (
     Classes,
     ClassSide,
+    Guarded,
+    ImportPlan,
     Indirect,
     Known,
     LibraryNames,
@@ -296,15 +298,15 @@ def checked_tree(
     finals: list[Offence] = [o for scope in scopes for o in late.finals(scope)] if checks.final else []
     reported: list[Offence] = [o for scope in scopes for o in scope.reported()]
     exported: Returns = returned.exported(found)
+    plan: ImportPlan = settings.known.names.plan or imports.plan(tree)
+    # With the imports its fixes add under `if TYPE_CHECKING:`, which `outside.guarded` doesn't hold.
+    guarded: dict[str, Guarded] = {
+        **{name: each for name, each in plan.guarded.items() if each.statement is not None},
+        **({} if outside is None else outside.guarded),
+    }
     return Checked(
         sorted([*reported, *redundant(tree, settings.checks.fixes), *flow, *finals]),
-        exported._replace(
-            names=returned.exported_names(
-                exported,
-                {} if outside is None else outside.guarded,
-                (settings.known.names.plan or imports.plan(tree)).added,
-            ),
-        ),
+        exported._replace(names=returned.exported_names(exported, guarded, plan.added)),
         observed(tree, scopes, settings.known, {} if outside is None else outside.callees),
     )
 

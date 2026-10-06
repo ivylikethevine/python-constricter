@@ -227,12 +227,17 @@ def test_a_return_typed_late_reaches_other_files(tmp_path: Path) -> None:
 
 LIBRARY: Final = "import importlib\n\ndef load(name):\n    return importlib.import_module(name)\n"
 TAKEN: Final = LIBRARY + "\nModuleType = None\n"
+LAZY: Final = "def load(name):\n    import io\n    return io.BytesIO()\n"
 LIBRARY_USE: Final = "from pkg.lib import load\n\ndef use():\n    mod = load('x')\n    return mod\n"
 
 
 @pytest.mark.parametrize(
     ("source", "typed"),
-    [(LIBRARY, "    mod: ModuleType = load('x')\n"), (TAKEN, "    mod: types.ModuleType = load('x')\n")],
+    [
+        (LIBRARY, "    mod: ModuleType = load('x')\n"),
+        (TAKEN, "    mod: types.ModuleType = load('x')\n"),
+        (LAZY, "    mod: BytesIO = load('x')\n"),  # imported for type checking alone, in both files
+    ],
 )
 def test_a_library_return_its_module_imports_types_calls_in_one_pass(
     tmp_path: Path,
@@ -241,8 +246,9 @@ def test_a_library_return_its_module_imports_types_calls_in_one_pass(
 ) -> None:
     """A library type the callee's module would have to import (`types.ModuleType`) is named for its callers.
 
-    By the import its fixes would add, `from types import ModuleType` or `import types`, so a second
-    pass has nothing left.
+    By the import its fixes would add, `from types import ModuleType` or `import types`, or
+    `from io import BytesIO` under `if TYPE_CHECKING:` for a module only a function imports, so a
+    second pass has nothing left.
     """
     _ = _write(tmp_path / "pkg" / "__init__.py", "")
     _ = _write(tmp_path / "pkg" / "lib.py", source)

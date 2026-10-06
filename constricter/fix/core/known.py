@@ -126,25 +126,21 @@ class ImportPlan:
     def spell(self, qualified: str) -> str | None:
         """Name `qualified` (`io.BufferedReader`) in this module, adding an import if it has to.
 
-        Through an import it has (see `named`), for type checking alone too (`checking`), else a new
-        `from io import BufferedReader`, else a new `import io`, but only binding a name nothing in
-        the module binds. Under `if TYPE_CHECKING:` for a module in `checking.lazy`.
+        Through an import it has (see `named`), for type checking alone too (`checking`, or one
+        `guarded` already), else a new `from io import BufferedReader`, else a new `import io`, but
+        only binding a name nothing in the module binds. Under `if TYPE_CHECKING:` for a module in
+        `checking.lazy`.
 
         Returns:
           The name, or `None` if every way to write it is taken.
 
         """
         found: str | None
-        if (found := self.named(qualified)) is not None:
+        if (found := self.named(qualified) or self._checked(qualified)) is not None:
             return found
         module: str
         name: str
         module, _, name = qualified.rpartition(".")
-        bound: str
-        origin: str
-        for bound, origin in self.checking.bound.items():
-            if origin == qualified and bound not in self.values:
-                return bound
         statement: str = f"from {module} import {name}"
         if module.partition(_DOT)[0] in self.checking.lazy:
             return name if self.guard(name, (module, name), statement) else None
@@ -178,6 +174,23 @@ class ImportPlan:
             if origin == module:
                 return f"{bound}.{name}"
         return None
+
+    def _checked(self, qualified: str) -> str | None:
+        """Name `qualified` through an import for type checking alone: one it has, or is to have.
+
+        Returns:
+          The name, or `None` if none binds it, or the module binds that name to a value too.
+
+        """
+        origins: dict[str, str] = dict(self.checking.bound)
+        bound: str
+        each: Guarded
+        for bound, each in self.guarded.items():
+            origins[bound] = _DOT.join(part for part in each.origin if part)
+        return next(
+            (bound for bound, origin in origins.items() if origin == qualified and bound not in self.values),
+            None,
+        )
 
     def guard(self, name: str, origin: Origin, statement: str) -> bool:
         """Let annotations be written with `name`, bound to `origin` for type checking alone.
