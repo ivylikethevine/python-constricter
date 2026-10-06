@@ -460,8 +460,8 @@ def _function_scope(
     )
     # A copy of a plain, annotated parameter (`*args`/`**kwargs` aren't the type they're annotated
     # with) can be typed the same way, the moment it's assigned.
-    scope.inferred.types.update(
-        (arg.arg, written(arg.annotation)) for arg in named if arg.annotation is not None
+    scope.inferred.types.taking(
+        {arg.arg: written(arg.annotation) for arg in named if arg.annotation is not None},
     )
     # A method's `self` is its class's instance; so is the `self` a function defined in it reads.
     owner: str | None = settings.owners.get(id(func))

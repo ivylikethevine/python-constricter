@@ -480,9 +480,10 @@ def _path(root: ast.expr, known: Known) -> str | None:
         path = _guarded(root, plan)
     # A class's own path, where the module binds no name it starts with: a library base out of its
     # sight, as the index names it (see `constricter.fix.index.beyond`).
-    written: str = ast.unparse(root)
-    if path is None and held_whole(written) and (plan is None or written.partition(".")[0] not in plan.taken):
-        path = written
+    if path is None:
+        written: str = ast.unparse(root)
+        if held_whole(written) and (plan is None or written.partition(".")[0] not in plan.taken):
+            path = written
     return None if path is None else _ALIASES.get(path, path)
 
 

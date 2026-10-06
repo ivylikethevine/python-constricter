@@ -5,12 +5,26 @@ import builtins
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Final, NamedTuple, TypeAlias
+from typing import TYPE_CHECKING, Final, NamedTuple, TypeAlias
 
 from constricter.fix.core.inherited import Beyond, Lineage
 from constricter.fix.core.signatures import Expansion, ReadSignature
 from constricter.offences import MAX_LENGTH, VAGUE
 from constricter.rules.annotations import free_of, free_of_all, roots
+
+if TYPE_CHECKING:
+    from typing_extensions import override  # `typing.override` is 3.12+
+else:
+
+    def override(func: object) -> object:
+        """Mark an override (for type checkers only).
+
+        Returns:
+          `func`, unchanged.
+
+        """
+        return func
+
 
 _BUILTINS: Final = frozenset(dir(builtins))
 _DOT: Final = "."
@@ -19,6 +33,35 @@ Origin: TypeAlias = tuple[str, str | None]
 # How a return template starts that's the type itself, as the module calling it writes it: a
 # checked file's overload's (see `constricter.fix.index.stubbed.overloaded`).
 SPELLED: Final = "="
+
+
+# A `dict` itself, not a `UserDict`: every inference reads it, as fast as a `dict` is read.
+class Typed(dict[str, str]):  # ruff: ignore[subclass-builtin]
+    """A scope's names' types so far, counting each change: what's inferred of a value holds till then."""
+
+    version: int = 0
+
+    @override
+    def __setitem__(self, name: str, annotation: str) -> None:
+        """Type `name`, and count it."""
+        self.version += 1
+        super().__setitem__(name, annotation)
+
+    @override
+    def setdefault(self, name: str, annotation: str = "", /) -> str:
+        """Type `name` if nothing has, and count it.
+
+        Returns:
+          Its type.
+
+        """
+        self.version += 1
+        return super().setdefault(name, annotation)
+
+    def taking(self, others: Mapping[str, str]) -> None:
+        """Type each of `others`' names, and count it."""
+        self.version += 1
+        super().update(others)
 
 
 class Guarded(NamedTuple):

@@ -6,6 +6,11 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- Faster, with the same output: a value's inferred type is kept until its scope types another name
+  (it's asked for again as a guess, and as part of the next value), a module's bound names and class
+  tables are read once for the index and the check, an installed package is looked for on disk once
+  for all its modules, and its signatures' annotations are parsed once each. About 8% off a check of
+  97 of the standard library's test files, and 11% off one of pandas's test directories.
 - `--fix` types what a class takes from a standard-library class through another checked file's (or
   a typed installed package's): under a project's own `class Case(unittest.TestCase)`, defined in
   another file, `name = self.id()` is a `str` and `with self.assertRaises(ValueError) as cm:` an

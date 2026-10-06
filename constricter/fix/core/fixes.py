@@ -10,6 +10,9 @@ from typing import Final, NamedTuple, TypeAlias
 from constricter.offences import Edit, Fix, Offence
 
 _HEADER: Final = 2  # a file's shebang and coding lines come first, if it has them
+# The last lines `_missing` read, stripped each way (see there): the lines, their count, and the set.
+_Present: TypeAlias = tuple[Sequence[str], int, frozenset[str]]
+_PRESENT: Final[dict[str | None, _Present]] = {}
 _HEADER_LINE: Final = re.compile(r"#!|#.*coding[:=]")
 # Lines to insert, and the number of lines before them.
 _Run: TypeAlias = tuple[int, list[str]]
@@ -155,8 +158,15 @@ def _missing(lines: Sequence[str], statements: Sequence[str], stripped: str | No
     """
     if not statements:  # most fixes add none: the file's lines needn't be read for them
         return []
-    present: set[str] = {line.rstrip(stripped) if stripped else line.strip() for line in lines}
-    return [statement for statement in statements if statement not in present]
+    # A file's fixes are asked one at a time, of the same lines: stripped once for them all.
+    held: _Present | None = _PRESENT.get(stripped)
+    if held is None or held[0] is not lines or held[1] != len(lines):
+        held = _PRESENT[stripped] = (
+            lines,
+            len(lines),
+            frozenset(line.rstrip(stripped) if stripped else line.strip() for line in lines),
+        )
+    return [statement for statement in statements if statement not in held[2]]
 
 
 def _import_line(lines: Sequence[str], after: int) -> int:

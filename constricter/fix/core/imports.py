@@ -3,12 +3,11 @@
 
 import ast
 from collections.abc import Iterator
-from functools import lru_cache
 from typing import Final
 
 from constricter.fix.core.known import ImportPlan, Origin
 from constricter.rules.syntax import Start, import_bindings
-from constricter.rules.walked import of_type
+from constricter.rules.walked import of_type, once
 
 _TYPE_CHECKING: Final = "TYPE_CHECKING"
 _FUTURE: Final = "__future__"
@@ -197,7 +196,7 @@ def _running(body: list[ast.stmt]) -> Iterator[ast.stmt]:
                 pass
 
 
-@lru_cache(maxsize=16)
+@once
 def taken_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
     """Find every name bound anywhere in the module: its own, a function's, a class's, a parameter's.
 
@@ -232,7 +231,7 @@ def taken_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
     return frozenset(names), frozenset(values)
 
 
-@lru_cache(maxsize=16)
+@once
 def rebound_names(tree: ast.Module) -> dict[str, list[Start]]:
     """Find the names the module binds more than once, anywhere in it, and where.
 

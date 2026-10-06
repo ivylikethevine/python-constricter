@@ -31,7 +31,7 @@ from constricter.fix.values.inference import inference
 from constricter.rules.annotations import classes as annotated
 from constricter.rules.annotations import dotted
 from constricter.rules.syntax import import_bindings
-from constricter.rules.walked import classes, of_type
+from constricter.rules.walked import classes, of_type, once
 
 OBJECT: Final = "object"
 # The standard library's test cases: their subclasses' variables are only ever their own.
@@ -97,6 +97,7 @@ def member_type(value: ast.expr) -> str | None:
     return found.annotation
 
 
+@once
 def bases(tree: ast.Module) -> dict[str, tuple[str, ...]]:
     """Map each class the module defines once to its bases, as written.
 
@@ -274,6 +275,7 @@ def variables(
     }
 
 
+@once
 def members(tree: ast.Module) -> dict[str, dict[str, str]]:
     """Type the variables of each class the module defines once (see the module docstring).
 
@@ -288,17 +290,17 @@ def members(tree: ast.Module) -> dict[str, dict[str, str]]:
         for node in cast("list[ast.Attribute]", of_type(tree, ast.Attribute))
         if not isinstance(node.ctx, ast.Load)
     )
-    once: dict[str, tuple[str, ...]] = bases(tree)
+    single: dict[str, tuple[str, ...]] = bases(tree)
     typed: dict[str, dict[str, str]] = {
-        node.name: _typed(node.body, stored | reserved(node.name, once))
+        node.name: _typed(node.body, stored | reserved(node.name, single))
         for node in classes(tree)
-        if node.name in once
+        if node.name in single
     }
     if not any(typed.values()):
         return {}
     declared: Mapping[str, Mapping[str, str]] = annotated(tree)
     kept: dict[str, dict[str, str]] = {
-        name: agreeing(each, [declared[above] for above in ancestors(name, once)])
+        name: agreeing(each, [declared[above] for above in ancestors(name, single)])
         for name, each in typed.items()
     }
     return {name: each for name, each in kept.items() if each}

@@ -14,6 +14,7 @@ from typing import Final, cast
 from constricter.rules.decorators import Held, passing, spelled
 from constricter.rules.quoted import parsed, written
 from constricter.rules.syntax import child_statements, declared_return
+from constricter.rules.walked import once
 
 _VAGUE: Final = frozenset({"Any", "object"})
 _UNIONS: Final = frozenset({"Optional", "Union"})  # a union's members, as a subscript's arguments
@@ -145,7 +146,7 @@ def casts(tree: ast.Module) -> frozenset[str]:
     return frozenset(names)
 
 
-@lru_cache(maxsize=16)  # the class tables all read them, for each module
+@once  # the class tables all read them, for each module
 def _class_nodes(tree: ast.Module) -> tuple[ast.ClassDef, ...]:
     """Find every class the module defines, however deep.
 
@@ -731,7 +732,7 @@ def free_of_all(
     return {owner: free_of(types, type_vars) for owner, types in tables.items()}
 
 
-@lru_cache(maxsize=16)  # each class table asks, for each module
+@once  # each class table asks, for each module
 def defined_type_vars(tree: ast.Module) -> frozenset[str]:
     """Find the module-level names bound to a `TypeVar`, `ParamSpec` or `TypeVarTuple`, or `typing.AnyStr`.
 

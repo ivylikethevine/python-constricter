@@ -268,18 +268,36 @@ def locate(name: str, search: tuple[Path, ...]) -> Path | None:
     top, *rest = name.split(".")
     directory: Path
     for directory in search:
-        roots: list[Path] = [directory / f"{top}{_STUBS}"]
-        if (directory / top / _TYPED).is_file():
-            roots.append(directory / top)
-        root: Path
-        for root in roots:
-            if root.is_dir():
-                return _module_file(root.joinpath(*rest))
-        if not rest and (directory / f"{top}{STUB}").is_file():
+        root: Path | None
+        stub: bool
+        here: bool
+        root, stub, here = _package(directory, top)
+        if root is not None:
+            return _module_file(root.joinpath(*rest))
+        if not rest and stub:
             return directory / f"{top}{STUB}"
-        if (directory / top).is_dir() or (directory / f"{top}{SUFFIX}").is_file():
+        if here:
             return None  # installed here, untyped: an earlier directory shadows any later one
     return None
+
+
+@lru_cache(maxsize=4096)  # asked for each of a package's modules: the same answer for them all
+def _package(directory: Path, top: str) -> tuple[Path | None, bool, bool]:
+    """Find what `directory` has of the top-level package or module `top`.
+
+    Returns:
+      Where its types are declared (its stub package, else the package itself if it's typed), or
+      `None`; whether it has a lone stub module for it; and whether it's installed there at all.
+
+    """
+    roots: list[Path] = [directory / f"{top}{_STUBS}"]
+    if (directory / top / _TYPED).is_file():
+        roots.append(directory / top)
+    return (
+        next((root for root in roots if root.is_dir()), None),
+        (directory / f"{top}{STUB}").is_file(),
+        (directory / top).is_dir() or (directory / f"{top}{SUFFIX}").is_file(),
+    )
 
 
 def _module_file(base: Path) -> Path | None:

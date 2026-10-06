@@ -6,7 +6,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix.core.known import Hints, ImportPlan, Inference, Known, Passed
+from constricter.fix.core.known import Hints, ImportPlan, Inference, Known, Passed, Typed
 from constricter.fix.libraries import stdlib
 from constricter.fix.values import aliased, fills, hinted
 from constricter.fix.values.doubts import (
@@ -140,7 +140,7 @@ Late: TypeAlias = tuple[str, frozenset[str]]
 class Inferred:
     """What `--fix` knows of a scope's names so far."""
 
-    types: dict[str, str] = field(default_factory=dict[str, str])  # each known type, for `x = y`'s
+    types: Typed = field(default_factory=Typed)  # each known type, for `x = y`'s
     guesses: set[str] = field(default_factory=set[str])  # `types` from an unsafe fix: copies are too
     # Each guess's guessing mechanisms (`FIX_KINDS`), for `unsafe-fix-select` to trust or not.
     origins: dict[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])

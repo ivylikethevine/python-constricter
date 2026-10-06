@@ -10,6 +10,7 @@ other installed class.
 
 import ast
 from collections.abc import Iterator, Mapping, Sequence
+from functools import lru_cache
 from types import EllipsisType
 from typing import Final, NamedTuple, TypeAlias
 
@@ -253,6 +254,7 @@ def element_of(container: str, args: Sequence[ast.expr]) -> ast.expr | None:
     return args[0] if container == TUPLE and ellipsis else None
 
 
+@lru_cache(maxsize=8192)  # asked of each parameter's classes, for each scalar
 def external_takes(path: str, scalar: str) -> str:
     """Decide whether a class outside the installed packages (`typing.SupportsIndex`) takes a `scalar`.
 
@@ -384,11 +386,12 @@ def joined(separator: str, parts: Sequence[str | None]) -> str | None:
     return None if None in parts else separator.join(part for part in parts if part is not None)
 
 
+@lru_cache(maxsize=8192)  # a package's signatures name the same few thousand types over and over
 def parse_text(text: str) -> ast.expr:
     """Parse an annotation's text; one that doesn't parse (`"int["`) names nothing.
 
     Returns:
-      Its tree.
+      Its tree, shared by everyone who asks: to read, never to change.
 
     """
     try:

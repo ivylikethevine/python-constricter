@@ -2,8 +2,9 @@
 """One walk of a whole module, shared by every pass over all of it (importing nothing of constricter's)."""
 
 import ast
-from collections.abc import Sequence
-from typing import Final, TypeAlias, cast
+import functools
+from collections.abc import Callable, Sequence
+from typing import Final, TypeAlias, TypeVar, cast
 from weakref import WeakKeyDictionary
 
 _CTX: Final = "ctx"
@@ -19,6 +20,31 @@ _FIELDS: dict[type[ast.AST], tuple[str, ...]] = {}
 # Each module's walk, for as long as its tree lives: the cross-file index's walk of a file is the
 # check's too, when the index kept its tree (`parsed.keep`), however many files came between.
 _WALKS: Final[WeakKeyDictionary[ast.Module, "_Walk"]] = WeakKeyDictionary()
+
+
+_Found = TypeVar("_Found")
+
+
+def once(function: Callable[[ast.Module], _Found]) -> Callable[[ast.Module], _Found]:
+    """Remember what a function of a whole module found, for as long as its tree lives.
+
+    The index reads every file before any is checked, so a cache of the last few trees has lost a
+    file's by the time it's checked; and it would keep those trees alive.
+
+    Returns:
+      The function, asked of each tree once.
+
+    """
+    found: WeakKeyDictionary[ast.Module, _Found] = WeakKeyDictionary()
+
+    def remembered(tree: ast.Module) -> _Found:
+        try:
+            return found[tree]
+        except KeyError:
+            found[tree] = function(tree)
+            return found[tree]
+
+    return functools.update_wrapper(remembered, function)
 
 
 def _by_type(tree: ast.Module) -> dict[type[ast.AST], list[ast.AST]]:

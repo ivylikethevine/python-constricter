@@ -6,6 +6,7 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
+from constricter.fix.core import asked
 from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.libraries import overloads, stdlib
 from constricter.fix.libraries.library import (
@@ -153,7 +154,12 @@ def inference(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
       The annotation as source text and its reason, or `None` if the value doesn't decide one.
 
     """
-    return _from_local(value, known, declared) or _from_value(value, known, declared)
+    held: tuple[Inference | None] | None
+    if (held := asked.asked(value, known, declared)) is not None:
+        return held[0]
+    found: Inference | None = _from_local(value, known, declared) or _from_value(value, known, declared)
+    asked.keep(value, known, declared, found)
+    return found
 
 
 def _from_local(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inference | None:
