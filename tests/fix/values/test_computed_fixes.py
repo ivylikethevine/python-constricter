@@ -6,6 +6,7 @@ import pytest
 from constricter import Offence, check_source
 
 NAME: str = "x_"  # the variable each case binds
+LOCAL: str = "LVA001"  # an unannotated local's code
 
 
 @pytest.mark.parametrize(
@@ -75,6 +76,13 @@ NAME: str = "x_"  # the variable each case binds
         ("ages | {'x': 1}", "dict[str, int]"),
         ("ages | {1: 'x'}", None),
         ("ages & ages", None),
+        ("names & ages.keys()", "set[str]"),  # a `dict`'s keys' operators give a `set` of them
+        ("ages.keys() - names", "set[str]"),
+        ("ages.keys() | ages.keys()", "set[str]"),
+        ("ages.keys() - {1}", None),
+        ("ages.keys(1) - names", None),
+        ("unknown().keys() - names", None),
+        ("ages.values() - names", None),
         ("unknown() + 1", None),
         ("[line.strip() for line in lines]", "list[str]"),
         ("{x for x in range(3)}", "set[int]"),
@@ -108,6 +116,74 @@ def test_a_computed_value_is_typed(value: str, fix: str | None) -> None:
     )
     offences: list[Offence] = [o for o in check_source(source) if o.name == NAME]
     assert [(o.fix, o.unsafe) for o in offences] == [(fix, False)]
+
+
+def test_an_operator_is_typed_by_its_left_operands_library_method() -> None:
+    """A standard-library class's operator gives what its method declares for the right operand.
+
+    The first signature whose operand takes it: the same class, one under it, or a number promoted
+    to it. Not where a signature before that can't be read, the right operand's class is under the
+    left's (its reflected method may answer), or it's no builtin's or library class's instance.
+    """
+    source: str = (
+        "import datetime\n"
+        "from collections import Counter, UserString\n"
+        "from datetime import date, timedelta\n"
+        "from decimal import Decimal\n"
+        "from fractions import Fraction\n"
+        "class Mine(datetime.datetime): ...\n"
+        "def f(when: datetime.datetime, day: date, span: timedelta, d: Decimal, fr: Fraction,\n"
+        "      n: int, x: float, flag: bool, c: Counter[str], mine: Mine, us: UserString, other):\n"
+        "    a = when - when\n"
+        "    b = when - span\n"
+        "    c_ = when + span\n"
+        "    e = day - day\n"
+        "    g = day - when\n"
+        "    h = span / span\n"
+        "    i = span / n\n"
+        "    j = span * flag\n"
+        "    k = d + n\n"
+        "    m = d * d\n"
+        "    o = fr + fr\n"
+        "    p = fr + x\n"
+        "    q = fr + flag\n"
+        "    r = when + n\n"
+        "    s = when - other\n"
+        "    t = when - mine\n"
+        "    u = c + c\n"
+        "    v = when @ span\n"
+        "    w = d + x\n"
+        "    y = (when - when).total_seconds()\n"
+        "    z = when - (when if flag else None)\n"
+        "    us2 = us + us\n"
+    )
+    fixed: dict[str, tuple[str | None, bool]] = {
+        o.name: (o.fix, o.unsafe) for o in check_source(source) if o.code == LOCAL
+    }
+    assert fixed == {
+        "a": ("timedelta", False),
+        "b": ("datetime.datetime", False),
+        "c_": ("datetime.datetime", False),
+        "e": ("timedelta", False),
+        "g": (None, False),  # a `datetime` is a `date`: its reflected method may answer first
+        "h": ("float", False),
+        "i": ("timedelta", False),  # an `int`, where a `float` is taken
+        "j": ("timedelta", False),
+        "k": ("Decimal", False),
+        "m": ("Decimal", False),
+        "o": ("Fraction", False),
+        "p": ("float", False),
+        "q": ("Fraction", False),  # a `bool`, where an `int` is taken
+        "r": (None, False),
+        "s": (None, False),
+        "t": (None, False),  # a class of the module's: its own `__rsub__` may answer
+        "u": (None, False),  # a generic class's operand
+        "v": (None, False),
+        "w": (None, False),
+        "y": ("float", False),
+        "z": (None, False),
+        "us2": (None, False),  # an operand typed `object`
+    }
 
 
 def test_a_path_joined_by_a_slash_is_a_path() -> None:

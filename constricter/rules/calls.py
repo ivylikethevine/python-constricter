@@ -28,6 +28,7 @@ from constricter.fix.core.known import (
     Seeds,
 )
 from constricter.fix.index import callers, fixtures
+from constricter.fix.libraries import stdlib
 from constricter.fix.values.guesses import guessing
 from constricter.fix.values.inference import inference, scalar
 from constricter.rules.annotations import dotted
@@ -132,8 +133,13 @@ def _naming(tree: ast.Module, callees: Mapping[str, Callee]) -> list[tuple[ast.A
     return found
 
 
-def _bound(function: ast.FunctionDef | ast.AsyncFunctionDef, nodes: Sequence[ast.AST]) -> frozenset[str]:
-    """Name what a function binds itself: its parameters, and what it assigns or imports.
+def _bound(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    nodes: Sequence[ast.AST],
+    *,
+    imports: bool = True,
+) -> frozenset[str]:
+    """Name what a function binds itself: its parameters, and what it assigns or (`imports`) imports.
 
     Returns:
       Them.
@@ -148,7 +154,7 @@ def _bound(function: ast.FunctionDef | ast.AsyncFunctionDef, nodes: Sequence[ast
             *(
                 (alias.asname or alias.name).partition(".")[0]
                 for node in nodes
-                if isinstance(node, ast.Import | ast.ImportFrom)
+                if imports and isinstance(node, ast.Import | ast.ImportFrom)
                 for alias in node.names
             ),
             *(node.name for node in nodes if isinstance(node, _DEFINED)),
@@ -344,24 +350,60 @@ def _cases(decorator: ast.expr) -> tuple[list[str], list[list[ast.expr]]]:
 
 
 def unshadowed(settings: Settings, function: FunctionDef) -> Settings:
-    """Drop the standard-library names a function binds itself from what it's checked knowing.
+    """Fit the standard-library names a function is checked knowing to what it binds itself.
 
     A parameter, local, import or nested definition named `getpid` isn't `os.getpid`, whatever the
-    module imports; the functions inside it are checked knowing the same.
+    module imports; a name its own imports alone bind is what they import (`import os`, in its
+    body). The functions inside it are checked knowing the same.
 
     Returns:
-      The settings, less those names; the same settings if it binds none of them.
+      The settings, with those names; the same settings if it binds none of them.
 
     """
     names: LibraryNames = settings.known.names
     rebound: Mapping[str, Sequence[Start]] | None = settings.facts.rebound
-    # Most functions can shadow none: no name the module imports is bound in them. They aren't walked.
-    if rebound is not None and not any(
-        has_within(rebound[name], function) for name in names.stdlib.keys() & rebound.keys()
+    lazy: Sequence[Start] | None = settings.facts.lazy
+    # Most functions bind none: no name the module imports, and no import. They aren't walked.
+    if (
+        rebound is not None
+        and lazy is not None
+        and not has_within(lazy, function)
+        and not any(has_within(rebound[name], function) for name in names.stdlib.keys() & rebound.keys())
     ):
         return settings
-    bound: frozenset[str]
-    if not (bound := _bound(function, list(own_nodes(function.body))) & names.stdlib.keys()):
+    nodes: list[ast.AST] = list(own_nodes(function.body))
+    bound: frozenset[str] = _bound(function, nodes)
+    own: dict[str, str] = _own_imports(nodes, _bound(function, nodes, imports=False))
+    if not (bound & names.stdlib.keys() or own):
         return settings
-    stdlib: dict[str, str] = {name: origin for name, origin in names.stdlib.items() if name not in bound}
-    return replace(settings, known=replace(settings.known, names=names._replace(stdlib=stdlib)))
+    stdlib_names: dict[str, str] = {
+        name: origin for name, origin in names.stdlib.items() if name not in bound
+    } | own
+    return replace(settings, known=replace(settings.known, names=names._replace(stdlib=stdlib_names)))
+
+
+def _own_imports(nodes: Sequence[ast.AST], assigned: frozenset[str]) -> dict[str, str]:
+    """Map the names a function's own imports bind to what they are in the standard library.
+
+    Not a name it binds another way too (`assigned`), nor one two imports bind to different things.
+
+    Returns:
+      Each name, mapped to its dotted origin (see `stdlib.origins`).
+
+    """
+    origins: dict[str, set[str | None]] = {}
+    node: ast.AST
+    for node in nodes:
+        if isinstance(node, ast.Import | ast.ImportFrom):
+            known: dict[str, str] = stdlib.imported([node])
+            alias: ast.alias
+            for alias in node.names:
+                name: str = (alias.asname or alias.name).partition(".")[0]
+                origins.setdefault(name, set()).add(known.get(name))
+    return {
+        name: origin
+        for name, found in origins.items()
+        if name not in assigned and len(found) == 1
+        for origin in found
+        if origin is not None
+    }

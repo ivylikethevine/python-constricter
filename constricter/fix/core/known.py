@@ -74,6 +74,20 @@ class Guarded(NamedTuple):
     statement: str | None
 
 
+class Checking(NamedTuple):
+    """A module's imports for type checking alone: where they go, whose types need one, and its own.
+
+    `block`: the first and last line of the body of the `if TYPE_CHECKING:` among its leading
+    imports, if it has one (else zeros); `lazy`: the top-level packages only its functions import,
+    which may not be there to import when the module is (another platform's `pwd`); `bound`: what
+    the imports under its top-level `if TYPE_CHECKING:`s bind, each name's dotted origin.
+    """
+
+    block: tuple[int, int] = (0, 0)
+    lazy: frozenset[str] = frozenset()
+    bound: Mapping[str, str] = MappingProxyType({})
+
+
 class Classes(NamedTuple):
     """Classes' instance attributes (and properties) and methods' returns, by the class's name as spelled.
 
@@ -94,10 +108,9 @@ class ImportPlan:
     at its top level (an import, a class, a function, an assignment), and the line it's first bound
     on; `added`: each name an added import binds, and that import's statement, as `spell` chose them.
     `guarded`: the names other checked files' types and a type checker's hints are written with
-    that the module imports (or is to import) under `if TYPE_CHECKING:` alone; `block`: the first
-    and last line of the body of the `if TYPE_CHECKING:` among its leading imports, if it has one
-    (else zeros); `postponed`: whether it has `from __future__ import annotations`, so none of its
-    annotations is evaluated.
+    that the module imports (or is to import) under `if TYPE_CHECKING:` alone; `checking`: its own
+    such imports, where one goes, and whose types need one (see `Checking`); `postponed`: whether
+    it has `from __future__ import annotations`, so none of its annotations is evaluated.
     """
 
     bound: Mapping[str, str]
@@ -106,15 +119,16 @@ class ImportPlan:
     defined: Mapping[str, int] = field(default_factory=dict[str, int])
     added: dict[str, str] = field(default_factory=dict[str, str])
     guarded: Mapping[str, Guarded] = field(default_factory=dict[str, Guarded])
-    block: tuple[int, int] = (0, 0)
+    checking: Checking = field(default_factory=Checking)
     postponed: bool = False
     values: frozenset[str] = frozenset()  # names it binds as values somewhere (see `imports.taken_names`)
 
     def spell(self, qualified: str) -> str | None:
         """Name `qualified` (`io.BufferedReader`) in this module, adding an import if it has to.
 
-        Through an import it has (see `named`), else a new `from io import BufferedReader`, else a
-        new `import io`, but only binding a name nothing in the module binds.
+        Through an import it has (see `named`), for type checking alone too (`checking`), else a new
+        `from io import BufferedReader`, else a new `import io`, but only binding a name nothing in
+        the module binds. Under `if TYPE_CHECKING:` for a module in `checking.lazy`.
 
         Returns:
           The name, or `None` if every way to write it is taken.
@@ -126,7 +140,14 @@ class ImportPlan:
         module: str
         name: str
         module, _, name = qualified.rpartition(".")
+        bound: str
+        origin: str
+        for bound, origin in self.checking.bound.items():
+            if origin == qualified and bound not in self.values:
+                return bound
         statement: str = f"from {module} import {name}"
+        if module.partition(_DOT)[0] in self.checking.lazy:
+            return name if self.guard(name, (module, name), statement) else None
         if self._free(name, statement):
             self.added[name] = statement
             return name

@@ -60,7 +60,9 @@
   what `re.match` gave), and a loop over one; `path.open(mode)`, as `open` is; `enumerate`, `zip`,
   `map` and `reversed` bound to a name; `x.__class__`, and a class's `__name__` read of it or of
   `type(x)`; a loop over a standard-library class's instance, by its `__iter__`
-  (`for line in open(path)`, an `itertools.chain[int]`, a `deque[int]`).
+  (`for line in open(path)`, an `itertools.chain[int]`, a `deque[int]`). A function's own imports
+  (`import os` in its body); a type named by the module's import for it under `if TYPE_CHECKING:`; a
+  call of a module's `NewType`; a `dict`'s `.keys()` under a `set`'s operators.
 - **The standard library, from typeshed**: tables generated from the stubs basedpyright bundles when
   the package is built (`stdlib_tables/`, see [Project](#project)), read as Linux, macOS and Windows
   and Python 3.11 to 3.14 see them, into `constricter/fix/tables/` (one JSON file a table, an entry
@@ -74,14 +76,16 @@
   method's return through a generic protocol (`math.floor(x)`), and to a function's declared return
   (`functools.partial(f, x)`); generic classes' own attributes are bound by the receiver's
   (`m.string`), and what one inherits with one type is typed whatever they are (`f.read()` on an
-  `io.TextIOWrapper`). `defaultdict(list)` and `Counter()` stay untyped: their parameters come from
-  later use. Generic classes' constructors are read from their `__new__` or `__init__`
-  (`collections.deque(names)` is a `collections.deque[str]`, `array.array("i")` an
-  `array.array[int]`), or the instance an `__init__` overload's `self` declares
-  (`subprocess.Popen(cmd, text=True)` is a `subprocess.Popen[str]`); at module level, one some
-  Python can't subscript at run time is quoted. A generic class returned bare is written with its
-  type parameters' defaults (`ET.SubElement(...)` is an `ET.Element[str]`). What only some platforms
-  or versions have is kept (`os.getuid()`).
+  `io.TextIOWrapper`). A non-generic class's attribute typed with classes' own arguments is held as
+  a template too (`sig.parameters`, `tree.body`), as is such a module variable (`sys.modules`), and
+  an operator's method with what each signature takes (`when - start` is a `timedelta`).
+  `defaultdict(list)` and `Counter()` stay untyped: their parameters come from later use. Generic
+  classes' constructors are read from their `__new__` or `__init__` (`collections.deque(names)` is a
+  `collections.deque[str]`, `array.array("i")` an `array.array[int]`), or the instance an `__init__`
+  overload's `self` declares (`subprocess.Popen(cmd, text=True)` is a `subprocess.Popen[str]`); at
+  module level, one some Python can't subscript at run time is quoted. A generic class returned bare
+  is written with its type parameters' defaults (`ET.SubElement(...)` is an `ET.Element[str]`). What
+  only some platforms or versions have is kept (`os.getuid()`).
 - **The checked files' own overloads**: a call to a function defined with `@overload` is typed by
   the overload its arguments match (`constricter.fix.index.own_overloads`), where builtin,
   standard-library and `Literal` parameters decide it; each return is written as another checked
@@ -473,18 +477,22 @@ fix.
 4. **Operators and iteration by their classes' methods.** `enumerate`, `zip`, `map` and `reversed`
    bound to a name are typed now (`enumerate[str]`, by hand); `iter` and `filter` aren't (an
    `Iterator[T]` needs an import, `filter` its predicate's narrowing): `builtins.pyi`'s generic
-   functions and the classes' operator methods aren't run through the overload matcher (`abs`,
-   `min`, `sum` and the like, and the builtin numbers', sequences' and sets' operators, are typed by
-   hand, for builtin types alone). A loop over a standard-library class's instance is typed by its
-   `__iter__` now (a file, `itertools.combinations(...)`); one over a method's call whose return
-   names `Self` too (`path.iterdir()`, `path.glob(...)`); not `os.walk(...)`, whose return is nested
-   deeper than the tables hold. Counted, among the bindings with no fix: `iter(...)` bound to a name
-   155, `zip` 37, `map` 32, `reversed` 19; `max` and `min` 168, `sum` 29; a `/` with a string on its
-   right 365 (a fix now where its left is a known `pathlib` path), and a tuple added to something
-   65, of 4,990 binary operations (most between two values of no known type); loops over
-   `os.walk(...)` 87 and `itertools`' functions 92. A loop over `x.items()` (1,861), `zip` (644) or
-   `enumerate` (611) has no fix for its arguments' types, not for this. Done when each of those is a
-   fix. About 12 hours, for about 0.3% (some 800 fixes, of the 1,050 those reach).
+   functions aren't run through the overload matcher (`abs`, `min`, `sum` and the like, and the
+   builtin numbers', sequences' and sets' operators, are typed by hand, for builtin types alone). A
+   standard-library class's operator is typed by its method's signatures now, where both operands
+   are a builtin's or a non-generic library class's instance (`when - start`, `price * 2`); not a
+   generic class's (`Counter[str] + Counter[str]`), a reflected method's (`2 * span`), nor a class
+   of the checked files' under a library one. A loop over a standard-library class's instance is
+   typed by its `__iter__` now (a file, `itertools.combinations(...)`); one over a method's call
+   whose return names `Self` too (`path.iterdir()`, `path.glob(...)`); not `os.walk(...)`, whose
+   return is nested deeper than the tables hold. Counted, among the bindings with no fix:
+   `iter(...)` bound to a name 155, `zip` 37, `map` 32, `reversed` 19; `max` and `min` 168, `sum`
+   29; a `/` with a string on its right 365 (a fix now where its left is a known `pathlib` path),
+   and a tuple added to something 65, of 4,990 binary operations (most between two values of no
+   known type); loops over `os.walk(...)` 87 and `itertools`' functions 92. A loop over `x.items()`
+   (1,861), `zip` (644) or `enumerate` (611) has no fix for its arguments' types, not for this. Done
+   when each of those is a fix. About 12 hours, for about 0.3% (some 800 fixes, of the 1,050 those
+   reach).
 5. **Narrowed reads.** A read of an `X | None`, or of a union the function tests, has no fix or only
    a guess: a checker narrows it where `--fix` doesn't follow the test
    (`if self.conn is None: return`, then `conn = self.conn`). Follow `is None`, `isinstance` and

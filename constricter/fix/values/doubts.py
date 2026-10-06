@@ -22,7 +22,7 @@ from functools import lru_cache
 from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter.fix.core.imports import checking, rebound_names
+from constricter.fix.core.imports import checking, inner_imports, rebound_names
 from constricter.fix.core.known import ImportPlan, Inference
 from constricter.fix.values.narrowed import Regions, regions
 from constricter.rules.annotations import generic_classes, node_name, roots
@@ -85,6 +85,8 @@ class Facts(NamedTuple):
     # The names it binds more than once, and where (see `imports.rebound_names`): all a function
     # can shadow, each only where one of its bindings is.
     rebound: Mapping[str, Sequence[Start]] | None = None
+    # Where its functions' own imports start, in source order (see `imports.inner_imports`).
+    lazy: Sequence[Start] | None = None
 
 
 def facts(
@@ -115,6 +117,7 @@ def facts(
         type_vars,
         _bound_vars(tree, type_vars),
         rebound_names(tree),
+        [(stmt.lineno, stmt.col_offset) for stmt in inner_imports(tree)],
     )
 
 

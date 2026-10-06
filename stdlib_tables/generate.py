@@ -26,7 +26,8 @@ comes out the same for all twelve:
   each signature as `stdlib_tables/overloads.py` reads it;
 - `type_parameters` and `subscriptable`: each generic class's type parameters, and whether every
   Python can subscript it at run time; `generic_attributes`: its own attributes and properties, as
-  templates its instance's type arguments bind; `elements`: what iterating each class's instance
+  templates its instance's type arguments bind, and a non-generic class's own that `attributes`
+  can't hold (a `list[ast.stmt]`); `elements`: what iterating each class's instance
   gives (`io.TextIOWrapper`'s `str`, `itertools.chain`'s `_T`), as such a template;
 - `functions`: capitalised functions no other table types (`xml.etree.ElementTree.Comment`), so
   a call to one isn't taken to construct a class;
@@ -136,10 +137,12 @@ _RUNTIME: Final = frozenset(
         "lib2to3.pygram.pattern_symbols",
     },
 )
-# The private classes a public function returns and nothing public stands for: what a `with` binds.
+# The private classes a public function returns and nothing public stands for (what a `with`
+# binds), and a private function code calls all the same.
 _PRIVATE: Final = {
     "unittest.case": ("_AssertRaisesContext", "_AssertWarnsContext"),
     "tempfile": ("_TemporaryFileWrapper",),
+    "sys": ("_getframe",),
 }
 # Modules whose names installed packages' stubs annotate with, private or not (`scalars`).
 _ANNOTATING: Final = frozenset({"typing", "typing_extensions", "builtins", "_typeshed", "collections.abc"})
@@ -176,7 +179,7 @@ class _Tables(NamedTuple):
     type_parameters: Table  # each generic class's, in order, comma-separated (`_T=`: with a default)
     bases: Table  # each class's public ancestors in the tables, nearest first, comma-separated
     subscriptable: Table  # each generic class's: `y` if it can be subscripted at run time, else `n`
-    generic_attributes: dict[str, Table]  # each generic class's own attributes, as templates
+    generic_attributes: dict[str, Table]  # a class's own attributes, as templates
     variables: Table  # module-level variables' types: builtin annotations, or classes' paths
     scalars: Table  # each class's and alias's verdict (`y`, `n`, `?`) per `SCALARS`, then `CONTAINERS`, type
     scalar_members: dict[str, list[str]]  # each scalar's members, its class's and its bases'
@@ -319,9 +322,19 @@ def _enter_scalars(tables: _Tables, reader: _Reader, stubs: Stubs, config: Confi
 
 
 def _enter_class(tables: _Tables, reader: _Reader, klass: ClassRef, path: str) -> None:
-    """Enter a class's members, its public ancestors, and its methods whose arguments decide their return."""
+    """Enter a class's members, its public ancestors, and its methods whose arguments decide their return.
+
+    And its own attributes no builtin annotation or class alone types, as templates (`Signature`'s
+    `parameters`, a `MappingProxyType[str, Parameter]`).
+    """
     members: dict[str, Member] = reader.reading.members(klass)
     _enter_members(tables, path, members, reader.canonical)
+    entered: Table = tables.attributes.get(path, {})
+    templates: Table = {
+        name: template for name, template in reader.overloads.attributes(klass).items() if name not in entered
+    }
+    if templates:
+        tables.generic_attributes[path] = templates
     ancestors: list[str] = [
         reader.canonical[base] for base in reader.reading.trusted(klass)[0][1:] if base in reader.canonical
     ]
@@ -409,10 +422,16 @@ def _enter_alias(tables: _Tables, reader: _Reader, path: str, value: "ast.expr",
 
 
 def _enter_variable(tables: _Tables, reader: _Reader, path: str, annotation: "ast.expr", module: str) -> None:
-    """Enter a module-level variable's type (`sys.path`: `list[str]`), if the tables can hold it."""
+    """Enter a module-level variable's type, if the tables can hold it.
+
+    A builtin annotation or a class's path (`sys.path`: `list[str]`), else a template naming classes
+    by their paths (`sys.modules`: `dict[str, types.ModuleType]`).
+    """
     form: Form | None = reader.reading.form(annotation, module, None)
-    value: str | None
-    if (value := None if form is None else _value(form, reader.canonical)) is not None:
+    value: str | None = None if form is None else _value(form, reader.canonical)
+    if value is None and form is None:
+        value = reader.overloads.template(annotation, module)
+    if value is not None:
         tables.variables[path] = value
 
 

@@ -6,6 +6,28 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` resolves a function's own imports: with `import os` or `from inspect import signature` in
+  its body, `os.getcwd()` is a `str` and `signature(f)` an `inspect.Signature` there, and in the
+  functions inside it. Not a name the function binds another way too (`try: import x` /
+  `except ImportError: x = None`), nor one two of its imports bind to different things. A type of a
+  module only functions import is imported under `if TYPE_CHECKING:`: the module may not be there to
+  import when the file is (another platform's `pwd`).
+- `--fix` names a type by the import the module has for it under a top-level `if TYPE_CHECKING:`
+  (`sig: Signature`, quoted in a module body), where it added `import inspect` and wrote
+  `inspect.Signature` before.
+- `--fix` types a standard-library class's attribute or property whose type has classes' own
+  arguments, and what's read of it: `sig.parameters` on an `inspect.Signature` is a
+  `MappingProxyType[str, inspect.Parameter]` (so `list(sig.parameters.values())` a
+  `list[inspect.Parameter]`), `for stmt in tree.body` declares `stmt: ast.stmt`, `path.parents` is a
+  `Sequence[Path]`; such a module variable too (`sys.modules[name]` is a `ModuleType`), and
+  `sys._getframe()` (a `types.FrameType`).
+- `--fix` types an operator between a standard-library class's instance and another's or a
+  builtin's, by its method's signatures in typeshed: `when - start` of two `datetime`s is a
+  `timedelta`, `when + span` a `datetime`, `price * 2` a `Decimal`, `span / span` a `float`. Not
+  where the right operand's class is under the left's, or isn't the standard library's. And a
+  `dict`'s `.keys()` with a `set` of its key type (`allowed & config.keys()` is a `set[str]`).
+- `--fix` types a call of a module's `NewType` (`ref = Ref(name)` is a `Ref`), in the module making
+  it and in the checked files importing it.
 - The trees a run keeps between indexing and checking are capped by the machine's memory: a quarter
   of it (of a container's limit, where that's lower), and 1 GB at least, which was the cap on every
   machine. Windows, which doesn't say how much it has, keeps 1 GB.

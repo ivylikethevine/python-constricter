@@ -27,6 +27,7 @@ from constricter.fix.core.signatures import (
     Signature,
 )
 from stdlib_tables.reading import (
+    OPERATORS,
     ClassRef,
     Defs,
     Reading,
@@ -376,7 +377,7 @@ class Overloads(Templates):
         return annotation is not None and bool(self._variables(annotation, module))
 
     def attributes(self, klass: ClassRef) -> dict[str, str]:
-        """Read a generic class's own attributes and properties, as templates its type arguments bind.
+        """Read a class's own attributes and properties, as templates its type arguments (if any) bind.
 
         `re.Match`'s `string` is its `AnyStr`, `pos` an `int`. Only its own body's: a generic base's
         members name that base's type parameters.
@@ -460,8 +461,18 @@ class Overloads(Templates):
                     [_self(node) for node in function.defs],
                 )
             ) is not None:
+                if name in OPERATORS:
+                    self._operands(signatures, function.defs, owner.module)
                 found[name] = (f"{owner.module}.{owner.name}.{name}", signatures)
         return found
+
+    def _operands(self, signatures: list[Signature], defs: Defs, module: str) -> None:
+        """Note what each of an operator's signatures takes as its operand (`Signature`'s `takes`)."""
+        signature: Signature
+        node: ast.FunctionDef | ast.AsyncFunctionDef
+        for signature, node in zip(signatures, defs, strict=True):
+            operands: list[Param] = parameters(_unbound(node))
+            signature["takes"] = self.template(operands[0].annotation, module) if len(operands) == 1 else None
 
     def _instance(self, annotation: ast.expr | None, module: str) -> list[str] | None:
         """Read the type arguments a method's `self` annotation gives its class (`Pattern[str]`'s `str`).

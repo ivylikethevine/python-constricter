@@ -4,17 +4,18 @@
 A statement's value is asked for its type, then for whether that's a guess, then as a part of the
 next value (a `with` statement's manager, three times): `asked` answers again what `keep` was told,
 for the same value (by `id`), the same scope's types (`Typed`) unchanged since, and the same number
-of imports the module's plan has added (an import `--fix` adds can resolve a name the next time).
+of imports the module's plan has added or guarded (an import `--fix` adds can resolve a name the
+next time).
 """
 
 import ast
 from collections.abc import Mapping
 from typing import Final, TypeAlias
 
-from constricter.fix.core.known import Inference, Known, Typed
+from constricter.fix.core.known import ImportPlan, Inference, Known, Typed
 
 # What was asked: the value and the scope's types (by `id`), how often those had changed, and how
-# many imports the module's plan had added.
+# many imports the module's plan had added or guarded.
 _Asked: TypeAlias = tuple[int, int, int, int]
 # Its answer, with what was asked kept alive beside it: an `id` is only theirs while they live.
 _Answered: TypeAlias = tuple[ast.expr, Known, Typed, Inference | None]
@@ -23,11 +24,12 @@ _KEPT: Final = 2048  # then all are dropped: a few functions' worth
 
 
 def _key(value: ast.expr, known: Known, declared: Typed) -> _Asked:
+    plan: ImportPlan | None = known.names.plan
     return (
         id(value),
         id(declared),
         declared.version,
-        0 if known.names.plan is None else len(known.names.plan.added),
+        0 if plan is None else len(plan.added) + len(plan.guarded),
     )
 
 

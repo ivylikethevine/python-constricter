@@ -91,6 +91,114 @@ def test_a_table_function_is_typed_however_it_is_imported() -> None:
     }
 
 
+def test_a_functions_own_import_is_resolved_in_it() -> None:
+    """A name a function's own imports alone bind is what they import, in it and the functions inside it.
+
+    Not one it binds another way too, nor one two of its imports bind to different things; and a
+    type of a module only a function imports is imported for type checking alone.
+    """
+    source: str = """
+    import os
+    from typing import TYPE_CHECKING
+
+    if TYPE_CHECKING:
+        from inspect import Signature
+
+
+    def f(name: str, flag: bool) -> None:
+        import os.path as osp
+        import time
+        from inspect import signature
+        from subprocess import run
+
+        if flag:
+            from os import getpid
+        else:
+            from threading import get_ident as getpid
+        try:
+            import shutil
+        except ImportError:
+            shutil = None
+
+        a = time.time()
+        b = osp.basename(name)
+        c = signature(f)
+        d = run([name], text=True)
+        e = getpid()
+        g = shutil.which(name)
+
+        def inner() -> None:
+            h = time.monotonic()
+
+
+    def g(name: str) -> None:
+        x = time.time()
+        y = os.getpid()
+    """
+    found: list[Offence] = check_source(textwrap.dedent(source))
+    assert {o.name: o.fix for o in found if o.code == UNANNOTATED} == {
+        "a": "float",
+        "b": "str",
+        "c": "Signature",
+        "d": "CompletedProcess[str]",
+        "e": None,
+        "g": None,
+        "h": "float",
+        "x": None,
+        "y": "int",
+    }
+    assert [(o.name, o.edit.guarded) for o in found if o.edit is not None and o.edit.guarded] == [
+        ("d", ("from subprocess import CompletedProcess",)),
+    ]
+    assert not [o.name for o in found if o.edit is not None and o.edit.imports]
+
+
+def test_an_attribute_naming_classes_is_written_as_the_module_can() -> None:
+    """An attribute or a module variable typed with classes' own arguments is spelled part by part.
+
+    `Signature`'s `parameters`, `ast.Module`'s `body`, one a class inherits (`SECTCRE`), and
+    `sys.modules`; a type imported for type checking alone names a receiver too.
+    """
+    source: str = """
+    import ast
+    import configparser
+    import inspect
+    import sys
+    from typing import TYPE_CHECKING
+
+    if TYPE_CHECKING:
+        from pathlib import PurePath
+
+
+    def f(sig: inspect.Signature, tree: ast.Module, parser: configparser.ConfigParser, p: "PurePath") -> None:
+        a = sig.parameters
+        b = list(sig.parameters.values())
+        for c in tree.body:
+            d = c.lineno
+        e = parser.SECTCRE
+        g = sys.modules
+        h = sys.modules["os"]
+        i = sys._getframe(1)
+        j = i.f_code
+        k = p.parents
+        m = p.with_name("x")
+    """
+    found: list[Offence] = check_source(textwrap.dedent(source))
+    assert {o.name: o.fix for o in found if o.code in {UNANNOTATED, "LVA002"}} == {
+        "a": "MappingProxyType[str, inspect.Parameter]",
+        "b": "list[inspect.Parameter]",
+        "c": "ast.stmt",
+        "d": "int",
+        "e": "Pattern[str]",
+        "g": "dict[str, ModuleType]",
+        "h": "ModuleType",
+        "i": "FrameType",
+        "j": "CodeType",
+        "k": "Sequence[PurePath]",
+        "m": "PurePath",
+    }
+
+
 def test_a_bare_generic_return_is_written_with_its_defaults() -> None:
     """`SubElement` returns a bare `Element`, whose `_Tag` defaults to `str`: an `Element[str]`.
 
@@ -304,7 +412,7 @@ def test_a_methods_self_is_its_receivers_own_type() -> None:
         "b": ("Path", False),
         "c": ("Generator[Path]", False),
         "d": ("list[Path]", False),
-        "e": (None, False),
+        "e": ("list[pathlib.PurePosixPath]", False),  # `parents`, a property: a `Sequence[Self]`
         "g": ("collections.deque[str]", False),
         "h": (None, False),  # a generic class named bare isn't written
         "i": ("Iterator[Path]", False),  # a `Generator` before Python 3.13: an `Iterator` on each

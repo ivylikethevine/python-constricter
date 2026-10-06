@@ -105,16 +105,20 @@ in a function or module body:
   `__call__`, what that returns (another checked file's class too). Not a callable that may be
   `None`, nor an `R` that is `None` or vague;
 - `typing.cast(T, x)`, however `cast` is imported: `T`;
+- a call of one of the module's `NewType`s (`Ref = NewType("Ref", str)` at its top level, however
+  `NewType` is imported, the name bound nowhere else): `Ref(name)` is a `Ref`, in another checked
+  file too, as a function declaring its return types its calls;
 - the standard library, resolved through the imports (`import m`, `import m as a`,
-  `from m import f`), by tables generated from typeshed's stubs when the package is built
+  `from m import f`; a function's own too, in it and the functions inside it, for a name it binds no
+  other way), by tables generated from typeshed's stubs when the package is built
   (`stdlib_tables/generate.py`, into `constricter/fix/tables/`, keeping what Linux, macOS and
   Windows and Python 3.11 to 3.14 agree on, where they have it: `os.getuid()` is an `int`): a
   function returning a builtin type whatever its arguments (`time.time()` is a `float`,
   `os.cpu_count()` an `int | None`); a non-generic class, or a function or classmethod returning
   one: `logging.getLogger()` is a `logging.Logger`, `datetime.now()` a `datetime.datetime`,
-  `os.stat(p)` an `os.stat_result`; and on a value typed as such a class, its attributes and
-  properties, and its methods' returns (`parser.prog` is a `str`, `dt.astimezone()` a
-  `datetime.datetime`);
+  `os.stat(p)` an `os.stat_result`, `sys._getframe()` (private, and called all the same) a
+  `types.FrameType`; and on a value typed as such a class, its attributes and properties, and its
+  methods' returns (`parser.prog` is a `str`, `dt.astimezone()` a `datetime.datetime`);
 - a standard-library function or method whose arguments decide its type, by the signature they
   match, as a type checker picks among its overloads: `os.listdir(data)` with `data: bytes` is a
   `list[bytes]`, `ast.parse(s, mode="eval")` an `ast.Expression` (by the literal),
@@ -145,7 +149,10 @@ in a function or module body:
 - a generic standard-library class's own attribute or property, by the receiver's type arguments:
   `m.string` on an `re.Match[str]` is a `str`, `p.pattern` on an `re.Pattern[bytes]` a `bytes`; and
   what it inherits with one type whatever they are: `f.read()` on an `io.TextIOWrapper` is a `str`
-  (`TextIOBase`'s), `f.readlines()` on an `io.BufferedReader` a `list[bytes]`;
+  (`TextIOBase`'s), `f.readlines()` on an `io.BufferedReader` a `list[bytes]`; and any other
+  standard-library class's attribute or property typed with classes' own arguments, its own or one
+  it inherits: `sig.parameters` on an `inspect.Signature` is a
+  `MappingProxyType[str, inspect.Parameter]`, `tree.body` on an `ast.Module` a `list[ast.stmt]`;
 - a standard-library method declared to return a type naming `Self`, by the receiver's own type:
   `path.iterdir()` on a `Path` is a `Generator[Path]` (so `for child in path.iterdir()` declares
   `child: Path`), `names.copy()` on a `collections.deque[str]` a `collections.deque[str]`; on a
@@ -153,8 +160,9 @@ in a function or module body:
   and an `Iterator` of the same thing (`path.glob(...)`, an `Iterator` from 3.13), it's the
   `Iterator` every one of them is. Not on a generic class named without its arguments;
 - a standard-library module's variable, by its annotation in typeshed: `sys.path` is a `list[str]`,
-  `os.sep` a `str` (not `sys.stdout`, typeshed's `TextIO | Any`), and `os.environ["X"]` a `str`; a
-  name a function binds itself (a parameter `getpid`) isn't the module's import;
+  `os.sep` a `str`, `sys.modules` a `dict[str, ModuleType]` (not `sys.stdout`, typeshed's
+  `TextIO | Any`), and `os.environ["X"]` a `str`; a name a function binds itself (a parameter
+  `getpid`) isn't the module's import;
 - a subscript of a standard-library class's instance, by its `__getitem__` in typeshed, as a call
   passing it the index is typed: `proxy["k"]` on a `MappingProxyType[str, int]` is an `int`,
   `queue[0]` on a `deque[str]` a `str`, `parser["section"]` a `configparser.SectionProxy`, and
@@ -257,18 +265,23 @@ in a function or module body:
   can't change type, an integer's by a literal, `2 ** 32`, or a `float`'s by an integer), lists
   (`names + names`, `names * 2`), tuples (`pair + (n,)` lists both sides' parts, up to `max-length`;
   `row * 2` is a `tuple[T, ...]`), and a `set`'s `|`, `&`, `-` and `^` or a `dict`'s `|` with
-  another of its type; a `pathlib` path's `/` with a `str` or another path (`root / "x"`: `root`'s
-  class); a list, set or dict comprehension whose elements are known; `sorted` (with `key=` and
-  `reverse=` or not), `list`, `set`, `frozenset` or `tuple` of something whose elements are (a
-  generator expression's too: `list(str(i) for i in ns)`); and `await` of a call to one of the
-  module's `async def`s, or to a standard-library coroutine with one declared return
-  (`line = await reader.readline()` is a `bytes`, on a receiver typed `asyncio.StreamReader`;
-  `await asyncio.start_server(...)` an `asyncio.Server`), or one its arguments decide
-  (`await asyncio.wait_for(fetch(url), 5)`), or of anything typed a future or a task
-  (`await asyncio.gather(a(), b())` is a `tuple[A, B]`, as `await task` is what `task` holds). A
-  coroutine's call passed where a parameter is an awaitable of a type variable binds it to what
-  awaiting it gives: `asyncio.create_task(fetch(url))` is an `asyncio.Task[bytes]` where `fetch`
-  declares `bytes`, and `asyncio.run(main())` what `main` does.
+  another of its type, a `dict`'s `.keys()` counting as a `set` of its keys (`allowed & d.keys()`);
+  a `pathlib` path's `/` with a `str` or another path (`root / "x"`: `root`'s class); an operator
+  between a standard-library class's instance and another's or a builtin's, by the first signature
+  of its method (`__add__`, `__sub__`, ...) in typeshed that takes the right operand, as a type
+  checker picks it: `when - start`, two `datetime`s, is a `timedelta`, `when - span` a `datetime`,
+  `price * 2` a `Decimal` (not where the right operand's class is under the left's, or is a checked
+  file's or an installed package's, whose reflected method may answer); a list, set or dict
+  comprehension whose elements are known; `sorted` (with `key=` and `reverse=` or not), `list`,
+  `set`, `frozenset` or `tuple` of something whose elements are (a generator expression's too:
+  `list(str(i) for i in ns)`); and `await` of a call to one of the module's `async def`s, or to a
+  standard-library coroutine with one declared return (`line = await reader.readline()` is a
+  `bytes`, on a receiver typed `asyncio.StreamReader`; `await asyncio.start_server(...)` an
+  `asyncio.Server`), or one its arguments decide (`await asyncio.wait_for(fetch(url), 5)`), or of
+  anything typed a future or a task (`await asyncio.gather(a(), b())` is a `tuple[A, B]`, as
+  `await task` is what `task` holds). A coroutine's call passed where a parameter is an awaitable of
+  a type variable binds it to what awaiting it gives: `asyncio.create_task(fetch(url))` is an
+  `asyncio.Task[bytes]` where `fetch` declares `bytes`, and `asyncio.run(main())` what `main` does.
 
 A loop's target (LVA002) and an unpacking's names (LVA001) are declared instead, on a line of their
 own before the statement: `for k, v in ages.items():` with `ages: dict[str, int]` gets `k: str` and
@@ -346,8 +359,11 @@ checker reporting private names' use will say. `tarfile.open` gives a `tarfile.T
 A type the module can't name yet gets an import. One it already has is reused (with `import io`,
 `io.BufferedReader`); otherwise `from io import BufferedReader` is added after the module's
 docstring and its leading imports (below a shebang or coding line when it has neither), or
-`import io` if `BufferedReader` is a name the module binds. A standard-library type's import never
-goes under `if TYPE_CHECKING:`.
+`import io` if `BufferedReader` is a name the module binds. A type the module imports under a
+top-level `if TYPE_CHECKING:` is named by that import (quoted in a module body, as above). A
+standard-library type's import goes under `if TYPE_CHECKING:` only for a module nothing but the
+module's functions import (`import pwd` in a function's body): it may not be there to import when
+the module is.
 
 An installed package that declares its types (a `py.typed` package, its stubs first; a stub package,
 `pkg-stubs`; a lone `mod.pyi`) is read the same way for the calls into it, and never fixed: found on
@@ -670,7 +686,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `conditional`   | both sides of `a if c else b`, or one side and `None`                                     |
 | `boolean`       | `a or b` or `a and b`, its operands of one type                                           |
 | `compare`       | a comparison of builtin values (`n < 3`), always a `bool`                                 |
-| `arithmetic`    | arithmetic on builtin scalars and lists, and a `pathlib` path's `/`                       |
+| `arithmetic`    | arithmetic on builtin values, a `pathlib` path's `/`, a library class's operator          |
 | `comprehension` | a list, set or dict comprehension's elements                                              |
 | `builder`       | `sorted`, `list`, `set`, `frozenset` or `tuple` of known elements                         |
 | `await`         | `await` of the module's `async def`                                                       |

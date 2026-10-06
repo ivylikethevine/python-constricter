@@ -15,6 +15,7 @@ from constricter.fix.libraries.library import (
     library_awaited,
     library_call,
     library_class,
+    library_operator,
     library_variable,
 )
 from constricter.fix.libraries.opened import opened, opened_path
@@ -533,8 +534,8 @@ def _arithmetic(value: ast.BinOp, known: Known, declared: Mapping[str, str]) -> 
 
     """
     sides: tuple[Inference | None, Inference | None] = (
-        inference(value.left, known, declared),
-        inference(value.right, known, declared),
+        inference(value.left, known, declared) or _keys(value.left, known, declared),
+        inference(value.right, known, declared) or _keys(value.right, known, declared),
     )
     left: str | None = None if sides[0] is None else sides[0].annotation
     right: str | None = None if sides[1] is None else sides[1].annotation
@@ -542,7 +543,24 @@ def _arithmetic(value: ast.BinOp, known: Known, declared: Mapping[str, str]) -> 
     if isinstance(value.op, ast.Div) and left is not None and stdlib.joins_path(left, right, known):
         return Inference(left, "a path joined by `/`", kinds)
     text: str | None = operated.operated(value, left, right, known.limits.max_length)
-    return None if text is None else Inference(text, "arithmetic on builtin types", kinds)
+    builtin: str = "arithmetic on builtin types"
+    return library_operator(value.op, sides, known) if text is None else Inference(text, builtin, kinds)
+
+
+def _keys(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inference | None:
+    """Type a `dict`'s `.keys()` as an operand: its operators give a `set` of its keys, as a `set`'s do.
+
+    Returns:
+      The `set[K]`, or `None` if `value` isn't such a call.
+
+    """
+    receiver: ast.expr
+    match value:
+        case ast.Call(func=ast.Attribute(value=receiver, attr="keys"), args=[], keywords=[]):
+            found: Inference | None = dict_view(receiver, "keys", known, declared)
+            return None if found is None else found._replace(annotation=f"set[{found.annotation}]")
+        case _:
+            return None
 
 
 def _compared(value: ast.Compare, known: Known, declared: Mapping[str, str]) -> Inference | None:

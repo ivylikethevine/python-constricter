@@ -580,7 +580,7 @@ class Scope:
         plan: ImportPlan = self.settings.known.names.plan or ImportPlan({}, frozenset(), 0)
         guarded: tuple[str, ...] = _guarded_imports(fix.annotation, plan)
         guard: str | None = ""
-        if guarded and plan.block == (0, 0) and (guard := plan.spell(_TYPE_CHECKING)) is None:
+        if guarded and plan.checking.block == (0, 0) and (guard := plan.spell(_TYPE_CHECKING)) is None:
             return None  # nothing can be `TYPE_CHECKING` to import them under
         return Fix(
             fix.annotation,
@@ -594,7 +594,7 @@ class Scope:
             after=plan.after,
             guarded=guarded,
             guard=guard or "",
-            block=plan.block,
+            block=plan.checking.block,
         )
 
     def _first(
