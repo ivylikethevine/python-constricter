@@ -17,6 +17,7 @@ BUILTINS: Final = "builtins"
 TYPING: Final = frozenset({"typing", "typing_extensions", "_typeshed"})
 STR: Final = "str"
 LITERAL_STRING: Final = "LiteralString"
+SELF: Final = "Self"
 NONE: Final = "None"
 OBJECT: Final = "object"
 OPTIONAL: Final = "Optional"
@@ -82,8 +83,10 @@ class Templates:
     def template(self, expr: ast.expr | None, module: str, hops: int = 0) -> str | None:
         """Spell a return annotation as a template: builtins, classes' dotted paths, type variables' names.
 
+        `Self` is kept as a name, for the receiver's own type to bind.
+
         Returns:
-          It, or `None` if it can't be written (`Any`, `Self`, a class with no public path) or
+          It, or `None` if it can't be written (`Any`, a class with no public path) or
           `--fix` shouldn't write it (vague, too deep, `None` alone).
 
         """
@@ -121,6 +124,8 @@ class Templates:
         value: ast.expr
         if found.module in TYPING and found.name == LITERAL_STRING:
             return STR
+        if found.module in TYPING and found.name == SELF:
+            return SELF  # bound as a type variable is: to the receiver's own type
         match found.binding:
             case TypeVariable():
                 return found.name

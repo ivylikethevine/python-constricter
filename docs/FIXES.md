@@ -46,6 +46,10 @@ in a function or module body:
   `type[C]` for an `x` of one type `C` (not a union's, nor `None`'s), as `x.__class__` is (not a
   class's own, its metaclass), and a class's `__name__`, `__qualname__` and `__module__` read of
   either are `str`s, whatever `x` is (`type(x).__name__`, `self.__class__.__name__`);
+- `enumerate(xs)`, `zip(xs, ys)`, `map(f, xs)` and `reversed(xs)` bound to a name, by what a loop
+  over each binds: `enumerate[str]`, `zip[tuple[str, int]]`, `map[int]`, `reversed[str]` (`zip` of
+  up to five iterables, as typeshed's overloads go). At module level, where an annotation is
+  evaluated, `zip`'s, `map`'s and `reversed`'s are quoted: no Python subscripts them at run time;
 - a builtin its arguments decide, as typeshed has it: `abs(n)`, `round(x)` (an `int`; with digits,
   `x`'s type), `divmod(n, 2)` (a `tuple[int, int]`) and `sum(xs)` of builtin numbers; `min` and
   `max` of several values of one type (of an `int` and a `float`, a `float`), or of something's
@@ -142,6 +146,12 @@ in a function or module body:
   `m.string` on an `re.Match[str]` is a `str`, `p.pattern` on an `re.Pattern[bytes]` a `bytes`; and
   what it inherits with one type whatever they are: `f.read()` on an `io.TextIOWrapper` is a `str`
   (`TextIOBase`'s), `f.readlines()` on an `io.BufferedReader` a `list[bytes]`;
+- a standard-library method declared to return a type naming `Self`, by the receiver's own type:
+  `path.iterdir()` on a `Path` is a `Generator[Path]` (so `for child in path.iterdir()` declares
+  `child: Path`), `names.copy()` on a `collections.deque[str]` a `collections.deque[str]`; on a
+  class of the module's under the library's, that class. Where Python versions declare a `Generator`
+  and an `Iterator` of the same thing (`path.glob(...)`, an `Iterator` from 3.13), it's the
+  `Iterator` every one of them is. Not on a generic class named without its arguments;
 - a standard-library module's variable, by its annotation in typeshed: `sys.path` is a `list[str]`,
   `os.sep` a `str` (not `sys.stdout`, typeshed's `TextIO | Any`), and `os.environ["X"]` a `str`; a
   name a function binds itself (a parameter `getpid`) isn't the module's import;
@@ -152,7 +162,8 @@ in a function or module body:
 - `open(path, mode)` (or `io.open`), by its literal mode (`r` when there's none): a text mode gives
   an `io.TextIOWrapper`, a binary one an `io.BufferedReader` to read, an `io.BufferedWriter` to
   write, and an `io.BufferedRandom` for both (`+`). Not unbuffered (`buffering`, which gives an
-  `io.FileIO`), with an `opener`, or when the module binds `open` itself;
+  `io.FileIO`), with an `opener`, or when the module binds `open` itself; `path.open(mode)` on a
+  `pathlib` path, the same way;
 - `x = None`, when every later binding of `x` in the function has one certain type `T` (and nothing
   else writes it, nor reads it from a function or lambda inside, which would see `T | None` where a
   checker otherwise sees what `x` was narrowed to): `T | None`;
@@ -270,10 +281,12 @@ agree (`for name in ("a", "b")`), an `Iterable[T]`, `Iterator[T]` or `Generator[
 generator function's call included), or a standard-library class's instance, by its `__iter__` in
 typeshed (its `__next__`, where that returns `Self`): `for line in open(path)` declares `line: str`,
 a loop over an `itertools.chain[int]` or a `collections.deque[int]` an `int`, over a
-`tarfile.TarFile` a `tarfile.TarInfo`; what's built from one too (`list(file)`, a comprehension).
-`enumerate` and `zip` type each part of the target on its own: `for i, x in enumerate(xs)` declares
-`i: int` whatever `xs` is, and a guess about `xs` makes only `x`'s fix one. Keywords that don't
-change what they yield are allowed (`enumerate`'s `start=`, `zip`'s `strict=`, `sorted`'s `key=` and
+`tarfile.TarFile` a `tarfile.TarInfo`; what's built from one too (`list(file)`, a comprehension). A
+loop over an `X | None` binds what one over the `X` does (`None` has no elements), and one over a
+name holding an `enumerate[T]`, `zip[T]`, `map[T]` or `reversed[T]` what that yields. `enumerate`
+and `zip` type each part of the target on its own: `for i, x in enumerate(xs)` declares `i: int`
+whatever `xs` is, and a guess about `xs` makes only `x`'s fix one. Keywords that don't change what
+they yield are allowed (`enumerate`'s `start=`, `zip`'s `strict=`, `sorted`'s `key=` and
 `reverse=`); a starred argument (`zip(*rows)`) isn't.
 
 An unpacking's names are typed one by one. A display of as many values gives each name its own

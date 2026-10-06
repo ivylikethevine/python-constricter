@@ -51,6 +51,8 @@ OVERLOADS: Final = cast("dict[str, list[Variant]]", _table("overloads"))
 # Classes, and functions (constructors, classmethods) returning one: typed by that class's dotted
 # path, spelled (and imported, if it must be) the way the module can.
 CLASSES: Final = cast("dict[str, str]", _table("classes"))
+# The builtin iterators no Python can subscript at run time.
+_UNSUBSCRIPTABLE: Final = frozenset({"zip", "map", "reversed"})
 # The `pathlib` classes: each one's `/` joins another part onto it.
 _PATHS: Final = frozenset(
     f"pathlib.{name}"
@@ -142,6 +144,7 @@ _KIND: Final = "stdlib"  # the fix kind of what the tables type
 _BUILTIN_NAMES: Final = frozenset({*dir(builtins), "None"})
 _DOT: Final = "."
 _ENTER: Final = "__enter__"
+_SELF: Final = "Self"  # in a template: the receiver's own type
 ANY: Final = "Any"  # a function's whole return in `RETURNS`, declared `typing.Any` (`json.loads`)
 KNOWN: Final = frozenset({*RETURNS, *OVERLOADS, ENVIRONMENT, *CLASSES})  # every function the tables type
 # Capitalised functions the tables don't type (`xml.etree.ElementTree.Comment`): no constructors.
@@ -363,6 +366,16 @@ class Method(NamedTuple):
     matched: str | None = None
 
 
+def for_receiver(method: Method, receiver: str) -> Method:
+    """Bind a method's `Self` to `receiver`: a class under the one it was found on has it as its own.
+
+    Returns:
+      The method, its `Self` (if it binds one) the receiver's type.
+
+    """
+    return method._replace(types={**method.types, _SELF: receiver}) if _SELF in method.types else method
+
+
 def overloaded_method(receiver: str, name: str, known: Known) -> Method | None:
     """Find a standard-library class's method whose arguments decide its type (see `method_signatures`).
 
@@ -383,7 +396,7 @@ def overloaded_method(receiver: str, name: str, known: Known) -> Method | None:
         for node in ast.walk(arg)
         if isinstance(node, ast.Name | ast.Attribute)
     )
-    return Method(entry, texts if args and builtin else None, _bound(path, texts))
+    return Method(entry, texts if args and builtin else None, _bound(path, texts, receiver))
 
 
 def generic_attribute(receiver: str, name: str, known: Known) -> tuple[str, str, dict[str, str]] | None:
@@ -400,7 +413,7 @@ def generic_attribute(receiver: str, name: str, known: Known) -> tuple[str, str,
     template: str | None = None if path is None else _GENERIC_ATTRIBUTES.get(path, {}).get(name)
     if path is None or template is None:
         return None
-    return path, template, _bound(path, [ast.unparse(arg) for arg in args])
+    return path, template, _bound(path, [ast.unparse(arg) for arg in args], receiver)
 
 
 def element(receiver: str, known: Known) -> tuple[str, str, dict[str, str]] | None:
@@ -417,7 +430,7 @@ def element(receiver: str, known: Known) -> tuple[str, str, dict[str, str]] | No
     template: str | None = None if path is None else _ELEMENTS.get(path)
     if path is None or template is None:
         return None
-    return path, template, _bound(path, [ast.unparse(arg) for arg in args])
+    return path, template, _bound(path, [ast.unparse(arg) for arg in args], receiver)
 
 
 def _receiver(receiver: str, known: Known) -> tuple[str | None, list[ast.expr]]:
@@ -435,15 +448,20 @@ def _receiver(receiver: str, known: Known) -> tuple[str | None, list[ast.expr]]:
     return _path(root, known), args
 
 
-def _bound(path: str, texts: list[str]) -> dict[str, str]:
+def _bound(path: str, texts: list[str], receiver: str) -> dict[str, str]:
     """Bind a generic class's type parameters to an instance's type arguments, if it gives them all.
+
+    And `Self` to `receiver`, the instance's type as the module spells it: not a generic class
+    named without its arguments.
 
     Returns:
       Each parameter's argument, by name; none if they don't match.
 
     """
     params: list[str] = [param.rstrip("=") for param in _TYPE_PARAMETERS.get(path, "").split(",") if param]
-    return dict(zip(params, texts, strict=True)) if texts and len(params) == len(texts) else {}
+    if len(params) != len(texts):
+        return {}
+    return {**dict(zip(params, texts, strict=True)), _SELF: receiver}
 
 
 def generics(bound: Mapping[str, str]) -> frozenset[str]:
@@ -511,13 +529,19 @@ def _generic_paths(origin: str) -> tuple[str, ...]:
 def evaluable(annotation: str, known: Known) -> bool:
     """Check that an annotation subscripts no standard-library class that can't be at run time.
 
+    Nor a builtin iterator that can't (`zip[tuple[int, str]]`).
+
     Returns:
       Whether it can be evaluated (as a module's annotations are) without that `TypeError`.
 
     """
     node: ast.AST
     for node in ast.walk(_parsed(annotation)):
-        path: str | None = _path(node.value, known) if isinstance(node, ast.Subscript) else None
+        if not isinstance(node, ast.Subscript):
+            continue
+        if isinstance(node.value, ast.Name) and node.value.id in _UNSUBSCRIPTABLE:
+            return False
+        path: str | None = _path(node.value, known)
         if path in _TYPE_PARAMETERS and path not in _SUBSCRIPTABLE:
             return False
     return True
@@ -530,7 +554,17 @@ def joins_path(left: str, right: str | None, known: Known) -> bool:
       Whether `left` is a `pathlib` path class's annotation, and `right` a `str`'s or the same.
 
     """
-    return right in {"str", left} and _class_path(left, known) in _PATHS
+    return right in {"str", left} and is_path(left, known)
+
+
+def is_path(receiver: str, known: Known) -> bool:
+    """Check whether `receiver` is a `pathlib` path class's annotation.
+
+    Returns:
+      Whether it is.
+
+    """
+    return _class_path(receiver, known) in _PATHS
 
 
 def _class_path(receiver: str, known: Known) -> str | None:

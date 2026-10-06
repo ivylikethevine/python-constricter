@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""`--fix` for `open(path, mode)`: the file object it gives, by its literal mode."""
+"""`--fix` for `open(path, mode)` and `path.open(mode)`: the file object it gives, by its literal mode."""
 
 import ast
 from typing import Final
@@ -41,6 +41,38 @@ def opened(value: ast.expr, known: Known) -> Inference | None:
             pass
         case _:
             return None
+    return _by_mode(args, keywords, plan)
+
+
+def opened_path(receiver: str, value: ast.Call, known: Known) -> Inference | None:
+    """Infer the file object `path.open(mode)` gives on a `pathlib` path, as `open(path, mode)`'s is.
+
+    `receiver`: the path's type, as the module spells it.
+
+    Returns:
+      The inference, or `None` for any other call or receiver.
+
+    """
+    plan: ImportPlan | None = known.names.plan
+    attr: str
+    args: list[ast.expr]
+    keywords: list[ast.keyword]
+    match value:
+        case ast.Call(func=ast.Attribute(attr=attr), args=args, keywords=keywords) if (
+            attr == _OPEN and plan is not None and stdlib.is_path(receiver, known)
+        ):
+            return _by_mode(args, keywords, plan)
+        case _:
+            return None
+
+
+def _by_mode(args: list[ast.expr], keywords: list[ast.keyword], plan: ImportPlan) -> Inference | None:
+    """Infer a file object by the arguments after its path: its mode, first or by name.
+
+    Returns:
+      The inference, or `None` (see `opened`).
+
+    """
     named: dict[str | None, ast.expr] = {keyword.arg: keyword.value for keyword in keywords}
     mode: ast.expr | None = args[0] if args else named.get("mode")
     text: str | None = (

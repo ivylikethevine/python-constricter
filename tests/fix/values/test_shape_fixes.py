@@ -4,7 +4,7 @@
 import textwrap
 from typing import Final, TypeAlias
 
-from constricter import Offence, check_source
+from constricter import Checks, Offence, check_source
 
 # Each offence's fix and whether it's a guess.
 _Fixed: TypeAlias = dict[str, tuple[str | None, bool]]
@@ -412,4 +412,84 @@ def test_a_member_of_an_optional_value_is_the_values_own() -> None:
         "h": (None, False),  # a union of two types has no one member
         "i": (None, False),  # itself an `X | None`: narrowed before it's used
         "j": ("str", False),
+    }
+
+
+def test_a_builtin_iterator_bound_to_a_name_is_typed_by_what_it_yields() -> None:
+    """`enumerate`, `zip`, `map` and `reversed` are their own classes, of what a loop over one binds."""
+    source: str = """
+    def f(names: list[str], sizes: list[int], maybe: list[str] | None, q) -> None:
+        a = enumerate(names)
+        b = zip(names, sizes)
+        c = map(str, sizes)
+        d = reversed(names)
+        e = enumerate(q)
+        g = zip(names, q)
+        h = enumerate(names, start=1)
+        i = zip(names, names, names, names, names, names)
+        j = zip()
+        for k in maybe:
+            pass
+        for m, n in a:
+            pass
+        o, p = b
+        r = enumerate(names, key=len)
+    """
+    assert _fixed(source) == {
+        "a": ("enumerate[str]", False),
+        "b": ("zip[tuple[str, int]]", False),
+        "c": ("map[str]", False),
+        "d": ("reversed[str]", False),
+        "e": (None, False),
+        "g": (None, False),
+        "h": ("enumerate[str]", False),
+        "i": (None, False),  # more than typeshed's overloads type part by part
+        "j": (None, False),
+        "k": ("str", False),  # an `X | None`'s elements are the `X`'s
+        "m": ("int", False),
+        "n": ("str", False),
+        "o": ("tuple[str, int]", False),
+        "p": ("tuple[str, int]", False),
+        "r": (None, False),  # not a keyword it takes
+    }
+    # At a module's top level an annotation is evaluated: no Python can subscript `zip` there.
+    module: str = "NAMES = ['a']\nSIZES = [1]\na = zip(NAMES, SIZES)\nb = enumerate(NAMES)\n"
+    found: list[Offence] = check_source(module, checks=Checks(all_scopes=True))
+    assert {o.name: o.fix for o in found if len(o.name) == 1} == {
+        "a": '"zip[tuple[str, int]]"',
+        "b": "enumerate[str]",
+    }
+
+
+def test_a_paths_open_gives_a_file_by_its_mode() -> None:
+    """`path.open(mode)` on a `pathlib` path is typed as `open(path, mode)` is; nothing else's `open`."""
+    source: str = """
+    import io
+    from pathlib import Path
+
+
+    class Store:
+        def open(self) -> int:
+            return 1
+
+
+    def f(p: Path, mode: str, store: Store, q) -> None:
+        a = p.open()
+        b = p.open("rb")
+        c = p.open(mode="w", encoding="utf-8")
+        d = p.open(mode)
+        e = store.open()
+        g = q.open()
+        with p.open("wb") as h:
+            i = h.write(b"")
+    """
+    assert _fixed(source) == {
+        "a": ("io.TextIOWrapper", False),
+        "b": ("io.BufferedReader", False),
+        "c": ("io.TextIOWrapper", False),
+        "d": (None, False),
+        "e": ("int", False),
+        "g": (None, False),
+        "h": ("io.BufferedWriter", False),
+        "i": ("int", False),
     }

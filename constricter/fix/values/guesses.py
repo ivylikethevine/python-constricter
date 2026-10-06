@@ -8,7 +8,7 @@ from typing import Final
 from constricter.fix.core.known import Known
 from constricter.fix.libraries import stdlib
 from constricter.fix.libraries.library import installed_method, library_awaited, library_class
-from constricter.fix.libraries.opened import opened
+from constricter.fix.libraries.opened import opened, opened_path
 from constricter.fix.values import called, decided, displays, shapes
 from constricter.fix.values.inference import (
     COMPREHENSIONS,
@@ -227,6 +227,7 @@ def _overloaded_method(call: ast.Call, known: Known, declared: Mapping[str, str]
                 or stdlib.overloaded_method(base, method, known) is not None  # a library base's
                 or installed_method(typed, method, known) is not None
                 or shapes.defaulted(typed, call, lambda arg: inference(arg, known, declared)) is not None
+                or opened_path(typed, call, known) is not None
             )
         case _:
             return False

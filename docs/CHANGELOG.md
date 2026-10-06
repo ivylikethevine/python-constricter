@@ -6,6 +6,20 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- The trees a run keeps between indexing and checking are capped by the machine's memory: a quarter
+  of it (of a container's limit, where that's lower), and 1 GB at least, which was the cap on every
+  machine. Windows, which doesn't say how much it has, keeps 1 GB.
+- `--fix` types a standard-library method declared to return a type naming `Self` by its receiver:
+  `for child in path.iterdir()` declares `child: Path`, `list(path.glob("*"))` is a `list[Path]`
+  (`glob` an `Iterator[Path]`, on every Python), `names.copy()` on a `collections.deque[str]` a
+  `collections.deque[str]`.
+- `--fix` types `enumerate(xs)`, `zip(xs, ys)`, `map(f, xs)` and `reversed(xs)` bound to a name, by
+  what a loop over each binds (`enumerate[str]`, `zip[tuple[str, int]]`, `map[int]`), quoted at
+  module level where no Python can subscript the class at run time; and a loop over, or an unpacking
+  of, a name holding one.
+- `--fix` types `path.open(mode)` on a `pathlib` path as it types `open(path, mode)`, by its literal
+  mode, and so a `with path.open() as f:`'s target and `f.read()`.
+- `--fix` types a loop over an `X | None` as one over the `X`.
 - `--fix` types a loop over a standard-library class's instance by its `__iter__` in typeshed:
   `for line in open(path)` declares `line: str`, a loop over a binary file `bytes`, over an
   `itertools.chain[int]` or a `collections.deque[int]` an `int`, over a `tarfile.TarFile` a

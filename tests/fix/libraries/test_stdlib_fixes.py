@@ -263,6 +263,54 @@ def test_a_loop_over_a_library_instance_binds_its_elements() -> None:
     }
 
 
+def test_a_methods_self_is_its_receivers_own_type() -> None:
+    """A method declared to return a type naming `Self` gives the receiver's: `path.iterdir()`'s paths."""
+    source: str = textwrap.dedent(
+        """\
+        import collections
+        import pathlib
+        from collections.abc import Generator, Iterator
+        from pathlib import Path
+
+
+        class Mine(Path):
+            pass
+
+
+        def f(
+            p: Path,
+            mine: Mine,
+            pure: pathlib.PurePosixPath,
+            names: collections.deque[str],
+            bare: collections.deque,
+        ) -> None:
+            for a in mine.iterdir():
+                pass
+            for b in p.iterdir():
+                pass
+            c = p.iterdir()
+            d = list(p.glob("*"))
+            e = sorted(pure.parents)
+            g = names.copy()
+            h = bare.copy()
+            i = p.rglob("*.py")
+        """,
+    )
+    fixed: dict[str, tuple[str | None, bool]] = {
+        o.name: (o.fix, o.unsafe) for o in check_source(source) if len(o.name) == 1
+    }
+    assert fixed == {
+        "a": ("Mine", False),  # a class under `Path`: its own
+        "b": ("Path", False),
+        "c": ("Generator[Path]", False),
+        "d": ("list[Path]", False),
+        "e": (None, False),
+        "g": ("collections.deque[str]", False),
+        "h": (None, False),  # a generic class named bare isn't written
+        "i": ("Iterator[Path]", False),  # a `Generator` before Python 3.13: an `Iterator` on each
+    }
+
+
 def _known(source: str, *, planned: bool = True) -> Known:
     """Read what a module imports, as `--fix` would.
 

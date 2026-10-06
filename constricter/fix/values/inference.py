@@ -17,7 +17,7 @@ from constricter.fix.libraries.library import (
     library_class,
     library_variable,
 )
-from constricter.fix.libraries.opened import opened
+from constricter.fix.libraries.opened import opened, opened_path
 from constricter.fix.values import called, decided, displays, operated, shapes
 from constricter.fix.values.members import (
     assigned_attribute,
@@ -231,12 +231,16 @@ def _member_of(
                     value,
                     known,
                     lambda arg: inference(arg, known, declared),
-                    method,
+                    stdlib.for_receiver(method, receiver),
                 )
                 # The base itself is its `Self`: the receiver's own class, which the base isn't.
                 found = None if found is not None and receiver != base == found.annotation else found
             if found is None:
-                found = shapes.defaulted(receiver, value, lambda arg: inference(arg, known, declared))
+                found = shapes.defaulted(
+                    receiver,
+                    value,
+                    lambda arg: inference(arg, known, declared),
+                ) or opened_path(receiver, value, known)
             defined: tuple[str, str] | None = (
                 returned_method(receiver, attr, known) if found is None else None
             )
@@ -871,9 +875,11 @@ def looped(iterable: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
             if (found := inference(iterable, known, declared)) is None:
                 return None
             kinds: frozenset[str] = _kinds(found, kind="loop")
-            # A builtin container's or an `Iterable[T]`'s, else a standard-library class's own.
-            element: Inference | None = overloads.library_element(found.annotation, known)
-            return element_type(found.annotation, f"the elements of {found.reason}", kinds) or (
+            # Of an `X | None`, the `X`'s: `None` has none. A builtin container's or an
+            # `Iterable[T]`'s, else a standard-library class's own.
+            held: str = present(found.annotation, "")
+            element: Inference | None = overloads.library_element(held, known)
+            return element_type(held, f"the elements of {found.reason}", kinds) or (
                 None if element is None else element._replace(kinds=kinds | element.kinds)
             )
 

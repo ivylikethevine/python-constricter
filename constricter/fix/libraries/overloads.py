@@ -48,6 +48,8 @@ _STAR: Final = "a"
 _STARS: Final = "w"
 _BUILTINS: Final = frozenset({*dir(builtins), _NONE})
 _KIND: Final = "stdlib"
+_GENERATOR: Final = "collections.abc.Generator"
+_ITERATOR: Final = "collections.abc.Iterator"
 _TUPLE: Final = "tuple"
 _ANYTHING: Final = "t"  # `Accepts`' key for a parameter any argument binds
 _RETURNED: Final = "r"  # `Accepts`' key for a callable parameter a function's return binds
@@ -139,6 +141,9 @@ def chosen(
         for picked in _picked(variant, read, instance, None if method is None else _receiver(method, known))
     ]
     found: set[str | None] = {None if picked is None else _written(picked, known) for picked in picks}
+    if len(found) > 1 and None not in found:
+        # Where Python versions differ only in which iterator they declare: the one all of them are.
+        found = {None if picked is None else _written(_iterator(picked), known) for picked in picks}
     annotation: str | None
     if (annotation := found.pop() if len(found) == 1 else None) is None:  # none, or several that disagree
         return None
@@ -153,6 +158,23 @@ def chosen(
         # What a type variable may take as its type: an argument of any type but a scalar's.
         tuple(text for part in parts if part.type is None for text in part.reads),
     )
+
+
+def _iterator(picked: tuple[str, dict[str, str]]) -> tuple[str, dict[str, str]]:
+    """Write a pick whose template is a `Generator[T, ...]` as the `Iterator[T]` every generator is.
+
+    Returns:
+      It; any other pick as it is.
+
+    """
+    head: ast.expr
+    index: ast.expr
+    match ast.parse(picked[0].removeprefix(SPELLED), mode="eval").body:
+        case ast.Subscript(value=ast.Attribute() as head, slice=index) if ast.unparse(head) == _GENERATOR:
+            first: ast.expr = index.elts[0] if isinstance(index, ast.Tuple) else index
+            return f"{_ITERATOR}[{ast.unparse(first)}]", picked[1]
+        case _:
+            return picked
 
 
 def generic_member(receiver: str, name: str, call: ast.Call | None, known: Known) -> Inference | None:
