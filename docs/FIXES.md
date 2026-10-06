@@ -70,12 +70,16 @@ in a function or module body:
   once, not generic) and then a class another checked file defines (the CLI only), which ends the
   search with what it takes from its own file's classes, or a standard-library class the tables hold
   whole, by its members there (`self.id()` in a `unittest.TestCase` is a `str`, `self.name` in a
-  `threading.Thread` a `str`). A declared return is certain, and a `Self` one is the receiver's
-  class; `return`s are a guess, and not offered where their type names the base (`return self` gives
-  the receiver's class). Nothing for a name the class's body binds any other way, past a base out of
-  sight (an installed package's, a subscripted or computed one), or for another file's or the
-  standard library's method returning its own class, which may be its `Self` (`self.resolve()` under
-  `Path`);
+  `threading.Thread` a `str`), which another checked file's class is followed to as well, through
+  its own bases in any checked file or installed package that declares its types, each a class of
+  one base: what none of them binds is the library class's (`self.id()` under a project's own
+  `Case(unittest.TestCase)`), a method its arguments decide included
+  (`self.assertRaises(ValueError)`). A declared return is certain, and a `Self` one is the
+  receiver's class; `return`s are a guess, and not offered where their type names the base
+  (`return self` gives the receiver's class). Nothing for a name the class's body binds any other
+  way, past a base out of sight (an installed package's, a subscripted or computed one), or for
+  another file's or the standard library's method returning its own class, which may be its `Self`
+  (`self.resolve()` under `Path`);
 - a call of a value whose type says what calling it gives: a local, an attribute or anything else
   typed `Callable[..., R]` is an `R` (`handler(source)`, `self.handler(source)`, `hooks[0](x)`); one
   typed `type[C]` constructs a `C` (`cls()` in a classmethod, `type(self)()`), as does `__new__`

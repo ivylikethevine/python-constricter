@@ -12,7 +12,7 @@ import ast
 from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from types import MappingProxyType
-from typing import Final, NamedTuple
+from typing import Final, NamedTuple, TypeAlias
 
 from constricter.rules.annotations import generic_classes, node_name
 from constricter.rules.syntax import FUNCTION_DEFS, child_statements, expressions
@@ -20,6 +20,8 @@ from constricter.rules.walked import classes, walk
 
 # Bases that give an instance no member a method call could reach.
 _EMPTY: Final = frozenset({"object", "Generic", "Protocol", "ABC"})
+# The standard-library class a line of bases ends at, and the names the classes before it bind.
+Beyond: TypeAlias = tuple[str, frozenset[str]]
 
 
 class Lineage(NamedTuple):
@@ -29,11 +31,14 @@ class Lineage(NamedTuple):
     or a class another checked file or the standard library defines (as the module spells it), which
     ends it; `bound`: the names each class's body binds; `selfish`: its methods declared to return a
     bare `Self` (see `self_returns`), which an inheriting class's instance gives as its own class.
+    `beyond`: for a base another checked file defines, the standard-library class its own bases end
+    at, and the names bound on the way there (see `constricter.fix.index.beyond`).
     """
 
     order: Mapping[str, tuple[str, ...]] = MappingProxyType({})
     bound: Mapping[str, frozenset[str]] = MappingProxyType({})
     selfish: Mapping[str, frozenset[str]] = MappingProxyType({})
+    beyond: Mapping[str, Beyond] = MappingProxyType({})
 
     def definer(self, receiver: str, name: str) -> str | None:
         """Find the class whose `name` an instance of `receiver` has.
@@ -41,14 +46,20 @@ class Lineage(NamedTuple):
         Returns:
           `receiver` itself if it binds `name`, or isn't one of the module's classes; else the first
           class of its order that does, or that another file defines; `None` if none in sight does.
+          For another file's class whose bases end at a standard-library class, that class, where
+          nothing on the way binds `name` (see `beyond`).
 
         """
-        if receiver not in self.bound or name in self.bound[receiver]:
-            return receiver
-        return next(
-            (base for base in self.order[receiver] if base not in self.bound or name in self.bound[base]),
-            None,
+        found: str | None = (
+            receiver
+            if receiver not in self.bound or name in self.bound[receiver]
+            else next(
+                (base for base in self.order[receiver] if base not in self.bound or name in self.bound[base]),
+                None,
+            )
         )
+        library: Beyond | None = self.beyond.get(found or "")
+        return found if library is None or name in library[1] else library[0]
 
     def selfish_of(self, owner: str) -> frozenset[str]:
         """Name the methods an instance of `owner` has that are declared to return a bare `Self`.
@@ -92,11 +103,12 @@ def lineage(
     tree: ast.Module,
     selfish: Mapping[str, frozenset[str]],
     imported: frozenset[str],
+    beyond: Mapping[str, Beyond] | None = None,
 ) -> Lineage:
     """Read the ancestry of the classes the module defines once each.
 
     `selfish`: its `self_returns`; `imported`: the classes other checked files and the standard
-    library define, as it spells them.
+    library define, as it spells them; `beyond`: see `Lineage`.
 
     Returns:
       It (see `Lineage`).
@@ -125,6 +137,7 @@ def lineage(
         order,
         {node.name: frozenset(_bound(node.body)) for node in nodes if node.name in parents},
         selfish,
+        MappingProxyType({}) if beyond is None else beyond,
     )
 
 

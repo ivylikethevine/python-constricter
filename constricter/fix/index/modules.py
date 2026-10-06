@@ -97,6 +97,7 @@ class Module(NamedTuple):
     # Its classes' bases as written, their variables typed by their values, and which of them are
     # plain, once the index settles it (see `constricter.fix.values.classvars`, `plain.settled`).
     bases: Mapping[str, tuple[str, ...]] = {}
+    bound: Mapping[str, frozenset[str]] = {}  # the names each of its classes' bodies binds
     members: Mapping[str, Mapping[str, str]] = {}
     plain: frozenset[str] = frozenset()
     # Its classes' classmethods' and staticmethods' declared returns (see `annotations.class_methods`);
@@ -320,6 +321,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         rebound=rebound,
         shadowed=frozenset(names) & taken_names(tree)[1] if name is None else frozenset(),
         bases={} if name is not None else classvars.bases(tree),
+        bound=dict(own.order.bound),
         members={} if name is not None else classvars.members(tree),
         sides=own.sides,
         held_sides=own.held_sides,

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix.core.inherited import Lineage
+from constricter.fix.core.inherited import Beyond, Lineage
 from constricter.fix.core.signatures import Expansion, ReadSignature
 from constricter.offences import MAX_LENGTH, VAGUE
 from constricter.rules.annotations import free_of, free_of_all, roots
@@ -397,6 +397,8 @@ class Outside(NamedTuple):
     tuples: Mapping[str, str] = {}
     # The pytest fixtures its tests can take: each one's value's type (see `constricter.fix.index.fixtures`).
     fixtures: Mapping[str, Passed] = {}
+    # Its classes' bases other checked files define: where each one's own end (see `Lineage.beyond`).
+    beyond: Mapping[str, Beyond] = {}
 
     def usable(self, taken: frozenset[str]) -> "Outside":
         """Drop what other files offer whose type needs a name imported that the module binds already.

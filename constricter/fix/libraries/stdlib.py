@@ -382,6 +382,17 @@ def generics(bound: Mapping[str, str]) -> frozenset[str]:
     )
 
 
+def held_whole(path: str) -> str | None:
+    """Find the class at `path` (or the one `path` is another name of), if the tables hold it whole.
+
+    Returns:
+      Its own path; `None` for anything else, a generic class included (see `bases`).
+
+    """
+    own: str = _ALIASES.get(path, path)
+    return own if CLASSES.get(own) == own else None
+
+
 def defines_class(path: str) -> bool:
     """Check whether `path` is a class the tables know: a plain one, or a generic one.
 
@@ -467,6 +478,11 @@ def _path(root: ast.expr, known: Known) -> str | None:
         path = resolved(root, _added(tuple(plan.added.values())))
     if path is None and plan is not None and plan.guarded:
         path = _guarded(root, plan)
+    # A class's own path, where the module binds no name it starts with: a library base out of its
+    # sight, as the index names it (see `constricter.fix.index.beyond`).
+    written: str = ast.unparse(root)
+    if path is None and held_whole(written) and (plan is None or written.partition(".")[0] not in plan.taken):
+        path = written
     return None if path is None else _ALIASES.get(path, path)
 
 

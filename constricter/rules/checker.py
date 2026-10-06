@@ -159,7 +159,12 @@ def _settings(
             ClassSide(
                 free_of_all(class_attributes(tree), free),
                 free_of_all(own.sides, free),
-                inherited.lineage(tree, selfish, bases.union(imported.methods if imported else ())),
+                inherited.lineage(
+                    tree,
+                    selfish,
+                    bases.union(imported.methods if imported else ()),
+                    {} if outside is None else outside.beyond,
+                ),
                 classvars.variables(tree, classvars.imported(tree), outside, checks.plain_bases),
             ),
             LibraryNames(

@@ -378,14 +378,15 @@ fix.
    every such call on an imported class's instance. Carry them with the functions', as guesses. Done
    when `path = self.mktemp()` is a `str` under a base class of another file. About 5 hours, for
    about 0.1% (some 300 guesses).
-8. **A library base out of sight.** A class under a standard-library class gets the methods it
-   inherits from it (`self.id()` in a `unittest.TestCase`), but not behind another checked file's
-   class (django's `TestCase`, itself under `unittest.TestCase`: a module's index entry holds its
-   own classes' methods alone), under an installed package's class, or a generic one
-   (`collections.OrderedDict`), nor a method its arguments decide. A class-side method a class takes
-   from another file's base (`Sub.make()`, `make` its imported base's) has no fix either. Done when
-   `name = self.id()` in a class under another file's test case is a `str`. About 6 hours, for about
-   0.1% (some 300 fixes).
+8. **A library base out of sight.** A class under another module's class takes the members of the
+   standard-library class that one's own bases end at (`self.id()`, and `self.assertRaises(...)` by
+   its arguments, under a project's own test case), through the checked files and the installed
+   packages that declare their types, where each class on the way has one base and none binds the
+   name. Left: behind a class of several bases (a mixin), under a class of a package that declares
+   no types (django's `TestCase`: such a package isn't read at all), or a generic library class
+   (`collections.OrderedDict`); and a class-side method a class takes from another file's base
+   (`Sub.make()`, `make` its imported base's). Done when `self.id()` under a class of two bases, one
+   a mixin binding nothing of it, is a `str`. About 4 hours, for under 0.1% (some 150 fixes).
 9. **Joined types, past displays of plain types.** A list, set or dict display whose elements' types
    differ is their union now, as a guess (`joined`): up to three plain types. On pydantic that's 4
    fixes and no new basedpyright error; the corpus packages' own checkers haven't run on it. Of the

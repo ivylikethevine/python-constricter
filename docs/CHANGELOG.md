@@ -6,6 +6,11 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types what a class takes from a standard-library class through another checked file's (or
+  a typed installed package's): under a project's own `class Case(unittest.TestCase)`, defined in
+  another file, `name = self.id()` is a `str` and `with self.assertRaises(ValueError) as cm:` an
+  `_AssertRaisesContext[ValueError]`. Where each class on the way has one base, and none binds the
+  name.
 - `--fix` types more of the standard library's context managers, and what they construct: a class
   whose `__init__` overloads declare its instance (`subprocess.Popen(cmd, text=True)` is a
   `subprocess.Popen[str]`, `with tempfile.TemporaryDirectory() as d:` a `str`,

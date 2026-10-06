@@ -15,6 +15,7 @@ from constricter.cli.runs import CoverageRun, FileRun
 from constricter.cli.workers import Checking, Workers, check_share, first_done
 from constricter.fix.core.known import Guarded, Hints, Outside, Passed
 from constricter.fix.index import (
+    beyond,
     callers,
     decorated,
     fixtures,
@@ -73,6 +74,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         imported.partial,
         tuples.fields(modules, path, guarded),
         seeds,
+        beyond.library_bases(modules, path),
     )
 
 
