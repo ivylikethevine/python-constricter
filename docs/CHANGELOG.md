@@ -6,6 +6,11 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` no longer types a standard-library call by a declaration only some supported Pythons have,
+  where the others declare it another way: `importlib.metadata.entry_points()`, overloaded before
+  3.12 (a `SelectableGroups` then, where the file couldn't name `EntryPoints`),
+  `handler.filter(record)` (a `bool` before 3.12, a `bool | LogRecord` since) and
+  `zipimporter.get_resource_reader(...)` (a `ZipReader | None` before 3.14) have no fix now.
 - `--fix` resolves a function's own imports: with `import os` or `from inspect import signature` in
   its body, `os.getcwd()` is a `str` and `signature(f)` an `inspect.Signature` there, and in the
   functions inside it. Not a name the function binds another way too (`try: import x` /

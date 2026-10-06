@@ -323,21 +323,6 @@ current, its finer counts are as first measured. Where an item cites a sample, i
 of the standard library, pandas, django and sqlalchemy, each checked alone: 28,931 bindings with no
 fix.
 
-### Small: under 4 hours
-
-1. **A function overloaded on some Pythons alone.** To investigate: the tables' `overloads` entry
-   for `importlib.metadata.entry_points` holds only the two signatures Python 3.10 and 3.11 overload
-   it with, not 3.12's one plain `def`, so a call with no arguments reads as a `SelectableGroups`, a
-   class 3.12 removed. Seen once, on the standard library's own copy (`eps: SelectableGroups` in
-   `test_importlib`'s `test_api.py`, with a `from importlib.metadata import SelectableGroups` that
-   fails on 3.12 and later), and not since the calling file's `EntryPoints` is spelled in one pass;
-   whether a project without its own `importlib` can reach the entry (`classes` has the function
-   too, as an `EntryPoints`) isn't known. Check which table answers first there, then have the
-   generator enter a version's plain `def` as a variant beside the others' overloads, so the
-   versions disagree and no fix is offered, and list the other functions it changes. Done when no
-   call is typed by a signature only some of the supported Pythons have. About 2 hours; coverage
-   unchanged.
-
 ### Medium: 4 to 8 hours
 
 1. **Non-plain class bodies a framework reads no annotations of.** Of the 12,012 class-body bindings

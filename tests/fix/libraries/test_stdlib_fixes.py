@@ -323,6 +323,31 @@ def test_classes_and_what_returns_them_are_certain() -> None:
     }
 
 
+def test_what_python_versions_declare_in_different_ways_is_not_typed() -> None:
+    """Overloaded on some Pythons and one `def` on others, or a fixed return that became a union: no fix.
+
+    Whether or not the file can name the class one of them returns (`EntryPoints`, bound here).
+    """
+    source: str = textwrap.dedent(
+        """\
+        import logging
+        import zipimport
+        from importlib.metadata import entry_points
+
+        EntryPoints = 1
+
+
+        def f(record: logging.LogRecord, handler: logging.Handler, zipped: zipimport.zipimporter) -> None:
+            a = entry_points()
+            b = handler.filter(record)
+            c = zipped.get_resource_reader("x")
+            d = handler.get_name()
+        """,
+    )
+    fixed: dict[str, str | None] = {o.name: o.fix for o in check_source(source) if o.code == UNANNOTATED}
+    assert fixed == {"a": None, "b": None, "c": None, "d": "str"}
+
+
 def test_a_loop_over_a_library_instance_binds_its_elements() -> None:
     """A file's lines, an `itertools` iterator's elements, a `deque`'s: each by its class's `__iter__`."""
     source: str = textwrap.dedent(

@@ -57,12 +57,12 @@ import importlib.metadata
 import json
 import os
 import tomllib
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from functools import lru_cache
 from pathlib import Path
-from typing import Final, NamedTuple, TypeAlias, cast
+from typing import Final, NamedTuple, TypeAlias, TypeVar, cast
 
 from constricter.fix.core.signatures import Signature
 from stdlib_tables.elements import element
@@ -155,6 +155,7 @@ _Locked: TypeAlias = dict[str, str]  # a package `uv.lock` pins: its name, its v
 
 # Each signature of a function whose return its arguments decide (see `overloads.Overloads.entry`).
 Signatures: TypeAlias = list[Signature]
+_V = TypeVar("_V")
 # One of the tables (or `source`, where they're from).
 _Json: TypeAlias = (
     Table
@@ -603,9 +604,12 @@ def _agreed(tables: list[_Tables]) -> _Tables:
     """Keep what every configuration's tables that have an entry agree on.
 
     Returns:
-      The entries that are the same in each that has them.
+      The entries that are the same in each that has them, less those they hold in different tables
+      (see `_split`).
 
     """
+    split: frozenset[str] = _split(tables)
+    tables = [_unsplit(one, split) for one in tables]
     return _Tables(
         _common([one.returns for one in tables]),
         _variants([one.overloads for one in tables]),
@@ -627,6 +631,84 @@ def _agreed(tables: list[_Tables]) -> _Tables:
         _variants([one.awaited_overloads for one in tables]),
         _common([one.elements for one in tables]),
     )
+
+
+def _split(each: list[_Tables]) -> frozenset[str]:
+    """Find the functions and members the configurations hold in different tables.
+
+    `importlib.metadata.entry_points` is overloaded before Python 3.12 (`overloads`) and one `def`
+    since (`classes`): each table alone would answer for the Pythons it wasn't read from too.
+
+    Returns:
+      Each one's path, a member's after its class's.
+
+    """
+    first: dict[str, frozenset[int]] = {}
+    split: set[str] = set()
+    one: _Tables
+    for one in each:
+        members: list[dict[str, Table]] = [one.methods, one.attributes, one.method_overloads]
+        members += [one.generic_attributes]
+        held: list[Iterable[str]] = [one.returns, one.overloads, one.classes, one.functions, one.awaited]
+        held += [one.awaited_overloads]
+        held += ([f"{klass}.{name}" for klass, own in table.items() for name in own] for table in members)
+        tables: dict[str, set[int]] = {}
+        at: int
+        paths: Iterable[str]
+        for at, paths in enumerate(held):
+            path: str
+            for path in paths:
+                tables.setdefault(path, set()).add(at)
+        found: set[int]
+        for path, found in tables.items():
+            if first.setdefault(path, frozenset(found)) != frozenset(found):
+                split.add(path)
+    return frozenset(split)
+
+
+def _unsplit(one: _Tables, split: frozenset[str]) -> _Tables:
+    """Leave `split`'s functions and members out of a configuration's tables (see `_split`).
+
+    Returns:
+      The tables without them.
+
+    """
+    return one._replace(
+        returns=_without(one.returns, split),
+        overloads=_without(one.overloads, split),
+        classes=_without(one.classes, split),
+        functions=_without(one.functions, split),
+        awaited=_without(one.awaited, split),
+        awaited_overloads=_without(one.awaited_overloads, split),
+        methods=_without_members(one.methods, split),
+        attributes=_without_members(one.attributes, split),
+        method_overloads=_without_members(one.method_overloads, split),
+        generic_attributes=_without_members(one.generic_attributes, split),
+    )
+
+
+def _without(table: dict[str, _V], split: frozenset[str]) -> dict[str, _V]:
+    """Leave `split`'s paths out of a table.
+
+    Returns:
+      The table without them.
+
+    """
+    return {path: value for path, value in table.items() if path not in split}
+
+
+def _without_members(table: dict[str, Table], split: frozenset[str]) -> dict[str, Table]:
+    """Leave `split`'s members out of each class's (a class with none left out).
+
+    Returns:
+      The table without them.
+
+    """
+    kept: dict[str, Table] = {
+        klass: {name: value for name, value in own.items() if f"{klass}.{name}" not in split}
+        for klass, own in table.items()
+    }
+    return {klass: own for klass, own in kept.items() if own}
 
 
 def _common_lists(each: list[dict[str, list[str]]]) -> dict[str, list[str]]:
