@@ -520,3 +520,49 @@ much each raised it: in percentage points, and as a share of the bindings that w
 | twisted          | 0.3.2-rc.2  |              0.0% |         13.1% |                  37.6% | +13.1 pts, 13.1% of untyped | +37.6 pts, 37.6% of untyped |
 | pip              | 0.3.2-rc.2  |              1.5% |         24.5% |                  37.0% | +23.0 pts, 23.3% of untyped | +35.5 pts, 36.0% of untyped |
 | **Total**        | 0.3.2-rc.2  |              2.2% |         24.5% |                  41.8% | +22.3 pts, 22.8% of untyped | +39.5 pts, 40.4% of untyped |
+
+## constricter 0.3.3-rc.1
+
+Offences per code at `suffocate`, with `all-scopes` (Python 3.14.7); the total row gives each code's
+share of them:
+
+| Corpus           | Version | constricter | Files |        `LVA001` |      `LVA002` |       `LVA004` |   `LVA005` |   `LVA006` |  `LVA009` | `LVA011` |   Total |
+| ---------------- | ------- | ----------- | ----: | --------------: | ------------: | -------------: | ---------: | ---------: | --------: | -------: | ------: |
+| standard library | 3.14    | 0.3.3-rc.1  | 1,867 |          88,584 |        12,335 |         12,783 |         57 |         14 |         8 |        0 | 113,781 |
+| django           | 5.2.17  | 0.3.3-rc.1  |   883 |           9,921 |         2,167 |          5,081 |          0 |          0 |         1 |        0 |  17,170 |
+| sqlalchemy       | 2.0.54  | 0.3.3-rc.1  |   257 |           8,504 |         1,567 |          2,339 |        551 |        124 |         1 |        1 |  13,087 |
+| pydantic         | 2.13.5  | 0.3.3-rc.1  |   105 |           2,023 |           438 |            631 |        190 |         13 |         0 |        0 |   3,295 |
+| pandas           | 3.0.6   | 0.3.3-rc.1  | 1,421 |          73,367 |         2,778 |          1,648 |        134 |          2 |         1 |        1 |  77,931 |
+| twisted          | 12.3.0  | 0.3.3-rc.1  |   819 |          13,310 |         1,349 |          3,215 |          0 |          0 |         0 |        0 |  17,874 |
+| pip              | 20.3.4  | 0.3.3-rc.1  |   366 |           5,902 |         1,150 |          1,872 |          0 |          0 |         0 |        0 |   8,924 |
+| **Total**        |         | 0.3.3-rc.1  | 5,718 | 201,611 (80.0%) | 21,784 (8.6%) | 27,569 (10.9%) | 932 (0.4%) | 153 (0.1%) | 11 (0.0%) | 2 (0.0%) | 252,062 |
+
+Errors / warnings at each level, by the version's own rules and defaults; what `--fix` fixed and
+what `--unsafe-fixes` guessed on top (each also as a share of the offences at `suffocate`), files a
+fix broke, and what a second pass would still fix:
+
+| Corpus           | constricter |   `relaxed` |         `strict` |     `constrict` | `suffocate` |          Fixed |        Guessed | Broken | Left |
+| ---------------- | ----------- | ----------: | ---------------: | --------------: | ----------: | -------------: | -------------: | -----: | ---: |
+| standard library | 0.3.3-rc.1  | 0 / 113,710 | 101,367 / 12,414 |    113,710 / 71 | 113,781 / 0 | 35,221 (31.0%) | 13,107 (11.5%) |      0 |    0 |
+| django           | 0.3.3-rc.1  |  0 / 17,170 |   15,002 / 2,168 |      17,170 / 0 |  17,170 / 0 |  2,583 (15.0%) |  2,784 (16.2%) |      0 |    0 |
+| sqlalchemy       | 0.3.3-rc.1  |  0 / 12,411 |   10,843 / 2,244 |    12,411 / 676 |  13,087 / 0 |  1,748 (13.4%) |     855 (6.5%) |      0 |    0 |
+| pydantic         | 0.3.3-rc.1  |   0 / 3,092 |      2,654 / 641 |     3,092 / 203 |   3,295 / 0 |  1,071 (32.5%) |    455 (13.8%) |      0 |    0 |
+| pandas           | 0.3.3-rc.1  |  0 / 77,794 |   75,015 / 2,916 |    77,794 / 137 |  77,931 / 0 | 15,822 (20.3%) | 24,078 (30.9%) |      0 |    0 |
+| twisted          | 0.3.3-rc.1  |  0 / 17,874 |   16,525 / 1,349 |      17,874 / 0 |  17,874 / 0 |  2,400 (13.4%) |  4,534 (25.4%) |      0 |    0 |
+| pip              | 0.3.3-rc.1  |   0 / 8,924 |    7,774 / 1,150 |       8,924 / 0 |   8,924 / 0 |  2,197 (24.6%) |  1,217 (13.6%) |      0 |    0 |
+| **Total**        | 0.3.3-rc.1  | 0 / 250,975 | 229,180 / 22,882 | 250,975 / 1,087 | 252,062 / 0 | 61,042 (24.2%) | 47,030 (18.7%) |      0 |    0 |
+
+Annotation coverage (`--coverage` with `all-scopes`, counted by this checkout for every version):
+the share of bindings typed as released, after `--fix`, and after `--fix --unsafe-fixes`, and how
+much each raised it: in percentage points, and as a share of the bindings that were untyped:
+
+| Corpus           | constricter | Typed as released | After `--fix` | After `--unsafe-fixes` |           Raised by `--fix` |         Raised with guesses |
+| ---------------- | ----------- | ----------------: | ------------: | ---------------------: | --------------------------: | --------------------------: |
+| standard library | 0.3.3-rc.1  |              1.2% |         31.8% |                  43.2% | +30.6 pts, 31.0% of untyped | +42.0 pts, 42.5% of untyped |
+| django           | 0.3.3-rc.1  |              0.0% |         15.1% |                  31.3% | +15.0 pts, 15.0% of untyped | +31.3 pts, 31.3% of untyped |
+| sqlalchemy       | 0.3.3-rc.1  |             14.8% |         26.8% |                  32.6% | +12.0 pts, 14.1% of untyped | +17.9 pts, 21.0% of untyped |
+| pydantic         | 0.3.3-rc.1  |             21.8% |         48.9% |                  60.4% | +27.1 pts, 34.6% of untyped | +38.6 pts, 49.4% of untyped |
+| pandas           | 0.3.3-rc.1  |              1.6% |         21.6% |                  52.1% | +20.0 pts, 20.3% of untyped | +50.5 pts, 51.3% of untyped |
+| twisted          | 0.3.3-rc.1  |              0.0% |         13.4% |                  38.8% | +13.4 pts, 13.4% of untyped | +38.8 pts, 38.8% of untyped |
+| pip              | 0.3.3-rc.1  |              1.5% |         25.8% |                  39.2% | +24.2 pts, 24.6% of untyped | +37.7 pts, 38.2% of untyped |
+| **Total**        | 0.3.3-rc.1  |              2.2% |         26.0% |                  44.3% | +23.8 pts, 24.3% of untyped | +42.1 pts, 43.1% of untyped |
