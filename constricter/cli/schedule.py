@@ -15,6 +15,7 @@ from constricter.cli.runs import CoverageRun, FileRun
 from constricter.cli.workers import Checking, Workers, check_share, first_done
 from constricter.fix.core.known import Guarded, Hints, Outside, Passed
 from constricter.fix.index import (
+    beyond,
     callers,
     decorated,
     fixtures,
@@ -37,12 +38,17 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
       It.
 
     """
-    imported: project.Imported = project.imported(modules, path)
+    seeded: dict[str, Guarded] = {}
+    seeds: dict[str, Passed] = fixtures.visible(modules, path, seeded)
+    imported: project.Imported = project.imported(
+        modules,
+        path,
+        (seeded, fixtures.attributes(seeds)),
+    )
     side_calls: dict[str, str]
     guarded: dict[str, Guarded]
     side_calls, guarded = sides.calls(modules, path, imported.guarded)
     methods: stubbed.Methods = stubbed.methods(modules, path, guarded)
-    seeds: dict[str, Passed] = fixtures.visible(modules, path, guarded)
     hints: tuple[Hints, ...] = offers.vetted(modules, path, hinted.get(path, ()))
     # What only a hint can name: the classes the file imports for type checking alone.
     own: offers.Own = offers.own(modules, path) if hints else offers.Own()
@@ -56,7 +62,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         imported.generics | own.generics,
         callers.callees(modules, path),
         callers.own_parameters(modules, path),
-        {**stubbed.overloaded(modules, path), **methods.signatures},
+        {**stubbed.overloaded(modules, path, guarded), **methods.signatures},
         stubbed.classes(modules, path),
         methods.parameters,
         methods.lineage,
@@ -68,6 +74,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         imported.partial,
         tuples.fields(modules, path, guarded),
         seeds,
+        beyond.library_bases(modules, path),
     )
 
 

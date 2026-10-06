@@ -5,17 +5,63 @@ import builtins
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Final, NamedTuple, TypeAlias
+from typing import TYPE_CHECKING, Final, NamedTuple, TypeAlias
 
-from constricter.fix.core.inherited import Lineage
+from constricter.fix.core.inherited import Beyond, Lineage
 from constricter.fix.core.signatures import Expansion, ReadSignature
 from constricter.offences import MAX_LENGTH, VAGUE
 from constricter.rules.annotations import free_of, free_of_all, roots
+
+if TYPE_CHECKING:
+    from typing_extensions import override  # `typing.override` is 3.12+
+else:
+
+    def override(func: object) -> object:
+        """Mark an override (for type checkers only).
+
+        Returns:
+          `func`, unchanged.
+
+        """
+        return func
+
 
 _BUILTINS: Final = frozenset(dir(builtins))
 _DOT: Final = "."
 # What a name refers to: a module and an attribute of it (`None`: the module itself).
 Origin: TypeAlias = tuple[str, str | None]
+# How a return template starts that's the type itself, as the module calling it writes it: a
+# checked file's overload's (see `constricter.fix.index.stubbed.overloaded`).
+SPELLED: Final = "="
+
+
+# A `dict` itself, not a `UserDict`: every inference reads it, as fast as a `dict` is read.
+class Typed(dict[str, str]):  # ruff: ignore[subclass-builtin]
+    """A scope's names' types so far, counting each change: what's inferred of a value holds till then."""
+
+    version: int = 0
+
+    @override
+    def __setitem__(self, name: str, annotation: str) -> None:
+        """Type `name`, and count it."""
+        self.version += 1
+        super().__setitem__(name, annotation)
+
+    @override
+    def setdefault(self, name: str, annotation: str = "", /) -> str:
+        """Type `name` if nothing has, and count it.
+
+        Returns:
+          Its type.
+
+        """
+        self.version += 1
+        return super().setdefault(name, annotation)
+
+    def taking(self, others: Mapping[str, str]) -> None:
+        """Type each of `others`' names, and count it."""
+        self.version += 1
+        super().update(others)
 
 
 class Guarded(NamedTuple):
@@ -303,6 +349,8 @@ class Offered(NamedTuple):
 class Hints(NamedTuple):
     """A type checker's inlay hints for one file (`--infer-with`): which checker, and each type.
 
+    Or a traced run's types for it (`--infer-from`), of `kind` `traced`: what its fixes rest on.
+
     Each hint's type is its text as the checker printed it (`int`, `list[str]`), by where the name
     it types ends: its line (from 1) and UTF-8 byte column, as `ast`'s `end_col_offset`.
     `offered`: what each hint that has edits would write (see `Offered`), by the same place.
@@ -312,6 +360,7 @@ class Hints(NamedTuple):
     # Plain `dict`s, not `MappingProxyType`s: the CLI's worker processes are sent them, pickled.
     types: Mapping[tuple[int, int], str] = {}
     offered: Mapping[tuple[int, int], Offered] = {}
+    kind: str = "checker"
 
 
 # An argument's type, and what it rests on if it's a guess (`FIX_KINDS`; none: it's certain).
@@ -391,6 +440,8 @@ class Outside(NamedTuple):
     tuples: Mapping[str, str] = {}
     # The pytest fixtures its tests can take: each one's value's type (see `constricter.fix.index.fixtures`).
     fixtures: Mapping[str, Passed] = {}
+    # Its classes' bases other checked files define: where each one's own end (see `Lineage.beyond`).
+    beyond: Mapping[str, Beyond] = {}
 
     def usable(self, taken: frozenset[str]) -> "Outside":
         """Drop what other files offer whose type needs a name imported that the module binds already.

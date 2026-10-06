@@ -3,8 +3,8 @@
 
 import ast
 from collections.abc import Iterator
-from functools import lru_cache
-from typing import Final
+from typing import Final, TypeAlias
+from weakref import WeakKeyDictionary
 
 from constricter.fix.core.known import ImportPlan, Origin
 from constricter.rules.syntax import Start, import_bindings
@@ -13,6 +13,11 @@ from constricter.rules.walked import of_type
 _TYPE_CHECKING: Final = "TYPE_CHECKING"
 _FUTURE: Final = "__future__"
 _ANNOTATIONS: Final = "annotations"  # `from __future__ import annotations` postpones them all
+# Each module's names, for as long as its tree lives: the index reads them, then the check.
+_Taken: TypeAlias = tuple[frozenset[str], frozenset[str]]
+_TAKEN: Final[WeakKeyDictionary[ast.Module, _Taken]] = WeakKeyDictionary()
+_Rebound: TypeAlias = dict[str, list[Start]]
+_REBOUND: Final[WeakKeyDictionary[ast.Module, _Rebound]] = WeakKeyDictionary()
 # The nodes that bind a name: all `_taken` needs look at.
 _BINDERS: Final = (
     ast.Name,
@@ -197,7 +202,6 @@ def _running(body: list[ast.stmt]) -> Iterator[ast.stmt]:
                 pass
 
 
-@lru_cache(maxsize=16)
 def taken_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
     """Find every name bound anywhere in the module: its own, a function's, a class's, a parameter's.
 
@@ -206,6 +210,13 @@ def taken_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
       parameter, a `def`), which name a value, not a class or module, somewhere.
 
     """
+    found: tuple[frozenset[str], frozenset[str]] | None
+    if (found := _TAKEN.get(tree)) is None:
+        found = _TAKEN[tree] = _read_taken_names(tree)
+    return found
+
+
+def _read_taken_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
     names: set[str] = set()
     values: set[str] = set()
     node: ast.AST
@@ -232,7 +243,6 @@ def taken_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
     return frozenset(names), frozenset(values)
 
 
-@lru_cache(maxsize=16)
 def rebound_names(tree: ast.Module) -> dict[str, list[Start]]:
     """Find the names the module binds more than once, anywhere in it, and where.
 
@@ -243,6 +253,13 @@ def rebound_names(tree: ast.Module) -> dict[str, list[Start]]:
       Each such name, and where each of its bindings starts, in source order.
 
     """
+    found: dict[str, list[Start]] | None
+    if (found := _REBOUND.get(tree)) is None:
+        found = _REBOUND[tree] = _read_rebound_names(tree)
+    return found
+
+
+def _read_rebound_names(tree: ast.Module) -> dict[str, list[Start]]:
     found: dict[str, list[Start]] = {}
     node: ast.AST
     name: str

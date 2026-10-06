@@ -150,4 +150,4 @@ def with_parameters(catalog: project.Index, found: Mapping[str, Seeds]) -> proje
     name: str
     for name in found.keys() & modules.keys():
         modules[name] = modules[name]._replace(parameters=found[name])
-    return project.Index(modules, catalog.names)
+    return catalog._replace(modules=modules)

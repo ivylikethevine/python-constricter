@@ -52,7 +52,7 @@ def passed(catalog: Index) -> Index:
                 sides=_with_sides(module.sides, sides),
                 vouched_sides=frozenset(sides),
             )
-    return Index({**catalog.modules, **found}, catalog.names) if found else catalog
+    return catalog._replace(modules={**catalog.modules, **found}) if found else catalog
 
 
 def _with_sides(

@@ -238,6 +238,56 @@ def h():
     return x
 """
 
+SERIES: Final = """
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pkg.frame import Frame
+
+
+class Series:
+    def to_frame(self) -> "Frame":
+        raise ValueError
+"""
+FRAME: Final = """
+from pkg.proto import Xchg
+
+
+class Frame:
+    def exchange(self) -> Xchg:
+        raise ValueError
+
+    def shift(self) -> "Frame":
+        return self
+"""
+PROTO: Final = "class Xchg:\n    def rows(self) -> int:\n        return 0\n"
+RECEIVERS: Final = """
+from pkg.series import Series
+
+
+def f():
+    df = Series().to_frame()
+    x = df.exchange()
+    y = Series().to_frame().shift()
+    z = x.rows()
+    return x, y, z
+"""
+RECEIVERS_FIXED: Final = """
+from pkg.series import Series
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from pkg.frame import Frame
+    from pkg.proto import Xchg
+
+
+def f():
+    df: Frame = Series().to_frame()
+    x: Xchg = df.exchange()
+    y: Frame = Series().to_frame().shift()
+    z: int = x.rows()
+    return x, y, z
+"""
+
 
 def _write(path: Path, source: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -448,6 +498,19 @@ def test_a_guarded_type_passes_through_an_unannotated_function(tmp_path: Path) -
     assert _TYPED.format("y") in (tmp_path / "use.py").read_text(encoding="utf-8")
     assert _TYPED.format("x") in (tmp_path / "pkg" / "chain.py").read_text(encoding="utf-8")
     assert _UNTYPED in (tmp_path / "pkg" / "chain.py").read_text(encoding="utf-8")  # generic: bare
+
+
+def test_a_guarded_types_methods_are_known_in_the_same_run(tmp_path: Path) -> None:
+    """A receiver typed through an import the fix adds has its methods; a second run changes nothing."""
+    name: str
+    source: str
+    for name, source in (("__init__", ""), ("series", SERIES), ("frame", FRAME), ("proto", PROTO)):
+        _ = _write(tmp_path / "pkg" / f"{name}.py", source)
+    user: Path = _write(tmp_path / "user.py", RECEIVERS)
+    assert cli.main(["--fix", "-q", "--unsafe-fixes", "--jobs=1", *_SELECT, str(tmp_path)]) == cli.EXIT_CLEAN
+    assert user.read_text(encoding="utf-8") == textwrap.dedent(RECEIVERS_FIXED)
+    assert cli.main(["--fix", "-q", "--unsafe-fixes", "--jobs=1", *_SELECT, str(tmp_path)]) == cli.EXIT_CLEAN
+    assert user.read_text(encoding="utf-8") == textwrap.dedent(RECEIVERS_FIXED)
 
 
 def test_another_files_generic_class_is_known_as_the_file_spells_it(tmp_path: Path) -> None:

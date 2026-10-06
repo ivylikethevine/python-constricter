@@ -12,7 +12,7 @@ a guess, and leaves a type checker's hint (`--infer-with`) no fix at all.
 from typing import Final, NamedTuple
 
 from constricter.fix.core.known import Inference
-from constricter.fix.values.hinted import KIND as CHECKER
+from constricter.fix.values.hinted import KINDS as HINTED
 from constricter.offences import Edit, Fix, Offence
 from constricter.rules.flow import Binding, Hierarchy, members
 
@@ -60,8 +60,8 @@ def refit(
     # `--fix`'s annotations are always readable; one that weren't would be its own one member.
     declared: frozenset[str] = members(fix.annotation) or frozenset({fix.annotation})
     later: _Later = _later(rest, declared, hierarchy)
-    # A checker's hint is the first value's type alone: it says nothing of a later one's.
-    if (later.misfits or later.unknown) and (self_type in declared or CHECKER in fix.kinds):
+    # A hint is one value's type alone: it says nothing of a later one's.
+    if (later.misfits or later.unknown) and (self_type in declared or HINTED & fix.kinds):
         return None
     if not (later.misfits or later.unknown or later.origins):
         return fix

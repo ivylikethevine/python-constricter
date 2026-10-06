@@ -6,11 +6,13 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
+from constricter.fix.core import asked
 from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.libraries import overloads, stdlib
 from constricter.fix.libraries.library import (
     installed_call,
     installed_method,
+    library_awaited,
     library_call,
     library_class,
     library_variable,
@@ -153,7 +155,12 @@ def inference(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
       The annotation as source text and its reason, or `None` if the value doesn't decide one.
 
     """
-    return _from_local(value, known, declared) or _from_value(value, known, declared)
+    held: tuple[Inference | None] | None
+    if (held := asked.asked(value, known, declared)) is not None:
+        return held[0]
+    found: Inference | None = _from_local(value, known, declared) or _from_value(value, known, declared)
+    asked.keep(value, known, declared, found)
+    return found
 
 
 def _from_local(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inference | None:
@@ -220,8 +227,11 @@ def _member_of(
         case ast.Call():
             found: Inference | None = member(receiver, attr, value, known)
             method: stdlib.Method | None
+            # A class of the module's takes a library base's method, matched as the base's own is.
+            base: str = known.class_side.lineage.definer(receiver, attr) or receiver
             if found is None and (
                 (method := stdlib.overloaded_method(receiver, attr, known)) is not None
+                or (method := stdlib.overloaded_method(base, attr, known)) is not None
                 or (method := installed_method(receiver, attr, known)) is not None
             ):
                 found = overloads.chosen(
@@ -231,6 +241,8 @@ def _member_of(
                     lambda arg: inference(arg, known, declared),
                     method,
                 )
+                # The base itself is its `Self`: the receiver's own class, which the base isn't.
+                found = None if found is not None and receiver != base == found.annotation else found
             if found is None:
                 found = shapes.defaulted(receiver, value, lambda arg: inference(arg, known, declared))
             defined: tuple[str, str] | None = (
@@ -457,7 +469,8 @@ def _computed(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
                 frozenset({"await"}),
             )
         case _:
-            return None
+            # What awaiting a standard-library coroutine's call gives, or nothing.
+            return library_awaited(value, known, lambda arg: inference(arg, known, declared))
 
 
 def _operated(
@@ -508,7 +521,7 @@ def _arithmetic(value: ast.BinOp, known: Known, declared: Mapping[str, str]) -> 
     Numbers: `/` gives a `float`; `+`, `-`, `*`, `//` and `%` a `float` if either side is one, else
     an `int` (`**` can give a `float` from `int`s, so it's left out). `str` and `bytes`: `+` of two,
     `*` by an `int`, and `%` formatting give the same type back; so do a `list[T]`'s `+` of another
-    and `*` by an `int`.
+    and `*` by an `int`, and a `pathlib` path's `/` with a `str` or another (`stdlib.joins_path`).
 
     Returns:
       The inference, or `None` for any other operator or operand.
@@ -523,6 +536,8 @@ def _arithmetic(value: ast.BinOp, known: Known, declared: Mapping[str, str]) -> 
     op: ast.operator = value.op
     reason: str = "arithmetic on builtin types"
     kinds: frozenset[str] = _kinds(*sides, kind="arithmetic")
+    if isinstance(op, ast.Div) and left is not None and stdlib.joins_path(left, right, known):
+        return Inference(left, "a path joined by `/`", kinds)
     if left in _NUMBER_NAMES and right in _NUMBER_NAMES:
         if isinstance(op, ast.Div):
             return Inference("float", reason, kinds)

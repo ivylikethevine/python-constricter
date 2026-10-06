@@ -195,7 +195,9 @@ def partly(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
     name: str
     partial: Partial = known.indirect.partial
     match value:
-        case ast.Call(func=ast.Name() | ast.Attribute() as func) if ast.unparse(func) in partial.calls:
+        case ast.Call(func=ast.Name() | ast.Attribute() as func) if (
+            partial.calls and ast.unparse(func) in partial.calls
+        ):
             callee: str = ast.unparse(func)
             return Inference(partial.calls[callee], f"`{callee}`'s declared return type", frozenset({_CALL}))
         case ast.Call(func=ast.Attribute(value=receiver, attr=name)):

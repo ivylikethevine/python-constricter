@@ -42,6 +42,7 @@ _STDLIB: Final = sys.stdlib_module_names
 _BUILTINS_MODULE: Final = "builtins"
 _HOPS: Final = 5  # how many re-exports (`from .util import f` in an `__init__`) to follow
 _DOT: Final = "."
+_UNDERSCORE: Final = "_"
 _FUNCTION: Final = "function"
 DECORATOR: Final = "decorator"  # a function that gives back the one it decorates
 _LITERAL: Final = "Literal"
@@ -52,6 +53,7 @@ _RETURNED: Final = "returned"  # an unannotated function its `return`s type
 _UNANNOTATED: Final = "unannotated"  # an unannotated function, typed or not
 _PARTIAL: Final = "partial"  # a function whose declared return only an unpacking can use
 OPEN: Final = "open"  # a function with a parameter left unannotated (see `modules.open_functions`)
+_Named: TypeAlias = tuple[Mapping[str, Origin], frozenset[str]]  # see `_spelled_classes`
 
 
 class Imported(NamedTuple):
@@ -117,7 +119,7 @@ _KINDS: Final[Mapping[str, _Defined]] = {
     OPEN: lambda module: module.open,
     _PARTIAL: lambda module: module.partial,
     DECORATOR: lambda module: module.passes,
-    "signatures": lambda module: {} if module.declared is None else module.declared.signatures,
+    "signatures": lambda module: module.overloads if module.declared is None else module.declared.signatures,
 }
 
 
@@ -584,9 +586,10 @@ def _named(
     """Name `origin` in `target`: as an import it has names it (preferring `name`), else `name` if free.
 
     An import of the thing itself, else of a module that has it (`core_schema.CoreSchema`, as a type
-    checker's hint is written). A new import only from a module certain to resolve: a checked
-    file's, an installed package's public one (not `numpy._typing`), or the standard library's (a
-    third-party one the type's file imports may not be installed where the type checker runs).
+    checker's hint is written; `pytest.MonkeyPatch`, by the public module `origin` names). A new
+    import only from a module certain to resolve: a checked file's, an installed package's public
+    one (not `numpy._typing`), or the standard library's (a third-party one the type's file imports
+    may not be installed where the type checker runs).
 
     Returns:
       The name, or `None` if `target` imports nothing for it and binds `name` to something else, or
@@ -601,10 +604,14 @@ def _named(
     )
     if matches:
         return matches[0]
-    through: str | None
-    if (through := _through(modules, target, wanted)) is not None:
-        return through
     module: Module | None = modules.get(origin[0])
+    # The module `origin` names has it when it runs, not for type checking alone.
+    exported: bool = module is not None and origin[1] in module.names
+    through: str | None = _through(modules, target, wanted) or (
+        _through(modules, target, origin) if exported else None
+    )
+    if through is not None:
+        return through
     public: bool = module is not None and not (module.installed and _private(origin[0]))
     resolves: bool = public or origin[0].partition(".")[0] in _STDLIB
     return None if name in known or name in _BUILTINS or not resolves else name
@@ -656,18 +663,20 @@ def _public(modules: Mapping[str, Module], origin: Origin) -> Origin:
 def _reexported(modules: Mapping[str, Module], origin: Origin) -> Origin:
     """Find the shortest public module of an installed package re-exporting `origin` (see `_public`).
 
+    The package's own, or the one its private twin is for (`pytest`, for `_pytest`).
+
     Returns:
       Its origin, or `origin` itself if there's none.
 
     """
     wanted: Origin = _canonical(modules, origin)
-    top: str = origin[0].partition(".")[0]
+    top: str = origin[0].partition(_DOT)[0].lstrip(_UNDERSCORE)
     found: list[str] = sorted(
         (
             name
             for name, other in modules.items()
             if other.installed
-            and name.partition(".")[0] == top
+            and name.partition(_DOT)[0].lstrip(_UNDERSCORE) == top
             and not _private(name)
             and origin[1] in other.names
             and (
@@ -733,56 +742,78 @@ def _same(target: Module, defined: Module, name: str) -> bool:
     return origin is not None and origin == _origin(defined, name)
 
 
-def imported(catalog: Index, path: Path) -> Imported:
+def imported(
+    catalog: Index,
+    path: Path,
+    seeded: tuple[Mapping[str, Guarded], frozenset[str]] | None = None,
+) -> Imported:
     """Return, for the file at `path`, what it imports from other checked files that it can name.
 
     Each function's return type (`calls`), and each class's attributes and methods' returns, keyed as
     the file spells the class (`Row`, `m.Row`); a type naming the class itself (a `Self` return) is
-    spelled that way too.
+    spelled that way too. `seeded`: the names its fixtures' types are written with, imported for type
+    checking alone (see `fixtures.visible`), whose classes' members it takes as well; and the
+    attributes those types take of a module it imports (`MonkeyPatch`, in `pytest.MonkeyPatch`).
 
     Returns:
       Them, and the names their types need imported for type checking alone (see `Guarded`); nothing
       for a file `catalog` doesn't have (a notebook, standard input).
 
     """
-    modules: dict[str, Module] = catalog.modules
-    attributes: dict[str, dict[str, str]] = {}
-    methods: dict[str, dict[str, str]] = {}
-    guarded: dict[str, Guarded] = {}
-    generics: set[str] = set()
-    members: dict[str, Mapping[str, str]] = {}
-    partial: dict[str, dict[str, str]] = {}
+    taken: _Taken = _Taken({}, {}, {}, {}, set())
+    guarded: dict[str, Guarded] = {} if seeded is None else dict(seeded[0])
     target: Module | None
-    if path.suffix != SUFFIX or (target := modules.get(module_name(path))) is None:
-        return Imported({}, Classes(attributes, methods))
-    key: str
-    defined: tuple[Module, str]
-    for key, defined in _spelled_classes(catalog, target, generics):
-        if defined[1] in defined[0].generics:
-            generics.add(key)
-        if defined[1] in defined[0].plain and defined[1] in defined[0].members:
-            members[key] = defined[0].members[defined[1]]
-        attributes[key], methods[key], partial[key] = (
-            _used(modules, (target, defined), key, table.get(defined[1]), guarded)
-            for table in (defined[0].classes, defined[0].methods, defined[0].partial_methods)
-        )
-    found: tuple[dict[str, str], Returns, Partial] = (
+    if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
+        return Imported({}, Classes(taken.attributes, taken.methods))
+    named: _Named = (
+        {**{name: found.origin for name, found in guarded.items()}, **target.names},
+        target.attributes if seeded is None else target.attributes | seeded[1],
+    )
+    _take(catalog, target, named, taken, guarded)
+    found: tuple[dict[str, str], Returns, dict[str, str]] = (
         calls(catalog, path, guarded),
         returned(catalog, path, guarded),
-        Partial(
-            {name: each for name, each, _ in _typed_calls(catalog, path, _PARTIAL, guarded)},
-            {name: each for name, each in partial.items() if each},
-        ),
+        {name: each for name, each, _ in _typed_calls(catalog, path, _PARTIAL, guarded)},
     )
+    known: set[str] = set(named[0])
+    for _ in range(_HOPS):  # a class those types need imported is a receiver's too, needing more in turn
+        fresh: dict[str, Origin] = {name: each.origin for name, each in guarded.items() if name not in known}
+        _take(catalog, target, (fresh, named[1]), taken, guarded)
+        known.update(fresh)
     return Imported(
         found[0],
-        Classes(attributes, methods),
+        Classes(taken.attributes, taken.methods),
         found[1],
         guarded,
-        frozenset(generics),
-        members,
-        found[2],
+        frozenset(taken.generics),
+        taken.members,
+        Partial(found[2], {name: each for name, each in taken.partial.items() if each}),
     )
+
+
+class _Taken(NamedTuple):
+    """What `imported` takes of the classes a file names, each keyed as the file spells the class."""
+
+    attributes: dict[str, dict[str, str]]
+    methods: dict[str, dict[str, str]]
+    partial: dict[str, dict[str, str]]
+    members: dict[str, Mapping[str, str]]
+    generics: set[str]
+
+
+def _take(catalog: Index, target: Module, named: _Named, taken: _Taken, guarded: dict[str, Guarded]) -> None:
+    """Add to `taken` the members `target` uses of the classes `named` finds (see `_spelled_classes`)."""
+    key: str
+    defined: tuple[Module, str]
+    for key, defined in _spelled_classes(catalog, target, named, taken.generics):
+        if defined[1] in defined[0].generics:
+            taken.generics.add(key)
+        if defined[1] in defined[0].plain and defined[1] in defined[0].members:
+            taken.members[key] = defined[0].members[defined[1]]
+        taken.attributes[key], taken.methods[key], taken.partial[key] = (
+            _used(catalog.modules, (target, defined), key, table.get(defined[1]), guarded)
+            for table in (defined[0].classes, defined[0].methods, defined[0].partial_methods)
+        )
 
 
 def _used(
@@ -807,11 +838,14 @@ def _used(
 def _spelled_classes(
     catalog: Index,
     target: Module,
+    named: _Named,
     generics: set[str],
 ) -> Iterator[tuple[str, tuple[Module, str]]]:
     """Find the classes other checked files define that `target` names, each as it spells it.
 
-    `Row` after `from m import Row`; `m.Row`, or `pkg.m.Row` after `import pkg.m`, for a module's.
+    `named`: the names it's to find them by, and the attributes it takes of anything. `Row` after
+    `from m import Row`; `m.Row`, or `pkg.m.Row` after `import pkg.m`, for a module's, and `pkg.Row`
+    for one `pkg` re-exports, where `Row` is such an attribute.
     The generic classes a module it imports re-exports are added to `generics`, as it spells them.
 
     Yields:
@@ -820,15 +854,23 @@ def _spelled_classes(
     """
     local: str
     origin: Origin
-    for local, origin in _resolved(catalog, target.names):
+    for local, origin in _resolved(catalog, named[0]):
         spelled: list[tuple[str, Origin]] = []
         if origin[1] is not None and origin[0] != target.name:
             spelled = [(local, origin)]
         elif origin[1] is None:
+            package: Module | None = catalog.modules.get(origin[0])
             spelled = [
-                (f"{local}{other.name.removeprefix(origin[0])}.{cls}", (other.name, cls))
-                for other in _submodules(catalog, origin[0])
-                for cls in other.classes
+                *(
+                    (f"{local}{other.name.removeprefix(origin[0])}.{cls}", (other.name, cls))
+                    for other in _submodules(catalog, origin[0])
+                    for cls in other.classes
+                ),
+                *(
+                    (f"{local}.{name}", where)
+                    for name, where in ({} if package is None else package.names).items()
+                    if name in named[1] and where[1] is not None and where[0] != origin[0]
+                ),
             ]
             generics.update(_reexported_generics(catalog.modules, local, origin[0]))
         key: str
@@ -934,7 +976,7 @@ def with_returned(catalog: Index, found: Mapping[str, Returns]) -> Index:
     for name, returns in found.items():
         if name in modules:
             modules[name] = modules[name]._replace(returned=returns)
-    return Index(modules, catalog.names)
+    return catalog._replace(modules=modules)
 
 
 def needs(catalog: Index, module: Module) -> set[str]:

@@ -6,6 +6,81 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types what a coroutine's call gives the standard library's task and run functions:
+  `asyncio.create_task(fetch(url))` is an `asyncio.Task[bytes]` where `fetch` declares `bytes`
+  (`loop.create_task` and a task group's too), `asyncio.gather(a(), b())` an
+  `asyncio.Future[tuple[A, B]]`, and `asyncio.run(main())` and `loop.run_until_complete(main())`
+  what `main` declares. And `await` of a future or a task (`done = await asyncio.gather(a(), b())`)
+  and of a coroutine its arguments decide (`asyncio.wait_for`, `asyncio.sleep(1, result)`,
+  `asyncio.open_connection`, whose reader and writer an unpacking takes).
+- `--fix` types `await` of a standard-library coroutine's call, and an `async with`'s target by a
+  standard-library manager's `__aenter__`: `line = await reader.readline()` is a `bytes`,
+  `proc = await asyncio.create_subprocess_exec(...)` an `asyncio.subprocess.Process`, and
+  `async with asyncio.TaskGroup() as group:` an `asyncio.TaskGroup`. The tables hold what awaiting
+  each `async def` with one declared return gives (`awaited`): not a generic class's (`Queue.get`),
+  nor one its arguments decide (`asyncio.gather`, `asyncio.wait_for`).
+- Faster, with the same output: a value's inferred type is kept until its scope types another name
+  (it's asked for again as a guess, and as part of the next value), a module's bound names and class
+  tables are read once for the index and the check, an installed package is looked for on disk once
+  for all its modules, and its signatures' annotations are parsed once each. About 8% off a check of
+  97 of the standard library's test files, and 11% off one of pandas's test directories.
+- `--fix` types what a class takes from a standard-library class through another checked file's (or
+  a typed installed package's): under a project's own `class Case(unittest.TestCase)`, defined in
+  another file, `name = self.id()` is a `str` and `with self.assertRaises(ValueError) as cm:` an
+  `_AssertRaisesContext[ValueError]`. Where each class on the way has one base, and none binds the
+  name.
+- `--fix` types more of the standard library's context managers, and what they construct: a class
+  whose `__init__` overloads declare its instance (`subprocess.Popen(cmd, text=True)` is a
+  `subprocess.Popen[str]`, `with tempfile.TemporaryDirectory() as d:` a `str`,
+  `with warnings.catch_warnings(record=True) as caught:` a `list[warnings.WarningMessage]`), a test
+  case's `with self.assertRaises(ValueError) as cm:` (an `_AssertRaisesContext[ValueError]`, and
+  `cm.exception` a `ValueError`: a class passed as an argument binds a `type[_E]`, and a class of
+  the module's takes a library base's method whose arguments decide it), `assertWarns`,
+  `tempfile.NamedTemporaryFile` and `tarfile.open`. The three classes among them that typeshed keeps
+  private are written by their private names. 507 more fixes on 97 of the standard library's test
+  files (6,109 to 6,616).
+- `python -m constricter.trace -m pytest` (or a script) records the types a run binds each
+  function's locals to, and `--fix --unsafe-fixes --infer-from FILE` (`infer-from` in
+  `[tool.constricter]`) takes them for the bindings `--fix` can't type itself, as a type checker's
+  hints are taken: guesses (fix kind `traced`), for a local bound once to a value taken from an
+  unannotated parameter, a class the file doesn't name imported under `if TYPE_CHECKING:`. A file is
+  matched by its SHA-256, so one edited since the run has none. See
+  [FIXES.md](FIXES.md#a-traced-runs-types---infer-from).
+- `--fix` types a call on a value whose class the same run imports for type checking: with
+  `df = series.to_frame()` typed `DataFrame` by an import the fix adds, `df.shift()` is typed on the
+  first pass, not the second. `tests/corpus/corpus_fix.py` lists each fix a second pass still makes.
+- `--fix --unsafe-fixes` types a test's parameter named as one of pytest's own fixtures, read from
+  pytest as installed where a checked file imports it: `capsys` is a `pytest.CaptureFixture[str]`,
+  `monkeypatch` a `pytest.MonkeyPatch`, and `text = caplog.text` a `str`. Each `conftest.py` outside
+  a package is looked in by where it is, the nearest first, not only where it's the one checked file
+  of that name (a fixture of one of several by its declared return alone). And a fixture's class the
+  test file doesn't import has its members: `copy = float_frame.copy()` is typed where only the
+  `conftest.py` imports `Frame`. Guesses (fix kind `fixture`).
+- `--fix` reads an installed package's private twin through it (`pytest`'s classes, defined in
+  `_pytest`), types the members of a class named through a module that re-exports it
+  (`pytest.LogCaptureFixture`, `pkg.Row`), and writes a type through such a module where the file
+  imports it (`typed.Thing` after `import typed`) before adding an import for type checking.
+- Fixed: with an installed package's types read, a module name two checked files share was no longer
+  known to be shared, so one's fixtures could type the other's tests.
+- `--fix` types a call to a checked file's function defined with `@overload` by the overload its
+  arguments match, as an installed package's is: `load(path, raw=True)` is a `bytes` where
+  `raw: Literal[True]` returns one. Only where the arguments decide it, and no overload returns a
+  type variable or a generic class without its arguments; a parameter typed as a checked file's
+  class or alias takes any argument, so it decides nothing.
+- `--fix` resolves a standard-library class named through an import for type checking that the same
+  run adds: a fixture's `Path`, joined by `/`, is typed on the first pass, not the second.
+- `--fix --unsafe-fixes` takes a test's fixtures from a `conftest.py` outside any package too (most
+  projects' `tests/conftest.py`), for the tests beside it and under it, where it's the only checked
+  file of that name; and pytest's own `tmp_path` is a `Path`. Guesses (fix kind `fixture`).
+- `--fix` types a `pathlib` path joined by `/`: `root / "data"` is `root`'s class (`Path`), with a
+  `str` or another path on its right.
+- `--fix --unsafe-fixes` types an instance attribute bound to an empty container by what its class's
+  own methods add to it: `self.items = []` in `__init__` and `self.items.append(row)` in another
+  method make `for item in self.items` a loop over `Row`s. Guesses (fix kinds `assigned` and
+  `filled`).
+- `--fix --unsafe-fixes`: an empty container is still typed by its fills where it's also an operand
+  (`parts + more`), unpacked (`[*parts]`, `f(*parts)`), passed to any `join`, or returned in a tuple
+  (`return parts, count`).
 - `--fix --unsafe-fixes` types what a test computes from the parameters pytest gives it: one named
   as a fixture its module or a `conftest.py` of a package above it defines, by what the fixture
   returns or yields, and one `@pytest.mark.parametrize` gives literals of one type.

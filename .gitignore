@@ -42,6 +42,7 @@ stdlib_tables/partial.json
 /.claude/skills
 /.claude/workflows
 /.claude/.cc-writes
+/.vscode
 
 # Backups merge tools leave next to a conflicted file.
 *.orig

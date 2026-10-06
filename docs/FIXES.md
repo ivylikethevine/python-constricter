@@ -70,12 +70,16 @@ in a function or module body:
   once, not generic) and then a class another checked file defines (the CLI only), which ends the
   search with what it takes from its own file's classes, or a standard-library class the tables hold
   whole, by its members there (`self.id()` in a `unittest.TestCase` is a `str`, `self.name` in a
-  `threading.Thread` a `str`). A declared return is certain, and a `Self` one is the receiver's
-  class; `return`s are a guess, and not offered where their type names the base (`return self` gives
-  the receiver's class). Nothing for a name the class's body binds any other way, past a base out of
-  sight (an installed package's, a subscripted or computed one), or for another file's or the
-  standard library's method returning its own class, which may be its `Self` (`self.resolve()` under
-  `Path`);
+  `threading.Thread` a `str`), which another checked file's class is followed to as well, through
+  its own bases in any checked file or installed package that declares its types, each a class of
+  one base: what none of them binds is the library class's (`self.id()` under a project's own
+  `Case(unittest.TestCase)`), a method its arguments decide included
+  (`self.assertRaises(ValueError)`). A declared return is certain, and a `Self` one is the
+  receiver's class; `return`s are a guess, and not offered where their type names the base
+  (`return self` gives the receiver's class). Nothing for a name the class's body binds any other
+  way, past a base out of sight (an installed package's, a subscripted or computed one), or for
+  another file's or the standard library's method returning its own class, which may be its `Self`
+  (`self.resolve()` under `Path`);
 - a call of a value whose type says what calling it gives: a local, an attribute or anything else
   typed `Callable[..., R]` is an `R` (`handler(source)`, `self.handler(source)`, `hooks[0](x)`); one
   typed `type[C]` constructs a `C` (`cls()` in a classmethod, `type(self)()`), as does `__new__`
@@ -152,7 +156,9 @@ in a function or module body:
   widen to the widest: `int`, then `float`): that type. A guess, since a subclass or outside code
   may assign it too; an attribute the class body binds, stored any other way (`+=`, an unpacking,
   `del`, a nested function's `self.x = ...`), or assigned a local bound more than once, is left
-  alone;
+  alone. One bound to an empty container (`self.items = []`) is typed by what the class's own
+  methods add to it, as a function's is below (`self.items.append(row)` in another method: a
+  `list[Row]`), with any other value it's assigned; every read of it in the class counts as a use;
 - with `--unsafe-fixes`, a plain class's variable (`limit = 3` in its body), bound once there to a
   literal or a display of them, and what reads it (`self.limit`, `cls.limit`, or `limit` on any
   value typed as the class or one inheriting it): the value's type. A plain class is defined once in
@@ -194,28 +200,42 @@ in a function or module body:
   those types, then the files calling them, knowing what they now return;
 - with `--unsafe-fixes`, what's computed from a parameter pytest gives a test (a function named
   `test...`) or a fixture. One named as a fixture: its module's own, else the one in the
-  `conftest.py` of the nearest package above it (the CLI only), typed by the fixture's declared
-  return or the one its `return`s give, a generator's by what it yields (`Iterator[Frame]` gives a
-  `Frame`), its class imported for type checking as another file's type is. And one
-  `@pytest.mark.parametrize` gives literals of one type (`"n, s"` with `[(1, "a"), (2, "b")]`): on
-  the function itself, names and cases written out. `def test_copy(float_frame)` types
-  `result = float_frame.copy()`. A guess (`fixture`), since a plugin's fixture of the name, or a
-  `conftest.py` out of the checked files, may be the one pytest takes; not a parameter the test
-  annotates or binds again, nor a `conftest.py` in a directory that isn't a package (its module's
-  name says nothing of where it is);
+  `conftest.py` of the nearest package above it, else in a `conftest.py` outside any package, the
+  file's directory's (or its top package's) then each one's above (the CLI only), typed by the
+  fixture's declared return or the one its `return`s give (its declared return alone, in one of
+  several `conftest.py`s outside a package), a generator's by what it yields (`Iterator[Frame]`
+  gives a `Frame`), its class imported for type checking as another file's type is, with its
+  members; else pytest's own, read from pytest as installed where a checked file imports it
+  (`capsys` is a `pytest.CaptureFixture[str]`, `caplog.text` a `str`), and its `tmp_path`, a `Path`,
+  anywhere. And one `@pytest.mark.parametrize` gives literals of one type (`"n, s"` with
+  `[(1, "a"), (2, "b")]`): on the function itself, names and cases written out.
+  `def test_copy(float_frame)` types `result = float_frame.copy()`. A guess (`fixture`), since a
+  plugin's fixture of the name, or a `conftest.py` out of the checked files, may be the one pytest
+  takes; not a parameter the test annotates or binds again, nor any for a test file whose name
+  another checked file has (a module's name says nothing of where it is);
 - with `--unsafe-fixes`, an empty container (`[]`, `{}`, `set()`, `list()`, `dict()`) the function
   then only adds to, every addition typed alike (`append`, `insert`, `add`, `setdefault`,
   `x[k] = v`; `extend` and `update` with one argument, by its elements, or a `dict`'s keys and
   values): `list[T]`, `set[T]` or `dict[K, V]`. A guess, since something else could add to it; any
-  use that could (passing it to another function, aliasing it, a nested function) leaves it alone;
+  use that could (passing it to another function, aliasing it, a nested function) leaves it alone,
+  but not one that only reads it (`x[0]`, `len(x)`, `sep.join(x)`, `x + more`, `[*x]`,
+  `return x, n`);
 - a value computed from such: `a if c else b` when both sides agree, and `a if c else None` as
   `T | None` (not where `c` tests `a`, which it narrows); `a or b` and `a and b` with operands of
   one type, `or` dropping a `None` before its last operand (`name or "x"` is a `str` for a
   `name: str | None`); arithmetic on builtin scalars (`n + 1`, `n / 2`, `-n`, `~n`, `"x" * n`,
   `"%s" % n`; never `**`, whose result can change type) and lists (`names + names`, `names * 2`); a
-  list, set or dict comprehension whose elements are known; `sorted`, `list`, `set`, `frozenset` or
-  `tuple` of something whose elements are (a generator expression's too:
-  `list(str(i) for i in ns)`); and `await` of a call to one of the module's `async def`s.
+  `pathlib` path's `/` with a `str` or another path (`root / "x"`: `root`'s class); a list, set or
+  dict comprehension whose elements are known; `sorted`, `list`, `set`, `frozenset` or `tuple` of
+  something whose elements are (a generator expression's too: `list(str(i) for i in ns)`); and
+  `await` of a call to one of the module's `async def`s, or to a standard-library coroutine with one
+  declared return (`line = await reader.readline()` is a `bytes`, on a receiver typed
+  `asyncio.StreamReader`; `await asyncio.start_server(...)` an `asyncio.Server`), or one its
+  arguments decide (`await asyncio.wait_for(fetch(url), 5)`), or of a call typed a future or a task
+  (`await asyncio.gather(a(), b())` is a `tuple[A, B]`). A coroutine's call passed where a parameter
+  is an awaitable of a type variable binds it to what awaiting it gives:
+  `asyncio.create_task(fetch(url))` is an `asyncio.Task[bytes]` where `fetch` declares `bytes`, and
+  `asyncio.run(main())` what `main` does.
 
 A loop's target (LVA002) and an unpacking's names (LVA001) are declared instead, on a line of their
 own before the statement: `for k, v in ages.items():` with `ages: dict[str, int]` gets `k: str` and
@@ -270,8 +290,19 @@ package's what its `__enter__` declares, and a call to one of the module's funct
 module's classes that `@contextmanager` makes one types its call the same way, on a receiver whose
 type is known (`with self.defs.entry(key) as found:`). A target that unpacks is split as an
 unpacking's value is (`with defs.entry(key) as (ref, schema):`), a vague part's name left alone.
-`with open(path, "rb") as f:` declares `f: io.BufferedReader`, by its mode. Not an `async with`'s
-target.
+`with open(path, "rb") as f:` declares `f: io.BufferedReader`, by its mode. An `async with`'s target
+is typed by a standard-library manager's `__aenter__` (`async with asyncio.TaskGroup() as group:`),
+where that has one declared return; no other manager's, and not split over an unpacking.
+
+A standard-library manager its arguments decide is matched as any such call is: a constructor whose
+`__init__` overloads declare the instance (`subprocess.Popen(cmd, text=True)` is a
+`subprocess.Popen[str]`, `warnings.catch_warnings(record=True)` gives a
+`list[warnings.WarningMessage]`), and a test case's `self.assertRaises(ValueError)`, whose class
+argument binds what it catches: `cm: _AssertRaisesContext[ValueError]`, then `cm.exception` a
+`ValueError`. That class, `_AssertWarnsContext` and `tempfile.NamedTemporaryFile`'s
+`_TemporaryFileWrapper` are private in typeshed and at run time, with no public name: they're
+written as they are (imported from `unittest.case`, where the module doesn't import it), which a
+checker reporting private names' use will say. `tarfile.open` gives a `tarfile.TarFile`.
 
 A type the module can't name yet gets an import. One it already has is reused (with `import io`,
 `io.BufferedReader`); otherwise `from io import BufferedReader` is added after the module's
@@ -283,13 +314,23 @@ An installed package that declares its types (a `py.typed` package, its stubs fi
 `pkg-stubs`; a lone `mod.pyi`) is read the same way for the calls into it, and never fixed: found on
 this Python's path and the active virtual environment's (`VIRTUAL_ENV`), as the import system would
 (an untyped copy earlier on the path shadows a typed one later), with the modules it re-exports
-from. `pydantic_core.to_json(x)` is a `bytes`. A type it names is imported from a public module that
-re-exports it (`from typed import Thing`, not `typed._types`; a module exports what `__all__` lists,
-or else what it defines and imports as itself, `from m import x as x`), or not written; and one of
-its generic classes is never written bare (`np.ndarray`).
+from, its private twin's too (`pytest`'s, from `_pytest`). `pydantic_core.to_json(x)` is a `bytes`.
+A type it names is written through a public module re-exporting it that the file imports
+(`typed.Thing`, after `import typed`), else imported from one (`from typed import Thing`, not
+`typed._types`; a module exports what `__all__` lists, or else what it defines and imports as
+itself, `from m import x as x`), or not written; and one of its generic classes is never written
+bare (`np.ndarray`). A class a module the file imports re-exports has its members there
+(`pytest.LogCaptureFixture`'s `text`, `pkg.Row`'s).
 
-Its functions whose arguments decide their type (overloads, or a return naming a type variable) are
-matched as the standard library's are: `np.empty(n, dtype=np.float64)` is an
+A checked file's function defined with `@overload` is matched the same way, in the file defining it
+and in those importing it: `load(path, raw=True)` is a `bytes` where `raw: Literal[True]` returns
+one. What a parameter takes is read as below, but a checked file's own class or alias takes any
+argument (it decides nothing), and each return is written as another checked file's type is: none of
+the function's calls is typed if one of its overloads declares no return, or returns a type variable
+or a generic class without its arguments.
+
+An installed package's functions whose arguments decide their type (overloads, or a return naming a
+type variable) are matched as the standard library's are: `np.empty(n, dtype=np.float64)` is an
 `np.ndarray[tuple[int], np.dtype[np.float64]]` with numpy 2.5's stubs. What each parameter takes is
 read from its annotation through the package's aliases, type variables and protocols; a
 standard-library class it names (`SupportsIndex`) by the `scalars` table; and a class passed as the
@@ -524,6 +565,50 @@ The type hierarchy LVA008–LVA010 compare through is the numeric tower (`bool` 
 those say for each type it names, and vouches for the types it names: an imported type the rules
 would never compare otherwise is compared.
 
+## A traced run's types (`--infer-from`)
+
+What a run binds a name to says what the source doesn't: most bindings with no fix are in functions
+with no annotations, computed from parameters nothing types. Those are the ones it types.
+
+```bash
+python -m constricter.trace -m pytest          # or a script: writes constricter-trace.json
+constricter --fix --unsafe-fixes --infer-from constricter-trace.json .
+```
+
+`python -m constricter.trace [--output FILE] [--root DIR] (-m MODULE | SCRIPT) [ARG ...]` runs the
+module or script as `python` would, and each time a function defined under DIR (default: the working
+directory; nothing installed there) returns or yields, notes the type of every local it holds: a
+builtin scalar, a builtin container or one of `collections`' by its first 20 elements' types (up to
+three, two levels deep), a tuple by its parts' one type or part by part (up to four), a class as
+`type[C]`, anything else by its class. A mock, a class defined in a function or in another class,
+and a container of more types or deeper have no spelling, and leave their name untyped; an empty
+container says nothing. A function that returns 20 times with nothing new is no longer looked at.
+Only the process itself is recorded, with the threads `threading` starts: not pytest-xdist's
+workers.
+
+`--infer-from FILE` (`infer-from` in `[tool.constricter]`, relative to the `pyproject.toml`) takes
+those types as a type checker's hints are taken, after the checkers' own where `--infer-with` is
+given too: for the bindings `--fix` can't type itself, each a guess (fix kind `traced`), judged as a
+hint is (not vague, not too deep, no generic class bare, every name one the file can use). A class
+the file doesn't name is imported under `if TYPE_CHECKING:`, where the checked files or an installed
+package's public module define it. Up to three types seen for one name are their union, which is a
+fix only where the function tests the name, as a checker's union is.
+
+Only a local no annotation types gets one: a name assigned a value taken from a parameter its
+function leaves unannotated (`row = rows[0].load()`, `made = make(n)`; not `self` or `cls`, which
+the class types). Anything else a type checker may type wider than the run saw (an `X | None` that
+was never `None`, a base class, a `TypedDict` seen as a `dict[str, str]`), and the narrower
+annotation would be an error: hints for every local brought 32 new basedpyright errors with 127
+fixes on pydantic, and none with none under this rule. And only a name its function binds once,
+outside any loop: the trace says what it held when the function returned, not where. A file is
+matched by its SHA-256: one edited since the run has no types (`--fix`'s own second round, for one),
+and a copy of it has them all.
+
+What the run saw can still be narrower than what the code means (a subclass, an `int` where a
+`float` may come): a guess, like the rest. And a name typed at last is checked at last: on pandas's
+`tests/frame/methods`, traced, 128 more fixes (5%) and 29 new basedpyright errors, each at a later
+use of a rightly typed `DataFrame` (`df.join(other, how="foo")`, in a test of that error).
+
 ## Fix levels
 
 Each fix names the mechanisms that decided it, parts included (`[1, 2]` is a `container` of
@@ -545,7 +630,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `conditional`   | both sides of `a if c else b`, or one side and `None`                                     |
 | `boolean`       | `a or b` or `a and b`, its operands of one type                                           |
 | `compare`       | a comparison of builtin values (`n < 3`), always a `bool`                                 |
-| `arithmetic`    | arithmetic on builtin scalars and lists                                                   |
+| `arithmetic`    | arithmetic on builtin scalars and lists, and a `pathlib` path's `/`                       |
 | `comprehension` | a list, set or dict comprehension's elements                                              |
 | `builder`       | `sorted`, `list`, `set`, `frozenset` or `tuple` of known elements                         |
 | `await`         | `await` of the module's `async def`                                                       |
@@ -559,6 +644,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `open`          | `open(path, mode)`'s file object, by its literal mode (`io.TextIOWrapper`, ...)           |
 | `final`         | LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)             |
 | `checker`       | a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)            |
+| `traced`        | what a traced run bound the name to (`--infer-from`; a guess)                             |
 | `rebound`       | a name later bound to a wider type: the type every value fits (`int`, then `float`)       |
 | `optional`      | `x = None`, then only ever a value of one known type `T`: `T \| None`                     |
 | `filled`        | an empty container, then only what the function adds to it (a guess)                      |

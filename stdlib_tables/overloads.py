@@ -19,7 +19,13 @@ import copy
 from collections.abc import Iterable, Iterator, Sequence
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix.core.signatures import Accepts, Constant, Parameter, Signature
+from constricter.fix.core.signatures import (
+    CLASS_BINDS,
+    CLASS_VERDICT,
+    Accepts,
+    Constant,
+    Signature,
+)
 from stdlib_tables.reading import (
     ClassRef,
     Defs,
@@ -90,6 +96,8 @@ _SELF_TYPE: Final = "Self"
 _CALLABLE: Final = "Callable"
 _PROPERTIES: Final = frozenset({"property", "cached_property"})
 _INIT: Final = "__init__"
+_TYPE: Final = "type"
+_AWAITABLES: Final = frozenset({"Awaitable", "Coroutine", "Future", "Task"})
 _NEW: Final = "__new__"
 _ENTER: Final = "__enter__"
 # The builtin containers whose element an argument of the type binds a parameter's type variable to.
@@ -134,6 +142,25 @@ class Verdicts(NamedTuple):
     anything: str | None = None
     elements: tuple[str, dict[str, int]] | None = None
     returned: str | None = None
+    awaited: str | None = None  # for an awaitable, the unbounded type variable awaiting it gives
+
+
+def _classes(annotation: ast.expr) -> Iterator[ast.expr]:
+    """Find what a parameter's annotation takes a class of: `_E` in `type[_E] | tuple[type[_E], ...]`.
+
+    Yields:
+      Each `type[...]` member of its union's argument.
+
+    """
+    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+        yield from _classes(annotation.left)
+        yield from _classes(annotation.right)
+    elif (
+        isinstance(annotation, ast.Subscript)
+        and isinstance(annotation.value, ast.Name)
+        and annotation.value.id == _TYPE
+    ):
+        yield annotation.slice
 
 
 def parameters(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[Param]:
@@ -242,12 +269,15 @@ class Overloads(Templates):
         module: str,
         selves: Sequence[ast.expr | None] = (),
         constructed: str | None = None,
+        *,
+        awaited: bool = False,
     ) -> list[Signature] | None:
         """Read a function's signatures, in order, as the `overloads` table holds them.
 
         `selves`: a method's (read without `self`) each signature's `self` annotation, if any;
         `constructed`: for a class's `__new__` or `__init__`, the template its instance is, which a
-        signature returning `Self` (or `__init__`'s) returns.
+        signature returning `Self` (or `__init__`'s) returns. `awaited`: an `async def`'s, each
+        return what awaiting its call gives.
 
         Returns:
           Each one's parameters (`[name, kind, default, accepts]`, or `"name kind="` where every
@@ -256,7 +286,7 @@ class Overloads(Templates):
           or `None` if a signature can't be read, or none's return can be written.
 
         """
-        if any(not readable(node) for node in defs):
+        if any(not readable(node, awaited=awaited) for node in defs):
             return None
         each: list[list[Param]] = [parameters(node) for node in defs]
         keys: list[set[_Key]] = [{_key(p) for p in one} for one in each]
@@ -266,14 +296,13 @@ class Overloads(Templates):
         one: list[Param]
         index: int
         for index, (node, one) in enumerate(zip(defs, each, strict=True)):
-            params: list[Parameter | str] = [
-                _shared(p)
-                if _key(p) in shared and not self._variable_in(p.annotation, module)
-                else (p.name, p.kind, p.default, self._accepted(p, module))
-                for p in one
-            ]
             signature: Signature = Signature(
-                params=params,
+                params=[
+                    _shared(p)
+                    if _key(p) in shared and not self._variable_in(p.annotation, module)
+                    else (p.name, p.kind, p.default, self._accepted(p, module))
+                    for p in one
+                ],
                 returns=constructed
                 if constructed is not None and (node.name == _INIT or self._is_self(node.returns, module))
                 else self.template(node.returns, module),
@@ -290,11 +319,12 @@ class Overloads(Templates):
         Its `__new__`'s signatures, or its `__init__`'s, whichever its method resolution order has
         (not both: which decides would be a type checker's call), each returning the class with its
         type parameters as the arguments bind them (`deque(names)`: `collections.deque[str]`), or the
-        instance a `__new__` overload declares (`array("i")`: `array.array[int]`).
+        instance a `__new__` overload declares (`array("i")`: `array.array[int]`) or an `__init__`
+        overload's `self` (`tempfile.TemporaryDirectory()`: a `tempfile.TemporaryDirectory[str]`).
 
         Returns:
           The signatures (see `entry`), or `None` for a protocol, a class whose order can't be worked
-          out, one with neither or both, or an `__init__` declaring `self`'s type.
+          out, or one with neither or both.
 
         """
         node: ast.ClassDef | None = self.reading.class_node(klass)
@@ -322,10 +352,19 @@ class Overloads(Templates):
             return None
         function: Function
         name, (function, owner) = next(iter(found.items()))
-        if name == _INIT and any(_self(node) is not None for node in function.defs):
-            return None
         template: str = f"{self.canonical[klass]}[{', '.join(param.rstrip('=') for param in params)}]"
-        return self.entry(tuple(_unbound(node) for node in function.defs), owner.module, (), template)
+        signatures: list[Signature] | None = self.entry(
+            tuple(_unbound(node) for node in function.defs),
+            owner.module,
+            (),
+            template,
+        )
+        signature: Signature
+        declared: ast.FunctionDef | ast.AsyncFunctionDef
+        for signature, declared in zip(signatures or [], function.defs if signatures else (), strict=True):
+            if name == _INIT and _self(declared) is not None:
+                signature["returns"] = self.template(_self(declared), owner.module)
+        return signatures
 
     def _variable_in(self, annotation: ast.expr | None, module: str) -> bool:
         """Check whether a parameter's annotation names a type variable, which its argument may bind.
@@ -465,6 +504,13 @@ class Overloads(Templates):
             found["e"], found["of"] = verdicts.elements
         if verdicts.returned is not None:
             found["r"] = verdicts.returned
+        if verdicts.awaited is not None:
+            found["w"] = verdicts.awaited
+        inner: ast.expr
+        for inner in () if parameter.annotation is None else _classes(parameter.annotation):
+            found[CLASS_VERDICT] = YES
+            if isinstance(inner, ast.Name) and inner.id in self._variables(inner, module):
+                found[CLASS_BINDS] = inner.id
         return found
 
     def accepts(self, annotation: ast.expr, module: str) -> Verdicts:
@@ -505,7 +551,34 @@ class Overloads(Templates):
             _unbounded(atoms),
             None if of is None else self._container_elements(*of),
             self._callable_return(annotation, module),
+            self._awaited(annotation, module, 0),
         )
+
+    def _awaited(self, annotation: ast.expr, module: str, hops: int) -> str | None:
+        """Name the unbounded type variable awaiting a parameter gives (`Coroutine[Any, Any, _T]`'s `_T`).
+
+        Of an `Awaitable`, a `Coroutine`, a `Future` or a `Task`, alone or in a union, or an alias of
+        one written with the variable (`_CoroutineLike[_T]`).
+
+        Returns:
+          Its name, or `None` for any other parameter.
+
+        """
+        head: ast.expr
+        last: ast.expr
+        match annotation:
+            case ast.BinOp(left=head, op=ast.BitOr(), right=last):
+                return self._awaited(head, module, hops) or self._awaited(last, module, hops)
+            case ast.Subscript(value=head, slice=ast.Tuple(elts=[*_, last]) | last):
+                pass
+            case _:
+                return None
+        found: Found | None = self.reading.ref(head, module)
+        awaitable: bool = found is not None and found.name in _AWAITABLES
+        if found is not None and isinstance(found.binding, Alias) and hops < MAX_DEPTH:
+            # An alias of one, written with its own variable: the one it's subscripted with here.
+            awaitable = self._awaited(found.binding.value, found.module, hops + 1) is not None
+        return _unbounded(list(self._atoms(last, module, 1))) if awaitable else None
 
     def _callable_return(self, annotation: ast.expr, module: str) -> str | None:
         """Name the unbounded type variable a callable parameter returns (`Callable[..., _T]`'s `_T`).

@@ -16,7 +16,17 @@ from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Final, cast
 
-from constricter.fix.core.known import Call, Callee, Inference, Known, LibraryNames, Observed, Passed, Seeds
+from constricter.fix.core.known import (
+    Call,
+    Callee,
+    ImportPlan,
+    Inference,
+    Known,
+    LibraryNames,
+    Observed,
+    Passed,
+    Seeds,
+)
 from constricter.fix.index import callers, fixtures
 from constricter.fix.values.guesses import guessing
 from constricter.fix.values.inference import inference, scalar
@@ -223,7 +233,7 @@ def seed_parameters(scope: Scope, func: FunctionDef, named: Sequence[ast.arg]) -
     """
     seeded: Seeded = scope.settings.parameters or Seeded()
     typed: Mapping[str, Passed] = seeded.callers.get(id(func), {})
-    injected: Mapping[str, Passed] = _injected(seeded, func)
+    injected: Mapping[str, Passed] = _injected(seeded, func, scope.settings.known)
     if not (typed or injected):
         return
     rebound: set[str] = {
@@ -242,11 +252,12 @@ def seed_parameters(scope: Scope, func: FunctionDef, named: Sequence[ast.arg]) -
             scope.inferred.learn(arg.arg, given[0], frozenset({callers.KIND}) | given[1])
 
 
-def _injected(seeded: Seeded, func: FunctionDef) -> Mapping[str, Passed]:
+def _injected(seeded: Seeded, func: FunctionDef, known: Known) -> Mapping[str, Passed]:
     """Type the parameters pytest gives a test or a fixture: its fixtures' values, and `parametrize`'s.
 
-    A fixture the module's tests can take (see `fix.index.fixtures`), by its name; and, before it, a
-    name `@pytest.mark.parametrize` gives literals of one type. Guesses (`fixture`).
+    A fixture the module's tests can take (see `fix.index.fixtures`), by its name, or else one of
+    pytest's own (`tmp_path`, a `Path`: see `fixtures.STDLIB_OWN`); and, before them, a name
+    `@pytest.mark.parametrize` gives literals of one type. Guesses (`fixture`).
 
     Returns:
       Each such parameter's type and what it rests on; nothing for any other function.
@@ -254,7 +265,26 @@ def _injected(seeded: Seeded, func: FunctionDef) -> Mapping[str, Passed]:
     """
     if not (func.name.startswith(_TEST) or is_fixture(func)):
         return {}
-    return {**seeded.fixtures, **_parametrized(func)}
+    return {**_own(func, known), **seeded.fixtures, **_parametrized(func)}
+
+
+def _own(func: FunctionDef, known: Known) -> dict[str, Passed]:
+    """Type the parameters of `func` that name pytest's own fixtures (see `fixtures.STDLIB_OWN`).
+
+    Returns:
+      Each one's type, as the module can write it, a guess resting on `fixture`.
+
+    """
+    plan: ImportPlan | None = known.names.plan
+    args: ast.arguments = func.args
+    named: set[str] = {arg.arg for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs)}
+    found: dict[str, Passed] = {}
+    name: str
+    for name in sorted(fixtures.STDLIB_OWN.keys() & named):
+        spelled: str | None
+        if (spelled := None if plan is None else plan.spell(fixtures.STDLIB_OWN[name])) is not None:
+            found[name] = (spelled, frozenset({fixtures.KIND}))
+    return found
 
 
 def _parametrized(func: FunctionDef) -> dict[str, Passed]:

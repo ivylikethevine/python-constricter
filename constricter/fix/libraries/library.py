@@ -138,6 +138,67 @@ def _any(text: str, known: Known, found: Inference) -> Inference | None:
     return None if spelled is None else found._replace(annotation=spelled)
 
 
+def library_awaited(
+    value: ast.expr,
+    known: Known,
+    infer: Callable[[ast.expr], Inference | None],
+) -> Inference | None:
+    """Infer `await` of a call of a standard-library coroutine (see `stdlib.awaited_call`).
+
+    A function's, by its arguments where they decide it (`await asyncio.wait_for(fetch(), 1)`), or a
+    method's on a receiver whose type `infer` knows; or of any call typed as an awaitable of
+    something (`await asyncio.gather(a(), b())`, an `asyncio.Future[tuple[A, B]]`).
+
+    Returns:
+      The inference, or `None` for any other value.
+
+    """
+    call: ast.Call
+    match value:
+        case ast.Await(value=ast.Call() as call):
+            return _awaited_call(call, known, infer) or _awaited_value(call, known, infer)
+        case _:
+            return None
+
+
+def _awaited_call(
+    call: ast.Call,
+    known: Known,
+    infer: Callable[[ast.expr], Inference | None],
+) -> Inference | None:
+    receiver: ast.expr
+    name: str
+    owner: Inference | None = None
+    found: Inference | None = None
+    match call.func:
+        case ast.Attribute(value=receiver, attr=name) if (owner := infer(receiver)) is not None:
+            found = stdlib.awaited_member(owner.annotation, name, known)
+        case _:
+            pass
+    if found is not None and owner is not None:
+        return found._replace(kinds=found.kinds | owner.kinds - {"copy"})
+    path: str | None = stdlib.resolved(call.func, known.names.stdlib)
+    return stdlib.awaited_call(call.func, known) or (
+        overloads.chosen(f"{stdlib.AWAIT}{path}", call, known, infer)
+        if path in stdlib.AWAITED_OVERLOADS
+        else None
+    )
+
+
+def _awaited_value(
+    call: ast.Call,
+    known: Known,
+    infer: Callable[[ast.expr], Inference | None],
+) -> Inference | None:
+    made: Inference | None = infer(call)
+    given: str | None = None if made is None else stdlib.awaited_value(made.annotation, known)
+    return (
+        None
+        if made is None or given is None
+        else made._replace(annotation=given, reason=f"{made.reason}, awaited")
+    )
+
+
 def library_call(
     call: ast.Call,
     known: Known,

@@ -19,7 +19,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from functools import lru_cache
 from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter.fix.core.known import Inference, Known
+from constricter.fix.core.known import SPELLED, Inference, Known
 from constricter.fix.core.signatures import (
     CLASS_BINDS,
     CLASS_VERDICT,
@@ -51,6 +51,7 @@ _KIND: Final = "stdlib"
 _TUPLE: Final = "tuple"
 _ANYTHING: Final = "t"  # `Accepts`' key for a parameter any argument binds
 _RETURNED: Final = "r"  # `Accepts`' key for a callable parameter a function's return binds
+_AWAITED: Final = "w"  # and for an awaitable one, which what awaiting a coroutine's call gives binds
 _CALL: Final = "call"  # the fix kind of a declared return
 # The builtin containers whose type arguments bind a parameter's type variable (`Iterable[_T]`'s).
 CONTAINERS: Final = ("list", _TUPLE, "set", "frozenset", "dict")  # in the `scalars` table's order
@@ -60,6 +61,10 @@ _SELF_TYPE: Final = "Self"  # a method's receiver's type, in `stdlib.Method.type
 _ANY_PATH: Final = "typing.Any"  # a receiver pattern's anything
 _TUPLE_PATH: Final = "builtins.tuple"
 _BUILTINS_PATH: Final = "builtins."
+# The builtin classes, each a class as an argument (`assertRaises(ValueError)`).
+_BUILTIN_CLASSES: Final = frozenset(
+    name for name in dir(builtins) if isinstance(cast("object", getattr(builtins, name)), type)
+)
 _UNFOLLOWED: Final = "?"  # a lineage's base that can't be followed
 _CLASHING: Final = "?"  # a type variable a receiver's type binds two ways
 _REPEATED: Final = 2  # `tuple[int, ...]`'s arguments
@@ -77,7 +82,8 @@ class Argument(NamedTuple):
     for a builtin container (`list[str]`), its name and type arguments (`tuple[str, ...]`'s `str`);
     `reads`: the names, attributes and subscripts in it, as source text; `returns`: for a function
     the module knows the declared return of (`helper`, `u.helper`), that return; `klass`: for a class
-    passed as it is (`np.float64`), its name as written.
+    passed as it is (`np.float64`), its name as written; `awaited`: for a coroutine's call, what
+    awaiting it gives.
     """
 
     type: str | None
@@ -87,6 +93,7 @@ class Argument(NamedTuple):
     reads: tuple[str, ...] = ()
     returns: Inference | None = None
     klass: str | None = None
+    awaited: Inference | None = None
 
     @property
     def text(self) -> str | None:
@@ -110,7 +117,8 @@ def chosen(
 ) -> Inference | None:
     """Type a call to standard-library function `name` by the signatures its arguments may match.
 
-    `name` is an entry of `OVERLOADS`, or `method_signatures` for a `method`'s call on an instance
+    `name` is an entry of `OVERLOADS` (of `AWAITED_OVERLOADS`, after `AWAIT`: an `async def`'s call,
+    awaited), or `method_signatures` for a `method`'s call on an instance
     (whose type binds its class's type parameters); or an installed package's function, as the
     module calls it (`np.empty`: see `LibraryNames.installed`). `infer` types an argument.
 
@@ -240,14 +248,17 @@ def _arguments(call: ast.Call, infer: _Infer, known: Known) -> Arguments | None:
 
 def _argument(value: ast.expr, infer: _Infer, known: Known) -> Argument:
     constant: Constant
+    written: str
     match value:
         case ast.Constant(value=bool() | int() | float() | complex() | str() | bytes() | None as constant):
             kind: str = _LITERAL_STRING if isinstance(constant, str) else type(constant).__name__
             return Argument(_NONE if constant is None else kind, (constant,))
-        case ast.Name() | ast.Attribute() if (
-            ast.unparse(value) in known.classes or ast.unparse(value) in known.names.classes
+        case ast.Name() | ast.Attribute() if (written := ast.unparse(value)) and (
+            written in known.classes
+            or written in known.names.classes
+            or (written in _BUILTIN_CLASSES and known.is_builtin(written))
         ):
-            return Argument(None, reads=(ast.unparse(value),), klass=ast.unparse(value))
+            return Argument(None, reads=(written,), klass=written)
         case _:
             found: Inference | None = infer(value)
             typed: str | None = None if found is None else found.annotation
@@ -261,6 +272,7 @@ def _argument(value: ast.expr, infer: _Infer, known: Known) -> Argument:
                     if isinstance(node, ast.Name | ast.Attribute | ast.Subscript)
                 ),
                 returns=_function_return(value, known),
+                awaited=infer(ast.Await(value)) if isinstance(value, ast.Call) else None,
             )
 
 
@@ -309,7 +321,11 @@ def _signatures(name: str) -> tuple[tuple[ReadSignature, ...], ...]:
       Each variant's signatures.
 
     """
-    variants: list[Variant] = stdlib.OVERLOADS.get(name) or stdlib.method_signatures()[name]
+    variants: list[Variant] = (
+        stdlib.AWAITED_OVERLOADS[name.removeprefix(stdlib.AWAIT)]
+        if name.startswith(stdlib.AWAIT)
+        else stdlib.OVERLOADS.get(name) or stdlib.method_signatures()[name]
+    )
     return tuple(
         tuple(
             ReadSignature(
@@ -656,6 +672,7 @@ def _binding(accepts: Accepts | None, arg: Argument) -> tuple[str, str] | None:
     for named, text in (
         (accepts.get(_ANYTHING), arg.text),
         (accepts.get(_RETURNED), None if arg.returns is None else arg.returns.annotation),
+        (accepts.get(_AWAITED), None if arg.awaited is None else arg.awaited.annotation),
     ):
         if named is not None and text is not None:
             return named, text
@@ -722,6 +739,7 @@ def _verdict(accepts: Accepts | None, arg: Argument) -> str:
         (_ANYTHING in accepts and arg.text is not None)
         or (arg.elements is not None and arg.elements[0] in accepts.get("of", {}))
         or (_RETURNED in accepts and arg.returns is not None)
+        or (_AWAITED in accepts and arg.awaited is not None)
     )
     return _YES if taken else _container_verdict(accepts, arg)
 
@@ -759,12 +777,14 @@ def _written(picked: tuple[str, dict[str, str]], known: Known) -> str | None:
 
     Returns:
       The annotation, each union member once; or `None` if a type variable is unbound, a builtin
-      rebound, or a class can't be named.
+      rebound, or a class can't be named. A template that's spelled already (`SPELLED`) is its own.
 
     """
     template: str
     types: dict[str, str]
     template, types = picked
+    if template.startswith(SPELLED):
+        return template.removeprefix(SPELLED)
     tree: ast.expr | None = _rewritten(ast.parse(template, mode="eval").body, types, known)
     return None if tree is None else " | ".join(dict.fromkeys(_members(tree)))
 

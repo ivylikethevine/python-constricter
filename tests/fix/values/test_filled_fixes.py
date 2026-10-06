@@ -105,6 +105,34 @@ def test_an_empty_container_is_typed_by_what_is_added() -> None:
     assert {name for name, fix in fixed.items() if not fix[0]} >= set("dgkqrtuvwxzCDEFG")
 
 
+def test_a_use_that_cannot_add_leaves_it_typed() -> None:
+    """An operand, an unpacking, any `join`'s argument and a returned tuple's part only read it."""
+    source: str = """
+    def g(sep: str):
+        a = []
+        a.append("x")
+        b = []
+        b.append(1)
+        c = []
+        c.append(1)
+        d = []
+        d.append(1)
+        e = []
+        e.append(1)
+        pair = (e, 1)
+        print(sep.join(a), b + [2], [*c])
+        return d, len(a)
+    """
+    found: list[Offence] = check_source(textwrap.dedent(source))
+    assert {o.name: o.fix for o in found if len(o.name) == 1} == {
+        "a": "list[str]",
+        "b": "list[int]",
+        "c": "list[int]",
+        "d": "list[int]",
+        "e": None,  # in a tuple bound to a name: aliased
+    }
+
+
 def test_it_is_trusted_or_ignored_as_a_mechanism() -> None:
     """`unsafe-fix-select = ["filled"]` makes it certain; `fix-ignore = ["filled"]` drops it."""
     assert _fixed(Checks(fixes=FixPolicy(unsafe_select=frozenset({"filled"}))))["a"] == ("list[int]", False)

@@ -35,7 +35,7 @@ def settled(catalog: Index, entries: Sequence[str] = ()) -> Index:
 
     """
     found: dict[str, tuple[str, ...]] = {
-        f"{module.name}.{name}": tuple(_base(catalog.modules, module, base) for base in bases)
+        f"{module.name}.{name}": tuple(resolved(catalog.modules, module, base) for base in bases)
         for module in catalog.modules.values()
         for name, bases in module.bases.items()
     }
@@ -51,8 +51,8 @@ def settled(catalog: Index, entries: Sequence[str] = ()) -> Index:
         for module in catalog.modules.values()
         for name in module.bases
     }
-    return Index(
-        {
+    return catalog._replace(
+        modules={
             name: module._replace(
                 plain=frozenset(
                     each
@@ -62,7 +62,6 @@ def settled(catalog: Index, entries: Sequence[str] = ()) -> Index:
             )
             for name, module in catalog.modules.items()
         },
-        catalog.names,
     )
 
 
@@ -86,7 +85,7 @@ def _unheld(
     return not classvars.reserved(key, found) & typed.keys() and classvars.agreeing(typed, above) == typed
 
 
-def _base(modules: Mapping[str, Module], module: Module, base: str) -> str:
+def resolved(modules: Mapping[str, Module], module: Module, base: str) -> str:
     """Resolve a class's base, as `module` writes it, to where it's defined (`pkg.models.Row`).
 
     Returns:

@@ -114,7 +114,12 @@ def checked_source(
     tree: ast.Module
     own: Tables | None
     tree, own = _parse(source, filename)
-    return checked_tree(tree, checks, lines=as_text(source).splitlines(), outside=outside, own=own)
+    found: Checked = checked_tree(tree, checks, lines=as_text(source).splitlines(), outside=outside, own=own)
+    if own is not None and isinstance(source, str):
+        # Kept again: a file is checked again once its callers type its parameters, or its cycle's
+        # files change what it imports. One `--fix` changed since is no longer this text.
+        parsed.keep(source, (tree, own))
+    return found
 
 
 def _parse(source: str | bytes, filename: str) -> tuple[ast.Module, Tables | None]:
@@ -159,7 +164,12 @@ def _settings(
             ClassSide(
                 free_of_all(class_attributes(tree), free),
                 free_of_all(own.sides, free),
-                inherited.lineage(tree, selfish, bases.union(imported.methods if imported else ())),
+                inherited.lineage(
+                    tree,
+                    selfish,
+                    bases.union(imported.methods if imported else ()),
+                    {} if outside is None else outside.beyond,
+                ),
                 classvars.variables(tree, classvars.imported(tree), outside, checks.plain_bases),
             ),
             LibraryNames(
@@ -421,7 +431,7 @@ def _function_scopes(
             table.checked(
                 func,
                 recorded.returns(scope, func, table.module) if settled else [],
-                recorded.assigned(scope) if settled else [],
+                (recorded.assigned(scope), recorded.used(scope, func, table.module)) if settled else ([], []),
             )
         scopes += _function_scopes(nested, scope.settings, table)
     return scopes
@@ -455,8 +465,8 @@ def _function_scope(
     )
     # A copy of a plain, annotated parameter (`*args`/`**kwargs` aren't the type they're annotated
     # with) can be typed the same way, the moment it's assigned.
-    scope.inferred.types.update(
-        (arg.arg, written(arg.annotation)) for arg in named if arg.annotation is not None
+    scope.inferred.types.taking(
+        {arg.arg: written(arg.annotation) for arg in named if arg.annotation is not None},
     )
     # A method's `self` is its class's instance; so is the `self` a function defined in it reads.
     owner: str | None = settings.owners.get(id(func))
@@ -612,7 +622,7 @@ def _returned(
       checked with them, and what its own return.
 
     """
-    found: Returned = returned.returned(tree, table.recorded, table.assigned)
+    found: Returned = returned.returned(tree, table.recorded, table.assigned, table.used)
     settings = replace(settings, known=replace(settings.known, returned=returned.joined(imported, found)))
     functions: list[tuple[Scope, FunctionDef]] = [
         (scope, scope.kind.function) for scope in scopes if scope.kind.function is not None
@@ -632,7 +642,7 @@ def _returned(
         if not again:
             break
         functions = _checked_again(tree, functions, again, settings, table)
-        latest: Returned = returned.returned(tree, table.recorded, table.assigned)
+        latest: Returned = returned.returned(tree, table.recorded, table.assigned, table.used)
         typed: bool = latest != found and returned.called(tree, tree, latest)  # even if only a body calls one
         # Attributes typed anew: what reads one, of any value, may be typed now.
         newly: set[str] = returned.retyped(found, latest)
@@ -687,6 +697,7 @@ def _checked_again(
     _finished(tree, [scope for scope, _ in fresh])
     table.recorded.update((id(func), recorded.returns(scope, func, tree)) for scope, func in fresh)
     table.assigned.update((id(func), recorded.assigned(scope)) for scope, func in fresh)
+    table.used.update((id(func), recorded.used(scope, func, tree)) for scope, func in fresh)
     return [(renewed.get(id(func), scope), func) for scope, func in functions]
 
 

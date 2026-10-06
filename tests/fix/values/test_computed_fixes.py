@@ -55,6 +55,28 @@ def test_a_computed_value_is_typed(value: str, fix: str | None) -> None:
     assert [(o.fix, o.unsafe) for o in offences] == [(fix, False)]
 
 
+def test_a_path_joined_by_a_slash_is_a_path() -> None:
+    """A `pathlib` class's `/` with a `str` or another path gives its class back; nothing else does."""
+    source: str = (
+        "from pathlib import Path, PurePath\n"
+        "def f(root: Path, pure: PurePath, name: str, n: int):\n"
+        "    a = root / 'x'\n"
+        "    b = root / name / 'y'\n"
+        "    c = root / root\n"
+        "    d = pure / name\n"
+        "    e = root / n\n"
+        "    g = name / root\n"  # the path isn't on the left: not followed
+    )
+    assert [(o.name, o.fix) for o in check_source(source)] == [
+        ("a", "Path"),
+        ("b", "Path"),
+        ("c", "Path"),
+        ("d", "PurePath"),
+        ("e", None),
+        ("g", None),
+    ]
+
+
 def test_a_comprehension_over_a_guess_is_a_guess() -> None:
     """A comprehension over a value only guessed is no more certain than it."""
     source: str = (

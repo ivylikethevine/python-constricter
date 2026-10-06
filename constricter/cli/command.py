@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, NamedTuple, TextIO, TypeAlias, cast
 
 from constricter import notebook
-from constricter.cli import baseline, collecting, schedule
+from constricter.cli import baseline, collecting, schedule, traced
 from constricter.cli.options import Mode, Options, Output
 from constricter.cli.paths import STDIN, python_files
 from constricter.cli.protocol import HintError
@@ -33,6 +33,7 @@ from constricter.offences import (
     Edit,
     Offence,
 )
+from constricter.rules import parsed
 from constricter.rules.checker import Checked, Coverage, annotation_coverage, checked_source
 
 if TYPE_CHECKING:  # slow to import, and only needed for `--infer-with`
@@ -297,13 +298,17 @@ def _handled(path: Path, text: tuple[str, Path], offences: list[Offence], option
     left: list[Result] = [r for r in results if r.offence not in fixing]
     if path == STDIN:  # the fixed source goes to stdout
         return CheckRun(left, baselined, len(fixing), _fixed(raw, name, fixing).text)
+    fixed: int
     try:
-        return CheckRun(left, baselined, fix_file(path, fixing))
+        fixed = fix_file(path, fixing)
     except UnicodeEncodeError as failure:  # the file is left as it was, its offences unfixed
         # Its canonical name: PyPy reports `latin1` where CPython says `latin-1`.
         encoding: str = codecs.lookup(failure.encoding).name
         message: str = f"an annotation can't be written in its encoding, {encoding}; left as it was"
         return CheckRun(results, baselined, error=f"{name}: error: {message}")
+    if fixed:
+        _ = parsed.take(raw)  # the tree of the text it had: no check will ask for it again
+    return CheckRun(left, baselined, fixed)
 
 
 def _baseline_path(path: Path, outside: Outside, options: Options) -> BaselineRun:
@@ -505,6 +510,8 @@ def _checked_all(
 
     """
     hinted: dict[Path, tuple[Hints, ...]] = {} if session is None else session.hints(_texts(paths))
+    if options.input.trace is not None:
+        hinted = traced.merged(hinted, traced.load(options.input.trace), paths)
     coverage: bool = options.mode is Mode.COVERAGE  # needs nothing from the other files
     stack: contextlib.ExitStack
     with contextlib.ExitStack() as stack:

@@ -42,19 +42,35 @@ def _table(name: str) -> object:
 
 # `os.environ`'s own method with a fixed type: a variable's, which the tables' functions don't hold.
 _ENVIRON: Final = {"os.environ.copy": "dict[str, str]"}
-RETURNS: Final = {**cast("dict[str, str]", _table("returns")), **_ENVIRON}
+# `tarfile.open` is `TarFile.open` (typeshed's `open = TarFile.open`): an alias the tables don't follow.
+_ALIASED: Final = {"tarfile.open": "tarfile.TarFile"}
+RETURNS: Final = {**cast("dict[str, str]", _table("returns")), **_ENVIRON, **_ALIASED}
 # Functions whose arguments decide their type: each signature, as each configuration reads them
 # (see `constricter.fix.libraries.overloads`).
 OVERLOADS: Final = cast("dict[str, list[Variant]]", _table("overloads"))
 # Classes, and functions (constructors, classmethods) returning one: typed by that class's dotted
 # path, spelled (and imported, if it must be) the way the module can.
 CLASSES: Final = cast("dict[str, str]", _table("classes"))
+# The `pathlib` classes: each one's `/` joins another part onto it.
+_PATHS: Final = frozenset(
+    f"pathlib.{name}"
+    for name in ("Path", "PosixPath", "PurePath", "PurePosixPath", "PureWindowsPath", "WindowsPath")
+)
 _ALIASES: Final = cast("Mapping[str, str]", _table("aliases"))  # a class's other public paths, to its own
 # Each class's methods' returns and attributes' types apart from its public ancestors' (`_BASES`),
 # `None` where it hides one of theirs: `_member` resolves the rest through them.
 _Own: TypeAlias = Mapping[str, Mapping[str, str | None]]
 _METHODS: Final = cast("_Own", _table("methods"))
 _ATTRIBUTES: Final = cast("_Own", _table("attributes"))
+# What awaiting a call of each `async def` gives: a function's by its path, a method's by its
+# class's path and its name (a class's own path: its instance).
+_AWAITED: Final = cast("Mapping[str, str]", _table("awaited"))
+# The `async def`s whose arguments decide what awaiting their call gives, as `OVERLOADS` holds a
+# function's; `AWAIT` before a path names one's entry to `overloads.chosen`.
+AWAITED_OVERLOADS: Final = cast("dict[str, list[Variant]]", _table("awaited_overloads"))
+AWAIT: Final = "await "
+# The generic classes awaiting an instance of gives its last type argument.
+_AWAITABLE: Final = frozenset({"asyncio.Future", "asyncio.Task"})
 # Each class's public ancestors in the tables, nearest first, comma-separated.
 _BASES: Final = cast("Mapping[str, str]", _table("bases"))
 # Classes' methods whose arguments decide their type: each one's entry in `method_signatures` (its
@@ -220,6 +236,57 @@ def library_member(
     )
 
 
+def awaited_call(func: ast.expr, known: Known) -> Inference | None:
+    """Type what awaiting a call of a standard-library `async def` gives (`await asyncio.start_server(...)`).
+
+    Returns:
+      Its inference, or `None` if `func` isn't one the tables hold, or its class can't be named.
+
+    """
+    path: str | None = resolved(func, known.names.stdlib)
+    return None if path is None else _awaited(path, path, known)
+
+
+def awaited_member(receiver: str, name: str, known: Known) -> Inference | None:
+    """Type what awaiting a call of a standard-library class's `async def` method gives.
+
+    `await reader.readline()`, on a receiver typed `asyncio.StreamReader`; and what `async with`
+    binds, by `__aenter__`: the receiver's own type, where that returns `Self`.
+
+    Returns:
+      Its inference, or `None` if the class or its method isn't in the tables, or a class it gives
+      can't be named.
+
+    """
+    path: str | None = _class_path(receiver, known)
+    return None if path is None else _awaited(f"{path}.{name}", path, known, receiver)
+
+
+def _awaited(entry: str, path: str, known: Known, receiver: str | None = None) -> Inference | None:
+    found: str | None = _AWAITED.get(entry)
+    plan: ImportPlan | None = known.names.plan
+    if found is not None and found == path and receiver is not None:
+        found = receiver  # its `Self`: the instance, as the module wrote its type
+    elif found is not None and is_class(found):
+        found = None if plan is None else plan.spell(found)
+    return (
+        None if found is None else Inference(found, f"`{entry}`'s return type, awaited", frozenset({_KIND}))
+    )
+
+
+def awaited_value(annotation: str, known: Known) -> str | None:
+    """Find what awaiting a value typed `annotation` gives: `T`, of an `asyncio.Future[T]` or a `Task[T]`.
+
+    Returns:
+      It, as the annotation writes it; `None` for any other type.
+
+    """
+    path: str | None
+    args: list[ast.expr]
+    path, args = _receiver(annotation, known)
+    return ast.unparse(args[-1]) if path in _AWAITABLE and args else None
+
+
 def bases(tree: ast.Module, bound: Mapping[str, str]) -> frozenset[str]:
     """Spell the standard-library classes the module's classes inherit from (`unittest.TestCase`).
 
@@ -375,6 +442,17 @@ def generics(bound: Mapping[str, str]) -> frozenset[str]:
     )
 
 
+def held_whole(path: str) -> str | None:
+    """Find the class at `path` (or the one `path` is another name of), if the tables hold it whole.
+
+    Returns:
+      Its own path; `None` for anything else, a generic class included (see `bases`).
+
+    """
+    own: str = _ALIASES.get(path, path)
+    return own if CLASSES.get(own) == own else None
+
+
 def defines_class(path: str) -> bool:
     """Check whether `path` is a class the tables know: a plain one, or a generic one.
 
@@ -426,6 +504,16 @@ def evaluable(annotation: str, known: Known) -> bool:
     return True
 
 
+def joins_path(left: str, right: str | None, known: Known) -> bool:
+    """Check whether `left / right` joins a path: a `pathlib` class's `/` gives its own class back.
+
+    Returns:
+      Whether `left` is a `pathlib` path class's annotation, and `right` a `str`'s or the same.
+
+    """
+    return right in {"str", left} and _class_path(left, known) in _PATHS
+
+
 def _class_path(receiver: str, known: Known) -> str | None:
     """Resolve a receiver's annotation to a class's path in the tables (its own, not an alias).
 
@@ -448,7 +536,34 @@ def _path(root: ast.expr, known: Known) -> str | None:
     plan: ImportPlan | None = known.names.plan
     if path is None and plan is not None and plan.added:
         path = resolved(root, _added(tuple(plan.added.values())))
+    if path is None and plan is not None and plan.guarded:
+        path = _guarded(root, plan)
+    # A class's own path, where the module binds no name it starts with: a library base out of its
+    # sight, as the index names it (see `constricter.fix.index.beyond`).
+    if path is None and isinstance(root, ast.Attribute):  # a dotted path alone can be a class's own
+        written: str = ast.unparse(root)
+        if held_whole(written) and (plan is None or written.partition(".")[0] not in plan.taken):
+            path = written
     return None if path is None else _ALIASES.get(path, path)
+
+
+def _guarded(root: ast.expr, plan: ImportPlan) -> str | None:
+    """Resolve a class's name or dotted path through an import for type checking (`ImportPlan.guarded`).
+
+    One the module has, or `--fix` is adding for another file's type: the next run would resolve it
+    by the import, so this one does.
+
+    Returns:
+      Its dotted origin, or `None` if its first name isn't such an import's.
+
+    """
+    first: str | None = next(
+        (node.id for node in ast.walk(root) if isinstance(node, ast.Name) and node.id in plan.guarded),
+        None,
+    )
+    if first is None:
+        return None
+    return resolved(root, {first: ".".join(part for part in plan.guarded[first].origin if part)})
 
 
 @lru_cache(maxsize=256)

@@ -29,6 +29,10 @@ comes out the same for all twelve:
   templates its instance's type arguments bind;
 - `functions`: capitalised functions no other table types (`xml.etree.ElementTree.Comment`), so
   a call to one isn't taken to construct a class;
+- `awaited`: what awaiting a call of each `async def` with one declared return gives, a function's
+  by its path and a method's by its class's path and its name (a class's own path: its instance);
+  `awaited_overloads`: those its arguments decide (`asyncio.wait_for`), as `overloads` holds a
+  function's;
 - `variables`: module-level variables' types (`sys.path`, `os.sep`), as `returns` and `classes` hold
   a function's;
 - `scalars`: which builtin scalar types (`overloads.SCALARS`), then containers (`CONTAINERS`),
@@ -64,6 +68,7 @@ from stdlib_tables.reading import (
     ANY,
     ANY_STR,
     ATTRIBUTE,
+    AWAITED,
     CLASSMETHOD,
     ClassRef,
     Defs,
@@ -128,6 +133,11 @@ _RUNTIME: Final = frozenset(
         "lib2to3.pygram.pattern_symbols",
     },
 )
+# The private classes a public function returns and nothing public stands for: what a `with` binds.
+_PRIVATE: Final = {
+    "unittest.case": ("_AssertRaisesContext", "_AssertWarnsContext"),
+    "tempfile": ("_TemporaryFileWrapper",),
+}
 # Modules whose names installed packages' stubs annotate with, private or not (`scalars`).
 _ANNOTATING: Final = frozenset({"typing", "typing_extensions", "builtins", "_typeshed", "collections.abc"})
 _YES: Final = "y"
@@ -168,10 +178,14 @@ class _Tables(NamedTuple):
     scalars: Table  # each class's and alias's verdict (`y`, `n`, `?`) per `SCALARS`, then `CONTAINERS`, type
     scalar_members: dict[str, list[str]]  # each scalar's members, its class's and its bases'
     functions: Table  # capitalised functions no other table types, each to `_FUNCTION`
+    # What awaiting a call of each `async def` gives: a function's by its path, a method's by its
+    # class's path and its name, each class's inherited ones included.
+    awaited: Table
+    awaited_overloads: dict[str, list[Signatures]]  # as `overloads`: an `async def`'s, awaited
 
 
 def _paths(stubs: Stubs, config: Config) -> dict[str, Found]:
-    """Find every public path in the stubs (`module.name`), and what it names, in `config`.
+    """Find every public path in the stubs (`module.name`), and what it names, in `config`; and `_PRIVATE`'s.
 
     Not a name that's also a submodule's (`curses.has_key`): which one it is depends on the imports.
 
@@ -193,6 +207,9 @@ def _paths(stubs: Stubs, config: Config) -> dict[str, Found]:
             path: str = f"{module}.{name}"
             if not private(name) and path not in modules and (target := stubs.lookup(module, name, config)):
                 found[path] = target
+        for name in _PRIVATE.get(module, ()):
+            if (target := stubs.lookup(module, name, config)) is not None:
+                found[f"{module}.{name}"] = target
     return found
 
 
@@ -246,7 +263,7 @@ def _read(stubs: Stubs, config: Config) -> _Tables:
     canonical: dict[ClassRef, str] = {
         klass: path for klass, path in every.items() if not reading.generic(klass)
     }
-    tables: _Tables = _Tables({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+    tables: _Tables = _Tables({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
     reader: _Reader = _Reader(reading, Overloads(reading, every), canonical)
     _enter_scalars(tables, reader, stubs, config)
     for path, found in paths.items():
@@ -425,16 +442,25 @@ def _enter_constructor(tables: _Tables, reader: _Reader, path: str, klass: Class
 def _function(tables: _Tables, reader: _Reader, path: str, module: str, defs: Defs) -> None:
     """Enter a function: under `returns` or `classes` if it always returns the same, else `overloads`.
 
+    An `async def`: under `awaited` or `awaited_overloads`, as what awaiting its call gives.
+
     One none of them can hold is under `functions`, if its name is capitalised.
     """
     form: Form | None = reader.reading.returns(defs, module, None)
     signatures: Signatures | None
-    if form != ANY_STR and form is not None and _value(form, reader.canonical) is not None:
+    value: str | None
+    awaited: Form | None = reader.reading.returns(defs, module, None, awaited=True)
+    value = None if awaited is None or awaited == ANY_STR else _value(awaited, reader.canonical)
+    if value is not None:
+        tables.awaited[path] = value
+    elif form != ANY_STR and form is not None and _value(form, reader.canonical) is not None:
         _entry(tables, path, form, reader.canonical)
     elif reader.reading.returns_any(defs, module):
         tables.returns[path] = ANY
     elif (signatures := reader.overloads.entry(defs, module)) is not None:
         tables.overloads[path] = [signatures]
+    elif (signatures := reader.overloads.entry(defs, module, awaited=True)) is not None:
+        tables.awaited_overloads[path] = [signatures]
     elif path.rpartition(".")[2][:1].isupper():
         tables.functions[path] = _FUNCTION
 
@@ -450,7 +476,11 @@ def _enter_members(
     member: Member
     value: str | None
     for name, member in members.items():
-        if (value := _value(member.form, canonical)) is not None:
+        if (value := _value(member.form, canonical)) is None:
+            continue
+        if member.kind == AWAITED:
+            tables.awaited[f"{path}.{name}"] = value
+        else:
             (tables.attributes if member.kind == ATTRIBUTE else tables.methods).setdefault(path, {})[name] = (
                 value
             )
@@ -559,6 +589,8 @@ def _agreed(tables: list[_Tables]) -> _Tables:
         _common([one.scalars for one in tables]),
         _common_lists([one.scalar_members for one in tables]),
         _common([one.functions for one in tables]),
+        _common([one.awaited for one in tables]),
+        _variants([one.awaited_overloads for one in tables]),
     )
 
 
@@ -694,6 +726,8 @@ def generate(stubs_root: Path | None = None) -> dict[Path, str]:
         "scalars": tables.scalars,
         "scalar_members": tables.scalar_members,
         "functions": tables.functions,
+        "awaited": tables.awaited,
+        "awaited_overloads": tables.awaited_overloads,
     }
     source: dict[str, str | list[str]] = {
         **stamp(),

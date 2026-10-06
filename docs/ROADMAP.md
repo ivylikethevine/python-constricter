@@ -29,29 +29,29 @@
   `round`, `divmod`, `next`, `dict`); members of any typed value (`self.index.name`,
   `rows[0].strip()`, however deep, through `constricter.fix.values.members`); `cls` in a classmethod
   as `type[C]`, and `type(x)`; computed values (conditionals, arithmetic on builtin scalars and
-  lists, comprehensions, `sorted`/`list`/..., `await`), comparisons by `in` and `is`, or of builtin
-  values (a `bool`); a union the author would write (`a if c else None`, `a or b` of one type);
-  displays that unpack (`[*names, s]`, `{**d, k: v}`), `d.get(k, 0)` and `os.environ["X"]`; a
-  subscript of a standard-library class's instance by its `__getitem__` (`proxy["k"]` on a
-  `MappingProxyType[str, int]`); standard-library module variables (`sys.path`); chained
-  assignments' names, declared before them (`i = j = 0`), and a `:=`'s, before its statement; a
-  quoted annotation read as its text (`xs: "list[Node]"`); the `self` a function defined in a method
-  reads; a `# type:` signature comment's return, as a declared one; `typing.cast`; `x = None` later
-  rebound to one type as `T | None`; loop targets (`enumerate` and `zip` part by part, `map`, a
-  generator expression, any mapping's items, an `Iterable[T]`'s `T`) and unpackings, name by name
-  (`a, b = x, 1`, `a, b = s.split(",")`, `first, *rest = names`, and the parts that aren't vague of
-  a call declaring a `tuple[Row, dict[str, Any]]`), declared before the statement, as a `with`
-  statement's target is, by its context manager's `__enter__`; a method a class inherits, from the
-  base that defines it, in the module, another checked file or the standard library (`self.id()` in
-  a test case); an unannotated generator function's calls, by its `yield`s; a call to a function
-  decorated by what gives it back (`functools.cache`, pandas's `@set_module("pandas")`, by its
-  declared `Callable[[F], F]`); a call of a value typed `Callable[..., R]`, `type[C]` or a class
-  declaring `__call__` (`handler(source)`, `cls()`, `cls.__new__(cls)`); an unpacked named tuple's
-  names, by its fields (a tuple alias's by its tuple), and a `with` target that unpacks; a
-  `@contextmanager` method's `with` target; `getattr` and the standard library's functions declared
-  to return `Any`, from `vague` 1; a module's type alias, declared `TypeAlias` (`alias`: certain
-  where every Python the module runs on has it); fixes for LVA003 and LVA007. A tuple longer than
-  `max-length` is `tuple[T, ...]`.
+  lists, a `pathlib` path's `/`, comprehensions, `sorted`/`list`/..., `await`), comparisons by `in`
+  and `is`, or of builtin values (a `bool`); a union the author would write (`a if c else None`,
+  `a or b` of one type); displays that unpack (`[*names, s]`, `{**d, k: v}`), `d.get(k, 0)` and
+  `os.environ["X"]`; a subscript of a standard-library class's instance by its `__getitem__`
+  (`proxy["k"]` on a `MappingProxyType[str, int]`); standard-library module variables (`sys.path`);
+  chained assignments' names, declared before them (`i = j = 0`), and a `:=`'s, before its
+  statement; a quoted annotation read as its text (`xs: "list[Node]"`); the `self` a function
+  defined in a method reads; a `# type:` signature comment's return, as a declared one;
+  `typing.cast`; `x = None` later rebound to one type as `T | None`; loop targets (`enumerate` and
+  `zip` part by part, `map`, a generator expression, any mapping's items, an `Iterable[T]`'s `T`)
+  and unpackings, name by name (`a, b = x, 1`, `a, b = s.split(",")`, `first, *rest = names`, and
+  the parts that aren't vague of a call declaring a `tuple[Row, dict[str, Any]]`), declared before
+  the statement, as a `with` statement's target is, by its context manager's `__enter__`; a method a
+  class inherits, from the base that defines it, in the module, another checked file or the standard
+  library (`self.id()` in a test case); an unannotated generator function's calls, by its `yield`s;
+  a call to a function decorated by what gives it back (`functools.cache`, pandas's
+  `@set_module("pandas")`, by its declared `Callable[[F], F]`); a call of a value typed
+  `Callable[..., R]`, `type[C]` or a class declaring `__call__` (`handler(source)`, `cls()`,
+  `cls.__new__(cls)`); an unpacked named tuple's names, by its fields (a tuple alias's by its
+  tuple), and a `with` target that unpacks; a `@contextmanager` method's `with` target; `getattr`
+  and the standard library's functions declared to return `Any`, from `vague` 1; a module's type
+  alias, declared `TypeAlias` (`alias`: certain where every Python the module runs on has it); fixes
+  for LVA003 and LVA007. A tuple longer than `max-length` is `tuple[T, ...]`.
 - **The standard library, from typeshed**: tables generated from the stubs basedpyright bundles when
   the package is built (`stdlib_tables/`, see [Project](#project)), read as Linux, macOS and Windows
   and Python 3.11 to 3.14 see them, into `constricter/fix/tables/` (one JSON file a table, an entry
@@ -67,9 +67,15 @@
   (`m.string`). `defaultdict(list)` and `Counter()` stay untyped: their parameters come from later
   use. Generic classes' constructors are read from their `__new__` or `__init__`
   (`collections.deque(names)` is a `collections.deque[str]`, `array.array("i")` an
-  `array.array[int]`); at module level, one some Python can't subscript at run time is quoted. A
-  generic class returned bare is written with its type parameters' defaults (`ET.SubElement(...)` is
-  an `ET.Element[str]`). What only some platforms or versions have is kept (`os.getuid()`).
+  `array.array[int]`), or the instance an `__init__` overload's `self` declares
+  (`subprocess.Popen(cmd, text=True)` is a `subprocess.Popen[str]`); at module level, one some
+  Python can't subscript at run time is quoted. A generic class returned bare is written with its
+  type parameters' defaults (`ET.SubElement(...)` is an `ET.Element[str]`). What only some platforms
+  or versions have is kept (`os.getuid()`).
+- **The checked files' own overloads**: a call to a function defined with `@overload` is typed by
+  the overload its arguments match (`constricter.fix.index.own_overloads`), where builtin,
+  standard-library and `Literal` parameters decide it; each return is written as another checked
+  file's type is.
 - **Installed packages**: calls into an installed package that declares its types (`py.typed`, a
   stub package, a lone stub module) are typed by their declared returns as a checked file's are,
   found as the import system would on this Python's path and `VIRTUAL_ENV`'s; types are imported
@@ -91,15 +97,16 @@
 - **Guesses** apply only with `--unsafe-fixes`: a call taken to construct its class (a capitalised
   name but a standard-library function's, which the `functions` table lists, or a class the checked
   files define whatever its name's case), LVA008's and LVA010's narrowing, an empty container typed
-  by what's added to it (`append`, `extend`, `update`, ...), a display whose elements' types differ
-  by their union (`joined`), a method typed by its `return`s, an instance attribute by its
-  assignments (`assigned`), a plain class's variable by its literal value (`member`: under plain
-  classes, test cases and builtin exception or value classes), an unannotated parameter by what
-  every call in the checked files passes it (`callers`, builtin types alone: callers' classes too
-  would add 10 fixes on the corpora), a test's by the pytest fixture it names or its `parametrize`
-  literals (`fixture`), and what rests on any of these. **Fix levels**: every mechanism has a stable
-  id (`--show-fixes`, JSON), and `fix-select`, `fix-ignore` and `unsafe-fix-select` choose which
-  apply.
+  by what's added to it (`append`, `extend`, `update`, ...; an attribute's, `self.items = []`, by
+  what its class's methods add), a display whose elements' types differ by their union (`joined`), a
+  method typed by its `return`s, an instance attribute by its assignments (`assigned`), a plain
+  class's variable by its literal value (`member`: under plain classes, test cases and builtin
+  exception or value classes), an unannotated parameter by what every call in the checked files
+  passes it (`callers`, builtin types alone: callers' classes too would add 10 fixes on the
+  corpora), a test's by the pytest fixture it names (its `conftest.py`s', or pytest's own: `capsys`,
+  `tmp_path`) or its `parametrize` literals (`fixture`), and what rests on any of these. **Fix
+  levels**: every mechanism has a stable id (`--show-fixes`, JSON), and `fix-select`, `fix-ignore`
+  and `unsafe-fix-select` choose which apply.
 - **Type-checker-backed inference** (`--infer-with basedpyright,ty,pyrefly`): the checkers' inlay
   hints type what `--fix` can't, as guesses, widened, checked and imported; with basedpyright it
   about doubles what `--fix --unsafe-fixes` types on the annotated corpora. A hint naming a class
@@ -120,6 +127,13 @@
   generic alias ty's edit writes as its class (`np.ndarray[np.bool]` for an `NDArray[bool]`).
   pandas's own type checkers find 84 new errors after the hints' fixes, from 444 (32 without the
   hints).
+- **Types observed at run time** (`python -m constricter.trace -m pytest`, then
+  `--infer-from FILE`): a profile function notes the type of each local a function under the root
+  holds as it returns (builtin containers by their first elements, a class by its module and name),
+  written by each file's SHA-256; `--fix` takes them as a checker's hints are taken, as guesses of
+  kind `traced`, for a local bound once, outside any loop, to a value taken from an unannotated
+  parameter (what no checker types wider than the run saw), a class the file doesn't name imported
+  under `if TYPE_CHECKING:`. On pandas's `tests/frame/methods`: 128 more fixes of 4,616 bindings.
 - **A hung server is restarted**: one silent for 120s is restarted and each file it hadn't answered
   asked about alone; a file it hangs on again has no hints, named on standard error.
 - **No new type errors**: `corpus_suite.py --types` runs pydantic's, sqlalchemy's and pandas's own
@@ -212,7 +226,12 @@
   unannotated parameters, most of the returns it adds are `-> None`, and it left one of pydantic's
   files unparsable; and an unannotated function's `return`s of two types, or of one and `None`,
   joined into a union: 275 more fixes, and 38 new basedpyright errors (a union one of whose types is
-  wrong, or that the caller never narrows).
+  wrong, or that the caller never narrows); and a class variable or an attribute first `None`, set
+  in another method (`timeout = None` in a class body, `self.conn = None` in `__init__`): of the 894
+  class-body `name = None`s on the Python 3 corpora, 402 aren't in a plain class, 275 are never
+  stored by their module (a subclass's to set), 131 are stored another way or from outside the
+  class, and 82 are assigned no literal, only values that are mostly parameters; an attribute's
+  `T | None` types no read, since a read of an `X | None` isn't offered.
 - **Why `name = self.method()` has no fix** (8,195 bindings, before the inherited methods): the
   method is the class's own (46%), a base's in the file (12%) or in another (10%), a class attribute
   a subclass sets (`self.type2test()`, `self.dumps()`: 28%, left alone), or a library base's (5%).
@@ -298,88 +317,104 @@ fix.
    list of bases whose class bodies are fixed as a plain class's are (`fix-plain-bases`, with
    django's built in), by literal value, as guesses. Done when django's own suite and type checker
    find nothing new after `--fix --unsafe-fixes`. About 6 hours, for about 2% (some 5,000 guesses).
-2. **Empty containers filled elsewhere.** `filled` types `names = []` by what its own function adds:
-   not one bound to an attribute and filled by another method (`self.items = []`), passed on, or
-   filled with values of no known type (4,509 bindings with no fix are an empty container). Follow
-   an attribute's additions across its class's methods, as `assigned` follows its assignments. Done
-   when `self.items = []`, appended to in another method, is a `list[T]`. About 8 hours, for about
-   0.8% (some 2,000 guesses).
-3. **`None` first, set in another method.** `x = None` is `T | None` only where its own function
-   binds it again: not a class variable or an attribute first `None` (`timeout = None` in a class
-   body, `self.conn = None` in `__init__`) and set elsewhere (3,537 bindings with no fix are bound
-   to `None`, 1,245 of them in a class body). Join `None` with what the class's methods assign, as
-   `assigned` does. Done when `self.conn = None`, then `self.conn = connect()` in another method, is
-   a `Connection | None`. About 5 hours, for about 0.6% (some 1,500 guesses).
-4. **Pytest fixtures, past a package's `conftest.py`.** A test's parameter named as a fixture its
-   module or a `conftest.py` of a package above it defines is typed by what the fixture returns or
-   yields, and one `parametrize` gives literals by their type: guesses (`fixture`). On pandas's
-   `tests/frame` alone that's about 60 more fixes of 4,492 bindings with none; the whole of pandas,
-   whose 10,873 such bindings name a parameter, hasn't run. Left: a `conftest.py` in a directory
-   that isn't a package (most projects' `tests/`: the index knows a module by its name, not where it
-   is), pytest's own fixtures (`tmp_path` is a `Path`, `capsys`, `monkeypatch`), a `parametrize` on
-   the test's class or with its names or cases held in a variable, a fixture that returns
-   `request.param` (238 of pandas's 905), and the methods of a fixture's class the test file doesn't
-   import itself. Done when a flat `tests/conftest.py`'s fixture types a test beside it, and
-   `tmp_path` is a `Path`. About 5 hours, for perhaps 0.5% (some 1,200 guesses).
-5. **More context managers.** Of the 4,218 `with` targets with no fix, what's left is the tables' to
-   hold (`stdlib_tables/`): `self.assertRaises(...)` and its kin (typeshed's class for them is
-   private), `tarfile.open`, `tempfile.TemporaryDirectory()` and `shelve.open` (a constructor whose
-   `__init__` overloads declare `self`), `warnings.catch_warnings`, `contextlib.closing`, and an
-   `async with`'s by `__aenter__`; and `test.support`'s, which typeshed doesn't have. Counted:
-   `assertRaises` and its kin 738, `test.support`'s 563, an `open` that isn't the builtin's with a
-   literal mode (`self.open(...)`, `path.open()`) 457, another `self.method()` 445, `mock.patch`
-   185, `tempfile`'s 145, an archive's (`tarfile`, `zipfile`, `gzip`, `shelve`) 117, an `async with`
-   112 (`TaskGroup` 54, `asyncio.timeout` 24), `contextlib.closing` 80, `catch_warnings` 74,
-   `subprocess.Popen` 48, and 1,366 others, mostly a project's own. Done when the three largest the
-   tables can hold (`assertRaises` and its kin, `tempfile`'s, the archives') are fixes. About 8
-   hours, for about 0.4% (some 1,000 fixes).
-6. **The project's own overloads.** A function the checked files define with `@overload` (pandas'
-   `concat`) is skipped as redefined: 1,689 calls. Match its signatures as the standard library's
-   and installed packages' are (`constricter.fix.libraries.overloads`). Done when a call the
-   arguments decide is typed, and one they don't is left alone. About 6 hours, for about 0.3% (some
-   700 fixes).
-7. **Callables as values.** A lambda, a function and a bound method bound to a name have no fix
+2. **Pytest fixtures, past the ones a test's files define.** A test's parameter named as a fixture
+   is typed by what the fixture returns or yields: its module's, a `conftest.py`'s of a package
+   above it or of a directory outside any, the nearest first, or pytest's own, read from its
+   installed modules (`capsys`, `monkeypatch`, `caplog`; `tmp_path` is a `Path`), its class's
+   members known whether or not the test file imports it; and one `parametrize` gives literals by
+   their type. Guesses (`fixture`). On pandas's `tests/frame` the fixtures were about 60 more fixes
+   of 4,492 bindings with none, and on its `tests/io` `tmp_path`, with a path's `/`, 43 more of
+   4,505 fixes; the whole of pandas, whose 10,873 such bindings name a parameter, hasn't run. Left:
+   `out = capsys.readouterr().out` (pytest's `CaptureResult` is private to `_pytest`, so no test can
+   name the call's type, and defined under an `if`, where the index reads no class; nor is a generic
+   installed class's attribute bound by its receiver), the `return`s of an unannotated fixture in
+   one of several `conftest.py`s outside a package (the index keeps what a module returns by its
+   name), a test file whose name another has, a `parametrize` on the test's class or with its names
+   or cases held in a variable, and a fixture that returns `request.param` (238 of pandas's 905).
+   Done when `out = capsys.readouterr().out` is a `str`. About 4 hours, for perhaps 0.2% (some 500
+   guesses).
+3. **More context managers.** A constructor whose `__init__` overloads declare its instance
+   (`tempfile.TemporaryDirectory()`, `warnings.catch_warnings`, `subprocess.Popen`),
+   `self.assertRaises(...)` and its kin (by typeshed's private classes, a class argument binding
+   `type[_E]`), `tempfile.NamedTemporaryFile` and `tarfile.open` are fixes now: 507 more on 97 of
+   the standard library's test files. Left, of the 4,218 `with` targets first counted with no fix:
+   `test.support`'s, which typeshed doesn't have (563), an `open` that isn't the builtin's with a
+   literal mode (`self.open(...)`, `path.open()`: 457), another `self.method()` (445), `mock.patch`
+   (185), an `async with`'s of a project's own class or a generic one (of 112), `contextlib.closing`
+   (80), `shelve.open` (a `Shelf` of what isn't known), `tempfile.SpooledTemporaryFile` (a private
+   base), `assertLogs` (it enters as a private named tuple), and 1,366 others, mostly a project's
+   own. Done when `contextlib.closing`'s target is a fix. About 3 hours, for under 0.1% (some 100
+   fixes).
+4. **The project's own overloads, by the project's own types.** A call to a function the checked
+   files define with `@overload` is typed by the overload its arguments match, as the standard
+   library's and installed packages' are: 355 more fixes on pandas (`read_csv`, `read_json`,
+   `read_fwf`, `import_optional_dependency`), of its 1,995 bindings to such a call. A parameter
+   typed as a checked file's class, alias or type variable takes any argument, so it decides
+   nothing: `concat` (562 bindings, by `Iterable[DataFrame]` or `Iterable[Series]`) and
+   `to_datetime` (291, by `DatetimeScalar` and the like) are left. Read a checked file's aliases,
+   type variables and protocols as an installed package's are (`constricter.fix.index.declared`),
+   and match an argument's class by its bases. Also left: a method's overloads, and a function
+   called through its module (`frame.concat(...)` after `from pkg import frame`). Done when
+   `concat([df, df])` is a `DataFrame`, and pandas's own type checkers find nothing new. About 8
+   hours, for about 0.3% (some 700 fixes).
+5. **Callables as values.** A lambda, a function and a bound method bound to a name have no fix
    (`eq = self.assertEqual`, `key = lambda row: row.id`: some 210 of the sampled 28,931; the bound
    method's alias was left alone on purpose). Write the `Callable[[A], R]` its signature declares,
    where it declares all of it. Done when `parse = json.loads` and a declared method's alias are
    typed, and an undeclared one isn't. About 4 hours, for about 0.3% (some 700 fixes).
-8. **Awaited calls.** `await` types only a call to one of the module's own `async def`s: not a
-   method's (`await self.fetch()`), another checked file's, nor the standard library's
-   (`await asyncio.open_connection(...)`, `await reader.readline()`), which the tables don't hold.
-   464 bindings with no fix are an `await`, most of them in `asyncio` and its tests. Done when
-   `line = await reader.readline()` is a `bytes`. About 6 hours, for about 0.2% (some 400 fixes).
-9. **An unannotated method's type, in another file.** A module's functions' `return`s type their
+6. **Awaited calls, past the standard library's.** `await` of a standard-library coroutine's call is
+   typed (`line = await reader.readline()`, `await asyncio.wait_for(fetch(), 5)`,
+   `await asyncio.gather(a(), b())`), as is what a coroutine's call gives a task or a run function
+   (`asyncio.create_task(fetch())`, `asyncio.run(main())`) and an `async with`'s target. Left: a
+   generic class's own coroutine (`await queue.get()`), `asyncio.ensure_future` (its overloads take
+   a future and an awaitable alike), a task or a future held in a name and awaited later
+   (`await task`), and a project's own method or another checked file's function (39 of the 313
+   names bound to an `await` on the Python 3 corpora await one with no return declared). Done when
+   `item = await queue.get()` on an `asyncio.Queue[Item]` is an `Item`. About 4 hours, for under
+   0.1% (some 100 fixes).
+7. **An unannotated method's type, in another file.** A module's functions' `return`s type their
    calls in the files importing them; its classes' methods' don't: 132 `self.method()` bindings
    whose base is another file's and whose `return`s give one type (Twisted's `self.mktemp()`), and
    every such call on an imported class's instance. Carry them with the functions', as guesses. Done
    when `path = self.mktemp()` is a `str` under a base class of another file. About 5 hours, for
    about 0.1% (some 300 guesses).
-10. **A library base out of sight.** A class under a standard-library class gets the methods it
-    inherits from it (`self.id()` in a `unittest.TestCase`), but not behind another checked file's
-    class (django's `TestCase`, itself under `unittest.TestCase`: a module's index entry holds its
-    own classes' methods alone), under an installed package's class, or a generic one
-    (`collections.OrderedDict`), nor a method its arguments decide. A class-side method a class
-    takes from another file's base (`Sub.make()`, `make` its imported base's) has no fix either.
-    Done when `name = self.id()` in a class under another file's test case is a `str`. About 6
-    hours, for about 0.1% (some 300 fixes).
-11. **Joined types, past displays of plain types.** A list, set or dict display whose elements'
-    types differ is their union now, as a guess (`joined`): up to three plain types. On pydantic
-    that's 4 fixes and no new basedpyright error; the corpus packages' own checkers haven't run on
-    it. Of the 5,791 displays with no fix before it, at most 195 are all literals of two or three
-    types; the rest have an element of no known type (2,807), are longer than the census keeps
-    (1,484), or are tuples (1,022). Left: a function whose `return`s give two types (275 fixes when
-    joined, and 38 new basedpyright errors: a union one of whose types is wrong, or that the caller
-    never narrows), and an element that's a container or a union itself. Done when the corpus
-    packages' checkers find nothing new after the displays' guesses, and the `return`s are counted
-    again with the caller's tests followed. About 4 hours, for about 0.1% (some 300 guesses).
-12. **The main process, in a parallel check.** With `--jobs`, what each file knows from outside it
+8. **A library base out of sight.** A class under another module's class takes the members of the
+   standard-library class that one's own bases end at (`self.id()`, and `self.assertRaises(...)` by
+   its arguments, under a project's own test case), through the checked files and the installed
+   packages that declare their types, where each class on the way has one base and none binds the
+   name. Left: behind a class of several bases (a mixin), under a class of a package that declares
+   no types (django's `TestCase`: such a package isn't read at all), or a generic library class
+   (`collections.OrderedDict`); and a class-side method a class takes from another file's base
+   (`Sub.make()`, `make` its imported base's). Done when `self.id()` under a class of two bases, one
+   a mixin binding nothing of it, is a `str`. About 4 hours, for under 0.1% (some 150 fixes).
+9. **Joined types, past displays of plain types.** A list, set or dict display whose elements' types
+   differ is their union now, as a guess (`joined`): up to three plain types. On pydantic that's 4
+   fixes and no new basedpyright error; the corpus packages' own checkers haven't run on it. Of the
+   5,791 displays with no fix before it, at most 195 are all literals of two or three types; the
+   rest have an element of no known type (2,807), are longer than the census keeps (1,484), or are
+   tuples (1,022). Left: a function whose `return`s give two types (275 fixes when joined, and 38
+   new basedpyright errors: a union one of whose types is wrong, or that the caller never narrows),
+   and an element that's a container or a union itself. Done when the corpus packages' checkers find
+   nothing new after the displays' guesses, and the `return`s are counted again with the caller's
+   tests followed. About 4 hours, for about 0.1% (some 300 guesses).
+10. **Empty containers, past their own class's typed fills.** `self.items = []` is typed by what its
+    class's own methods add to it now, as `filled` types `names = []` by its function's: 4 more
+    fixes on 8 sampled directories of django and the standard library (666 files), and 19 from a
+    local container that an operand, an unpacking, a `join` or a returned tuple no longer rules out;
+    one on pydantic. Most attributes bound to an empty container there are filled with a value of no
+    known type (an unannotated parameter), or read in a way that could add to them: bound to a name,
+    passed by keyword or to a function. Left: those, a container passed on (4,509 bindings with no
+    fix are an empty container, counted before this), and one a subclass's or another file's methods
+    fill. Done when a container bound to a local that nothing adds to is typed. About 5 hours, for
+    about 0.1% (some 300 guesses).
+11. **The main process, in a parallel check.** With `--jobs`, what each file knows from outside it
     (`schedule.outside`) is still worked out one file at a time in the main process, which the
     workers wait on: about a third of a parallel check of the standard library. Most of it lists
     every function and class of every module a file imports (`project.spellings`, 1.3 million on the
     standard library) to find the few it uses: look up the names the file writes instead, or work it
     out in the workers. Done when the main process's share is under a tenth. About 5 hours; coverage
     unchanged.
-13. **A file checked again, whole.** A file whose functions' parameters every call types is parsed
+12. **A file checked again, whole.** A file whose functions' parameters every call types is parsed
     and checked again from the start (227 of the standard library's files, a fifth of a
     single-process check), as is each file of a cycle. Check again only the functions the new types
     reach, with the tree kept. Done when the second round costs under a tenth of the first. About 8
@@ -387,16 +422,24 @@ fix.
 
 ### Large: more than 8 hours
 
-1. **Types observed at run time.** 77% of the bindings with no fix are in functions with no
-   annotations: what they bind comes from parameters and attributes nothing in the source types (in
+1. **Types observed at run time, past what a parameter gives.** `python -m constricter.trace`
+   records what each function's locals held as it returned, and `--infer-from` takes them as hints
+   ([Done](#--fix)): only for a local bound once, outside any loop, to a value taken from an
+   unannotated parameter. Hints for every local brought 32 new basedpyright errors with 127 fixes on
+   pydantic (a checker types the value wider than the run saw); under that rule none, and no fix
+   there, and on pandas's `tests/frame/methods` 128 fixes with 29 new errors, each at a later use of
+   a rightly typed name. Measured and not worth building: the parameters' types, which the trace
+   already holds, as `callers`' seeds, for `--fix`'s own inference to type what's computed from
+   them: 47 more fixes there and 125 more errors (a parametrized `str` passed where pandas declares
+   a `Literal`); a class's alone, 4 and 2. Left: `self.attr` where the class declares nothing; a
+   type per binding, not per function, by `sys.monitoring`'s line events (a loop's target, a name
+   bound again); a class nested in another, and a generic one by its elements; pytest-xdist's
+   workers; and `corpus_suite.py` tracing each package's suite before its `--fix`, to count the new
+   errors on every corpus. 77% of the bindings with no fix are in functions with no annotations (in
    the 41 sampled directories, 13,992 of 28,931 are a method call, an attribute, a subscript or a
-   copy of such a value). Running the code says what they are.
-   `python -m constricter.trace -m pytest` records each function's locals' types as it returns, and
-   `--infer-from FILE` takes them as a type checker's hints are taken: guesses, widened, checked and
-   imported. Then the parameters' types, as `callers`' seeds, so `--fix`'s own inference types
-   what's computed from them. Done when pydantic's suite, traced, types its untyped locals with no
-   new basedpyright error. About 20 hours, for perhaps 15% (some 38,000 guesses): not counted, and
-   only where tests run the code.
+   copy of such a value). Done when a traced suite types a loop's target, with no new error at a
+   traced binding itself on any corpus. About 10 hours, for perhaps 5% (some 12,000 guesses): a
+   guess from the one directory measured, and only where tests run the code.
 2. **Class bodies of plain classes, past literals.** An annotation in a class body makes a
    dataclass's or a model's variable a field, so `--fix` annotates only a plain class's variable
    bound to a literal or a display of them (`member`, a guess). First counted without it, and before
@@ -418,26 +461,29 @@ fix.
    (some 800 guesses).
 4. **Operators and iteration by their classes' methods.** `enumerate`, `zip`, `map`, `iter` and
    `reversed` bound to a name have no fix (`enumerate[str]`: at module level, a builtin some Python
-   can't subscript at run time needs quoting), nor do `path / "x"`, `min(n, 1.5)` (two number types)
-   and a `tuple` added to another: `builtins.pyi`'s generic functions and the classes' operator
-   methods aren't run through the overload matcher (`abs`, `min`, `sum` and the like are typed by
-   hand, for builtin types alone). Nor is a loop over anything but a builtin container or a mapping
-   (`path.iterdir()`, `os.walk(...)`, `itertools.combinations(...)`), whose element is its
-   `__iter__`'s. Counted, among the bindings with no fix: `iter(...)` bound to a name 155, `zip` 37,
-   `map` 32, `reversed` 19; `max` and `min` 168, `sum` 29; a `/` with a string on its right 365, and
-   a tuple added to something 65, of 4,990 binary operations (most between two values of no known
-   type); loops over `os.walk(...)` 87 and `itertools`' functions 92. A loop over `x.items()`
-   (1,861), `zip` (644) or `enumerate` (611) has no fix for its arguments' types, not for this. Done
-   when each of those is a fix. About 12 hours, for about 0.3% (some 800 fixes, of the 1,050 those
-   reach).
+   can't subscript at run time needs quoting), nor do `min(n, 1.5)` (two number types) and a `tuple`
+   added to another: `builtins.pyi`'s generic functions and the classes' operator methods aren't run
+   through the overload matcher (`abs`, `min`, `sum` and the like are typed by hand, for builtin
+   types alone). Nor is a loop over anything but a builtin container or a mapping (`path.iterdir()`,
+   `os.walk(...)`, `itertools.combinations(...)`), whose element is its `__iter__`'s. Counted, among
+   the bindings with no fix: `iter(...)` bound to a name 155, `zip` 37, `map` 32, `reversed` 19;
+   `max` and `min` 168, `sum` 29; a `/` with a string on its right 365 (a fix now where its left is
+   a known `pathlib` path), and a tuple added to something 65, of 4,990 binary operations (most
+   between two values of no known type); loops over `os.walk(...)` 87 and `itertools`' functions 92.
+   A loop over `x.items()` (1,861), `zip` (644) or `enumerate` (611) has no fix for its arguments'
+   types, not for this. Done when each of those is a fix. About 12 hours, for about 0.3% (some 800
+   fixes, of the 1,050 those reach).
 5. **Narrowed reads.** A read of an `X | None`, or of a union the function tests, has no fix or only
    a guess: a checker narrows it where `--fix` doesn't follow the test
    (`if self.conn is None: return`, then `conn = self.conn`). Follow `is None`, `isinstance` and
    truth tests through a function's branches, and offer the narrowed type where every path to the
    read agrees. Counted: of the 13,972 bindings with no fix that copy a name or an attribute in a
    function, 424 follow a test of what they copy in it: `is None` (159), `isinstance` (148) or its
-   truth (117); 16 more are guesses now. Done when `conn = self.conn` after the `return` is a
-   `Connection`. About 12 hours, for about 0.2% (some 400 fixes).
+   truth (117); 16 more are guesses now. On sqlalchemy, at most 168 reads of an `X | None` are
+   withheld, 72 of them (68 an attribute's) in a function with no function or lambda inside that
+   tests nothing of what they read before it: those a checker types as declared, with or without the
+   annotation. Done when `conn = self.conn` after the `return` is a `Connection`. About 12 hours,
+   for about 0.2% (some 400 fixes).
 6. **The project's own generic classes.** A generic class the checked files define is skipped whole:
    its methods' returns and attributes depend on how it's parameterised (sqlalchemy's `Mapped[T]`,
    `Select[T]`). Bind its type parameters by the receiver's arguments, as a standard-library or
