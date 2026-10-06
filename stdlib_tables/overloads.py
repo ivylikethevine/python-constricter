@@ -19,7 +19,14 @@ import copy
 from collections.abc import Iterable, Iterator, Sequence
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix.core.signatures import Accepts, Constant, Parameter, Signature
+from constricter.fix.core.signatures import (
+    CLASS_BINDS,
+    CLASS_VERDICT,
+    Accepts,
+    Constant,
+    Parameter,
+    Signature,
+)
 from stdlib_tables.reading import (
     ClassRef,
     Defs,
@@ -90,6 +97,7 @@ _SELF_TYPE: Final = "Self"
 _CALLABLE: Final = "Callable"
 _PROPERTIES: Final = frozenset({"property", "cached_property"})
 _INIT: Final = "__init__"
+_TYPE: Final = "type"
 _NEW: Final = "__new__"
 _ENTER: Final = "__enter__"
 # The builtin containers whose element an argument of the type binds a parameter's type variable to.
@@ -134,6 +142,24 @@ class Verdicts(NamedTuple):
     anything: str | None = None
     elements: tuple[str, dict[str, int]] | None = None
     returned: str | None = None
+
+
+def _classes(annotation: ast.expr) -> Iterator[ast.expr]:
+    """Find what a parameter's annotation takes a class of: `_E` in `type[_E] | tuple[type[_E], ...]`.
+
+    Yields:
+      Each `type[...]` member of its union's argument.
+
+    """
+    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+        yield from _classes(annotation.left)
+        yield from _classes(annotation.right)
+    elif (
+        isinstance(annotation, ast.Subscript)
+        and isinstance(annotation.value, ast.Name)
+        and annotation.value.id == _TYPE
+    ):
+        yield annotation.slice
 
 
 def parameters(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[Param]:
@@ -290,11 +316,12 @@ class Overloads(Templates):
         Its `__new__`'s signatures, or its `__init__`'s, whichever its method resolution order has
         (not both: which decides would be a type checker's call), each returning the class with its
         type parameters as the arguments bind them (`deque(names)`: `collections.deque[str]`), or the
-        instance a `__new__` overload declares (`array("i")`: `array.array[int]`).
+        instance a `__new__` overload declares (`array("i")`: `array.array[int]`) or an `__init__`
+        overload's `self` (`tempfile.TemporaryDirectory()`: a `tempfile.TemporaryDirectory[str]`).
 
         Returns:
           The signatures (see `entry`), or `None` for a protocol, a class whose order can't be worked
-          out, one with neither or both, or an `__init__` declaring `self`'s type.
+          out, or one with neither or both.
 
         """
         node: ast.ClassDef | None = self.reading.class_node(klass)
@@ -322,10 +349,19 @@ class Overloads(Templates):
             return None
         function: Function
         name, (function, owner) = next(iter(found.items()))
-        if name == _INIT and any(_self(node) is not None for node in function.defs):
-            return None
         template: str = f"{self.canonical[klass]}[{', '.join(param.rstrip('=') for param in params)}]"
-        return self.entry(tuple(_unbound(node) for node in function.defs), owner.module, (), template)
+        signatures: list[Signature] | None = self.entry(
+            tuple(_unbound(node) for node in function.defs),
+            owner.module,
+            (),
+            template,
+        )
+        signature: Signature
+        declared: ast.FunctionDef | ast.AsyncFunctionDef
+        for signature, declared in zip(signatures or [], function.defs if signatures else (), strict=True):
+            if name == _INIT and _self(declared) is not None:
+                signature["returns"] = self.template(_self(declared), owner.module)
+        return signatures
 
     def _variable_in(self, annotation: ast.expr | None, module: str) -> bool:
         """Check whether a parameter's annotation names a type variable, which its argument may bind.
@@ -465,6 +501,11 @@ class Overloads(Templates):
             found["e"], found["of"] = verdicts.elements
         if verdicts.returned is not None:
             found["r"] = verdicts.returned
+        inner: ast.expr
+        for inner in () if parameter.annotation is None else _classes(parameter.annotation):
+            found[CLASS_VERDICT] = YES
+            if isinstance(inner, ast.Name) and inner.id in self._variables(inner, module):
+                found[CLASS_BINDS] = inner.id
         return found
 
     def accepts(self, annotation: ast.expr, module: str) -> Verdicts:

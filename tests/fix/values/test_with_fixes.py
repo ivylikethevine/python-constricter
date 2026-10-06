@@ -151,6 +151,47 @@ async def g(node: Node) -> None:
         pass
 """
 
+_TESTS: Final = """
+import subprocess
+import tarfile
+import tempfile
+import unittest
+import warnings
+
+
+class Case(unittest.TestCase):
+    def test(self, path: str) -> None:
+        with self.assertRaises(ValueError) as raised:
+            pass
+        with self.assertRaisesRegex(OSError, "k") as matched:
+            pass
+        with self.assertWarns(UserWarning) as warned:
+            pass
+        with self.assertRaises((OSError, ValueError)) as either:
+            pass
+        error = raised.exception
+        with tempfile.TemporaryDirectory() as folder:
+            pass
+        with tempfile.NamedTemporaryFile() as binary:
+            pass
+        with tempfile.NamedTemporaryFile("w") as text:
+            pass
+        with tarfile.open(path) as archive:
+            pass
+        with warnings.catch_warnings(record=True) as caught:
+            pass
+        with warnings.catch_warnings() as quiet:
+            pass
+        with subprocess.Popen([path], text=True) as proc:
+            pass
+        same = self.addCleanup(print)
+
+
+def f(KeyError, case: unittest.TestCase):
+    with case.assertRaises(KeyError) as shadowed:
+        pass
+"""
+
 
 def _fixes(source: str) -> _Fixes:
     """Check `source`.
@@ -177,6 +218,30 @@ def test_a_standard_library_managers_target_is_what_it_enters() -> None:
         "first": (None, False),
         "second": (None, False),
         "shelf": (None, False),  # a `Shelf` of what isn't known: not written bare
+    }
+
+
+def test_a_managers_arguments_decide_what_it_enters() -> None:
+    """A test case's `assertRaises`, a constructor whose overloads declare its instance, `tarfile.open`.
+
+    A class passed as an argument binds a `type[_E]`'s `_E`: a builtin one too, unless the module
+    binds the name.
+    """
+    assert _fixes(_TESTS) == {
+        "raised": ("_AssertRaisesContext[ValueError]", False),
+        "matched": ("_AssertRaisesContext[OSError]", False),
+        "warned": ("_AssertWarnsContext", False),
+        "either": (None, False),  # a tuple of classes: no one type
+        "error": ("ValueError", False),
+        "folder": ("str", False),
+        "binary": ("tempfile._TemporaryFileWrapper[bytes]", False),
+        "text": ("tempfile._TemporaryFileWrapper[str]", False),
+        "archive": ("tarfile.TarFile", False),
+        "caught": ("list[warnings.WarningMessage]", False),
+        "quiet": (None, False),  # it enters as `None`
+        "proc": ("subprocess.Popen[str]", False),
+        "same": (None, False),
+        "shadowed": (None, False),  # the module's own `KeyError`, a parameter
     }
 
 

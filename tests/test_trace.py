@@ -7,6 +7,7 @@ import hashlib
 import inspect
 import io
 import json
+import operator
 import pathlib
 import runpy
 import sys
@@ -184,12 +185,11 @@ def test_a_function_with_nothing_new_is_no_longer_looked_at(tmp_path: Path) -> N
 
 def test_two_functions_on_one_line_share_their_locals(tmp_path: Path) -> None:
     """A function compiled twice is one function."""
-    copy: types.FunctionType = types.FunctionType(_returning.__code__.replace(co_name="again"), globals())
-    copy.__kwdefaults__ = {"bind": True}
-    again: Callable[[float], FrameType] = cast("Callable[[float], FrameType]", copy)
+    again: types.FunctionType = types.FunctionType(_returning.__code__.replace(co_name="again"), globals())
+    again.__kwdefaults__ = {"bind": True}
     recorder: trace.Recorder = trace.Recorder(_HERE)
     recorder(_returning(1), _RETURN, None)
-    recorder(again(1.5), _RETURN, None)
+    recorder(cast("FrameType", operator.call(again, 1.5)), _RETURN, None)
     assert _held(recorder, tmp_path / _OUTPUT)["value"] == ["float", "int"]
 
 

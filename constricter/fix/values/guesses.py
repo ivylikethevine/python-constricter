@@ -204,8 +204,10 @@ def _overloaded_method(call: ast.Call, known: Known, declared: Mapping[str, str]
     match call:
         case ast.Call(func=ast.Attribute(value=receiver, attr=method)):
             typed: str | None = inferred(receiver, known, declared)
+            base: str = known.class_side.lineage.definer(typed or "", method) or typed or ""
             return typed is not None and (
                 stdlib.overloaded_method(typed, method, known) is not None
+                or stdlib.overloaded_method(base, method, known) is not None  # a library base's
                 or installed_method(typed, method, known) is not None
                 or shapes.defaulted(typed, call, lambda arg: inference(arg, known, declared)) is not None
             )

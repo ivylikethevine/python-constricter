@@ -220,8 +220,11 @@ def _member_of(
         case ast.Call():
             found: Inference | None = member(receiver, attr, value, known)
             method: stdlib.Method | None
+            # A class of the module's takes a library base's method, matched as the base's own is.
+            base: str = known.class_side.lineage.definer(receiver, attr) or receiver
             if found is None and (
                 (method := stdlib.overloaded_method(receiver, attr, known)) is not None
+                or (method := stdlib.overloaded_method(base, attr, known)) is not None
                 or (method := installed_method(receiver, attr, known)) is not None
             ):
                 found = overloads.chosen(
@@ -231,6 +234,8 @@ def _member_of(
                     lambda arg: inference(arg, known, declared),
                     method,
                 )
+                # The base itself is its `Self`: the receiver's own class, which the base isn't.
+                found = None if found is not None and receiver != base == found.annotation else found
             if found is None:
                 found = shapes.defaulted(receiver, value, lambda arg: inference(arg, known, declared))
             defined: tuple[str, str] | None = (

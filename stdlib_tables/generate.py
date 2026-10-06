@@ -128,6 +128,11 @@ _RUNTIME: Final = frozenset(
         "lib2to3.pygram.pattern_symbols",
     },
 )
+# The private classes a public function returns and nothing public stands for: what a `with` binds.
+_PRIVATE: Final = {
+    "unittest.case": ("_AssertRaisesContext", "_AssertWarnsContext"),
+    "tempfile": ("_TemporaryFileWrapper",),
+}
 # Modules whose names installed packages' stubs annotate with, private or not (`scalars`).
 _ANNOTATING: Final = frozenset({"typing", "typing_extensions", "builtins", "_typeshed", "collections.abc"})
 _YES: Final = "y"
@@ -171,7 +176,7 @@ class _Tables(NamedTuple):
 
 
 def _paths(stubs: Stubs, config: Config) -> dict[str, Found]:
-    """Find every public path in the stubs (`module.name`), and what it names, in `config`.
+    """Find every public path in the stubs (`module.name`), and what it names, in `config`; and `_PRIVATE`'s.
 
     Not a name that's also a submodule's (`curses.has_key`): which one it is depends on the imports.
 
@@ -193,6 +198,9 @@ def _paths(stubs: Stubs, config: Config) -> dict[str, Found]:
             path: str = f"{module}.{name}"
             if not private(name) and path not in modules and (target := stubs.lookup(module, name, config)):
                 found[path] = target
+        for name in _PRIVATE.get(module, ()):
+            if (target := stubs.lookup(module, name, config)) is not None:
+                found[f"{module}.{name}"] = target
     return found
 
 

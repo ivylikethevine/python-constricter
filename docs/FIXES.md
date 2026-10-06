@@ -282,6 +282,16 @@ unpacking's value is (`with defs.entry(key) as (ref, schema):`), a vague part's 
 `with open(path, "rb") as f:` declares `f: io.BufferedReader`, by its mode. Not an `async with`'s
 target.
 
+A standard-library manager its arguments decide is matched as any such call is: a constructor whose
+`__init__` overloads declare the instance (`subprocess.Popen(cmd, text=True)` is a
+`subprocess.Popen[str]`, `warnings.catch_warnings(record=True)` gives a
+`list[warnings.WarningMessage]`), and a test case's `self.assertRaises(ValueError)`, whose class
+argument binds what it catches: `cm: _AssertRaisesContext[ValueError]`, then `cm.exception` a
+`ValueError`. That class, `_AssertWarnsContext` and `tempfile.NamedTemporaryFile`'s
+`_TemporaryFileWrapper` are private in typeshed and at run time, with no public name: they're
+written as they are (imported from `unittest.case`, where the module doesn't import it), which a
+checker reporting private names' use will say. `tarfile.open` gives a `tarfile.TarFile`.
+
 A type the module can't name yet gets an import. One it already has is reused (with `import io`,
 `io.BufferedReader`); otherwise `from io import BufferedReader` is added after the module's
 docstring and its leading imports (below a shebang or coding line when it has neither), or

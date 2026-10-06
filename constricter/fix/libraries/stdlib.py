@@ -42,7 +42,9 @@ def _table(name: str) -> object:
 
 # `os.environ`'s own method with a fixed type: a variable's, which the tables' functions don't hold.
 _ENVIRON: Final = {"os.environ.copy": "dict[str, str]"}
-RETURNS: Final = {**cast("dict[str, str]", _table("returns")), **_ENVIRON}
+# `tarfile.open` is `TarFile.open` (typeshed's `open = TarFile.open`): an alias the tables don't follow.
+_ALIASED: Final = {"tarfile.open": "tarfile.TarFile"}
+RETURNS: Final = {**cast("dict[str, str]", _table("returns")), **_ENVIRON, **_ALIASED}
 # Functions whose arguments decide their type: each signature, as each configuration reads them
 # (see `constricter.fix.libraries.overloads`).
 OVERLOADS: Final = cast("dict[str, list[Variant]]", _table("overloads"))

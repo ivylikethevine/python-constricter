@@ -67,9 +67,11 @@
   (`m.string`). `defaultdict(list)` and `Counter()` stay untyped: their parameters come from later
   use. Generic classes' constructors are read from their `__new__` or `__init__`
   (`collections.deque(names)` is a `collections.deque[str]`, `array.array("i")` an
-  `array.array[int]`); at module level, one some Python can't subscript at run time is quoted. A
-  generic class returned bare is written with its type parameters' defaults (`ET.SubElement(...)` is
-  an `ET.Element[str]`). What only some platforms or versions have is kept (`os.getuid()`).
+  `array.array[int]`), or the instance an `__init__` overload's `self` declares
+  (`subprocess.Popen(cmd, text=True)` is a `subprocess.Popen[str]`); at module level, one some
+  Python can't subscript at run time is quoted. A generic class returned bare is written with its
+  type parameters' defaults (`ET.SubElement(...)` is an `ET.Element[str]`). What only some platforms
+  or versions have is kept (`os.getuid()`).
 - **The checked files' own overloads**: a call to a function defined with `@overload` is typed by
   the overload its arguments match (`constricter.fix.index.own_overloads`), where builtin,
   standard-library and `Literal` parameters decide it; each return is written as another checked
@@ -331,18 +333,18 @@ fix.
    or cases held in a variable, and a fixture that returns `request.param` (238 of pandas's 905).
    Done when `out = capsys.readouterr().out` is a `str`. About 4 hours, for perhaps 0.2% (some 500
    guesses).
-3. **More context managers.** Of the 4,218 `with` targets with no fix, what's left is the tables' to
-   hold (`stdlib_tables/`): `self.assertRaises(...)` and its kin (typeshed's class for them is
-   private), `tarfile.open`, `tempfile.TemporaryDirectory()` and `shelve.open` (a constructor whose
-   `__init__` overloads declare `self`), `warnings.catch_warnings`, `contextlib.closing`, and an
-   `async with`'s by `__aenter__`; and `test.support`'s, which typeshed doesn't have. Counted:
-   `assertRaises` and its kin 738, `test.support`'s 563, an `open` that isn't the builtin's with a
-   literal mode (`self.open(...)`, `path.open()`) 457, another `self.method()` 445, `mock.patch`
-   185, `tempfile`'s 145, an archive's (`tarfile`, `zipfile`, `gzip`, `shelve`) 117, an `async with`
-   112 (`TaskGroup` 54, `asyncio.timeout` 24), `contextlib.closing` 80, `catch_warnings` 74,
-   `subprocess.Popen` 48, and 1,366 others, mostly a project's own. Done when the three largest the
-   tables can hold (`assertRaises` and its kin, `tempfile`'s, the archives') are fixes. About 8
-   hours, for about 0.4% (some 1,000 fixes).
+3. **More context managers.** A constructor whose `__init__` overloads declare its instance
+   (`tempfile.TemporaryDirectory()`, `warnings.catch_warnings`, `subprocess.Popen`),
+   `self.assertRaises(...)` and its kin (by typeshed's private classes, a class argument binding
+   `type[_E]`), `tempfile.NamedTemporaryFile` and `tarfile.open` are fixes now: 507 more on 97 of
+   the standard library's test files. Left, of the 4,218 `with` targets first counted with no fix:
+   `test.support`'s, which typeshed doesn't have (563), an `open` that isn't the builtin's with a
+   literal mode (`self.open(...)`, `path.open()`: 457), another `self.method()` (445), `mock.patch`
+   (185), an `async with`'s by `__aenter__` (112: the tables read no `async def`),
+   `contextlib.closing` (80), `shelve.open` (a `Shelf` of what isn't known),
+   `tempfile.SpooledTemporaryFile` (a private base), `assertLogs` (it enters as a private named
+   tuple), and 1,366 others, mostly a project's own. Done when an `async with`'s target and
+   `contextlib.closing`'s are fixes. About 4 hours, for about 0.1% (some 200 fixes).
 4. **The project's own overloads, by the project's own types.** A call to a function the checked
    files define with `@overload` is typed by the overload its arguments match, as the standard
    library's and installed packages' are: 355 more fixes on pandas (`read_csv`, `read_json`,

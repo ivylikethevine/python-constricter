@@ -21,6 +21,7 @@ from constricter.rules.annotations import defined_type_vars, is_vague, node_name
 from constricter.rules.walked import classes
 
 _ENTER: Final = "__enter__"
+_NONE: Final = "None"
 _MANAGER: Final = ["contextmanager"]  # the one decorator that makes a generator function a manager
 # What such a function declares it returns: its first argument is what it yields.
 _YIELDING: Final = frozenset({"Iterator", "Generator", "Iterable"})
@@ -149,4 +150,5 @@ def entered(
         if own is not None and stdlib.enters_itself(own.annotation, known)
         else inference(entering(manager), known, declared)
     )
-    return None if found is None else (found, [manager])
+    # What enters as `None` (a `catch_warnings()` that records nothing) binds nothing worth declaring.
+    return None if found is None or found.annotation == _NONE else (found, [manager])

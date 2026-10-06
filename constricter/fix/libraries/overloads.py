@@ -60,6 +60,10 @@ _SELF_TYPE: Final = "Self"  # a method's receiver's type, in `stdlib.Method.type
 _ANY_PATH: Final = "typing.Any"  # a receiver pattern's anything
 _TUPLE_PATH: Final = "builtins.tuple"
 _BUILTINS_PATH: Final = "builtins."
+# The builtin classes, each a class as an argument (`assertRaises(ValueError)`).
+_BUILTIN_CLASSES: Final = frozenset(
+    name for name in dir(builtins) if isinstance(cast("object", getattr(builtins, name)), type)
+)
 _UNFOLLOWED: Final = "?"  # a lineage's base that can't be followed
 _CLASHING: Final = "?"  # a type variable a receiver's type binds two ways
 _REPEATED: Final = 2  # `tuple[int, ...]`'s arguments
@@ -245,7 +249,9 @@ def _argument(value: ast.expr, infer: _Infer, known: Known) -> Argument:
             kind: str = _LITERAL_STRING if isinstance(constant, str) else type(constant).__name__
             return Argument(_NONE if constant is None else kind, (constant,))
         case ast.Name() | ast.Attribute() if (
-            ast.unparse(value) in known.classes or ast.unparse(value) in known.names.classes
+            ast.unparse(value) in known.classes
+            or ast.unparse(value) in known.names.classes
+            or (ast.unparse(value) in _BUILTIN_CLASSES and known.is_builtin(ast.unparse(value)))
         ):
             return Argument(None, reads=(ast.unparse(value),), klass=ast.unparse(value))
         case _:

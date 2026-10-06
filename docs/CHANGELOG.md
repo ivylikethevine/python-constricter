@@ -6,6 +6,16 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types more of the standard library's context managers, and what they construct: a class
+  whose `__init__` overloads declare its instance (`subprocess.Popen(cmd, text=True)` is a
+  `subprocess.Popen[str]`, `with tempfile.TemporaryDirectory() as d:` a `str`,
+  `with warnings.catch_warnings(record=True) as caught:` a `list[warnings.WarningMessage]`), a test
+  case's `with self.assertRaises(ValueError) as cm:` (an `_AssertRaisesContext[ValueError]`, and
+  `cm.exception` a `ValueError`: a class passed as an argument binds a `type[_E]`, and a class of
+  the module's takes a library base's method whose arguments decide it), `assertWarns`,
+  `tempfile.NamedTemporaryFile` and `tarfile.open`. The three classes among them that typeshed keeps
+  private are written by their private names. 507 more fixes on 97 of the standard library's test
+  files (6,109 to 6,616).
 - `python -m constricter.trace -m pytest` (or a script) records the types a run binds each
   function's locals to, and `--fix --unsafe-fixes --infer-from FILE` (`infer-from` in
   `[tool.constricter]`) takes them for the bindings `--fix` can't type itself, as a type checker's
