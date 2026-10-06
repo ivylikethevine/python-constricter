@@ -21,7 +21,13 @@ from constricter.fix.values.inference import (
     scalar,
     targets_typed,
 )
-from constricter.fix.values.members import assigned_attribute, class_variable, member, returned_method
+from constricter.fix.values.members import (
+    assigned_attribute,
+    class_variable,
+    member,
+    present,
+    returned_method,
+)
 from constricter.fix.values.returns import BUILTIN_RETURNS
 from constricter.fix.values.targets import DICT_VIEWS, ITERATORS
 from constricter.offences import CONSTRUCTOR, MEMBER
@@ -166,6 +172,17 @@ def _rests(value: ast.expr, known: Known, guesses: frozenset[str], declared: Map
     return inferred(value, known, sure) != inferred(value, known, declared)
 
 
+def _receiving(receiver: ast.expr, method: str, known: Known, declared: Mapping[str, str]) -> str | None:
+    """Type the receiver of a call of `method`, as its member is looked up on it (see `members.present`).
+
+    Returns:
+      Its type, or `None` if it isn't known.
+
+    """
+    typed: str | None = inferred(receiver, known, declared)
+    return None if typed is None else present(typed, method)
+
+
 def certain_method(call: ast.expr, known: Known, declared: Mapping[str, str]) -> bool:
     """Check whether `call` is a method call a certain source types on its receiver's type.
 
@@ -180,7 +197,7 @@ def certain_method(call: ast.expr, known: Known, declared: Mapping[str, str]) ->
     method: str
     match call:
         case ast.Call(func=ast.Attribute(value=receiver, attr=method)):
-            typed: str | None = inferred(receiver, known, declared)
+            typed: str | None = _receiving(receiver, method, known, declared)
             return typed is not None and (
                 member(typed, method, call, known) is not None
                 or (method in DICT_VIEWS and dict_view(receiver, method, known, declared) is not None)
@@ -203,7 +220,7 @@ def _overloaded_method(call: ast.Call, known: Known, declared: Mapping[str, str]
     method: str
     match call:
         case ast.Call(func=ast.Attribute(value=receiver, attr=method)):
-            typed: str | None = inferred(receiver, known, declared)
+            typed: str | None = _receiving(receiver, method, known, declared)
             base: str = known.class_side.lineage.definer(typed or "", method) or typed or ""
             return typed is not None and (
                 stdlib.overloaded_method(typed, method, known) is not None
@@ -235,7 +252,7 @@ def _guessed_by(call: ast.Call, known: Known, declared: Mapping[str, str]) -> fr
         ) in known.returned.guesses:
             return known.returned.guesses[callee or ""]
         case ast.Call(func=ast.Attribute(value=receiver, attr=method)) if (
-            typed := inferred(receiver, known, declared)
+            typed := _receiving(receiver, method, known, declared)
         ) is not None and (defined := returned_method(typed, method, known)) is not None:
             return frozenset({RETURNED}) | known.returned.guesses.get(f"{defined[0]}.{method}", frozenset())
         case _:

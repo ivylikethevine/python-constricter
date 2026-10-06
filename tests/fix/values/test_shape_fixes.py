@@ -334,3 +334,82 @@ def test_a_modules_own_file_and_name_are_text() -> None:
     }
     bound: str = "__file__ = None\n\n\ndef f() -> None:\n    a = __file__\n    b = __name__\n"
     assert _fixed(bound) == {"a": (None, False), "b": ("str", False)}
+
+
+def test_the_name_of_a_class_is_text_whatever_its_instance_is() -> None:
+    """`type(x).__name__` and `x.__class__.__name__` are `str`s; `x.__class__` is `type[C]` by `x`'s `C`."""
+    source: str = """
+    class Box:
+        def label(self) -> str:
+            a = self.__class__
+            b = self.__class__.__name__
+            return b
+
+
+    def f(s: str, box: Box, kind: type[Box], maybe: Box | None, q) -> None:
+        c = type(q).__name__
+        d = q.__class__.__qualname__
+        e = type(s).__module__
+        g = q.__class__
+        h = s.__class__
+        i = kind.__class__
+        j = maybe.__class__
+        k = type(q).__doc__
+        m = q.__name__
+        n = box.__class__.__name__.upper()
+    """
+    assert _fixed(source) == {
+        "a": ("type[Box]", False),
+        "b": ("str", False),
+        "c": ("str", False),
+        "d": ("str", False),
+        "e": ("str", False),
+        "g": (None, False),
+        "h": ("type[str]", False),
+        "i": (None, False),  # a class's own class is its metaclass
+        "j": (None, False),  # `None` has a class too
+        "k": (None, False),
+        "m": (None, False),  # not a class's, for all `--fix` knows
+        "n": ("str", False),
+    }
+
+
+def test_a_member_of_an_optional_value_is_the_values_own() -> None:
+    """A member of an `X | None` is `X`'s: a checker has narrowed it there, or reports the access."""
+    source: str = """
+    import re
+    from typing import Optional
+
+
+    class Box:
+        size: int
+        label: str | None
+
+        def name(self) -> str:
+            return "box"
+
+
+    def f(s: str, box: Box | None, other: Optional[Box], early: None | Box, either: Box | str | None) -> None:
+        m = re.match(s, s)
+        a = m.start()
+        b = m.string
+        c = box.size
+        d = box.name()
+        e = other.size
+        g = early.size
+        h = either.size
+        i = box.label
+        j = box.name().upper()
+    """
+    assert _fixed(source) == {
+        "m": ("re.Match[str] | None", False),
+        "a": ("int", False),
+        "b": ("str", False),
+        "c": ("int", False),
+        "d": ("str", False),
+        "e": ("int", False),
+        "g": ("int", False),
+        "h": (None, False),  # a union of two types has no one member
+        "i": (None, False),  # itself an `X | None`: narrowed before it's used
+        "j": ("str", False),
+    }

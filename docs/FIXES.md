@@ -43,7 +43,9 @@ in a function or module body:
 - a builtin with a fixed result: `len(x)` is an `int`, `hex(n)` a `str`, `any(xs)` a `bool`, `dir()`
   a `list[str]`, `range(n)` a `range`, and so on; but not where the module binds the name itself (a
   parameter named `format`, a local `input`, its own `def dir()`), anywhere in it. `type(x)` is a
-  `type[C]` for an `x` of one type `C` (not a union's, nor `None`'s);
+  `type[C]` for an `x` of one type `C` (not a union's, nor `None`'s), as `x.__class__` is (not a
+  class's own, its metaclass), and a class's `__name__`, `__qualname__` and `__module__` read of
+  either are `str`s, whatever `x` is (`type(x).__name__`, `self.__class__.__name__`);
 - a builtin its arguments decide, as typeshed has it: `abs(n)`, `round(x)` (an `int`; with digits,
   `x`'s type), `divmod(n, 2)` (a `tuple[int, int]`) and `sum(xs)` of builtin numbers; `min` and
   `max` of several values of one type (of an `int` and a `float`, a `float`), or of something's
@@ -73,7 +75,10 @@ in a function or module body:
   takes and binds no `self` of its own (not under a method whose signature says `Self`); in a
   classmethod, `cls` is `type[C]`, whose class attributes (`limit: int = 3`, `ClassVar[T]`) and
   classmethods' and staticmethods' declared returns type `cls.x` and `cls.m()`. A member of a
-  guessed value is a guess too (`Box().name`), and its fix kinds include the value's;
+  guessed value is a guess too (`Box().name`), and its fix kinds include the value's. A member of an
+  `X | None` (or `Optional[X]`) is `X`'s: a checker has narrowed the value there, or reports the
+  access (`m = re.match(...)`, then `m.start()` is an `int`); not one `None` has too (`__class__`),
+  nor a union of more types;
 - a method a class doesn't define, called on `self` or any value typed as the class: the base's that
   defines it, in Python's method resolution order, among the module's own classes (each defined
   once, not generic) and then a class another checked file defines (the CLI only), which ends the
@@ -134,7 +139,9 @@ in a function or module body:
   supported Python can't subscript at run time is quoted (`counter: "itertools.count[int]"`), unless
   the module has `from __future__ import annotations`;
 - a generic standard-library class's own attribute or property, by the receiver's type arguments:
-  `m.string` on an `re.Match[str]` is a `str`, `p.pattern` on an `re.Pattern[bytes]` a `bytes`;
+  `m.string` on an `re.Match[str]` is a `str`, `p.pattern` on an `re.Pattern[bytes]` a `bytes`; and
+  what it inherits with one type whatever they are: `f.read()` on an `io.TextIOWrapper` is a `str`
+  (`TextIOBase`'s), `f.readlines()` on an `io.BufferedReader` a `list[bytes]`;
 - a standard-library module's variable, by its annotation in typeshed: `sys.path` is a `list[str]`,
   `os.sep` a `str` (not `sys.stdout`, typeshed's `TextIO | Any`), and `os.environ["X"]` a `str`; a
   name a function binds itself (a parameter `getpid`) isn't the module's import;
@@ -259,11 +266,15 @@ known things, `map(f, xs)` (what `f` returns: a fixed-return builtin, or a funct
 return), `iter(xs)`, a generator expression (not one whose condition may narrow a union), a
 mapping's `.keys()`/`.values()`/`.items()` (`dict[K, V]`, `Mapping[K, V]`, `OrderedDict`,
 `defaultdict`, `MappingProxyType`, ...), any container whose type is known, a tuple whose parts
-agree (`for name in ("a", "b")`), or an `Iterable[T]`, `Iterator[T]` or `Generator[T, ...]` (a
-generator function's call included). `enumerate` and `zip` type each part of the target on its own:
-`for i, x in enumerate(xs)` declares `i: int` whatever `xs` is, and a guess about `xs` makes only
-`x`'s fix one. Keywords that don't change what they yield are allowed (`enumerate`'s `start=`,
-`zip`'s `strict=`, `sorted`'s `key=` and `reverse=`); a starred argument (`zip(*rows)`) isn't.
+agree (`for name in ("a", "b")`), an `Iterable[T]`, `Iterator[T]` or `Generator[T, ...]` (a
+generator function's call included), or a standard-library class's instance, by its `__iter__` in
+typeshed (its `__next__`, where that returns `Self`): `for line in open(path)` declares `line: str`,
+a loop over an `itertools.chain[int]` or a `collections.deque[int]` an `int`, over a
+`tarfile.TarFile` a `tarfile.TarInfo`; what's built from one too (`list(file)`, a comprehension).
+`enumerate` and `zip` type each part of the target on its own: `for i, x in enumerate(xs)` declares
+`i: int` whatever `xs` is, and a guess about `xs` makes only `x`'s fix one. Keywords that don't
+change what they yield are allowed (`enumerate`'s `start=`, `zip`'s `strict=`, `sorted`'s `key=` and
+`reverse=`); a starred argument (`zip(*rows)`) isn't.
 
 An unpacking's names are typed one by one. A display of as many values gives each name its own
 value's type, as a plain assignment would (`a, b = x, 1` declares `b: int` whatever `x` is), every

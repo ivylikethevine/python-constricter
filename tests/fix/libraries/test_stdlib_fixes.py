@@ -215,6 +215,54 @@ def test_classes_and_what_returns_them_are_certain() -> None:
     }
 
 
+def test_a_loop_over_a_library_instance_binds_its_elements() -> None:
+    """A file's lines, an `itertools` iterator's elements, a `deque`'s: each by its class's `__iter__`."""
+    source: str = textwrap.dedent(
+        """\
+        import collections
+        import io
+        import itertools
+        import tarfile
+
+
+        def f(path: str, names: list[str], sizes: list[int], lock: object) -> None:
+            for a in open(path):
+                pass
+            with open(path, "rb") as binary:
+                b = list(binary)
+            for c in itertools.chain(names, names):
+                pass
+            for d, e in itertools.combinations(sizes, 2):
+                pass
+            g = [line.strip() for line in io.StringIO(path)]
+            for h in collections.deque(sizes):
+                pass
+            with tarfile.open(path) as archive:
+                for i in archive:
+                    pass
+            for j in io.StringIO:
+                pass
+            for k in lock:
+                pass
+        """,
+    )
+    fixed: dict[str, tuple[str | None, bool]] = {
+        o.name: (o.fix, o.unsafe) for o in check_source(source) if len(o.name) == 1
+    }
+    assert fixed == {
+        "a": ("str", False),
+        "b": ("list[bytes]", False),
+        "c": ("str", False),
+        "d": ("int", False),
+        "e": ("int", False),
+        "g": ("list[str]", False),
+        "h": ("int", False),
+        "i": ("tarfile.TarInfo", False),
+        "j": (None, False),  # the class, not an instance
+        "k": (None, False),
+    }
+
+
 def _known(source: str, *, planned: bool = True) -> Known:
     """Read what a module imports, as `--fix` would.
 
@@ -238,6 +286,9 @@ _CALL: Final = cast("ast.Call", ast.parse("x.m()", mode="eval").body)
         ("from datetime import datetime", "datetime", "astimezone", _CALL, "datetime"),
         ("from datetime import datetime", "datetime", "year", None, "int"),
         ("import asyncio", "asyncio.locks.Lock", "locked", _CALL, "bool"),  # an alias of `asyncio.Lock`
+        ("import io", "io.TextIOWrapper", "read", _CALL, "str"),  # a generic class's, from `TextIOBase`
+        ("import io", "io.BufferedReader", "readlines", _CALL, "list[bytes]"),
+        ("import io", "io.TextIOWrapper", "encoding", None, "str"),
         ("import argparse", "argparse.ArgumentParser", "prog", _CALL, None),  # not a method
         ("import argparse", "argparse.ArgumentParser", "nothing", None, None),
         ("import argparse", "Box", "prog", None, None),

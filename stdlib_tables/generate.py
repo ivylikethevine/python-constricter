@@ -26,7 +26,8 @@ comes out the same for all twelve:
   each signature as `stdlib_tables/overloads.py` reads it;
 - `type_parameters` and `subscriptable`: each generic class's type parameters, and whether every
   Python can subscript it at run time; `generic_attributes`: its own attributes and properties, as
-  templates its instance's type arguments bind;
+  templates its instance's type arguments bind; `elements`: what iterating each class's instance
+  gives (`io.TextIOWrapper`'s `str`, `itertools.chain`'s `_T`), as such a template;
 - `functions`: capitalised functions no other table types (`xml.etree.ElementTree.Comment`), so
   a call to one isn't taken to construct a class;
 - `awaited`: what awaiting a call of each `async def` with one declared return gives, a function's
@@ -63,6 +64,7 @@ from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.core.signatures import Signature
+from stdlib_tables.elements import element
 from stdlib_tables.overloads import CONTAINERS, SCALARS, Overloads
 from stdlib_tables.reading import (
     ANY,
@@ -82,6 +84,7 @@ from stdlib_tables.reading import (
 from stdlib_tables.stubs import (
     CONFIGS,
     Alias,
+    Binding,
     Config,
     Found,
     Function,
@@ -182,6 +185,7 @@ class _Tables(NamedTuple):
     # class's path and its name, each class's inherited ones included.
     awaited: Table
     awaited_overloads: dict[str, list[Signatures]]  # as `overloads`: an `async def`'s, awaited
+    elements: Table  # what iterating each class's instance gives, as a template (see `generic_attributes`)
 
 
 def _paths(stubs: Stubs, config: Config) -> dict[str, Found]:
@@ -263,7 +267,7 @@ def _read(stubs: Stubs, config: Config) -> _Tables:
     canonical: dict[ClassRef, str] = {
         klass: path for klass, path in every.items() if not reading.generic(klass)
     }
-    tables: _Tables = _Tables({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+    tables: _Tables = _Tables({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
     reader: _Reader = _Reader(reading, Overloads(reading, every), canonical)
     _enter_scalars(tables, reader, stubs, config)
     for path, found in paths.items():
@@ -273,6 +277,9 @@ def _read(stubs: Stubs, config: Config) -> _Tables:
         _enter_class(tables, reader, owner, path)
     for owner, path in every.items():
         _enter_generic(tables, reader, owner, path)
+        yielded: str | None
+        if (yielded := element(reader.overloads, owner)) is not None:
+            tables.elements[path] = yielded
     return tables
 
 
@@ -346,6 +353,14 @@ def _enter_generic(tables: _Tables, reader: _Reader, klass: ClassRef, path: str)
     for name, (method, signatures) in reader.overloads.methods(klass, (), inherited=False).items():
         tables.method_overloads.setdefault(path, {})[name] = method
         tables.method_signatures[method] = [signatures]
+    # What it inherits with one type, whatever its arguments (`TextIOWrapper.read()`, `TextIOBase`'s).
+    own: dict[str, Binding] = reader.reading.body(klass)
+    _enter_members(
+        tables,
+        path,
+        {name: member for name, member in reader.reading.members(klass).items() if name not in own},
+        reader.canonical,
+    )
 
 
 def _preference(path: str, found: Found) -> tuple[int, bool, int, str]:
@@ -591,6 +606,7 @@ def _agreed(tables: list[_Tables]) -> _Tables:
         _common([one.functions for one in tables]),
         _common([one.awaited for one in tables]),
         _variants([one.awaited_overloads for one in tables]),
+        _common([one.elements for one in tables]),
     )
 
 
@@ -728,6 +744,7 @@ def generate(stubs_root: Path | None = None) -> dict[Path, str]:
         "functions": tables.functions,
         "awaited": tables.awaited,
         "awaited_overloads": tables.awaited_overloads,
+        "elements": tables.elements,
     }
     source: dict[str, str | list[str]] = {
         **stamp(),

@@ -177,6 +177,24 @@ def generic_member(receiver: str, name: str, call: ast.Call | None, known: Known
     )
 
 
+def library_element(receiver: str, known: Known) -> Inference | None:
+    """Type what iterating a standard-library class's instance gives, bound by the receiver's type.
+
+    A `for` loop over an `io.TextIOWrapper` binds a `str`, over an `itertools.chain[int]` an `int`.
+
+    Returns:
+      The inference, or `None` if the tables don't have it, or a type parameter it names is unbound.
+
+    """
+    found: tuple[str, str, dict[str, str]] | None = stdlib.element(receiver, known)
+    annotation: str | None = None if found is None else _written((found[1], found[2]), known)
+    return (
+        None
+        if found is None or annotation is None
+        else Inference(annotation, f"the elements of a `{found[0]}`", frozenset({_KIND}))
+    )
+
+
 def _receiving(picked: _Picked, method: stdlib.Method | None) -> _Picked:
     """Add what a method's receiver binds its class's type parameters to (`Method.types`) to a pick.
 

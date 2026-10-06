@@ -23,6 +23,7 @@ from constricter.fix.values.members import (
     assigned_attribute,
     class_variable,
     member,
+    present,
     returned_method,
     subscripted,
 )
@@ -182,7 +183,7 @@ def _from_local(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
             return None
     typed: Inference | None = inference(receiver, known, declared)
     found: Inference | None = (
-        None if typed is None else _member_of(value, typed.annotation, attr, known, declared)
+        None if typed is None else _member_of(value, present(typed.annotation, attr), attr, known, declared)
     )
     if typed is None or found is None:
         return None
@@ -327,7 +328,12 @@ def _from_value(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
         case ast.Call():
             return _computed(value, known, declared) or _from_call(value, known, declared)
         case ast.Name() | ast.Attribute():
-            return shapes.module_text(value, known) or library_variable(value, known)
+            return (
+                shapes.module_text(value, known)
+                or shapes.class_text(value, known)
+                or shapes.class_of(value, known, lambda arg: inference(arg, known, declared))
+                or library_variable(value, known)
+            )
         case ast.Subscript():
             return shapes.environment(value, known)
         case ast.List() | ast.Set() | ast.Tuple() | ast.Dict():
@@ -843,7 +849,8 @@ def looped(iterable: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
     returns; a generator expression its element; a `dict`'s `.keys()`, `.values()` and `.items()`
     its keys, values and pairs; and anything else
     whose type is inferred, its elements: a `list`, `set`, `frozenset` or `tuple[T, ...]`'s `T`, a
-    tuple's parts where they agree, a `dict`'s keys, a `str`'s `str`s and a `bytes`'s `int`s.
+    tuple's parts where they agree, a `dict`'s keys, a `str`'s `str`s and a `bytes`'s `int`s, and a
+    standard-library class's by its `__iter__` (a file's lines).
 
     Returns:
       The element's annotation as source text and its reason, or `None` if it isn't known.
@@ -860,15 +867,14 @@ def looped(iterable: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
         case ast.GeneratorExp():
             return _generated(iterable, known, declared)
         case _:
-            found: Inference | None = inference(iterable, known, declared)
-            return (
-                None
-                if found is None
-                else element_type(
-                    found.annotation,
-                    f"the elements of {found.reason}",
-                    _kinds(found, kind="loop"),
-                )
+            found: Inference | None
+            if (found := inference(iterable, known, declared)) is None:
+                return None
+            kinds: frozenset[str] = _kinds(found, kind="loop")
+            # A builtin container's or an `Iterable[T]`'s, else a standard-library class's own.
+            element: Inference | None = overloads.library_element(found.annotation, known)
+            return element_type(found.annotation, f"the elements of {found.reason}", kinds) or (
+                None if element is None else element._replace(kinds=kinds | element.kinds)
             )
 
 

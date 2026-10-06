@@ -6,6 +6,19 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types a loop over a standard-library class's instance by its `__iter__` in typeshed:
+  `for line in open(path)` declares `line: str`, a loop over a binary file `bytes`, over an
+  `itertools.chain[int]` or a `collections.deque[int]` an `int`, over a `tarfile.TarFile` a
+  `tarfile.TarInfo`; and what's built from one (`list(file)`, `[line.strip() for line in file]`).
+- `--fix` types what a generic standard-library class inherits with one type: `f.read()` and
+  `f.readlines()` on the `io.TextIOWrapper` or `io.BufferedReader` that `open` gives, `f.closed`,
+  `task.done()` on an `asyncio.Task`.
+- `--fix` types a member of an `X | None` as `X`'s (`m = re.match(...)`, then `m.start()` and
+  `m.string`): a type checker has narrowed the value there, or reports the access. Not a member
+  `None` has too, nor one of a union of more types.
+- `--fix` types `x.__class__` as `type(x)` is typed (`type[C]`), and a class's `__name__`,
+  `__qualname__` and `__module__` read of either as a `str`, whatever `x` is (`type(x).__name__`,
+  `self.__class__.__name__`).
 - `--fix` types what a function reads of the names its module binds once, at its top level: with
   `LIMIT = 10` and `NAMES = ["a"]` there, `n = LIMIT + 1` is an `int` and `for name in NAMES` a loop
   over `str`s, in every function. By the name's annotation (a `Final[T]`'s `T`, a bare `Final`'s

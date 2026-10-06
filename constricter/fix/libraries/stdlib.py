@@ -85,6 +85,8 @@ _SUBSCRIPTABLE: Final = cast("Mapping[str, str]", _table("subscriptable"))
 # Each generic class's own attributes and properties, as templates naming its type parameters
 # (`re.Match`'s `string`: `AnyStr`), which its instance's type arguments bind.
 _GENERIC_ATTRIBUTES: Final = cast("_Own", _table("generic_attributes"))
+# What iterating each class's instance gives, as such a template (`io.TextIOWrapper`'s `str`).
+_ELEMENTS: Final = cast("Mapping[str, str]", _table("elements"))
 
 
 @cache
@@ -396,6 +398,23 @@ def generic_attribute(receiver: str, name: str, known: Known) -> tuple[str, str,
     args: list[ast.expr]
     path, args = _receiver(receiver, known)
     template: str | None = None if path is None else _GENERIC_ATTRIBUTES.get(path, {}).get(name)
+    if path is None or template is None:
+        return None
+    return path, template, _bound(path, [ast.unparse(arg) for arg in args])
+
+
+def element(receiver: str, known: Known) -> tuple[str, str, dict[str, str]] | None:
+    """Find what iterating a standard-library class's instance gives (a `for` loop over a file: its lines).
+
+    Returns:
+      Its class's path, the element's template (see `_ELEMENTS`), and the class's type parameters
+      bound to the receiver's type arguments as the module spells them; or `None`.
+
+    """
+    path: str | None
+    args: list[ast.expr]
+    path, args = _receiver(receiver, known)
+    template: str | None = None if path is None else _ELEMENTS.get(path)
     if path is None or template is None:
         return None
     return path, template, _bound(path, [ast.unparse(arg) for arg in args])

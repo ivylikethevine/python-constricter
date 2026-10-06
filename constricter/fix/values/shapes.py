@@ -38,6 +38,8 @@ _GETATTR: Final = "getattr"
 _TYPING_ANY: Final = "typing.Any"
 _WITH_DEFAULT: Final = 2  # `getattr(obj, name)`'s arguments; a third is its default
 _MODULE_TEXTS: Final = frozenset({"__file__", "__name__"})  # a module's own names that hold a `str`
+_CLASS_TEXTS: Final = frozenset({"__module__", "__name__", "__qualname__"})  # what a class holds a `str` in
+_CLASS: Final = "__class__"
 
 
 def is_none(node: ast.expr) -> bool:
@@ -202,31 +204,67 @@ def module_text(value: ast.expr, known: Known) -> Inference | None:
             return None
 
 
-def class_of(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
-    """Infer `type(x)`, with `x`'s type `C` known: `type[C]`.
+def _classed(value: ast.expr, known: Known) -> ast.expr | None:
+    """Read the `x` of `type(x)` or `x.__class__`.
 
     Returns:
-      The inference, or `None` for anything else, a module that binds `type` itself, or an `x`
-      whose type is a union or `None`.
+      It, or `None` for anything else, or a module that binds `type` itself.
 
     """
     arg: ast.expr
+    attr: str
     match value:
         case ast.Call(func=ast.Name(id="type"), args=[arg], keywords=[]) if known.is_builtin(
             _TYPE,
         ) and not isinstance(arg, ast.Starred):
-            found: Inference | None = typed(arg, infer)
-            types: frozenset[str] = frozenset() if found is None else members(found.annotation) or frozenset()
-            if found is None or len(types) != 1 or _NONE in types:
-                return None
-            return Inference(
-                f"{_TYPE}[{found.annotation}]",
-                f"`type` of {found.reason}",
-                found.kinds | {_BUILTIN},
-                found.reads,
-            )
+            return arg
+        case ast.Attribute(value=arg, attr=attr) if attr == _CLASS:
+            return arg
         case _:
             return None
+
+
+def class_text(value: ast.expr, known: Known) -> Inference | None:
+    """Infer a class's `__name__`, `__qualname__` or `__module__`: a `str`.
+
+    Read of `type(x)` or `x.__class__`, whatever `x` is.
+
+    Returns:
+      The inference, or `None` for any other value.
+
+    """
+    owner: ast.expr
+    attr: str
+    match value:
+        case ast.Attribute(value=owner, attr=attr) if attr in _CLASS_TEXTS and _classed(owner, known):
+            return Inference("str", f"a class's `{attr}`", frozenset({_BUILTIN}))
+        case _:
+            return None
+
+
+def class_of(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
+    """Infer `type(x)` or `x.__class__`, with `x`'s type `C` known: `type[C]`.
+
+    Returns:
+      The inference, or `None` for anything else, a module that binds `type` itself, or an `x`
+      whose type is a union, `None` or a class itself.
+
+    """
+    arg: ast.expr | None
+    if (arg := _classed(value, known)) is None:
+        return None
+    found: Inference | None = typed(arg, infer)
+    types: frozenset[str] = frozenset() if found is None else members(found.annotation) or frozenset()
+    if found is None or len(types) != 1 or _NONE in types:
+        return None
+    if isinstance(value, ast.Attribute) and found.annotation.startswith(f"{_TYPE}["):
+        return None  # a class's own class is its metaclass
+    return Inference(
+        f"{_TYPE}[{found.annotation}]",
+        f"`type` of {found.reason}",
+        found.kinds | {_BUILTIN},
+        found.reads,
+    )
 
 
 def defaulted(receiver: str, call: ast.Call, infer: Infer) -> Inference | None:

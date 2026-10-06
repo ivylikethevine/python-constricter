@@ -56,7 +56,10 @@
   `for name in NAMES`), and the module's own `__file__` and `__name__`; integers' `**` by a literal,
   shifts and bitwise operators, a tuple's `+` and `*`, a `set`'s operators and a `dict`'s `|`; a
   fixed-length tuple's part by a literal index; `a or []`; `min` and `max` of an `int` and a
-  `float`; `await` of a task held in a name.
+  `float`; `await` of a task held in a name. A member of an `X | None`, as `X`'s (`m.start()` on
+  what `re.match` gave); `x.__class__`, and a class's `__name__` read of it or of `type(x)`; a loop
+  over a standard-library class's instance, by its `__iter__` (`for line in open(path)`, an
+  `itertools.chain[int]`, a `deque[int]`).
 - **The standard library, from typeshed**: tables generated from the stubs basedpyright bundles when
   the package is built (`stdlib_tables/`, see [Project](#project)), read as Linux, macOS and Windows
   and Python 3.11 to 3.14 see them, into `constricter/fix/tables/` (one JSON file a table, an entry
@@ -69,8 +72,9 @@
   container's element where it's a generic of one (`Iterable[_T]` given `list[str]`), to a scalar's
   method's return through a generic protocol (`math.floor(x)`), and to a function's declared return
   (`functools.partial(f, x)`); generic classes' own attributes are bound by the receiver's
-  (`m.string`). `defaultdict(list)` and `Counter()` stay untyped: their parameters come from later
-  use. Generic classes' constructors are read from their `__new__` or `__init__`
+  (`m.string`), and what one inherits with one type is typed whatever they are (`f.read()` on an
+  `io.TextIOWrapper`). `defaultdict(list)` and `Counter()` stay untyped: their parameters come from
+  later use. Generic classes' constructors are read from their `__new__` or `__init__`
   (`collections.deque(names)` is a `collections.deque[str]`, `array.array("i")` an
   `array.array[int]`), or the instance an `__init__` overload's `self` declares
   (`subprocess.Popen(cmd, text=True)` is a `subprocess.Popen[str]`); at module level, one some
@@ -470,11 +474,12 @@ fix.
    can't subscript at run time needs quoting): `builtins.pyi`'s generic functions and the classes'
    operator methods aren't run through the overload matcher (`abs`, `min`, `sum` and the like, and
    the builtin numbers', sequences' and sets' operators, are typed by hand, for builtin types
-   alone). Nor is a loop over anything but a builtin container or a mapping (`path.iterdir()`,
-   `os.walk(...)`, `itertools.combinations(...)`), whose element is its `__iter__`'s. Counted, among
-   the bindings with no fix: `iter(...)` bound to a name 155, `zip` 37, `map` 32, `reversed` 19;
-   `max` and `min` 168, `sum` 29; a `/` with a string on its right 365 (a fix now where its left is
-   a known `pathlib` path), and a tuple added to something 65, of 4,990 binary operations (most
+   alone). A loop over a standard-library class's instance is typed by its `__iter__` now (a file,
+   `itertools.combinations(...)`); not one over a call whose return names `Self` or its argument's
+   `AnyStr` (`path.iterdir()`, `os.walk(...)`), which the tables don't hold. Counted, among the
+   bindings with no fix: `iter(...)` bound to a name 155, `zip` 37, `map` 32, `reversed` 19; `max`
+   and `min` 168, `sum` 29; a `/` with a string on its right 365 (a fix now where its left is a
+   known `pathlib` path), and a tuple added to something 65, of 4,990 binary operations (most
    between two values of no known type); loops over `os.walk(...)` 87 and `itertools`' functions 92.
    A loop over `x.items()` (1,861), `zip` (644) or `enumerate` (611) has no fix for its arguments'
    types, not for this. Done when each of those is a fix. About 12 hours, for about 0.3% (some 800
