@@ -244,16 +244,17 @@ def _arguments(call: ast.Call, infer: _Infer, known: Known) -> Arguments | None:
 
 def _argument(value: ast.expr, infer: _Infer, known: Known) -> Argument:
     constant: Constant
+    written: str
     match value:
         case ast.Constant(value=bool() | int() | float() | complex() | str() | bytes() | None as constant):
             kind: str = _LITERAL_STRING if isinstance(constant, str) else type(constant).__name__
             return Argument(_NONE if constant is None else kind, (constant,))
-        case ast.Name() | ast.Attribute() if (
-            ast.unparse(value) in known.classes
-            or ast.unparse(value) in known.names.classes
-            or (ast.unparse(value) in _BUILTIN_CLASSES and known.is_builtin(ast.unparse(value)))
+        case ast.Name() | ast.Attribute() if (written := ast.unparse(value)) and (
+            written in known.classes
+            or written in known.names.classes
+            or (written in _BUILTIN_CLASSES and known.is_builtin(written))
         ):
-            return Argument(None, reads=(ast.unparse(value),), klass=ast.unparse(value))
+            return Argument(None, reads=(written,), klass=written)
         case _:
             found: Inference | None = infer(value)
             typed: str | None = None if found is None else found.annotation

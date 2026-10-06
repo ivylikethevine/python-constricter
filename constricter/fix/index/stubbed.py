@@ -16,7 +16,6 @@ its type variable to it.
 import ast
 import builtins
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
 
@@ -68,9 +67,9 @@ from constricter.fix.index.atoms import (
     scalar_verdict,
     verdict_of,
 )
-from constricter.fix.index.classnames import Packaged
 from constricter.fix.index.declared import Alias, Class, Declarations, Signature, Variable
 from constricter.fix.index.modules import SUFFIX, Index, Module, module_name
+from constricter.fix.index.read import MEMO, Asked, Expanded, Memo
 from constricter.fix.libraries.overloads import CONTAINERS, SCALARS, substituted
 
 _KIND: Final = "signatures"
@@ -94,59 +93,6 @@ _RENAMED: Final = "_alias"  # an alias's type parameter, renamed apart (see `Exp
 _Resolved: TypeAlias = Atom | tuple[Alias, Scope, Origin]
 
 
-# An alias of an installed generic class: the class, the alias's expansion, and each installed class
-# its pattern names, by its path there and where it's defined.
-_Expanded: TypeAlias = tuple[Origin, Expansion, tuple[tuple[str, Origin], ...]]
-
-
-@dataclass
-class _Memo:
-    """What's read of the installed modules, for as long as the index has the same ones.
-
-    Each installed function's signatures, each package's classes and aliases (see
-    `classnames.classes`), each class's lineage and methods (see `Methods`), each class's methods by
-    name, the names of those it has, its bases' included, and each alias's expansion. The index
-    changes as files are checked, the installed modules in it don't.
-    """
-
-    installed: frozenset[int] = frozenset()  # the installed modules read, by identity
-    modules: Mapping[str, Module] | None = None  # the index they were last compared with
-    read: dict[tuple[str, str], tuple[ReadSignature, ...]] = field(
-        default_factory=dict[tuple[str, str], "tuple[ReadSignature, ...]"],
-    )
-    packages: dict[tuple[str, bool], Packaged] = field(
-        default_factory=dict[tuple[str, bool], "Packaged"],
-    )
-    lines: dict[Origin, tuple[str, ...]] = field(default_factory=dict[Origin, "tuple[str, ...]"])
-    methods: dict[tuple[Origin, str], tuple[ReadSignature, ...]] = field(
-        default_factory=dict[tuple[Origin, str], "tuple[ReadSignature, ...]"],
-    )
-    names: dict[Origin, frozenset[str]] = field(default_factory=dict[Origin, frozenset[str]])
-    expansions: dict[Origin, _Expanded | None] = field(default_factory=dict[Origin, "_Expanded | None"])
-
-    def of(self, modules: Mapping[str, Module]) -> "_Memo":
-        """Keep what's read for as long as `modules` has the same installed ones.
-
-        Returns:
-          This memo, emptied if they've changed.
-
-        """
-        if modules is self.modules:  # asked of the same index again and again: compared once
-            return self
-        self.modules = modules
-        installed: frozenset[int] = frozenset(id(module) for module in modules.values() if module.installed)
-        if installed != self.installed:
-            self.installed = installed
-            self.read = {}
-            self.packages = {}
-            self.lines = {}
-            self.methods = {}
-            self.names = {}
-            self.expansions = {}
-        return self
-
-
-_MEMO: Final = _Memo()
 _Read: TypeAlias = dict[str, tuple[ReadSignature, ...]]  # functions' signatures, by a call's name
 
 
@@ -166,7 +112,7 @@ def overloaded(catalog: Index, path: Path, guarded: dict[str, Guarded] | None = 
     if path.suffix != SUFFIX or (target := modules.get(module_name(path))) is None:
         return {}
     found: dict[str, tuple[ReadSignature, ...]] = {}
-    memo: dict[tuple[str, str], tuple[ReadSignature, ...]] = _MEMO.of(modules).read
+    memo: dict[tuple[str, str], tuple[ReadSignature, ...]] = MEMO.of(modules).read
     key: str
     for key in sorted(target.called):
         origin: Origin | None = _callee(modules, target, key)
@@ -233,7 +179,7 @@ def methods(catalog: Index, path: Path, guarded: Mapping[str, Guarded] | None = 
     if path.suffix != SUFFIX or (target := modules.get(module_name(path))) is None or not target.method_calls:
         return found
     reader: _Reader = _Reader(modules)
-    memo: _Memo = _MEMO.of(modules)
+    memo: Memo = MEMO.of(modules)
     spelled: str
     origin: Origin
     names: dict[str, Origin] = {
@@ -247,7 +193,7 @@ def methods(catalog: Index, path: Path, guarded: Mapping[str, Guarded] | None = 
     for spelled, alias in classnames.classes(modules, names, memo.packages, aliases=True):
         if alias not in memo.expansions:
             memo.expansions[alias] = reader.expansion(alias)
-        expanded: _Expanded | None
+        expanded: Expanded | None
         if (expanded := memo.expansions[alias]) is None:
             continue
         paths: tuple[tuple[str, Origin], ...]
@@ -266,7 +212,7 @@ def _lineage(reader: "_Reader", origin: Origin) -> tuple[str, ...]:
       It.
 
     """
-    memo: _Memo = _MEMO.of(reader.modules)
+    memo: Memo = MEMO.of(reader.modules)
     if origin not in memo.lines:
         memo.lines[origin] = tuple(dict.fromkeys(reader.lineage(origin, 0)))
         memo.names[origin] = classnames.method_names(reader.modules, memo.lines[origin])
@@ -276,7 +222,7 @@ def _lineage(reader: "_Reader", origin: Origin) -> tuple[str, ...]:
 def _class_methods(found: Methods, reader: "_Reader", target: Module, spelled: str, origin: Origin) -> None:
     """Add an installed class's methods `target` calls, as it writes the class (`spelled`), to `found`."""
     found.lineage[spelled] = _lineage(reader, origin)
-    memo: _Memo = _MEMO.of(reader.modules)
+    memo: Memo = MEMO.of(reader.modules)
     module: Module = reader.modules[origin[0]]
     klass: Class = cast("Declarations", module.declared).classes[origin[1] or ""]
     name: str
@@ -416,9 +362,7 @@ class _Reader:
                 param[0],
                 param[1],
                 param[2],
-                None
-                if param in shared or param[3] is None
-                else self._accepts(ast.parse(param[3], mode="eval").body, scope),
+                None if param in shared or param[3] is None else self._accepted(param[3], scope),
             )
             for param in signature.params
         )
@@ -473,6 +417,24 @@ class _Reader:
             return self._template(expr, scope, 0)
         finally:
             self.matching = False
+
+    def _accepted(self, text: str, scope: Scope) -> Accepts:
+        """Work out what a parameter annotated `text` takes, once for each module and scope it's read in.
+
+        A package's signatures write the same few hundred annotations over and over (`Axis`,
+        `bool`, `str | None`).
+
+        Returns:
+          It (see `_accepts`), shared by every parameter written alike: to read, never to change.
+
+        """
+        # A signature's scope holds bounds' texts alone (see `signature`): no alias's argument.
+        bounds: Mapping[str, str | None] = cast("Mapping[str, str | None]", scope.params)
+        memo: dict[Asked, Accepts] = MEMO.of(self.modules).accepts
+        key: Asked
+        if (key := (scope.module.name, scope.owner, text, tuple(sorted(bounds.items())))) not in memo:
+            memo[key] = self._accepts(parse_text(text), scope)
+        return memo[key]
 
     def _accepts(self, annotation: ast.expr, scope: Scope) -> Accepts:
         """Work out what a parameter takes (see `stdlib.Accepts`).
@@ -721,7 +683,7 @@ class _Reader:
                     return read
         return None
 
-    def expansion(self, origin: Origin) -> _Expanded | None:
+    def expansion(self, origin: Origin) -> Expanded | None:
         """Expand an installed alias of a generic class (`NDArray`), as a receiver's type (see `Expansion`).
 
         Returns:
