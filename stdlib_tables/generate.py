@@ -26,7 +26,9 @@ comes out the same for all twelve:
   each signature as `stdlib_tables/overloads.py` reads it;
 - `type_parameters` and `subscriptable`: each generic class's type parameters, and whether every
   Python can subscript it at run time; `generic_attributes`: its own attributes and properties, as
-  templates its instance's type arguments bind;
+  templates its instance's type arguments bind, and a non-generic class's own that `attributes`
+  can't hold (a `list[ast.stmt]`); `elements`: what iterating each class's instance
+  gives (`io.TextIOWrapper`'s `str`, `itertools.chain`'s `_T`), as such a template;
 - `functions`: capitalised functions no other table types (`xml.etree.ElementTree.Comment`), so
   a call to one isn't taken to construct a class;
 - `awaited`: what awaiting a call of each `async def` with one declared return gives, a function's
@@ -55,14 +57,15 @@ import importlib.metadata
 import json
 import os
 import tomllib
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from functools import lru_cache
 from pathlib import Path
-from typing import Final, NamedTuple, TypeAlias, cast
+from typing import Final, NamedTuple, TypeAlias, TypeVar, cast
 
 from constricter.fix.core.signatures import Signature
+from stdlib_tables.elements import element
 from stdlib_tables.overloads import CONTAINERS, SCALARS, Overloads
 from stdlib_tables.reading import (
     ANY,
@@ -82,6 +85,7 @@ from stdlib_tables.reading import (
 from stdlib_tables.stubs import (
     CONFIGS,
     Alias,
+    Binding,
     Config,
     Found,
     Function,
@@ -133,10 +137,12 @@ _RUNTIME: Final = frozenset(
         "lib2to3.pygram.pattern_symbols",
     },
 )
-# The private classes a public function returns and nothing public stands for: what a `with` binds.
+# The private classes a public function returns and nothing public stands for (what a `with`
+# binds), and a private function code calls all the same.
 _PRIVATE: Final = {
     "unittest.case": ("_AssertRaisesContext", "_AssertWarnsContext"),
     "tempfile": ("_TemporaryFileWrapper",),
+    "sys": ("_getframe",),
 }
 # Modules whose names installed packages' stubs annotate with, private or not (`scalars`).
 _ANNOTATING: Final = frozenset({"typing", "typing_extensions", "builtins", "_typeshed", "collections.abc"})
@@ -149,6 +155,7 @@ _Locked: TypeAlias = dict[str, str]  # a package `uv.lock` pins: its name, its v
 
 # Each signature of a function whose return its arguments decide (see `overloads.Overloads.entry`).
 Signatures: TypeAlias = list[Signature]
+_V = TypeVar("_V")
 # One of the tables (or `source`, where they're from).
 _Json: TypeAlias = (
     Table
@@ -173,7 +180,7 @@ class _Tables(NamedTuple):
     type_parameters: Table  # each generic class's, in order, comma-separated (`_T=`: with a default)
     bases: Table  # each class's public ancestors in the tables, nearest first, comma-separated
     subscriptable: Table  # each generic class's: `y` if it can be subscripted at run time, else `n`
-    generic_attributes: dict[str, Table]  # each generic class's own attributes, as templates
+    generic_attributes: dict[str, Table]  # a class's own attributes, as templates
     variables: Table  # module-level variables' types: builtin annotations, or classes' paths
     scalars: Table  # each class's and alias's verdict (`y`, `n`, `?`) per `SCALARS`, then `CONTAINERS`, type
     scalar_members: dict[str, list[str]]  # each scalar's members, its class's and its bases'
@@ -182,6 +189,7 @@ class _Tables(NamedTuple):
     # class's path and its name, each class's inherited ones included.
     awaited: Table
     awaited_overloads: dict[str, list[Signatures]]  # as `overloads`: an `async def`'s, awaited
+    elements: Table  # what iterating each class's instance gives, as a template (see `generic_attributes`)
 
 
 def _paths(stubs: Stubs, config: Config) -> dict[str, Found]:
@@ -263,7 +271,7 @@ def _read(stubs: Stubs, config: Config) -> _Tables:
     canonical: dict[ClassRef, str] = {
         klass: path for klass, path in every.items() if not reading.generic(klass)
     }
-    tables: _Tables = _Tables({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+    tables: _Tables = _Tables({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
     reader: _Reader = _Reader(reading, Overloads(reading, every), canonical)
     _enter_scalars(tables, reader, stubs, config)
     for path, found in paths.items():
@@ -273,6 +281,9 @@ def _read(stubs: Stubs, config: Config) -> _Tables:
         _enter_class(tables, reader, owner, path)
     for owner, path in every.items():
         _enter_generic(tables, reader, owner, path)
+        yielded: str | None
+        if (yielded := element(reader.overloads, owner)) is not None:
+            tables.elements[path] = yielded
     return tables
 
 
@@ -312,9 +323,19 @@ def _enter_scalars(tables: _Tables, reader: _Reader, stubs: Stubs, config: Confi
 
 
 def _enter_class(tables: _Tables, reader: _Reader, klass: ClassRef, path: str) -> None:
-    """Enter a class's members, its public ancestors, and its methods whose arguments decide their return."""
+    """Enter a class's members, its public ancestors, and its methods whose arguments decide their return.
+
+    And its own attributes no builtin annotation or class alone types, as templates (`Signature`'s
+    `parameters`, a `MappingProxyType[str, Parameter]`).
+    """
     members: dict[str, Member] = reader.reading.members(klass)
     _enter_members(tables, path, members, reader.canonical)
+    entered: Table = tables.attributes.get(path, {})
+    templates: Table = {
+        name: template for name, template in reader.overloads.attributes(klass).items() if name not in entered
+    }
+    if templates:
+        tables.generic_attributes[path] = templates
     ancestors: list[str] = [
         reader.canonical[base] for base in reader.reading.trusted(klass)[0][1:] if base in reader.canonical
     ]
@@ -346,6 +367,14 @@ def _enter_generic(tables: _Tables, reader: _Reader, klass: ClassRef, path: str)
     for name, (method, signatures) in reader.overloads.methods(klass, (), inherited=False).items():
         tables.method_overloads.setdefault(path, {})[name] = method
         tables.method_signatures[method] = [signatures]
+    # What it inherits with one type, whatever its arguments (`TextIOWrapper.read()`, `TextIOBase`'s).
+    own: dict[str, Binding] = reader.reading.body(klass)
+    _enter_members(
+        tables,
+        path,
+        {name: member for name, member in reader.reading.members(klass).items() if name not in own},
+        reader.canonical,
+    )
 
 
 def _preference(path: str, found: Found) -> tuple[int, bool, int, str]:
@@ -394,10 +423,16 @@ def _enter_alias(tables: _Tables, reader: _Reader, path: str, value: "ast.expr",
 
 
 def _enter_variable(tables: _Tables, reader: _Reader, path: str, annotation: "ast.expr", module: str) -> None:
-    """Enter a module-level variable's type (`sys.path`: `list[str]`), if the tables can hold it."""
+    """Enter a module-level variable's type, if the tables can hold it.
+
+    A builtin annotation or a class's path (`sys.path`: `list[str]`), else a template naming classes
+    by their paths (`sys.modules`: `dict[str, types.ModuleType]`).
+    """
     form: Form | None = reader.reading.form(annotation, module, None)
-    value: str | None
-    if (value := None if form is None else _value(form, reader.canonical)) is not None:
+    value: str | None = None if form is None else _value(form, reader.canonical)
+    if value is None and form is None:
+        value = reader.overloads.template(annotation, module)
+    if value is not None:
         tables.variables[path] = value
 
 
@@ -569,9 +604,12 @@ def _agreed(tables: list[_Tables]) -> _Tables:
     """Keep what every configuration's tables that have an entry agree on.
 
     Returns:
-      The entries that are the same in each that has them.
+      The entries that are the same in each that has them, less those they hold in different tables
+      (see `_split`).
 
     """
+    split: frozenset[str] = _split(tables)
+    tables = [_unsplit(one, split) for one in tables]
     return _Tables(
         _common([one.returns for one in tables]),
         _variants([one.overloads for one in tables]),
@@ -591,7 +629,86 @@ def _agreed(tables: list[_Tables]) -> _Tables:
         _common([one.functions for one in tables]),
         _common([one.awaited for one in tables]),
         _variants([one.awaited_overloads for one in tables]),
+        _common([one.elements for one in tables]),
     )
+
+
+def _split(each: list[_Tables]) -> frozenset[str]:
+    """Find the functions and members the configurations hold in different tables.
+
+    `importlib.metadata.entry_points` is overloaded before Python 3.12 (`overloads`) and one `def`
+    since (`classes`): each table alone would answer for the Pythons it wasn't read from too.
+
+    Returns:
+      Each one's path, a member's after its class's.
+
+    """
+    first: dict[str, frozenset[int]] = {}
+    split: set[str] = set()
+    one: _Tables
+    for one in each:
+        members: list[dict[str, Table]] = [one.methods, one.attributes, one.method_overloads]
+        members += [one.generic_attributes]
+        held: list[Iterable[str]] = [one.returns, one.overloads, one.classes, one.functions, one.awaited]
+        held += [one.awaited_overloads]
+        held += ([f"{klass}.{name}" for klass, own in table.items() for name in own] for table in members)
+        tables: dict[str, set[int]] = {}
+        at: int
+        paths: Iterable[str]
+        for at, paths in enumerate(held):
+            path: str
+            for path in paths:
+                tables.setdefault(path, set()).add(at)
+        found: set[int]
+        for path, found in tables.items():
+            if first.setdefault(path, frozenset(found)) != frozenset(found):
+                split.add(path)
+    return frozenset(split)
+
+
+def _unsplit(one: _Tables, split: frozenset[str]) -> _Tables:
+    """Leave `split`'s functions and members out of a configuration's tables (see `_split`).
+
+    Returns:
+      The tables without them.
+
+    """
+    return one._replace(
+        returns=_without(one.returns, split),
+        overloads=_without(one.overloads, split),
+        classes=_without(one.classes, split),
+        functions=_without(one.functions, split),
+        awaited=_without(one.awaited, split),
+        awaited_overloads=_without(one.awaited_overloads, split),
+        methods=_without_members(one.methods, split),
+        attributes=_without_members(one.attributes, split),
+        method_overloads=_without_members(one.method_overloads, split),
+        generic_attributes=_without_members(one.generic_attributes, split),
+    )
+
+
+def _without(table: dict[str, _V], split: frozenset[str]) -> dict[str, _V]:
+    """Leave `split`'s paths out of a table.
+
+    Returns:
+      The table without them.
+
+    """
+    return {path: value for path, value in table.items() if path not in split}
+
+
+def _without_members(table: dict[str, Table], split: frozenset[str]) -> dict[str, Table]:
+    """Leave `split`'s members out of each class's (a class with none left out).
+
+    Returns:
+      The table without them.
+
+    """
+    kept: dict[str, Table] = {
+        klass: {name: value for name, value in own.items() if f"{klass}.{name}" not in split}
+        for klass, own in table.items()
+    }
+    return {klass: own for klass, own in kept.items() if own}
 
 
 def _common_lists(each: list[dict[str, list[str]]]) -> dict[str, list[str]]:
@@ -728,6 +845,7 @@ def generate(stubs_root: Path | None = None) -> dict[Path, str]:
         "functions": tables.functions,
         "awaited": tables.awaited,
         "awaited_overloads": tables.awaited_overloads,
+        "elements": tables.elements,
     }
     source: dict[str, str | list[str]] = {
         **stamp(),

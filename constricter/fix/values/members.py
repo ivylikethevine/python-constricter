@@ -8,7 +8,7 @@ makes its member a guess too, as `guesses` judges.
 """
 
 import ast
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from functools import lru_cache
 from typing import Final, TypeAlias
 
@@ -16,11 +16,12 @@ from constricter.fix.core.known import Inference, Known
 from constricter.fix.libraries import overloads, stdlib
 from constricter.fix.values.returns import METHOD_RETURNS, element_method
 from constricter.fix.values.targets import sole
-from constricter.rules.annotations import roots
+from constricter.rules.annotations import node_name, roots
 
 _ATTRIBUTE: Final = "attribute"  # the fix kind of an attribute's annotation
 _METHOD: Final = "method"  # the fix kind of a method's return type
 _SLICE: Final = "slice"  # an index of this type slices
+_OPTIONAL: Final = "Optional"
 # One way to type a member: given the receiver's type as text, the member's name, and the call
 # (`None` for an attribute), its inference, or `None` if this source doesn't know it.
 MemberSource: TypeAlias = Callable[[str, str, ast.Call | None, Known], Inference | None]
@@ -53,6 +54,32 @@ def class_of(receiver: str) -> str | None:
             return name
         case _:
             return None
+
+
+def present(receiver: str, attr: str) -> str:
+    """Read the `X` of a receiver typed `X | None` (or `Optional[X]`), whose member `attr` is looked up.
+
+    Only an `X` has the member: a type checker has narrowed the receiver to it there, or reports the
+    access. Not a member `None` has too (`__class__`), nor a union of more types.
+
+    Returns:
+      The `X` as text; any other receiver as it is.
+
+    """
+    kept: ast.expr
+    head: ast.expr
+    match parsed(receiver):
+        case _ if attr.startswith("__"):
+            return receiver
+        case (
+            ast.BinOp(left=kept, op=ast.BitOr(), right=ast.Constant(value=None))
+            | ast.BinOp(left=ast.Constant(value=None), op=ast.BitOr(), right=kept)
+        ) if not isinstance(kept, ast.BinOp):
+            return ast.unparse(kept)
+        case ast.Subscript(value=head, slice=kept) if node_name(head) == _OPTIONAL:
+            return ast.unparse(kept)
+        case _:
+            return receiver
 
 
 def _class_side(receiver: str, name: str, call: ast.Call | None, known: Known) -> Inference | None:
@@ -237,11 +264,10 @@ def class_variable(receiver: str, name: str, known: Known) -> str | None:
 def subscripted(container: str, node: ast.Subscript, index: str | None) -> str | None:
     """Infer `container[...]`'s type, given `container`'s own type as text, and the index's (`index`).
 
-    A slice (`x[1:2]`, or an index typed `slice`) of a `list`, `str` or `bytes` is the same type as
-    `container` itself; a plain
-    index into one is its element type, as is any index into a `dict` (its value type) or a
-    homogeneous `tuple[T, ...]`. A fixed-length `tuple[T1, T2]`'s element only varies with the index,
-    which isn't worth resolving.
+    A slice (`x[1:2]`, or an index typed `slice`) of a `list`, `str`, `bytes` or `tuple[T, ...]` is
+    the same type as `container` itself; a plain index into one is its element type, as is any index
+    into a `dict` (its value type). A fixed-length `tuple[T1, T2]`'s part is the one a literal index
+    names (`pair[0]`, `pair[-1]`).
 
     Returns:
       The annotation as source text, or `None` if the subscript doesn't decide one.
@@ -263,10 +289,32 @@ def subscripted(container: str, node: ast.Subscript, index: str | None) -> str |
         case ast.Subscript(
             value=ast.Name(id="tuple" | "Tuple"),
             slice=ast.Tuple(elts=[element, last]),
-        ) if not sliced and isinstance(last, ast.Constant) and last.value is Ellipsis:
-            return ast.unparse(element)
+        ) if isinstance(last, ast.Constant) and last.value is Ellipsis:
+            return container if sliced else ast.unparse(element)
+        case ast.Subscript(value=ast.Name(id="tuple" | "Tuple"), slice=element) if not sliced:
+            return _part(element.elts if isinstance(element, ast.Tuple) else [element], node.slice)
         case _:
             return None
+
+
+def _part(parts: Sequence[ast.expr], index: ast.expr) -> str | None:
+    """Pick the part of a fixed-length tuple's type that a literal `index` names (`0`, `-1`).
+
+    Returns:
+      It, as text; `None` for any other index, one past the tuple's ends, or a tuple that unpacks
+      another (`tuple[int, *Ts]`).
+
+    """
+    at: int
+    match index:
+        case ast.Constant(value=int() as at) if not isinstance(at, bool):
+            pass
+        case ast.UnaryOp(op=ast.USub(), operand=ast.Constant(value=int() as at)) if not isinstance(at, bool):
+            at = -at
+        case _:
+            return None
+    starred: bool = any(isinstance(part, ast.Starred) for part in parts)
+    return None if starred or not -len(parts) <= at < len(parts) else ast.unparse(parts[at])
 
 
 def _annotation_of(receiver: str, name: str) -> str:

@@ -48,6 +48,21 @@ _NONE: Final = "None"
 _NEW: Final = "__new__"
 _ENTER: Final = "__enter__"
 _GET_ITEM: Final = "__getitem__"
+# The methods binary operators call on their left operand, read with a class's methods whose
+# arguments decide their return (not `members`: what the right operand is always matters).
+OPERATORS: Final = frozenset(
+    {
+        "__add__",
+        "__sub__",
+        "__mul__",
+        "__truediv__",
+        "__floordiv__",
+        "__mod__",
+        "__and__",
+        "__or__",
+        "__xor__",
+    },
+)
 _CLASS_GETITEM: Final = "__class_getitem__"
 _TYPING: Final = frozenset({"typing", "typing_extensions"})
 # Builtins spelled as themselves; `object` and `type` are vague, `function` and `ellipsis` internal.
@@ -529,7 +544,8 @@ class Reading:
             name: str
             binding: Binding
             for name, binding in self.body(owner).items():
-                if name not in seen and _read(name) and isinstance(binding, Function):
+                read: bool = _read(name) or name in OPERATORS
+                if name not in seen and read and isinstance(binding, Function):
                     found[name] = (binding, owner)
                 seen.add(name)
         return found

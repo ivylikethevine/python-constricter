@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: MIT
 """Small shapes `--fix` types from their parts' types.
 
-A union the author would write (`a if c else None`, `a or b`), `type(x)`, `d.get(key, default)`,
-`os.environ[key]`, and a call an unpacking alone can use (`partly`). `infer` types a part as
+A union the author would write (`a if c else None`, `a or b`), a container or an empty one (`a or []`),
+`type(x)`, `d.get(key, default)`, `os.environ[key]`, a module's own `__file__` and `__name__`, and a
+call an unpacking alone can use (`partly`). `infer` types a part as
 `constricter.fix.values.inference` does.
 
 A part that is a read (`x`, `self.x`, `d[k]`) is taken as its declared type, which a type checker
@@ -36,6 +37,9 @@ _QUOTES: Final = frozenset("'\"")
 _GETATTR: Final = "getattr"
 _TYPING_ANY: Final = "typing.Any"
 _WITH_DEFAULT: Final = 2  # `getattr(obj, name)`'s arguments; a third is its default
+_MODULE_TEXTS: Final = frozenset({"__file__", "__name__"})  # a module's own names that hold a `str`
+_CLASS_TEXTS: Final = frozenset({"__module__", "__name__", "__qualname__"})  # what a class holds a `str` in
+_CLASS: Final = "__class__"
 
 
 def is_none(node: ast.expr) -> bool:
@@ -104,54 +108,163 @@ def boolean(value: ast.BoolOp, infer: Infer) -> Inference | None:
     """Infer `a or b` and `a and b` whose operands have one type: that type.
 
     `or` gives an operand before its last only if it's true, which `None` never is: `a or b` with
-    `a: T | None` and `b: T` is a `T`.
+    `a: T | None` and `b: T` is a `T`, as `a or []` is with `a: list[T] | None`.
 
     Returns:
       The last operand's type, or `None` if an operand's isn't known or they differ.
 
     """
-    parts: list[Inference | None] = [typed(operand, infer) for operand in value.values]
+    dropped: frozenset[str] = frozenset({_NONE}) if isinstance(value.op, ast.Or) else frozenset()
+    built: str | None = _empty(value.values[-1]) if dropped else None
+    parts: list[Inference | None] = [
+        typed(operand, infer) for operand in value.values[: -1 if built else None]
+    ]
     found: list[Inference] = [part for part in parts if part is not None]
     if len(found) != len(parts):
         return None
-    dropped: frozenset[str] = frozenset({_NONE}) if isinstance(value.op, ast.Or) else frozenset()
     types: set[frozenset[str]] = {(members(part.annotation) or frozenset()) - dropped for part in found}
     if len(types) != 1 or not next(iter(types)):
         return None
+    annotation: str = found[-1].annotation
+    if built is not None:
+        # An empty display takes the type of the container before it.
+        annotation = min(next(iter(types)))
+        if len(next(iter(types))) != 1 or not annotation.startswith(f"{built}["):
+            return None
     operator: str = "or" if dropped else "and"
     return Inference(
-        found[-1].annotation,
+        annotation,
         f"the operands of `{operator}`, of one type",
         frozenset({_BOOLEAN}).union(*(part.kinds for part in found)),
         tuple(read for part in found for read in part.reads),
     )
 
 
-def class_of(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
-    """Infer `type(x)`, with `x`'s type `C` known: `type[C]`.
+def _empty(node: ast.expr) -> str | None:
+    """Name the builtin container an empty display builds: `[]` a `list`, `{}` a `dict`.
 
     Returns:
-      The inference, or `None` for anything else, a module that binds `type` itself, or an `x`
-      whose type is a union or `None`.
+      Its name, or `None` for any other value.
+
+    """
+    match node:
+        case ast.List(elts=[]):
+            return "list"
+        case ast.Dict(keys=[]):
+            return "dict"
+        case _:
+            return None
+
+
+def emptied(value: ast.IfExp, infer: Infer) -> Inference | None:
+    """Infer `a if c else []` (or `{} if c else a`): `a`'s type, a `list` (or a `dict`) of something.
+
+    `a if a else []` is never `None`, whatever `a` may be.
+
+    Returns:
+      The inference, or `None` if neither side or both are an empty display, the other's type isn't
+      that container's, or it may be `None` and `c` tests it another way: it's narrowed there.
+
+    """
+    sides: list[ast.expr] = [side for side in (value.body, value.orelse) if _empty(side) is None]
+    built: str | None = _empty(value.body) or _empty(value.orelse)
+    found: Inference | None = typed(sides[0], infer) if len(sides) == 1 else None
+    types: frozenset[str] = frozenset() if found is None else members(found.annotation) or frozenset()
+    container: str = min(types - {_NONE}, default="")
+    if found is None or len(types - {_NONE}) != 1 or not container.startswith(f"{built}["):
+        return None
+    annotation: str = found.annotation
+    tested: set[str] = {ast.unparse(node) for node in ast.walk(value.test) if isinstance(node, _READS)}
+    if _NONE in types and ast.unparse(sides[0]) in tested:
+        if sides[0] is not value.body or ast.unparse(value.test) != ast.unparse(sides[0]):
+            return None
+        annotation = container
+    return Inference(
+        annotation,
+        "one side of a conditional, the other an empty display",
+        found.kinds | {_CONDITIONAL},
+        found.reads,
+    )
+
+
+def module_text(value: ast.expr, known: Known) -> Inference | None:
+    """Infer a module's own `__file__` or `__name__`: a `str`.
+
+    Returns:
+      The inference, or `None` for any other value, or a module that binds the name itself.
+
+    """
+    name: str
+    match value:
+        case ast.Name(id=name) if name in _MODULE_TEXTS and (
+            known.names.plan is None or name not in known.names.plan.taken
+        ):
+            return Inference("str", f"the module's own `{name}`", frozenset({_BUILTIN}))
+        case _:
+            return None
+
+
+def _classed(value: ast.expr, known: Known) -> ast.expr | None:
+    """Read the `x` of `type(x)` or `x.__class__`.
+
+    Returns:
+      It, or `None` for anything else, or a module that binds `type` itself.
 
     """
     arg: ast.expr
+    attr: str
     match value:
         case ast.Call(func=ast.Name(id="type"), args=[arg], keywords=[]) if known.is_builtin(
             _TYPE,
         ) and not isinstance(arg, ast.Starred):
-            found: Inference | None = typed(arg, infer)
-            types: frozenset[str] = frozenset() if found is None else members(found.annotation) or frozenset()
-            if found is None or len(types) != 1 or _NONE in types:
-                return None
-            return Inference(
-                f"{_TYPE}[{found.annotation}]",
-                f"`type` of {found.reason}",
-                found.kinds | {_BUILTIN},
-                found.reads,
-            )
+            return arg
+        case ast.Attribute(value=arg, attr=attr) if attr == _CLASS:
+            return arg
         case _:
             return None
+
+
+def class_text(value: ast.expr, known: Known) -> Inference | None:
+    """Infer a class's `__name__`, `__qualname__` or `__module__`: a `str`.
+
+    Read of `type(x)` or `x.__class__`, whatever `x` is.
+
+    Returns:
+      The inference, or `None` for any other value.
+
+    """
+    owner: ast.expr
+    attr: str
+    match value:
+        case ast.Attribute(value=owner, attr=attr) if attr in _CLASS_TEXTS and _classed(owner, known):
+            return Inference("str", f"a class's `{attr}`", frozenset({_BUILTIN}))
+        case _:
+            return None
+
+
+def class_of(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
+    """Infer `type(x)` or `x.__class__`, with `x`'s type `C` known: `type[C]`.
+
+    Returns:
+      The inference, or `None` for anything else, a module that binds `type` itself, or an `x`
+      whose type is a union, `None` or a class itself.
+
+    """
+    arg: ast.expr | None
+    if (arg := _classed(value, known)) is None:
+        return None
+    found: Inference | None = typed(arg, infer)
+    types: frozenset[str] = frozenset() if found is None else members(found.annotation) or frozenset()
+    if found is None or len(types) != 1 or _NONE in types:
+        return None
+    if isinstance(value, ast.Attribute) and found.annotation.startswith(f"{_TYPE}["):
+        return None  # a class's own class is its metaclass
+    return Inference(
+        f"{_TYPE}[{found.annotation}]",
+        f"`type` of {found.reason}",
+        found.kinds | {_BUILTIN},
+        found.reads,
+    )
 
 
 def defaulted(receiver: str, call: ast.Call, infer: Infer) -> Inference | None:

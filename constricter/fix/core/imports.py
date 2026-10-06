@@ -2,12 +2,14 @@
 """Fixes that add an import: how a module can name a library type, and where an import goes."""
 
 import ast
-from collections.abc import Iterator
-from typing import Final, TypeAlias
+import bisect
+from collections.abc import Iterator, Sequence
+from itertools import accumulate
+from typing import Final, TypeAlias, cast
 from weakref import WeakKeyDictionary
 
-from constricter.fix.core.known import ImportPlan, Origin
-from constricter.rules.syntax import Start, import_bindings
+from constricter.fix.core.known import Checking, ImportPlan, Origin
+from constricter.rules.syntax import FunctionDef, Start, import_bindings
 from constricter.rules.walked import of_type
 
 _TYPE_CHECKING: Final = "TYPE_CHECKING"
@@ -18,6 +20,9 @@ _Taken: TypeAlias = tuple[frozenset[str], frozenset[str]]
 _TAKEN: Final[WeakKeyDictionary[ast.Module, _Taken]] = WeakKeyDictionary()
 _Rebound: TypeAlias = dict[str, list[Start]]
 _REBOUND: Final[WeakKeyDictionary[ast.Module, _Rebound]] = WeakKeyDictionary()
+_Import: TypeAlias = ast.Import | ast.ImportFrom
+_Inner: TypeAlias = tuple[_Import, ...]
+_INNER: Final[WeakKeyDictionary[ast.Module, _Inner]] = WeakKeyDictionary()
 # The nodes that bind a name: all `_taken` needs look at.
 _BINDERS: Final = (
     ast.Name,
@@ -45,12 +50,22 @@ def plan(tree: ast.Module) -> ImportPlan:
     taken: frozenset[str]
     values: frozenset[str]
     taken, values = taken_names(tree)
+    bound: dict[str, str] = _bound(tree)
     return ImportPlan(
-        _bound(tree),
+        bound,
         taken,
         _after(tree),
         _defined(tree),
-        block=_block(tree),
+        checking=Checking(
+            _block(tree),
+            _lazy(tree, bound),
+            {
+                name: origin
+                for stmt in tree.body
+                if isinstance(stmt, ast.If) and _is_checking(stmt.test)
+                for name, origin, _ in import_bindings(stmt.body)
+            },
+        ),
         postponed=_postponed(tree),
         values=values,
     )
@@ -200,6 +215,62 @@ def _running(body: list[ast.stmt]) -> Iterator[ast.stmt]:
                 yield from _running(stmt.body + [s for h in stmt.handlers for s in h.body] + stmt.orelse)
             case _:
                 pass
+
+
+def inner_imports(tree: ast.Module) -> Sequence[ast.Import | ast.ImportFrom]:
+    """Find the imports inside the module's functions: what one binds, it binds there alone.
+
+    Returns:
+      Them, in source order.
+
+    """
+    found: _Inner | None
+    if (found := _INNER.get(tree)) is None:
+        found = _INNER[tree] = tuple(_read_inner_imports(tree))
+    return found
+
+
+def _read_inner_imports(tree: ast.Module) -> Iterator[ast.Import | ast.ImportFrom]:
+    statements: list[_Import] = cast("list[_Import]", of_type(tree, ast.Import, ast.ImportFrom))
+    functions: list[FunctionDef] = cast(
+        "list[FunctionDef]",
+        of_type(tree, ast.FunctionDef, ast.AsyncFunctionDef),
+    )
+    spans: list[tuple[Start, Start]] = sorted(
+        ((node.lineno, node.col_offset), (node.end_lineno or node.lineno, node.end_col_offset or 0))
+        for node in functions
+    )
+    starts: list[Start] = [start for start, _ in spans]
+    # Where the last of the functions starting no later than each one ends.
+    ends: list[Start] = list(accumulate((end for _, end in spans), max))
+    stmt: _Import
+    for stmt in sorted(statements, key=lambda node: (node.lineno, node.col_offset)):
+        start: Start = (stmt.lineno, stmt.col_offset)
+        before: int = bisect.bisect_left(starts, start)
+        if before and start < ends[before - 1]:
+            yield stmt
+
+
+def _lazy(tree: ast.Module, bound: dict[str, str]) -> frozenset[str]:
+    """Name the top-level packages only the module's functions import (see `ImportPlan.lazy`).
+
+    Returns:
+      Them.
+
+    """
+    running: set[str] = {origin.partition(".")[0] for origin in bound.values()}
+    return (
+        frozenset(
+            module.partition(".")[0]
+            for stmt in inner_imports(tree)
+            for module in (
+                [alias.name for alias in stmt.names]
+                if isinstance(stmt, ast.Import)
+                else [stmt.module or ""] * (not stmt.level)
+            )
+        )
+        - running
+    )
 
 
 def taken_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:

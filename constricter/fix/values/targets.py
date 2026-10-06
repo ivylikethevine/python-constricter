@@ -20,7 +20,10 @@ DICT_VIEWS: Final = frozenset({"keys", "values", "items"})
 # What iterating each builtin that takes no type argument gives.
 _ELEMENTS: Final = {"str": "str", "bytes": "int", "bytearray": "int", "range": "int"}
 # Containers whose one type parameter is their elements'.
-_ONE_ELEMENT_TYPE: Final = frozenset({"list", "List", "set", "Set", "frozenset", "FrozenSet"})
+# And the builtin iterators', what they yield (`zip[tuple[str, int]]`); `enumerate[T]` counts its `T`s.
+_ONE_ELEMENT_TYPE: Final = frozenset(
+    {"list", "List", "set", "Set", "frozenset", "FrozenSet", "zip", "map", "reversed"},
+)
 # What yields its first type parameter, however it's named (`Iterator[T]`, `abc.Generator[T, None, None]`).
 _YIELDING: Final = frozenset({"Iterable", "Iterator", "Generator"})
 # Mappings of keys to values, however they're named (`dict[K, V]`, `abc.Mapping[K, V]`).
@@ -171,8 +174,11 @@ def element_type(container: str, reason: str, kinds: frozenset[str]) -> Inferenc
     match root:
         case ast.Name(id=name) if name in _ELEMENTS:
             return Inference(_ELEMENTS[name], reason, kinds)
-        case ast.Subscript(value=ast.Name(id=name), slice=item) if name in _ONE_ELEMENT_TYPE:
-            return Inference(ast.unparse(sole(item)), reason, kinds)
+        case ast.Subscript(value=ast.Name(id=name), slice=item) if (
+            name in _ONE_ELEMENT_TYPE or name == ENUMERATE
+        ):
+            text: str = ast.unparse(sole(item))
+            return Inference(f"tuple[int, {text}]" if name == ENUMERATE else text, reason, kinds)
         case ast.Subscript(value=head, slice=ast.Tuple(elts=[item, *_]) | item) if (
             node_name(head) in _YIELDING
         ):

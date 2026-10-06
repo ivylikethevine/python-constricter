@@ -58,7 +58,9 @@ _SIGNATURE: str = (
         ("max(ages.values(), default='')", None),  # another type
         ("max(ages.values(), default=other)", None),
         ("max(names, default=None)", "str | None"),
-        ("min(n, ratio)", None),  # two types
+        ("min(n, ratio)", "float"),  # two numbers' types: the wider
+        ("max(n, flag, 2)", "int"),
+        ("min(n, names[0])", None),  # two types
         ("min(n, other)", None),
         ("max(maybe, maybe)", None),  # a union: what's read may be narrowed
         ("max(n, 3, default=0)", None),  # no default with several values

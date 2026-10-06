@@ -87,11 +87,13 @@ class Seeded(NamedTuple):
 
     `callers`: what every call passes each parameter of its top-level functions, by `id()` (see
     `constricter.fix.index.callers`); `fixtures`: the pytest fixtures its tests can take, each one's
-    value's type (see `constricter.fix.index.fixtures`).
+    value's type (see `constricter.fix.index.fixtures`). And `module`: the names the module binds
+    once, at its top level, each with its type there, which every function reads it as.
     """
 
     callers: Mapping[int, Mapping[str, Passed]] = {}
     fixtures: Mapping[str, Passed] = {}
+    module: Mapping[str, Passed] = {}
 
 
 class Kind(NamedTuple):
@@ -578,7 +580,7 @@ class Scope:
         plan: ImportPlan = self.settings.known.names.plan or ImportPlan({}, frozenset(), 0)
         guarded: tuple[str, ...] = _guarded_imports(fix.annotation, plan)
         guard: str | None = ""
-        if guarded and plan.block == (0, 0) and (guard := plan.spell(_TYPE_CHECKING)) is None:
+        if guarded and plan.checking.block == (0, 0) and (guard := plan.spell(_TYPE_CHECKING)) is None:
             return None  # nothing can be `TYPE_CHECKING` to import them under
         return Fix(
             fix.annotation,
@@ -592,7 +594,7 @@ class Scope:
             after=plan.after,
             guarded=guarded,
             guard=guard or "",
-            block=plan.block,
+            block=plan.checking.block,
         )
 
     def _first(

@@ -6,20 +6,57 @@ parse it the same way (`parse`), and the index's tree is kept (`keep`) for the c
 (`take`), which keeps it again once it's done: a file may be checked a second time. One `--fix`
 changed is freed (`take`, by the text it had). What's kept is capped (`budget`): a tree takes about
 26 bytes of memory for each byte of source, so past the cap a file is parsed again, as it always
-was.
+was. The cap is a quarter of the machine's memory (`sized`), and never under 1 GB of trees.
 """
 
 import ast
 import io
+import os
 import tokenize
 import warnings
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Final, TypeAlias
 
 if TYPE_CHECKING:
     from constricter.rules.tables import Tables
 
-BUDGET: Final = 40 << 20  # bytes of source whose trees a run keeps, over all its processes (about 1 GB)
+_FLOOR: Final = 40 << 20  # bytes of source whose trees any run may keep (about 1 GB of them)
+_TREE: Final = 26  # bytes of memory a tree takes for each byte of its source
+_SHARE: Final = 4  # the kept trees' part of the machine's memory: a quarter
+# A control group's memory limit (a container's), where there is one: `max` for none.
+_GROUP_LIMIT: Final = Path("/sys/fs/cgroup/memory.max")
+
+
+def memory() -> int | None:
+    """Read how much memory this process has to use: the machine's, or its control group's limit if lower.
+
+    Returns:
+      It, in bytes; `None` where the system doesn't say (Windows has no `sysconf`).
+
+    """
+    try:
+        total: int = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+    except (AttributeError, ValueError, OSError):
+        return None
+    try:
+        return min(total, int(_GROUP_LIMIT.read_text(encoding="ascii")))
+    except (OSError, ValueError):  # no control group, or no limit in it
+        return total
+
+
+def sized(available: int | None) -> int:
+    """Size the kept trees' budget for a machine with `available` bytes of memory (see `memory`).
+
+    Returns:
+      The bytes of source whose trees a run keeps: a quarter of the memory's worth, `_FLOOR` at
+      least, and where the memory isn't known.
+
+    """
+    return _FLOOR if available is None else max(_FLOOR, available // _SHARE // _TREE)
+
+
+BUDGET: Final = sized(memory())  # bytes of source whose trees a run keeps, over all its processes
 # A kept tree, and the module's own tables the index read from it (the check reads the same).
 Kept: TypeAlias = "tuple[ast.Module, Tables]"
 

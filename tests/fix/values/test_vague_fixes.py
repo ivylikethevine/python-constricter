@@ -78,7 +78,7 @@ def test_a_fix_is_written_only_as_vague_as_the_level_allows() -> None:
 
 
 def test_what_only_a_vague_type_describes_is_typed_from_1() -> None:
-    """`getattr`, by its default's type if it has one, and a standard-library function declaring `Any`.
+    """`getattr`, by its default's type if it has one; a standard-library function's `Any`; `object()`.
 
     `Any` is named as the module can (here, imported). Not where the module binds `getattr`, for a
     default of no known type, or where `Any` can't be named; a guessed default makes a guess.
@@ -95,6 +95,7 @@ def test_what_only_a_vague_type_describes_is_typed_from_1() -> None:
         e = getattr(o, "x", unknown())
         g = getattr(o, "x", Box())
         h = getattr(o, "x", 1, 2)
+        i = object()
     """
     found: list[Offence] = check_source(textwrap.dedent(source), checks=Checks(vague=1))
     assert {o.name: (o.fix, o.unsafe) for o in found} == {
@@ -105,8 +106,9 @@ def test_what_only_a_vague_type_describes_is_typed_from_1() -> None:
         "e": (None, False),
         "g": ("Any | Box", True),
         "h": (None, False),
+        "i": ("object", False),
     }
-    assert {o.edit.imports for o in found if o.edit is not None} == {("from typing import Any",)}
+    assert {o.edit.imports for o in found if o.edit is not None} == {("from typing import Any",), ()}
     assert [o.fix for o in check_source(textwrap.dedent(source)) if o.fix] == []
     shadowed: str = "def f(o, getattr) -> None:\n    a = getattr(o, 'x')\n"
     taken: str = "import json\nAny = typing = 1\ndef f(s: str) -> None:\n    a = json.loads(s)\n"

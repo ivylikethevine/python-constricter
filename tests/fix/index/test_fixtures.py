@@ -408,7 +408,7 @@ def data() -> Path:
     return Path("data")
 """
 PATH_TEST: Final = "def test_it(data, tmp_path):\n    made = data / 'x'\n    kept = tmp_path / 'y'\n"
-PATH_FIXED: Final = "    made: Path = data / 'x'\n    kept: pathlib.Path = tmp_path / 'y'\n"
+PATH_FIXED: Final = "    made: Path = data / 'x'\n    kept: Path = tmp_path / 'y'\n"
 
 
 def test_a_fixtures_library_class_is_one_from_the_first_pass(tmp_path: Path) -> None:

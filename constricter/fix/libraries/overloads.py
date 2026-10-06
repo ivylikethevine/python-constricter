@@ -30,6 +30,7 @@ from constricter.fix.core.signatures import (
     Constant,
     Parameter,
     ReadSignature,
+    Signature,
     Variant,
 )
 from constricter.fix.libraries import stdlib
@@ -48,6 +49,14 @@ _STAR: Final = "a"
 _STARS: Final = "w"
 _BUILTINS: Final = frozenset({*dir(builtins), _NONE})
 _KIND: Final = "stdlib"
+# The builtin numbers a type checker takes where each of these is declared.
+_PROMOTED: Final = {
+    "int": ("bool",),
+    "float": ("int", "bool"),
+    "complex": ("float", "int", "bool"),
+}
+_GENERATOR: Final = "collections.abc.Generator"
+_ITERATOR: Final = "collections.abc.Iterator"
 _TUPLE: Final = "tuple"
 _ANYTHING: Final = "t"  # `Accepts`' key for a parameter any argument binds
 _RETURNED: Final = "r"  # `Accepts`' key for a callable parameter a function's return binds
@@ -138,7 +147,10 @@ def chosen(
         for variant in variants
         for picked in _picked(variant, read, instance, None if method is None else _receiver(method, known))
     ]
-    found: set[str | None] = {None if picked is None else _written(picked, known) for picked in picks}
+    found: set[str | None] = {None if picked is None else write(picked, known) for picked in picks}
+    if len(found) > 1 and None not in found:
+        # Where Python versions differ only in which iterator they declare: the one all of them are.
+        found = {None if picked is None else write(_iterator(picked), known) for picked in picks}
     annotation: str | None
     if (annotation := found.pop() if len(found) == 1 else None) is None:  # none, or several that disagree
         return None
@@ -155,6 +167,23 @@ def chosen(
     )
 
 
+def _iterator(picked: tuple[str, dict[str, str]]) -> tuple[str, dict[str, str]]:
+    """Write a pick whose template is a `Generator[T, ...]` as the `Iterator[T]` every generator is.
+
+    Returns:
+      It; any other pick as it is.
+
+    """
+    head: ast.expr
+    index: ast.expr
+    match ast.parse(picked[0].removeprefix(SPELLED), mode="eval").body:
+        case ast.Subscript(value=ast.Attribute() as head, slice=index) if ast.unparse(head) == _GENERATOR:
+            first: ast.expr = index.elts[0] if isinstance(index, ast.Tuple) else index
+            return f"{_ITERATOR}[{ast.unparse(first)}]", picked[1]
+        case _:
+            return picked
+
+
 def generic_member(receiver: str, name: str, call: ast.Call | None, known: Known) -> Inference | None:
     """Type a generic standard-library class's own attribute or property, bound by the receiver's type.
 
@@ -169,11 +198,77 @@ def generic_member(receiver: str, name: str, call: ast.Call | None, known: Known
     )
     if found is None:
         return None
-    annotation: str | None = _written((found[1], found[2]), known)
+    annotation: str | None = write((found[1], found[2]), known)
     return (
         None
         if annotation is None
         else Inference(annotation, f"`{found[0]}.{name}`'s annotation in typeshed", frozenset({_KIND}))
+    )
+
+
+def operated(method: stdlib.Method, operands: tuple[str, str], known: Known) -> Inference | None:
+    """Type a binary operator by its left operand's `method` (`__sub__`), for its right operand's type.
+
+    `operands`: both as `stdlib.operand` names them. The first signature whose operand takes the
+    right one answers, as a type checker picks it: the same type, a class under it, or a number
+    promoted to it (an `int` where a `float` is taken).
+
+    Returns:
+      The inference, or `None`: no signature certainly takes it, one before that may, the Python
+      versions differ, or the right operand's class is under the left's (its reflected method may
+      answer first).
+
+    """
+    left: str
+    right: str
+    left, right = operands
+    if left != right and stdlib.inherits(right, left):
+        return None
+    found: set[str | None] = set()
+    variant: Variant
+    for variant in stdlib.method_signatures()[method.entry]:
+        returns: str | None = None
+        signature: Signature
+        for signature in variant:
+            takes: str | None
+            if (takes := signature.get("takes")) is None:
+                break
+            if any(_takes(member, left, right) for member in _members(_parsed(takes))):
+                returns = signature["returns"]
+                break
+        found.add(None if returns is None else write((returns, method.types), known))
+    annotation: str | None
+    if (annotation := found.pop() if len(found) == 1 else None) is None:
+        return None
+    return Inference(annotation, f"`{method.entry}`'s return type, for its operand", frozenset({_KIND}))
+
+
+def _takes(member: str, left: str, right: str) -> bool:
+    """Check whether an operand typed `member` (`Self`: the left operand's own class) takes `right`.
+
+    Returns:
+      Whether it does.
+
+    """
+    wanted: str = left if member == _SELF_TYPE else member
+    return right == wanted or right in _PROMOTED.get(wanted, ()) or stdlib.inherits(right, wanted)
+
+
+def library_element(receiver: str, known: Known) -> Inference | None:
+    """Type what iterating a standard-library class's instance gives, bound by the receiver's type.
+
+    A `for` loop over an `io.TextIOWrapper` binds a `str`, over an `itertools.chain[int]` an `int`.
+
+    Returns:
+      The inference, or `None` if the tables don't have it, or a type parameter it names is unbound.
+
+    """
+    found: tuple[str, str, dict[str, str]] | None = stdlib.element(receiver, known)
+    annotation: str | None = None if found is None else write((found[1], found[2]), known)
+    return (
+        None
+        if found is None or annotation is None
+        else Inference(annotation, f"the elements of a `{found[0]}`", frozenset({_KIND}))
     )
 
 
@@ -772,7 +867,7 @@ def _same(constant: Constant, value: Constant) -> bool:
     return type(constant) is type(value) and constant == value
 
 
-def _written(picked: tuple[str, dict[str, str]], known: Known) -> str | None:
+def write(picked: tuple[str, dict[str, str]], known: Known) -> str | None:
     """Write a return template as the module can: its type variables bound, its classes spelled.
 
     Returns:

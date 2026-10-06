@@ -8,7 +8,7 @@ whose arguments decide its type (`constricter.fix.libraries.overloads`), an inst
 
 import ast
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, TypeAlias
 
 from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.libraries import overloads, stdlib
@@ -19,9 +19,25 @@ if TYPE_CHECKING:
 
 _STDLIB: Final = "stdlib"  # the fix kind
 _STR: Final = "str"
+_DOT: Final = "."
 _SELF: Final = "Self"  # a method's own class, in a template
 _WITH_DEFAULT: Final = 2  # `os.environ.get(key, default)`'s arguments
 _TYPING_ANY: Final = "typing.Any"
+_ARITHMETIC: Final = "arithmetic"  # the fix kind
+_Operator: TypeAlias = type[ast.operator]
+_Operands: TypeAlias = tuple[Inference | None, Inference | None]
+# The method each binary operator calls on its left operand (see `library_operator`).
+_OPERATORS: Final[dict[_Operator, str]] = {
+    ast.Add: "__add__",
+    ast.Sub: "__sub__",
+    ast.Mult: "__mul__",
+    ast.Div: "__truediv__",
+    ast.FloorDiv: "__floordiv__",
+    ast.Mod: "__mod__",
+    ast.BitAnd: "__and__",
+    ast.BitOr: "__or__",
+    ast.BitXor: "__xor__",
+}
 
 
 def library_class(value: ast.Call, known: Known) -> Inference | None:
@@ -39,11 +55,43 @@ def library_class(value: ast.Call, known: Known) -> Inference | None:
     return None if spelled is None else Inference(spelled, f"`{name}`'s return type", frozenset({_STDLIB}))
 
 
+def library_operator(op: ast.operator, sides: _Operands, known: Known) -> Inference | None:
+    """Type an operator by its left operand's standard-library class's method (`__add__`, `__sub__`).
+
+    `when - start`, two `datetime`s, is a `timedelta` (see `overloads.operated`). Where the right
+    operand is a builtin's or a standard-library class's instance too: another class's reflected
+    method may be the one that answers.
+
+    Returns:
+      The inference, or `None`.
+
+    """
+    name: str | None = _OPERATORS.get(type(op))
+    if name is None or sides[0] is None or sides[1] is None:
+        return None
+    left: str | None = stdlib.operand(sides[0].annotation, known)
+    right: str | None = stdlib.operand(sides[1].annotation, known)
+    method: stdlib.Method | None = stdlib.overloaded_method(sides[0].annotation, name, known)
+    if left is None or right is None or method is None:
+        return None
+    found: Inference | None = overloads.operated(
+        stdlib.for_receiver(method, sides[0].annotation),
+        (left, right),
+        known,
+    )
+    return (
+        None
+        if found is None
+        else found._replace(kinds=found.kinds | sides[0].kinds | sides[1].kinds | {_ARITHMETIC})
+    )
+
+
 def library_variable(value: ast.expr, known: Known) -> Inference | None:
     """Infer a standard-library module's variable (`sys.path`, `os.sep`, `from sys import argv`).
 
     Returns:
-      Its type, a class spelled (and imported, if it must be) as the module can; or `None`.
+      Its type, a class spelled (and imported, if it must be) as the module can, its type arguments
+      too (`sys.modules`: a `dict[str, ModuleType]`); or `None`.
 
     """
     name: str | None = (
@@ -53,6 +101,8 @@ def library_variable(value: ast.expr, known: Known) -> Inference | None:
     plan: ImportPlan | None = known.names.plan
     if found is not None and stdlib.is_class(found):
         found = None if plan is None else plan.spell(found)
+    elif found is not None and _DOT in found:  # a template: classes' paths, in a type that says more
+        found = overloads.write((found, {}), known)
     return (
         None
         if found is None
@@ -146,17 +196,20 @@ def library_awaited(
     """Infer `await` of a call of a standard-library coroutine (see `stdlib.awaited_call`).
 
     A function's, by its arguments where they decide it (`await asyncio.wait_for(fetch(), 1)`), or a
-    method's on a receiver whose type `infer` knows; or of any call typed as an awaitable of
-    something (`await asyncio.gather(a(), b())`, an `asyncio.Future[tuple[A, B]]`).
+    method's on a receiver whose type `infer` knows; or of any value typed as an awaitable of
+    something (`await asyncio.gather(a(), b())`, an `asyncio.Future[tuple[A, B]]`; `await task`).
 
     Returns:
       The inference, or `None` for any other value.
 
     """
     call: ast.Call
+    held: ast.expr
     match value:
         case ast.Await(value=ast.Call() as call):
             return _awaited_call(call, known, infer) or _awaited_value(call, known, infer)
+        case ast.Await(value=held):
+            return _awaited_value(held, known, infer)
         case _:
             return None
 
@@ -186,11 +239,11 @@ def _awaited_call(
 
 
 def _awaited_value(
-    call: ast.Call,
+    value: ast.expr,
     known: Known,
     infer: Callable[[ast.expr], Inference | None],
 ) -> Inference | None:
-    made: Inference | None = infer(call)
+    made: Inference | None = infer(value)
     given: str | None = None if made is None else stdlib.awaited_value(made.annotation, known)
     return (
         None

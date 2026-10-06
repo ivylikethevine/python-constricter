@@ -10,6 +10,8 @@ from constricter.fix.core import imports, inherited
 from constricter.fix.core.known import (
     Classes,
     ClassSide,
+    Guarded,
+    ImportPlan,
     Indirect,
     Known,
     LibraryNames,
@@ -17,12 +19,15 @@ from constricter.fix.core.known import (
     Observed,
     Outside,
     Partial,
+    Passed,
     Returned,
     Returns,
 )
 from constricter.fix.libraries import stdlib
 from constricter.fix.values import classvars, entered, returned
 from constricter.fix.values.doubts import facts, says_self
+from constricter.fix.values.inference import inferred
+from constricter.fix.values.members import parsed as parsed_annotation
 from constricter.jsonc import as_text
 from constricter.offences import (
     DEFAULT_CHECKS,
@@ -65,6 +70,7 @@ from constricter.rules.syntax import (
     owners,
     python2_compatible,
     target_names,
+    top_level,
 )
 from constricter.rules.tables import Tables, module_tables
 from constricter.rules.walked import classes, of_type
@@ -78,6 +84,7 @@ _ENUM_MODULES: Final = frozenset({"enum"})
 # The conventional name of an instance method's first parameter: typed as its class, for `--fix`.
 _SELF: Final = "self"
 _TYPE_CHECKING: Final = "TYPE_CHECKING"
+_QUALIFIERS: Final = frozenset({"Final", "ClassVar"})  # what wraps a name's type, or stands for its value's
 
 
 def check_source(
@@ -281,30 +288,64 @@ def checked_tree(
     own = own or module_tables(tree)
     outside = None if outside is None else outside.usable(imports.plan(tree).taken)
     imported: Returns = Returns() if outside is None else outside.returned
-    table: returned.Table = returned.Table(tree, imported)
     settings: Settings = _settings(tree, checks, lines, own, outside)
-    # The table, filled in as the functions are checked in call order, is what they all read.
-    settings = replace(settings, known=replace(settings.known, returned=table.returned))
-    scopes: list[Scope] = _scopes(tree, settings, table)
+    scopes: list[Scope]
     found: Returned
-    settings, scopes, found = _returned(tree, settings, scopes, table, imported)
+    settings, scopes, found = _settled(tree, settings, imported, _module_names(tree, settings))
     # A finding's kind is the code that reports it (LVA008, LVA009, LVA010).
     _finished(tree, scopes)
     flow: list[Offence] = flow_offences(module_flow(tree, scopes), settings.checks.fixes)
     finals: list[Offence] = [o for scope in scopes for o in late.finals(scope)] if checks.final else []
     reported: list[Offence] = [o for scope in scopes for o in scope.reported()]
     exported: Returns = returned.exported(found)
+    plan: ImportPlan = settings.known.names.plan or imports.plan(tree)
+    # With the imports its fixes add under `if TYPE_CHECKING:`, which `outside.guarded` doesn't hold.
+    guarded: dict[str, Guarded] = {
+        **{name: each for name, each in plan.guarded.items() if each.statement is not None},
+        **({} if outside is None else outside.guarded),
+    }
     return Checked(
         sorted([*reported, *redundant(tree, settings.checks.fixes), *flow, *finals]),
-        exported._replace(
-            names=returned.exported_names(
-                exported,
-                {} if outside is None else outside.guarded,
-                (settings.known.names.plan or imports.plan(tree)).added,
-            ),
-        ),
+        exported._replace(names=returned.exported_names(exported, guarded, plan.added)),
         observed(tree, scopes, settings.known, {} if outside is None else outside.callees),
     )
+
+
+def _settled(
+    tree: ast.Module,
+    first: Settings,
+    imported: Returns,
+    names: dict[str, Passed],
+    rounds: int = _ROUNDS,
+) -> tuple[Settings, list["Scope"], Returned]:
+    """Check the module's scopes, its functions reading its top level's `names` as typed (`_module_names`).
+
+    A name the module binds to what an unannotated function returns is typed only once that
+    function is checked: the scopes are then checked once more, knowing it, until no name's type
+    is new (`rounds` times at most).
+
+    Returns:
+      The settings with what its functions return, the scopes checked with them, and what its own
+      return.
+
+    """
+    table: returned.Table = returned.Table(tree, imported)
+    seeded: Seeded = first.parameters or Seeded()
+    # The table, filled in as the functions are checked in call order, is what they all read.
+    settings: Settings = replace(
+        first,
+        known=replace(first.known, returned=table.returned),
+        parameters=seeded._replace(module=names),
+    )
+    checked: tuple[Settings, list[Scope], Returned] = _returned(
+        tree,
+        settings,
+        _scopes(tree, settings, table),
+        table,
+        imported,
+    )
+    latest: dict[str, Passed] = _module_names(tree, checked[0])
+    return checked if latest == names or rounds <= 1 else _settled(tree, first, imported, latest, rounds - 1)
 
 
 class Coverage(NamedTuple):
@@ -336,6 +377,64 @@ def annotation_coverage(source: str | bytes, checks: Checks = DEFAULT_CHECKS) ->
     total: int = sum(len(scope.bound()) for scope in scopes)
     untyped: int = sum(o.code in _UNTYPED for scope in scopes for o in scope.reported())
     return Coverage(total - untyped, total)
+
+
+def _module_names(tree: ast.Module, settings: Settings) -> dict[str, Passed]:
+    """Type the names the module binds once, anywhere in it, at its top level: what its functions read.
+
+    `LIMIT = 10` is an `int` in every function, and `NAMES: Final = ["a"]` a `list[str]`: a name bound
+    once means the same thing throughout (see `imports.rebound_names`), and a type checker takes its
+    one value's type for its own. As the module's body types it, before its functions are checked.
+
+    Returns:
+      Each such name's type, and what it rests on if it's a guess.
+
+    """
+    scope: Scope = _body_scope(tree.body, settings, Kind(UNANNOTATED_MEMBER, fixable=True))
+    rebound: Mapping[str, list[Start]] = imports.rebound_names(tree)
+    values: dict[str, ast.expr] = {}
+    stmt: ast.stmt
+    target: ast.expr
+    value: ast.expr
+    for stmt in top_level(tree.body):
+        match stmt:
+            case (
+                ast.AnnAssign(target=ast.Name() as target, value=ast.expr() as value)
+                | ast.Assign(targets=[ast.Name() as target], value=value)
+            ):
+                values[target.id] = value
+            case _:
+                pass
+    found: dict[str, Passed] = {}
+    name: str
+    annotation: str
+    for name, annotation in scope.inferred.types.items():
+        held: str | None = _held(annotation, values.get(name), scope)
+        if name not in rebound and held is not None:
+            found[name] = (held, scope.inferred.origins.get(name, frozenset()))
+    return found
+
+
+def _held(annotation: str, value: ast.expr | None, scope: "Scope") -> str | None:
+    """Read the type of what a module's name holds from its annotation there.
+
+    Returns:
+      The annotation; a `Final[T]`'s or a `ClassVar[T]`'s `T`; a bare `Final`'s value's type, if
+      it's known; `None` for one that isn't its value's type (`TypeAlias`).
+
+    """
+    inner: ast.expr
+    head: ast.Name | ast.Attribute
+    match parsed_annotation(annotation):
+        case ast.Subscript(value=ast.Name() | ast.Attribute() as head, slice=inner) if (
+            node_name(head) in _QUALIFIERS
+        ):
+            return ast.unparse(inner)
+        case ast.Name() | ast.Attribute() as head if node_name(head) in _QUALIFIERS | {_TYPE_ALIAS}:
+            bare: bool = value is not None and node_name(head) in _QUALIFIERS
+            return inferred(value, scope.settings.known, scope.inferred.types) if bare and value else None
+        case _:
+            return annotation
 
 
 def _scopes(tree: ast.Module, settings: Settings, table: returned.Table | None = None) -> list["Scope"]:
@@ -476,6 +575,11 @@ def _function_scope(
     if owner is not None and named and [node_name(d) for d in func.decorator_list] == [_CLASSMETHOD]:
         _ = scope.inferred.types.setdefault(named[0].arg, f"type[{owner}]")
     seed_parameters(scope, func, named)
+    # What the module's top level binds once, the function reads as it's typed there.
+    name: str
+    passed: Passed
+    for name, passed in (settings.parameters or Seeded()).module.items():
+        scope.inferred.learn(name, passed[0], passed[1] or None)
     arg: ast.arg
     for arg in named:
         # A parameter holds whatever its callers pass: its declared type, as far as value flow knows.
@@ -486,7 +590,6 @@ def _function_scope(
             None if arg.annotation is None else ast.unparse(arg.annotation),
         )
     scope.opaque(extra.arg for extra in (args.vararg, args.kwarg) if extra is not None)
-    name: str
     typed: Late
     for name, typed in (seed or {}).items():
         scope.inferred.seeded[name] = typed

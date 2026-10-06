@@ -44,7 +44,7 @@ class Plain(object):
         pass
 
     def helper(self) -> None:
-        self.stored = 1
+        self.stored = None
 
     helper = 0
 
@@ -596,3 +596,133 @@ def test_the_command_takes_listed_bases_from_a_flag_and_pyproject(
     assert cli.main(arguments) == cli.EXIT_CLEAN
     assert path.read_text(encoding="utf-8") == fixed
     _ = capsys.readouterr()
+
+
+GENERICS: Final = """
+import abc
+import typing
+from abc import ABC
+from typing import Generic, NamedTuple, Protocol, TypeVar
+
+T = TypeVar("T")
+
+
+class Box(Generic[T]):
+    limit = 3
+
+
+class Wide(Box[int]):
+    width = 2.5
+
+
+class Names(list[str]):
+    sep = ","
+
+
+class Shape(ABC):
+    sides = 0
+
+
+class Square(Shape, typing.Generic[T], abc.ABC):
+    sides = 4
+
+
+class Speaks(Protocol[T]):
+    volume = 1
+
+
+class Row(NamedTuple):
+    size: int = 0
+
+
+class Made(make()[T]):
+    made = 1
+"""
+
+
+def test_a_generic_or_abstract_class_is_plain() -> None:
+    """`Generic[T]`, `abc.ABC` and a plain base's subscript make no field of an annotation; a protocol may."""
+    tree: ast.Module = ast.parse(textwrap.dedent(GENERICS))
+    assert classvars.plain(tree, classvars.imported(tree)) == {"Box", "Wide", "Names", "Shape", "Square"}
+    assert _fixed(GENERICS) == {
+        "limit": ("int", True),
+        "width": ("float", True),
+        "sep": ("str", True),
+        "sides": ("int", True),
+        "volume": (None, False),
+        "made": (None, False),
+    }
+
+
+def test_a_base_passed_over_is_one_where_a_checked_file_defines_it(tmp_path: Path) -> None:
+    """The standard library, checked: a class under its `abc.ABC` (given a metaclass) is still plain."""
+    files: dict[str, str] = {
+        "abc.py": "class ABC(metaclass=type):\n    pass\n",
+        "shapes.py": "from abc import ABC\n\n\nclass Shape(ABC):\n    sides = 0\n",
+    }
+    paths: list[Path] = []
+    name: str
+    source: str
+    for name, source in files.items():
+        path: Path = tmp_path / name
+        _ = path.write_text(source, encoding="utf-8")
+        paths.append(path)
+    settled: project.Index = plain.settled(project.index(paths))
+    assert settled.modules["shapes"].plain == {"Shape"}
+    assert settled.modules["abc"].plain == frozenset()
+
+
+STORED: Final = """
+class Reader:
+    closed = False
+    count = 0
+    names = ["a"]
+    label = ""
+    size = 0
+    ratio = 1.5
+    flag = False
+    width = 1
+    depth = 1
+    first = 0
+    gone = 0
+    typed = 0
+
+    def close(self, size, other) -> None:
+        self.closed = True
+        self.count += 1
+        self.count = self.count = 2
+        self.names += ["b"]
+        self.label = None
+        self.size = size
+        self.ratio += size
+        self.flag += 1
+        self.width, self.depth = 2, 3
+        for self.first in (1, 2):
+            pass
+        del self.gone
+        self.typed: int = 1
+        other.closed = False
+"""
+
+
+def test_a_variable_the_module_stores_as_the_same_type_is_typed() -> None:
+    """`self.closed = True` keeps a `bool`, and `self.count += 1` an `int`; any other store may not."""
+    fixed: _Fixed = _fixed(STORED)
+    assert {name: fix for name, fix in fixed.items() if fix[0]} == {
+        "closed": ("bool", True),
+        "count": ("int", True),
+        "names": ("list[str]", True),
+    }
+    # `None`, a parameter, an operator that gives another type, an unpacking, a loop's target, a
+    # `del` and an annotated store.
+    assert {name for name, fix in fixed.items() if not fix[0]} == {
+        "label",
+        "size",
+        "ratio",
+        "flag",
+        "width",
+        "depth",
+        "first",
+        "gone",
+        "typed",
+    }

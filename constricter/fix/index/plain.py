@@ -28,7 +28,7 @@ def settled(catalog: Index, entries: Sequence[str] = ()) -> Index:
     followed there: a class under another file's plain class is plain, and a class that isn't
     makes what it inherits from, in any file, not plain either. A base `entries` list
     (`classvars.listed`) is one a plain class may have even where a checked file defines it, plain
-    or not: the framework's own files, checked.
+    or not: the framework's own files, checked. So is one passed over (`classvars.PASSED_OVER`).
 
     Returns:
       The index, each checked module with its plain classes.
@@ -42,7 +42,11 @@ def settled(catalog: Index, entries: Sequence[str] = ()) -> Index:
     if not found:
         return catalog
     unlisted: dict[str, tuple[str, ...]] = {
-        name: tuple(base for base in bases if not classvars.listed(base, entries))
+        name: tuple(
+            base
+            for base in bases
+            if base not in classvars.PASSED_OVER and not classvars.listed(base, entries)
+        )
         for name, bases in found.items()
     }
     plain: frozenset[str] = classvars.settled(unlisted, classvars.allowed)

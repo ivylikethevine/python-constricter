@@ -67,12 +67,14 @@ class Signature(TypedDict):
 
     The return is a template (see `constricter.fix.libraries.overloads`), or `None` if `--fix` can't write it.
     `self`: for a generic class's method declaring its instance's type (`self: Pattern[str]`), the
-    type arguments that instance must have.
+    type arguments that instance must have. `takes`: for an operator's method (`__add__`), its one
+    operand's type as a template, or `None` if `--fix` can't write it.
     """
 
     params: list[Parameter | str]
     returns: str | None
     self: NotRequired[list[str]]
+    takes: NotRequired[str | None]
 
 
 Variant: TypeAlias = list[Signature]  # one configuration's signatures, in order

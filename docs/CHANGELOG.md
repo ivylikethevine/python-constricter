@@ -6,6 +6,80 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` no longer types a standard-library call by a declaration only some supported Pythons have,
+  where the others declare it another way: `importlib.metadata.entry_points()`, overloaded before
+  3.12 (a `SelectableGroups` then, where the file couldn't name `EntryPoints`),
+  `handler.filter(record)` (a `bool` before 3.12, a `bool | LogRecord` since) and
+  `zipimporter.get_resource_reader(...)` (a `ZipReader | None` before 3.14) have no fix now.
+- `--fix` resolves a function's own imports: with `import os` or `from inspect import signature` in
+  its body, `os.getcwd()` is a `str` and `signature(f)` an `inspect.Signature` there, and in the
+  functions inside it. Not a name the function binds another way too (`try: import x` /
+  `except ImportError: x = None`), nor one two of its imports bind to different things. A type of a
+  module only functions import is imported under `if TYPE_CHECKING:`: the module may not be there to
+  import when the file is (another platform's `pwd`).
+- `--fix` names a type by the import the module has for it under a top-level `if TYPE_CHECKING:`
+  (`sig: Signature`, quoted in a module body), where it added `import inspect` and wrote
+  `inspect.Signature` before.
+- `--fix` types a standard-library class's attribute or property whose type has classes' own
+  arguments, and what's read of it: `sig.parameters` on an `inspect.Signature` is a
+  `MappingProxyType[str, inspect.Parameter]` (so `list(sig.parameters.values())` a
+  `list[inspect.Parameter]`), `for stmt in tree.body` declares `stmt: ast.stmt`, `path.parents` is a
+  `Sequence[Path]`; such a module variable too (`sys.modules[name]` is a `ModuleType`), and
+  `sys._getframe()` (a `types.FrameType`).
+- `--fix` types an operator between a standard-library class's instance and another's or a
+  builtin's, by its method's signatures in typeshed: `when - start` of two `datetime`s is a
+  `timedelta`, `when + span` a `datetime`, `price * 2` a `Decimal`, `span / span` a `float`. Not
+  where the right operand's class is under the left's, or isn't the standard library's. And a
+  `dict`'s `.keys()` with a `set` of its key type (`allowed & config.keys()` is a `set[str]`).
+- `--fix` types a call of a module's `NewType` (`ref = Ref(name)` is a `Ref`), in the module making
+  it and in the checked files importing it.
+- The trees a run keeps between indexing and checking are capped by the machine's memory: a quarter
+  of it (of a container's limit, where that's lower), and 1 GB at least, which was the cap on every
+  machine. Windows, which doesn't say how much it has, keeps 1 GB.
+- `--fix` types a standard-library method declared to return a type naming `Self` by its receiver:
+  `for child in path.iterdir()` declares `child: Path`, `list(path.glob("*"))` is a `list[Path]`
+  (`glob` an `Iterator[Path]`, on every Python), `names.copy()` on a `collections.deque[str]` a
+  `collections.deque[str]`.
+- `--fix` types `enumerate(xs)`, `zip(xs, ys)`, `map(f, xs)` and `reversed(xs)` bound to a name, by
+  what a loop over each binds (`enumerate[str]`, `zip[tuple[str, int]]`, `map[int]`), quoted at
+  module level where no Python can subscript the class at run time; and a loop over, or an unpacking
+  of, a name holding one.
+- `--fix` types `path.open(mode)` on a `pathlib` path as it types `open(path, mode)`, by its literal
+  mode, and so a `with path.open() as f:`'s target and `f.read()`.
+- `--fix` types a loop over an `X | None` as one over the `X`.
+- `--fix` types a loop over a standard-library class's instance by its `__iter__` in typeshed:
+  `for line in open(path)` declares `line: str`, a loop over a binary file `bytes`, over an
+  `itertools.chain[int]` or a `collections.deque[int]` an `int`, over a `tarfile.TarFile` a
+  `tarfile.TarInfo`; and what's built from one (`list(file)`, `[line.strip() for line in file]`).
+- `--fix` types what a generic standard-library class inherits with one type: `f.read()` and
+  `f.readlines()` on the `io.TextIOWrapper` or `io.BufferedReader` that `open` gives, `f.closed`,
+  `task.done()` on an `asyncio.Task`.
+- `--fix` types a member of an `X | None` as `X`'s (`m = re.match(...)`, then `m.start()` and
+  `m.string`): a type checker has narrowed the value there, or reports the access. Not a member
+  `None` has too, nor one of a union of more types.
+- `--fix` types `x.__class__` as `type(x)` is typed (`type[C]`), and a class's `__name__`,
+  `__qualname__` and `__module__` read of either as a `str`, whatever `x` is (`type(x).__name__`,
+  `self.__class__.__name__`).
+- `--fix` types what a function reads of the names its module binds once, at its top level: with
+  `LIMIT = 10` and `NAMES = ["a"]` there, `n = LIMIT + 1` is an `int` and `for name in NAMES` a loop
+  over `str`s, in every function. By the name's annotation (a `Final[T]`'s `T`, a bare `Final`'s
+  value's type) or its one value's type, a guess where that is one. Not a name anything in the
+  module binds again (a parameter or a local of that name, a `global` statement's).
+- `--fix` types more operators on builtin values: an integer's `**` by a literal (`2 ** 32 - 1`), a
+  `float`'s by an integer, `<<`, `>>`, `&`, `|` and `^` of integers (`1 << 30`; of two `bool`s, a
+  `bool`), an integer times a `str`, `bytes` or `list` (`3 * "ab"`), a tuple's `+` and `*`
+  (`pair + (n,)` is a `tuple[int, str, int]`, `(0,) * n` a `tuple[int, ...]`), a `set`'s or
+  `frozenset`'s `|`, `&`, `-` and `^` with another of its type, and a `dict`'s `|`.
+- `--fix` types a fixed-length tuple's part by a literal index (`pair[0]`, `pair[-1]`), a slice of a
+  `tuple[T, ...]`, `a or []` and `a if c else {}` by `a`'s `list` or `dict` (`a if a else []` is
+  never `None`), `sorted(xs, key=..., reverse=True)`, `min` and `max` of an `int` and a `float` (a
+  `float`), a module's own `__file__` and `__name__` (`os.path.dirname(__file__)` is a `str`),
+  `await` of a task or a future held in a name (`done = await task`), and, from `vague` 1,
+  `object()`.
+- `--fix --unsafe-fixes` types more class variables: a class under `Generic[T]`, `abc.ABC` or a
+  plain class's subscript (`class Wide(Box[int])`) is plain, where none of them made one before, nor
+  any class above it; and a variable the module stores is typed where every store keeps its type
+  (`closed = False` with `self.closed = True`, `count = 0` with `self.count += 1`).
 - `--fix` types what a coroutine's call gives the standard library's task and run functions:
   `asyncio.create_task(fetch(url))` is an `asyncio.Task[bytes]` where `fetch` declares `bytes`
   (`loop.create_task` and a task group's too), `asyncio.gather(a(), b())` an

@@ -51,6 +51,8 @@ OVERLOADS: Final = cast("dict[str, list[Variant]]", _table("overloads"))
 # Classes, and functions (constructors, classmethods) returning one: typed by that class's dotted
 # path, spelled (and imported, if it must be) the way the module can.
 CLASSES: Final = cast("dict[str, str]", _table("classes"))
+# The builtin iterators no Python can subscript at run time.
+_UNSUBSCRIPTABLE: Final = frozenset({"zip", "map", "reversed"})
 # The `pathlib` classes: each one's `/` joins another part onto it.
 _PATHS: Final = frozenset(
     f"pathlib.{name}"
@@ -83,8 +85,11 @@ _TYPE_PARAMETERS: Final = cast("Mapping[str, str]", _table("type_parameters"))
 # `itertools.count[int]`), as a module's own annotations are evaluated.
 _SUBSCRIPTABLE: Final = cast("Mapping[str, str]", _table("subscriptable"))
 # Each generic class's own attributes and properties, as templates naming its type parameters
-# (`re.Match`'s `string`: `AnyStr`), which its instance's type arguments bind.
+# (`re.Match`'s `string`: `AnyStr`), which its instance's type arguments bind; and a non-generic
+# class's own that `_ATTRIBUTES` can't hold (`ast.Module`'s `body`: `list[ast.stmt]`).
 _GENERIC_ATTRIBUTES: Final = cast("_Own", _table("generic_attributes"))
+# What iterating each class's instance gives, as such a template (`io.TextIOWrapper`'s `str`).
+_ELEMENTS: Final = cast("Mapping[str, str]", _table("elements"))
 
 
 @cache
@@ -140,6 +145,7 @@ _KIND: Final = "stdlib"  # the fix kind of what the tables type
 _BUILTIN_NAMES: Final = frozenset({*dir(builtins), "None"})
 _DOT: Final = "."
 _ENTER: Final = "__enter__"
+_SELF: Final = "Self"  # in a template: the receiver's own type
 ANY: Final = "Any"  # a function's whole return in `RETURNS`, declared `typing.Any` (`json.loads`)
 KNOWN: Final = frozenset({*RETURNS, *OVERLOADS, ENVIRONMENT, *CLASSES})  # every function the tables type
 # Capitalised functions the tables don't type (`xml.etree.ElementTree.Comment`): no constructors.
@@ -164,10 +170,10 @@ def origins(tree: ast.Module) -> dict[str, str]:
       Each bound name, mapped to its dotted origin.
 
     """
-    return _imported(tree.body)
+    return imported(tree.body)
 
 
-def _imported(body: Iterable[ast.stmt]) -> dict[str, str]:
+def imported(body: Iterable[ast.stmt]) -> dict[str, str]:
     """Map the names the imports among `body` bind to what they are (see `origins`).
 
     Returns:
@@ -361,6 +367,16 @@ class Method(NamedTuple):
     matched: str | None = None
 
 
+def for_receiver(method: Method, receiver: str) -> Method:
+    """Bind a method's `Self` to `receiver`: a class under the one it was found on has it as its own.
+
+    Returns:
+      The method, its `Self` (if it binds one) the receiver's type.
+
+    """
+    return method._replace(types={**method.types, _SELF: receiver}) if _SELF in method.types else method
+
+
 def overloaded_method(receiver: str, name: str, known: Known) -> Method | None:
     """Find a standard-library class's method whose arguments decide its type (see `method_signatures`).
 
@@ -381,11 +397,37 @@ def overloaded_method(receiver: str, name: str, known: Known) -> Method | None:
         for node in ast.walk(arg)
         if isinstance(node, ast.Name | ast.Attribute)
     )
-    return Method(entry, texts if args and builtin else None, _bound(path, texts))
+    return Method(entry, texts if args and builtin else None, _bound(path, texts, receiver))
+
+
+def operand(annotation: str, known: Known) -> str | None:
+    """Name an operand's type as an operator's `takes` does: a builtin's name, or a class's path.
+
+    Returns:
+      It, or `None` for any other type: a union, a subscript, a class the tables don't have.
+
+    """
+    root: ast.expr = _parsed(annotation)
+    if isinstance(root, ast.Name) and root.id in _BUILTIN_NAMES:
+        return root.id if known.is_builtin(root.id) else None
+    return _path(root, known) if isinstance(root, ast.Name | ast.Attribute) else None
+
+
+def inherits(path: str, ancestor: str) -> bool:
+    """Check whether the class at `path` is under `ancestor`, as far as the tables know its bases.
+
+    Returns:
+      Whether it is.
+
+    """
+    return any(base == ancestor or inherits(base, ancestor) for base in _ancestors(path))
 
 
 def generic_attribute(receiver: str, name: str, known: Known) -> tuple[str, str, dict[str, str]] | None:
-    """Find a generic class's own attribute or property on a receiver of a known type (`re.Match[str]`).
+    """Find a class's attribute or property held as a template, on a receiver of a known type.
+
+    A generic class's own (`string`, on an `re.Match[str]`), or one a class with no type parameters
+    has or inherits (`parameters`, on an `inspect.Signature`).
 
     Returns:
       Its class's path, its template (see `_GENERIC_ATTRIBUTES`), and the class's type parameters
@@ -395,10 +437,33 @@ def generic_attribute(receiver: str, name: str, known: Known) -> tuple[str, str,
     path: str | None
     args: list[ast.expr]
     path, args = _receiver(receiver, known)
-    template: str | None = None if path is None else _GENERIC_ATTRIBUTES.get(path, {}).get(name)
+    template: str | None = None
+    if path is not None:
+        template = (
+            _GENERIC_ATTRIBUTES.get(path, {}).get(name)
+            if path in _TYPE_PARAMETERS
+            else _member(_GENERIC_ATTRIBUTES, path, name)
+        )
     if path is None or template is None:
         return None
-    return path, template, _bound(path, [ast.unparse(arg) for arg in args])
+    return path, template, _bound(path, [ast.unparse(arg) for arg in args], receiver)
+
+
+def element(receiver: str, known: Known) -> tuple[str, str, dict[str, str]] | None:
+    """Find what iterating a standard-library class's instance gives (a `for` loop over a file: its lines).
+
+    Returns:
+      Its class's path, the element's template (see `_ELEMENTS`), and the class's type parameters
+      bound to the receiver's type arguments as the module spells them; or `None`.
+
+    """
+    path: str | None
+    args: list[ast.expr]
+    path, args = _receiver(receiver, known)
+    template: str | None = None if path is None else _ELEMENTS.get(path)
+    if path is None or template is None:
+        return None
+    return path, template, _bound(path, [ast.unparse(arg) for arg in args], receiver)
 
 
 def _receiver(receiver: str, known: Known) -> tuple[str | None, list[ast.expr]]:
@@ -416,15 +481,20 @@ def _receiver(receiver: str, known: Known) -> tuple[str | None, list[ast.expr]]:
     return _path(root, known), args
 
 
-def _bound(path: str, texts: list[str]) -> dict[str, str]:
+def _bound(path: str, texts: list[str], receiver: str) -> dict[str, str]:
     """Bind a generic class's type parameters to an instance's type arguments, if it gives them all.
+
+    And `Self` to `receiver`, the instance's type as the module spells it: not a generic class
+    named without its arguments.
 
     Returns:
       Each parameter's argument, by name; none if they don't match.
 
     """
     params: list[str] = [param.rstrip("=") for param in _TYPE_PARAMETERS.get(path, "").split(",") if param]
-    return dict(zip(params, texts, strict=True)) if texts and len(params) == len(texts) else {}
+    if len(params) != len(texts):
+        return {}
+    return {**dict(zip(params, texts, strict=True)), _SELF: receiver}
 
 
 def generics(bound: Mapping[str, str]) -> frozenset[str]:
@@ -492,13 +562,19 @@ def _generic_paths(origin: str) -> tuple[str, ...]:
 def evaluable(annotation: str, known: Known) -> bool:
     """Check that an annotation subscripts no standard-library class that can't be at run time.
 
+    Nor a builtin iterator that can't (`zip[tuple[int, str]]`).
+
     Returns:
       Whether it can be evaluated (as a module's annotations are) without that `TypeError`.
 
     """
     node: ast.AST
     for node in ast.walk(_parsed(annotation)):
-        path: str | None = _path(node.value, known) if isinstance(node, ast.Subscript) else None
+        if not isinstance(node, ast.Subscript):
+            continue
+        if isinstance(node.value, ast.Name) and node.value.id in _UNSUBSCRIPTABLE:
+            return False
+        path: str | None = _path(node.value, known)
         if path in _TYPE_PARAMETERS and path not in _SUBSCRIPTABLE:
             return False
     return True
@@ -511,7 +587,17 @@ def joins_path(left: str, right: str | None, known: Known) -> bool:
       Whether `left` is a `pathlib` path class's annotation, and `right` a `str`'s or the same.
 
     """
-    return right in {"str", left} and _class_path(left, known) in _PATHS
+    return right in {"str", left} and is_path(left, known)
+
+
+def is_path(receiver: str, known: Known) -> bool:
+    """Check whether `receiver` is a `pathlib` path class's annotation.
+
+    Returns:
+      Whether it is.
+
+    """
+    return _class_path(receiver, known) in _PATHS
 
 
 def _class_path(receiver: str, known: Known) -> str | None:
@@ -538,6 +624,8 @@ def _path(root: ast.expr, known: Known) -> str | None:
         path = resolved(root, _added(tuple(plan.added.values())))
     if path is None and plan is not None and plan.guarded:
         path = _guarded(root, plan)
+    if path is None and plan is not None and plan.checking.bound:
+        path = resolved(root, plan.checking.bound)
     # A class's own path, where the module binds no name it starts with: a library base out of its
     # sight, as the index names it (see `constricter.fix.index.beyond`).
     if path is None and isinstance(root, ast.Attribute):  # a dotted path alone can be a class's own
@@ -568,13 +656,13 @@ def _guarded(root: ast.expr, plan: ImportPlan) -> str | None:
 
 @lru_cache(maxsize=256)
 def _added(statements: tuple[str, ...]) -> Mapping[str, str]:
-    """Map the names the imports `--fix` is adding bind (see `_imported`), read once for all its lookups.
+    """Map the names the imports `--fix` is adding bind (see `imported`), read once for all its lookups.
 
     Returns:
       Each bound name, mapped to its dotted origin: shared, so only read it.
 
     """
-    return _imported(ast.parse("\n".join(statements)).body)
+    return imported(ast.parse("\n".join(statements)).body)
 
 
 @lru_cache(maxsize=4096)

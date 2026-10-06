@@ -76,8 +76,14 @@ def _plan(source: str) -> ImportPlan:
             "files.open",
             {"files": "import files"},
         ),  # `from files import open`: shadows the builtin
-        (  # only a type checker's import: `BytesIO` isn't bound when the module runs
+        (  # only a type checker's import: an annotation can name it (quoted, where it's evaluated)
             "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n  from io import BytesIO\n",
+            "io.BytesIO",
+            "BytesIO",
+            {},
+        ),
+        (  # but not where the module binds the name to a value too
+            "import typing\nif typing.TYPE_CHECKING:\n  from io import BytesIO\nelse:\n  BytesIO = 1\n",
             "io.BytesIO",
             "io.BytesIO",
             {"io": "import io"},
@@ -97,6 +103,27 @@ def test_a_plan_spells_a_class_as_the_module_can(
     plan: ImportPlan = _plan(source)
     assert plan.spell(qualified) == spelled
     assert plan.added == added
+
+
+def test_a_type_of_a_module_only_a_function_imports_is_imported_for_type_checking() -> None:
+    """A module only a function imports may not be there when the module is imported: no import that runs."""
+    plan: ImportPlan = _plan("import io\n\ndef f():\n  import pwd\n  import io\n  from sys import path\n")
+    assert plan.checking.lazy == {"pwd", "sys"}
+    assert [plan.spell("pwd.struct_passwd"), plan.spell("io.BytesIO")] == ["struct_passwd", "io.BytesIO"]
+    assert not plan.added
+    assert {name: guarded.statement for name, guarded in plan.guarded.items()} == {
+        "struct_passwd": "from pwd import struct_passwd",
+    }
+    taken: ImportPlan = _plan("struct_passwd = 1\n\ndef f():\n  import pwd\n")
+    assert taken.spell("pwd.struct_passwd") is None
+
+
+def test_a_plan_spells_a_class_by_the_import_it_guards() -> None:
+    """A name to import for type checking alone already names its class: no second import, or pass."""
+    plan: ImportPlan = _plan("")
+    assert plan.guard("BytesIO", ("io", "BytesIO"), "from io import BytesIO")
+    assert [plan.spell("io.BytesIO"), plan.spell("other.BytesIO")] == ["BytesIO", "other.BytesIO"]
+    assert plan.added == {"other": "import other"}
 
 
 def test_a_plan_adds_each_import_once() -> None:

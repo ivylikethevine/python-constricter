@@ -91,6 +91,114 @@ def test_a_table_function_is_typed_however_it_is_imported() -> None:
     }
 
 
+def test_a_functions_own_import_is_resolved_in_it() -> None:
+    """A name a function's own imports alone bind is what they import, in it and the functions inside it.
+
+    Not one it binds another way too, nor one two of its imports bind to different things; and a
+    type of a module only a function imports is imported for type checking alone.
+    """
+    source: str = """
+    import os
+    from typing import TYPE_CHECKING
+
+    if TYPE_CHECKING:
+        from inspect import Signature
+
+
+    def f(name: str, flag: bool) -> None:
+        import os.path as osp
+        import time
+        from inspect import signature
+        from subprocess import run
+
+        if flag:
+            from os import getpid
+        else:
+            from threading import get_ident as getpid
+        try:
+            import shutil
+        except ImportError:
+            shutil = None
+
+        a = time.time()
+        b = osp.basename(name)
+        c = signature(f)
+        d = run([name], text=True)
+        e = getpid()
+        g = shutil.which(name)
+
+        def inner() -> None:
+            h = time.monotonic()
+
+
+    def g(name: str) -> None:
+        x = time.time()
+        y = os.getpid()
+    """
+    found: list[Offence] = check_source(textwrap.dedent(source))
+    assert {o.name: o.fix for o in found if o.code == UNANNOTATED} == {
+        "a": "float",
+        "b": "str",
+        "c": "Signature",
+        "d": "CompletedProcess[str]",
+        "e": None,
+        "g": None,
+        "h": "float",
+        "x": None,
+        "y": "int",
+    }
+    assert [(o.name, o.edit.guarded) for o in found if o.edit is not None and o.edit.guarded] == [
+        ("d", ("from subprocess import CompletedProcess",)),
+    ]
+    assert not [o.name for o in found if o.edit is not None and o.edit.imports]
+
+
+def test_an_attribute_naming_classes_is_written_as_the_module_can() -> None:
+    """An attribute or a module variable typed with classes' own arguments is spelled part by part.
+
+    `Signature`'s `parameters`, `ast.Module`'s `body`, one a class inherits (`SECTCRE`), and
+    `sys.modules`; a type imported for type checking alone names a receiver too.
+    """
+    source: str = """
+    import ast
+    import configparser
+    import inspect
+    import sys
+    from typing import TYPE_CHECKING
+
+    if TYPE_CHECKING:
+        from pathlib import PurePath
+
+
+    def f(sig: inspect.Signature, tree: ast.Module, parser: configparser.ConfigParser, p: "PurePath") -> None:
+        a = sig.parameters
+        b = list(sig.parameters.values())
+        for c in tree.body:
+            d = c.lineno
+        e = parser.SECTCRE
+        g = sys.modules
+        h = sys.modules["os"]
+        i = sys._getframe(1)
+        j = i.f_code
+        k = p.parents
+        m = p.with_name("x")
+    """
+    found: list[Offence] = check_source(textwrap.dedent(source))
+    assert {o.name: o.fix for o in found if o.code in {UNANNOTATED, "LVA002"}} == {
+        "a": "MappingProxyType[str, inspect.Parameter]",
+        "b": "list[inspect.Parameter]",
+        "c": "ast.stmt",
+        "d": "int",
+        "e": "Pattern[str]",
+        "g": "dict[str, ModuleType]",
+        "h": "ModuleType",
+        "i": "FrameType",
+        "j": "CodeType",
+        "k": "Sequence[PurePath]",
+        "m": "PurePath",
+    }
+
+
 def test_a_bare_generic_return_is_written_with_its_defaults() -> None:
     """`SubElement` returns a bare `Element`, whose `_Tag` defaults to `str`: an `Element[str]`.
 
@@ -215,6 +323,127 @@ def test_classes_and_what_returns_them_are_certain() -> None:
     }
 
 
+def test_what_python_versions_declare_in_different_ways_is_not_typed() -> None:
+    """Overloaded on some Pythons and one `def` on others, or a fixed return that became a union: no fix.
+
+    Whether or not the file can name the class one of them returns (`EntryPoints`, bound here).
+    """
+    source: str = textwrap.dedent(
+        """\
+        import logging
+        import zipimport
+        from importlib.metadata import entry_points
+
+        EntryPoints = 1
+
+
+        def f(record: logging.LogRecord, handler: logging.Handler, zipped: zipimport.zipimporter) -> None:
+            a = entry_points()
+            b = handler.filter(record)
+            c = zipped.get_resource_reader("x")
+            d = handler.get_name()
+        """,
+    )
+    fixed: dict[str, str | None] = {o.name: o.fix for o in check_source(source) if o.code == UNANNOTATED}
+    assert fixed == {"a": None, "b": None, "c": None, "d": "str"}
+
+
+def test_a_loop_over_a_library_instance_binds_its_elements() -> None:
+    """A file's lines, an `itertools` iterator's elements, a `deque`'s: each by its class's `__iter__`."""
+    source: str = textwrap.dedent(
+        """\
+        import collections
+        import io
+        import itertools
+        import tarfile
+
+
+        def f(path: str, names: list[str], sizes: list[int], lock: object) -> None:
+            for a in open(path):
+                pass
+            with open(path, "rb") as binary:
+                b = list(binary)
+            for c in itertools.chain(names, names):
+                pass
+            for d, e in itertools.combinations(sizes, 2):
+                pass
+            g = [line.strip() for line in io.StringIO(path)]
+            for h in collections.deque(sizes):
+                pass
+            with tarfile.open(path) as archive:
+                for i in archive:
+                    pass
+            for j in io.StringIO:
+                pass
+            for k in lock:
+                pass
+        """,
+    )
+    fixed: dict[str, tuple[str | None, bool]] = {
+        o.name: (o.fix, o.unsafe) for o in check_source(source) if len(o.name) == 1
+    }
+    assert fixed == {
+        "a": ("str", False),
+        "b": ("list[bytes]", False),
+        "c": ("str", False),
+        "d": ("int", False),
+        "e": ("int", False),
+        "g": ("list[str]", False),
+        "h": ("int", False),
+        "i": ("tarfile.TarInfo", False),
+        "j": (None, False),  # the class, not an instance
+        "k": (None, False),
+    }
+
+
+def test_a_methods_self_is_its_receivers_own_type() -> None:
+    """A method declared to return a type naming `Self` gives the receiver's: `path.iterdir()`'s paths."""
+    source: str = textwrap.dedent(
+        """\
+        import collections
+        import pathlib
+        from collections.abc import Generator, Iterator
+        from pathlib import Path
+
+
+        class Mine(Path):
+            pass
+
+
+        def f(
+            p: Path,
+            mine: Mine,
+            pure: pathlib.PurePosixPath,
+            names: collections.deque[str],
+            bare: collections.deque,
+        ) -> None:
+            for a in mine.iterdir():
+                pass
+            for b in p.iterdir():
+                pass
+            c = p.iterdir()
+            d = list(p.glob("*"))
+            e = sorted(pure.parents)
+            g = names.copy()
+            h = bare.copy()
+            i = p.rglob("*.py")
+        """,
+    )
+    fixed: dict[str, tuple[str | None, bool]] = {
+        o.name: (o.fix, o.unsafe) for o in check_source(source) if len(o.name) == 1
+    }
+    assert fixed == {
+        "a": ("Mine", False),  # a class under `Path`: its own
+        "b": ("Path", False),
+        "c": ("Generator[Path]", False),
+        "d": ("list[Path]", False),
+        "e": ("list[pathlib.PurePosixPath]", False),  # `parents`, a property: a `Sequence[Self]`
+        "g": ("collections.deque[str]", False),
+        "h": (None, False),  # a generic class named bare isn't written
+        "i": ("Iterator[Path]", False),  # a `Generator` before Python 3.13: an `Iterator` on each
+    }
+
+
 def _known(source: str, *, planned: bool = True) -> Known:
     """Read what a module imports, as `--fix` would.
 
@@ -238,6 +467,9 @@ _CALL: Final = cast("ast.Call", ast.parse("x.m()", mode="eval").body)
         ("from datetime import datetime", "datetime", "astimezone", _CALL, "datetime"),
         ("from datetime import datetime", "datetime", "year", None, "int"),
         ("import asyncio", "asyncio.locks.Lock", "locked", _CALL, "bool"),  # an alias of `asyncio.Lock`
+        ("import io", "io.TextIOWrapper", "read", _CALL, "str"),  # a generic class's, from `TextIOBase`
+        ("import io", "io.BufferedReader", "readlines", _CALL, "list[bytes]"),
+        ("import io", "io.TextIOWrapper", "encoding", None, "str"),
         ("import argparse", "argparse.ArgumentParser", "prog", _CALL, None),  # not a method
         ("import argparse", "argparse.ArgumentParser", "nothing", None, None),
         ("import argparse", "Box", "prog", None, None),

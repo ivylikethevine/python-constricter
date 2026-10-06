@@ -171,3 +171,76 @@ def test_another_files_class_is_called_by_its_declared_call(tmp_path: Path) -> N
         "schema": ("int", False),
         "entered": ("bytes", False),
     }
+
+
+_NEW_TYPES: Final = """
+import typing
+import typing as t
+from typing import NewType
+
+import other
+
+Ref = NewType("Ref", str)
+Count = typing.NewType("Count", int)
+Twice = NewType("Twice", str)
+Twice = str
+Misnamed = NewType("Named", str)
+Theirs = other.typing.NewType("Theirs", str)
+Made = other.NewType("Made", str)
+Param = t.NewType("Param", str)
+
+
+def use(name: str, Param: int) -> None:
+    a = Ref(name)
+    b = Count(1)
+    c = Twice(name)
+    d = Misnamed(name)
+    e = Theirs(name)
+    g = Made(name)
+    h = [Ref(name)]
+    i = Param(name)
+"""
+_USING_NEW_TYPES: Final = """
+from pkg import refs
+from pkg.refs import Ref
+
+
+def use(name: str) -> None:
+    a = Ref(name)
+    b = refs.Count(1)
+"""
+
+
+def test_a_call_of_a_new_type_gives_it(tmp_path: Path) -> None:
+    """`Ref(name)` is a `Ref` where the module makes `Ref` by `NewType`, however that's imported.
+
+    Not a name the module binds anywhere else, nor one made under another name; another checked
+    file's is typed as its function's call would be.
+    """
+    fixed: dict[str, tuple[str | None, bool]] = {
+        o.name: (o.fix, o.unsafe) for o in check_source(_NEW_TYPES) if len(o.name) == 1
+    }
+    assert fixed == {
+        "a": ("Ref", False),
+        "b": ("Count", False),
+        "c": (None, False),
+        "d": (None, False),
+        "e": (None, False),
+        "g": (None, False),
+        "h": ("list[Ref]", False),
+        "i": (None, False),
+    }
+    name: str
+    source: str
+    for name, source in {
+        "pkg/__init__.py": "",
+        "pkg/refs.py": _NEW_TYPES,
+        "using.py": _USING_NEW_TYPES,
+    }.items():
+        path: Path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _ = path.write_text(source, encoding="utf-8")
+    using: Path = tmp_path / "using.py"
+    catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
+    found: list[Offence] = check_source(_USING_NEW_TYPES, outside=schedule.outside(catalog, using, {}))
+    assert {o.name: (o.fix, o.unsafe) for o in found} == {"a": ("Ref", False), "b": ("refs.Count", False)}

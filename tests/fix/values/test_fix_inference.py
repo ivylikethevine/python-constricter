@@ -196,7 +196,21 @@ def test_a_copy_of_a_guessed_fix_is_guessed_too() -> None:
         ("nums: list[int]", "nums[1:2]", "list[int]"),
         ("pairs: dict[str, int]", "pairs['x']", "int"),
         ("row: tuple[int, ...]", "row[0]", "int"),
-        ("row: tuple[int, str]", "row[0]", None),  # which element varies with the index
+        ("row: tuple[int, ...]", "row[1:]", "tuple[int, ...]"),
+        ("row: tuple[int, str]", "row[0]", "int"),
+        ("row: tuple[int, str]", "row[1]", "str"),
+        ("row: tuple[int, str]", "row[-1]", "str"),
+        ("row: tuple[int, str]", "row[-2]", "int"),
+        ("row: tuple[int, str]", "row[2]", None),  # past its end
+        ("row: tuple[int, str]", "row[-3]", None),
+        ("row: tuple[int, str]", "row[i]", None),  # which element varies with the index
+        ("row: tuple[int, str]", "row[True]", None),
+        ("row: tuple[int, str]", "row[-True]", None),
+        ("row: tuple[int, str]", "row[+1]", None),
+        ("row: tuple[int, str]", "row['x']", None),
+        ("row: tuple[int, str]", "row[:1]", None),
+        ("row: tuple[int]", "row[0]", "int"),
+        ("row: tuple[int, *tuple[str, ...]]", "row[0]", None),  # where a part is isn't known
         ("text: str", "text[0]", "str"),
         ("text: str", "text[1:3]", "str"),
         ("data: bytes", "data[0:1]", "bytes"),

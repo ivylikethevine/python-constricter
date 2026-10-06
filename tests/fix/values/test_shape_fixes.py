@@ -4,7 +4,7 @@
 import textwrap
 from typing import Final, TypeAlias
 
-from constricter import Offence, check_source
+from constricter import Checks, Offence, check_source
 
 # Each offence's fix and whether it's a guess.
 _Fixed: TypeAlias = dict[str, tuple[str | None, bool]]
@@ -254,4 +254,242 @@ def test_a_self_method_on_the_instance_or_its_class_is_self() -> None:
         "e": ("Point", False),
         "g": ("Point", False),  # where the signature doesn't say `Self`, `self` is its class
         "h": ("Point", False),
+    }
+
+
+def test_an_empty_display_takes_the_type_of_the_container_beside_it() -> None:
+    """`a or []` and `a if c else {}` are `a`'s `list` or `dict`; a read that may be `None`, a guess."""
+    source: str = """
+    def f(
+        n: int,
+        names: list[str],
+        maybe: list[str] | None,
+        ages: dict[str, int],
+        either: list[str] | list[int],
+        c: bool,
+        q,
+    ) -> None:
+        a = names or []
+        b = maybe or []
+        d = ages or {}
+        e = names or {}
+        g = n or []
+        h = q or []
+        i = names and []
+        j = either or []
+        k = maybe or names or []
+        m = [] if c else names
+        o = ages if c else {}
+        p = maybe if maybe else []
+        r = maybe if maybe is not None else []
+        s = [] if maybe else maybe
+        t = [] if c else maybe
+        u = [] if c else {}
+        v = n if c else []
+        w = q if c else []
+        x = names if c else {}
+        y = [n][:1] or []
+    """
+    assert _fixed(source) == {
+        "a": ("list[str]", False),
+        "b": ("list[str]", True),  # never `None`: `or` passes it over
+        "d": ("dict[str, int]", False),
+        "e": (None, False),  # a `dict` display beside a `list`
+        "g": (None, False),
+        "h": (None, False),
+        "i": (None, False),  # `and` gives the display itself
+        "j": (None, False),  # a union of two types may be narrowed to one
+        "k": ("list[str]", True),
+        "m": ("list[str]", False),
+        "o": ("dict[str, int]", False),
+        "p": ("list[str]", True),  # where it's true, it isn't `None`
+        "r": (None, False),  # tested another way: narrowed there
+        "s": (None, False),
+        "t": ("list[str] | None", True),
+        "u": (None, False),
+        "v": (None, False),
+        "w": (None, False),
+        "x": (None, False),
+        "y": ("list[int]", False),
+    }
+
+
+def test_a_modules_own_file_and_name_are_text() -> None:
+    """`__file__` and `__name__` are `str`s, and type what's made of them; not where the module binds one."""
+    source: str = """
+    import os
+
+
+    def f() -> None:
+        a = __file__
+        b = __name__
+        c = os.path.dirname(os.path.abspath(__file__))
+        d = __doc__
+    """
+    assert _fixed(source) == {
+        "a": ("str", False),
+        "b": ("str", False),
+        "c": ("str", False),
+        "d": (None, False),
+    }
+    bound: str = "__file__ = None\n\n\ndef f() -> None:\n    a = __file__\n    b = __name__\n"
+    assert _fixed(bound) == {"a": (None, False), "b": ("str", False)}
+
+
+def test_the_name_of_a_class_is_text_whatever_its_instance_is() -> None:
+    """`type(x).__name__` and `x.__class__.__name__` are `str`s; `x.__class__` is `type[C]` by `x`'s `C`."""
+    source: str = """
+    class Box:
+        def label(self) -> str:
+            a = self.__class__
+            b = self.__class__.__name__
+            return b
+
+
+    def f(s: str, box: Box, kind: type[Box], maybe: Box | None, q) -> None:
+        c = type(q).__name__
+        d = q.__class__.__qualname__
+        e = type(s).__module__
+        g = q.__class__
+        h = s.__class__
+        i = kind.__class__
+        j = maybe.__class__
+        k = type(q).__doc__
+        m = q.__name__
+        n = box.__class__.__name__.upper()
+    """
+    assert _fixed(source) == {
+        "a": ("type[Box]", False),
+        "b": ("str", False),
+        "c": ("str", False),
+        "d": ("str", False),
+        "e": ("str", False),
+        "g": (None, False),
+        "h": ("type[str]", False),
+        "i": (None, False),  # a class's own class is its metaclass
+        "j": (None, False),  # `None` has a class too
+        "k": (None, False),
+        "m": (None, False),  # not a class's, for all `--fix` knows
+        "n": ("str", False),
+    }
+
+
+def test_a_member_of_an_optional_value_is_the_values_own() -> None:
+    """A member of an `X | None` is `X`'s: a checker has narrowed it there, or reports the access."""
+    source: str = """
+    import re
+    from typing import Optional
+
+
+    class Box:
+        size: int
+        label: str | None
+
+        def name(self) -> str:
+            return "box"
+
+
+    def f(s: str, box: Box | None, other: Optional[Box], early: None | Box, either: Box | str | None) -> None:
+        m = re.match(s, s)
+        a = m.start()
+        b = m.string
+        c = box.size
+        d = box.name()
+        e = other.size
+        g = early.size
+        h = either.size
+        i = box.label
+        j = box.name().upper()
+    """
+    assert _fixed(source) == {
+        "m": ("re.Match[str] | None", False),
+        "a": ("int", False),
+        "b": ("str", False),
+        "c": ("int", False),
+        "d": ("str", False),
+        "e": ("int", False),
+        "g": ("int", False),
+        "h": (None, False),  # a union of two types has no one member
+        "i": (None, False),  # itself an `X | None`: narrowed before it's used
+        "j": ("str", False),
+    }
+
+
+def test_a_builtin_iterator_bound_to_a_name_is_typed_by_what_it_yields() -> None:
+    """`enumerate`, `zip`, `map` and `reversed` are their own classes, of what a loop over one binds."""
+    source: str = """
+    def f(names: list[str], sizes: list[int], maybe: list[str] | None, q) -> None:
+        a = enumerate(names)
+        b = zip(names, sizes)
+        c = map(str, sizes)
+        d = reversed(names)
+        e = enumerate(q)
+        g = zip(names, q)
+        h = enumerate(names, start=1)
+        i = zip(names, names, names, names, names, names)
+        j = zip()
+        for k in maybe:
+            pass
+        for m, n in a:
+            pass
+        o, p = b
+        r = enumerate(names, key=len)
+    """
+    assert _fixed(source) == {
+        "a": ("enumerate[str]", False),
+        "b": ("zip[tuple[str, int]]", False),
+        "c": ("map[str]", False),
+        "d": ("reversed[str]", False),
+        "e": (None, False),
+        "g": (None, False),
+        "h": ("enumerate[str]", False),
+        "i": (None, False),  # more than typeshed's overloads type part by part
+        "j": (None, False),
+        "k": ("str", False),  # an `X | None`'s elements are the `X`'s
+        "m": ("int", False),
+        "n": ("str", False),
+        "o": ("tuple[str, int]", False),
+        "p": ("tuple[str, int]", False),
+        "r": (None, False),  # not a keyword it takes
+    }
+    # At a module's top level an annotation is evaluated: no Python can subscript `zip` there.
+    module: str = "NAMES = ['a']\nSIZES = [1]\na = zip(NAMES, SIZES)\nb = enumerate(NAMES)\n"
+    found: list[Offence] = check_source(module, checks=Checks(all_scopes=True))
+    assert {o.name: o.fix for o in found if len(o.name) == 1} == {
+        "a": '"zip[tuple[str, int]]"',
+        "b": "enumerate[str]",
+    }
+
+
+def test_a_paths_open_gives_a_file_by_its_mode() -> None:
+    """`path.open(mode)` on a `pathlib` path is typed as `open(path, mode)` is; nothing else's `open`."""
+    source: str = """
+    import io
+    from pathlib import Path
+
+
+    class Store:
+        def open(self) -> int:
+            return 1
+
+
+    def f(p: Path, mode: str, store: Store, q) -> None:
+        a = p.open()
+        b = p.open("rb")
+        c = p.open(mode="w", encoding="utf-8")
+        d = p.open(mode)
+        e = store.open()
+        g = q.open()
+        with p.open("wb") as h:
+            i = h.write(b"")
+    """
+    assert _fixed(source) == {
+        "a": ("io.TextIOWrapper", False),
+        "b": ("io.BufferedReader", False),
+        "c": ("io.TextIOWrapper", False),
+        "d": (None, False),
+        "e": ("int", False),
+        "g": (None, False),
+        "h": ("io.BufferedWriter", False),
+        "i": ("int", False),
     }
