@@ -9,12 +9,12 @@ import ast
 import re
 from collections.abc import Iterator, Mapping, Sequence
 from functools import lru_cache
-from typing import Final, cast
+from typing import Final, TypeAlias, cast
+from weakref import WeakKeyDictionary
 
 from constricter.rules.decorators import Held, passing, spelled
 from constricter.rules.quoted import parsed, written
 from constricter.rules.syntax import child_statements, declared_return
-from constricter.rules.walked import once
 
 _VAGUE: Final = frozenset({"Any", "object"})
 _UNIONS: Final = frozenset({"Optional", "Union"})  # a union's members, as a subscript's arguments
@@ -72,6 +72,12 @@ GENERICS: Final = ABSTRACT | frozenset(
 )
 _TUPLES: Final = frozenset({"tuple", "Tuple"})  # the annotations that list one type per element
 _TYPE_VARS: Final = frozenset({"TypeVar", "ParamSpec", "TypeVarTuple"})
+# Each module's classes and type variables, for as long as its tree lives: every class table
+# reads them, for the index and then for the check.
+_Classes: TypeAlias = tuple[ast.ClassDef, ...]
+_Names: TypeAlias = frozenset[str]
+_CLASS_NODES: Final[WeakKeyDictionary[ast.Module, _Classes]] = WeakKeyDictionary()
+_TYPE_VARS_DEFINED: Final[WeakKeyDictionary[ast.Module, _Names]] = WeakKeyDictionary()
 _TYPING_MODULES: Final = frozenset({"typing", "typing_extensions"})
 _TYPING_VARS: Final = frozenset({"AnyStr"})  # the type variables `typing` itself defines
 # Modules `_FACTORIES`' names are imported from (so an aliased or re-exported import is still found).
@@ -146,7 +152,6 @@ def casts(tree: ast.Module) -> frozenset[str]:
     return frozenset(names)
 
 
-@once  # the class tables all read them, for each module
 def _class_nodes(tree: ast.Module) -> tuple[ast.ClassDef, ...]:
     """Find every class the module defines, however deep.
 
@@ -154,6 +159,13 @@ def _class_nodes(tree: ast.Module) -> tuple[ast.ClassDef, ...]:
       Them, in source order.
 
     """
+    found: tuple[ast.ClassDef, ...] | None
+    if (found := _CLASS_NODES.get(tree)) is None:
+        found = _CLASS_NODES[tree] = _read_class_nodes(tree)
+    return found
+
+
+def _read_class_nodes(tree: ast.Module) -> tuple[ast.ClassDef, ...]:
     return tuple(node for node in _statements(tree.body) if isinstance(node, ast.ClassDef))
 
 
@@ -732,7 +744,6 @@ def free_of_all(
     return {owner: free_of(types, type_vars) for owner, types in tables.items()}
 
 
-@once  # each class table asks, for each module
 def defined_type_vars(tree: ast.Module) -> frozenset[str]:
     """Find the module-level names bound to a `TypeVar`, `ParamSpec` or `TypeVarTuple`, or `typing.AnyStr`.
 
@@ -740,6 +751,13 @@ def defined_type_vars(tree: ast.Module) -> frozenset[str]:
       Those names.
 
     """
+    found: frozenset[str] | None
+    if (found := _TYPE_VARS_DEFINED.get(tree)) is None:
+        found = _TYPE_VARS_DEFINED[tree] = _read_defined_type_vars(tree)
+    return found
+
+
+def _read_defined_type_vars(tree: ast.Module) -> frozenset[str]:
     names: set[str] = set()
     stmt: ast.stmt
     name: str

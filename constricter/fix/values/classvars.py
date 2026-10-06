@@ -24,6 +24,7 @@ import ast
 import builtins
 from collections.abc import Callable, Mapping, Sequence
 from typing import Final, TypeAlias, cast
+from weakref import WeakKeyDictionary
 
 from constricter.fix.core.imports import taken_names
 from constricter.fix.core.known import Inference, Known, Outside
@@ -31,7 +32,7 @@ from constricter.fix.values.inference import inference
 from constricter.rules.annotations import classes as annotated
 from constricter.rules.annotations import dotted
 from constricter.rules.syntax import import_bindings
-from constricter.rules.walked import classes, of_type, once
+from constricter.rules.walked import classes, of_type
 
 OBJECT: Final = "object"
 # The standard library's test cases: their subclasses' variables are only ever their own.
@@ -49,6 +50,12 @@ _VALUES: Final = frozenset(
 )
 Bases: TypeAlias = Mapping[str, tuple[str, ...]]  # each class's bases as written (see `bases`)
 SPECIAL: Final = ""  # a base no class has: what makes a class one that can't be plain
+# Each module's classes' bases and variables, for as long as its tree lives: read for the index,
+# then for the check.
+_Bases: TypeAlias = dict[str, tuple[str, ...]]
+_Members: TypeAlias = dict[str, dict[str, str]]
+_BASES: Final[WeakKeyDictionary[ast.Module, _Bases]] = WeakKeyDictionary()
+_MEMBERS: Final[WeakKeyDictionary[ast.Module, _Members]] = WeakKeyDictionary()
 # What decides a value's type from its own text: nothing the module declares.
 _OWN_KINDS: Final = frozenset({"literal", "container", "arithmetic", "compare"})
 _NOTHING: Final = Known({}, frozenset(), {}, {})
@@ -97,7 +104,6 @@ def member_type(value: ast.expr) -> str | None:
     return found.annotation
 
 
-@once
 def bases(tree: ast.Module) -> dict[str, tuple[str, ...]]:
     """Map each class the module defines once to its bases, as written.
 
@@ -107,6 +113,13 @@ def bases(tree: ast.Module) -> dict[str, tuple[str, ...]]:
       a base that isn't a name (`Generic[T]`, `make()`) or is a builtin's the module binds itself.
 
     """
+    found: dict[str, tuple[str, ...]] | None
+    if (found := _BASES.get(tree)) is None:
+        found = _BASES[tree] = _read_bases(tree)
+    return found
+
+
+def _read_bases(tree: ast.Module) -> dict[str, tuple[str, ...]]:
     taken: frozenset[str] = taken_names(tree)[0]
     counts: dict[str, int] = {}
     node: ast.ClassDef
@@ -275,7 +288,6 @@ def variables(
     }
 
 
-@once
 def members(tree: ast.Module) -> dict[str, dict[str, str]]:
     """Type the variables of each class the module defines once (see the module docstring).
 
@@ -285,6 +297,13 @@ def members(tree: ast.Module) -> dict[str, dict[str, str]]:
       Each class's variables' types, by name; a class with none is left out.
 
     """
+    found: dict[str, dict[str, str]] | None
+    if (found := _MEMBERS.get(tree)) is None:
+        found = _MEMBERS[tree] = _read_members(tree)
+    return found
+
+
+def _read_members(tree: ast.Module) -> dict[str, dict[str, str]]:
     stored: frozenset[str] = frozenset(
         node.attr
         for node in cast("list[ast.Attribute]", of_type(tree, ast.Attribute))

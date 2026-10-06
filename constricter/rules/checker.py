@@ -114,7 +114,12 @@ def checked_source(
     tree: ast.Module
     own: Tables | None
     tree, own = _parse(source, filename)
-    return checked_tree(tree, checks, lines=as_text(source).splitlines(), outside=outside, own=own)
+    found: Checked = checked_tree(tree, checks, lines=as_text(source).splitlines(), outside=outside, own=own)
+    if own is not None and isinstance(source, str):
+        # Kept again: a file is checked again once its callers type its parameters, or its cycle's
+        # files change what it imports. One `--fix` changed since is no longer this text.
+        parsed.keep(source, (tree, own))
+    return found
 
 
 def _parse(source: str | bytes, filename: str) -> tuple[ast.Module, Tables | None]:
