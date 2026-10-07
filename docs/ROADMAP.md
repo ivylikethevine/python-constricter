@@ -253,7 +253,7 @@
 - **`tests/corpus/mega_corpora.py`**, the same on 52 more packages `mega_packages.json` pins (45
   with a suite read from their own CI): typed applications, `asyncio` code, pytest-heavy test trees,
   scientific packages on numpy's types, `TypedDict`s and overloads of their own, and untyped ones.
-  59 minutes. A suite's tests are stopped after 15 minutes, suites binding one port run one at a
+  54 minutes. A suite's tests are stopped after 15 minutes, suites binding one port run one at a
   time, a fixed run that differs is fixed and run again (and where the released tests' own failures
   differ from run to run, as nibabel's do, only what a fixed run fails both times and no released
   run did is the fix's), a failed step's output is kept, and a changed `install` command reinstalls
@@ -386,33 +386,27 @@ fix.
    longest waiting step now goes first. What's left to try: pandas's steps counted against the
    share, not let through it; and the items below that shorten a hinted fix. Done when a run takes
    under 20 minutes with the same counts. About 3 hours; coverage unchanged.
-3. **The mega run, recorded again.** [RUNS.md](RUNS.md)'s `Mega corpora` section is from before a
-   subclass's variable under a base's `ClassVar` was left alone again (sphinx's 92 and starlette's 5
-   new errors after `--fix --unsafe-fixes` are 0 since), and before xarray's, pygments' and
-   nibabel's suites ran as they do now (each read "nothing ran", or differed by tests that fail one
-   run in some). Run it. Done when the section is of the code as it is, and those rows read as the
-   packages run alone do. No agent hours beside the hour it runs.
-4. **Workers that leave as the command does.** The command no longer waits on the interpreter's own
+3. **Workers that leave as the command does.** The command no longer waits on the interpreter's own
    exit, which took 15 of the 67 seconds of a check of pandas in one process; its workers still do:
    `Workers.__exit__` shuts each pool down and waits, and each worker frees the trees it parsed and
    the index it was sent an object at a time. With every CPU the standard library still checks in
    15.8s, against 12.1s at 0.3.3. End a worker as the command ends, once its last answer is read.
    Done when that check's time after its last file is under a tenth of a second, measured. About 1
    hour; coverage unchanged.
-5. **One set of workers for a run's rounds.** `command._checked_all` starts a `Workers` each time
+4. **One set of workers for a run's rounds.** `command._checked_all` starts a `Workers` each time
    it's called: for the first round, for the second (`_checked_more`), and for each of an
    `--infer-with` fix's rounds (up to `HINT_ROUNDS`). Each time the processes start again, are sent
    the whole index again (`schedule.sent` pickles it for each `_Pooled`), and parse their files
    again. Keep the workers, their trees and their index for the command, and send only what a round
    changed. Done when a second round starts no process and sends no module it didn't change. About 3
    hours; coverage unchanged.
-6. **Hints asked for while the files are indexed.** `command._checked_all` waits for `session.hints`
+5. **Hints asked for while the files are indexed.** `command._checked_all` waits for `session.hints`
    before it starts a worker or reads a file: with `--infer-with`, indexing (a third of a check of
    the standard library) starts only once every server has answered every file. basedpyright's
    servers work 150 CPU seconds on pandas before their first answers, the checker's own processes
    idle meanwhile. Index while they answer. Done when a hinted check of pandas takes the longer of
    the two, not their sum. About 2 hours; coverage unchanged.
-7. **Each checker's servers, by its own measure.** How many servers a checker gets is decided by
+6. **Each checker's servers, by its own measure.** How many servers a checker gets is decided by
    basedpyright's memory (`hints._SERVER_MEMORY` and `_MEMORY_PER_BYTE`: 3.4 GB for pandas, so two
    within the default 8 GB) whatever the checker: ty's one server took 2.1 GB there. And ty has one
    server at most (`protocol.SERVERS`), measured on sqlalchemy, which it answers in 0.9s: on pandas
@@ -424,7 +418,7 @@ fix.
 
 1. **What a guess breaks, by mechanism.** After `--fix --unsafe-fixes` the packages' own type
    checkers find 48 new errors on pandas, 9 on sqlalchemy and 10 on pydantic, and on the 52 packages
-   128 on altair, 76 on mypy, 39 on optuna, and 1 to 9 on each of eight more. [RUNS.md](RUNS.md)
+   128 on altair, 76 on mypy, 39 on optuna, and 1 to 9 on each of nine more. [RUNS.md](RUNS.md)
    traces each to its fix's mechanisms: mypy's are a rebound name's (`call+rebound+unpack`, 20) and
    a constructor's (16). A union of a display's elements (`joined`) and an overload picked by the
    checked files' own classes are judged here too, as their own items were to be. For each mechanism
