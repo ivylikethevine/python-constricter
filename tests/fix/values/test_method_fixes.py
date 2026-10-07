@@ -114,6 +114,9 @@ def test_a_generic_classes_methods_are_not_inferred() -> None:
     """,
     )
     assert [(o.name, o.fix) for o in check_source(source)] == [("a", None), ("c", None)]
+    guarded: str = source.replace('T = TypeVar("T")', 'if TYPE_CHECKING:\n  T = TypeVar("T")')
+    assert guarded != source  # a type variable under an `if` is one too
+    assert [(o.name, o.fix) for o in check_source(guarded)] == [("a", None), ("c", None)]
 
 
 def test_a_method_call_on_a_guessed_class_is_guessed_too() -> None:

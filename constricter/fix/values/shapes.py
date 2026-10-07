@@ -12,6 +12,7 @@ whose type is a union of two types or more isn't taken at all.
 """
 
 import ast
+import re
 from collections.abc import Callable
 from typing import Final, TypeAlias
 
@@ -22,6 +23,7 @@ from constricter.rules.flow import members
 
 Infer: TypeAlias = Callable[[ast.expr], Inference | None]
 _NONE: Final = "None"
+_HOLDS_NONE: Final = re.compile(r"\b(?:None|Optional)\b")
 _READS: Final = (ast.Name, ast.Attribute, ast.Subscript)
 _CONDITIONAL: Final = "conditional"  # the fix kind of `a if c else b`
 _BOOLEAN: Final = "boolean"  # the fix kind of `a or b`
@@ -162,7 +164,8 @@ def emptied(value: ast.IfExp, infer: Infer) -> Inference | None:
 
     Returns:
       The inference, or `None` if neither side or both are an empty display, the other's type isn't
-      that container's, or it may be `None` and `c` tests it another way: it's narrowed there.
+      that container's, or it may be `None` and `c` tests it another way, or holds what `c` tests
+      and may be `None`: it's narrowed there.
 
     """
     sides: list[ast.expr] = [side for side in (value.body, value.orelse) if _empty(side) is None]
@@ -174,6 +177,13 @@ def emptied(value: ast.IfExp, infer: Infer) -> Inference | None:
         return None
     annotation: str = found.annotation
     tested: set[str] = {ast.unparse(node) for node in ast.walk(value.test) if isinstance(node, _READS)}
+    held: bool = any(
+        ast.unparse(node) in tested
+        for node in ast.walk(sides[0])
+        if node is not sides[0] and isinstance(node, _READS)
+    )
+    if held and _HOLDS_NONE.search(container):  # `[a] if a else []`: `a` is narrowed in the display
+        return None
     if _NONE in types and ast.unparse(sides[0]) in tested:
         if sides[0] is not value.body or ast.unparse(value.test) != ast.unparse(sides[0]):
             return None
@@ -270,7 +280,7 @@ def defaulted(receiver: str, call: ast.Call, infer: Infer, known: Known) -> Infe
     """Infer `d.get(key, default)` on a `dict[K, V]`, by a default of type `V`: `V` (`V | None`, by `None`).
 
     And on a `TypedDict`'s instance, by the literal key's type `V` (see `members.keyed`), with no
-    default too (`V | None`).
+    default too where `V` may be `None` itself.
 
     Returns:
       The inference, or `None` for any other call, or a default of another type.
@@ -297,6 +307,8 @@ def defaulted(receiver: str, call: ast.Call, infer: Infer, known: Known) -> Infe
             if (key := keyed(receiver, index, known)) is None:
                 return None
             text, reason = key.annotation, f"`get` of {key.reason}"
+            if _NONE not in (members(text) or ()) and (not rest or is_none(rest[0])):
+                return None  # `V` for a required key, `V | None` for any other: which isn't read
     if not rest or is_none(rest[0]):
         union: str | None = or_none(text)
         return None if union is None else Inference(union, reason, frozenset({_METHOD}))

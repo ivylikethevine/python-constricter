@@ -64,7 +64,7 @@ _RETURNED: Final = "returned"  # an unannotated function its `return`s type
 UNANNOTATED: Final = "unannotated"  # an unannotated function, typed or not
 _PARTIAL: Final = "partial"  # a function whose declared return only an unpacking can use
 OPEN: Final = "open"  # a function with a parameter left unannotated (see `modules.open_functions`)
-_Named: TypeAlias = tuple[Mapping[str, Origin], frozenset[str]]  # see `spelled_classes`
+_Named: TypeAlias = tuple[Mapping[str, Origin], frozenset[str] | None]  # see `spelled_classes`
 
 
 class Imported(NamedTuple):
@@ -784,7 +784,8 @@ def imported(
     known: set[str] = set(named[0])
     for _ in range(_HOPS):  # a class those types need imported is a receiver's too, needing more in turn
         fresh: dict[str, Origin] = {name: each.origin for name, each in guarded.items() if name not in known}
-        _take(catalog, target, (fresh, named[1]), taken, guarded)
+        # Any class their packages re-export: the types naming them aren't written in the file yet.
+        _take(catalog, target, (fresh, None), taken, guarded)
         known.update(fresh)
     return Imported(
         found[0],
@@ -874,9 +875,9 @@ def spelled_classes(
 ) -> Iterator[tuple[str, tuple[Module, str]]]:
     """Find the classes other checked files define that `target` names, each as it spells it.
 
-    `named`: the names it's to find them by, and the attributes it takes of anything. `Row` after
-    `from m import Row`; `m.Row`, or `pkg.m.Row` after `import pkg.m`, for a module's, and `pkg.Row`
-    for one `pkg` re-exports, where `Row` is such an attribute.
+    `named`: the names it's to find them by, and the attributes it takes of anything (`None`: any).
+    `Row` after `from m import Row`; `m.Row`, or `pkg.m.Row` after `import pkg.m`, for a module's,
+    and `pkg.Row` for one `pkg` re-exports, where `Row` is such an attribute.
     The generic classes a module it imports re-exports are added to `generics`, as it spells them.
 
     Yields:
@@ -930,7 +931,9 @@ def _spelled_classes(
                 *(
                     (f"{local}.{name}", where)
                     for name, where in ({} if package is None else package.names).items()
-                    if name in named[1] and where[1] is not None and where[0] != origin[0]
+                    if (named[1] is None or name in named[1])
+                    and where[1] is not None
+                    and where[0] != origin[0]
                 ),
             ]
             generics.update(_reexported_generics(catalog.modules, local, origin[0]))

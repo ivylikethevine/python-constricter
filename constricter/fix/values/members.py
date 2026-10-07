@@ -28,6 +28,8 @@ _ATTRIBUTE: Final = "attribute"  # the fix kind of an attribute's annotation
 _METHOD: Final = "method"  # the fix kind of a method's return type
 _AWAIT: Final = "await"  # and of what awaiting a checked file's `async def` gives
 _SLICE: Final = "slice"  # an index of this type slices
+_INT: Final = "int"
+_STR: Final = "str"
 _SUBSCRIPT: Final = "subscript"  # the fix kind of a subscript
 _OPTIONAL: Final = "Optional"
 # One way to type a member: given the receiver's type as text, the member's name, and the call
@@ -390,9 +392,9 @@ def subscripted(container: str, node: ast.Subscript, index: str | None) -> str |
     """Infer `container[...]`'s type, given `container`'s own type as text, and the index's (`index`).
 
     A slice (`x[1:2]`, or an index typed `slice`) of a `list`, `str`, `bytes` or `tuple[T, ...]` is
-    the same type as `container` itself; a plain index into one is its element type, as is any index
-    into a `dict` (its value type). A fixed-length `tuple[T1, T2]`'s part is the one a literal index
-    names (`pair[0]`, `pair[-1]`).
+    the same type as `container` itself; a plain index into one is its element type (a `bytes`'s, an
+    `int`), as is any index into a `dict` (its value type). A fixed-length `tuple[T1, T2]`'s part is
+    the one a literal index names (`pair[0]`, `pair[-1]`).
 
     Returns:
       The annotation as source text, or `None` if the subscript doesn't decide one.
@@ -401,9 +403,11 @@ def subscripted(container: str, node: ast.Subscript, index: str | None) -> str |
     sliced: bool = isinstance(node.slice, ast.Slice) or index == _SLICE
     element: ast.expr
     last: ast.expr
+    name: str
     match parsed(container):
-        case ast.Name(id="str" | "bytes"):
-            return container
+        case ast.Name(id="str" | "bytes" as name):
+            # A `bytes`'s plain index is one byte's `int`; an index of unknown type may be a slice.
+            return container if sliced or name == _STR else _INT if index == _INT else None
         case ast.Subscript(value=ast.Name(id="list" | "List"), slice=element):
             return container if sliced else ast.unparse(sole(element))
         case ast.Subscript(

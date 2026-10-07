@@ -601,7 +601,7 @@
       "tag": "v2026.09.0",
       "source": "xarray",
       "install": [
-        "pip -e . pytest pytest-xdist"
+        "pip -e . pytest pytest-xdist pytest-mypy-plugins"
       ],
       "tests": "-n {workers} xarray",
       "checks": []
@@ -880,7 +880,7 @@
       "tag": "2.21.0",
       "source": "pygments",
       "install": [
-        "pip -e . pytest pytest-cov pytest-randomly wcag-contrast-ratio"
+        "pip -e . pytest~=8.2 pytest-cov pytest-randomly wcag-contrast-ratio"
       ],
       "tests": "",
       "checks": []

@@ -236,6 +236,23 @@
   reading the checkout's own settings: basedpyright's server and pyrefly read pandas's, pydantic's
   and sqlalchemy's, but this project's, above it, for a checkout with none (django's), which is
   given empty ones (`pyrightconfig.json`, `pyrefly.toml`); ty reads nothing above its workspace.
+- **`tests/corpus/super_corpora.py`**, one command for all of it on the seven corpora: the census, a
+  check at every level, both fixes on copies, each package's suite and type checkers as released and
+  after each fix, and `--infer-with` each checker, every step timed, written as a section of
+  [RUNS.md](RUNS.md) with the machine it ran on. A step starts once the CPUs it keeps busy are free,
+  sized by what the last run measured, pandas's first; a suite has its own count of pytest workers
+  (the CPUs it can use, and the memory a worker of it takes), django's run with `--parallel`; a long
+  corpus's fixed runs are type-checked at once on checkouts of their own; a stopped run resumes, and
+  a run exits non-zero on anything a fix broke. 29 minutes on 16 CPUs, from 55 one step after
+  another. Measured, with no gain: the fixed copies on a `tmpfs`.
+- **`tests/corpus/mega_corpora.py`**, the same on 52 more packages `mega_packages.json` pins (45
+  with a suite read from their own CI): typed applications, `asyncio` code, pytest-heavy test trees,
+  scientific packages on numpy's types, `TypedDict`s and overloads of their own, and untyped ones.
+  56 minutes. A suite's tests are stopped after 15 minutes, and suites binding one port run one at a
+  time. The two scripts' first runs found a crash, four packages a second pass still changed and 17
+  type errors after `--fix`, each fixed since; and closed two items that waited on a run: django's
+  suite is the same after `fix-plain-bases`' guesses, and one `--fix --unsafe-fixes` pass leaves a
+  second nothing on any of the seven.
 - **Python 3**: the standard library, `django` (the 5.2 LTS, for 3.11), `sqlalchemy`, `pydantic` and
   `pandas` 3.0.6 (1,421 files with its tests: overloads, generics, `TYPE_CHECKING` imports).
 - **Python 2**: Twisted 12.3.0 (pure Python 2, 147 of 819 files unparsable) and pip 20.3.4 (the most
@@ -341,9 +358,28 @@ fix.
 
 ### Small: under 4 hours
 
-1. **The slowdown since 0.3.3.** On 16 CPUs a check of the standard library takes 62s at 0.3.3 and
-   73s now with `--jobs=1`, pandas 49s and 66s; with every CPU 10.8s and 15s, 22s and 11s (the
-   workers now work out what their own files import). What changed between them that works per file:
+1. **A `TypedDict`'s required keys.** `d.get("key")` has no fix unless the key's type allows `None`:
+   a checker gives `V` for a required key and `V | None` for any other, and which keys are required
+   isn't read (10 fixes on pydantic went with it). Keep, with each key's type, whether it's required
+   (`total=False`, `Required`, `NotRequired`, a base's own), through the index too. Done when
+   pydantic's 10 are back with no new error from its type checker. About 3 hours, under 0.1%.
+2. **New type errors after plain `--fix`, counted again.** The last runs found 7 on pandas, 1 on
+   sqlalchemy and 9 on pydantic (its environment's), and 17 on seven of the 52 packages; every
+   traced one of the 17 has a fix since, unmeasured, as have three causes on pandas and sqlalchemy.
+   Run both scripts, and trace what's left to its mechanism. Done when each corpus's count is 0 or
+   each error left is listed with why it stays. About 2 hours, beside the runs; coverage unchanged.
+3. **The mega run's suites that say nothing.** httpx's tests are stopped at 15 minutes as released,
+   with its port to itself; nibabel's run nothing under the script and collect 5,628 by hand;
+   `--infer-with ty` fails on pre-commit and strawberry-graphql; litestar fails one more test after
+   `--fix` and sphinx one after `--fix --unsafe-fixes`, neither run again to tell a flaky test from
+   a broken one. A failed step keeps no output, a changed `install` line doesn't reach a checkout
+   made before it, and the section's long lines are wrapped where prettier wouldn't. Keep a failed
+   step's output, reinstall a checkout whose commands changed, wrap as prettier does, then settle
+   each of the five. Done when each has its counts or its reason in the section. About 4 hours;
+   coverage unchanged.
+4. **The slowdown since 0.3.3.** On 16 CPUs a check of the standard library takes 62s at 0.3.3 and
+   73s now with `--jobs=1`, pandas 49s and 66s; with every CPU 10.8s and 15s, 22s and 11.5s (the
+   workers work out what their own files import). What changed between them that works per file:
    each class a file names followed up its bases (`own_types.lineages`), a second listing of the
    classes it names for their methods' `return`s (`loose`), a checked file's overloads read again
    for each file calling them (no longer memoised), the files ordered after more modules (those
@@ -352,91 +388,52 @@ fix.
    checkout imports the installed one). Done when a check of the standard library is no slower than
    at 0.3.3, or each second it costs is accounted for by a fix it buys. About 3 hours; coverage
    unchanged.
-2. **A suite's workers, sized by the suite.** `super_corpora.py` gives every suite the same number
-   of pytest workers (a quarter of the CPUs), and `corpus_suite.py` four: django's runs in one
-   process whatever it's given, sqlalchemy's four kept 3.1 CPUs busy, and a 16-CPU machine with 60
-   GB sat under half used through a run. Give each `Suite` its own count (the CPUs it can use, and
-   the memory a worker of it takes), raise pandas's and sqlalchemy's to what the machine has free,
-   and run django's with `--parallel` where its databases clone (not under `forkserver`, on Python
-   3.14). Done when each suite's tests keep the workers they're given busy, by the run's own measure
-   (the CPU seconds each step records), and their outcomes are unchanged. About 2 hours; coverage
-   unchanged.
-
-3. **A corpus's steps, side by side.** `super_corpora.py` runs a corpus's steps one after another,
-   and pandas's take 55 to 60 minutes of a run the other six finish in 15: its table, census and
-   `--infer-with` steps each work on a copy of their own, and only its tests and type checks share a
-   checkout. Start every step when the CPUs it keeps busy are free, the type checks on checkouts of
-   their own for a corpus that long: one for each fixed run, so the four type-check the package at
-   once, and a suite's checkers (mypy, pyright) together. Done when pandas's steps end within 10
-   minutes of the run's start and its new type errors are the same counts as one after another.
-   About 3 hours; coverage unchanged.
-4. **The table's checks, at once.** `corpus_table.measure` runs constricter ten times over a corpus,
+5. **pandas's steps, within the others'.** Every step starts once the CPUs it keeps busy are free,
+   and a run of the seven takes 29 minutes, from 55: pandas's type checks take 23 of them and its
+   `--infer-with basedpyright` 26, where the other six corpora's longest step is 19 (the standard
+   library's). Done when no step of pandas's outlasts the standard library's longest, with the same
+   counts. About 3 hours; coverage unchanged.
+6. **The table's checks, at once.** `corpus_table.measure` runs constricter ten times over a corpus,
    one after another: a check at each of four levels, two fixes, a second pass's diff and three
-   coverage counts, each indexing the corpus again (pandas's take 8 to 10 minutes). Run the level
-   checks together, and the two fixes on their copies together. Done when a corpus's `table` step
-   takes under half what it does, its tables unchanged. About 2 hours; coverage unchanged.
-5. **A step's CPU seconds, its workers' too.** A step records the CPU seconds of the processes it
+   coverage counts, each indexing the corpus again (pandas's take 14 minutes, the standard library's
+   10). Run the level checks together, and the two fixes on their copies together. Done when a
+   corpus's `table` step takes under half what it does, its tables unchanged. About 2 hours;
+   coverage unchanged.
+7. **A step's CPU seconds, its workers' too.** A step records the CPU seconds of the processes it
    waited for, which leaves out constricter's workers (the fork server starts them): its table step
-   reads 0.4 CPUs busy where a sampler sees 1.2. Count a step's whole process tree. Done when a
-   step's figure matches a sampler's within a tenth. About 1 hour; coverage unchanged.
+   reads 0.4 CPUs busy where a sampler sees 1.2, and the next run sizes the step by it. Count a
+   step's whole process tree. Done when a step's figure matches a sampler's within a tenth. About 1
+   hour; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
-Each item of this size is built. What's left of them waits on a run, not on code; the last is that
-run:
-
-1. **Non-plain class bodies a framework reads no annotations of.** `fix-plain-bases`, with django's
-   built in, fixes those class bodies as a plain class's are, by literal value, as guesses. Done
-   when django's own suite and type checker find nothing new after `--fix --unsafe-fixes`
-   (`corpus_suite.py`, with `--types`).
-2. **The project's own overloads, by the project's own types.** A parameter typed as checked files'
-   classes, or an iterable of them, is matched by the argument's class's bases (`concat([df, df])`
-   is a `DataFrame`). Done when pandas's own type checkers find nothing new.
-3. **Joined types, past displays of plain types.** A display whose elements' types differ is their
-   union, as a guess (`joined`). Done when the corpus packages' checkers find nothing new after the
-   displays' guesses; a function's `return`s of two types stay unjoined (38 new basedpyright errors
-   when they were).
-4. **The main process, in a parallel check.** A module's functions are found by the names a file
-   writes (`Module.written`), not by listing every function of every module it imports. Done when
-   the main process's share of a `--jobs` check of the standard library is under a tenth
-   (`corpus_profile.py`).
-5. **A file checked again, whole.** A file whose functions' parameters every call types is checked
-   again from where its first check ended (`checker._resumed`): those functions, and what their new
-   types reach. Not with `--fix` (its text has changed), LVA012, or in another worker process than
-   the first check's. Done when that second round costs under a tenth of the first, measured.
-
-6. **A fuller run, on more corpora and more cores.** Every count here is from seven corpora on an
-   8-core machine, where a run of the table takes 18 to 26 minutes and the suites and type checkers
-   longer, each started by hand: the items above wait on runs that machine makes slow. Two scripts,
-   each one command with no arguments, for a machine with many cores and much memory:
-   - **`tests/corpus/super_corpora.py`**, on the corpora there are: for each, the census
-     (`corpus_untyped`), a check at every level, `--fix` and `--fix --unsafe-fixes` on copies, the
-     package's own test suite and type checker as released and after each (`corpus_suite.py`'s, with
-     `--types`), and `--infer-with` each checker; every step timed, with the main process's share of
-     a `--jobs` check and a second round's cost beside the first's. It writes its tables (offences
-     per code, fixes and guesses per mechanism, tests and type errors before and after, what's left
-     with no fix and why, seconds per step and per file) to a section of [RUNS.md](RUNS.md), with
-     the machine it ran on: timings don't compare across machines.
-   - **`tests/corpus/mega_corpora.py`**, the same on many more: a pinned list of some fifty
-     packages, fetched as `corpus_sources.py` fetches Twisted, chosen for what the seven don't stand
-     for (typed applications, not libraries; `asyncio` code; pytest-heavy test trees; scientific
-     packages on numpy's types; `TypedDict`s and overloads of their own), each with how its suite
-     and checker are run. A package whose suite can't be set up is checked and fixed alone, and
-     listed.
-
-   Both size `--jobs`, the suites' workers and the kept trees' memory cap by the machine, run the
-   corpora side by side where their checkouts don't collide, resume a run that stopped, and exit
-   non-zero on anything a fix broke. Done when RUNS.md has a section from each, and each item above
-   is closed or reopened by them. About 8 hours for the first and 10 for the second, beside the
-   runs' own time; coverage measured, not added.
-
-7. **Only the classes a file uses.** A file is given the line of bases of every class it could name
+1. **What a guess breaks, by mechanism.** After `--fix --unsafe-fixes` the packages' own type
+   checkers find 54 new errors on pandas, 13 on sqlalchemy and 10 on pydantic, and on the 52
+   packages 129 on altair, 77 on mypy, and 2 to 9 on each of ten more. [RUNS.md](RUNS.md) traces
+   each to its fix's mechanisms: mypy's are a rebound name's (`call+rebound+unpack`, 20) and a
+   constructor's (16). A union of a display's elements (`joined`) and an overload picked by the
+   checked files' own classes are judged here too, as their own items were to be. For each mechanism
+   with ten errors or more: fix its cause, or offer nothing where the guess is wrong more often than
+   right. Done when no package has ten new errors after the guesses. About 8 hours; coverage down by
+   the guesses withdrawn.
+2. **The main process, in a parallel check.** A module's functions are found by the names a file
+   writes (`Module.written`), and each worker works out what its own files import. The last run that
+   timed it, before the workers did, had the main process at 41% to 46% of a `--jobs` check
+   (pandas's 90%, of 26.9s; 11.5s now). Time it again (`corpus_profile.py`), and move what's left of
+   its share to the workers. Done when it's under a tenth of a check of the standard library. About
+   4 hours; coverage unchanged.
+3. **A file checked again, whole.** A file whose functions' parameters every call types is checked
+   again from where its first check ended (`checker._resumed`): not with `--fix` (its text has
+   changed), LVA012, or in another worker process than the first check's. That second round costs
+   42% of the first on the standard library, 33% on django, 60% on pip and 6% on pandas. Done when
+   it's under a tenth on each. About 5 hours; coverage unchanged.
+4. **Only the classes a file uses.** A file is given the line of bases of every class it could name
    through its imports (`own_types.lineages`), and every module's classes under each package it
-   imports, worked out for each file whether it names one or not. Work out a class's when the check
-   asks for it, or only for the names the file's text has. Done when `Outside` for a file of the
-   standard library's tests is under a tenth its pickled size, with the same fixes. About 3 hours;
-   coverage unchanged.
-8. **The index, kept between runs.** Every run reads and indexes every file again, ten times over in
+   imports, worked out for each file whether it names one or not; it passes over the classes whose
+   members it takes none of. Work out a class's when the check asks for it, or only for the names
+   the file's text has. Done when `Outside` for a file of the standard library's tests is under a
+   tenth its pickled size, with the same fixes. About 3 hours; coverage unchanged.
+5. **The index, kept between runs.** Every run reads and indexes every file again, ten times over in
    a corpus's `table` step alone. Keep each file's module (`modules.read`'s) by its content's hash,
    as an installed package's are (`installed`), dropped when the code that reads it changes. Done
    when a second check of an unchanged standard library spends under a second indexing, and a

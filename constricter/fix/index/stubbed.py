@@ -192,6 +192,7 @@ def methods(catalog: Index, path: Path, guarded: Mapping[str, Guarded] | None = 
         **target.guarded,
         **target.names,
     }
+    names.update(_packages(modules, names))
     for spelled, origin in classnames.classes(modules, names, memo.packages):
         _class_methods(found, reader, target, spelled, origin)
     alias: Origin
@@ -208,6 +209,18 @@ def methods(catalog: Index, path: Path, guarded: Mapping[str, Guarded] | None = 
         for path_named, origin in paths:
             found.lineage[path_named] = _lineage(reader, origin)
     return found
+
+
+def _packages(modules: Mapping[str, Module], names: Mapping[str, Origin]) -> dict[str, Origin]:
+    """Find the installed packages a file takes names of without importing them (`from grids import make`).
+
+    Returns:
+      Each, by its name, where the file binds it to nothing: a fix may import one's alias, which
+      is then a receiver's type, named by its dotted path.
+
+    """
+    tops: set[str] = {origin[0].partition(".")[0] for origin in names.values()} - set(names)
+    return {top: (top, None) for top in tops if top in modules and modules[top].installed}
 
 
 def _lineage(reader: "_Reader", origin: Origin) -> tuple[str, ...]:

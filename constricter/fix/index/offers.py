@@ -90,7 +90,10 @@ def _sound(catalog: project.Index, module: tuple[str, bool], offered: Offered, s
     """
     statement: str
     for statement in offered.imports:
-        node: ast.stmt = ast.parse(statement).body[0]
+        try:
+            node: ast.stmt = ast.parse(statement).body[0]
+        except SyntaxError:  # from a file no import can name (`v3.0.0.c.py`)
+            return False
         if not isinstance(node, ast.ImportFrom):
             return False
         alias: ast.alias = node.names[0]

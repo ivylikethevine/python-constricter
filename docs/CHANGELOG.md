@@ -6,6 +6,22 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` no longer writes these, each a type error on a package outside the corpora: `ClassVar[T]`
+  or `Final[T]` for a copy of an attribute declared so (it's a `T`; a bare `Final` has no fix);
+  `bytes` for `data[0]` (an `int`; an index of unknown type has none); `typing.Self` where the file
+  imports `typing_extensions` too, under `if TYPE_CHECKING:` or not (`te.Self`, which older Pythons
+  have); a type variable defined under `if TYPE_CHECKING:` (it's found as one now, and never written
+  unbound); `V | None` for a `TypedDict`'s `d.get("key")` (a required key's is `V`, and which keys
+  are isn't read: no fix, unless `V` allows `None` itself); and `list[T | None]` for
+  `[a] if a else []`, where `a` is narrowed. A comprehension filtered by `isinstance` of its own
+  elements is a guess whatever their type, as one over a union was.
+- One `--fix --unsafe-fixes` pass leaves nothing for a second in three more cases: a receiver typed
+  by an alias whose import the fix adds (`NDArray`, by `np.array`) has its methods as the file's own
+  import names them (`np.typing.NDArray`); a class the package a fix imports re-exports (`ds.Range`,
+  by `from pkg import structures as ds`) has its members before any annotation names it; and so has
+  one only a quoted annotation names (`study: "optuna.Study"`).
+- `--infer-with` no longer crashes on a hint naming a class from a file no import can name
+  (`v3.0.0.c.py`): the hint has no fix.
 - A check with `--jobs` is faster where files import much. Each worker is sent the index, once, and
   works out what its own files import from the others, which the main process did for every file
   while the workers waited; the index keeps what its modules' classes are named by, their lines of

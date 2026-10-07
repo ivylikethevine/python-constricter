@@ -540,3 +540,75 @@ def test_a_guarded_import_is_a_replacement_too(tmp_path: Path) -> None:
         ": Plain",
         "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from pkg.handles import Plain\n",
     ]
+
+
+RANGES: Final = {
+    "pkg/__init__.py": "",
+    "pkg/structures/__init__.py": "from .range import Range as Range\n",
+    "pkg/structures/range.py": """
+        class Range:
+            def span(self, length: int) -> tuple[int, int]:
+                return (0, length)
+    """,
+    "pkg/http.py": """
+        from . import structures as ds
+
+
+        def parse(value: str) -> ds.Range:
+            return ds.Range()
+    """,
+}
+SPANNED: Final = """
+from .http import parse
+
+
+def spanned(value: str) -> int:
+    found = parse(value)
+    span = found.span(3)
+    return span[0]
+"""
+STUDIES: Final = {
+    "pkg/__init__.py": "from pkg.study import Study as Study\n",
+    "pkg/trial.py": "class Trial:\n    number: int = 0\n",
+    "pkg/study.py": """
+        from pkg.trial import Trial
+
+
+        class Study:
+            def ask(self) -> Trial:
+                return Trial()
+    """,
+}
+ASKED: Final = """
+import pkg
+
+
+def asked(study: "pkg.Study") -> int:
+    trial = study.ask()
+    return trial.number
+"""
+
+
+@pytest.mark.parametrize(
+    ("files", "source", "fixed"),
+    [
+        # A class the package the fix imports re-exports, which nothing in the file names yet.
+        (RANGES, SPANNED, "    span: tuple[int, int] = found.span(3)\n"),
+        # One only a quoted annotation names.
+        (STUDIES, ASKED, "    trial: Trial = study.ask()\n"),
+    ],
+)
+def test_a_reexported_class_has_its_methods_in_the_same_run(
+    tmp_path: Path,
+    files: dict[str, str],
+    source: str,
+    fixed: str,
+) -> None:
+    """A second run has nothing left to fix."""
+    name: str
+    text: str
+    for name, text in files.items():
+        _ = _write(tmp_path / name, text)
+    path: Path = _write(tmp_path / "pkg" / "user.py", source)
+    assert cli.main(["--fix", "-q", "--unsafe-fixes", "--jobs=1", *_SELECT, str(tmp_path)]) == cli.EXIT_CLEAN
+    assert fixed in path.read_text(encoding="utf-8")

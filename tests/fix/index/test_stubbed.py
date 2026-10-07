@@ -591,3 +591,71 @@ def test_a_base_its_module_defines_twice_isnt_followed(
     _ = main.write_text(TWICE_MAIN, encoding="utf-8")
     assert cli.main(["--fix", "-q", str(main)]) == cli.EXIT_CLEAN
     assert TWICE_FIXED in main.read_text(encoding="utf-8")
+
+
+# A package whose function returns an alias of a generic class its public submodule names, as
+# numpy's `array` does `numpy.typing.NDArray`.
+GRIDS: Final = {
+    "grids/py.typed": "",
+    "grids/__init__.pyi": """
+        from grids._core import Array as Array, Float as Float, make as make
+        import grids.typing as typing
+    """,
+    "grids/typing.pyi": """
+        from grids._core import Grid as Grid
+        __all__ = ["Grid"]
+    """,
+    "grids/_core.pyi": """
+        from typing import Generic, TypeAlias, TypeVar
+        from typing_extensions import Self
+
+        _S = TypeVar("_S")
+
+        class Float: ...
+
+        class Array(Generic[_S]):
+            def same(self) -> Self: ...
+
+        Grid: TypeAlias = Array[_S]
+
+        def make(n: int, kind: type[_S]) -> Grid[_S]: ...
+    """,
+}
+ADDED: Final = """
+import grids as gr
+
+
+def f(n: int) -> None:
+    a = gr.make(n, gr.Float)
+    b = a.same()
+    print(b)
+"""
+NAMED: Final = ADDED.replace("import grids as gr", "from grids import Float, make").replace("gr.", "")
+NAMED_FIXED: Final = "    b: Grid[Float] = a.same()\n"
+ADDED_FIXED: Final = """
+import grids as gr
+from grids.typing import Grid
+
+
+def f(n: int) -> None:
+    a: Grid[gr.Float] = gr.make(n, gr.Float)
+    b: Grid[gr.Float] = a.same()
+    print(b)
+"""
+
+
+def test_a_receiver_typed_by_an_import_the_fix_adds_has_its_methods(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The alias's methods are found as the file's own import names it: a second run changes nothing."""
+    monkeypatch.setattr(sys, "path", [str(_site(tmp_path, GRIDS)), *sys.path])
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    main: Path = tmp_path / "main.py"
+    _ = main.write_text(ADDED, encoding="utf-8")
+    assert cli.main(["--fix", "-q", str(main)]) == cli.EXIT_CLEAN
+    assert main.read_text(encoding="utf-8") == ADDED_FIXED
+    # Where the file imports only names of the package, by the alias's own dotted path.
+    _ = main.write_text(NAMED, encoding="utf-8")
+    assert cli.main(["--fix", "-q", str(main)]) == cli.EXIT_CLEAN
+    assert NAMED_FIXED in main.read_text(encoding="utf-8")

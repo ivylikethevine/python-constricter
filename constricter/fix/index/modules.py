@@ -705,7 +705,34 @@ def _attributes(tree: ast.Module) -> frozenset[str]:
         for index in indexes
         if isinstance(index, ast.Constant) and isinstance(index.value, str)
     )
-    return named | keys | awaited | _UNNAMED
+    return named | keys | awaited | _quoted(tree) | _UNNAMED
+
+
+def _quoted(tree: ast.Module) -> frozenset[str]:
+    """Name the attributes the module's quoted annotations take: `Study` in `study: "optuna.Study"`.
+
+    Returns:
+      Them.
+
+    """
+    functions: list[ast.FunctionDef | ast.AsyncFunctionDef] = cast(
+        "list[ast.FunctionDef | ast.AsyncFunctionDef]",
+        of_type(tree, ast.FunctionDef, ast.AsyncFunctionDef),
+    )
+    annotations: list[ast.expr | None] = [
+        *(node.annotation for node in cast("list[ast.arg]", of_type(tree, ast.arg))),
+        *(node.annotation for node in cast("list[ast.AnnAssign]", of_type(tree, ast.AnnAssign))),
+        *(node.returns for node in functions),
+    ]
+    return frozenset(
+        part
+        for annotation in annotations
+        if annotation is not None
+        for node in ast.walk(annotation)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        for dotted in cast("list[str]", _DOTTED.findall(node.value))
+        for part in dotted.split(".")[1:]
+    )
 
 
 def _source(path: Path) -> str | None:

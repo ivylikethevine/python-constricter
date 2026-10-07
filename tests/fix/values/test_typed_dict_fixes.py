@@ -22,6 +22,7 @@ T = TypeVar("T")
 class Base(TypedDict):
     name: str
     tags: list[str]
+    note: str | None
 
 
 class Movie(Base, total=False):
@@ -51,6 +52,7 @@ def use(m: Movie, loose: Loose, boxed: Boxed[int], plain: Plain, key: str, maybe
     for tag in m["tags"]:
         print(tag)
     got = m.get("year")
+    noted = m.get("note")
     kept = m.get("name", "")
     none = m.get("score", None)
     other = m.get("year", "")
@@ -94,7 +96,7 @@ def f(shape: Shape, other: s.Shape, solid: Solid) -> None:
 
 
 def test_a_literal_key_of_a_typed_dict_is_its_declared_type() -> None:
-    """Its own or a base's, less `Required` and its like; `get` is that or `None`, or its default's."""
+    """Its own or a base's, less `Required` and its like; `get` is its default's, or one `None` already."""
     fixes: _Fixes = {o.name: (o.fix, o.unsafe) for o in check_source(textwrap.dedent(_LOCAL))}
     assert fixes == {
         "name": ("str", False),
@@ -102,9 +104,10 @@ def test_a_literal_key_of_a_typed_dict_is_its_declared_type() -> None:
         "score": ("float", False),
         "parent": ("Base", False),
         "tag": ("str", False),
-        "got": ("int | None", False),
+        "got": (None, False),  # `int` for a required key, `int | None` for any other
+        "noted": ("str | None", False),  # either way
         "kept": ("str", False),
-        "none": ("float | None", False),
+        "none": (None, False),
         "word": ("str", False),  # a vague key's elements
         "narrowed": ("str", False),
         "made": ("Movie", True),
@@ -116,7 +119,7 @@ def test_a_literal_key_of_a_typed_dict_is_its_declared_type() -> None:
     }
     assert kinds["year"] == {"subscript"}
     assert kinds["tag"] == {"loop", "subscript"}
-    assert kinds["got"] == {"method"}
+    assert kinds["noted"] == {"method"}
     assert kinds["kept"] == {"literal", "method"}
 
 
@@ -124,7 +127,7 @@ def test_a_typed_dicts_annotations_are_its_keys() -> None:
     """Under `TypedDict` or one of the module's; a generic one's, and a plain class's, are attributes."""
     found: dict[str, dict[str, str]] = annotations.classes(ast.parse(textwrap.dedent(_LOCAL)))
     assert found == {
-        "Base": {"[name]": "str", "[tags]": "list[str]"},
+        "Base": {"[name]": "str", "[tags]": "list[str]", "[note]": "str | None"},
         "Movie": {"[year]": "int", "[score]": "float", "[parent]": "Base"},
         "Loose": {"[extra]": "dict[str, typing.Any]"},
         "Boxed": {"item": "T", "count": "int"},
@@ -160,7 +163,7 @@ def test_another_files_typed_dict_is_keyed_too(tmp_path: Path) -> None:
     )
     assert {o.name: o.fix for o in found} == {
         "sides": "int",
-        "again": "int | None",
+        "again": None,
         "inner": "Shape",
         "kind": "Literal['circle', 'square']",
         "inherited": "int",

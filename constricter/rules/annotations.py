@@ -13,8 +13,8 @@ from typing import Final, TypeAlias, cast
 from weakref import WeakKeyDictionary
 
 from constricter.rules.decorators import Held, passing, spelled
-from constricter.rules.quoted import parsed, written
-from constricter.rules.syntax import child_statements, declared_return
+from constricter.rules.quoted import parsed, unqualified, written
+from constricter.rules.syntax import child_statements, declared_return, top_level
 
 _VAGUE: Final = frozenset({"Any", "object"})
 _UNIONS: Final = frozenset({"Optional", "Union"})  # a union's members, as a subscript's arguments
@@ -369,12 +369,12 @@ def _attributes(node: ast.ClassDef) -> dict[str, str]:
     for stmt in node.body:
         match stmt:
             case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation):
-                attrs[name] = written(annotation)
+                attrs[name] = unqualified(annotation)
             case ast.FunctionDef() | ast.AsyncFunctionDef():
                 attrs.update(_self_attributes(stmt))
             case _:
                 pass
-    return attrs
+    return {name: text for name, text in attrs.items() if text}
 
 
 def _self_attributes(func: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[tuple[str, str]]:
@@ -393,7 +393,7 @@ def _self_attributes(func: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[t
                 target=ast.Attribute(value=ast.Name(id="self"), attr=name),
                 annotation=annotation,
             ):
-                yield name, written(annotation)
+                yield name, unqualified(annotation)
             case _:
                 pass
 
@@ -805,7 +805,7 @@ def _read_defined_type_vars(tree: ast.Module) -> frozenset[str]:
     name: str
     func: ast.expr
     module: str
-    for stmt in tree.body:
+    for stmt in top_level(tree.body):  # under an `if TYPE_CHECKING:` too
         match stmt:
             case ast.Assign(targets=[ast.Name(id=name)], value=ast.Call(func=func)) if (
                 node_name(func) in _TYPE_VARS

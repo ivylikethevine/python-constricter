@@ -220,6 +220,9 @@ _SETTINGS: Final = (
 _FAILED: Final = re.compile(r"^(?:FAILED |ERROR |FAIL: |ERROR: )(\S+(?: \([\w.]+\))?)", re.MULTILINE)
 # pytest's summary's counts, but its warnings': those come and go between runs of the same code.
 _COUNTS: Final = re.compile(r"(\d+) (passed|failed|skipped|xfailed|xpassed|errors?)")
+# pytest's summary line, bare (`-q`) or between `=`s: its counts, before how long it took
+_SUMMARY: Final = re.compile(r"^(?:=+ )?((?:\d+ [a-z]+(?: [a-z]+)?(?:, )?)+) in \d[\d.]*s", re.MULTILINE)
+_COLOUR: Final = re.compile(r"\x1b\[[0-9;]*m")  # a terminal's colours, which some suites force
 _RAN: Final = re.compile(r"^Ran (\d+) tests?", re.MULTILINE)  # unittest's summary starts here
 _UNITTEST: Final = re.compile(r"(failures|errors|skipped|expected failures|unexpected successes)=(\d+)")
 # mypy's `path:line: error: message` and pyright's `  /path:line:column - error: message`
@@ -424,7 +427,7 @@ def tested(root: Path, suite: Suite, keep: Path | None) -> Outcome:
     """
     command: list[str] = [word.replace(_WORKERS, str(workers(suite))) for word in suite.tests]
     done: subprocess.CompletedProcess[str] = _completed(_venv(root, command), root, seconds=_TEST_SECONDS)
-    output: str = done.stdout + done.stderr
+    output: str = _COLOUR.sub("", done.stdout + done.stderr)
     if keep is not None:
         keep.parent.mkdir(parents=True, exist_ok=True)
         _ = keep.write_text(output, encoding="utf-8")
@@ -435,7 +438,9 @@ def tested(root: Path, suite: Suite, keep: Path | None) -> Outcome:
             kind: int(n) for kind, n in cast("list[tuple[str, str]]", _UNITTEST.findall(output, ran.end()))
         }
     else:
-        summary: str = output.strip().rsplit("\n", 1)[-1]
+        # The last line that reads as one: warnings, or what's on standard error, may come after it.
+        summaries: list[str] = cast("list[str]", _SUMMARY.findall(output))
+        summary: str = summaries[-1] if summaries else output.strip().rsplit("\n", 1)[-1]
         counts = {
             kind.rstrip("s") if kind.startswith("error") else kind: int(n)
             for n, kind in cast("list[tuple[str, str]]", _COUNTS.findall(summary))
