@@ -548,3 +548,46 @@ def test_a_builtin_class_may_be_outside_a_type_variables_bound(
     fixed: str = main.read_text(encoding="utf-8")
     assert BOUNDED_FIXED in fixed
     assert BOUNDED_UNFIXED in fixed
+
+
+TWICE_FIXED: Final = "    a: int = made.size()\n"
+TWICE_MAIN: Final = """import twice
+
+
+def f(made: twice.Made) -> None:
+    a = made.size()
+"""
+
+
+def test_a_base_its_module_defines_twice_isnt_followed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A class defined in each branch of an `if`, as attrs's stubs define a protocol: read, not a crash."""
+    twice: Path = _site(
+        tmp_path,
+        {
+            "twice/py.typed": "",
+            "twice/_compat.pyi": """
+                import sys
+                from typing import Protocol
+                if sys.version_info >= (3, 11):
+                    class Base_(Protocol):
+                        def size(self) -> int: ...
+                else:
+                    class Base_(Protocol):
+                        def size(self) -> int: ...
+            """,
+            "twice/__init__.pyi": """
+                from ._compat import Base_
+                class Made(Base_):
+                    def size(self) -> int: ...
+            """,
+        },
+    )
+    monkeypatch.setattr(sys, "path", [str(twice), *sys.path])
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    main: Path = tmp_path / "main.py"
+    _ = main.write_text(TWICE_MAIN, encoding="utf-8")
+    assert cli.main(["--fix", "-q", str(main)]) == cli.EXIT_CLEAN
+    assert TWICE_FIXED in main.read_text(encoding="utf-8")

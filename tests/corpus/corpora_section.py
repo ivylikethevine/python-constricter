@@ -238,7 +238,8 @@ def _unset(names: Sequence[str], found: dict[str, Steps]) -> list[str]:
         for step in (TESTS, TYPES):
             value: Value | None = _value(found[name], step)
             if isinstance(value, Unset):
-                lines.append(f"- {name}: its `{step}` couldn't be set up ({value.reason})")
+                said: str = f"- {name}: its `{step}` couldn't be set up ({value.reason})"
+                lines += textwrap.wrap(said, _PROSE_WIDTH, subsequent_indent="  ", break_on_hyphens=False)
     return lines
 
 

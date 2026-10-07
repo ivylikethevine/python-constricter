@@ -263,7 +263,8 @@
       "checks": [
         "mypy httpx tests"
       ]
-    }
+    },
+    "port": "8000"
   },
   {
     "name": "starlette",
@@ -305,7 +306,8 @@
       "checks": [
         "mypy uvicorn tests"
       ]
-    }
+    },
+    "port": "8000"
   },
   {
     "name": "anyio",
@@ -345,7 +347,8 @@
       "checks": [
         "mypy --strict src"
       ]
-    }
+    },
+    "port": "8000"
   },
   {
     "name": "hypercorn",
@@ -410,7 +413,8 @@
     },
     "environment": {
       "AIOHTTP_NO_EXTENSIONS": "1"
-    }
+    },
+    "port": "8000"
   },
   {
     "name": "fastapi",

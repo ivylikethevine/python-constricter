@@ -11,11 +11,11 @@ import pickle
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, TypeAlias, cast
+from typing import Final, cast
 
 from constricter.cli import collecting
 from constricter.cli.runs import CoverageRun, FileRun
-from constricter.cli.workers import Workers, check_share, first_done
+from constricter.cli.workers import Answering, Asked, File, Workers, check_share, first_done
 from constricter.fix.core.known import Guarded, Hints, Outside, Passed, Returns
 from constricter.fix.index import (
     awaits,
@@ -36,10 +36,6 @@ from constricter.fix.index import (
 )
 from constricter.fix.index.modules import Memo
 
-if TYPE_CHECKING:
-    from concurrent.futures import Future
-
-_Answering: TypeAlias = "Future[list[FileRun | None]]"  # a worker's answer for the files it was asked
 CYCLE_ROUNDS: Final = 3  # how many times to check again files calling each other's functions
 
 
@@ -245,10 +241,6 @@ class _News:
 
 
 _WORKER: Final = _Worker()
-# A worker's files to check: each with its hints; what checked modules' functions return since it
-# was last told; and whether a file is checked only if what it imports returns something else now.
-_File: TypeAlias = tuple[Path, tuple[Hints, ...]]
-_Asked: TypeAlias = tuple[Sequence[_File], Mapping[str, Returns], bool]
 
 
 def sent(modules: project.Index) -> bytes:
@@ -267,14 +259,14 @@ def know(index: bytes) -> None:
     _WORKER.given.clear()
 
 
-def check_asked(check: Callable[[Path, Outside], FileRun], asked: _Asked) -> list[FileRun | None]:
+def check_asked(check: Callable[[Path, Outside], FileRun], asked: Asked) -> list[FileRun | None]:
     """Check a worker's files, each knowing what the worker's index says of it now.
 
     Returns:
       What each found; `None` for one left unchecked, what it imports returning what it did.
 
     """
-    files: Sequence[_File]
+    files: Sequence[File]
     returned: Mapping[str, Returns]
     again: bool
     files, returned, again = asked
@@ -315,7 +307,7 @@ class _Pooled:
                 self.followers[callee].append(component)
         self.left: list[int] = [0] * len(planned.plan.components)  # each component's files being checked
         self.found: dict[int, dict[int, FileRun]] = {}  # what they've found so far
-        self.active: dict[_Answering, list[int]] = {}  # what each worker is checking
+        self.active: dict[Answering, list[int]] = {}  # what each worker is checking
         self.news: _News = _News([], [0] * len(pool.shares))
 
     def run(self) -> None:
@@ -330,11 +322,11 @@ class _Pooled:
             ],
             again=False,
         )
-        done: set[_Answering]
+        done: set[Answering]
         for done in iter(self._done, None):
             first: list[int] = []
             again: list[int] = []
-            future: _Answering
+            future: Answering
             for future in done:
                 at: int
                 run: FileRun | None
@@ -344,7 +336,7 @@ class _Pooled:
             self.submit(first, again=False)
             self.submit(again, again=True)
 
-    def _done(self) -> set[_Answering] | None:
+    def _done(self) -> set[Answering] | None:
         """Wait for a worker's answer.
 
         Returns:
@@ -369,8 +361,8 @@ class _Pooled:
             mine: list[int]
             if not (mine := [at for at in share if at in wanted]):
                 continue
-            given: list[_File] = [(paths[at], hinted.get(paths[at], ())) for at in mine]
-            asked: _Asked = (given, self.news.since(worker), again)
+            given: list[File] = [(paths[at], hinted.get(paths[at], ())) for at in mine]
+            asked: Asked = (given, self.news.since(worker), again)
             self.active[self.pool.ask(worker, check_asked, self.check, asked)] = mine
         at: int
         for at in files:

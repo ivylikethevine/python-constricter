@@ -40,6 +40,7 @@ import shlex
 import shutil
 import subprocess  # runs git, uv, the tests, the type checkers and constricter
 import sys
+import tempfile
 from collections import Counter
 from collections.abc import Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -245,7 +246,8 @@ def _environment(cwd: Path) -> dict[str, str]:
     into the lines read back); with the checkout's venv activated, if it has one yet (pyright finds
     its packages by it); with an absolute uv cache (this project's `cache-dir` is relative, and uv
     finds this `pyproject.toml` above a checkout without its own `[tool.uv]`); and with a fixed hash
-    seed (pytest-xdist's workers must collect the same tests).
+    seed (pytest-xdist's workers must collect the same tests); and with a temporary directory of
+    its own.
 
     Returns:
       The environment.
@@ -262,6 +264,11 @@ def _environment(cwd: Path) -> dict[str, str]:
         environment["PATH"] = os.pathsep.join((str(venv / "bin"), environment.get("PATH", os.defpath)))
     _ = environment.setdefault("UV_CACHE_DIR", str(WORK.parent / ".uv-cache"))
     _ = environment.setdefault("PYTHONHASHSEED", "0")
+    # Its own temporary files, under a short path (a suite's sockets go there): a suite's leave some
+    # no one else can delete, which the next pytest run under the shared directory then trips on.
+    temporary: Path = Path(tempfile.gettempdir()) / WORK.name / cwd.name
+    temporary.mkdir(parents=True, exist_ok=True)
+    environment["TMPDIR"] = str(temporary)
     return environment
 
 

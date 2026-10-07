@@ -13,9 +13,11 @@ names, and `archive`; fetched once into `local/mega-corpora/sources/`, its SHA-2
 tag to clone, its `source` there, the `uv` commands installing it (`pip ...` for
 `uv pip install`, into a venv made first; `sync ...` for `uv sync`), its `tests` (pytest's
 arguments, or a whole command after `!`; `{workers}` stands for its processes) and its type
-`checks`. `alone` says why a package has no suite here, and `environment` what its commands need
-set. They're typed applications, `asyncio` code, pytest-heavy test trees, scientific packages on
-numpy's types, packages with `TypedDict`s and overloads of their own, and untyped ones for contrast.
+`checks`. `alone` says why a package has no suite here, `environment` what its commands need set,
+and `port` the port its tests' own server binds: those of one port run one at a time (httpx's wait
+for theirs forever, where another suite has it). They're typed applications, `asyncio` code,
+pytest-heavy test trees, scientific packages on numpy's types, packages with `TypedDict`s and
+overloads of their own, and untyped ones for contrast.
 
 It runs as `tests/corpus/super_corpora.py` does, with the same steps, and writes `## Mega corpora`
 in docs/RUNS.md. A package with no suite is checked and fixed alone; one whose suite can't be
@@ -65,6 +67,7 @@ class Package(NamedTuple):
     source: Source
     suite: Suite | None
     environment: dict[str, str]  # set for its steps (see `main`)
+    port: str  # the port its tests bind, or ""
 
 
 def _installing(commands: Sequence[str]) -> tuple[tuple[str, ...], ...]:
@@ -128,6 +131,7 @@ def packages() -> dict[str, Package]:
             source,
             _suite(cast("dict[str, _Json]", pinned[_SUITE])) if _SUITE in pinned else None,
             cast("dict[str, str]", pinned.get("environment", {})),
+            cast("str", pinned.get("port", "")),
         )
     return found
 
@@ -162,6 +166,7 @@ MEGA: Final = super_corpora.Plan(
     WORK,
     corpora,
     {name: package.suite for name, package in PACKAGES.items() if package.suite is not None},
+    ports={name: package.port for name, package in PACKAGES.items() if package.port},
 )
 
 

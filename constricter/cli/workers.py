@@ -4,14 +4,14 @@
 import contextlib
 import gc
 import importlib
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Self, TypeAlias, TypeVar, cast
+from typing import TYPE_CHECKING, Final, Self, TypeAlias, cast
 
 from constricter.cli import collecting
 from constricter.cli.paths import shares
 from constricter.cli.runs import FileRun
-from constricter.fix.core.known import Outside
+from constricter.fix.core.known import Hints, Outside, Returns
 from constricter.fix.index import project
 from constricter.rules import parsed
 
@@ -20,12 +20,13 @@ if TYPE_CHECKING:  # slow to import, and only needed for many files
 
 # A worker's answers, one per file of its share: what it read (to index), and what it found.
 _Reading: TypeAlias = "Future[list[project.Module | None]]"
-Checking: TypeAlias = "Future[list[FileRun]]"
 _FIRST_COMPLETED: Final = "FIRST_COMPLETED"  # `concurrent.futures.FIRST_COMPLETED`
 _Check: TypeAlias = Callable[[Path, Outside], FileRun]
-_Told = TypeVar("_Told")  # what every worker is told
-_Asking = TypeVar("_Asking")  # what one worker is asked
-_Pending = TypeVar("_Pending")  # a worker's answer to come
+# A worker's files to check: each with its hints; what checked modules' functions return since it
+# was last told; and whether a file is checked only if what it imports returns something else now.
+File: TypeAlias = tuple[Path, tuple[Hints, ...]]
+Asked: TypeAlias = tuple[Sequence[File], Mapping[str, Returns], bool]
+Answering: TypeAlias = "Future[list[FileRun | None]]"  # a worker's answer for the files it was asked
 _Wait: TypeAlias = Callable[..., tuple[set[object], set[object]]]  # `concurrent.futures.wait`: done, and not
 
 
@@ -87,7 +88,7 @@ class Workers:
             found.update(zip(share, future.result(), strict=True))
         return project.indexed(found[at] for at in range(len(self.paths)))  # in their order, as one at a time
 
-    def tell(self, function: Callable[[_Told], None], told: _Told) -> None:
+    def tell(self, function: Callable[[bytes], None], told: bytes) -> None:
         """Run `function(told)` in every worker, and wait for them all: what each is to know from then on."""
         telling: list[Future[None]] = [pool.submit(function, told) for pool in self.pools]
         each: Future[None]
@@ -97,10 +98,10 @@ class Workers:
     def ask(
         self,
         worker: int,
-        function: Callable[[_Check, _Asking], list[FileRun | None]],
+        function: Callable[[_Check, Asked], list[FileRun | None]],
         check: _Check,
-        asked: _Asking,
-    ) -> "Future[list[FileRun | None]]":
+        asked: Asked,
+    ) -> Answering:
         """Start `function(check, asked)` in one worker: its files to check, and what it's to know for them.
 
         Returns:
@@ -110,7 +111,7 @@ class Workers:
         return self.pools[worker].submit(function, check, asked)
 
 
-def first_done(pending: Collection[_Pending]) -> set[_Pending]:
+def first_done(pending: Collection[Answering]) -> set[Answering]:
     """Wait for any of `pending` to finish.
 
     Returns:
@@ -118,7 +119,7 @@ def first_done(pending: Collection[_Pending]) -> set[_Pending]:
 
     """
     wait: _Wait = cast("_Wait", importlib.import_module("concurrent.futures").wait)
-    return cast("set[_Pending]", wait(pending, return_when=_FIRST_COMPLETED)[0])
+    return cast("set[Answering]", wait(pending, return_when=_FIRST_COMPLETED)[0])
 
 
 def _started(processes: int) -> None:

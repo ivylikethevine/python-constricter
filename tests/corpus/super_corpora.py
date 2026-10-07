@@ -13,7 +13,8 @@ checks where `corpus_suite.SUITES` has it, and a timed check.
 The machine sizes the run. Every step of every corpus starts once the CPUs it's expected to keep
 busy are free (`Slots`): each works on a copy of its own, but a suite's type checks, which wait
 for its tests on their checkout unless the plan gives them checkouts of their own (`Plan.apart`:
-pandas's, whose checks take the longest). A step is expected to keep busy what it did in the last
+pandas's, whose checks take the longest), and the tests of suites that bind one port, one at a
+time (`Plan.ports`). A step is expected to keep busy what it did in the last
 run that measured it (its CPU seconds over its seconds); else its suite's workers for its tests
 (`corpus_suite.workers`), and `_STEP_CPUS` for any other: one of constricter's checks in bursts
 between stretches in one process, and a type checker runs in one or two. So a step in one process
@@ -31,6 +32,7 @@ error a certain fix or a guess added) or a step that failed, each listed on stan
 it outside a sandbox: it starts worker processes, and the suites need the network once.
 """
 
+import contextlib
 import hashlib
 import math
 import os
@@ -77,6 +79,8 @@ class Plan(NamedTuple):
     corpora: Callable[[], list[Corpus]]
     suites: Mapping[str, corpus_suite.Suite]
     apart: frozenset[str] = frozenset()  # the corpora whose type checks get checkouts of their own
+    # The port a corpus's tests bind, by its name: those of one port run one at a time.
+    ports: Mapping[str, str] = {}
 
 
 SUPER: Final = Plan(
@@ -232,6 +236,7 @@ class _Running(NamedTuple):
     sized: Sizes
     slots: Slots
     before: Mapping[tuple[str, str], float]
+    bound: Mapping[str, threading.Lock]  # each port's lock, held while a suite's tests have the port
 
     def expected(self, corpus: Corpus, name: str) -> int:
         """Estimate the CPUs a step keeps busy (see the module's docstring).
@@ -286,17 +291,23 @@ class _Running(NamedTuple):
             return kept
         out.parent.mkdir(parents=True, exist_ok=True)
         wanted: int = self.expected(corpus, name) if cpus is None else cpus
-        held: int = self.slots.take(wanted, first=cpus is None and corpus.name in _FIRST)
-        start: float = time.perf_counter()
-        try:
+        # Its tests' port first, if they bind one: waited for holding no CPUs.
+        port: threading.Lock | None = (
+            self.bound.get(self.plan.ports.get(corpus.name, "")) if name == corpora_steps.TESTS else None
+        )
+        stack: contextlib.ExitStack
+        with contextlib.ExitStack() as stack:
+            if port is not None:
+                _ = stack.enter_context(port)
+            held: int = self.slots.take(wanted, first=cpus is None and corpus.name in _FIRST)
+            _ = stack.callback(self.slots.give, held)
+            start: float = time.perf_counter()
             status: int = self.process(
                 corpus,
                 name,
                 out,
                 self.sized.jobs if cpus is None else self.sized.cpus,
             )
-        finally:
-            self.slots.give(held)
         seconds: float = time.perf_counter() - start
         done: Step | None = None if status else _read(out)
         said: str = "FAILED" if done is None else f"done, {done.cpu / max(done.seconds, 1e-9):.1f} CPUs busy"
@@ -373,7 +384,14 @@ def main(argv: Sequence[str], plan: Plan = SUPER) -> int:
         shutil.rmtree(run, ignore_errors=True)
     resumed: bool = any(run.glob(f"*/*{_KEPT}"))
     sized: Sizes = sizes()
-    running: _Running = _Running(plan, run, sized, Slots(sized.cpus), measured_before(plan, run))
+    running: _Running = _Running(
+        plan,
+        run,
+        sized,
+        Slots(sized.cpus),
+        measured_before(plan, run),
+        {port: threading.Lock() for port in set(plan.ports.values())},
+    )
     _ = sys.stderr.write(
         f"{run}: {len(chosen)} corpora, --jobs={sized.jobs}, {sized.workers} workers a suite\n",
     )
