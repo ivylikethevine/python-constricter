@@ -76,7 +76,7 @@ dev = [
 ]
 
 [project.scripts]
-constricter = "constricter.cli.command:main"
+constricter = "constricter.__main__:run"
 
 [project.entry-points."flake8.extension"]
 LVA = "constricter.plugins.flake8:ConstricterChecker"

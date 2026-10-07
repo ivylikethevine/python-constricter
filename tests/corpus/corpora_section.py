@@ -198,6 +198,12 @@ def _tested(found: Steps) -> Tested | None:
     return value if isinstance(value, Tested) else None
 
 
+def _rerun(tested: Tested) -> str:  # what a suite's released tests' row says of their runs
+    if tested.varies:
+        return " (its failures vary from run to run)"
+    return " (run twice)" if tested.again else ""
+
+
 def _typechecked(found: Steps) -> Typechecked | None:
     value: Value | None = _value(found, TYPES)
     return value if isinstance(value, Typechecked) else None
@@ -259,7 +265,7 @@ def _suites(names: Sequence[str], found: dict[str, Steps]) -> list[str]:
                 [
                     name,
                     tested.tag,
-                    _counts(tested.released) + (" (run twice)" if tested.again else ""),
+                    _counts(tested.released) + _rerun(tested),
                     *(_after(tested.released, outcome, change) for _, change, outcome, _ in tested.fixed),
                     *([NONE] * (len(corpus_suite.MODES) - len(tested.fixed))),
                 ],

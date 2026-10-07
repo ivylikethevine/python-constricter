@@ -159,12 +159,12 @@ def test_runs_as_a_module(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """`python -m constricter` runs the command."""
+    """`python -m constricter` runs the command, and leaves with its status without the interpreter's exit."""
     monkeypatch.setattr(sys, "argv", ["constricter", str(_write(tmp_path / "clean.py", CLEAN))])
-    exit_info: pytest.ExceptionInfo[SystemExit]
-    with pytest.raises(SystemExit) as exit_info:
-        _ = runpy.run_module("constricter", run_name="__main__")
-    assert exit_info.value.code == cli.EXIT_CLEAN
+    left: list[int] = []
+    monkeypatch.setattr(os, "_exit", left.append)
+    _ = runpy.run_module("constricter", run_name="__main__")
+    assert left == [cli.EXIT_CLEAN]
     assert capsys.readouterr().out.startswith("Found 0")
 
 

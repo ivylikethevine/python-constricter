@@ -6,6 +6,11 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- The command leaves as soon as it has written its output, not by the interpreter's own exit, which
+  freed every parsed file and the index an object at a time: 15 of the 67 seconds of a check of
+  pandas in one process. With `--jobs=1` on 16 CPUs the standard library checks in 55s, from 74s
+  (67s at 0.3.3), and pandas in 60s, from 66s (55s at 0.3.3). The `constricter` script is
+  `constricter.__main__:run` now; `constricter.cli.command.main` still returns its status.
 - A check is a little faster in one process: whether a fix's type is too vague to write is worked
   out once for each type, not for each binding, and the empty containers a class's attributes start
   as once for the class, not for each of its methods. The same offences and fixes.

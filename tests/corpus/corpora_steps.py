@@ -104,14 +104,19 @@ class Inferred(NamedTuple):
     typed: Typed
 
 
+# A fixed run of a suite's tests: its label, the fix's size, its outcome and its seconds.
+_Run: TypeAlias = tuple[str, str, corpus_suite.Outcome, float]
+
+
 class Tested(NamedTuple):
     """A package's own tests: as released, then after each fix (its label, size, outcome and seconds)."""
 
     tag: str
     released: corpus_suite.Outcome
     seconds: float
-    fixed: list[tuple[str, str, corpus_suite.Outcome, float]]
+    fixed: list[_Run]
     again: bool = False  # whether `released` is a second run's, a fixed run having differed from the first
+    varies: bool = False  # whether the released tests' failures differ from run to run
 
 
 class Typechecked(NamedTuple):
@@ -238,7 +243,7 @@ def tests_step(corpus: Corpus, suite: corpus_suite.Suite) -> Tested:
     differs from the released one's, the released tests are run again, and that run stands for
     them: a first run after a clone has differed from every later one, fixed or not. A fixed run
     that still differs is fixed and run again too, and its second outcome stands: a test that fails
-    one run in some isn't the fix's.
+    one run in some isn't the fix's (see `_settled`).
 
     Returns:
       Their outcomes.
@@ -250,7 +255,7 @@ def tests_step(corpus: Corpus, suite: corpus_suite.Suite) -> Tested:
     start: float = time.perf_counter()
     released: corpus_suite.Outcome = corpus_suite.tested(root, suite, kept / "released.txt")
     seconds: float = time.perf_counter() - start
-    fixed: list[tuple[str, str, corpus_suite.Outcome, float]] = []
+    fixed: list[_Run] = []
     label: str
     options: tuple[str, ...]
     # One stopped as released (waiting on a server no one started) would be after each fix too.
@@ -264,22 +269,63 @@ def tests_step(corpus: Corpus, suite: corpus_suite.Suite) -> Tested:
         )
         fixed.append((label, change, outcome, time.perf_counter() - start))
     corpus_suite.reset(root, suite)
-    again: bool
-    if again := any(outcome != released for _, _, outcome, _ in fixed):
-        released = corpus_suite.tested(root, suite, kept / "released-again.txt")
+    if all(outcome == released for _, _, outcome, _ in fixed):
+        return Tested(suite.tag, released, seconds, fixed)
+    varies: bool
+    released, varies = _settled((root, kept), suite, released, fixed)
+    return Tested(suite.tag, released, seconds, fixed, again=True, varies=varies)
+
+
+def _settled(
+    where: tuple[Path, Path],
+    suite: corpus_suite.Suite,
+    first: corpus_suite.Outcome,
+    fixed: list[_Run],
+) -> tuple[corpus_suite.Outcome, bool]:
+    """Run again what differed, to tell a fix's failures from a suite's own that come and go.
+
+    `where`: the checkout and where its outputs are kept. The released tests, then each fixed run
+    of `fixed` that differs from them, replaced by its second outcome. If one still differs, the
+    released tests a third time: where their own failures differ among the three runs, a fixed run
+    that fails nothing both times but what they failed is taken for the released one.
+
+    Returns:
+      The released tests' second outcome, and whether their failures vary.
+
+    """
+    root: Path = where[0]
+    released: corpus_suite.Outcome = corpus_suite.tested(root, suite, where[1] / "released-again.txt")
+    both: dict[str, frozenset[str]] = {}  # what each fixed run failed both times
     at: int
+    label: str
+    outcome: corpus_suite.Outcome
     for at, (label, _, outcome, _) in enumerate(fixed):
         if outcome != released:
-            change = corpus_suite.fixed(root, suite, *dict(corpus_suite.MODES)[label])
-            start = time.perf_counter()
+            change: str = corpus_suite.fixed(root, suite, *dict(corpus_suite.MODES)[label])
+            start: float = time.perf_counter()
             second: corpus_suite.Outcome = corpus_suite.tested(
                 root,
                 suite,
-                kept / f"{label.replace(' ', '')}-again.txt",
+                where[1] / f"{label.replace(' ', '')}-again.txt",
             )
             fixed[at] = (label, change, second, time.perf_counter() - start)
+            both[label] = outcome.failed & second.failed
             corpus_suite.reset(root, suite)
-    return Tested(suite.tag, released, seconds, fixed, again)
+    if all(outcome == released for _, _, outcome, _ in fixed):
+        return released, False
+    seen: list[frozenset[str]] = [
+        first.failed,
+        released.failed,
+        corpus_suite.tested(root, suite, where[1] / "released-third.txt").failed,
+    ]
+    if len(set(seen)) == 1:
+        return released, False
+    ever: frozenset[str] = seen[0].union(*seen)
+    fixed[:] = [
+        (label, change, released if both.get(label, outcome.failed) <= ever else outcome, took)
+        for label, change, outcome, took in fixed
+    ]
+    return released, True
 
 
 def types_step(corpus: Corpus, suite: corpus_suite.Suite) -> Typechecked:

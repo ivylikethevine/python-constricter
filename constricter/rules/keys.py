@@ -45,18 +45,18 @@ def keys(node: ast.ClassDef) -> dict[str, str]:
         for keyword in node.keywords
     )
     found: dict[str, str] = {}
-    stmt: ast.stmt
+    annotated: list[tuple[str, ast.expr]] = [
+        (stmt.target.id, stmt.annotation)
+        for stmt in node.body
+        if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name)
+    ]
     name: str
     annotation: ast.expr
-    for stmt in node.body:
-        match stmt:
-            case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation):
-                qualifiers: set[str] = set()
-                found[key(name)] = written(_unqualified(annotation, qualifiers))
-                if _NOT_REQUIRED in qualifiers or not (total or _REQUIRED in qualifiers):
-                    found[optional(name)] = found[key(name)]
-            case _:
-                pass
+    for name, annotation in annotated:
+        qualifiers: set[str] = set()
+        found[key(name)] = written(_unqualified(annotation, qualifiers))
+        if _NOT_REQUIRED in qualifiers or not (total or _REQUIRED in qualifiers):
+            found[optional(name)] = found[key(name)]
     return found
 
 
