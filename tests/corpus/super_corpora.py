@@ -65,6 +65,7 @@ _STEP_CPUS: Final = 2  # what a step other than a suite's tests keeps busy, unme
 _APART_CPUS: Final = 8  # and a suite's type checks on checkouts of their own, each fixed run at once
 _FIRST: Final = ("pandas",)  # the corpora whose steps never wait: the longest chains
 _FIRST_JOBS: Final = 2  # and how many times the others' `--jobs` theirs take (a checker's servers too)
+_SLOTS_VARIABLE: Final = "CORPUS_SLOTS"  # how many CPUs the steps share, if not every one
 _STEP_FLAG: Final = "--step"
 _FRESH_FLAG: Final = "--fresh"
 _PRINT_FLAG: Final = "--print"
@@ -106,11 +107,14 @@ class Slots:
         self.cpus: int = cpus
         self.free: int = cpus
         self.changed: threading.Condition = threading.Condition()
+        self.waiting: list[tuple[float, int]] = []  # how long each waiting step lasts, and what it wants
 
-    def take(self, wanted: int, *, first: bool = False) -> int:
+    def take(self, wanted: int, *, first: bool = False, lasting: float = 0.0) -> int:
         """Wait until `wanted` CPUs are free (all of them, for more than there are), and hold them.
 
         `first`: hold them without waiting, whatever is free: the others wait the longer.
+        `lasting`: the seconds the step is expected to take; of the steps waiting, one that lasts
+        longer and fits what's free goes before it, so the long steps aren't the last to start.
 
         Returns:
           How many are held, to `give` back.
@@ -119,8 +123,17 @@ class Slots:
         held: int = max(1, min(wanted, self.cpus))
         with self.changed:
             if not first:
-                _ = self.changed.wait_for(lambda: self.free >= held)
+                waiter: tuple[float, int] = (lasting, held)
+                self.waiting.append(waiter)
+                _ = self.changed.wait_for(
+                    lambda: (
+                        self.free >= held
+                        and not any(longer > lasting and needs <= self.free for longer, needs in self.waiting)
+                    ),
+                )
+                self.waiting.remove(waiter)
             self.free -= held
+            self.changed.notify_all()  # one that waited behind this may fit what's left
         return held
 
     def give(self, held: int) -> None:
@@ -209,14 +222,15 @@ def run_step(plan: Plan, name: str, corpus: str, out: Path) -> int:
     return 0
 
 
-def measured_before(plan: Plan, run: Path) -> dict[tuple[str, str], float]:
-    """Read what each step kept busy in the latest other run that measured it.
+def measured_before(plan: Plan, run: Path) -> dict[tuple[str, str], tuple[float, float]]:
+    """Read what each step kept busy, and how long it took, in the latest other run that measured it.
 
     Returns:
-      Each step's CPUs (its CPU seconds over its seconds), by its corpus's directory and its name.
+      Each step's CPUs (its CPU seconds over its seconds) and its seconds, by its corpus's
+      directory and its name.
 
     """
-    found: dict[tuple[str, str], float] = {}
+    found: dict[tuple[str, str], tuple[float, float]] = {}
     earlier: list[Path] = [each for each in plan.work.glob("*") if each.is_dir() and each != run]
     other: Path
     for other in sorted(earlier, key=lambda each: each.stat().st_mtime):
@@ -224,7 +238,7 @@ def measured_before(plan: Plan, run: Path) -> dict[tuple[str, str], float]:
         for kept in other.glob(f"*/*{_KEPT}"):
             step: Step | None
             if (step := _read(kept)) is not None and step.value is not None and step.cpu and step.seconds:
-                found[kept.parent.name, kept.stem] = step.cpu / step.seconds
+                found[kept.parent.name, kept.stem] = (step.cpu / step.seconds, step.seconds)
     return found
 
 
@@ -239,7 +253,7 @@ class _Running(NamedTuple):
     run: Path
     sized: Sizes
     slots: Slots
-    before: Mapping[tuple[str, str], float]
+    before: Mapping[tuple[str, str], tuple[float, float]]
     bound: Mapping[str, threading.Lock]  # each port's lock, held while a suite's tests have the port
     sampler: Sampler  # counts each step's CPU seconds, its processes' processes' too
 
@@ -250,9 +264,9 @@ class _Running(NamedTuple):
           Them.
 
         """
-        known: float | None
+        known: tuple[float, float] | None
         if (known := self.before.get((corpus.name.replace(" ", "-"), name))) is not None:
-            return math.ceil(known)
+            return math.ceil(known[0])
         suite: corpus_suite.Suite | None = self.plan.suites.get(corpus.name)
         if name == corpora_steps.TESTS and suite is not None:
             return min(corpus_suite.workers(suite), self.sized.workers)
@@ -316,7 +330,11 @@ class _Running(NamedTuple):
         with contextlib.ExitStack() as stack:
             if port is not None:
                 _ = stack.enter_context(port)
-            held: int = self.slots.take(wanted, first=cpus is None and corpus.name in _FIRST)
+            held: int = self.slots.take(
+                wanted,
+                first=cpus is None and corpus.name in _FIRST,
+                lasting=self.before.get((corpus.name.replace(" ", "-"), name), (0.0, 0.0))[1],
+            )
             _ = stack.callback(self.slots.give, held)
             start: float = time.perf_counter()
             status: int = self.process(
@@ -407,7 +425,7 @@ def main(argv: Sequence[str], plan: Plan = SUPER) -> int:
         plan,
         run,
         sized,
-        Slots(sized.cpus),
+        Slots(int(os.environ.get(_SLOTS_VARIABLE) or sized.cpus)),
         measured_before(plan, run),
         {port: threading.Lock() for port in set(plan.ports.values())},
         Sampler(),

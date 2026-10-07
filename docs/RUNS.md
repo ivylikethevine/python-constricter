@@ -70,10 +70,10 @@ checkout doesn't have).
 
 ## Super corpora
 
-Every corpus, every way (`tests/corpus/super_corpora.py`): constricter 0.3.4+dev (`8a2aa5e0c926`),
+Every corpus, every way (`tests/corpus/super_corpora.py`): constricter 0.3.4+dev (`7beb46878c67`),
 Python 3.14.7, on AMD Ryzen 7 9700X 8-Core Processor (16 CPUs, 60 GB, Linux): `--jobs=4`, 8 workers
 a suite, each step started once the CPUs it keeps busy are free, then each corpus's timed check
-alone with every CPU. The run took 25 minutes. Timings don't compare across machines.
+alone with every CPU. The run took 29 minutes. Timings don't compare across machines.
 
 Offences per code at `suffocate`, with `all-scopes` (Python 3.14.7); the total row gives each code's
 share of them:
@@ -97,12 +97,12 @@ fix broke, and what a second pass would still fix:
 | ---------------- | ----------- | ----------: | ---------------: | --------------: | ----------: | -------------: | -------------: | -----: | ---: |
 | standard library | 0.3.4+dev   | 0 / 113,710 | 101,367 / 12,414 |    113,710 / 71 | 113,781 / 0 | 36,385 (32.0%) | 13,496 (11.9%) |      0 |    0 |
 | django           | 0.3.4+dev   |  0 / 17,170 |   15,002 / 2,168 |      17,170 / 0 |  17,170 / 0 |  2,595 (15.1%) |  2,817 (16.4%) |      0 |    0 |
-| sqlalchemy       | 0.3.4+dev   |  0 / 12,411 |   10,843 / 2,244 |    12,411 / 676 |  13,087 / 0 |  1,787 (13.7%) |     858 (6.6%) |      0 |    0 |
+| sqlalchemy       | 0.3.4+dev   |  0 / 12,411 |   10,843 / 2,244 |    12,411 / 676 |  13,087 / 0 |  1,787 (13.7%) |     856 (6.5%) |      0 |    0 |
 | pydantic         | 0.3.4+dev   |   0 / 3,092 |      2,654 / 641 |     3,092 / 203 |   3,295 / 0 |  1,137 (34.5%) |    447 (13.6%) |      0 |    0 |
 | pandas           | 0.3.4+dev   |  0 / 77,794 |   75,015 / 2,916 |    77,794 / 137 |  77,931 / 0 | 16,010 (20.5%) | 24,352 (31.2%) |      0 |    0 |
 | twisted          | 0.3.4+dev   |  0 / 17,874 |   16,525 / 1,349 |      17,874 / 0 |  17,874 / 0 |  2,423 (13.6%) |  4,716 (26.4%) |      0 |    0 |
 | pip              | 0.3.4+dev   |   0 / 8,924 |    7,774 / 1,150 |       8,924 / 0 |   8,924 / 0 |  2,203 (24.7%) |  1,234 (13.8%) |      0 |    0 |
-| **Total**        | 0.3.4+dev   | 0 / 250,975 | 229,180 / 22,882 | 250,975 / 1,087 | 252,062 / 0 | 62,540 (24.8%) | 47,920 (19.0%) |      0 |    0 |
+| **Total**        | 0.3.4+dev   | 0 / 250,975 | 229,180 / 22,882 | 250,975 / 1,087 | 252,062 / 0 | 62,540 (24.8%) | 47,918 (19.0%) |      0 |    0 |
 
 Annotation coverage (`--coverage` with `all-scopes`, counted by this checkout for every version):
 the share of bindings typed as released, after `--fix`, and after `--fix --unsafe-fixes`, and how
@@ -112,7 +112,7 @@ much each raised it: in percentage points, and as a share of the bindings that w
 | ---------------- | ----------- | ----------------: | ------------: | ---------------------: | --------------------------: | --------------------------: |
 | standard library | 0.3.4+dev   |              1.2% |         32.8% |                  44.5% | +31.6 pts, 32.0% of untyped | +43.4 pts, 43.9% of untyped |
 | django           | 0.3.4+dev   |              0.0% |         15.1% |                  31.5% | +15.1 pts, 15.1% of untyped | +31.5 pts, 31.5% of untyped |
-| sqlalchemy       | 0.3.4+dev   |             14.8% |         27.0% |                  32.9% | +12.3 pts, 14.4% of untyped | +18.2 pts, 21.3% of untyped |
+| sqlalchemy       | 0.3.4+dev   |             14.8% |         27.0% |                  32.9% | +12.3 pts, 14.4% of untyped | +18.1 pts, 21.3% of untyped |
 | pydantic         | 0.3.4+dev   |             21.8% |         50.6% |                  61.9% | +28.7 pts, 36.8% of untyped | +40.0 pts, 51.2% of untyped |
 | pandas           | 0.3.4+dev   |              1.6% |         21.9% |                  52.7% | +20.2 pts, 20.6% of untyped | +51.1 pts, 51.9% of untyped |
 | twisted          | 0.3.4+dev   |              0.0% |         13.6% |                  39.9% | +13.6 pts, 13.6% of untyped | +39.9 pts, 39.9% of untyped |
@@ -124,7 +124,7 @@ for each.
 
 | Mechanism       | standard library |        django | sqlalchemy |  pydantic |        pandas |     twisted |       pip | Certain | Guessed |
 | --------------- | ---------------: | ------------: | ---------: | --------: | ------------: | ----------: | --------: | ------: | ------: |
-| `literal`       |   15,198 / 3,216 | 1,890 / 1,759 |  574 / 426 | 284 / 207 |   7,744 / 722 | 1,467 / 522 | 928 / 534 |  28,085 |   7,386 |
+| `literal`       |   15,198 / 3,216 | 1,890 / 1,759 |  574 / 424 | 284 / 207 |   7,744 / 722 | 1,467 / 522 | 928 / 534 |  28,085 |   7,384 |
 | `constructor`   |      228 / 4,244 |       1 / 547 |    0 / 214 |    0 / 97 |    0 / 20,721 |   2 / 3,298 |   5 / 313 |     236 |  29,434 |
 | `stdlib`        |   14,355 / 1,789 |      273 / 70 |   135 / 28 |   88 / 19 |   1,184 / 101 |    406 / 31 | 555 / 102 |  16,996 |   2,140 |
 | `container`     |      4,372 / 926 |     286 / 181 |   129 / 37 |   67 / 13 |   2,046 / 709 |   293 / 107 |  244 / 80 |   7,437 |   2,053 |
@@ -135,7 +135,7 @@ for each.
 | `returned`      |      747 / 2,710 |      67 / 304 |     3 / 34 |     0 / 0 |     177 / 271 |    19 / 707 |  23 / 126 |   1,036 |   4,152 |
 | `rebound`       |       14 / 2,327 |       0 / 201 |    0 / 125 |    0 / 67 |     2 / 1,711 |     0 / 143 |   2 / 217 |      18 |   4,791 |
 | `builtin`       |      2,270 / 271 |      232 / 46 |   174 / 13 |   69 / 11 |      863 / 80 |    323 / 23 |  149 / 34 |   4,080 |     478 |
-| `member`        |        0 / 1,573 |     0 / 1,542 |    0 / 325 |   0 / 172 |       0 / 138 |     0 / 353 |   0 / 366 |       0 |   4,469 |
+| `member`        |        0 / 1,573 |     0 / 1,542 |    0 / 323 |   0 / 172 |       0 / 138 |     0 / 353 |   0 / 366 |       0 |   4,467 |
 | `arithmetic`    |      2,123 / 559 |     169 / 110 |    96 / 42 |    18 / 4 |     371 / 140 |    142 / 65 |  122 / 48 |   3,041 |     968 |
 | `unpack`        |    1,261 / 1,079 |       42 / 34 |    80 / 21 |  110 / 40 |     531 / 188 |   104 / 140 |   95 / 40 |   2,223 |   1,542 |
 | `assigned`      |        0 / 1,065 |        0 / 26 |     0 / 22 |    0 / 41 |        0 / 84 |     0 / 165 |    0 / 35 |       0 |   1,438 |
@@ -162,7 +162,7 @@ for, and the commonest shapes of the values with no fix:
 | ---------------- | ------: | -----------: | -------------: | ------------------------: |
 | standard library | 113,702 |       13,499 | 63,825 (56.1%) |                         0 |
 | django           |  17,169 |        2,817 | 11,757 (68.5%) |                         0 |
-| sqlalchemy       |  12,410 |          858 |  9,765 (78.7%) |                         0 |
+| sqlalchemy       |  12,410 |          856 |  9,767 (78.7%) |                         0 |
 | pydantic         |   3,092 |          447 |  1,508 (48.8%) |                         0 |
 | pandas           |  77,793 |       24,343 | 37,440 (48.1%) |                         0 |
 | twisted          |  17,874 |        4,716 | 10,735 (60.1%) |                         0 |
@@ -186,7 +186,7 @@ for, and the commonest shapes of the values with no fix:
 | list (mixed/unknown elements)       |            2,022 |    147 |         51 |        7 |    751 |     256 |  68 |  3,302 |
 | empty list                          |            1,664 |    442 |        110 |       15 |    271 |     551 | 171 |  3,224 |
 | tuple (mixed/unknown elements)      |            1,961 |    191 |        196 |       34 |    364 |     274 | 108 |  3,128 |
-| other constant                      |            1,115 |    281 |        718 |       16 |    140 |     610 |  20 |  2,900 |
+| other constant                      |            1,115 |    281 |        720 |       16 |    140 |     610 |  20 |  2,902 |
 | binop (unknown operands)            |            1,184 |    127 |         72 |       20 |  1,120 |     131 | 124 |  2,778 |
 | call: module function (unannotated) |            1,981 |    194 |         56 |        0 |    267 |     150 | 121 |  2,769 |
 | subscript: local[...]               |              729 |    172 |        186 |       12 |    944 |     108 | 119 |  2,270 |
@@ -198,7 +198,7 @@ hasn't, by the mechanisms of the fixes they're traced to:
 | Package    | Tag        | Released                                                   | After `--fix`                                                          | After `--fix --unsafe-fixes`                                           |
 | ---------- | ---------- | ---------------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | django     | 5.2.17     | 17,578 ran, 1 failures, 1,149 skipped, 5 expected failures | the same (394 files changed, 2652 insertions(+), 2350 deletions(-))    | the same (567 files changed, 5611 insertions(+), 5058 deletions(-))    |
-| sqlalchemy | rel_2_0_54 | 26,643 passed, 985 skipped                                 | the same (163 files changed, 1674 insertions(+), 1308 deletions(-))    | the same (195 files changed, 2725 insertions(+), 2245 deletions(-))    |
+| sqlalchemy | rel_2_0_54 | 26,643 passed, 985 skipped                                 | the same (163 files changed, 1674 insertions(+), 1308 deletions(-))    | the same (195 files changed, 2723 insertions(+), 2243 deletions(-))    |
 | pydantic   | v2.13.5    | 6,439 passed, 329 skipped, 27 xfailed                      | the same (73 files changed, 1094 insertions(+), 808 deletions(-))      | the same (80 files changed, 1660 insertions(+), 1266 deletions(-))     |
 | pandas     | v3.0.6     | 165,407 passed, 24,659 skipped, 753 xfailed, 84 xpassed    | the same (1049 files changed, 16910 insertions(+), 14493 deletions(-)) | the same (1197 files changed, 41588 insertions(+), 38226 deletions(-)) |
 
@@ -220,8 +220,8 @@ hasn't, by the mechanisms of the fixes they're traced to:
 - pandas, `--fix --unsafe-fixes`: `returned (guess)` 21, `copy+loop (guess)` 5, `(untraced)` 3,
   `builtin+stdlib` 2, `builtin+stdlib+subscript (guess)` 2, `literal` 1, `loop+subscript (guess)` 1,
   `literal+rebound (guess)` 1, and 12 of other mechanisms
-- pandas, `--infer-with basedpyright,ty`: `returned (guess)` 22, `(untraced)` 21, `checker (guess)`
-  19, `copy+loop (guess)` 5, `method (guess)` 3, `builtin+stdlib` 2, `literal+rebound (guess)` 2,
+- pandas, `--infer-with basedpyright,ty`: `(untraced)` 23, `returned (guess)` 22, `checker (guess)`
+  17, `copy+loop (guess)` 5, `method (guess)` 3, `builtin+stdlib` 2, `literal+rebound (guess)` 2,
   `builder+container+literal+loop` 2, and 23 of other mechanisms
 
 `--fix --unsafe-fixes --infer-with` each checker, on a copy: what it fixed (and how many more than
@@ -229,12 +229,12 @@ without the hints), the typed share after, and the files it broke:
 
 | Corpus           | Fixed and guessed | With `basedpyright` | Typed | Broken |       With `ty` | Typed | Broken |
 | ---------------- | ----------------: | ------------------: | ----: | -----: | --------------: | ----: | -----: |
-| standard library |            49,881 |     58,191 (+8,310) | 51.7% |      0 | 55,992 (+6,111) | 49.8% |      0 |
+| standard library |            49,881 |     58,193 (+8,312) | 51.7% |      0 | 55,992 (+6,111) | 49.8% |      0 |
 | django           |             5,412 |        5,853 (+441) | 34.1% |      0 |    5,633 (+221) | 32.8% |      0 |
-| sqlalchemy       |             2,645 |        3,546 (+901) | 39.1% |      0 |    2,964 (+319) | 35.1% |      0 |
+| sqlalchemy       |             2,643 |        3,544 (+901) | 39.1% |      0 |    2,962 (+319) | 35.1% |      0 |
 | pydantic         |             1,584 |        1,800 (+216) | 67.3% |      0 |    1,715 (+131) | 65.2% |      0 |
-| pandas           |            40,362 |     47,278 (+6,916) | 61.4% |      0 | 46,806 (+6,444) | 60.8% |      0 |
-| twisted          |             7,139 |        8,023 (+884) | 44.9% |      0 |    7,579 (+440) | 42.4% |      0 |
+| pandas           |            40,362 |     47,300 (+6,938) | 61.4% |      0 | 46,806 (+6,444) | 60.8% |      0 |
+| twisted          |             7,139 |        8,030 (+891) | 44.9% |      0 |    7,579 (+440) | 42.4% |      0 |
 | pip              |             3,437 |        4,250 (+813) | 48.4% |      0 |    3,780 (+343) | 43.2% |      0 |
 
 Seconds per step (and the CPUs its processes kept busy, on average), side by side; then the check at
@@ -243,13 +243,13 @@ share of the check's), and the second round's, of a profiled check:
 
 | Corpus           | Files |   `table` |  `census` | `infer-basedpyright` | `infer-ty` |   `tests` |     `types` | Check | Per file | Main process |           Second round |
 | ---------------- | ----: | --------: | --------: | -------------------: | ---------: | --------: | ----------: | ----: | -------: | -----------: | ---------------------: |
-| standard library | 1,867 | 321 (3.5) | 179 (1.1) |          1,049 (1.3) |  323 (1.5) |         - |           - |  14.8 |   7.9 ms |    3.8 (26%) | 5.4 (56% of the first) |
-| django           |   883 |  46 (3.5) |  20 (1.4) |             58 (3.1) |   89 (1.1) | 367 (4.5) |           - |   3.1 |   3.5 ms |    0.8 (25%) | 1.1 (50% of the first) |
-| sqlalchemy       |   257 |  49 (2.7) |  20 (1.0) |             65 (2.8) |   52 (1.1) | 288 (5.6) |    70 (3.3) |   2.7 |  10.6 ms |    0.5 (19%) | 0.5 (24% of the first) |
-| pydantic         |   105 |   9 (1.5) |   5 (0.8) |             35 (1.9) |   14 (1.2) | 225 (0.5) |   111 (1.8) |   0.6 |   5.4 ms |    0.1 (25%) |  0.0 (0% of the first) |
-| pandas           | 1,421 | 283 (3.9) | 175 (1.0) |            823 (1.3) |  926 (1.0) | 813 (3.4) | 1,137 (3.2) |  11.7 |   8.2 ms |    2.9 (25%) | 1.8 (16% of the first) |
-| twisted          |   819 |  66 (2.3) |  23 (1.1) |             52 (3.6) |   93 (0.8) |         - |           - |   2.4 |   2.9 ms |    0.6 (27%) | 0.7 (36% of the first) |
-| pip              |   366 |  47 (2.4) |  16 (1.2) |             48 (2.9) |   44 (1.3) |         - |           - |   2.1 |   5.7 ms |    0.4 (17%) | 0.8 (64% of the first) |
+| standard library | 1,867 | 208 (5.2) | 173 (1.1) |            750 (1.4) |  394 (1.4) |         - |           - |  15.5 |   8.3 ms |    4.0 (25%) | 5.7 (57% of the first) |
+| django           |   883 |  48 (3.5) |  22 (1.3) |             56 (3.3) |   73 (1.2) | 321 (4.8) |           - |   3.4 |   3.9 ms |    0.8 (25%) | 1.2 (49% of the first) |
+| sqlalchemy       |   257 |  46 (2.8) |  12 (1.6) |             71 (2.9) |   55 (1.2) | 389 (5.4) |    92 (3.2) |   3.0 |  11.8 ms |    0.5 (18%) | 0.6 (25% of the first) |
+| pydantic         |   105 |  10 (2.7) |   7 (1.1) |             36 (2.0) |   20 (0.9) | 219 (0.5) |   146 (1.5) |   0.7 |   6.2 ms |    0.2 (23%) |  0.0 (0% of the first) |
+| pandas           | 1,421 | 324 (3.5) | 191 (0.9) |            878 (1.3) |  945 (1.0) | 806 (3.5) | 1,166 (3.3) |  12.7 |   8.9 ms |    3.1 (24%) | 2.1 (17% of the first) |
+| twisted          |   819 |  40 (3.4) |  25 (1.1) |             99 (2.3) |   80 (1.0) |         - |           - |   2.6 |   3.2 ms |    0.7 (26%) | 0.8 (38% of the first) |
+| pip              |   366 |  33 (2.9) |  19 (1.1) |             74 (2.2) |   58 (1.0) |         - |           - |   2.5 |   6.9 ms |    0.4 (17%) | 0.9 (61% of the first) |
 
 ## Mega corpora
 

@@ -6,6 +6,11 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--infer-with` remembers a file its checker's server hung on, and leaves it without hints from the
+  start of the next run, where it waited out the server's silence twice and restarted it each time
+  (four minutes of a basedpyright-hinted fix of pandas, 439s to 198s). It's remembered by the file's
+  text and the checker's executable, in the cache: a changed file, or a new version of the checker,
+  is asked again.
 - The command leaves as soon as it has written its output, not by the interpreter's own exit, which
   freed every parsed file and the index an object at a time: 15 of the 67 seconds of a check of
   pandas in one process. With `--jobs=1` on 16 CPUs the standard library checks in 55s, from 74s
