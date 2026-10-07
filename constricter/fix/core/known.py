@@ -2,6 +2,7 @@
 """What `--fix` knows: a module's declarations it infers from (`Known`), and what it infers (`Inference`)."""
 
 import builtins
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -28,6 +29,7 @@ else:
 
 _BUILTINS: Final = frozenset(dir(builtins))
 _DOT: Final = "."
+_NAME: Final = re.compile(r"[A-Za-z_]\w*")  # each name in a return's template
 # What a name refers to: a module and an attribute of it (`None`: the module itself).
 Origin: TypeAlias = tuple[str, str | None]
 # How a return template starts that's the type itself, as the module calling it writes it: a
@@ -486,6 +488,8 @@ class Outside(NamedTuple):
 
         That's a name to import under `if TYPE_CHECKING:` (see `Guarded`) that the module binds anywhere
         else, a function's local or parameter included: the import would shadow it, or it the import.
+        A checked file's overloaded function is dropped whole, if any of its signatures returns such a
+        type: which one a call takes isn't known here.
         `present`: those it imports so already (see `imports.present`), which `--fix` wrote since the
         files were indexed: each is one the file has.
 
@@ -520,7 +524,11 @@ class Outside(NamedTuple):
             self.generics,
             self.callees,
             self.parameters,
-            self.overloaded,
+            {
+                callee: signatures
+                for callee, signatures in self.overloaded.items()
+                if not any(clashing.intersection(_NAME.findall(each.returns or "")) for each in signatures)
+            },
             self.installed_classes,
             self.installed_parameters,
             self.installed_lineage,

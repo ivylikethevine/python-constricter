@@ -4,9 +4,9 @@
 import contextlib
 import gc
 import importlib
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Self, TypeAlias, cast
+from typing import TYPE_CHECKING, Final, Self, TypeAlias, TypeVar, cast
 
 from constricter.cli import collecting
 from constricter.cli.paths import shares
@@ -22,8 +22,11 @@ if TYPE_CHECKING:  # slow to import, and only needed for many files
 _Reading: TypeAlias = "Future[list[project.Module | None]]"
 Checking: TypeAlias = "Future[list[FileRun]]"
 _FIRST_COMPLETED: Final = "FIRST_COMPLETED"  # `concurrent.futures.FIRST_COMPLETED`
-_Waited: TypeAlias = tuple[set[Checking], set[Checking]]  # `concurrent.futures.wait`'s: done, and not
-_Share: TypeAlias = tuple[list[int], Checking]  # a worker's files to check, by index, and its answer
+_Check: TypeAlias = Callable[[Path, Outside], FileRun]
+_Told = TypeVar("_Told")  # what every worker is told
+_Asking = TypeVar("_Asking")  # what one worker is asked
+_Pending = TypeVar("_Pending")  # a worker's answer to come
+_Wait: TypeAlias = Callable[..., tuple[set[object], set[object]]]  # `concurrent.futures.wait`: done, and not
 
 
 class Workers:
@@ -84,37 +87,38 @@ class Workers:
             found.update(zip(share, future.result(), strict=True))
         return project.indexed(found[at] for at in range(len(self.paths)))  # in their order, as one at a time
 
-    def submit(
+    def tell(self, function: Callable[[_Told], None], told: _Told) -> None:
+        """Run `function(told)` in every worker, and wait for them all: what each is to know from then on."""
+        telling: list[Future[None]] = [pool.submit(function, told) for pool in self.pools]
+        each: Future[None]
+        for each in telling:
+            each.result()
+
+    def ask(
         self,
-        check: Callable[[Path, Outside], FileRun],
-        outside: Mapping[int, Outside],
-    ) -> list[_Share]:
-        """Start checking the files `outside` has (by index), each by the worker that indexed it.
+        worker: int,
+        function: Callable[[_Check, _Asking], list[FileRun | None]],
+        check: _Check,
+        asked: _Asking,
+    ) -> "Future[list[FileRun | None]]":
+        """Start `function(check, asked)` in one worker: its files to check, and what it's to know for them.
 
         Returns:
-          Each worker's files given, by index, and the answer it will give for them, in their order.
+          The answer it will give.
 
         """
-        mine: list[list[int]] = [[at for at in share if at in outside] for share in self.shares]
-        return [
-            (files, pool.submit(check_share, check, [(self.paths[at], outside[at]) for at in files]))
-            for pool, files in zip(self.pools, mine, strict=True)
-            if files
-        ]
+        return self.pools[worker].submit(function, check, asked)
 
 
-def first_done(pending: Collection[Checking]) -> set[Checking]:
+def first_done(pending: Collection[_Pending]) -> set[_Pending]:
     """Wait for any of `pending` to finish.
 
     Returns:
       Those that have.
 
     """
-    wait: Callable[..., _Waited] = cast(
-        "Callable[..., _Waited]",
-        importlib.import_module("concurrent.futures").wait,
-    )
-    return wait(pending, return_when=_FIRST_COMPLETED)[0]
+    wait: _Wait = cast("_Wait", importlib.import_module("concurrent.futures").wait)
+    return cast("set[_Pending]", wait(pending, return_when=_FIRST_COMPLETED)[0])
 
 
 def _started(processes: int) -> None:

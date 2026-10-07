@@ -97,6 +97,11 @@ WORK: Final = Path(__file__).resolve().parents[2] / "local" / "corpus-suites"
 _JOBS: Final = os.environ.get("CORPUS_JOBS", "0")
 _MOST_WORKERS: Final = int(os.environ.get("CORPUS_SUITE_WORKERS", "0")) or max(1, (os.cpu_count() or 2) // 2)
 _WORKERS: Final = "{workers}"  # in a test command's word: how many processes to take
+# How long a suite's tests may run before they're stopped: one waiting on a server no one started
+# never ends. Half an hour, unless `CORPUS_SUITE_SECONDS` says.
+_TEST_SECONDS: Final = float(os.environ.get("CORPUS_SUITE_SECONDS", "1800"))
+_STOPPED: Final = "(stopped:"
+_TIMED_OUT: Final = f"ERROR {_STOPPED} it ran too long)"  # read as a failure (see `_FAILED`)
 _GIGABYTE: Final = 2**30
 _MEMORY_SHARE: Final = 2  # the tests' workers' part of the machine's memory: a half
 # Django's `runtests.py` under `fork`: with `forkserver`, Python 3.14's default on Linux, Django 5.2
@@ -260,24 +265,36 @@ def _environment(cwd: Path) -> dict[str, str]:
     return environment
 
 
-def _completed(args: Sequence[str], cwd: Path, given: str = "") -> subprocess.CompletedProcess[str]:
-    """Run a command in `cwd`, with `given` as its standard input.
+def _completed(
+    args: Sequence[str],
+    cwd: Path,
+    given: str = "",
+    seconds: float | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Run a command in `cwd`, with `given` as its standard input, for `seconds` at most.
 
     Returns:
-      What it did: its exit status, and its standard output and error.
+      What it did: its exit status, and its standard output and error; one stopped for taking too
+      long, what it had written, then `_TIMED_OUT`.
 
     """
-    return subprocess.run(
-        list(args),
-        input=given,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-        cwd=cwd,
-        env=_environment(cwd),
-    )
+    try:
+        return subprocess.run(
+            list(args),
+            input=given,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            cwd=cwd,
+            env=_environment(cwd),
+            timeout=seconds,
+        )
+    except subprocess.TimeoutExpired as expired:
+        written: str | bytes = expired.stdout or ""
+        said: str = written if isinstance(written, str) else written.decode("utf-8", "replace")
+        return subprocess.CompletedProcess(list(args), 1, f"{said}\n{_TIMED_OUT}\n", "")
 
 
 def _run(args: Sequence[str], cwd: Path, given: str = "") -> tuple[int, str]:
@@ -381,6 +398,16 @@ def workers(suite: Suite) -> int:
     return max(1, min(suite.most, _MOST_WORKERS, fitting))
 
 
+def stopped(outcome: Outcome) -> bool:
+    """Check whether a test run was stopped for running too long (see `_TEST_SECONDS`).
+
+    Returns:
+      Whether it was.
+
+    """
+    return _STOPPED in outcome.failed
+
+
 def tested(root: Path, suite: Suite, keep: Path | None) -> Outcome:
     """Run the checkout's tests, writing their output to `keep` unless it's `None`.
 
@@ -389,7 +416,8 @@ def tested(root: Path, suite: Suite, keep: Path | None) -> Outcome:
 
     """
     command: list[str] = [word.replace(_WORKERS, str(workers(suite))) for word in suite.tests]
-    output: str = _output(_venv(root, command), root)
+    done: subprocess.CompletedProcess[str] = _completed(_venv(root, command), root, seconds=_TEST_SECONDS)
+    output: str = done.stdout + done.stderr
     if keep is not None:
         keep.parent.mkdir(parents=True, exist_ok=True)
         _ = keep.write_text(output, encoding="utf-8")

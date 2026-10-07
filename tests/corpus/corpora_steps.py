@@ -250,7 +250,8 @@ def tests_step(corpus: Corpus, suite: corpus_suite.Suite) -> Tested:
     fixed: list[tuple[str, str, corpus_suite.Outcome, float]] = []
     label: str
     options: tuple[str, ...]
-    for label, options in corpus_suite.MODES:
+    # One stopped as released (waiting on a server no one started) would be after each fix too.
+    for label, options in () if corpus_suite.stopped(released) else corpus_suite.MODES:
         change: str = corpus_suite.fixed(root, suite, *options)
         start = time.perf_counter()
         outcome: corpus_suite.Outcome = corpus_suite.tested(

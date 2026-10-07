@@ -182,6 +182,8 @@ def _censuses(names: Sequence[str], found: dict[str, Steps]) -> list[str]:
 
 
 def _counts(outcome: corpus_suite.Outcome) -> str:
+    if corpus_suite.stopped(outcome):
+        return "stopped: it ran too long"
     return ", ".join(f"{count:,} {kind}" for kind, count in outcome.counts.items()) or "nothing ran"
 
 
@@ -260,6 +262,7 @@ def _suites(names: Sequence[str], found: dict[str, Steps]) -> list[str]:
                     tested.tag,
                     _counts(tested.released) + (" (run twice)" if tested.again else ""),
                     *(_after(tested.released, outcome, change) for _, change, outcome, _ in tested.fixed),
+                    *([NONE] * (len(corpus_suite.MODES) - len(tested.fixed))),
                 ],
             )
         checked: Typechecked | None

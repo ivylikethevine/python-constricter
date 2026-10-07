@@ -308,7 +308,7 @@ def checked_tree(
     }
     return Checked(
         sorted([*reported, *redundant(tree, settings.checks.fixes), *flow, *finals]),
-        exported._replace(names=returned.exported_names(exported, guarded, plan.added)),
+        exported._replace(names=imports.exported_names(exported, guarded, plan.added)),
         observed(tree, scopes, settings.known, {} if outside is None else outside.callees),
     )
 
@@ -951,6 +951,7 @@ def _finished(tree: ast.Module, scopes: Sequence[Scope]) -> None:
         late.rebinds(scope)
         late.fills(scope)
         late.shadowed(scope)
+        late.excused(scope)
 
 
 def value_flow(

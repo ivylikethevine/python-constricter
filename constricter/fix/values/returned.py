@@ -16,13 +16,13 @@ from collections.abc import Collection, Iterator, Mapping, Sequence
 from functools import lru_cache
 from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter.fix.core import imports
 from constricter.fix.core.inherited import Lineage
-from constricter.fix.core.known import Guarded, Inference, Origin, Returned, Returns
+from constricter.fix.core.known import Inference, Returned, Returns
 from constricter.fix.values import entered, fills
-from constricter.fix.values.inference import ASSIGNED
+from constricter.fix.values.inference import ASSIGNED, RETURNED
 from constricter.rules.annotations import roots
 from constricter.rules.decorators import FIXTURES, spelled
+from constricter.rules.flow import members
 from constricter.rules.syntax import FunctionDef, Start, has_within, own_nodes, within
 from constricter.rules.walked import classes, of_type
 
@@ -43,6 +43,7 @@ _Emptied: TypeAlias = tuple[str, str]  # a `self.x = []`: the attribute, and the
 _Under: TypeAlias = tuple[list[Recorded], list[Added], int]  # see `_under`
 _FILLED: Final = "filled"  # the fix kind of an empty container typed by what's added to it
 SELF: Final = "self"
+_NONE: Final = "None"
 _NOT_METHODS: Final = frozenset({"staticmethod", "classmethod"})
 _NUMBERS: Final = ("bool", "int", "float", "complex")  # narrowest first: an attribute takes the widest
 _FUNCTIONS: Final = (ast.FunctionDef, ast.AsyncFunctionDef)
@@ -902,8 +903,13 @@ def _return_type(
     ):
         return None
     types: set[str | None] = {None if found is None else found.annotation for found, _ in returns}
-    found: str | None = next(iter(types)) if len(types) == 1 else None
-    return None if found is None else (found, frozenset[str]().union(*(origins for _, origins in returns)))
+    found: str | None
+    if (found := next(iter(types)) if len(types) == 1 else None) is None:
+        return None
+    # An `X | None` is a guess: a type checker takes the unannotated function's call for anything,
+    # and what its callers do with it unchecked for `None` is an error only once it's declared.
+    doubted: frozenset[str] = frozenset({RETURNED}) if _NONE in (members(found) or ()) else frozenset()
+    return found, doubted.union(*(origins for _, origins in returns))
 
 
 def is_generator(module: ast.Module, func: ast.FunctionDef) -> bool:
@@ -970,29 +976,3 @@ def terminates(body: Sequence[ast.stmt]) -> bool:
             return terminates(last.orelse or last.body) and all(terminates(h.body) for h in last.handlers)
         case _:
             return False
-
-
-def exported_names(
-    returns: Returns,
-    guarded: Mapping[str, Guarded],
-    added: Mapping[str, str],
-) -> dict[str, Origin]:
-    """Find what each name `returns`' types use refers to, where the module doesn't import it to run.
-
-    Imported for type checking alone (`guarded`), or by an import its fixes add (`added`): a library
-    type it doesn't import yet (`types.ModuleType`) is named for its importers too, or they'd type
-    its calls only on a second pass, once the import is in the source.
-
-    Returns:
-      Each such name's origin.
-
-    """
-    return {
-        name: guarded[name].origin if name in guarded else imports.added_origin(added[name])
-        for annotation in (
-            *returns.calls.values(),
-            *(a for m in returns.methods.values() for a in m.values()),
-        )
-        for name in roots(annotation)
-        if name in guarded or name in added
-    }

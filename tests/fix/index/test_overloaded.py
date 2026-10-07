@@ -163,3 +163,37 @@ def test_without_imports_to_record_the_signatures_are_read_all_the_same(tmp_path
     use: Path = _project(tmp_path)
     catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
     assert stubbed.overloaded(catalog, use).keys() == {"concat", "load", "make", "named"}
+
+
+CLASHING_LIBRARY: Final = """
+import types
+from typing import overload
+
+
+@overload
+def optional(name: str, errors: str) -> types.ModuleType | None: ...
+@overload
+def optional(name: str) -> types.ModuleType: ...
+def optional(name, errors="raise"):
+    return None
+"""
+CLASHING_USE: Final = """
+from pkg.optional import optional
+
+
+def table() -> None:
+    types: list[int] = [1]
+
+
+def count() -> None:
+    found = optional("x", errors="ignore")
+"""
+
+
+def test_an_overloads_return_the_file_cant_import_is_no_fix(tmp_path: Path) -> None:
+    """`types` is the file's own local: `types.ModuleType` can't be imported there, nor written."""
+    _ = _write(tmp_path, "pkg/__init__.py", "")
+    _ = _write(tmp_path, "pkg/optional.py", CLASHING_LIBRARY)
+    use: Path = _write(tmp_path, "pkg/use.py", CLASHING_USE)
+    _ = cli.main(["--fix", "-q", str(tmp_path)])
+    assert use.read_text(encoding="utf-8") == textwrap.dedent(CLASHING_USE)

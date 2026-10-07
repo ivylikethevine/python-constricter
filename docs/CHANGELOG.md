@@ -6,10 +6,18 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
-- A check with `--jobs` is faster where files import much: the index keeps what its modules' classes
-  are named by, their lines of bases and their members, which each file asked again, and a file
-  passes over the classes whose members it takes none of. On 16 CPUs pandas checks in 28s from 41s,
-  the standard library in 15.6s from 18.7s, with the same offences and fixes.
+- A check with `--jobs` is faster where files import much. Each worker is sent the index, once, and
+  works out what its own files import from the others, which the main process did for every file
+  while the workers waited; the index keeps what its modules' classes are named by, their lines of
+  bases and their members, which each file asked again; and a file passes over the classes whose
+  members it takes none of. On 16 CPUs pandas checks in 11s from 41s (22s at 0.3.3), the standard
+  library in 15s from 18.7s, with the same offences and fixes.
+- `--fix` adds fewer type errors still: a call of an unannotated function whose `return`s give an
+  `X | None` is a guess now (a checker takes it for anything, and what's done with it unchecked for
+  `None` is an error only once declared); a name a `# type: ignore` line of its function uses has no
+  fix (declared, it leaves the comment nothing to excuse); and a call of another file's overloaded
+  function has none where a signature of it returns a type whose import the file can't take
+  (`types.ModuleType`, in a file with a local `types`).
 - `--fix` adds fewer type errors of its own: `self.__class__` is `type(self)`, a `type[Self]` in a
   method that says `Self` (`c = self.__class__.__new__(self.__class__)` is a `Self`, not the class
   its `return c` then fails as); and a builtin class passed where an installed signature takes a

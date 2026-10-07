@@ -342,16 +342,16 @@ fix.
 ### Small: under 4 hours
 
 1. **The slowdown since 0.3.3.** On 16 CPUs a check of the standard library takes 62s at 0.3.3 and
-   73s now with `--jobs=1`, pandas 49s and 66s; with every CPU 10.8s and 15.6s, 22s and 28s (18.7s
-   and 41s before the index kept what its classes say: see the item on what a file knows from
-   outside, for the main process's part). What changed between them that works per file: each class
-   a file names followed up its bases (`own_types.lineages`), a second listing of the classes it
-   names for their methods' `return`s (`loose`), a checked file's overloads read again for each file
-   calling them (no longer memoised), the files ordered after more modules (those whose classes'
-   methods they call), and each file's scopes kept with its tree between rounds. Profile one process
-   at both tags (`corpus_profile.py`, from a copy of each: a script beside the checkout imports the
-   installed one). Done when a check of the standard library is no slower than at 0.3.3, or each
-   second it costs is accounted for by a fix it buys. About 3 hours; coverage unchanged.
+   73s now with `--jobs=1`, pandas 49s and 66s; with every CPU 10.8s and 15s, 22s and 11s (the
+   workers now work out what their own files import). What changed between them that works per file:
+   each class a file names followed up its bases (`own_types.lineages`), a second listing of the
+   classes it names for their methods' `return`s (`loose`), a checked file's overloads read again
+   for each file calling them (no longer memoised), the files ordered after more modules (those
+   whose classes' methods they call), and each file's scopes kept with its tree between rounds.
+   Profile one process at both tags (`corpus_profile.py`, from a copy of each: a script beside the
+   checkout imports the installed one). Done when a check of the standard library is no slower than
+   at 0.3.3, or each second it costs is accounted for by a fix it buys. About 3 hours; coverage
+   unchanged.
 2. **A suite's workers, sized by the suite.** `super_corpora.py` gives every suite the same number
    of pytest workers (a quarter of the CPUs), and `corpus_suite.py` four: django's runs in one
    process whatever it's given, sqlalchemy's four kept 3.1 CPUs busy, and a 16-CPU machine with 60
@@ -430,23 +430,13 @@ run:
    is closed or reopened by them. About 8 hours for the first and 10 for the second, beside the
    runs' own time; coverage measured, not added.
 
-7. **What a file knows from outside, worked out by its worker.** In a `--jobs` check the main
-   process works out each file's `Outside` (what it imports from the others: `schedule.outside`) and
-   sends it to the worker that checks the file, which waits for it: pandas's check with every CPU
-   takes 28s and the standard library's 15.6s (22s and 10.8s at 0.3.3), most of it the main
-   process's, and of that most in `project.imported`, which looks at every class the file could
-   name, and in working each file's out again for every round of a cycle (`schedule.settle`). Give
-   each worker the index, once, and let it work out its own files' as it reaches them, the main
-   process keeping only the order and what each round returns. Done when the main process's share of
-   pandas's check is under a quarter and the check takes under 15s on 16 CPUs, its offences and
-   fixes unchanged. About 6 hours; coverage unchanged.
-8. **Only the classes a file uses.** A file is given the line of bases of every class it could name
+7. **Only the classes a file uses.** A file is given the line of bases of every class it could name
    through its imports (`own_types.lineages`), and every module's classes under each package it
-   imports, worked out and pickled for each file whether it names one or not. Work out a class's
-   when the check asks for it, or only for the names the file's text has. Done when `Outside` for a
-   file of the standard library's tests is under a tenth its pickled size, with the same fixes.
-   About 3 hours; coverage unchanged.
-9. **The index, kept between runs.** Every run reads and indexes every file again, ten times over in
+   imports, worked out for each file whether it names one or not. Work out a class's when the check
+   asks for it, or only for the names the file's text has. Done when `Outside` for a file of the
+   standard library's tests is under a tenth its pickled size, with the same fixes. About 3 hours;
+   coverage unchanged.
+8. **The index, kept between runs.** Every run reads and indexes every file again, ten times over in
    a corpus's `table` step alone. Keep each file's module (`modules.read`'s) by its content's hash,
    as an installed package's are (`installed`), dropped when the code that reads it changes. Done
    when a second check of an unchanged standard library spends under a second indexing, and a

@@ -52,6 +52,9 @@ _RAW: Final = "!"  # before a test command that isn't pytest's
 _WORKERS: Final = "{workers}"
 _MOST: Final = 8  # the most processes a suite here is given: none was sized by a run
 _STEP_FLAG: Final = "--step"
+# How long a suite's tests may run here (see `corpus_suite`): the longest took 6 minutes a run.
+_SECONDS_VARIABLE: Final = "CORPUS_SUITE_SECONDS"
+_SECONDS: Final = "900"
 _SUITE: Final = "suite"
 
 
@@ -169,6 +172,7 @@ def main(argv: Sequence[str]) -> int:
       1 if a fix broke anything or a step failed, else 0.
 
     """
+    _ = os.environ.setdefault(_SECONDS_VARIABLE, _SECONDS)
     if argv[:1] == [_STEP_FLAG]:
         os.environ.update(PACKAGES[argv[2]].environment)
     return super_corpora.main(argv, MEGA)

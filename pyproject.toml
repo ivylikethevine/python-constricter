@@ -159,6 +159,8 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 # Installed modules' reads are cached as pickles, written and read by constricter alone in the
 # user's own cache directory.
 "constricter/fix/index/installed.py" = ["suspicious-pickle-import", "suspicious-pickle-usage"]
+# The main process sends its workers the index, pickled once for them all.
+"constricter/cli/schedule.py" = ["suspicious-pickle-import", "suspicious-pickle-usage"]
 # `--infer-with` starts the type checker's language server, from a fixed table of commands (and
 # asks it its version, to see it runs).
 "constricter/cli/{hints,guard,protocol}.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]

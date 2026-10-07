@@ -334,7 +334,10 @@ def test_a_chain_on_a_late_type_stops_after_its_rounds() -> None:
 
 
 def test_a_branch_narrowing_doesnt_reach_the_return() -> None:
-    """`x = None`, then `x = n` only under `if`: past the `if`, `x` is `int | None` again, not `int`."""
+    """`x = None`, then `x = n` only under `if`: past the `if`, `x` is `int | None` again, not `int`.
+
+    And its call's a guess: a checker takes the unannotated function's for anything, `None` or not.
+    """
     source: str = textwrap.dedent(
         """
         def late(n: int, flag: bool):
@@ -350,5 +353,5 @@ def test_a_branch_narrowing_doesnt_reach_the_return() -> None:
     )
     assert {o.name: (o.fix, o.unsafe) for o in check_source(source)} == {
         "x": ("int | None", False),
-        "a": ("int | None", False),
+        "a": ("int | None", True),
     }

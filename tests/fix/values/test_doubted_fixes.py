@@ -346,3 +346,19 @@ def test_a_constructor_guess_is_only_a_callee_a_type_can_name() -> None:
         "h": None,  # generic: never bare
         "i": "Dec",
     }
+
+
+_EXCUSED: Final = """
+def render(parts: list[str], named: bool) -> str:
+    if named:
+        text = parts[0].upper()
+        text += "x"
+        return text  # type: ignore[no-any-return]
+    other = parts[0].lower()
+    return other
+"""
+
+
+def test_a_name_a_type_ignore_line_uses_has_no_fix() -> None:
+    """Declared, it leaves the comment nothing to excuse, which a checker may report."""
+    assert _found(_EXCUSED) == {"text": (None, False), "other": ("str", False)}
