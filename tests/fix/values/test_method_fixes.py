@@ -14,7 +14,8 @@ from constricter import Offence, check_source
         ("nums: list[int]", "nums.pop()", "int"),
         ("nums: list[int]", "nums.pop(0)", "int"),
         ("nums: list[int]", "nums.copy()", "list[int]"),
-        ("nums: list[int]", "nums.index(1)", None),  # not in the table
+        ("nums: list[int]", "nums.index(1)", "int"),
+        ("nums: list[int]", "nums.sort()", None),  # not in the table
         ("items: set[str]", "items.pop()", "str"),
         ("items: set[str]", "items.copy()", "set[str]"),
         ("pairs: dict[str, int]", "pairs.pop('k')", "int"),

@@ -6,6 +6,24 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types a `TypedDict`'s key read by a literal, on a value typed as the class:
+  `movie["year"]` by the key's declared type (less `Required`, `NotRequired` or `ReadOnly`),
+  `movie.get("year")` as that or `None`, and a loop over `movie["tags"]` by its elements. A class
+  under `TypedDict` or under one of its module's, with its bases' keys, in the module, another
+  checked file or an installed package that declares its types (`schema["ref"]` on a pydantic-core
+  `ModelSchema`): 31 more fixes on pydantic.
+- `--fix` types an attribute a class takes from a base: `self.limit` under a class whose base
+  declares `limit: int`, by an annotation, a `self.x: T` or a `@property`, through the module's own
+  classes and then another checked file's, as an inherited method is found; `cls.limit` too. Not
+  where a class before the base binds the name another way, nor past a generic base.
+- A type too vague to write (`vague`) is still its name's: `fields = schema.fields()`, declared a
+  `dict[str, Any]`, has no fix, and `for name in fields` now declares `name: str`. By a function's,
+  a method's or a property's declared return, `typing.cast` and a callable's call; a part of an
+  unpacked call too. 13 more fixes on pydantic, and no new basedpyright error with these three.
+- `--fix` types more builtin methods: an `int`'s and a `float`'s with one return (`n.bit_length()`,
+  `n.to_bytes(2, "big")`, `x.is_integer()`), a `list`'s and a `tuple`'s `count` and `index`, and a
+  `set`'s and a `frozenset`'s `issubset`, `issuperset` and `isdisjoint` (a `bool`), `difference` and
+  `intersection` (the receiver's own type).
 - `--fix` no longer types a standard-library call by a declaration only some supported Pythons have,
   where the others declare it another way: `importlib.metadata.entry_points()`, overloaded before
   3.12 (a `SelectableGroups` then, where the file couldn't name `EntryPoints`),

@@ -32,7 +32,8 @@ class Tables(NamedTuple):
 
     Its functions' declared returns (a `NewType` bound nowhere else returning itself: `Ref(name)` is
     a `Ref`), and its classes' attributes and methods' returns (their classmethods' and
-    staticmethods' too, which an instance has as well); `held`, the functions other modules'
+    staticmethods' too, which an instance has as well), the attributes each takes from the module's
+    other classes included (see `Lineage`); `held`, the functions other modules'
     decorators may give back, and `passes`, its own such decorators; `sides`, its classes'
     classmethods' and staticmethods' returns, those each takes from the module's other classes
     included (see `Lineage`), and `held_sides`, those other modules' decorators may give back;
@@ -69,7 +70,7 @@ def module_tables(tree: ast.Module) -> Tables:
     rebound: frozenset[str] = frozenset(rebound_names(tree)) if made else frozenset()
     return Tables(
         {**returns(tree), **{name: name for name in made if name not in rebound}},
-        classes(tree),
+        order.flattened(classes(tree)),
         {owner: {**own.get(owner, {}), **methods} for owner, methods in method_returns(tree).items()},
         held(tree),
         passes(tree),

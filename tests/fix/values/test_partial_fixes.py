@@ -6,7 +6,7 @@ import textwrap
 from pathlib import Path
 from typing import Final, TypeAlias
 
-from constricter import Offence, check_source
+from constricter import Checks, Offence, check_source
 from constricter.cli import schedule
 from constricter.fix.index import project
 from constricter.rules import annotations
@@ -93,6 +93,90 @@ def f(gen: Schema) -> None:
     size, metadata = gen.common()
     whole = gen.common()
 """
+_HELD: Final = """
+from typing import Any, Callable, cast
+
+
+def hints(obj: object) -> dict[str, Any]:
+    return {}
+
+
+def anything() -> Any:
+    return 1
+
+
+def pair() -> tuple[dict[str, Any], int]:
+    return {}, 1
+
+
+class Schema:
+    @property
+    def extra(self) -> dict[str, Any]:
+        return {}
+
+    def fields(self) -> dict[str, list[Any]]:
+        return {}
+
+
+def use(schema: Schema, raw: object, make: Callable[[], list[Any]]) -> None:
+    found = hints(raw)
+    for name in found:
+        print(name)
+    for key, value in hints(raw).items():
+        print(key, value)
+    count = len(found)
+    names = sorted(found)
+    extra = schema.extra
+    for word in extra:
+        print(word)
+    for field in schema.fields():
+        print(field)
+    cast_to = cast("dict[str, Any]", raw)
+    for part in cast_to:
+        print(part)
+    made = make()
+    size = len(made)
+    first, second = pair()
+    for inner in first:
+        print(inner)
+    whatever = anything()
+    copied = whatever
+    total = {"a": 1}
+    total = hints(raw)
+    declared: dict[str, int] = hints(raw)
+    for later in total:
+        print(later)
+"""
+
+
+def test_a_vague_type_is_the_names_and_no_fix() -> None:
+    """What's read of it is typed: a `dict[str, Any]`'s keys; a later binding to one stays unknown."""
+    found: list[Offence] = check_source(textwrap.dedent(_HELD))
+    assert {o.code for o in found} == {"LVA001", "LVA002"}  # the value fits what `declared` says
+    fixes: _Fixes = {o.name: (o.fix, o.unsafe) for o in found}
+    assert fixes == {
+        "name": ("str", False),
+        "key": ("str", False),
+        "count": ("int", False),
+        "names": ("list[str]", False),
+        "word": ("str", False),
+        "field": ("str", False),
+        "part": ("str", False),
+        "size": ("int", False),
+        "second": ("int", False),
+        "inner": ("str", False),
+        "total": ("dict[str, int]", True),  # bound again to a value of no certain type
+        "later": ("str", True),
+        **dict.fromkeys(
+            ("found", "value", "extra", "cast_to", "made", "first", "whatever", "copied"),
+            (None, False),
+        ),
+    }
+    allowed: _Fixes = {
+        o.name: (o.fix, o.unsafe) for o in check_source(textwrap.dedent(_HELD), checks=Checks(vague=0))
+    }
+    assert allowed["found"] == ("dict[str, Any]", False)
+    assert allowed["name"] == ("str", False)
 
 
 def test_an_unpacked_call_takes_the_parts_that_arent_vague() -> None:

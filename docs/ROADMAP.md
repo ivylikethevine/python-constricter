@@ -62,7 +62,11 @@
   `type(x)`; a loop over a standard-library class's instance, by its `__iter__`
   (`for line in open(path)`, an `itertools.chain[int]`, a `deque[int]`). A function's own imports
   (`import os` in its body); a type named by the module's import for it under `if TYPE_CHECKING:`; a
-  call of a module's `NewType`; a `dict`'s `.keys()` under a `set`'s operators.
+  call of a module's `NewType`; a `dict`'s `.keys()` under a `set`'s operators. An attribute a class
+  takes from a base (`self.limit`, declared in a class above, in the module or another checked
+  file); a `TypedDict`'s key read by a literal (`movie["year"]`, `movie.get("year")`), a checked
+  file's or an installed package's; and what's read of a name typed too vaguely to write
+  (`for name in fields`, `fields` a `dict[str, Any]` by its call's declared return).
 - **The standard library, from typeshed**: tables generated from the stubs basedpyright bundles when
   the package is built (`stdlib_tables/`, see [Project](#project)), read as Linux, macOS and Windows
   and Python 3.11 to 3.14 see them, into `constricter/fix/tables/` (one JSON file a table, an entry

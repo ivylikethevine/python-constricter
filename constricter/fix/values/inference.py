@@ -23,6 +23,7 @@ from constricter.fix.values import called, decided, displays, operated, shapes
 from constricter.fix.values.members import (
     assigned_attribute,
     class_variable,
+    keyed,
     member,
     present,
     returned_method,
@@ -45,7 +46,7 @@ from constricter.fix.values.targets import (
     unpacked,
 )
 from constricter.offences import CONSTRUCTOR, MEMBER
-from constricter.rules.annotations import GENERICS, dotted, node_name, vague_fits
+from constricter.rules.annotations import GENERICS, dotted, node_name
 from constricter.rules.flow import members
 
 if TYPE_CHECKING:
@@ -209,7 +210,7 @@ def _member_of(
         case ast.Subscript():
             text = subscripted(receiver, value, inferred(value.slice, known, declared))
             return (
-                _item(value, receiver, known, declared)
+                keyed(receiver, value.slice, known) or _item(value, receiver, known, declared)
                 if text is None
                 else Inference(
                     text,
@@ -241,6 +242,7 @@ def _member_of(
                     receiver,
                     value,
                     lambda arg: inference(arg, known, declared),
+                    known,
                 ) or opened_path(receiver, value, known)
             defined: tuple[str, str] | None = (
                 returned_method(receiver, attr, known) if found is None else None
@@ -361,7 +363,7 @@ def _from_call(value: ast.Call, known: Known, declared: Mapping[str, str]) -> In
             lambda arg: inference(arg, known, declared),
             lambda arg: looped(arg, known, declared),
         )
-        or _cast(value, known.names.casts, known.limits.vague)
+        or _cast(value, known.names.casts)
         or opened(value, known)
         or library_class(value, known)
         or library_call(value, known, lambda arg: inference(arg, known, declared))
@@ -370,7 +372,7 @@ def _from_call(value: ast.Call, known: Known, declared: Mapping[str, str]) -> In
         or shapes.class_of(value, known, lambda arg: inference(arg, known, declared))
         or _called(value, known)
         or called.result(value, known, declared, lambda arg: inference(arg, known, declared))
-        or shapes.vaguely(value, known, lambda arg: inference(arg, known, declared))
+        or shapes.partly(value, known, lambda arg: inference(arg, known, declared))
         or shapes.attribute_of(value, known, lambda arg: inference(arg, known, declared))
     )
 
@@ -397,12 +399,11 @@ def _returns(value: ast.expr, known: Known) -> Inference | None:
             return None
 
 
-def _cast(value: ast.expr, spellings: frozenset[str], vague: int) -> Inference | None:
+def _cast(value: ast.expr, spellings: frozenset[str]) -> Inference | None:
     """Infer `typing.cast(T, x)`: `T` as written, or a string's contents.
 
     Returns:
-      The inference, or `None` if `value` isn't such a call, or `T` is vaguer than `vague` allows or
-      not an expression.
+      The inference, or `None` if `value` isn't such a call, or `T` isn't an expression.
 
     """
     func: ast.expr
@@ -421,11 +422,7 @@ def _cast(value: ast.expr, spellings: frozenset[str], vague: int) -> Inference |
         parsed: ast.expr = ast.parse(text, mode="eval").body
     except SyntaxError:
         return None
-    return (
-        Inference(ast.unparse(parsed), "`cast`'s target type", frozenset({"cast"}))
-        if vague_fits(parsed, vague)
-        else None
-    )
+    return Inference(ast.unparse(parsed), "`cast`'s target type", frozenset({"cast"}))
 
 
 def _computed(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inference | None:

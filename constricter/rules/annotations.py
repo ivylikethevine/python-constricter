@@ -89,6 +89,8 @@ _PROPERTIES: Final = frozenset({"property", "cached_property"})
 _CLASS_SIDE: Final = frozenset({"classmethod", "staticmethod"})
 _ACCESSORS: Final = frozenset({"setter", "deleter"})  # `@name.setter`: the same property, not a redefinition
 _CLASS_VAR: Final = "ClassVar"
+_TYPED_DICT: Final = "TypedDict"
+_QUALIFIERS: Final = frozenset({"Required", "NotRequired", "ReadOnly"})  # around a `TypedDict` key's type
 _CAST: Final = "cast"
 _UNDECORATED: Final[frozenset[str]] = frozenset()  # no decorators: a plain method
 
@@ -206,20 +208,60 @@ def classes(tree: ast.Module) -> dict[str, dict[str, str]]:
     """Map each class defined in the module to its instances' annotated attributes.
 
     A class-body annotation (`class C: x: int`), a `self.x: int = ...` annotated assignment anywhere
-    in one of its methods, and a `@property`'s declared return (as `method_returns` reads a method's)
-    all count; a name that names more than one class in the module (however unlikely) gets the last
-    one's attributes.
+    in one of its methods, and a `@property`'s declared return (as `method_returns` reads a method's,
+    and a vague one too, as an annotation's is kept) all count; a name that names more than one class
+    in the module (however unlikely) gets the last one's attributes. A `TypedDict` class (under
+    `TypedDict`, or one of the module's defined before it; not a generic one) has its keys instead,
+    each spelled as `key` does.
 
     Returns:
       Each class's name, mapped to its attributes' names and annotation text.
 
     """
     properties: dict[str, dict[str, str]] = _class_returns(tree, _PROPERTIES)
+    vague: dict[str, dict[str, str]] = _class_returns(tree, _PROPERTIES, partly=True)
     found: dict[str, dict[str, str]] = {}
+    keyed: set[str] = set()
     node: ast.ClassDef
     for node in _class_nodes(tree):
-        found[node.name] = {**properties.get(node.name, {}), **_attributes(node)}
+        if not _generic(node) and any(
+            node_name(base) == _TYPED_DICT or (isinstance(base, ast.Name) and base.id in keyed)
+            for base in node.bases
+        ):
+            keyed.add(node.name)
+            found[node.name] = _keys(node)
+        else:
+            keyed.discard(node.name)
+            found[node.name] = {
+                **properties.get(node.name, {}),
+                **vague.get(node.name, {}),
+                **_attributes(node),
+            }
     return found
+
+
+def key(name: str) -> str:
+    """Spell a `TypedDict`'s key as `classes` holds it: apart from any attribute's name.
+
+    Returns:
+      It.
+
+    """
+    return f"[{name}]"
+
+
+def _keys(node: ast.ClassDef) -> dict[str, str]:
+    # A `TypedDict` class's own keys (see `key`), each one's type less the `Required` (or its like) around it.
+    return {
+        key(stmt.target.id): written(_unqualified(stmt.annotation))
+        for stmt in node.body
+        if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name)
+    }
+
+
+def _unqualified(annotation: ast.expr) -> ast.expr:
+    qualified: bool = isinstance(annotation, ast.Subscript) and node_name(annotation.value) in _QUALIFIERS
+    return _unqualified(cast("ast.Subscript", annotation).slice) if qualified else annotation
 
 
 def class_attributes(tree: ast.Module) -> dict[str, dict[str, str]]:

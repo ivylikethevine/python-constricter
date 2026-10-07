@@ -14,13 +14,14 @@ from typing import Final, TypeAlias
 
 from constricter.fix.core.known import Inference, Known
 from constricter.fix.libraries import overloads, stdlib
-from constricter.fix.values.returns import METHOD_RETURNS, element_method
+from constricter.fix.values.returns import METHOD_RETURNS, element_method, uniform_method
 from constricter.fix.values.targets import sole
-from constricter.rules.annotations import node_name, roots
+from constricter.rules.annotations import key, node_name, roots
 
 _ATTRIBUTE: Final = "attribute"  # the fix kind of an attribute's annotation
 _METHOD: Final = "method"  # the fix kind of a method's return type
 _SLICE: Final = "slice"  # an index of this type slices
+_SUBSCRIPT: Final = "subscript"  # the fix kind of a subscript
 _OPTIONAL: Final = "Optional"
 # One way to type a member: given the receiver's type as text, the member's name, and the call
 # (`None` for an attribute), its inference, or `None` if this source doesn't know it.
@@ -104,7 +105,7 @@ def _class_side(receiver: str, name: str, call: ast.Call | None, known: Known) -
 
 
 def _fixed(receiver: str, name: str, call: ast.Call | None, _known: Known) -> Inference | None:
-    """Type a `str` or `bytes` method with a fixed return type (`METHOD_RETURNS`).
+    """Type a `str`, `bytes`, `int` or `float` method with a fixed return type (`METHOD_RETURNS`).
 
     Returns:
       Its inference, or `None`.
@@ -122,7 +123,7 @@ def _declared(receiver: str, name: str, call: ast.Call | None, known: Known) -> 
     """Type an annotated attribute or property, or a method's declared return, of a known class.
 
     One this module defines, or another checked file does (see `Known.classes`, `Known.methods`). A
-    method the class doesn't define is the base's that does (see `Lineage`); one declared to return
+    member the class doesn't define is the base's that does (see `Lineage`); one declared to return
     `Self` there gives the receiver's own class, and one of another file's class returning that
     class, which may be its `Self`, nothing.
 
@@ -130,17 +131,18 @@ def _declared(receiver: str, name: str, call: ast.Call | None, known: Known) -> 
       Its inference, or `None`.
 
     """
-    if call is None:
-        found: str | None = known.classes.get(receiver, {}).get(name)
-        return (
-            None
-            if found is None
-            else Inference(found, _annotation_of(receiver, name), frozenset({_ATTRIBUTE}))
-        )
+    found: str | None
+    if (found := None if call is not None else known.classes.get(receiver, {}).get(name)) is not None:
+        return Inference(found, _annotation_of(receiver, name), frozenset({_ATTRIBUTE}))
     owner: str | None = known.class_side.lineage.definer(receiver, name)
-    found = known.methods.get(owner or "", {}).get(name)
+    found = (known.methods if call is not None else known.classes).get(owner or "", {}).get(name)
     if found is None or owner is None:
         return None
+    if call is None:
+        # Another file's base's: not one typed as that class, which may be its property's `Self`.
+        return (
+            None if found == owner else Inference(found, _annotation_of(owner, name), frozenset({_ATTRIBUTE}))
+        )
     if owner != receiver and name in known.class_side.lineage.selfish.get(owner, ()):
         found = receiver
     elif owner != receiver and owner not in known.class_side.lineage.bound and found == owner:
@@ -149,13 +151,18 @@ def _declared(receiver: str, name: str, call: ast.Call | None, known: Known) -> 
 
 
 def _elements(receiver: str, name: str, call: ast.Call | None, _known: Known) -> Inference | None:
-    """Type a `list`, `set` or `dict` method whose return is the receiver's own element type.
+    """Type a builtin container's method by the receiver's type: its element's, or one all of them give.
 
     Returns:
-      Its inference, or `None` (see `element_method`).
+      Its inference, or `None` (see `element_method`, `uniform_method`).
 
     """
-    found: str | None = None if call is None else element_method(parsed(receiver), receiver, call, name)
+    root: ast.expr = parsed(receiver)
+    found: str | None = (
+        None
+        if call is None
+        else element_method(root, receiver, call, name) or uniform_method(root, receiver, name)
+    )
     return (
         None
         if found is None
@@ -204,6 +211,25 @@ def member(receiver: str, name: str, call: ast.Call | None, known: Known) -> Inf
         if (found := source(receiver, name, call, known)) is not None:
             return found
     return None
+
+
+def keyed(receiver: str, index: ast.expr, known: Known) -> Inference | None:
+    """Type `d["key"]`, `d` a value typed as a `TypedDict` class: the key's declared type.
+
+    The class's own key, or one it takes from a base (see `annotations.key`, `_declared`).
+
+    Returns:
+      Its inference, or `None` for any other index or receiver, or a key the class doesn't declare.
+
+    """
+    name: str
+    match index:
+        case ast.Constant(value=str() as name):
+            found: Inference | None = _declared(receiver, key(name), None, known)
+            reason: str = f"`{receiver}`'s `{name}` key"
+            return None if found is None else Inference(found.annotation, reason, frozenset({_SUBSCRIPT}))
+        case _:
+            return None
 
 
 def returned_method(receiver: str, name: str, known: Known) -> tuple[str, str] | None:

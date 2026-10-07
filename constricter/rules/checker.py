@@ -169,7 +169,7 @@ def _settings(
                 {**({} if outside is None else outside.tuples), **free_of(own.tuples, free)},
             ),
             ClassSide(
-                free_of_all(class_attributes(tree), free),
+                free_of_all(own.order.flattened(class_attributes(tree)), free),
                 free_of_all(own.sides, free),
                 inherited.lineage(
                     tree,

@@ -73,16 +73,19 @@ in a function or module body:
   `pair[0]` or `pair[-1]`), an attribute (an annotated one, or a `@property` declaring its return)
   or method call of a class defined in the same module or another checked file (`p.x`, `p.norm()`),
   a `str`/`bytes` method with a fixed return (`s.strip()`, `", ".join(parts)`,
-  `"k=v".partition("=")` as `tuple[str, str, str]`), or a `list`/`set`/`dict` method that returns
-  its own element type (`nums.pop()`, `d.get(k)` as `V | None`, `d.get(k, 0)` as `V` with a default
-  of that type); `self` is its class's instance in a method, and in a function defined in one that
-  takes and binds no `self` of its own (not under a method whose signature says `Self`); in a
-  classmethod, `cls` is `type[C]`, whose class attributes (`limit: int = 3`, `ClassVar[T]`) and
-  classmethods' and staticmethods' declared returns type `cls.x` and `cls.m()`. A member of a
-  guessed value is a guess too (`Box().name`), and its fix kinds include the value's. A member of an
-  `X | None` (or `Optional[X]`) is `X`'s: a checker has narrowed the value there, or reports the
-  access (`m = re.match(...)`, then `m.start()` is an `int`); not one `None` has too (`__class__`),
-  nor a union of more types;
+  `"k=v".partition("=")` as `tuple[str, str, str]`; an `int`'s or a `float`'s too, `n.bit_length()`,
+  `x.is_integer()`), or a `list`/`set`/`dict` method that returns its own element type
+  (`nums.pop()`, `d.get(k)` as `V | None`, `d.get(k, 0)` as `V` with a default of that type) or one
+  type whatever it holds (`names.count(x)` and `pair.index(x)` are `int`s, `seen.issubset(other)` a
+  `bool`, `seen.difference(other)` and `seen.intersection(other)` a `set` of `seen`'s own type);
+  `self` is its class's instance in a method, and in a function defined in one that takes and binds
+  no `self` of its own (not under a method whose signature says `Self`); in a classmethod, `cls` is
+  `type[C]`, whose class attributes (`limit: int = 3`, `ClassVar[T]`) and classmethods' and
+  staticmethods' declared returns type `cls.x` and `cls.m()`. A member of a guessed value is a guess
+  too (`Box().name`), and its fix kinds include the value's. A member of an `X | None` (or
+  `Optional[X]`) is `X`'s: a checker has narrowed the value there, or reports the access
+  (`m = re.match(...)`, then `m.start()` is an `int`); not one `None` has too (`__class__`), nor a
+  union of more types;
 - a method a class doesn't define, called on `self` or any value typed as the class: the base's that
   defines it, in Python's method resolution order, among the module's own classes (each defined
   once, not generic) and then a class another checked file defines (the CLI only), which ends the
@@ -98,6 +101,19 @@ in a function or module body:
   way, past a base out of sight (an installed package's, a subscripted or computed one), or for
   another file's or the standard library's method returning its own class, which may be its `Self`
   (`self.resolve()` under `Path`);
+- an attribute a class doesn't declare, read of `self` or any value typed as the class: the base's
+  that does (an annotation, a `self.x: T`, a `@property`), found as an inherited method is, among
+  the module's own classes and then a class another checked file defines (the CLI only), with what
+  that takes from its own file's classes; a class's own attribute (`cls.limit`) the same way, among
+  the module's classes. A property declared to return `Self` is the receiver's class. Nothing for a
+  name a class before it binds another way, past a generic base or one out of sight, or for another
+  file's attribute typed as its own class (a property's `Self`, perhaps);
+- a `TypedDict`'s key read by a literal, on a value typed as the class: `movie["year"]` is the key's
+  declared type (less the `Required`, `NotRequired` or `ReadOnly` around it), `movie.get("year")`
+  that or `None`, and `movie.get("year", 0)` the type itself, with a default of it. A class under
+  `TypedDict`, or under one its module defines before it, with its bases' keys; not a generic one,
+  nor one made by a call. In the module, another checked file (the CLI only), or an installed
+  package that declares its types (`schema["ref"]` on a `core_schema.ModelSchema` is a `str`);
 - a call of a value whose type says what calling it gives: a local, an attribute or anything else
   typed `Callable[..., R]` is an `R` (`handler(source)`, `self.handler(source)`, `hooks[0](x)`); one
   typed `type[C]` constructs a `C` (`cls()` in a classmethod, `type(self)()`), as does `__new__`
@@ -427,11 +443,14 @@ past: by default (-1) it has no `Any`, `object` or generic without its parameter
 have one, inside a type that says the rest (`dict[str, Any]`, `tuple[Row, Any]`); at a level N from
 1, N + 1 of them (`tuple[Any, Any]` at 1), or one alone (`Any`, `Any | None`). Every source answers
 to it: a declared return (a function's, a method's, another checked file's), a copy, a loop's
-element, `typing.cast`, a callable's call and a type checker's hint. What only a vague type
-describes is typed from 1, `Any` imported from `typing` if it must be: `getattr(obj, name)` is an
-`Any`, with a default of a known type `T` an `Any | T`; and a standard-library function declared to
-return `Any` alone (`json.loads`, `pickle.loads`, `ast.literal_eval`) an `Any`; and `object()` is an
-`object`.
+element, `typing.cast`, a callable's call and a type checker's hint. A type vaguer than that is
+still its name's, with no fix: what's read of it is typed (`fields = schema.fields()`, declared a
+`dict[str, Any]`, stays as it is, and `for name in fields` declares `name: str`), by a declared
+return (a property's too), `typing.cast` or a callable's call. To a later binding's fix and to
+LVA009 it's a value of no known type. What only a vague type describes is typed from 1, `Any`
+imported from `typing` if it must be: `getattr(obj, name)` is an `Any`, with a default of a known
+type `T` an `Any | T`; and a standard-library function declared to return `Any` alone (`json.loads`,
+`pickle.loads`, `ast.literal_eval`) an `Any`; and `object()` is an `object`.
 
 LVA012 (opt-in) offers `Final`: around the annotation there (`x: int = 1` becomes
 `x: Final[int] = 1`), with LVA001's type for an unannotated name (whose own fix it then replaces),

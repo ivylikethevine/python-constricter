@@ -27,6 +27,7 @@ from constricter.rules.annotations import (
     dotted,
     generic_classes,
     is_composite,
+    key,
     node_name,
 )
 from constricter.rules.decorators import Held, Pass, is_fixture
@@ -41,6 +42,7 @@ _DECIDED: Final = frozenset({"version_info", "platform", "TYPE_CHECKING"})
 SUFFIX: Final = ".py"
 CONFTEST: Final = "conftest"  # the module pytest reads a directory's fixtures from
 _UNNAMED: Final = frozenset({"__call__", "__enter__"})  # members a statement takes without naming them
+_GET: Final = "get"
 STUB: Final = ".pyi"
 
 
@@ -534,7 +536,9 @@ def _method_calls(tree: ast.Module) -> frozenset[str]:
 def _attributes(tree: ast.Module) -> frozenset[str]:
     """Name the attributes the module takes of anything: `x` in `a.x`, `astype` in `a.astype(x)`.
 
-    And those its statements take without naming them: a call's `__call__`, a `with`'s `__enter__`.
+    And those its statements take without naming them: a call's `__call__`, a `with`'s `__enter__`;
+    and the literal keys it reads of anything (`d["x"]`, `d.get("x")`), as a `TypedDict`'s are held
+    (see `annotations.key`).
 
     Returns:
       Them: all of another file's class's members it can use.
@@ -543,7 +547,20 @@ def _attributes(tree: ast.Module) -> frozenset[str]:
     named: frozenset[str] = frozenset(
         node.attr for node in cast("list[ast.Attribute]", of_type(tree, ast.Attribute))
     )
-    return named | _UNNAMED
+    indexes: list[ast.expr] = [
+        node.slice for node in cast("list[ast.Subscript]", of_type(tree, ast.Subscript))
+    ]
+    indexes.extend(
+        node.args[0]
+        for node in cast("list[ast.Call]", of_type(tree, ast.Call))
+        if node.args and isinstance(node.func, ast.Attribute) and node.func.attr == _GET
+    )
+    keys: frozenset[str] = frozenset(
+        key(index.value)
+        for index in indexes
+        if isinstance(index, ast.Constant) and isinstance(index.value, str)
+    )
+    return named | keys | _UNNAMED
 
 
 def _source(path: Path) -> str | None:
