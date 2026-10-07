@@ -200,6 +200,28 @@ def _typechecked(found: Steps) -> Typechecked | None:
     return value if isinstance(value, Typechecked) else None
 
 
+def _listed(start: str, items: Sequence[str]) -> list[str]:
+    """Lay a list item's comma-separated `items` out after `start`, as Prettier fills a paragraph.
+
+    Each item whole on a line (a code span with a space in it isn't broken), the lines after the
+    first indented under the item.
+
+    Returns:
+      The lines.
+
+    """
+    lines: list[str] = [start]
+    at: int
+    item: str
+    for at, item in enumerate(items):
+        word: str = item if at == len(items) - 1 else f"{item},"
+        if len(lines[-1]) + 1 + len(word) > _PROSE_WIDTH:
+            lines.append(f"  {word}")
+        else:
+            lines[-1] = f"{lines[-1]} {word}"
+    return lines
+
+
 def _unset(names: Sequence[str], found: dict[str, Steps]) -> list[str]:
     """List the suites that couldn't be set up, each with why.
 
@@ -264,14 +286,7 @@ def _suites(names: Sequence[str], found: dict[str, Steps]) -> list[str]:
                     ]
                     more: int = len(compared.new) - sum(count for _, count in kinds.most_common(_TOP_TRACED))
                     listed += [f"and {more} of other mechanisms"] if more else []
-                    traced.append(
-                        textwrap.fill(
-                            f"- {name}, `{label}`: {', '.join(listed)}",
-                            width=_PROSE_WIDTH,
-                            subsequent_indent="  ",
-                            break_on_hyphens=False,
-                        ),
-                    )
+                    traced.extend(_listed(f"- {name}, `{label}`:", listed))
     unset: list[str] = _unset(names, found)
     if len(tests) == 1:
         return ["None of these corpora's suites ran.", "", *unset]

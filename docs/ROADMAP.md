@@ -341,18 +341,17 @@ fix.
 
 ### Small: under 4 hours
 
-1. **The slowdown since 0.3.3.** The corpus table's run for 0.3.4-rc.1 took over half as long again
-   as 0.3.3-rc.1's on the same machine (8 cores, `--jobs=0`): the standard library 499s from 338s,
-   django 110s from 66s, sqlalchemy 88s from 61s, pydantic 22s from 18s, pandas 845s from 466s,
-   twisted 77s from 65s, pip 54s from 48s: 28 minutes from 18. Not profiled, and other load on the
-   machine isn't ruled out. What changed between them that works per file: each class a file names
-   followed up its bases (`own_types.lineages`), a second listing of the classes it names for their
-   methods' `return`s (`loose`), a checked file's overloads read again for each file calling them
-   (no longer memoised), the files ordered after more modules (those whose classes' methods they
-   call), and each file's scopes kept with its tree between rounds. Run `corpus_profile.py` on the
-   standard library at both tags, and time `schedule.outside` apart from the check. Done when a
-   check of the standard library is no slower than at 0.3.3, or each second it costs is accounted
-   for by a fix it buys. About 3 hours; coverage unchanged.
+1. **The slowdown since 0.3.3.** On 16 CPUs a check of the standard library takes 62s at 0.3.3 and
+   73s now with `--jobs=1`, pandas 49s and 66s; with every CPU 10.8s and 15.6s, 22s and 28s (18.7s
+   and 41s before the index kept what its classes say: see the item on what a file knows from
+   outside, for the main process's part). What changed between them that works per file: each class
+   a file names followed up its bases (`own_types.lineages`), a second listing of the classes it
+   names for their methods' `return`s (`loose`), a checked file's overloads read again for each file
+   calling them (no longer memoised), the files ordered after more modules (those whose classes'
+   methods they call), and each file's scopes kept with its tree between rounds. Profile one process
+   at both tags (`corpus_profile.py`, from a copy of each: a script beside the checkout imports the
+   installed one). Done when a check of the standard library is no slower than at 0.3.3, or each
+   second it costs is accounted for by a fix it buys. About 3 hours; coverage unchanged.
 2. **A suite's workers, sized by the suite.** `super_corpora.py` gives every suite the same number
    of pytest workers (a quarter of the CPUs), and `corpus_suite.py` four: django's runs in one
    process whatever it's given, sqlalchemy's four kept 3.1 CPUs busy, and a 16-CPU machine with 60
@@ -376,12 +375,7 @@ fix.
    coverage counts, each indexing the corpus again (pandas's take 8 to 10 minutes). Run the level
    checks together, and the two fixes on their copies together. Done when a corpus's `table` step
    takes under half what it does, its tables unchanged. About 2 hours; coverage unchanged.
-5. **What an index's classes say, kept.** Each file asks again which classes the modules it imports
-   define, how it spells them and each one's line of bases (`project.spelled_classes`,
-   `own_types.lineages`), though none of it changes as files are checked. Keep them with the index.
-   Measured on the standard library with every CPU: 18.4s to 16.0s, the same offences and fixes.
-   Done when it's in, with that measured on pandas too. About 1 hour; coverage unchanged.
-6. **A step's CPU seconds, its workers' too.** A step records the CPU seconds of the processes it
+5. **A step's CPU seconds, its workers' too.** A step records the CPU seconds of the processes it
    waited for, which leaves out constricter's workers (the fork server starts them): its table step
    reads 0.4 CPUs busy where a sampler sees 1.2. Count a step's whole process tree. Done when a
    step's figure matches a sampler's within a tenth. About 1 hour; coverage unchanged.
@@ -439,12 +433,13 @@ run:
 7. **What a file knows from outside, worked out by its worker.** In a `--jobs` check the main
    process works out each file's `Outside` (what it imports from the others: `schedule.outside`) and
    sends it to the worker that checks the file, which waits for it: pandas's check with every CPU
-   takes 42s, 94% of it the main process's, and the standard library's 20s, 58% (10.4s at 0.3.3).
-   Profile the main process on pandas first; then give each worker the index, once, and let it work
-   out its own files' as it reaches them, the main process keeping only the order and what each
-   round returns. Done when the main process's share of pandas's check is under a quarter and the
-   check takes under 15s on 16 CPUs, its offences and fixes unchanged. About 6 hours; coverage
-   unchanged.
+   takes 28s and the standard library's 15.6s (22s and 10.8s at 0.3.3), most of it the main
+   process's, and of that most in `project.imported`, which looks at every class the file could
+   name, and in working each file's out again for every round of a cycle (`schedule.settle`). Give
+   each worker the index, once, and let it work out its own files' as it reaches them, the main
+   process keeping only the order and what each round returns. Done when the main process's share of
+   pandas's check is under a quarter and the check takes under 15s on 16 CPUs, its offences and
+   fixes unchanged. About 6 hours; coverage unchanged.
 8. **Only the classes a file uses.** A file is given the line of bases of every class it could name
    through its imports (`own_types.lineages`), and every module's classes under each package it
    imports, worked out and pickled for each file whether it names one or not. Work out a class's

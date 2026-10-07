@@ -451,8 +451,9 @@ def corrected(
 def _selfish(value: ast.expr, found: Inference, owner: Owner) -> str | None:
     """Find how `value`'s type is written with `Self`, if it's one typed as the class.
 
-    `self`, or a `Self` method called on `self`, `cls` or `type(self)`; `type(self)`, a
-    `type[Self]`; what `cls()`, `type(self)()` or `__new__` given either constructs; and a
+    `self`, or a `Self` method called on `self`, `cls` or `type(self)`; `type(self)` or
+    `self.__class__`, a `type[Self]`; what `cls()`, either of those called, or `__new__` given one
+    constructs; and a
     conditional of two of them (`self if inplace else self.copy()`).
 
     Returns:
@@ -464,7 +465,9 @@ def _selfish(value: ast.expr, found: Inference, owner: Owner) -> str | None:
     func: ast.expr
     template: str | None = None
     match value:
-        case ast.Name() | ast.Call(func=ast.Name()) if (template := _own(value, owner.first)) is not None:
+        case ast.Name() | ast.Call(func=ast.Name()) | ast.Attribute() if (
+            template := _own(value, owner.first)
+        ) is not None:
             pass
         case ast.Call(func=func) if _constructs(func, owner.first):
             template = _SELF_ITSELF
@@ -494,7 +497,9 @@ def _constructs(func: ast.expr, first: str) -> bool:
 
 
 def _own(value: ast.expr, first: str) -> str | None:
-    """Find how a method's own instance or class is typed with `Self`: `self` or `cls`, or `type(self)`.
+    """Find how a method's own instance or class is typed with `Self`: `self` or `cls`, or its class.
+
+    Its class: `type(self)`, or `self.__class__`.
 
     Returns:
       Its annotation, `{}` standing for `Self`; or `None` if `value` is neither.
@@ -504,7 +509,10 @@ def _own(value: ast.expr, first: str) -> str | None:
     match value:
         case ast.Name(id=name) if name == first:
             return _SELF_ITSELF
-        case ast.Call(func=ast.Name(id="type"), args=[ast.Name(id=name)]) if name == first:
+        case (
+            ast.Call(func=ast.Name(id="type"), args=[ast.Name(id=name)])
+            | ast.Attribute(value=ast.Name(id=name), attr="__class__")
+        ) if name == first:
             return _CLASS_OF
         case _:
             return None

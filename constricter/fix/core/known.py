@@ -448,7 +448,7 @@ class Outside(NamedTuple):
     files settles it (`None`: as the file alone sees, see `constricter.fix.values.classvars`); `members`:
     the variables of the plain classes it imports from them, typed by their values, as it spells
     each class. `same`: each group of ways it spells one class or alias another module defines
-    (`CoreSchema`, `core_schema.CoreSchema`; see `project.same`). `partial`: the returns of other
+    (`CoreSchema`, `core_schema.CoreSchema`; see `linked.same`). `partial`: the returns of other
     checked files' functions and methods that only an unpacking can use (see `Partial`). `tuples`:
     the named tuples it imports from them, as it spells each (see `Indirect.tuples`).
     """

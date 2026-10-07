@@ -9,7 +9,7 @@ from constricter import Offence, check_source
 from constricter.cli import command as cli
 from constricter.cli import schedule
 from constricter.fix.core.known import Returns
-from constricter.fix.index import loose, order, project
+from constricter.fix.index import linked, loose, order, own_types, project
 from constricter.rules.checker import Checked, checked_source
 
 _BASE: Final = """
@@ -111,7 +111,7 @@ def test_another_files_methods_returns_type_their_calls(tmp_path: Path) -> None:
         "Tool.name": {"returned"},
         "Hammer.name": {"returned"},
     }
-    catalog = project.with_returned(catalog, {"pkg.base": checked.returned})
+    catalog = linked.with_returned(catalog, {"pkg.base": checked.returned})
     found: Returns = loose.returned(catalog, use, {})
     assert found.methods == {**_METHODS, "b.Hammer": {"name": "str"}}
     assert found.guesses == {
@@ -180,3 +180,16 @@ def test_a_checked_library_class_named_by_an_added_import_has_its_methods(tmp_pa
         _ = path.write_text(textwrap.dedent(source), encoding="utf-8", newline="\n")
     _ = cli.main(["--fix", "-q", "--unsafe-fixes", "--jobs=1", str(tmp_path)])
     assert _LIBRARY_FIXED in use.read_text(encoding="utf-8")
+
+
+def test_what_the_index_keeps_is_what_it_works_out(tmp_path: Path) -> None:
+    """Its classes' spellings, lines of bases and members: the same from an index that keeps nothing."""
+    catalog: project.Index
+    use: Path
+    catalog, _, use = _package(tmp_path)
+    bare: project.Index = catalog._replace(memo=None)
+    kept: project.Index
+    for kept in (catalog, catalog):  # worked out, then read back
+        assert own_types.lineages(kept, use, {}) == own_types.lineages(bare, use, {})
+        assert project.imported(kept, use) == project.imported(bare, use)
+        assert loose.returned(kept, use) == loose.returned(bare, use)

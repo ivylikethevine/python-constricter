@@ -6,6 +6,15 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A check with `--jobs` is faster where files import much: the index keeps what its modules' classes
+  are named by, their lines of bases and their members, which each file asked again, and a file
+  passes over the classes whose members it takes none of. On 16 CPUs pandas checks in 28s from 41s,
+  the standard library in 15.6s from 18.7s, with the same offences and fixes.
+- `--fix` adds fewer type errors of its own: `self.__class__` is `type(self)`, a `type[Self]` in a
+  method that says `Self` (`c = self.__class__.__new__(self.__class__)` is a `Self`, not the class
+  its `return c` then fails as); and a builtin class passed where an installed signature takes a
+  bounded `type[T]` (`np.zeros(n, dtype=bool)`) no longer binds `T`, which a numpy scalar alone
+  fits: it has no fix, where it was a `np.dtype[bool]` no checker accepts.
 - One `--fix --unsafe-fixes` pass leaves a second nothing to change again, on every corpus: a `with`
   target is typed by its manager's `__enter__`'s `return`s the first time, wherever the class is; a
   name bound to `None` then `total += guess` is `T | None` as a guess; a file fixed and checked

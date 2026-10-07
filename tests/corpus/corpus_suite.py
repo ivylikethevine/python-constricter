@@ -212,7 +212,8 @@ _SETTINGS: Final = (
 )
 # pytest's `-rfE` lines, and unittest's (Django's runner's) headers of each failure and error
 _FAILED: Final = re.compile(r"^(?:FAILED |ERROR |FAIL: |ERROR: )(\S+(?: \([\w.]+\))?)", re.MULTILINE)
-_COUNTS: Final = re.compile(r"(\d+) (passed|failed|skipped|xfailed|xpassed|errors?|warnings?)")
+# pytest's summary's counts, but its warnings': those come and go between runs of the same code.
+_COUNTS: Final = re.compile(r"(\d+) (passed|failed|skipped|xfailed|xpassed|errors?)")
 _RAN: Final = re.compile(r"^Ran (\d+) tests?", re.MULTILINE)  # unittest's summary starts here
 _UNITTEST: Final = re.compile(r"(failures|errors|skipped|expected failures|unexpected successes)=(\d+)")
 # mypy's `path:line: error: message` and pyright's `  /path:line:column - error: message`

@@ -23,6 +23,7 @@ from constricter.fix.core.known import SPELLED, Inference, Known
 from constricter.fix.core.signatures import (
     AWAIT,
     CLASS_BINDS,
+    CLASS_BOUNDED,
     CLASS_VERDICT,
     CONTAINER_BINDS,
     CONTAINER_VERDICTS,
@@ -836,7 +837,10 @@ def _verdict(accepts: Accepts | None, arg: Argument) -> str:
     if accepts is None:
         return _YES
     if arg.klass is not None:
-        return accepts.get(CLASS_VERDICT, _MAYBE)
+        # A builtin class may be outside a `type[T]`'s bound (`dtype=bool`, `T` a numpy scalar): the
+        # signature that takes it then is another's.
+        outside: bool = arg.klass in _BUILTIN_CLASSES and accepts.get(CLASS_BOUNDED, False)
+        return _MAYBE if outside else accepts.get(CLASS_VERDICT, _MAYBE)
     if arg.constant is not None and any(_same(arg.constant[0], value) for value in accepts.get("lit", [])):
         return _YES
     table: str = accepts.get("c", accepts["v"]) if arg.constant is not None else accepts["v"]

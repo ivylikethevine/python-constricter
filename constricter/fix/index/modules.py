@@ -13,6 +13,7 @@ import itertools
 import re
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
@@ -135,6 +136,32 @@ class Module(NamedTuple):
     written: Mapping[str, tuple[str, ...]] = {}
 
 
+# The classes a module names by its own imports: each one's spelling, its module and its name
+# there; and the generic ones it spells through a module.
+_Spelled: TypeAlias = tuple[list[tuple[str, str, str]], list[str]]
+_Under: TypeAlias = list[tuple[str, Origin]]  # classes' spellings after a package's name, and what each is
+
+
+@dataclass
+class Memo:
+    """What's worked out once of an index's classes, for every file that asks.
+
+    Which classes its modules define, what they're named by and their bases don't change as the
+    files are checked (what their functions return does): what follows from those alone is kept
+    here, by the index that has it and each one made from it with the same modules.
+    """
+
+    # A package's and its submodules' classes or aliases: each one's spelling after the package's
+    # name, and what it is, by the package and the kind.
+    under: dict[tuple[str, str], _Under] = field(default_factory=dict)
+    # What a module names (see `_Spelled`), by its name and folder.
+    spelled: dict[tuple[str, str], _Spelled] = field(default_factory=dict)
+    # A class's line of bases (see `own_types.lineages`), by its path.
+    lines: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # The members a class declares a type for (attributes, methods' returns), by its module and name.
+    members: dict[tuple[str, str], frozenset[str]] = field(default_factory=dict)
+
+
 class Index(NamedTuple):
     """Every checked file's module, and their names sorted for a module/submodule lookup."""
 
@@ -143,6 +170,7 @@ class Index(NamedTuple):
     repeated: frozenset[str] = frozenset()  # the names more than one file has: `modules` has the last
     # Each checked `conftest.py` outside any package, by its directory: several share the one name.
     conftests: Mapping[str, Module] = {}
+    memo: Memo | None = None  # `None`: nothing is kept (an index made by hand)
 
 
 @lru_cache(maxsize=65536)  # asked of each checked file a dozen times: its folders are looked at once
@@ -288,7 +316,7 @@ def indexed(found: Iterable[Module | None]) -> Index:
             if module.name == CONFTEST and module.folder:
                 conftests[module.folder] = module
     repeated: frozenset[str] = frozenset(name for name, count in counts.items() if count > 1)
-    return Index(modules, sorted(modules), repeated, conftests)
+    return Index(modules, sorted(modules), repeated, conftests, Memo())
 
 
 def read(path: Path, name: str | None = None) -> Module | None:
@@ -432,17 +460,20 @@ def classes_under(catalog: Index, local: str, package: str, kind: str) -> Iterat
     One importing it as `local`: every one, written in the file or not, since a type written for it
     may name any (`m.Row`, by `import m`).
 
-    Yields:
+    Returns:
       Each spelling (`m.Row`, `pkg.m.Row`), and the module and name it is.
 
     """
-    other: Module
-    for other in submodules(catalog, package):
-        prefix: str = f"{local}{other.name.removeprefix(package)}"
-        yield from (
-            (f"{prefix}.{name}", (other.name, name))
+    found: _Under | None
+    if (found := None if catalog.memo is None else catalog.memo.under.get((package, kind))) is None:
+        found = [
+            (f"{other.name.removeprefix(package)}.{name}", (other.name, name))
+            for other in submodules(catalog, package)
             for name in (other.classes if kind == _CLASS else other.aliases)
-        )
+        ]
+        if catalog.memo is not None:
+            catalog.memo.under[package, kind] = found
+    return ((f"{local}{suffix}", origin) for suffix, origin in found)
 
 
 def _fixtures(tree: ast.Module) -> dict[str, bool]:

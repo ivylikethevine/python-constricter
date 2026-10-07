@@ -360,6 +360,21 @@ def class_binds(atoms: Sequence[Atom], owner: str) -> str | None:
     return None if variable is None or variable.constrained or not owned(variable, owner) else variable.name
 
 
+def class_bounded(atoms: Sequence[Atom]) -> bool:
+    """Check whether the type variable a class argument binds (see `class_binds`) is bounded.
+
+    Returns:
+      Whether a `type[T]` among `atoms` has a `T` with a bound.
+
+    """
+    return any(
+        inner.kind == VAR and inner.bound not in {None, PARAM_SPEC}
+        for atom in atoms
+        if atom.kind == TYPE
+        for inner in atom.inner
+    )
+
+
 def literal_values(args: Sequence[ast.expr]) -> Iterator[Constant]:
     """Read a `Literal[...]`'s values (a name, which isn't one, left out).
 

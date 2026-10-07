@@ -22,6 +22,7 @@ from typing import Final, NamedTuple, TypeAlias, cast
 from constricter.fix.core.known import Guarded, Origin
 from constricter.fix.core.signatures import (
     CLASS_BINDS,
+    CLASS_BOUNDED,
     CLASS_VERDICT,
     CONTAINER_BINDS,
     CONTAINER_VERDICTS,
@@ -54,6 +55,7 @@ from constricter.fix.index.atoms import (
     atom_path,
     bound_alias,
     class_binds,
+    class_bounded,
     class_verdict,
     combined,
     element_of,
@@ -486,6 +488,8 @@ class _Reader:
         variable: str | None
         if (variable := class_binds(atoms, scope.owner)) is not None:
             found[CLASS_BINDS] = variable
+            if class_bounded(atoms):
+                found[CLASS_BOUNDED] = True
         self._containers(atoms, scope, found)
         if not scope.module.installed:  # a checked file's: by the checked files' classes it names
             own_types.accept(self.modules, atoms, lambda arg, where: self._atoms(arg, where, 1), found)

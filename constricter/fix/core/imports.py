@@ -98,7 +98,9 @@ def added_dotted(statement: str) -> str:
 
 
 def present(found: ImportPlan, guarded: Mapping[str, Guarded]) -> frozenset[str]:
-    """Name those of `guarded` the module imports under `if TYPE_CHECKING:` as their statements would.
+    """Name those of `guarded` the module imports already as their statements would.
+
+    Under `if TYPE_CHECKING:`, or to run: a fix of its own may have added either.
 
     Returns:
       Each name whose import to add is one the module has.
@@ -107,7 +109,8 @@ def present(found: ImportPlan, guarded: Mapping[str, Guarded]) -> frozenset[str]
     return frozenset(
         name
         for name, each in guarded.items()
-        if each.statement is not None and found.checking.bound.get(name) == added_dotted(each.statement)
+        if each.statement is not None
+        and added_dotted(each.statement) in {found.checking.bound.get(name), found.bound.get(name)}
     )
 
 

@@ -20,6 +20,7 @@ from constricter.fix.index import (
     callers,
     decorated,
     fixtures,
+    linked,
     loose,
     offers,
     order,
@@ -73,7 +74,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         own.guarded,
         plain.classes(modules, path),
         imported.members,
-        project.same(modules, path, guarded),
+        linked.same(modules, path, guarded),
         imported.partial,
         tuples.fields(modules, path, guarded),
         seeds,
@@ -126,7 +127,7 @@ class _Planned:
         run: FileRun
         for at, run in found.items():
             self.runs[at] = self.merge(self.runs[at], run) if self.merge and at in self.runs else run
-        self.modules = project.with_returned(
+        self.modules = linked.with_returned(
             self.modules,
             {
                 self.plan.names[at]: run.returned

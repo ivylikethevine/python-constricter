@@ -9,7 +9,7 @@ import pytest
 
 from constricter.cli import command as cli
 from constricter.fix.core.known import Returns
-from constricter.fix.index import order, project
+from constricter.fix.index import linked, order, project
 
 DEEP: Final = "def base():\n    return 41\n"
 UTIL: Final = """
@@ -194,7 +194,7 @@ def test_a_package_function_is_not_taken_for_a_submodule(tmp_path: Path) -> None
 def test_returns_are_recorded_only_for_indexed_modules() -> None:
     """A module the index doesn't have gets nothing."""
     catalog: project.Index = project.Index({"m": project.Module("m", {}, {})}, ["m"])
-    found: project.Index = project.with_returned(
+    found: project.Index = linked.with_returned(
         catalog,
         {"m": Returns({"f": "int"}), "gone": Returns({"g": "str"})},
     )

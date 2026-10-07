@@ -9,7 +9,7 @@ from typing import Final
 from constricter import Offence, check_source
 from constricter.cli import command as cli
 from constricter.fix.core.known import Guarded, Outside
-from constricter.fix.index import project
+from constricter.fix.index import linked, project
 from constricter.rules.flow import Hierarchy
 
 CORE: Final = """
@@ -75,15 +75,15 @@ def test_the_index_groups_the_ways_a_file_spells_one_type(tmp_path: Path) -> Non
     paths: list[Path] = _package(tmp_path)
     catalog: project.Index = project.index(paths)
     late: dict[str, Guarded] = {"Late": Guarded(("pkg.core", "Late"), "from pkg.core import Late")}
-    assert set(project.same(catalog, paths[-1], late)) == {
+    assert set(linked.same(catalog, paths[-1], late)) == {
         _SCHEMAS,  # through the package's re-export
         _ROWS,
         frozenset({"Other", "core.Other"}),  # imported under `if TYPE_CHECKING:`
         frozenset({"Late", "core.Late"}),  # one a fix imports there
     }
-    assert set(project.same(catalog, paths[-1], {})) == {_SCHEMAS, _ROWS, frozenset({"Other", "core.Other"})}
-    assert not project.same(catalog, paths[1], {})  # a file that spells each its one way
-    assert not project.same(catalog, tmp_path / "missing.py", {})
+    assert set(linked.same(catalog, paths[-1], {})) == {_SCHEMAS, _ROWS, frozenset({"Other", "core.Other"})}
+    assert not linked.same(catalog, paths[1], {})  # a file that spells each its one way
+    assert not linked.same(catalog, tmp_path / "missing.py", {})
 
 
 def test_a_later_binding_spelled_otherwise_fits_the_fix() -> None:

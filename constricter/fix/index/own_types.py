@@ -17,7 +17,7 @@ from constricter.fix.core.known import Guarded, Origin
 from constricter.fix.core.signatures import OWN, OWN_ELEMENTS, Accepts
 from constricter.fix.index import plain, project
 from constricter.fix.index.atoms import BUILTINS_MODULE, CLASS, Atom, Scope
-from constricter.fix.index.modules import SUFFIX, Index, Module, module_name
+from constricter.fix.index.modules import SUFFIX, Index, Memo, Module, module_name
 from constricter.fix.libraries import stdlib
 from constricter.fix.values import classvars
 
@@ -105,17 +105,37 @@ def lineages(catalog: Index, path: Path, guarded: Mapping[str, Guarded]) -> dict
     target: Module | None
     if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
         return {}
-    modules: dict[str, Module] = catalog.modules
     found: dict[str, tuple[str, ...]] = {
-        name: tuple(dict.fromkeys(_line(modules, f"{target.name}.{name}", _DEPTH))) for name in target.bases
+        name: _lined(catalog, f"{target.name}.{name}") for name in target.bases
     }
-    names: dict[str, Origin] = {**{name: each.origin for name, each in guarded.items()}, **target.names}
-    key: str
-    defined: tuple[Module, str]
-    for key, defined in project.spelled_classes(catalog, target, (names, target.attributes), set()):
-        if not defined[0].installed:
-            found[key] = tuple(dict.fromkeys(_line(modules, f"{defined[0].name}.{defined[1]}", _DEPTH)))
+    # Those it names for type checking alone, then by its own imports, which the index keeps.
+    checking: dict[str, Origin] = {
+        name: each.origin for name, each in guarded.items() if name not in target.names
+    }
+    names: Mapping[str, Origin]
+    for names in (checking, target.names):
+        key: str
+        defined: tuple[Module, str]
+        for key, defined in project.spelled_classes(catalog, target, (names, target.attributes), set()):
+            if not defined[0].installed:
+                found[key] = _lined(catalog, f"{defined[0].name}.{defined[1]}")
     return found
+
+
+def _lined(catalog: Index, defined: str) -> tuple[str, ...]:
+    """Follow a checked file's class up its bases (see `_line`), once for the index.
+
+    Returns:
+      Its path and its bases', each once.
+
+    """
+    memo: Memo | None = catalog.memo
+    line: tuple[str, ...] | None
+    if (line := None if memo is None else memo.lines.get(defined)) is None:
+        line = tuple(dict.fromkeys(_line(catalog.modules, defined, _DEPTH)))
+        if memo is not None:
+            memo.lines[defined] = line
+    return line
 
 
 def _line(modules: Mapping[str, Module], defined: str, depth: int) -> Iterator[str]:

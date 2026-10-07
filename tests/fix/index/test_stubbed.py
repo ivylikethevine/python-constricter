@@ -505,3 +505,46 @@ def test_type_parameters_of_their_own(tmp_path: Path, monkeypatch: pytest.Monkey
     )
     assert cli.main(["--fix", "-q", str(main)]) == cli.EXIT_CLEAN
     assert MODERN_FIXED in main.read_text(encoding="utf-8")
+
+
+BOUNDED_FIXED: Final = "    a: bounded.Array[bounded.Float] = bounded.empty(n, bounded.Float)\n"
+BOUNDED_UNFIXED: Final = "    b = bounded.empty(n, bool)\n"
+BOUNDED_MAIN: Final = """import bounded
+
+
+def f(n: int) -> None:
+    a = bounded.empty(n, bounded.Float)
+    b = bounded.empty(n, bool)
+"""
+
+
+def test_a_builtin_class_may_be_outside_a_type_variables_bound(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`dtype=bool` isn't `type[T]`'s, `T` bound to the package's scalars: another signature takes it."""
+    bounded: Path = _site(
+        tmp_path,
+        {
+            "bounded/py.typed": "",
+            "bounded/__init__.pyi": """
+                from typing import Any, Generic, TypeVar, overload
+                class Scalar: ...
+                class Float(Scalar): ...
+                T = TypeVar("T", bound=Scalar)
+                class Array(Generic[T]): ...
+                @overload
+                def empty(n: int, dtype: type[T]) -> Array[T]: ...
+                @overload
+                def empty(n: int, dtype: object) -> Array[Any]: ...
+            """,
+        },
+    )
+    monkeypatch.setattr(sys, "path", [str(bounded), *sys.path])
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    main: Path = tmp_path / "main.py"
+    _ = main.write_text(BOUNDED_MAIN, encoding="utf-8")
+    _ = cli.main(["--fix", "-q", str(main)])
+    fixed: str = main.read_text(encoding="utf-8")
+    assert BOUNDED_FIXED in fixed
+    assert BOUNDED_UNFIXED in fixed

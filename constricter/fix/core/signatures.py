@@ -16,6 +16,7 @@ from typing import Final, NamedTuple, NotRequired, Required, TypeAlias, TypedDic
 AWAIT: Final = "await "
 CLASS_VERDICT: Final = "k"
 CLASS_BINDS: Final = "kv"
+CLASS_BOUNDED: Final = "kb"
 CONTAINER_VERDICTS: Final = "b"
 ELEMENT_VERDICTS: Final = "be"
 CONTAINER_BINDS: Final = "bc"
@@ -39,10 +40,12 @@ class Accepts(TypedDict, total=False):
     argument binds to its declared return (`functools.partial(helper, 1)`). `w`: the type variable
     an awaitable parameter gives awaited (`Coroutine[Any, Any, _T]`), which a coroutine's call binds
     to what awaiting it gives (`asyncio.run(main())`). `k`: for an installed
-    package's parameter, a verdict for a class passed as the argument (`dtype=np.float64`), and `kv`
-    the type variable it binds to that class (`type[_T]`'s `_T`). `b`: a verdict per builtin container
-    argument (`tuple`), and `be`, where the parameter says what its elements must be, a verdict per
-    `SCALARS` type for them; `bc`: the bounded type variable a container argument it takes binds.
+    package's parameter, a verdict for a class passed as the argument (`dtype=np.float64`), `kv`
+    the type variable it binds to that class (`type[_T]`'s `_T`), and `kb` whether that variable
+    is bounded: a builtin class may be outside its bound, and another signature's to take. `b`: a
+    verdict per builtin container argument (`tuple`), and `be`, where the parameter says what its
+    elements must be, a verdict per `SCALARS` type for them; `bc`: the bounded type variable a
+    container argument it takes binds.
     `own`: for a checked file's parameter that takes nothing but checked files' classes, their paths,
     which an argument's class is matched against by its lineage; `own_e`: those a builtin sequence's
     or set's elements must be, for one that takes iterables of them (see `index.own_types`).
@@ -59,6 +62,7 @@ class Accepts(TypedDict, total=False):
     w: str
     k: str
     kv: str
+    kb: bool
     b: dict[str, str]
     be: dict[str, str]
     bc: str

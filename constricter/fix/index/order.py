@@ -2,14 +2,14 @@
 """The order the CLI checks files in: each after those whose unannotated functions it calls.
 
 So their `return`s are known when it's checked (see `project.returned`); files calling each other's
-functions (a cycle in the graph `project.needs` gives) form one component.
+functions (a cycle in the graph `linked.needs` gives) form one component.
 """
 
 from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix.index import fixtures, loose, project
+from constricter.fix.index import fixtures, linked, loose, project
 from constricter.fix.index.project import Index
 
 _SUFFIX: Final = ".py"
@@ -50,7 +50,7 @@ def plan(catalog: Index, paths: Sequence[Path]) -> Plan:
     graph: dict[str, list[str]] = {
         name: sorted(
             (
-                project.needs(catalog, catalog.modules[name])
+                linked.needs(catalog, catalog.modules[name])
                 | loose.needs(catalog, catalog.modules[name])
                 | fixtures.needed(catalog, name)
             )

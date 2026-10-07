@@ -593,3 +593,35 @@ def test_a_file_fixed_and_checked_again_keeps_the_imports_it_wrote(tmp_path: Pat
     assert COPIED in cycle.read_text(encoding="utf-8")
     assert COPIED in later.read_text(encoding="utf-8")
     assert cli.main(["--diff", "-q", "--unsafe-fixes", "--jobs=1", str(tmp_path)]) == cli.EXIT_CLEAN
+
+
+RUN_IMPORT: Final = "from pathlib import Path\n"
+RUN_TEST: Final = """
+from pkg import conftest
+
+
+def label():
+    return "x"
+
+
+def test_stem(tmp_path):
+    kept = tmp_path / "y"
+    assert conftest.stem()
+
+
+def test_copy(temp_file):
+    path = temp_file
+"""
+
+
+def test_an_import_a_fix_wrote_to_run_is_one_the_file_has(tmp_path: Path) -> None:
+    """`tmp_path`'s `Path`, imported to run by the first check's fix, names the fixture's at the second."""
+    _ = _write(tmp_path, "pkg/__init__.py", "")
+    _ = _write(tmp_path, "pkg/conftest.py", CYCLE_CONFTEST)
+    _ = _write(tmp_path, "pkg/tests/__init__.py", "")
+    tests: Path = _write(tmp_path, "pkg/tests/test_io.py", RUN_TEST)
+    _ = cli.main(["--fix", "-q", "--unsafe-fixes", "--jobs=1", str(tmp_path)])
+    fixed: str = tests.read_text(encoding="utf-8")
+    assert RUN_IMPORT in fixed
+    assert COPIED in fixed
+    assert cli.main(["--diff", "-q", "--unsafe-fixes", "--jobs=1", str(tmp_path)]) == cli.EXIT_CLEAN
