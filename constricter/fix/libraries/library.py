@@ -11,6 +11,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Final, TypeAlias
 
 from constricter.fix.core.known import ImportPlan, Inference, Known
+from constricter.fix.core.signatures import AWAIT
 from constricter.fix.libraries import overloads, stdlib
 from constricter.rules.annotations import dotted, vague_fits
 
@@ -169,6 +170,47 @@ def installed_method(receiver: str, name: str, known: Known) -> stdlib.Method | 
     return stdlib.Method(entry, None, {**dict(zip(params, texts, strict=False)), _SELF: receiver})
 
 
+def installed_chain(
+    value: ast.expr,
+    known: Known,
+    infer: Callable[[ast.expr], Inference | None],
+) -> Inference | None:
+    """Infer an attribute of what an installed class's method returns, off the call (`cap.readouterr().out`).
+
+    By the entry the index wrote for it beside the method's (see `constricter.fix.index.chained`),
+    the receiver's type arguments binding it as they do the method's own return.
+
+    Returns:
+      The inference, or `None` for any other value, a receiver of no known type, or no such entry.
+
+    """
+    receiver: ast.expr
+    call: ast.Call
+    name: str
+    attr: str
+    match value:
+        case ast.Attribute(
+            value=ast.Call(func=ast.Attribute(value=receiver, attr=name)) as call,
+            attr=attr,
+        ):
+            owner: Inference | None = infer(receiver)
+            method: stdlib.Method | None = (
+                None if owner is None else installed_method(owner.annotation, f"{name}().{attr}", known)
+            )
+            if owner is None or method is None:
+                return None
+            found: Inference | None = overloads.chosen(
+                method.entry,
+                call,
+                known,
+                infer,
+                stdlib.for_receiver(method, owner.annotation),
+            )
+            return None if found is None else found._replace(kinds=found.kinds | owner.kinds - {"copy"})
+        case _:
+            return None
+
+
 def _any(text: str, known: Known, found: Inference) -> Inference | None:
     """Spell a table's bare `Any` (`json.loads`'s) as the module can, where `vague` lets it be written.
 
@@ -226,15 +268,25 @@ def _awaited_call(
     match call.func:
         case ast.Attribute(value=receiver, attr=name) if (owner := infer(receiver)) is not None:
             found = stdlib.awaited_member(owner.annotation, name, known)
+            method: stdlib.Method | None
+            # A generic class's own coroutine, by the receiver's arguments (`await queue.get()`).
+            if found is None and (
+                (method := stdlib.overloaded_method(owner.annotation, f"{AWAIT}{name}", known)) is not None
+            ):
+                found = overloads.chosen(
+                    method.entry,
+                    call,
+                    known,
+                    infer,
+                    stdlib.for_receiver(method, owner.annotation),
+                )
         case _:
             pass
     if found is not None and owner is not None:
         return found._replace(kinds=found.kinds | owner.kinds - {"copy"})
     path: str | None = stdlib.resolved(call.func, known.names.stdlib)
     return stdlib.awaited_call(call.func, known) or (
-        overloads.chosen(f"{stdlib.AWAIT}{path}", call, known, infer)
-        if path in stdlib.AWAITED_OVERLOADS
-        else None
+        overloads.chosen(f"{AWAIT}{path}", call, known, infer) if path in stdlib.AWAITED_OVERLOADS else None
     )
 
 

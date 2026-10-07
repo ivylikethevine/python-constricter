@@ -358,13 +358,15 @@ class Returns(NamedTuple):
     `calls`: each function's type, by its name (or, imported, as the importing file spells it: `f`,
     `u.f`); `guesses`: for one whose `return`s are guesses, what they rest on (`FIX_KINDS`);
     `names`: what each name their types use that the module imports for type checking alone
-    (see `Guarded`) refers to.
+    (see `Guarded`) refers to. `methods`: its classes' methods' (`Returned.methods`), by class (as
+    the importing file spells it), a guessed one's origins in `guesses` as `C.m`.
     """
 
     # Plain `dict`s, not `MappingProxyType`s: the CLI's worker processes are sent them, pickled.
     calls: Mapping[str, str] = {}
     guesses: Mapping[str, frozenset[str]] = {}
     names: Mapping[str, Origin] = {}
+    methods: Mapping[str, Mapping[str, str]] = {}
 
 
 class Offered(NamedTuple):
@@ -476,6 +478,8 @@ class Outside(NamedTuple):
     fixtures: Mapping[str, Passed] = {}
     # Its classes' bases other checked files define: where each one's own end (see `Lineage.beyond`).
     beyond: Mapping[str, Beyond] = {}
+    # What awaiting a call of each `async def` it imports from them gives, as it spells the call.
+    awaits: Mapping[str, str] = {}
 
     def usable(self, taken: frozenset[str]) -> "Outside":
         """Drop what other files offer whose type needs a name imported that the module binds already.
@@ -500,7 +504,12 @@ class Outside(NamedTuple):
             else Classes(free_of_all(members.attributes, clashing), free_of_all(members.methods, clashing)),
             self.hints,
             self.type_vars,
-            Returns(free_of(self.returned.calls, clashing), self.returned.guesses, self.returned.names),
+            Returns(
+                free_of(self.returned.calls, clashing),
+                self.returned.guesses,
+                self.returned.names,
+                free_of_all(self.returned.methods, clashing),
+            ),
             {name: found for name, found in self.guarded.items() if name not in clashing},
             self.generics,
             self.callees,
@@ -517,6 +526,8 @@ class Outside(NamedTuple):
             Partial(free_of(self.partial.calls, clashing), free_of_all(self.partial.methods, clashing)),
             free_of(self.tuples, clashing),
             {name: typed for name, typed in self.fixtures.items() if not roots(typed[0]) & clashing},
+            self.beyond,
+            free_of(self.awaits, clashing),
         )
 
 

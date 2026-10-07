@@ -32,7 +32,7 @@ from constricter.fix.core.signatures import (
     Parameter,
     ReadSignature,
 )
-from constricter.fix.index import classnames, own_overloads, project
+from constricter.fix.index import chained, classnames, own_overloads, own_types, project
 from constricter.fix.index.atoms import (
     ANYTHING,
     BUILTINS_MODULE,
@@ -119,12 +119,15 @@ def overloaded(catalog: Index, path: Path, guarded: dict[str, Guarded] | None = 
         defined: tuple[Module, str] | None
         if origin is None or (defined := project.definition(modules, origin, _KIND)) is None:
             continue
+        if not defined[0].installed:
+            # Read each time: what a checked file's parameters take rests on the checked files' classes.
+            read: tuple[ReadSignature, ...] = _signatures(modules, *defined)
+            found[key] = own_overloads.spelled(catalog, target, defined, read, guarded)
+            continue
         where: tuple[str, str]
         if (where := (defined[0].name, defined[1])) not in memo:
             memo[where] = _signatures(modules, *defined)
         found[key] = memo[where]
-        if not defined[0].installed:
-            found[key] = own_overloads.spelled(catalog, target, defined, memo[where], guarded)
     return {key: read for key, read in found.items() if read}
 
 
@@ -235,6 +238,17 @@ def _class_methods(found: Methods, reader: "_Reader", target: Module, spelled: s
             )
         found.signatures[f"{spelled}.{name}"] = memo.methods[origin, name]
         found.parameters[spelled] = tuple(param for param, _ in klass.params)
+        attr: str
+        each: tuple[Signature, ...]
+        # What it reads of the method's return, off the call (see `chained`).
+        for attr, each in chained.attributes(module, klass, name, target.attributes).items():
+            found.signatures[f"{spelled}.{chained.key(name, attr)}"] = _read_all(
+                reader,
+                module,
+                each,
+                frozenset(param for param, _ in klass.params),
+                dict(klass.params),
+            )
 
 
 def _callee(modules: Mapping[str, Module], target: Module, callee: str) -> Origin | None:
@@ -430,6 +444,8 @@ class _Reader:
         """
         # A signature's scope holds bounds' texts alone (see `signature`): no alias's argument.
         bounds: Mapping[str, str | None] = cast("Mapping[str, str | None]", scope.params)
+        if not scope.module.installed:  # a checked file's: by the index's classes, which the memo outlives
+            return self._accepts(parse_text(text), scope)
         memo: dict[Asked, Accepts] = MEMO.of(self.modules).accepts
         key: Asked
         if (key := (scope.module.name, scope.owner, text, tuple(sorted(bounds.items())))) not in memo:
@@ -471,6 +487,8 @@ class _Reader:
         if (variable := class_binds(atoms, scope.owner)) is not None:
             found[CLASS_BINDS] = variable
         self._containers(atoms, scope, found)
+        if not scope.module.installed:  # a checked file's: by the checked files' classes it names
+            own_types.accept(self.modules, atoms, lambda arg, where: self._atoms(arg, where, 1), found)
         return found
 
     def _containers(self, atoms: Sequence[Atom], scope: Scope, found: Accepts) -> None:

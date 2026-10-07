@@ -15,12 +15,15 @@ from constricter.cli.runs import CoverageRun, FileRun
 from constricter.cli.workers import Checking, Workers, check_share, first_done
 from constricter.fix.core.known import Guarded, Hints, Outside, Passed
 from constricter.fix.index import (
+    awaits,
     beyond,
     callers,
     decorated,
     fixtures,
+    loose,
     offers,
     order,
+    own_types,
     plain,
     project,
     sides,
@@ -57,7 +60,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         imported.classes,
         hints,
         project.type_vars(modules, path),
-        imported.returned,
+        loose.returned(modules, path, guarded, imported.returned),
         guarded,
         imported.generics | own.generics,
         callers.callees(modules, path),
@@ -65,7 +68,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         {**stubbed.overloaded(modules, path, guarded), **methods.signatures},
         stubbed.classes(modules, path),
         methods.parameters,
-        methods.lineage,
+        {**own_types.lineages(modules, path, guarded), **methods.lineage},
         methods.aliases,
         own.guarded,
         plain.classes(modules, path),
@@ -75,6 +78,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         tuples.fields(modules, path, guarded),
         seeds,
         beyond.library_bases(modules, path),
+        awaits.calls(modules, path, guarded),
     )
 
 

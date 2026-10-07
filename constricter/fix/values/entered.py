@@ -14,7 +14,7 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Final
 
-from constricter.fix.core.known import Inference, Known
+from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.libraries import stdlib
 from constricter.fix.values.inference import inference
 from constricter.rules.annotations import defined_type_vars, is_vague, node_name
@@ -29,6 +29,11 @@ _YIELDING: Final = frozenset({"Iterator", "Generator", "Iterable"})
 _CALL: Final = "call"  # the fix kind of a function's declared return
 _METHOD: Final = "method"  # and of a method's
 _SELF: Final = "Self"  # in a method's declared type: its receiver's class, which a base's isn't
+_STDLIB: Final = "stdlib"  # the fix kind of what typeshed declares
+# `unittest.mock`'s patchers that make a mock, each with how many arguments come before its `new`.
+_PATCHES: Final = {"unittest.mock.patch": 1, "unittest.mock.patch.object": 2}
+_REPLACEMENTS: Final = frozenset({"new", "new_callable"})  # the keywords that give the mock's replacement
+_MOCKS: Final = ("unittest.mock.MagicMock", "unittest.mock.AsyncMock")
 
 
 def managers(tree: ast.Module) -> dict[str, str]:
@@ -93,6 +98,43 @@ def _yielded(returns: ast.expr | None) -> ast.expr | None:
         case ast.Subscript(slice=index) if node_name(returns.value) in _YIELDING:
             first: ast.expr = index.elts[0] if isinstance(index, ast.Tuple) and index.elts else index
             return None if isinstance(first, ast.Constant | ast.Tuple) or is_vague(first) else first
+        case _:
+            return None
+
+
+def _patched(manager: ast.expr, known: Known) -> Inference | None:
+    """Infer what `with mock.patch(target) as name:` binds: the mock it makes, with no `new` given.
+
+    `unittest.mock.patch` and `patch.object`, however the module names them: a `MagicMock`, or an
+    `AsyncMock` for an `async def`, as typeshed declares it.
+
+    Returns:
+      The inference, or `None` for any other manager, one given its replacement (`new`,
+      `new_callable`, or by position), or a module that can't name both classes.
+
+    """
+    func: ast.expr
+    args: list[ast.expr]
+    keywords: list[ast.keyword]
+    match manager:
+        case ast.Call(func=func, args=args, keywords=keywords):
+            before: int | None = _PATCHES.get(stdlib.resolved(func, known.names.stdlib) or "")
+            given: bool = any(isinstance(arg, ast.Starred) for arg in args) or any(
+                keyword.arg is None or keyword.arg in _REPLACEMENTS for keyword in keywords
+            )
+            plan: ImportPlan | None = known.names.plan
+            if before is None or len(args) > before or given or plan is None:
+                return None
+            spelled: list[str | None] = [plan.spell(mock) for mock in _MOCKS]
+            return (
+                None
+                if None in spelled
+                else Inference(
+                    " | ".join(name for name in spelled if name is not None),
+                    "`unittest.mock.patch`'s mock, given no other",
+                    frozenset({_STDLIB}),
+                )
+            )
         case _:
             return None
 
@@ -162,6 +204,9 @@ def entered(
                 return Inference(functions[key], reason, owner.kinds - {"copy"} | {_METHOD}), [receiver]
         case _:
             pass
+    patched: Inference | None
+    if (patched := _patched(manager, known)) is not None:
+        return patched, []
     # A standard-library manager that returns itself gives its own type, its type arguments included.
     own: Inference | None = inference(manager, known, declared)
     found: Inference | None = (

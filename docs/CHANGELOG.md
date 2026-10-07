@@ -6,6 +6,49 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` picks a checked file's overload by the checked files' own classes: a parameter typed as
+  nothing but such classes, or as an iterable of them, takes an argument by its class's bases, so
+  `concat([df, df])` is a `DataFrame` where another overload takes `Series`.
+- `--fix` types an attribute read off an installed method's call whose return no file can name:
+  `out = capsys.readouterr().out` is a `str` (pytest's `CaptureResult` is private), by the
+  receiver's type arguments. An installed class defined under `if TYPE_CHECKING:` is read too.
+- `--fix` types what `with mock.patch(target) as m:` binds (and `patch.object`), given no `new`: a
+  `MagicMock | AsyncMock`, as typeshed declares it.
+- `--fix` types a lambda bound to a name by its body, where that rests on no name of its own or its
+  function's: `first = lambda: 1` is a `Callable[[], int]`.
+- `--fix` follows another checked file's class of several bases to the one library class its lines
+  reach (`self.id()` under `class Tests(Case)`, `Case(Mixin, unittest.TestCase)` in another file).
+- An empty container of `self` is typed by what the module's classes under its own add to it too
+  (`self.items = []` in a base, `self.items.append(x)` in a subclass), and read as that on them.
+- A check lists a module's functions by the names a file writes, not every function of every module
+  it imports; and a file checked a second time, its functions' parameters typed by their callers,
+  starts from where its first check ended, checking again only those functions and what their new
+  types reach (not with `--fix`, whose text has changed by then).
+- `--fix` types a function or a bound method bound to a name in a function as a `Callable[..., R]`,
+  by what its call gives whatever it's passed: `dump = json.dumps` is a `Callable[..., str]`,
+  `grow = item.grow` a `Callable[..., int]` (a new fix kind, `callable`).
+- `--fix` types `await` of a call to a checked file's `async def` method (`await self.fetch()`, its
+  class's own or a base's, in the module or another checked file) and to another checked file's
+  `async def` function (`await load(url)`, however it's imported).
+- `--fix` types a classmethod or staticmethod called on a class under another checked file's
+  (`Sub.make()`, `make` its imported base's: a `Sub`, where it returns `Self`).
+- An empty container bound to a local is still typed by what's added to it, where every use of that
+  local only reads it (`items = self.items`, then `len(items)`).
+- `--fix` types `await` of a generic standard-library class's coroutine by its receiver
+  (`item = await queue.get()` on an `asyncio.Queue[Item]` is an `Item`).
+- `--fix` binds a bound type variable to its argument's type where the function has one signature:
+  `contextlib.closing(conn)` is a `contextlib.closing[Conn]`, `dataclasses.replace(point)` a
+  `Point`, `ast.copy_location(node, old)` its `node`'s type, and
+  `io.BufferedReader(io.FileIO(path))` an `io.BufferedReader[io.FileIO]`. And a `with` target by its
+  context manager's base (`with contextlib.closing(sock) as s` declares `s: socket.socket`, by
+  `AbstractContextManager[T, None]`).
+- With `--unsafe-fixes`, `--fix` types a call of another checked file's unannotated method by its
+  `return`s, as it does such a function's: `path = self.mktemp()` under an imported base whose
+  `mktemp` returns a string, `tool.name()` on an imported class's instance. A file is checked after
+  the modules whose classes' methods it may call so.
+- `--fix` looks past another checked file's mixin for a member it doesn't bind: `self.id()` under
+  `class Tests(Mixin, unittest.TestCase)` is a `str`, where `Mixin` and its bases, in other files,
+  end at no library class.
 - `--fix` types a `TypedDict`'s key read by a literal, on a value typed as the class:
   `movie["year"]` by the key's declared type (less `Required`, `NotRequired` or `ReadOnly`),
   `movie.get("year")` as that or `None`, and a loop over `movie["tags"]` by its elements. A class

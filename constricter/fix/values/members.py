@@ -10,16 +10,22 @@ makes its member a guess too, as `guesses` judges.
 import ast
 from collections.abc import Callable, Sequence
 from functools import lru_cache
-from typing import Final, TypeAlias
+from typing import TYPE_CHECKING, Final, TypeAlias
 
 from constricter.fix.core.known import Inference, Known
+from constricter.fix.core.signatures import AWAIT
 from constricter.fix.libraries import overloads, stdlib
+from constricter.fix.libraries.library import library_awaited
 from constricter.fix.values.returns import METHOD_RETURNS, element_method, uniform_method
 from constricter.fix.values.targets import sole
-from constricter.rules.annotations import key, node_name, roots
+from constricter.rules.annotations import dotted, key, node_name, roots
+
+if TYPE_CHECKING:
+    from constricter.fix.core.inherited import Lineage
 
 _ATTRIBUTE: Final = "attribute"  # the fix kind of an attribute's annotation
 _METHOD: Final = "method"  # the fix kind of a method's return type
+_AWAIT: Final = "await"  # and of what awaiting a checked file's `async def` gives
 _SLICE: Final = "slice"  # an index of this type slices
 _SUBSCRIPT: Final = "subscript"  # the fix kind of a subscript
 _OPTIONAL: Final = "Optional"
@@ -119,13 +125,20 @@ def _fixed(receiver: str, name: str, call: ast.Call | None, _known: Known) -> In
     )
 
 
-def _declared(receiver: str, name: str, call: ast.Call | None, known: Known) -> Inference | None:
+def _declared(
+    receiver: str,
+    name: str,
+    call: ast.Call | None,
+    known: Known,
+    prefix: str = "",
+) -> Inference | None:
     """Type an annotated attribute or property, or a method's declared return, of a known class.
 
     One this module defines, or another checked file does (see `Known.classes`, `Known.methods`). A
     member the class doesn't define is the base's that does (see `Lineage`); one declared to return
     `Self` there gives the receiver's own class, and one of another file's class returning that
-    class, which may be its `Self`, nothing.
+    class, which may be its `Self`, nothing. `prefix`: before a method's name in the tables, for an
+    `async def`'s (`AWAIT`): what awaiting its call gives.
 
     Returns:
       Its inference, or `None`.
@@ -134,8 +147,9 @@ def _declared(receiver: str, name: str, call: ast.Call | None, known: Known) -> 
     found: str | None
     if (found := None if call is not None else known.classes.get(receiver, {}).get(name)) is not None:
         return Inference(found, _annotation_of(receiver, name), frozenset({_ATTRIBUTE}))
-    owner: str | None = known.class_side.lineage.definer(receiver, name)
-    found = (known.methods if call is not None else known.classes).get(owner or "", {}).get(name)
+    lineage: Lineage = known.class_side.lineage
+    owner: str | None = _declarer(receiver, name, known) if call is None else lineage.definer(receiver, name)
+    found = (known.methods if call is not None else known.classes).get(owner or "", {}).get(prefix + name)
     if found is None or owner is None:
         return None
     if call is None:
@@ -143,11 +157,67 @@ def _declared(receiver: str, name: str, call: ast.Call | None, known: Known) -> 
         return (
             None if found == owner else Inference(found, _annotation_of(owner, name), frozenset({_ATTRIBUTE}))
         )
-    if owner != receiver and name in known.class_side.lineage.selfish.get(owner, ()):
+    if owner != receiver and name in lineage.selfish.get(owner, ()):
         found = receiver
-    elif owner != receiver and owner not in known.class_side.lineage.bound and found == owner:
+    elif owner != receiver and owner not in lineage.bound and found == owner:
         return None  # another file's class, or its `Self`: the receiver's own class
     return Inference(found, _declared_return(owner, name), frozenset({_METHOD}))
+
+
+def awaited(value: ast.expr, known: Known, infer: Callable[[ast.expr], Inference | None]) -> Inference | None:
+    """Infer `await` of a call: a checked file's `async def`'s, or a standard-library coroutine's.
+
+    A function's by its declared return (`known.indirect.awaits`), and a method's on a receiver whose
+    type `infer` knows, the class's own or the base's that defines it (see `_declared`); else as
+    `library_awaited` has it.
+
+    Returns:
+      The inference, or `None`.
+
+    """
+    func: ast.expr
+    receiver: ast.expr
+    name: str
+    match value:
+        case ast.Await(value=ast.Call(func=ast.Name() | ast.Attribute() as func)) if (
+            dotted(func) in known.indirect.awaits
+        ):
+            spelled: str = ast.unparse(func)
+            reason: str = f"`{spelled}`'s declared return type, awaited"
+            return Inference(known.indirect.awaits[spelled], reason, frozenset({_AWAIT}))
+        case ast.Await(value=ast.Call(func=ast.Attribute(value=receiver, attr=name) as func)):
+            owner: Inference | None = infer(receiver)
+            found: Inference | None = (
+                None
+                if owner is None
+                else _declared(present(owner.annotation, name), name, ast.Call(func, [], []), known, AWAIT)
+            )
+            if owner is not None and found is not None:
+                kinds: frozenset[str] = found.kinds | {_AWAIT} | owner.kinds - {"copy"}
+                return found._replace(reason=f"{found.reason}, awaited", kinds=kinds)
+        case _:
+            pass
+    return library_awaited(value, known, infer)
+
+
+def _declarer(receiver: str, name: str, known: Known) -> str | None:
+    """Find the base whose declared attribute `name` an instance of `receiver` has.
+
+    The first of its order that declares it (in a method too, `self.x: T`, which no class body
+    binds), unless a class of the module's before it binds the name another way.
+
+    Returns:
+      It, or `None`.
+
+    """
+    lineage: Lineage = known.class_side.lineage
+    base: str
+    for base in lineage.order.get(receiver, ()):
+        if name in known.classes.get(base, {}):
+            return base
+        if name in lineage.bound.get(base, ()):
+            break
+    return None
 
 
 def _elements(receiver: str, name: str, call: ast.Call | None, _known: Known) -> Inference | None:
@@ -263,14 +333,35 @@ def partial_method(receiver: str, name: str, known: Known) -> str | None:
     return known.indirect.partial.methods.get(owner or "", {}).get(name)
 
 
+def assigned_owner(receiver: str, name: str, known: Known) -> str | None:
+    """Find the class whose assignments type the attribute `name` of a value typed `receiver`.
+
+    The receiver's own class, or the first of its order that has one, unless a class of the
+    module's before it binds the name in its body.
+
+    Returns:
+      It, or `None`.
+
+    """
+    lineage: Lineage = known.class_side.lineage
+    owner: str
+    for owner in (receiver, *lineage.order.get(receiver, ())):
+        if name in known.returned.attributes.get(owner, {}):
+            return owner
+        if name in lineage.bound.get(owner, ()):
+            break
+    return None
+
+
 def assigned_attribute(receiver: str, name: str, known: Known) -> str | None:
-    """Look up an attribute of a value typed `receiver` typed by its assignments alone (see `Returned`).
+    """Look up an attribute of a value typed `receiver` typed by its assignments alone (see `assigned_owner`).
 
     Returns:
       Its type, or `None` if it isn't one (a certain source is asked first, see `member`).
 
     """
-    return known.returned.attributes.get(receiver, {}).get(name)
+    owner: str | None = assigned_owner(receiver, name, known)
+    return None if owner is None else known.returned.attributes[owner][name]
 
 
 def class_variable(receiver: str, name: str, known: Known) -> str | None:

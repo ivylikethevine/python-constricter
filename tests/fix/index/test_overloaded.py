@@ -107,7 +107,7 @@ def use(frames: list[Frame], other, flag: bool) -> None:
     j = bare("x")
 """
 FIXED: Final = (
-    "    a = concat(frames)\n",  # a checked file's class: whether a parameter takes it isn't read
+    "    a: Frame = concat(frames)\n",  # by the checked files' classes its elements are
     "    b = concat(other)\n",
     "    c: str = load(",
     "    d: bytes = load(",

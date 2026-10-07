@@ -17,6 +17,7 @@ from functools import lru_cache
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.core import imports
+from constricter.fix.core.inherited import Lineage
 from constricter.fix.core.known import Guarded, Inference, Origin, Returned, Returns
 from constricter.fix.values import fills
 from constricter.fix.values.inference import ASSIGNED
@@ -39,6 +40,7 @@ Used: TypeAlias = tuple[str, Added]
 # What a class's methods store in its attributes: each one's assigned values, and what's added to it.
 _Stored: TypeAlias = tuple[dict[str, list[Recorded]], dict[str, list[Added]]]
 _Emptied: TypeAlias = tuple[str, str]  # a `self.x = []`: the attribute, and the container's kind
+_Under: TypeAlias = tuple[list[Recorded], list[Added], int]  # see `_under`
 _FILLED: Final = "filled"  # the fix kind of an empty container typed by what's added to it
 SELF: Final = "self"
 _NOT_METHODS: Final = frozenset({"staticmethod", "classmethod"})
@@ -102,19 +104,44 @@ def joined(imported: Returns, own: Returned) -> Returned:
       Both.
 
     """
-    if not imported.calls:
+    if not imported.calls and not imported.methods:
         return own
-    return own._replace(calls={**imported.calls, **own.calls}, guesses={**imported.guesses, **own.guesses})
+    return own._replace(
+        calls={**imported.calls, **own.calls},
+        methods={**imported.methods, **own.methods},
+        guesses={**imported.guesses, **own.guesses},
+    )
 
 
-def exported(own: Returned) -> Returns:
-    """Pick out what the module's own functions return (not its methods), for the files importing them.
+def exported(own: Returned, lineage: Lineage) -> Returns:
+    """Pick out what the module's own functions and its classes' methods return, for the files importing them.
+
+    A class has the methods it takes from the module's other classes too (see `Lineage`), but one
+    whose type names that base, which may be the class itself (`return self`).
 
     Returns:
-      Their types, and their guesses' origins.
+      Their types, and their guesses' origins (a method's as `C.m`).
 
     """
-    return Returns(dict(own.calls), {name: own.guesses[name] for name in own.calls if name in own.guesses})
+    methods: dict[str, dict[str, str]] = {owner: dict(typed) for owner, typed in own.methods.items() if typed}
+    guesses: dict[str, frozenset[str]] = {
+        name: own.guesses[name]
+        for name in (*own.calls, *(f"{owner}.{name}" for owner, typed in methods.items() for name in typed))
+        if name in own.guesses
+    }
+    owner: str
+    bases: tuple[str, ...]
+    for owner, bases in lineage.order.items():
+        base: str
+        name: str
+        annotation: str
+        for base in bases:
+            for name, annotation in own.methods.get(base, {}).items():
+                if lineage.definer(owner, name) == base and base not in roots(annotation):
+                    methods.setdefault(owner, {})[name] = annotation
+                    if f"{base}.{name}" in own.guesses:
+                        guesses[f"{owner}.{name}"] = own.guesses[f"{base}.{name}"]
+    return Returns(dict(own.calls), guesses, methods=methods)
 
 
 def unannotated(body: Sequence[ast.stmt]) -> frozenset[str]:
@@ -153,7 +180,8 @@ def _attributes(
     class) is a plain `self.x = value` in one of its own methods, the class's body doesn't bind the
     name (a class attribute, a method, a property), and every value's type is known and the same, or
     numbers (`int`, then `float`: the widest). One bound to an empty container counts by what the
-    class's methods add to it (see `_filled`). A guess: a subclass or outside code may assign it too.
+    class's methods, and those of the module's classes under it, add to it (see `_filled`). A guess:
+    another file's subclass or outside code may assign it too.
 
     `seen`: each checked function's `self.x = value`s, and its reads of `self`'s empty containers.
 
@@ -175,13 +203,13 @@ def _attributes(
         stores[attr] = stores.get(attr, 0) + 1
     bound: frozenset[str] = _class_bound(node)
     found: list[Recorded]
-    emptied: Mapping[str, tuple[str, int]] = _emptied(tree, node)
-    for attr in sorted(emptied.keys() & values.keys() - bound):
+    for attr in sorted(_emptied(tree, node).keys() & values.keys() - bound):
         filled: tuple[str, frozenset[str]] | None
         if (
             stores[attr] == len(values[attr])
             and len(uses.get(attr, ())) == _read(tree, node, attr)
-            and (filled := _filled(emptied[attr], values[attr], uses.get(attr, ()))) is not None
+            and (filled := _filled_under(tree, node, attr, (values[attr], uses.get(attr, ())), seen))
+            is not None
         ):
             yield attr, *filled
     for attr, found in values.items():
@@ -194,6 +222,83 @@ def _attributes(
             and (widest := _widest(types)) is not None
         ):
             yield attr, widest, frozenset({ASSIGNED}).union(*(origins for _, origins in found))
+
+
+def _filled_under(
+    tree: ast.Module,
+    node: ast.ClassDef,
+    attr: str,
+    own: tuple[Sequence[Recorded], Sequence[Added]],
+    seen: tuple[Mapping[int, Sequence[Assigned]], Mapping[int, Sequence[Used]]],
+) -> tuple[str, frozenset[str]] | None:
+    # `_filled`, by what the class's `own` methods store and add, and the module's classes' under it.
+    more: _Under | None = _under(tree, _family(tree, node), attr, seen)
+    kind: str
+    bare: int
+    kind, bare = _emptied(tree, node)[attr]
+    return None if more is None else _filled((kind, bare + more[2]), [*own[0], *more[0]], [*own[1], *more[1]])
+
+
+@lru_cache(maxsize=1024)  # asked of the same classes once per round, and of each method as it's checked
+def _family(module: ast.Module, node: ast.ClassDef) -> tuple[ast.ClassDef, ...]:
+    """Find the module's classes under `node`, however far: each defined once, by a base named as it is.
+
+    Returns:
+      Them, in source order; none for a class whose name another of the module's has.
+
+    """
+    counts: Mapping[str, int] = _class_names(module)
+    names: set[str] = {node.name} if counts[node.name] == 1 else set()
+    found: list[ast.ClassDef] = []
+    each: ast.ClassDef
+    for each in sorted(classes(module), key=lambda one: (one.lineno, one.col_offset)):
+        if (
+            each is not node
+            and counts[each.name] == 1
+            and any(isinstance(base, ast.Name) and base.id in names for base in each.bases)
+        ):
+            names.add(each.name)
+            found.append(each)
+    return tuple(found)
+
+
+def _under(
+    tree: ast.Module,
+    family: Sequence[ast.ClassDef],
+    attr: str,
+    seen: tuple[Mapping[int, Sequence[Assigned]], Mapping[int, Sequence[Used]]],
+) -> _Under | None:
+    """Gather what the classes under one (`family`) store in its attribute `attr`, an empty container.
+
+    Each one's methods' `self.attr = value`s and reads of it, as the class's own are gathered.
+
+    Returns:
+      Their values, their uses, and how many of their assignments bind it empty too; or `None` if
+      one binds the name in its body, stores it any other way, or reads it where the checker
+      didn't judge the read (a nested function).
+
+    """
+    found: _Under = ([], [], 0)
+    starts: list[Start]
+    stored: list[str]
+    starts, stored = _uses(tree)[2]
+    node: ast.ClassDef
+    for node in family:
+        values: list[Recorded] = [
+            value for method in _methods(node) for name, value in seen[0].get(id(method), ()) if name == attr
+        ]
+        uses: list[Added] = [
+            use for method in _methods(node) for name, use in seen[1].get(id(method), ()) if name == attr
+        ]
+        if (
+            attr in _class_bound(node)
+            or stored[within(starts, node)].count(attr) != len(values)
+            or _read(tree, node, attr) != len(uses)
+        ):
+            return None
+        found[0].extend(values)
+        found[1].extend(uses)
+    return found[0], found[1], sum(_emptied(tree, node).get(attr, ("", 0))[1] for node in family)
 
 
 def _stored(
@@ -295,14 +400,18 @@ def _emptied(module: ast.Module, node: ast.ClassDef) -> Mapping[str, tuple[str, 
 
 
 def empties(module: ast.Module, func: FunctionDef) -> Mapping[str, str]:
-    """Find the attributes of `self` a method's class binds to an empty container (see `_emptied`).
+    """Find the attributes of `self` a method's class, or one above it, binds to an empty container.
 
     Returns:
       Each one's kind; none for a function that isn't a class's own method.
 
     """
-    node: ast.ClassDef | None = _owners(module).get(id(func))
-    return {} if node is None else {attr: kind for attr, (kind, _) in _emptied(module, node).items()}
+    node: ast.ClassDef | None
+    if (node := _owners(module).get(id(func))) is None:
+        return {}
+    # Its own class's, and those of the module's classes it's under: their fills are its own too.
+    above: list[ast.ClassDef] = [each for each in classes(module) if node in _family(module, each)]
+    return {attr: kind for each in (*above, node) for attr, (kind, _) in _emptied(module, each).items()}
 
 
 def _read(module: ast.Module, node: ast.ClassDef, attr: str) -> int:
@@ -433,7 +542,11 @@ def reads_own(tree: ast.Module, func: FunctionDef, classes_of: Mapping[int, str]
     owner: str | None
     if (owner := classes_of.get(id(func))) is None:
         return False
-    return reads(tree, func, found.attributes.get(owner, {}).keys())
+    node: ast.ClassDef | None = _owners(tree).get(id(func))
+    above: list[str] = (
+        [] if node is None else [each.name for each in classes(tree) if node in _family(tree, each)]
+    )
+    return reads(tree, func, {attr for name in (owner, *above) for attr in found.attributes.get(name, {})})
 
 
 def retyped(before: Returned, after: Returned) -> set[str]:
@@ -634,7 +747,8 @@ class Table:
         self.recorded: dict[int, list[Recorded]] = {}
         self.assigned: dict[int, list[Assigned]] = {}  # each checked function's `self.x = value`s
         self.used: dict[int, list[Used]] = {}  # each checked function's reads of `self`'s empty containers
-        self.tables: _Tables = _Tables(dict(imported.calls), {}, dict(imported.guesses), {})
+        methods: dict[str, dict[str, str]] = {owner: dict(typed) for owner, typed in imported.methods.items()}
+        self.tables: _Tables = _Tables(dict(imported.calls), methods, dict(imported.guesses), {})
         self.returned: Returned = Returned(*self.tables)
         self.entries: list[tuple[Slot, str]] = []
         self.stamps: dict[int, int] = {}
@@ -674,20 +788,28 @@ class Table:
         self.entries.append((slot, annotation))
 
     def _completed(self, func: FunctionDef) -> None:
-        """Type the attributes of `func`'s class, if it's the last of the class's methods to be checked."""
-        node: ast.ClassDef | None = _owners(self.module).get(id(func))
-        if (
-            node is None
-            or _class_names(self.module)[node.name] != 1
-            or any(id(method) not in self.assigned for method in _methods(node))
-        ):
-            return
-        name: str
-        annotation: str
-        origins: frozenset[str]
-        for name, annotation, origins in _attributes(self.module, node, (self.assigned, self.used)):
-            self.tables.attributes.setdefault(node.name, {})[name] = annotation
-            self.tables.guesses[f"{node.name}.{name}"] = origins
+        """Type the attributes of `func`'s class (and those above it) whose methods are all checked now."""
+        own: ast.ClassDef | None = _owners(self.module).get(id(func))
+        above: list[ast.ClassDef] = (
+            []
+            if own is None
+            else [each for each in classes(self.module) if own in _family(self.module, each)]
+        )
+        node: ast.ClassDef
+        for node in above if own is None else (own, *above):
+            # With the classes under it: their methods fill its empty containers too.
+            if _class_names(self.module)[node.name] != 1 or any(
+                id(method) not in self.assigned
+                for each in (node, *_family(self.module, node))
+                for method in _methods(each)
+            ):
+                continue
+            name: str
+            annotation: str
+            origins: frozenset[str]
+            for name, annotation, origins in _attributes(self.module, node, (self.assigned, self.used)):
+                self.tables.attributes.setdefault(node.name, {})[name] = annotation
+                self.tables.guesses[f"{node.name}.{name}"] = origins
 
     def stale(self, func: FunctionDef) -> bool:
         """Check whether `func` calls a function whose type the table gained after `func` was checked.
@@ -866,7 +988,10 @@ def exported_names(
     """
     return {
         name: guarded[name].origin if name in guarded else imports.added_origin(added[name])
-        for annotation in returns.calls.values()
+        for annotation in (
+            *returns.calls.values(),
+            *(a for m in returns.methods.values() for a in m.values()),
+        )
         for name in roots(annotation)
         if name in guarded or name in added
     }

@@ -21,11 +21,14 @@ from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.core.known import SPELLED, Inference, Known
 from constricter.fix.core.signatures import (
+    AWAIT,
     CLASS_BINDS,
     CLASS_VERDICT,
     CONTAINER_BINDS,
     CONTAINER_VERDICTS,
     ELEMENT_VERDICTS,
+    OWN,
+    OWN_ELEMENTS,
     Accepts,
     Constant,
     Parameter,
@@ -75,6 +78,7 @@ _BUILTIN_CLASSES: Final = frozenset(
     name for name in dir(builtins) if isinstance(cast("object", getattr(builtins, name)), type)
 )
 _UNFOLLOWED: Final = "?"  # a lineage's base that can't be followed
+_SEQUENCES: Final = frozenset({"list", "tuple", "set", "frozenset"})  # whose elements `own_e` is asked of
 _CLASHING: Final = "?"  # a type variable a receiver's type binds two ways
 _REPEATED: Final = 2  # `tuple[int, ...]`'s arguments
 _Infer: TypeAlias = Callable[[ast.expr], Inference | None]
@@ -103,6 +107,8 @@ class Argument(NamedTuple):
     returns: Inference | None = None
     klass: str | None = None
     awaited: Inference | None = None
+    own: tuple[str, ...] = ()  # its class's lineage, for a class the module names (`LibraryNames.lineage`)
+    own_elements: tuple[str, ...] = ()  # a builtin sequence's or set's elements' class's
 
     @property
     def text(self) -> str | None:
@@ -357,10 +363,16 @@ def _argument(value: ast.expr, infer: _Infer, known: Known) -> Argument:
         case _:
             found: Inference | None = infer(value)
             typed: str | None = None if found is None else found.annotation
+            held: tuple[str, tuple[str, ...]] | None = None if typed is None else _elements(typed, known)
+            lineage: Mapping[str, tuple[str, ...]] = known.names.lineage
             return Argument(
                 typed if typed in _COLUMNS and typed != _LITERAL_STRING else None,
                 found=found,
-                elements=None if typed is None else _elements(typed, known),
+                elements=held,
+                own=lineage.get(typed or "", ()),
+                own_elements=lineage.get(held[1][0], ())
+                if held and held[0] in _SEQUENCES and held[1]
+                else (),
                 reads=tuple(
                     ast.unparse(node)
                     for node in walk(value)
@@ -417,8 +429,8 @@ def _signatures(name: str) -> tuple[tuple[ReadSignature, ...], ...]:
 
     """
     variants: list[Variant] = (
-        stdlib.AWAITED_OVERLOADS[name.removeprefix(stdlib.AWAIT)]
-        if name.startswith(stdlib.AWAIT)
+        stdlib.AWAITED_OVERLOADS[name.removeprefix(AWAIT)]
+        if name.startswith(AWAIT)
         else stdlib.OVERLOADS.get(name) or stdlib.method_signatures()[name]
     )
     return tuple(
@@ -830,6 +842,12 @@ def _verdict(accepts: Accepts | None, arg: Argument) -> str:
     table: str = accepts.get("c", accepts["v"]) if arg.constant is not None else accepts["v"]
     if arg.type is not None:
         return table[_COLUMNS[arg.type]]
+    # A checked file's parameter that takes only checked files' classes, by the argument's lineage.
+    wanted: list[str] | None
+    line: tuple[str, ...]
+    for wanted, line in ((accepts.get(OWN), arg.own), (accepts.get(OWN_ELEMENTS), arg.own_elements)):
+        if wanted is not None and line:
+            return _YES if set(wanted) & set(line) else _MAYBE if _UNFOLLOWED in line else _NO
     taken: bool = (
         (_ANYTHING in accepts and arg.text is not None)
         or (arg.elements is not None and arg.elements[0] in accepts.get("of", {}))

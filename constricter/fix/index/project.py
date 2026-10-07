@@ -14,7 +14,6 @@ adds each module's (`with_returned`) to the index for the files after it.
 """
 
 import ast
-import bisect
 import builtins
 import sys
 from collections.abc import Callable, Iterable, Iterator, Mapping
@@ -24,7 +23,17 @@ from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.core.known import Classes, Guarded, Origin, Partial, Returns
-from constricter.fix.index.modules import SUFFIX, Index, Module, index, indexed, module_name, read
+from constricter.fix.index.modules import (
+    SUFFIX,
+    Index,
+    Module,
+    classes_under,
+    index,
+    indexed,
+    module_name,
+    read,
+    written_under,
+)
 from constricter.rules.annotations import node_name, roots
 
 __all__ = [
@@ -48,12 +57,13 @@ DECORATOR: Final = "decorator"  # a function that gives back the one it decorate
 _LITERAL: Final = "Literal"
 CLASS: Final = "class"
 ALIAS: Final = "alias"  # a type alias (see `modules.Module.aliases`)
+_TYPES: Final = frozenset({CLASS, ALIAS})  # the kinds a fix may write a name of that the file doesn't
 _TYPE_VAR: Final = "type variable"
 _RETURNED: Final = "returned"  # an unannotated function its `return`s type
 _UNANNOTATED: Final = "unannotated"  # an unannotated function, typed or not
 _PARTIAL: Final = "partial"  # a function whose declared return only an unpacking can use
 OPEN: Final = "open"  # a function with a parameter left unannotated (see `modules.open_functions`)
-_Named: TypeAlias = tuple[Mapping[str, Origin], frozenset[str]]  # see `_spelled_classes`
+_Named: TypeAlias = tuple[Mapping[str, Origin], frozenset[str]]  # see `spelled_classes`
 
 
 class Imported(NamedTuple):
@@ -154,23 +164,6 @@ def is_type_var(modules: Mapping[str, Module], module: Module, name: str) -> boo
     )
 
 
-def _submodules(catalog: Index, prefix: str) -> Iterator[Module]:
-    """Find the module named `prefix`, and every module dotted under it (`pkg.util` under `pkg`).
-
-    A module's identifier characters all sort after `.`, so the names in `[prefix, prefix + "/")` are
-    exactly `prefix` itself and those starting with `prefix + "."` (`/` is the character after `.`).
-
-    Yields:
-      Each such module, by name.
-
-    """
-    start: int = bisect.bisect_left(catalog.names, prefix)
-    stop: int = bisect.bisect_left(catalog.names, f"{prefix}/")
-    name: str
-    for name in catalog.names[start:stop]:
-        yield catalog.modules[name]
-
-
 def calls(catalog: Index, path: Path, guarded: dict[str, Guarded] | None = None) -> dict[str, str]:
     """Return, for the file at `path`, the return type of each function it imports whose type it can name.
 
@@ -236,7 +229,8 @@ def spellings(catalog: Index, target: Module, kind: str) -> Iterator[tuple[str, 
     """Find what `target` imports that other modules may define as a `kind`, as it spells each call.
 
     Yields:
-      Each name as written (`helper`, `u.helper`, `pkg.util.helper`), and where it's from.
+      Each name as written (`helper`, `u.helper`, `pkg.util.helper`), and where it's from: a
+      module's function only where the file writes it (see `Module.written`).
 
     """
     local: str
@@ -245,12 +239,16 @@ def spellings(catalog: Index, target: Module, kind: str) -> Iterator[tuple[str, 
         if origin[1] is not None and origin[0] != target.name:
             yield local, origin
         elif origin[1] is None:  # a module: `u.f()`, or `pkg.util.f()` after `import pkg.util`
-            other: Module
-            for other in _submodules(catalog, origin[0]):
-                prefix: str = local + other.name.removeprefix(origin[0])
-                yield from (
-                    (f"{prefix}.{function}", (other.name, function)) for function in _kind(other, kind)
-                )
+            if kind in _TYPES:  # a fix may write one the file doesn't yet: every one
+                yield from classes_under(catalog, local, origin[0], kind)
+                continue
+            key: str
+            sub: str
+            function: str
+            for key, sub, function in written_under(target, local):  # of all it has, those the file calls
+                other: Module | None = catalog.modules.get(origin[0] + sub)
+                if other is not None and function in _kind(other, kind):
+                    yield key, (other.name, function)
 
 
 def _resolved(catalog: Index, names: Mapping[str, Origin]) -> Iterator[tuple[str, Origin]]:
@@ -802,10 +800,10 @@ class _Taken(NamedTuple):
 
 
 def _take(catalog: Index, target: Module, named: _Named, taken: _Taken, guarded: dict[str, Guarded]) -> None:
-    """Add to `taken` the members `target` uses of the classes `named` finds (see `_spelled_classes`)."""
+    """Add to `taken` the members `target` uses of the classes `named` finds (see `spelled_classes`)."""
     key: str
     defined: tuple[Module, str]
-    for key, defined in _spelled_classes(catalog, target, named, taken.generics):
+    for key, defined in spelled_classes(catalog, target, named, taken.generics):
         if defined[1] in defined[0].generics:
             taken.generics.add(key)
         if defined[1] in defined[0].plain and defined[1] in defined[0].members:
@@ -835,7 +833,7 @@ def _used(
     return portable(modules, where, key, taken, guarded) if taken else {}
 
 
-def _spelled_classes(
+def spelled_classes(
     catalog: Index,
     target: Module,
     named: _Named,
@@ -861,11 +859,7 @@ def _spelled_classes(
         elif origin[1] is None:
             package: Module | None = catalog.modules.get(origin[0])
             spelled = [
-                *(
-                    (f"{local}{other.name.removeprefix(origin[0])}.{cls}", (other.name, cls))
-                    for other in _submodules(catalog, origin[0])
-                    for cls in other.classes
-                ),
+                *classes_under(catalog, local, origin[0], CLASS),
                 *(
                     (f"{local}.{name}", where)
                     for name, where in ({} if package is None else package.names).items()

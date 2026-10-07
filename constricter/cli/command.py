@@ -25,7 +25,7 @@ from constricter.cli.runs import BaselineRun, CheckRun, CoverageRun, FileRun
 from constricter.cli.workers import Workers
 from constricter.fix.core import fixes
 from constricter.fix.core.known import Callee, Hints, Outside, Returns
-from constricter.fix.index import callers, decorated, installed, plain, project
+from constricter.fix.index import callers, decorated, installed, loose, plain, project
 from constricter.noqa import lines, unsuppressed
 from constricter.offences import (
     DEFAULT_CHECKS,
@@ -447,7 +447,7 @@ def _called_again(
     calling = [
         at
         for at in calling
-        if project.returned(modules, paths[at], {}) != project.returned(before, paths[at], {})
+        if loose.returned(modules, paths[at], {}) != loose.returned(before, paths[at], {})
     ]
     return runs, _checked_more(paths, runs, calling, (check, options, session), modules)
 

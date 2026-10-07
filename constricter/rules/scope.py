@@ -8,7 +8,7 @@ from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.core.known import Hints, ImportPlan, Inference, Known, Passed, Typed
 from constricter.fix.libraries import stdlib
-from constricter.fix.values import aliased, fills, hinted
+from constricter.fix.values import aliased, callables, fills, hinted
 from constricter.fix.values.doubts import (
     Facts,
     Owner,
@@ -367,6 +367,21 @@ class Scope:
             if alias and self.kind.function is None and self.kind.owner is None
             else None
         )
+        function: FunctionDef | None = self.kind.function
+        types: Typed = self.inferred.types
+        called: tuple[Inference, ast.expr] | None = (
+            None
+            if found is not None or function is None or vague[0] is not None
+            else callables.aliased(
+                target,
+                value,
+                function,
+                self.settings.known,
+                (types, lambda arg: inference(arg, self.settings.known, types)),
+            )
+        )
+        if called is not None:
+            found = called[0], *guesses_in(self, [called[1]])
         hint: Inference | None
         if found is None and (hint := self.hint(target, value)) is not None:
             found = hint, True, hint.kinds

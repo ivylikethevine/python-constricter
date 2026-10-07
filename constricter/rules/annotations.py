@@ -231,7 +231,6 @@ def classes(tree: ast.Module) -> dict[str, dict[str, str]]:
             keyed.add(node.name)
             found[node.name] = _keys(node)
         else:
-            keyed.discard(node.name)
             found[node.name] = {
                 **properties.get(node.name, {}),
                 **vague.get(node.name, {}),
@@ -251,7 +250,6 @@ def key(name: str) -> str:
 
 
 def _keys(node: ast.ClassDef) -> dict[str, str]:
-    # A `TypedDict` class's own keys (see `key`), each one's type less the `Required` (or its like) around it.
     return {
         key(stmt.target.id): written(_unqualified(stmt.annotation))
         for stmt in node.body
@@ -259,7 +257,7 @@ def _keys(node: ast.ClassDef) -> dict[str, str]:
     }
 
 
-def _unqualified(annotation: ast.expr) -> ast.expr:
+def _unqualified(annotation: ast.expr) -> ast.expr:  # a key's type, less the `Required` around it
     qualified: bool = isinstance(annotation, ast.Subscript) and node_name(annotation.value) in _QUALIFIERS
     return _unqualified(cast("ast.Subscript", annotation).slice) if qualified else annotation
 
@@ -627,8 +625,8 @@ def held(tree: ast.Module) -> dict[str, Held]:
     }
 
 
-def method_returns(tree: ast.Module) -> dict[str, dict[str, str]]:
-    """Map each non-generic class defined in the module to its methods' declared return types.
+def method_returns(tree: ast.Module, *, awaited: bool = False) -> dict[str, dict[str, str]]:
+    """Map each non-generic class defined in the module to its methods' (`awaited`: `async` ones') returns.
 
     For `--fix` to type `obj.method()` on a local already typed as that class. A method counts under
     the same rules as `returns`' functions: a plain `def` directly in the class body, not decorated
@@ -641,7 +639,7 @@ def method_returns(tree: ast.Module) -> dict[str, dict[str, str]]:
       Each class's name, mapped to its methods' names and return annotation text.
 
     """
-    return _class_returns(tree, _UNDECORATED)
+    return _class_returns(tree, _UNDECORATED, awaited=awaited)
 
 
 def partial_returns(tree: ast.Module) -> dict[str, str]:
@@ -679,6 +677,7 @@ def _class_returns(
     *,
     anything: bool = False,
     partly: bool = False,
+    awaited: bool = False,
 ) -> dict[str, dict[str, str]]:
     """Map each non-generic class to the declared returns of its methods decorated by one of `decorators`.
 
@@ -700,6 +699,7 @@ def _class_returns(
                 for name, annotation in (_partial_returns if partly else _declared_returns)(
                     node.body,
                     type_vars,
+                    awaited=awaited,
                     decorators=decorators,
                     vouched=None if anything else _passing(tree),
                 ).items()
@@ -865,6 +865,7 @@ def _partial_returns(
     body: Sequence[ast.stmt],
     type_vars: frozenset[str],
     *,
+    awaited: bool = False,
     decorators: frozenset[str] = _UNDECORATED,
     vouched: frozenset[str] | None = _UNDECORATED,
 ) -> dict[str, str]:
@@ -879,7 +880,7 @@ def _partial_returns(
     found: dict[str, tuple[str, bool]] = _every_return(
         body,
         type_vars,
-        awaited=False,
+        awaited=awaited,
         decorators=decorators,
         vouched=vouched,
     )

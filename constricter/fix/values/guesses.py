@@ -7,7 +7,7 @@ from typing import Final
 
 from constricter.fix.core.known import Known
 from constricter.fix.libraries import stdlib
-from constricter.fix.libraries.library import installed_method, library_awaited, library_class
+from constricter.fix.libraries.library import installed_method, library_class
 from constricter.fix.libraries.opened import opened, opened_path
 from constricter.fix.values import called, decided, displays, shapes
 from constricter.fix.values.inference import (
@@ -22,7 +22,8 @@ from constricter.fix.values.inference import (
     targets_typed,
 )
 from constricter.fix.values.members import (
-    assigned_attribute,
+    assigned_owner,
+    awaited,
     class_variable,
     member,
     partial_method,
@@ -86,13 +87,13 @@ def _deciding(value: ast.AST, known: Known, declared: Mapping[str, str]) -> Iter
             continue
         if isinstance(node, ast.Call) and (opened(node, known) or library_class(node, known)):
             continue
-        if isinstance(node, ast.Call) and _fixed_by_callee(node, known, declared):
+        if isinstance(node, ast.Call) and fixed_by_callee(node, known, declared):
             waiting.append(node.func)
         else:
             waiting.extend(reversed(children(node)))
 
 
-def _fixed_by_callee(call: ast.Call, known: Known, declared: Mapping[str, str]) -> bool:
+def fixed_by_callee(call: ast.Call, known: Known, declared: Mapping[str, str]) -> bool:
     """Check whether `call`'s type is its callee's alone, whatever its arguments are.
 
     Returns:
@@ -287,8 +288,9 @@ def _assigned_origins(
     typed: str | None = inferred(node.value, known, declared)
     if typed is None or member(typed, node.attr, None, known) is not None:
         return None
-    if assigned_attribute(typed, node.attr, known) is not None:
-        return known.returned.guesses[f"{typed}.{node.attr}"]
+    owner: str | None
+    if (owner := assigned_owner(typed, node.attr, known)) is not None:
+        return known.returned.guesses[f"{owner}.{node.attr}"]
     return None if class_variable(typed, node.attr, known) is None else frozenset({MEMBER})
 
 
@@ -317,8 +319,7 @@ def _is_guess(
             or called.result(node, known, declared, lambda arg: inference(arg, known, declared)) is not None
             or shapes.partly(node, known, lambda arg: inference(arg, known, declared)) is not None
             # A standard-library coroutine's: awaited, what it declares.
-            or library_awaited(ast.Await(node), known, lambda arg: inference(arg, known, declared))
-            is not None
+            or awaited(ast.Await(node), known, lambda arg: inference(arg, known, declared)) is not None
         ):
             return False
         case ast.Call(func=func):

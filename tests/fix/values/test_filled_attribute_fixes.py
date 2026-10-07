@@ -134,3 +134,53 @@ def test_trusting_assigned_alone_leaves_it_a_guess() -> None:
     both: FixPolicy = FixPolicy(unsafe_select=frozenset({"assigned", "filled"}))
     trusted: _Fixed = _fixed(Checks(fixes=both))
     assert (trusted["a"], trusted["g"], trusted["n"]) == (("int", False), ("str", False), ("Thing", True))
+
+
+def test_a_class_under_it_fills_its_container_too() -> None:
+    """The module's own subclasses' methods add to it: not one binding the name, or adding another type."""
+    source: str = """
+    class Base:
+        def __init__(self) -> None:
+            self.items = []
+            self.names = []
+            self.mixed = []
+            self.bound = []
+
+        def size(self) -> int:
+            return len(self.items)
+
+
+    class Sub(Base):
+        def add(self, x: int, name: str) -> None:
+            self.items.append(x)
+            self.names.append(name)
+            self.mixed.append(1)
+            self.bound.append(1)
+
+        def first(self) -> None:
+            one = self.items[0]
+
+
+    class Other(Sub):
+        bound = None
+
+        def more(self) -> None:
+            self.mixed.append("x")
+            got = self.names
+
+
+    def use(sub: Sub, base: Base) -> None:
+        a = sub.items
+        b = base.names
+        c = base.mixed
+        d = base.bound
+    """
+    found: list[Offence] = check_source(textwrap.dedent(source))
+    assert {o.name: (o.fix, o.unsafe) for o in found} == {
+        "one": ("int", True),
+        "got": ("list[str]", True),
+        "a": ("list[int]", True),
+        "b": ("list[str]", True),
+        "c": (None, False),
+        "d": (None, False),
+    }

@@ -37,9 +37,11 @@ in a function or module body:
   (`Self` is the class), for a top-level class defined once whose name the module binds no other
   way, and a class that takes the method from a base in the module (`Sub.make()` is a `Sub` where
   `make` returns `Self`); with the CLI, another checked file's class too, however it's imported or
-  re-exported (`from pkg import Row`, `m.Row.make()`, `pkg.Row.make()`). On an instance it types the
-  call as a method does (`self.info(stmt)`, a staticmethod). Under decorators that give the method
-  back, as a function's (`@classmethod` over `@names_compat`); a property counts under them too;
+  re-exported (`from pkg import Row`, `m.Row.make()`, `pkg.Row.make()`), and a class of the module's
+  under one (`Sub.make()`, `make` its imported base's: a `Sub`, where it returns `Self`). On an
+  instance it types the call as a method does (`self.info(stmt)`, a staticmethod). Under decorators
+  that give the method back, as a function's (`@classmethod` over `@names_compat`); a property
+  counts under them too;
 - a builtin with a fixed result: `len(x)` is an `int`, `hex(n)` a `str`, `any(xs)` a `bool`, `dir()`
   a `list[str]`, `range(n)` a `range`, and so on; but not where the module binds the name itself (a
   parameter named `format`, a local `input`, its own `def dir()`), anywhere in it. `type(x)` is a
@@ -92,15 +94,18 @@ in a function or module body:
   search with what it takes from its own file's classes, or a standard-library class the tables hold
   whole, by its members there (`self.id()` in a `unittest.TestCase` is a `str`, `self.name` in a
   `threading.Thread` a `str`), which another checked file's class is followed to as well, through
-  its own bases in any checked file or installed package that declares its types, each a class of
-  one base: what none of them binds is the library class's (`self.id()` under a project's own
-  `Case(unittest.TestCase)`), a method its arguments decide included
-  (`self.assertRaises(ValueError)`). A declared return is certain, and a `Self` one is the
-  receiver's class; `return`s are a guess, and not offered where their type names the base
-  (`return self` gives the receiver's class). Nothing for a name the class's body binds any other
-  way, past a base out of sight (an installed package's, a subscripted or computed one), or for
-  another file's or the standard library's method returning its own class, which may be its `Self`
-  (`self.resolve()` under `Path`);
+  its own bases in any checked file or installed package that declares its types, one line of them
+  at most reaching a library class (a mixin beside it ends at none): what none of them binds is the
+  library class's (`self.id()` under a project's own `Case(unittest.TestCase)`), a method its
+  arguments decide included (`self.assertRaises(ValueError)`). A declared return is certain, and a
+  `Self` one is the receiver's class; `return`s are a guess, and not offered where their type names
+  the base (`return self` gives the receiver's class): another checked file's method's too (the CLI
+  only), a class there having those it takes from its own file's classes. Another checked file's
+  mixin, whose line of bases ends at no library class, doesn't end the search: what that line
+  doesn't bind is the next base's (`self.id()` under `class Tests(Mixin, unittest.TestCase)`).
+  Nothing for a name the class's body binds any other way, past a base out of sight (an installed
+  package's, a subscripted or computed one), or for another file's or the standard library's method
+  returning its own class, which may be its `Self` (`self.resolve()` under `Path`);
 - an attribute a class doesn't declare, read of `self` or any value typed as the class: the base's
   that does (an annotation, a `self.x: T`, a `@property`), found as an inherited method is, among
   the module's own classes and then a class another checked file defines (the CLI only), with what
@@ -108,6 +113,17 @@ in a function or module body:
   the module's classes. A property declared to return `Self` is the receiver's class. Nothing for a
   name a class before it binds another way, past a generic base or one out of sight, or for another
   file's attribute typed as its own class (a property's `Self`, perhaps);
+- a function or a bound method bound to a name in a function (`dump = json.dumps`,
+  `grow = item.grow`): a `Callable[..., R]`, `R` what its call gives whatever it's passed (a
+  declared return, the module's, another checked file's, a builtin's or the standard library's),
+  `Callable` imported from `collections.abc` if it must be; a lambda too, by its body, where that
+  rests on none of its parameters or its function's names (`first = lambda: 1` is a
+  `Callable[[], int]`). Its parameters are left open: a `Callable[[A], R]` would refuse the keywords
+  and defaults a call through the name may use. Not a class, a callee typed only by its `return`s or
+  whose arguments decide its type, nor a name the function reads an attribute of
+  (`run.cache_clear()`);
+- what `with mock.patch(target) as m:` binds, and `patch.object`'s, given no `new` or
+  `new_callable`: a `MagicMock | AsyncMock`, as typeshed declares it;
 - a `TypedDict`'s key read by a literal, on a value typed as the class: `movie["year"]` is the key's
   declared type (less the `Required`, `NotRequired` or `ReadOnly` around it), `movie.get("year")`
   that or `None`, and `movie.get("year", 0)` the type itself, with a default of it. A class under
@@ -152,16 +168,17 @@ in a function or module body:
   on every platform and version, with every type variable bound (`collections.deque()` isn't typed).
   An argument binds a type variable by its type: a builtin scalar (`str`, `bytes`, `int`, a literal,
   `None`, ...) wherever the parameter takes it; any other type only where the parameter is nothing
-  but an unbounded type variable (`copy.copy(obj)` is a `Foo`); a builtin container (`list[str]`,
-  `dict[str, int]`'s keys, `tuple[str, ...]`) or a `str` by its element, where the parameter is a
-  generic class of one (`Iterable[_T]`); a scalar by its method's return, where the parameter is a
-  generic protocol (`math.floor(x)` is an `int` for a `float`, by `float.__floor__`); and a function
-  by its declared return, where the parameter is a `Callable[..., _T]`
-  (`functools.partial(helper, 1)` is a `functools.partial[str]`). Two arguments binding one
-  differently leave the call alone (`itertools.chain(names, ids)`), as does unpacking `*args` or
-  `**kwargs`. At module level, where an annotation is evaluated when the module runs, a class some
-  supported Python can't subscript at run time is quoted (`counter: "itertools.count[int]"`), unless
-  the module has `from __future__ import annotations`;
+  but an unbounded type variable (`copy.copy(obj)` is a `Foo`), or a bound one where the function
+  has one signature (`contextlib.closing(conn)` is a `contextlib.closing[Conn]`); a builtin
+  container (`list[str]`, `dict[str, int]`'s keys, `tuple[str, ...]`) or a `str` by its element,
+  where the parameter is a generic class of one (`Iterable[_T]`); a scalar by its method's return,
+  where the parameter is a generic protocol (`math.floor(x)` is an `int` for a `float`, by
+  `float.__floor__`); and a function by its declared return, where the parameter is a
+  `Callable[..., _T]` (`functools.partial(helper, 1)` is a `functools.partial[str]`). Two arguments
+  binding one differently leave the call alone (`itertools.chain(names, ids)`), as does unpacking
+  `*args` or `**kwargs`. At module level, where an annotation is evaluated when the module runs, a
+  class some supported Python can't subscript at run time is quoted
+  (`counter: "itertools.count[int]"`), unless the module has `from __future__ import annotations`;
 - a generic standard-library class's own attribute or property, by the receiver's type arguments:
   `m.string` on an `re.Match[str]` is a `str`, `p.pattern` on an `re.Pattern[bytes]` a `bytes`; and
   what it inherits with one type whatever they are: `f.read()` on an `io.TextIOWrapper` is a `str`
@@ -208,8 +225,9 @@ in a function or module body:
   may assign it too; an attribute the class body binds, stored any other way (`+=`, an unpacking,
   `del`, a nested function's `self.x = ...`), or assigned a local bound more than once, is left
   alone. One bound to an empty container (`self.items = []`) is typed by what the class's own
-  methods add to it, as a function's is below (`self.items.append(row)` in another method: a
-  `list[Row]`), with any other value it's assigned; every read of it in the class counts as a use;
+  methods, and those of the module's classes under it, add to it, as a function's is below
+  (`self.items.append(row)` in another method: a `list[Row]`), with any other value it's assigned;
+  every read of it in the class counts as a use;
 - with `--unsafe-fixes`, a plain class's variable (`limit = 3` in its body), bound once there to a
   literal or a display of them, and what reads it (`self.limit`, `cls.limit`, or `limit` on any
   value typed as the class or one inheriting it): the value's type. A plain class is defined once in
@@ -258,20 +276,21 @@ in a function or module body:
   several `conftest.py`s outside a package), a generator's by what it yields (`Iterator[Frame]`
   gives a `Frame`), its class imported for type checking as another file's type is, with its
   members; else pytest's own, read from pytest as installed where a checked file imports it
-  (`capsys` is a `pytest.CaptureFixture[str]`, `caplog.text` a `str`), and its `tmp_path`, a `Path`,
-  anywhere. And one `@pytest.mark.parametrize` gives literals of one type (`"n, s"` with
-  `[(1, "a"), (2, "b")]`): on the function itself, names and cases written out.
-  `def test_copy(float_frame)` types `result = float_frame.copy()`. A guess (`fixture`), since a
-  plugin's fixture of the name, or a `conftest.py` out of the checked files, may be the one pytest
-  takes; not a parameter the test annotates or binds again, nor any for a test file whose name
-  another checked file has (a module's name says nothing of where it is);
+  (`capsys` is a `pytest.CaptureFixture[str]`, `caplog.text` a `str`, and `capsys.readouterr().out`
+  a `str`: an attribute read off a call whose own type no file can name, pytest's private
+  `CaptureResult`), and its `tmp_path`, a `Path`, anywhere. And one `@pytest.mark.parametrize` gives
+  literals of one type (`"n, s"` with `[(1, "a"), (2, "b")]`): on the function itself, names and
+  cases written out. `def test_copy(float_frame)` types `result = float_frame.copy()`. A guess
+  (`fixture`), since a plugin's fixture of the name, or a `conftest.py` out of the checked files,
+  may be the one pytest takes; not a parameter the test annotates or binds again, nor any for a test
+  file whose name another checked file has (a module's name says nothing of where it is);
 - with `--unsafe-fixes`, an empty container (`[]`, `{}`, `set()`, `list()`, `dict()`) the function
   then only adds to, every addition typed alike (`append`, `insert`, `add`, `setdefault`,
   `x[k] = v`; `extend` and `update` with one argument, by its elements, or a `dict`'s keys and
   values): `list[T]`, `set[T]` or `dict[K, V]`. A guess, since something else could add to it; any
-  use that could (passing it to another function, aliasing it, a nested function) leaves it alone,
-  but not one that only reads it (`x[0]`, `len(x)`, `sep.join(x)`, `x + more`, `[*x]`,
-  `return x, n`);
+  use that could (passing it to another function, a nested function) leaves it alone, as does a
+  local bound to it (`alias = names`) unless every use of that local only reads it, but not one that
+  only reads it (`x[0]`, `len(x)`, `sep.join(x)`, `x + more`, `[*x]`, `return x, n`);
 - a value computed from such: `a if c else b` when both sides agree, and `a if c else None` as
   `T | None` (not where `c` tests `a`, which it narrows); `a or b` and `a and b` with operands of
   one type, `or` dropping a `None` before its last operand (`name or "x"` is a `str` for a
@@ -290,14 +309,17 @@ in a function or module body:
   file's or an installed package's, whose reflected method may answer); a list, set or dict
   comprehension whose elements are known; `sorted` (with `key=` and `reverse=` or not), `list`,
   `set`, `frozenset` or `tuple` of something whose elements are (a generator expression's too:
-  `list(str(i) for i in ns)`); and `await` of a call to one of the module's `async def`s, or to a
-  standard-library coroutine with one declared return (`line = await reader.readline()` is a
-  `bytes`, on a receiver typed `asyncio.StreamReader`; `await asyncio.start_server(...)` an
-  `asyncio.Server`), or one its arguments decide (`await asyncio.wait_for(fetch(url), 5)`), or of
-  anything typed a future or a task (`await asyncio.gather(a(), b())` is a `tuple[A, B]`, as
-  `await task` is what `task` holds). A coroutine's call passed where a parameter is an awaitable of
-  a type variable binds it to what awaiting it gives: `asyncio.create_task(fetch(url))` is an
-  `asyncio.Task[bytes]` where `fetch` declares `bytes`, and `asyncio.run(main())` what `main` does.
+  `list(str(i) for i in ns)`); and `await` of a call to one of the module's `async def`s, another
+  checked file's (the CLI only), or a method's of a class of either (`await self.fetch()`, the
+  class's own or its base's), or to a standard-library coroutine with one declared return
+  (`line = await reader.readline()` is a `bytes`, on a receiver typed `asyncio.StreamReader`;
+  `await asyncio.start_server(...)` an `asyncio.Server`), or one its arguments decide
+  (`await asyncio.wait_for(fetch(url), 5)`) or its generic class's receiver does
+  (`await queue.get()` on an `asyncio.Queue[Item]`), or of anything typed a future or a task
+  (`await asyncio.gather(a(), b())` is a `tuple[A, B]`, as `await task` is what `task` holds). A
+  coroutine's call passed where a parameter is an awaitable of a type variable binds it to what
+  awaiting it gives: `asyncio.create_task(fetch(url))` is an `asyncio.Task[bytes]` where `fetch`
+  declares `bytes`, and `asyncio.run(main())` what `main` does.
 
 A loop's target (LVA002) and an unpacking's names (LVA001) are declared instead, on a line of their
 own before the statement: `for k, v in ages.items():` with `ages: dict[str, int]` gets `k: str` and
@@ -395,10 +417,14 @@ bare (`np.ndarray`). A class a module the file imports re-exports has its member
 
 A checked file's function defined with `@overload` is matched the same way, in the file defining it
 and in those importing it: `load(path, raw=True)` is a `bytes` where `raw: Literal[True]` returns
-one. What a parameter takes is read as below, but a checked file's own class or alias takes any
-argument (it decides nothing), and each return is written as another checked file's type is: none of
-the function's calls is typed if one of its overloads declares no return, or returns a type variable
-or a generic class without its arguments.
+one. What a parameter takes is read as below. One typed as nothing but checked files' classes
+(`frame: DataFrame`), or as an iterable of them (`objs: Iterable[DataFrame]`, beside a mapping or
+`None`), takes an argument by its class's bases, through the checked files: `concat([df, df])` is a
+`DataFrame`, where another overload takes `Series`; a class under a base that can't be followed
+(another package's) decides nothing, as an alias or a type variable of a checked file's does. Each
+return is written as another checked file's type is: none of the function's calls is typed if one of
+its overloads declares no return, or returns a type variable or a generic class without its
+arguments.
 
 An installed package's functions whose arguments decide their type (overloads, or a return naming a
 type variable) are matched as the standard library's are: `np.empty(n, dtype=np.float64)` is an
@@ -708,7 +734,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `arithmetic`    | arithmetic on builtin values, a `pathlib` path's `/`, a library class's operator          |
 | `comprehension` | a list, set or dict comprehension's elements                                              |
 | `builder`       | `sorted`, `list`, `set`, `frozenset` or `tuple` of known elements                         |
-| `await`         | `await` of the module's `async def`                                                       |
+| `await`         | `await` of a checked file's `async def`, a function or a method                           |
 | `loop`          | what a loop (or `sorted`, `list`, ...) iterates over                                      |
 | `unpack`        | an unpacking, each name by its own value, or the value's type split over them             |
 | `narrow`        | LVA008's or LVA010's narrower annotation (a guess)                                        |
@@ -727,6 +753,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `assigned`      | an unannotated instance attribute's every `self.x = value` in its class (a guess)         |
 | `member`        | a plain class's variable, by its literal value in the class's body (a guess)              |
 | `alias`         | a module's type alias, a subscript or a union of types: `TypeAlias`                       |
+| `callable`      | a function or a bound method bound to a name, by what its call gives                      |
 | `callers`       | an unannotated parameter every call in the checked files passes one type (a guess)        |
 | `fixture`       | a test's parameter, by its pytest fixture's value or its `parametrize` literals (a guess) |
 

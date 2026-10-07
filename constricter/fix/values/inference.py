@@ -11,8 +11,8 @@ from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.libraries import overloads, stdlib
 from constricter.fix.libraries.library import (
     installed_call,
+    installed_chain,
     installed_method,
-    library_awaited,
     library_call,
     library_class,
     library_operator,
@@ -22,6 +22,7 @@ from constricter.fix.libraries.opened import opened, opened_path
 from constricter.fix.values import called, decided, displays, operated, shapes
 from constricter.fix.values.members import (
     assigned_attribute,
+    awaited,
     class_variable,
     keyed,
     member,
@@ -183,11 +184,11 @@ def _from_local(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
             attr = ""
         case _:
             return None
-    typed: Inference | None = inference(receiver, known, declared)
-    found: Inference | None = (
-        None if typed is None else _member_of(value, present(typed.annotation, attr), attr, known, declared)
-    )
-    if typed is None or found is None:
+    typed: Inference | None
+    if (typed := inference(receiver, known, declared)) is None:
+        return installed_chain(value, known, lambda arg: inference(arg, known, declared))
+    found: Inference | None
+    if (found := _member_of(value, present(typed.annotation, attr), attr, known, declared)) is None:
         return None
     return found if isinstance(receiver, ast.Name) else found._replace(kinds=found.kinds | typed.kinds)
 
@@ -465,15 +466,9 @@ def _computed(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
                     _kinds(found, kind="builder"),
                 )
             )
-        case ast.Await(value=ast.Call(func=ast.Name(id=name))) if name in known.indirect.awaits:
-            return Inference(
-                known.indirect.awaits[name],
-                f"`{name}`'s declared return type, awaited",
-                frozenset({"await"}),
-            )
         case _:
-            # What awaiting a standard-library coroutine's call gives, or nothing.
-            return library_awaited(value, known, lambda arg: inference(arg, known, declared))
+            # What awaiting a checked file's or a standard-library coroutine's call gives, or nothing.
+            return awaited(value, known, lambda arg: inference(arg, known, declared))
 
 
 def _operated(
