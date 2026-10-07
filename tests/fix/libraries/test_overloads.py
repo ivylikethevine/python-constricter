@@ -64,10 +64,11 @@ import logging
 from collections import OrderedDict as OD
 
 
-def f(p: str) -> None:
+def f(p: str, raw) -> None:
     a = logging.StreamHandler()
     b = OD()
-    c = io.BufferedReader(io.FileIO(p))
+    c = io.BufferedReader(raw)
+    d = io.BufferedReader(io.FileIO(p))
 """
 UNBOUND: Final = [[Signature(params=[("a", "e", False, None)], returns="tuple[U, ...]")]]
 MADE_UP: Final = """
@@ -172,8 +173,13 @@ def test_a_subscript_is_what_its_class_getitem_gives() -> None:
 
 
 def test_a_standard_library_generic_class_isnt_written_bare() -> None:
-    """Unless every type parameter it has has a default (`io.BufferedReader`'s)."""
-    assert _fixes(GENERIC) == {"a": None, "b": None, "c": "io.BufferedReader"}
+    """Unless every type parameter it has has a default (`io.BufferedReader`'s), where nothing binds it."""
+    assert _fixes(GENERIC) == {
+        "a": None,
+        "b": None,
+        "c": "io.BufferedReader",
+        "d": "io.BufferedReader[io.FileIO]",  # its bound takes what it's given
+    }
 
 
 def test_a_builtin_the_module_rebinds_isnt_written() -> None:

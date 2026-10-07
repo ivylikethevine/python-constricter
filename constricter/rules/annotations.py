@@ -13,8 +13,9 @@ from typing import Final, TypeAlias, cast
 from weakref import WeakKeyDictionary
 
 from constricter.rules.decorators import Held, passing, spelled
+from constricter.rules.keys import keys
 from constricter.rules.quoted import parsed, written
-from constricter.rules.syntax import child_statements, declared_return
+from constricter.rules.syntax import child_statements, declared_return, top_level
 
 _VAGUE: Final = frozenset({"Any", "object"})
 _UNIONS: Final = frozenset({"Optional", "Union"})  # a union's members, as a subscript's arguments
@@ -89,6 +90,7 @@ _PROPERTIES: Final = frozenset({"property", "cached_property"})
 _CLASS_SIDE: Final = frozenset({"classmethod", "staticmethod"})
 _ACCESSORS: Final = frozenset({"setter", "deleter"})  # `@name.setter`: the same property, not a redefinition
 _CLASS_VAR: Final = "ClassVar"
+_TYPED_DICT: Final = "TypedDict"
 _CAST: Final = "cast"
 _UNDECORATED: Final[frozenset[str]] = frozenset()  # no decorators: a plain method
 
@@ -206,19 +208,34 @@ def classes(tree: ast.Module) -> dict[str, dict[str, str]]:
     """Map each class defined in the module to its instances' annotated attributes.
 
     A class-body annotation (`class C: x: int`), a `self.x: int = ...` annotated assignment anywhere
-    in one of its methods, and a `@property`'s declared return (as `method_returns` reads a method's)
-    all count; a name that names more than one class in the module (however unlikely) gets the last
-    one's attributes.
+    in one of its methods, and a `@property`'s declared return (as `method_returns` reads a method's,
+    and a vague one too, as an annotation's is kept) all count; a name that names more than one class
+    in the module (however unlikely) gets the last one's attributes. A `TypedDict` class (under
+    `TypedDict`, or one of the module's defined before it; not a generic one) has its keys instead,
+    each spelled as `keys.key` does.
 
     Returns:
       Each class's name, mapped to its attributes' names and annotation text.
 
     """
     properties: dict[str, dict[str, str]] = _class_returns(tree, _PROPERTIES)
+    vague: dict[str, dict[str, str]] = _class_returns(tree, _PROPERTIES, partly=True)
     found: dict[str, dict[str, str]] = {}
+    keyed: set[str] = set()
     node: ast.ClassDef
     for node in _class_nodes(tree):
-        found[node.name] = {**properties.get(node.name, {}), **_attributes(node)}
+        if not _generic(node) and any(
+            node_name(base) == _TYPED_DICT or (isinstance(base, ast.Name) and base.id in keyed)
+            for base in node.bases
+        ):
+            keyed.add(node.name)
+            found[node.name] = keys(node)
+        else:
+            found[node.name] = {
+                **properties.get(node.name, {}),
+                **vague.get(node.name, {}),
+                **_attributes(node),
+            }
     return found
 
 
@@ -585,8 +602,8 @@ def held(tree: ast.Module) -> dict[str, Held]:
     }
 
 
-def method_returns(tree: ast.Module) -> dict[str, dict[str, str]]:
-    """Map each non-generic class defined in the module to its methods' declared return types.
+def method_returns(tree: ast.Module, *, awaited: bool = False) -> dict[str, dict[str, str]]:
+    """Map each non-generic class defined in the module to its methods' (`awaited`: `async` ones') returns.
 
     For `--fix` to type `obj.method()` on a local already typed as that class. A method counts under
     the same rules as `returns`' functions: a plain `def` directly in the class body, not decorated
@@ -599,7 +616,7 @@ def method_returns(tree: ast.Module) -> dict[str, dict[str, str]]:
       Each class's name, mapped to its methods' names and return annotation text.
 
     """
-    return _class_returns(tree, _UNDECORATED)
+    return _class_returns(tree, _UNDECORATED, awaited=awaited)
 
 
 def partial_returns(tree: ast.Module) -> dict[str, str]:
@@ -637,6 +654,7 @@ def _class_returns(
     *,
     anything: bool = False,
     partly: bool = False,
+    awaited: bool = False,
 ) -> dict[str, dict[str, str]]:
     """Map each non-generic class to the declared returns of its methods decorated by one of `decorators`.
 
@@ -658,6 +676,7 @@ def _class_returns(
                 for name, annotation in (_partial_returns if partly else _declared_returns)(
                     node.body,
                     type_vars,
+                    awaited=awaited,
                     decorators=decorators,
                     vouched=None if anything else _passing(tree),
                 ).items()
@@ -763,7 +782,7 @@ def _read_defined_type_vars(tree: ast.Module) -> frozenset[str]:
     name: str
     func: ast.expr
     module: str
-    for stmt in tree.body:
+    for stmt in top_level(tree.body):  # under an `if TYPE_CHECKING:` too
         match stmt:
             case ast.Assign(targets=[ast.Name(id=name)], value=ast.Call(func=func)) if (
                 node_name(func) in _TYPE_VARS
@@ -823,6 +842,7 @@ def _partial_returns(
     body: Sequence[ast.stmt],
     type_vars: frozenset[str],
     *,
+    awaited: bool = False,
     decorators: frozenset[str] = _UNDECORATED,
     vouched: frozenset[str] | None = _UNDECORATED,
 ) -> dict[str, str]:
@@ -837,7 +857,7 @@ def _partial_returns(
     found: dict[str, tuple[str, bool]] = _every_return(
         body,
         type_vars,
-        awaited=False,
+        awaited=awaited,
         decorators=decorators,
         vouched=vouched,
     )

@@ -244,3 +244,34 @@ def test_a_call_of_a_new_type_gives_it(tmp_path: Path) -> None:
     catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
     found: list[Offence] = check_source(_USING_NEW_TYPES, outside=schedule.outside(catalog, using, {}))
     assert {o.name: (o.fix, o.unsafe) for o in found} == {"a": ("Ref", False), "b": ("refs.Count", False)}
+
+
+_OWN_CLASS: Final = """
+from typing import Self
+
+
+class Element:
+    def clone(self) -> Self:
+        made = self.__class__.__new__(self.__class__)
+        kind = self.__class__
+        again = kind.__new__(kind)
+        built = self.__class__()
+        return made
+
+    def plain(self) -> None:
+        made = self.__class__.__new__(self.__class__)
+        kind = self.__class__
+"""
+
+
+def test_a_methods_own_class_by_its_attribute_is_typed_self() -> None:
+    """`self.__class__` is `type(self)`: a `type[Self]` where the method says `Self`, what it makes one."""
+    found: list[Offence] = check_source(textwrap.dedent(_OWN_CLASS))
+    assert [(o.name, o.fix) for o in found] == [
+        ("made", "Self"),
+        ("kind", "type[Self]"),
+        ("again", "Self"),
+        ("built", "Self"),
+        ("made", "Element"),
+        ("kind", "type[Element]"),
+    ]

@@ -12,15 +12,16 @@ one to such a method of its classes, on a receiver whose type is known (`self.de
 import ast
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from typing import Final
+from typing import Final, cast
 
-from constricter.fix.core.known import Inference, Known
+from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.libraries import stdlib
 from constricter.fix.values.inference import inference
 from constricter.rules.annotations import defined_type_vars, is_vague, node_name
-from constricter.rules.walked import classes
+from constricter.rules.syntax import Start
+from constricter.rules.walked import classes, of_type
 
-_ENTER: Final = "__enter__"
+ENTER: Final = "__enter__"
 _AENTER: Final = "__aenter__"
 _NONE: Final = "None"
 _MANAGER: Final = ["contextmanager"]  # the one decorator that makes a generator function a manager
@@ -29,6 +30,11 @@ _YIELDING: Final = frozenset({"Iterator", "Generator", "Iterable"})
 _CALL: Final = "call"  # the fix kind of a function's declared return
 _METHOD: Final = "method"  # and of a method's
 _SELF: Final = "Self"  # in a method's declared type: its receiver's class, which a base's isn't
+_STDLIB: Final = "stdlib"  # the fix kind of what typeshed declares
+# `unittest.mock`'s patchers that make a mock, each with how many arguments come before its `new`.
+_PATCHES: Final = {"unittest.mock.patch": 1, "unittest.mock.patch.object": 2}
+_REPLACEMENTS: Final = frozenset({"new", "new_callable"})  # the keywords that give the mock's replacement
+_MOCKS: Final = ("unittest.mock.MagicMock", "unittest.mock.AsyncMock")
 
 
 def managers(tree: ast.Module) -> dict[str, str]:
@@ -97,6 +103,58 @@ def _yielded(returns: ast.expr | None) -> ast.expr | None:
             return None
 
 
+def _patched(manager: ast.expr, known: Known) -> Inference | None:
+    """Infer what `with mock.patch(target) as name:` binds: the mock it makes, with no `new` given.
+
+    `unittest.mock.patch` and `patch.object`, however the module names them: a `MagicMock`, or an
+    `AsyncMock` for an `async def`, as typeshed declares it.
+
+    Returns:
+      The inference, or `None` for any other manager, one given its replacement (`new`,
+      `new_callable`, or by position), or a module that can't name both classes.
+
+    """
+    func: ast.expr
+    args: list[ast.expr]
+    keywords: list[ast.keyword]
+    match manager:
+        case ast.Call(func=func, args=args, keywords=keywords):
+            before: int | None = _PATCHES.get(stdlib.resolved(func, known.names.stdlib) or "")
+            given: bool = any(isinstance(arg, ast.Starred) for arg in args) or any(
+                keyword.arg is None or keyword.arg in _REPLACEMENTS for keyword in keywords
+            )
+            plan: ImportPlan | None = known.names.plan
+            if before is None or len(args) > before or given or plan is None:
+                return None
+            spelled: list[str | None] = [plan.spell(mock) for mock in _MOCKS]
+            return (
+                None
+                if None in spelled
+                else Inference(
+                    " | ".join(name for name in spelled if name is not None),
+                    "`unittest.mock.patch`'s mock, given no other",
+                    frozenset({_STDLIB}),
+                )
+            )
+        case _:
+            return None
+
+
+def targets(module: ast.Module) -> list[Start]:
+    """Find the `with` statements' managers that bind a target: each one's `__enter__` is called.
+
+    Returns:
+      Where each such manager starts (its line and column).
+
+    """
+    return [
+        (item.context_expr.lineno, item.context_expr.col_offset)
+        for node in cast("list[ast.With]", of_type(module, ast.With))
+        for item in node.items
+        if item.optional_vars is not None
+    ]
+
+
 def entering(manager: ast.expr) -> ast.Call:
     """Write the call a `with` statement makes of its context manager: `manager.__enter__()`.
 
@@ -104,7 +162,7 @@ def entering(manager: ast.expr) -> ast.Call:
       It, placed where `manager` is.
 
     """
-    method: ast.Attribute = ast.copy_location(ast.Attribute(manager, _ENTER, ast.Load()), manager)
+    method: ast.Attribute = ast.copy_location(ast.Attribute(manager, ENTER, ast.Load()), manager)
     return ast.copy_location(ast.Call(method, [], []), manager)
 
 
@@ -162,6 +220,9 @@ def entered(
                 return Inference(functions[key], reason, owner.kinds - {"copy"} | {_METHOD}), [receiver]
         case _:
             pass
+    patched: Inference | None
+    if (patched := _patched(manager, known)) is not None:
+        return patched, []
     # A standard-library manager that returns itself gives its own type, its type arguments included.
     own: Inference | None = inference(manager, known, declared)
     found: Inference | None = (

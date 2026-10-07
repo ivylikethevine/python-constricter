@@ -89,8 +89,9 @@ _FIXED: Final = {
     "made": "int",
     "error": "ValueError",
     "count": "int",
+    "short": "int",  # by its `return`s, in the file defining it
 }
-_UNTYPED: Final = ("short", "mixed", "lost", "deep")
+_UNTYPED: Final = ("mixed", "lost", "deep")
 _CALL: Final = " = self."  # a binding to a method call on `self`
 _INSTALLED: Final = """
 import unittest
@@ -202,3 +203,84 @@ def test_an_installed_packages_class_is_followed_too(tmp_path: Path, monkeypatch
         "count: int = self.helper()",
         "twice = self.id()",
     ]
+
+
+_LOUD: Final = "loud: int = self.id()"
+_MIXINS: Final = """
+import unittest
+
+
+class Base:
+    def name(self) -> str:
+        return ""
+
+
+class Named(Base):
+    def id(self) -> int:
+        return 1
+
+
+class Plain(Base):
+    def __init__(self) -> None:
+        self.level: int = 1
+
+
+class Mixed(Base, unittest.TestCase):
+    pass
+
+
+class Both(unittest.TestCase, dict):
+    pass
+"""
+_MIXED: Final = """
+import unittest
+
+from pkg.mixins import Both, Mixed, Named, Plain
+
+
+class Quiet(Plain, unittest.TestCase):
+    def test(self) -> None:
+        quiet = self.id()
+        name = self.name()
+        level = self.level
+
+
+class Loud(Named, unittest.TestCase):
+    def test(self) -> None:
+        loud = self.id()
+
+
+class Under(Mixed):
+    def test(self) -> None:
+        under = self.id()
+        helped = self.name()
+
+
+class Twice(Both):
+    def test(self) -> None:
+        twice = self.id()
+"""
+
+
+def test_another_files_mixin_doesnt_end_a_class_order(tmp_path: Path) -> None:
+    """What its line of bases doesn't bind is the next base's: the library class's, behind it."""
+    (tmp_path / "pkg").mkdir()
+    _ = (tmp_path / "pkg" / "__init__.py").write_text("", encoding="utf-8")
+    _ = (tmp_path / "pkg" / "mixins.py").write_text(textwrap.dedent(_MIXINS), encoding="utf-8", newline="\n")
+    tests: Path = tmp_path / "test_mixed.py"
+    _ = tests.write_text(textwrap.dedent(_MIXED), encoding="utf-8", newline="\n")
+    catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
+    assert beyond.library_bases(catalog, tests) == {
+        "Named": ("", frozenset({"Named", "id", "Base", "name"})),
+        "Plain": ("", frozenset({"Plain", "__init__", "Base", "name"})),
+        # Behind a class of two bases: the one line that reaches a library class, with the other's names.
+        "Mixed": ("unittest.TestCase", frozenset({"Mixed", "Base", "name"})),
+    }
+    _ = cli.main(["--fix", "-q", "--jobs=1", str(tmp_path)])
+    fixed: str = tests.read_text(encoding="utf-8")
+    line: str
+    # `loud`: the mixin's own `id`.
+    for line in ("quiet: str = self.id()", "name: str = self.name()", "level: int = self.level", _LOUD):
+        assert f"        {line}\n" in fixed
+    for line in ("under: str = self.id()", "helped: str = self.name()", "twice = self.id()"):
+        assert f"        {line}\n" in fixed  # not behind two library classes

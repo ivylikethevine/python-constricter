@@ -137,3 +137,49 @@ def test_it_is_trusted_or_ignored_as_a_mechanism() -> None:
     """`unsafe-fix-select = ["filled"]` makes it certain; `fix-ignore = ["filled"]` drops it."""
     assert _fixed(Checks(fixes=FixPolicy(unsafe_select=frozenset({"filled"}))))["a"] == ("list[int]", False)
     assert _fixed(Checks(fixes=FixPolicy(ignore=frozenset({"filled"}))))["a"] == (None, False)
+
+
+def test_a_local_bound_to_it_that_only_reads_it_leaves_it_typed() -> None:
+    """`alias = x`: every use of the alias reads; one that adds, or a nested scope's, leaves it alone."""
+    source: str = """
+    class Box:
+        def __init__(self) -> None:
+            self.items = []
+            self.loud = []
+
+        def add(self, x: int) -> None:
+            self.items.append(x)
+            self.loud.append(x)
+
+        def show(self) -> int:
+            items = self.items
+            loud = self.loud
+            loud.append(2)
+            return len(items)
+
+
+    def g() -> int:
+        a = []
+        a.append("x")
+        read = a
+        b = []
+        b.append(1)
+        grown = b
+        grown.append(2)
+        c = []
+        c.append(1)
+        seen = c
+        d = []
+        d.append(1)
+        unused = d
+        return len(read) + len([lambda: seen])
+    """
+    found: list[Offence] = check_source(textwrap.dedent(source))
+    assert {o.name: o.fix for o in found} == {
+        "a": "list[str]",
+        "read": "list[str]",
+        "d": "list[int]",
+        "unused": "list[int]",
+        "items": "list[int]",  # `self.items`, by its class's fills
+        **dict.fromkeys(("b", "grown", "c", "seen", "loud")),
+    }

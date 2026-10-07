@@ -1,0 +1,84 @@
+# SPDX-License-Identifier: MIT
+"""What the index says of checked modules together: one type's several spellings, and what's checked first.
+
+The ways a file spells one class or alias another module defines (`same`), the modules whose
+unannotated functions a module calls, checked before it (`needs`), and the index with what a
+checked module's functions return (`with_returned`).
+"""
+
+from collections.abc import Mapping
+from pathlib import Path
+
+from constricter.fix.core.known import Guarded, Origin, Returns
+from constricter.fix.index import project
+from constricter.fix.index.modules import SUFFIX, Index, Module, module_name
+
+
+def same(catalog: Index, path: Path, guarded: Mapping[str, Guarded]) -> tuple[frozenset[str], ...]:
+    """Group the ways the file at `path` spells one class or alias another module defines.
+
+    `CoreSchema` and `core_schema.CoreSchema`, in a file importing the name and its module, the name
+    perhaps for type checking alone (its own import, or one `guarded` adds): one type, to value flow.
+
+    Returns:
+      Each group of two or more spellings.
+
+    """
+    target: Module | None
+    if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
+        return ()
+    checking: list[tuple[str, Origin]] = [
+        *target.guarded.items(),
+        *((name, found.origin) for name, found in guarded.items()),
+    ]
+    groups: dict[Origin, set[str]] = {}
+    kind: str
+    for kind in (project.CLASS, project.ALIAS):
+        name: str
+        origin: Origin
+        for name, origin in (*project.spellings(catalog, target, kind), *checking):
+            defined: tuple[Module, str] | None
+            if (defined := project.definition(catalog.modules, origin, kind)) is not None:
+                groups.setdefault((defined[0].name, defined[1]), set()).add(name)
+    return tuple(frozenset(group) for group in groups.values() if len(group) > 1)
+
+
+def with_returned(catalog: Index, found: Mapping[str, Returns]) -> Index:
+    """Record what checked modules' unannotated functions return (`found`, by module name).
+
+    A module's names from an earlier check are kept: once `--fix` has written an import it added,
+    a later check no longer exports the name, and the index doesn't have the new import.
+
+    Returns:
+      The index, with them.
+
+    """
+    modules: dict[str, Module] = dict(catalog.modules)
+    name: str
+    returns: Returns
+    for name, returns in found.items():
+        if name in modules:
+            names: dict[str, Origin] = {**modules[name].returned.names, **returns.names}
+            modules[name] = modules[name]._replace(returned=returns._replace(names=names))
+    return catalog._replace(modules=modules)
+
+
+def needs(catalog: Index, module: Module) -> set[str]:
+    """Find the other modules whose unannotated functions `module` calls (see `_spelled`).
+
+    Returns:
+      Their names.
+
+    """
+    found: set[str] = set()
+    key: str
+    origin: Origin
+    for key, origin in project.spellings(catalog, module, project.UNANNOTATED):
+        defined: tuple[Module, str] | None
+        if (
+            key in module.called
+            and (defined := project.definition(catalog.modules, origin, project.UNANNOTATED)) is not None
+        ):
+            found.add(defined[0].name)
+    found.discard(module.name)
+    return found

@@ -78,6 +78,7 @@ from constricter.rules.walked import classes, of_type
 # The node class of `type X = ...` statements, by name: Python 3.11's `ast` has no `TypeAlias`.
 _TYPE_ALIAS: Final = "TypeAlias"
 _CLASSMETHOD: Final = "classmethod"
+_KEPT: Final = "_constricter_kept"  # the attribute a tree holds its last check in
 _ROUNDS: Final = 5  # how many times to re-check what calls an unannotated function, at most
 # Enum members mustn't be annotated: a base imported from here is one, however it's aliased.
 _ENUM_MODULES: Final = frozenset({"enum"})
@@ -164,12 +165,12 @@ def _settings(
             {**(imported.attributes if imported else {}), **free_of_all(own.classes, free)},
             {**(imported.methods if imported else {}), **free_of_all(own.methods, free)},
             Indirect(
-                free_of(awaited_returns(tree), free),
+                {**({} if outside is None else outside.awaits), **free_of(awaited_returns(tree), free)},
                 _partial(own, free, outside),
                 {**({} if outside is None else outside.tuples), **free_of(own.tuples, free)},
             ),
             ClassSide(
-                free_of_all(class_attributes(tree), free),
+                free_of_all(own.order.flattened(class_attributes(tree)), free),
                 free_of_all(own.sides, free),
                 inherited.lineage(
                     tree,
@@ -286,18 +287,19 @@ def checked_tree(
 
     """
     own = own or module_tables(tree)
-    outside = None if outside is None else outside.usable(imports.plan(tree).taken)
-    imported: Returns = Returns() if outside is None else outside.returned
-    settings: Settings = _settings(tree, checks, lines, own, outside)
-    scopes: list[Scope]
-    found: Returned
-    settings, scopes, found = _settled(tree, settings, imported, _module_names(tree, settings))
+    read: ImportPlan = imports.plan(tree)
+    outside = None if outside is None else outside.usable(read.taken, imports.present(read, outside.guarded))
+    done: _Round = _resumed(tree, checks, outside) or _started(tree, checks, lines, own, outside)
+    # Kept with the tree, for as long as it is: a second check may only know its parameters anew.
+    vars(tree)[_KEPT] = _Kept(outside, checks, done)
+    settings: Settings = done.settings
+    scopes: list[Scope] = done.scopes()
     # A finding's kind is the code that reports it (LVA008, LVA009, LVA010).
     _finished(tree, scopes)
     flow: list[Offence] = flow_offences(module_flow(tree, scopes), settings.checks.fixes)
     finals: list[Offence] = [o for scope in scopes for o in late.finals(scope)] if checks.final else []
     reported: list[Offence] = [o for scope in scopes for o in scope.reported()]
-    exported: Returns = returned.exported(found)
+    exported: Returns = returned.exported(done.found, settings.known.class_side.lineage)
     plan: ImportPlan = settings.known.names.plan or imports.plan(tree)
     # With the imports its fixes add under `if TYPE_CHECKING:`, which `outside.guarded` doesn't hold.
     guarded: dict[str, Guarded] = {
@@ -306,9 +308,88 @@ def checked_tree(
     }
     return Checked(
         sorted([*reported, *redundant(tree, settings.checks.fixes), *flow, *finals]),
-        exported._replace(names=returned.exported_names(exported, guarded, plan.added)),
+        exported._replace(names=imports.exported_names(exported, guarded, plan.added)),
         observed(tree, scopes, settings.known, {} if outside is None else outside.callees),
     )
+
+
+def _started(
+    tree: ast.Module,
+    checks: Checks,
+    lines: Sequence[str],
+    own: Tables,
+    outside: Outside | None,
+) -> "_Round":
+    """Check a module from the start (see `_settled`).
+
+    Returns:
+      The check.
+
+    """
+    first: Settings = _settings(tree, checks, lines, own, outside)
+    imported: Returns = Returns() if outside is None else outside.returned
+    return _settled(tree, first, imported, _module_names(tree, first))
+
+
+class _Round(NamedTuple):
+    """A module's check as its rounds leave it: what checking it again starts from (see `_resumed`).
+
+    The settings with what its functions return, each function with its latest scope, the module's
+    and classes' bodies' scopes, the table its functions' `return`s are recorded in, and what they
+    return.
+    """
+
+    settings: Settings
+    functions: list[tuple[Scope, FunctionDef]]
+    bodies: list[Scope]
+    table: returned.Table
+    found: Returned
+
+    def scopes(self) -> list[Scope]:
+        """List every scope: the functions', then the bodies'.
+
+        Returns:
+          Them.
+
+        """
+        return [scope for scope, _ in self.functions] + self.bodies
+
+
+class _Kept(NamedTuple):
+    """A module's last check, kept on its tree: what it knew from outside, its checks, and how it ended."""
+
+    outside: Outside | None
+    checks: Checks
+    done: _Round
+
+
+def _resumed(tree: ast.Module, checks: Checks, outside: Outside | None) -> _Round | None:
+    """Check a module again from where its last check ended, where only its parameters are typed anew.
+
+    A file whose functions' parameters every call types (`Outside.parameters`) is checked a second
+    time knowing them: with the same tree, checks and everything else from outside, only those
+    functions are checked again, and what their new types reach, as any round's are (`_rounds`).
+
+    Returns:
+      The check; or `None` where it must start over: no check kept, anything else changed, LVA012
+      asked for (its fix rewrites a scope's own), or a name of the module's top level typed anew.
+
+    """
+    kept: _Kept | None = cast("_Kept | None", vars(tree).get(_KEPT))
+    if kept is None or outside is None or kept.outside is None or checks.final or kept.checks != checks:
+        return None
+    if outside._replace(parameters={}) != kept.outside._replace(parameters={}):
+        return None
+    seeded: Seeded = kept.done.settings.parameters or Seeded()
+    passed: Mapping[int, Mapping[str, Passed]] = keyed(tree, outside.parameters)
+    again: set[int] = {
+        id(scope)
+        for scope, func in kept.done.functions
+        if seeded.callers.get(id(func)) != passed.get(id(func))
+    }
+    settings: Settings = replace(kept.done.settings, parameters=seeded._replace(callers=passed))
+    done: _Round = _rounds(tree, kept.done._replace(settings=settings), outside.returned, again)
+    return done if _module_names(tree, done.settings) == seeded.module else None
 
 
 def _settled(
@@ -317,7 +398,7 @@ def _settled(
     imported: Returns,
     names: dict[str, Passed],
     rounds: int = _ROUNDS,
-) -> tuple[Settings, list["Scope"], Returned]:
+) -> _Round:
     """Check the module's scopes, its functions reading its top level's `names` as typed (`_module_names`).
 
     A name the module binds to what an unannotated function returns is typed only once that
@@ -337,14 +418,8 @@ def _settled(
         known=replace(first.known, returned=table.returned),
         parameters=seeded._replace(module=names),
     )
-    checked: tuple[Settings, list[Scope], Returned] = _returned(
-        tree,
-        settings,
-        _scopes(tree, settings, table),
-        table,
-        imported,
-    )
-    latest: dict[str, Passed] = _module_names(tree, checked[0])
+    checked: _Round = _returned(tree, settings, _scopes(tree, settings, table), table, imported)
+    latest: dict[str, Passed] = _module_names(tree, checked.settings)
     return checked if latest == names or rounds <= 1 else _settled(tree, first, imported, latest, rounds - 1)
 
 
@@ -711,18 +786,15 @@ def _returned(
     scopes: list[Scope],
     table: returned.Table,
     imported: Returns,
-) -> tuple[Settings, list[Scope], Returned]:
+) -> _Round:
     """Check again what the first pass, in call order, couldn't type the first time.
 
     That pass typed each function knowing its callees' returns (see `_scopes`); what's left is a
     function checked before a callee of its was typed (a cycle, `table.stale`), or with a late-typed
-    name it didn't know from the start. Each round checks those again, reads what the unannotated
-    functions return, and checks again any function calling one whose type is new; repeated until
-    nothing changes, so `--fix` finds in one run what it would over several.
+    name it didn't know from the start: `_rounds` checks those again.
 
     Returns:
-      The settings with what the functions return (those it imports, `imported`, too), the scopes
-      checked with them, and what its own return.
+      The check (see `_Round`), its settings with what the functions it imports return too.
 
     """
     found: Returned = returned.returned(tree, table.recorded, table.assigned, table.used)
@@ -738,6 +810,25 @@ def _returned(
         or scope.inferred.late.keys() - scope.inferred.seeded.keys()
         or returned.reads_own(tree, func, settings.owners, found)
     }
+    bodies: list[Scope] = [scope for scope in scopes if scope.kind.function is None]
+    return _rounds(tree, _Round(settings, functions, bodies, table, found), imported, again)
+
+
+def _rounds(tree: ast.Module, start: _Round, imported: Returns, again: set[int]) -> _Round:
+    """Check the functions whose scopes are in `again` once more, and then what their new types reach.
+
+    Each round checks them again, reads what the unannotated functions return, and checks again any
+    function calling one whose type is new; repeated until nothing changes, so `--fix` finds in one
+    run what it would over several. The bodies are checked again if the rounds typed what they use.
+
+    Returns:
+      The check as the rounds leave it.
+
+    """
+    settings: Settings = start.settings
+    functions: list[tuple[Scope, FunctionDef]] = start.functions
+    table: returned.Table = start.table
+    found: Returned = start.found
     changed: bool = False
     retyped: set[str] = set()  # the attributes the rounds typed anew
     _round: int
@@ -765,17 +856,13 @@ def _returned(
             or returned.reads(tree, func, newly, anywhere=True)
             or scope.inferred.late.keys() - scope.inferred.seeded.keys()
         }
-    return (
+    bodies: list[Scope] = _bodies(
+        tree,
         settings,
-        [scope for scope, _ in functions]
-        + _bodies(
-            tree,
-            settings,
-            [scope for scope in scopes if scope.kind.function is None],
-            (retyped if changed or retyped else None, found),
-        ),
-        found,
+        start.bodies,
+        (retyped if changed or retyped else None, found),
     )
+    return _Round(settings, functions, bodies, table, found)
 
 
 def _checked_again(
@@ -864,6 +951,7 @@ def _finished(tree: ast.Module, scopes: Sequence[Scope]) -> None:
         late.rebinds(scope)
         late.fills(scope)
         late.shadowed(scope)
+        late.excused(scope)
 
 
 def value_flow(

@@ -98,6 +98,7 @@ def _package(tmp_path: Path) -> list[Path]:
         (Offered("shapes", ("from . import shapes",)), "shapes", False),  # a module
         (Offered("Thing", ("from elsewhere import Thing",)), "Thing", False),  # not a checked file's
         (Offered("pkg.shapes.Shape", ("import pkg.shapes",)), "Shape", False),  # names no class
+        (Offered("Shape", ("from v3.0.0.c import Shape",)), "Shape", False),  # no module's name
         (Offered("Pair", ("from .shapes import Pair",)), "Pair", True),  # a type alias: a subscript
         (Offered("Rows", ("from .shapes import Rows",)), "Rows", True),  # one annotated `TypeAlias`
         (Offered("Either | None", ("from .shapes import Either",)), "Either | None", True),  # under an `if`

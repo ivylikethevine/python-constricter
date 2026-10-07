@@ -8,6 +8,7 @@ from typing import Final, NamedTuple
 
 from constricter.fix.core.imports import rebound_names, taken_names
 from constricter.fix.core.inherited import Lineage, lineage
+from constricter.fix.core.signatures import AWAIT
 from constricter.fix.values.targets import named_tuples
 from constricter.rules import walked
 from constricter.rules.annotations import (
@@ -32,7 +33,9 @@ class Tables(NamedTuple):
 
     Its functions' declared returns (a `NewType` bound nowhere else returning itself: `Ref(name)` is
     a `Ref`), and its classes' attributes and methods' returns (their classmethods' and
-    staticmethods' too, which an instance has as well); `held`, the functions other modules'
+    staticmethods' too, which an instance has as well; an `async` method's as what awaiting its call
+    gives, its name after `signatures.AWAIT`), the attributes each takes from the module's
+    other classes included (see `Lineage`); `held`, the functions other modules'
     decorators may give back, and `passes`, its own such decorators; `sides`, its classes'
     classmethods' and staticmethods' returns, those each takes from the module's other classes
     included (see `Lineage`), and `held_sides`, those other modules' decorators may give back;
@@ -65,12 +68,20 @@ def module_tables(tree: ast.Module) -> Tables:
     own: dict[str, dict[str, str]] = class_methods(tree)
     order: Lineage = lineage(tree, self_returns(tree), frozenset())
     sides: dict[str, dict[str, str]] = order.flattened(own)
+    awaited: dict[str, dict[str, str]] = method_returns(tree, awaited=True)
     made: list[str] = _new_types(tree)
     rebound: frozenset[str] = frozenset(rebound_names(tree)) if made else frozenset()
     return Tables(
         {**returns(tree), **{name: name for name in made if name not in rebound}},
-        classes(tree),
-        {owner: {**own.get(owner, {}), **methods} for owner, methods in method_returns(tree).items()},
+        order.flattened(classes(tree)),
+        {
+            owner: {
+                **own.get(owner, {}),
+                **methods,
+                **{AWAIT + name: each for name, each in awaited[owner].items()},
+            }
+            for owner, methods in method_returns(tree).items()
+        },
         held(tree),
         passes(tree),
         sides,

@@ -7,7 +7,7 @@ from typing import Final
 
 from constricter.fix.core.known import Known
 from constricter.fix.libraries import stdlib
-from constricter.fix.libraries.library import installed_method, library_awaited, library_class
+from constricter.fix.libraries.library import installed_method, library_class
 from constricter.fix.libraries.opened import opened, opened_path
 from constricter.fix.values import called, decided, displays, shapes
 from constricter.fix.values.inference import (
@@ -22,9 +22,11 @@ from constricter.fix.values.inference import (
     targets_typed,
 )
 from constricter.fix.values.members import (
-    assigned_attribute,
+    assigned_owner,
+    awaited,
     class_variable,
     member,
+    partial_method,
     present,
     returned_method,
 )
@@ -85,13 +87,13 @@ def _deciding(value: ast.AST, known: Known, declared: Mapping[str, str]) -> Iter
             continue
         if isinstance(node, ast.Call) and (opened(node, known) or library_class(node, known)):
             continue
-        if isinstance(node, ast.Call) and _fixed_by_callee(node, known, declared):
+        if isinstance(node, ast.Call) and fixed_by_callee(node, known, declared):
             waiting.append(node.func)
         else:
             waiting.extend(reversed(children(node)))
 
 
-def _fixed_by_callee(call: ast.Call, known: Known, declared: Mapping[str, str]) -> bool:
+def fixed_by_callee(call: ast.Call, known: Known, declared: Mapping[str, str]) -> bool:
     """Check whether `call`'s type is its callee's alone, whatever its arguments are.
 
     Returns:
@@ -186,8 +188,9 @@ def _receiving(receiver: ast.expr, method: str, known: Known, declared: Mapping[
 def certain_method(call: ast.expr, known: Known, declared: Mapping[str, str]) -> bool:
     """Check whether `call` is a method call a certain source types on its receiver's type.
 
-    A member `members.member` knows, or a `dict`'s `.keys()`, `.values()` or `.items()`; its
-    arguments can't change it (the receiver itself may still be a guess).
+    A member `members.member` knows (or one declared to return a vague part, see `Partial`), or a
+    `dict`'s `.keys()`, `.values()` or `.items()`; its arguments can't change it (the receiver
+    itself may still be a guess).
 
     Returns:
       Whether it is.
@@ -200,6 +203,7 @@ def certain_method(call: ast.expr, known: Known, declared: Mapping[str, str]) ->
             typed: str | None = _receiving(receiver, method, known, declared)
             return typed is not None and (
                 member(typed, method, call, known) is not None
+                or partial_method(typed, method, known) is not None
                 or (method in DICT_VIEWS and dict_view(receiver, method, known, declared) is not None)
             )
         case _:
@@ -226,7 +230,8 @@ def _overloaded_method(call: ast.Call, known: Known, declared: Mapping[str, str]
                 stdlib.overloaded_method(typed, method, known) is not None
                 or stdlib.overloaded_method(base, method, known) is not None  # a library base's
                 or installed_method(typed, method, known) is not None
-                or shapes.defaulted(typed, call, lambda arg: inference(arg, known, declared)) is not None
+                or shapes.defaulted(typed, call, lambda arg: inference(arg, known, declared), known)
+                is not None
                 or opened_path(typed, call, known) is not None
             )
         case _:
@@ -283,8 +288,9 @@ def _assigned_origins(
     typed: str | None = inferred(node.value, known, declared)
     if typed is None or member(typed, node.attr, None, known) is not None:
         return None
-    if assigned_attribute(typed, node.attr, known) is not None:
-        return known.returned.guesses[f"{typed}.{node.attr}"]
+    owner: str | None
+    if (owner := assigned_owner(typed, node.attr, known)) is not None:
+        return known.returned.guesses[f"{owner}.{node.attr}"]
     return None if class_variable(typed, node.attr, known) is None else frozenset({MEMBER})
 
 
@@ -311,10 +317,9 @@ def _is_guess(
             or certain_method(node, known, declared)
             or _overloaded_method(node, known, declared)
             or called.result(node, known, declared, lambda arg: inference(arg, known, declared)) is not None
-            or shapes.vaguely(node, known, lambda arg: inference(arg, known, declared)) is not None
+            or shapes.partly(node, known, lambda arg: inference(arg, known, declared)) is not None
             # A standard-library coroutine's: awaited, what it declares.
-            or library_awaited(ast.Await(node), known, lambda arg: inference(arg, known, declared))
-            is not None
+            or awaited(ast.Await(node), known, lambda arg: inference(arg, known, declared)) is not None
         ):
             return False
         case ast.Call(func=func):

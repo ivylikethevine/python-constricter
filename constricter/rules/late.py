@@ -3,11 +3,13 @@
 
 `optionals` (`None`, then one type), `rebinds` (a fix refitted to every later value), `fills` (an
 empty container typed by what's added to it), `shadowed` (a fix naming a value of its own scope,
-dropped), and `finals` (LVA012's `Final`).
+dropped), `excused` (a fix of a name a `# type: ignore` line uses, dropped), and `finals` (LVA012's
+`Final`).
 """
 
 import ast
-from collections.abc import Iterator
+import re
+from collections.abc import Iterator, Sequence
 from dataclasses import replace
 from functools import lru_cache
 from typing import Final
@@ -42,6 +44,8 @@ _TYPING_FINAL: Final = "typing.Final"
 _FINALS: Final = frozenset({_TYPING_FINAL, "typing_extensions.Final"})
 _NO_ALIASES: Final = frozenset[str]()
 _INNER: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)  # what reads a name later
+_IGNORE: Final = re.compile(r"#\s*type:\s*ignore")  # a comment excusing its line to a type checker
+_WORD: Final = re.compile(r"[A-Za-z_]\w*")
 
 
 def optionals(scope: Scope) -> None:
@@ -175,6 +179,28 @@ def shadowed(scope: Scope) -> None:
     o: Offence
     for index, o in enumerate(scope.offences):
         if o.edit is not None and roots(o.edit.annotation) & (values | {o.name}):
+            scope.offences[index] = replace(o, edit=None)
+
+
+def excused(scope: Scope) -> None:
+    """Drop each fix of a name a line of its function excuses to a type checker (`# type: ignore`).
+
+    `return text  # type: ignore[no-any-return]`: with `text` declared the line has nothing to
+    excuse, and a checker told to report unused comments reports that one.
+    """
+    function: FunctionDef | None = scope.kind.function
+    lines: Sequence[str] = scope.settings.lines
+    if function is None or not lines:
+        return
+    first: int = function.lineno - 1
+    last: int | None = function.end_lineno
+    excusing: list[str]
+    if not (excusing := [line.partition("#")[0] for line in lines[first:last] if _IGNORE.search(line)]):
+        return
+    index: int
+    o: Offence
+    for index, o in enumerate(scope.offences):
+        if o.edit is not None and any(o.name in _WORD.findall(code) for code in excusing):
             scope.offences[index] = replace(o, edit=None)
 
 

@@ -22,6 +22,7 @@ _TYPE_VARIABLES: Final = frozenset({"TypeVar", "ParamSpec", "TypeVarTuple"})
 _TYPE_VAR: Final = "TypeVar"
 _TYPE_ALIAS: Final = "TypeAlias"
 _PROTOCOL: Final = "Protocol"
+_TYPE_CHECKING: Final = "TYPE_CHECKING"
 _PROPERTIES: Final = frozenset({"property", "cached_property"})
 _BOUND: Final = "bound"
 _STAR: Final = "*"
@@ -46,12 +47,13 @@ class Class(NamedTuple):
 
     `bases`: its bases as written. `methods`: those whose arguments or instance decide their return:
     overloaded, naming a type variable, or any at all for a generic class (its parameters bind them);
-    each signature without `self`.
+    each signature without `self`. `attributes`: its body's annotated names, each one's annotation.
     """
 
     params: tuple[tuple[str, str | None], ...]
     bases: tuple[str, ...]
     methods: Mapping[str, tuple[Signature, ...]]
+    attributes: Mapping[str, str] = {}
 
 
 class Alias(NamedTuple):
@@ -125,7 +127,7 @@ def declarations(tree: ast.Module) -> Declarations:
     classes: dict[str, Class] = {}
     names: frozenset[str] | None
     stmt: ast.stmt
-    for stmt in tree.body:
+    for stmt in (*tree.body, *_checked_classes(tree.body)):
         match stmt:
             case ast.FunctionDef():
                 _signature(stmt, signatures, overloaded, type_vars)
@@ -146,6 +148,23 @@ def declarations(tree: ast.Module) -> Declarations:
         bases,
         classes,
     )
+
+
+def _checked_classes(body: list[ast.stmt]) -> Iterator[ast.ClassDef]:
+    """Find the classes a module defines under a top-level `if` a type checker takes the first arm of.
+
+    `if sys.version_info >= (3, 11) or TYPE_CHECKING:`, by the `TYPE_CHECKING` its test names.
+
+    Yields:
+      Each class of that arm.
+
+    """
+    stmt: ast.stmt
+    for stmt in body:
+        if isinstance(stmt, ast.If) and any(
+            node_name(node) == _TYPE_CHECKING for node in ast.walk(stmt.test)
+        ):
+            yield from (each for each in stmt.body if isinstance(each, ast.ClassDef))
 
 
 def _class(node: ast.ClassDef, type_vars: frozenset[str], variables: Mapping[str, Variable]) -> Class:
@@ -192,6 +211,11 @@ def _class(node: ast.ClassDef, type_vars: frozenset[str], variables: Mapping[str
         params,
         tuple(ast.unparse(base) for base in node.bases),
         {name: tuple(_unbound(each) for each in found) for name, found in signatures.items() if found},
+        {
+            each.target.id: ast.unparse(each.annotation)
+            for each in node.body
+            if isinstance(each, ast.AnnAssign) and isinstance(each.target, ast.Name)
+        },
     )
 
 

@@ -9,9 +9,15 @@ from constricter import Checks, Offence, check_source
 from constricter.offences import FixPolicy
 
 _CLASSES: str = """
+from typing import ClassVar, Final
+
+
 class Index:
   name: str
   items: list[str]
+  kind: ClassVar[str] = ""
+  most: Final[int] = 3
+  least: Final = 1
   counts: dict[str, int]
 
   def label(self) -> str: ...
@@ -45,6 +51,14 @@ def _fixes(body: str) -> list[tuple[str, str | None, bool]]:
         ("t.index.counts.get('a')", "int | None"),  # an element method on an attribute
         ("tables[0].index", "Index"),  # an attribute of a subscript
         ("make_table().index.name", "str"),  # through a function declaring its return
+        ("t.index.kind", "str"),  # less the `ClassVar` around it
+        ("t.index.most", "int"),  # and the `Final`
+        ("t.index.least", None),  # a bare `Final` leaves it to the value
+        ("data[0]", "int"),  # one byte
+        ("data[n]", "int"),
+        ("data[1:]", "bytes"),
+        ("data[t.index.missing]", None),  # an index or a slice
+        ("text[0]", "str"),
         ("t.index.missing", None),
         ("t.index.name.missing()", None),
         ("t.missing.name", None),
@@ -54,7 +68,7 @@ def test_a_member_of_any_typed_value_is_typed(value: str, fix: str | None) -> No
     """The receiver is typed as any value is, and the member looked up on its type."""
     body: str = f"""
     def make_table() -> Table: ...
-    def f(t: Table, tables: list[Table]) -> None:
+    def f(t: Table, tables: list[Table], data: bytes, text: str, n: int) -> None:
       x = {value}
     """
     assert _fixes(body)[-1] == ("x", fix, False)
@@ -143,4 +157,14 @@ def test_a_dict_view_on_a_chained_receiver_is_certain() -> None:
         ("pairs", "list[tuple[str, int]]", False),
         ("key", "str", False),
         ("count", "int", False),
+    ]
+
+
+def test_a_variable_a_base_declares_a_classvar_is_left_alone() -> None:
+    """Annotated in the subclass, it would be an instance variable over the base's class variable."""
+    source: str = _CLASSES + 'class Sub(Index):\n  kind = "sub"\n  other = "new"\n'
+    found: list[Offence] = check_source(source, checks=Checks(all_scopes=True))
+    assert [(o.name, o.fix) for o in found if o.name in {"kind", "other"}] == [
+        ("kind", None),
+        ("other", "str"),
     ]

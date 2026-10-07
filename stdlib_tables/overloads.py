@@ -20,6 +20,7 @@ from collections.abc import Iterable, Iterator, Sequence
 from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.core.signatures import (
+    AWAIT,
     CLASS_BINDS,
     CLASS_VERDICT,
     Accepts,
@@ -144,6 +145,7 @@ class Verdicts(NamedTuple):
     elements: tuple[str, dict[str, int]] | None = None
     returned: str | None = None
     awaited: str | None = None  # for an awaitable, the unbounded type variable awaiting it gives
+    bounded: str | None = None  # the type variable the parameter is, if a bound is all that limits it
 
 
 def _classes(annotation: ast.expr) -> Iterator[ast.expr]:
@@ -301,7 +303,7 @@ class Overloads(Templates):
                 params=[
                     _shared(p)
                     if _key(p) in shared and not self._variable_in(p.annotation, module)
-                    else (p.name, p.kind, p.default, self._accepted(p, module))
+                    else (p.name, p.kind, p.default, self._accepted(p, module, alone=len(defs) == 1))
                     for p in one
                 ],
                 returns=constructed
@@ -437,7 +439,8 @@ class Overloads(Templates):
         """Read a class's plain methods whose arguments decide their return: not `fixed` (typed alike always).
 
         A method's signatures are read without its `self`, as a call on an instance passes it; with
-        `inherited` false, only the class's own (a generic base's type variables aren't its own).
+        `inherited` false, only the class's own (a generic base's type variables aren't its own). An
+        `async def`'s are what awaiting its call gives, under its name after `AWAIT`.
 
         Returns:
           Each one's defining class and method (`module.Class.name`: one entry for all the classes
@@ -454,16 +457,13 @@ class Overloads(Templates):
             signatures: list[Signature] | None
             if name in known or decorators & _NOT_METHODS or (not inherited and owner != klass):
                 continue
-            if (
-                signatures := self.entry(
-                    tuple(_unbound(node) for node in function.defs),
-                    owner.module,
-                    [_self(node) for node in function.defs],
-                )
-            ) is not None:
+            awaited: bool = isinstance(function.defs[0], ast.AsyncFunctionDef)
+            selves: list[ast.expr | None] = [_self(node) for node in function.defs]
+            unbound: Defs = tuple(_unbound(node) for node in function.defs)
+            if (signatures := self.entry(unbound, owner.module, selves, awaited=awaited)) is not None:
                 if name in OPERATORS:
                     self._operands(signatures, function.defs, owner.module)
-                found[name] = (f"{owner.module}.{owner.name}.{name}", signatures)
+                found[AWAIT + name if awaited else name] = (f"{owner.module}.{owner.name}.{name}", signatures)
         return found
 
     def _operands(self, signatures: list[Signature], defs: Defs, module: str) -> None:
@@ -490,8 +490,8 @@ class Overloads(Templates):
             return None
         return [text for text in texts if text is not None]
 
-    def _accepted(self, parameter: Param, module: str) -> Accepts:
-        """Write what a parameter takes as the tables hold it.
+    def _accepted(self, parameter: Param, module: str, *, alone: bool = False) -> Accepts:
+        """Write what a parameter takes as the tables hold it; `alone`: with no other signature.
 
         Returns:
           Its verdicts.
@@ -509,8 +509,9 @@ class Overloads(Templates):
             found["lit"] = list(verdicts.literals)
         if verdicts.binds:
             found["var"] = _binding(verdicts.binds)
-        if verdicts.anything is not None:
-            found["t"] = verdicts.anything
+        anything: str | None
+        if (anything := verdicts.anything or (verdicts.bounded if alone else None)) is not None:
+            found["t"] = anything
         if verdicts.elements is not None:
             found["e"], found["of"] = verdicts.elements
         if verdicts.returned is not None:
@@ -563,6 +564,7 @@ class Overloads(Templates):
             None if of is None else self._container_elements(*of),
             self._callable_return(annotation, module),
             self._awaited(annotation, module, 0),
+            _unbounded(atoms, bounded=True),
         )
 
     def _awaited(self, annotation: ast.expr, module: str, hops: int) -> str | None:
@@ -980,8 +982,8 @@ class Overloads(Templates):
         return self._names[name]
 
 
-def _unbounded(atoms: Sequence[Atom]) -> str | None:
-    """Name the type variable a parameter is, if it's all it is and nothing bounds it (`x: _T`).
+def _unbounded(atoms: Sequence[Atom], *, bounded: bool = False) -> str | None:
+    """Name the type variable a parameter is, if it's all it is, with no limit (`bounded`: but a bound).
 
     Returns:
       Its name, or `None`.
@@ -989,6 +991,6 @@ def _unbounded(atoms: Sequence[Atom]) -> str | None:
     """
     found: Found | None = atoms[0].found if len(atoms) == 1 else None
     variable: Binding | None = None if found is None else found.binding
-    if not isinstance(variable, TypeVariable) or variable.constraints or variable.bound is not None:
+    if not isinstance(variable, TypeVariable) or variable.constraints:
         return None
-    return variable.name
+    return None if variable.bound is not None and not bounded else variable.name

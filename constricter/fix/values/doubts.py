@@ -3,8 +3,8 @@
 
 - A copy, attribute or subscript of a union may be narrowed where it's read (`if x is not None:`,
   `isinstance`), which a type checker sees and `--fix` doesn't; so may a comprehension's elements, by
-  its condition (`[c for c in cs if isinstance(c, Column)]`), and a read whose type a call takes as
-  its own (`deque([x])`). Their fixes are guesses.
+  its condition (`[c for c in cs if isinstance(c, Column)]`, whatever their type), and a read whose
+  type a call takes as its own (`deque([x])`). Their fixes are guesses.
 - An ALL_CAPS module-level name is a constant to pyright, which keeps its literal's type
   (`Literal["r"]`) where `str` would widen it: a guess too, where the module passes it to a call
   or a default (see `passed`), for a parameter that may take only some values.
@@ -46,12 +46,14 @@ _LITERAL: Final = "literal"
 _NONE: Final = "None"
 _OPTIONAL: Final = "Optional"
 _COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+_Comprehension: TypeAlias = ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp
 _UNIONS: Final = frozenset({"Optional", "Union"})
 _SELF_ORIGINS: Final = frozenset({"typing.Self", "typing_extensions.Self"})
 _SELF_ITSELF: Final = "{}"  # how a value that is `Self` is written, `{}` standing for it
 _CLASS_OF: Final = "type[{}]"  # how `type(self)` is
 _INSTANCE: Final = "self"  # a method's first parameter: any other name is a classmethod's class
-_TYPING: Final = frozenset({"typing", "typing_extensions"})
+_EXTENSIONS: Final = "typing_extensions"
+_TYPING: Final = frozenset({"typing", _EXTENSIONS})
 
 
 @dataclass(frozen=True, eq=False)  # hashed by identity: a module's, cached with each function
@@ -188,7 +190,8 @@ def doubts(value: ast.expr, found: Inference, *, constant: bool, narrowed: froze
         return frozenset({kind})
     if narrowed.intersection(found.reads):
         return frozenset({_READS[ast.Name]})
-    if isinstance(value, _COMPREHENSIONS) and any(g.ifs for g in value.generators) and _has_union(found):
+    filtered: bool = isinstance(value, _COMPREHENSIONS) and any(g.ifs for g in value.generators)
+    if filtered and (_has_union(found) or _sifted(cast("_Comprehension", value))):
         return frozenset({_COMPREHENSION})
     if constant and _literal(value):
         return frozenset({_LITERAL})
@@ -212,6 +215,33 @@ def narrowed_first(value: ast.expr, found: Inference) -> bool:
     optional: bool = _NONE in (members(found.annotation) or ())
     filtered: bool = isinstance(value, _COMPREHENSIONS) and any(g.ifs for g in value.generators)
     return (isinstance(value, tuple(_READS)) and optional) or (filtered and _has_none(found.annotation))
+
+
+def _sifted(value: _Comprehension) -> bool:
+    """Check whether a comprehension keeps only what's of some class: `[x for x in xs if isinstance(x, C)]`.
+
+    Returns:
+      Whether one of its conditions is an `isinstance` of a name it binds: its elements are narrowed.
+
+    """
+    bound: set[str] = {
+        node.id for each in value.generators for node in ast.walk(each.target) if isinstance(node, ast.Name)
+    }
+    return any(
+        _instance_checked(node) in bound
+        for each in value.generators
+        for test in each.ifs
+        for node in ast.walk(test)
+    )
+
+
+def _instance_checked(node: ast.AST) -> str:  # the `x` of `isinstance(x, C)`, else nothing
+    name: str
+    match node:
+        case ast.Call(func=ast.Name(id="isinstance"), args=[ast.Name(id=name), *_]):
+            return name
+        case _:
+            return ""
 
 
 def _has_none(annotation: str) -> bool:
@@ -451,8 +481,9 @@ def corrected(
 def _selfish(value: ast.expr, found: Inference, owner: Owner) -> str | None:
     """Find how `value`'s type is written with `Self`, if it's one typed as the class.
 
-    `self`, or a `Self` method called on `self`, `cls` or `type(self)`; `type(self)`, a
-    `type[Self]`; what `cls()`, `type(self)()` or `__new__` given either constructs; and a
+    `self`, or a `Self` method called on `self`, `cls` or `type(self)`; `type(self)` or
+    `self.__class__`, a `type[Self]`; what `cls()`, either of those called, or `__new__` given one
+    constructs; and a
     conditional of two of them (`self if inplace else self.copy()`).
 
     Returns:
@@ -464,7 +495,9 @@ def _selfish(value: ast.expr, found: Inference, owner: Owner) -> str | None:
     func: ast.expr
     template: str | None = None
     match value:
-        case ast.Name() | ast.Call(func=ast.Name()) if (template := _own(value, owner.first)) is not None:
+        case ast.Name() | ast.Call(func=ast.Name()) | ast.Attribute() if (
+            template := _own(value, owner.first)
+        ) is not None:
             pass
         case ast.Call(func=func) if _constructs(func, owner.first):
             template = _SELF_ITSELF
@@ -494,7 +527,9 @@ def _constructs(func: ast.expr, first: str) -> bool:
 
 
 def _own(value: ast.expr, first: str) -> str | None:
-    """Find how a method's own instance or class is typed with `Self`: `self` or `cls`, or `type(self)`.
+    """Find how a method's own instance or class is typed with `Self`: `self` or `cls`, or its class.
+
+    Its class: `type(self)`, or `self.__class__`.
 
     Returns:
       Its annotation, `{}` standing for `Self`; or `None` if `value` is neither.
@@ -504,30 +539,31 @@ def _own(value: ast.expr, first: str) -> str | None:
     match value:
         case ast.Name(id=name) if name == first:
             return _SELF_ITSELF
-        case ast.Call(func=ast.Name(id="type"), args=[ast.Name(id=name)]) if name == first:
+        case (
+            ast.Call(func=ast.Name(id="type"), args=[ast.Name(id=name)])
+            | ast.Attribute(value=ast.Name(id=name), attr="__class__")
+        ) if name == first:
             return _CLASS_OF
         case _:
             return None
 
 
 def spelled_self(plan: ImportPlan) -> str | None:
-    """Name `Self` as the module already imports it (`Self`, `typing.Self`, `te.Self`).
+    """Name `Self` as the module already imports it (`Self`, `te.Self`, `typing.Self`).
 
-    Not an import added for it: `typing.Self` is Python 3.11's, and the module may run on older ones.
+    Through an import for type checking alone too, and `typing_extensions` before `typing`. Not an
+    import added for it: `typing.Self` is Python 3.11's, and the module may run on older ones.
 
     Returns:
       The name, or `None` if it doesn't import it.
 
     """
-    bound: str
-    origin: str
-    for bound, origin in plan.bound.items():
-        if origin in _SELF_ORIGINS:
-            return bound
-    for bound, origin in plan.bound.items():
-        if origin in _TYPING:
-            return f"{bound}.Self"
-    return None
+    bound: dict[str, str] = {**plan.checking.bound, **plan.bound}
+    modules: dict[str, str] = {origin: name for name, origin in bound.items() if origin in _TYPING}
+    name: str | None = next((name for name, origin in bound.items() if origin in _SELF_ORIGINS), None)
+    if name is None and modules:
+        name = f"{modules.get(_EXTENSIONS) or next(iter(modules.values()))}.Self"
+    return name
 
 
 def bare(annotation: str, generics: frozenset[str]) -> bool:

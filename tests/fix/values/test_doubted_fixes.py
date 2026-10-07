@@ -30,6 +30,7 @@ def test_a_read_of_a_union_may_be_narrowed_where_it_is_so_is_a_guess() -> None:
         maybe: int | None,
         pairs: dict[str, int | None],
         items: list[int | str],
+        plain: list[C],
         either: int | str,
         options: list[int | None],
         spelled: "list[Optional[int]]",
@@ -45,6 +46,8 @@ def test_a_read_of_a_union_may_be_narrowed_where_it_is_so_is_a_guess() -> None:
         j = [o for o in options if o]
         k = nothing
         m = [s for s in spelled if s]
+        n = [p for p in plain if isinstance(p, D)]
+        o = [p for p in plain if p]
     """
     assert _found(source) == {
         "a": (None, False),
@@ -57,6 +60,8 @@ def test_a_read_of_a_union_may_be_narrowed_where_it_is_so_is_a_guess() -> None:
         "j": (None, False),
         "k": (None, False),
         "m": (None, False),
+        "n": ("list[C]", True),  # narrowed to the class it's checked for
+        "o": ("list[C]", False),
     }
 
 
@@ -195,6 +200,8 @@ class Node:
         ("from typing_extensions import Self", "Self"),
         ("import typing as t", "t.Self"),
         ("from typing import Self as S", "S"),
+        ("import typing as t\nimport typing_extensions as te", "te.Self"),  # before Python 3.11 too
+        ("import typing as t\nif t.TYPE_CHECKING:\n    import typing_extensions as te", "te.Self"),
     ],
 )
 def test_self_and_its_self_methods_are_self(imports: str, spelled: str) -> None:
@@ -346,3 +353,19 @@ def test_a_constructor_guess_is_only_a_callee_a_type_can_name() -> None:
         "h": None,  # generic: never bare
         "i": "Dec",
     }
+
+
+_EXCUSED: Final = """
+def render(parts: list[str], named: bool) -> str:
+    if named:
+        text = parts[0].upper()
+        text += "x"
+        return text  # type: ignore[no-any-return]
+    other = parts[0].lower()
+    return other
+"""
+
+
+def test_a_name_a_type_ignore_line_uses_has_no_fix() -> None:
+    """Declared, it leaves the comment nothing to excuse, which a checker may report."""
+    assert _found(_EXCUSED) == {"text": (None, False), "other": ("str", False)}

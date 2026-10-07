@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Final, cast
 
 from constricter import __version__
-from constricter.fix.index.modules import STUB, SUFFIX, Index, Module, read
+from constricter.fix.index.modules import STUB, SUFFIX, Index, Memo, Module, read
 
 LIMIT: Final = 2000  # the most installed modules one run reads
 _HOPS: Final = 5  # re-exports followed to a type variable
@@ -100,7 +100,8 @@ def with_installed(catalog: Index, search: Sequence[Path]) -> Index:
         return catalog
     every: dict[str, Module] = {**catalog.modules, **found}
     every.update((name, _generics(every, module)) for name, module in found.items())
-    return catalog._replace(modules=every, names=sorted(every))  # the checked files' repeated names kept
+    # The checked files' repeated names kept; what was worked out of the modules there were, not.
+    return catalog._replace(modules=every, names=sorted(every), memo=Memo())
 
 
 def _generics(modules: Mapping[str, Module], module: Module) -> Module:

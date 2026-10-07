@@ -68,9 +68,8 @@ _ATTRIBUTES: Final = cast("_Own", _table("attributes"))
 # class's path and its name (a class's own path: its instance).
 _AWAITED: Final = cast("Mapping[str, str]", _table("awaited"))
 # The `async def`s whose arguments decide what awaiting their call gives, as `OVERLOADS` holds a
-# function's; `AWAIT` before a path names one's entry to `overloads.chosen`.
+# function's; `signatures.AWAIT` before a path names one's entry to `overloads.chosen`.
 AWAITED_OVERLOADS: Final = cast("dict[str, list[Variant]]", _table("awaited_overloads"))
-AWAIT: Final = "await "
 # The generic classes awaiting an instance of gives its last type argument.
 _AWAITABLE: Final = frozenset({"asyncio.Future", "asyncio.Task"})
 # Each class's public ancestors in the tables, nearest first, comma-separated.

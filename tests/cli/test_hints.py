@@ -21,7 +21,7 @@ import pytest
 
 from constricter import check_source
 from constricter.cli import command as cli
-from constricter.cli import guard, hints, protocol
+from constricter.cli import guard, hints, protocol, remembered
 from constricter.cli.options import Options
 from constricter.fix.core.known import Hints, Offered
 
@@ -171,6 +171,32 @@ def test_a_file_a_restarted_server_hangs_on_again_has_no_hints(
         started: hints.Connection = session.checkers[0].servers[0]
         assert session.hints({hung: files[hung]})[hung][0].types == {}
         assert session.checkers[0].servers[0] is started  # not asked: it would have hung again
+    # Nor in a later run, while the file and the checker are as they were.
+    monkeypatch.setattr(hints, "_TIMEOUT", 60.0)
+    later: hints.Session
+    with hints.Session([_CHECKER], tmp_path) as later:
+        assert later.hints({hung: files[hung]})[hung][0].types == {}
+        assert later.abandoned == [(_CHECKER, hung)]
+        assert later.hints({once: "z = 1  # hint: str\n"})[once][0].types == {(1, 1): "str"}
+
+
+def test_a_hang_is_remembered_by_the_checker_and_the_text(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Not for another checker's executable or another text; nothing's kept where the cache can't be."""
+    server: Path = tmp_path / "server"
+    _ = server.write_text("", encoding="utf-8")
+    assert not remembered.hung("a", [str(server)], "x = 1\n")
+    remembered.remember("a", [str(server)], "x = 1\n")
+    assert remembered.hung("a", [str(server)], "x = 1\n")
+    assert not remembered.hung("a", [str(server)], "x = 2\n")
+    assert not remembered.hung("a", [str(tmp_path / "gone")], "x = 1\n")
+    _ = server.write_text("newer", encoding="utf-8")
+    assert not remembered.hung("a", [str(server)], "x = 1\n")
+    monkeypatch.setenv("XDG_CACHE_HOME", str(server))  # a file: nothing can be made under it
+    remembered.remember("a", [str(server)], "x = 3\n")
+    assert not remembered.hung("a", [str(server)], "x = 3\n")
 
 
 def test_a_checker_that_hangs_on_too_many_files_stops_the_run(

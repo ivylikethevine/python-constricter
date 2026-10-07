@@ -19,12 +19,10 @@ from constricter.fix.values import shapes
 from constricter.fix.values.doubts import bare
 from constricter.fix.values.entered import entered, entered_async, entering
 from constricter.fix.values.inference import LoopPart, inference, looped, looped_parts
-from constricter.fix.values.members import parsed
 from constricter.fix.values.targets import iterated, unpacked
 from constricter.offences import COMMENT_TYPED_TARGET, UNTYPED_TARGET, Edit, Fix, at
-from constricter.rules.annotations import vague_fits
 from constricter.rules.flow import augmented
-from constricter.rules.scope import Scope, certain_type, guesses_in
+from constricter.rules.scope import Late, Scope, certain_type, guessed_type, guesses_in
 from constricter.rules.syntax import captures, comment_type, target_names, type_comment_span
 
 _COMMENT: Final = "comment"  # the fix kind of LVA003's declaration
@@ -79,7 +77,7 @@ def bind(scope: Scope, stmt: ast.stmt) -> None:
         case ast.AugAssign(target=ast.Name(id=name) as single, op=op, value=value):
             own: str | None = None if name in scope.inferred.guesses else scope.inferred.types.get(name)
             bound: str | None = augmented(op, certain_type(scope, value), own)
-            scope.lifetime(name).bind(at(single), bound)
+            scope.lifetime(name).bind(at(single), bound, None if bound else _augmented_guess(scope, stmt))
             scope.inferred.rebound(name, bound)
         case _:
             pass
@@ -214,9 +212,9 @@ def _unpacked(scope: Scope, stmt: ast.Assign, target: ast.expr, value: ast.expr)
 def _unpacked_whole(scope: Scope, stmt: ast.Assign, target: ast.expr, value: ast.expr) -> Iterator[_Named]:
     """Type each name an unpacking of `value` binds by `value`'s own type, split over them.
 
-    Its type as any value's is inferred; else what iterating it gives, each name an element; else a
-    call's declared return with a vague part (see `partly`), each name its part if that's no vaguer
-    than `vague` allows.
+    Its type as any value's is inferred (a call's declared return with a vague part too: a part
+    vaguer than `vague` allows is its name's type, and no fix); else what iterating it gives, each
+    name an element.
 
     Yields:
       Each name, with its inference, whether that's a guess, and what the guess rests on.
@@ -229,19 +227,7 @@ def _unpacked_whole(scope: Scope, stmt: ast.Assign, target: ast.expr, value: ast
         typed = element._replace(annotation=f"tuple[{element.annotation}, ...]")
         yield from _split(scope, stmt, target, typed, iterated(value))
         return
-    if typed is not None:
-        yield from _split(scope, stmt, target, typed, [value])
-        return
-    typed = shapes.partly(value, known, lambda part: inference(part, known, scope.inferred.types))
-    # A method's return is a guess if its receiver's type is; a function's is declared.
-    receiver: list[ast.expr] = (
-        [value.func.value] if isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute) else []
-    )
-    name: ast.Name
-    part: _Valued
-    for name, part in _split(scope, stmt, target, typed, receiver):
-        vague: bool = part[0] is not None and not vague_fits(parsed(part[0].annotation), known.limits.vague)
-        yield name, ((None, False, frozenset()) if vague else part)
+    yield from _split(scope, stmt, target, typed, [value])
 
 
 def _bind_declared(
@@ -308,8 +294,9 @@ def _bind_declaration(
     unsafe: bool
     origins: frozenset[str]
     found, unsafe, origins = typed
-    if found is None and (found := scope.hint(name)) is not None:
-        unsafe, origins = True, found.kinds
+    hint: Inference | None
+    if (found is None or not scope.writable(found)) and (hint := scope.hint(name)) is not None:
+        found, unsafe, origins = hint, True, hint.kinds
     fix: Fix | None = None
     if found is not None:
         fix = scope.offer(
@@ -326,7 +313,8 @@ def _bind_declaration(
             origins if unsafe else None,
             again=name.id in scope.declared,
         )
-    scope.bind(name.id, at(name), code, fix, None if found is None or unsafe else found.annotation)
+    certain: bool = found is not None and not unsafe and scope.writable(found)
+    scope.bind(name.id, at(name), code, fix, found.annotation if found is not None and certain else None)
 
 
 def _bind_commented(scope: Scope, stmt: ast.For | ast.AsyncFor, target: ast.expr, comment: str) -> None:
@@ -386,7 +374,7 @@ def _entered_parts(scope: Scope, target: ast.expr, manager: ast.expr, typed: _Va
 
     `typed`: what the whole target gets (see `_entered`), split over its names as an unpacking's
     value is; where that's unknown, an `__enter__` declared to return a vague part is split instead
-    (see `shapes.partly`). A part vaguer than `vague` allows gives its name no fix.
+    (see `shapes.partly`). A part vaguer than `vague` allows is its name's type, and no fix.
 
     Yields:
       Each name, with its inference, whether that's a guess, and what the guess rests on.
@@ -406,9 +394,7 @@ def _entered_parts(scope: Scope, target: ast.expr, manager: ast.expr, typed: _Va
     part: str | None
     for name, part in unpacked(target, None if whole is None else whole.annotation, known.indirect.tuples):
         split: Inference | None = (
-            None
-            if whole is None or part is None or not vague_fits(parsed(part), known.limits.vague)
-            else Inference(part, whole.reason, whole.kinds | _UNPACK)
+            None if whole is None or part is None else Inference(part, whole.reason, whole.kinds | _UNPACK)
         )
         yield name, (split, *doubt)
 
@@ -452,3 +438,22 @@ def _bind_captures(scope: Scope, cases: list[ast.match_case]) -> None:
     for case in cases:
         for name, where in captures(case.pattern, scope.settings.lines):
             scope.bind(name, where, UNTYPED_TARGET)
+
+
+def _augmented_guess(scope: Scope, stmt: ast.AugAssign) -> Late | None:
+    """Guess the type `name op= value` binds, where the name's type or the value's is only a guess.
+
+    As the statement binds it once `--fix` has written those guesses, and they're declared.
+
+    Returns:
+      The type and what the guess rests on, or `None` if it's unknown still.
+
+    """
+    name: str = cast("ast.Name", stmt.target).id
+    operand: Late | None = guessed_type(scope, stmt.value)
+    certain: str | None = None if operand else certain_type(scope, stmt.value)
+    bound: str | None = augmented(stmt.op, operand[0] if operand else certain, scope.inferred.types.get(name))
+    none: frozenset[str] = frozenset()
+    own: frozenset[str] = scope.inferred.origins.get(name, none) if name in scope.inferred.guesses else none
+    origins: frozenset[str] = own | (operand[1] if operand else none)
+    return (bound, origins) if bound is not None and origins else None

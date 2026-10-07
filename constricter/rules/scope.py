@@ -4,11 +4,12 @@
 import ast
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from functools import lru_cache
 from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.core.known import Hints, ImportPlan, Inference, Known, Passed, Typed
 from constricter.fix.libraries import stdlib
-from constricter.fix.values import aliased, fills, hinted
+from constricter.fix.values import aliased, callables, fills, hinted
 from constricter.fix.values.doubts import (
     Facts,
     Owner,
@@ -292,7 +293,6 @@ class Scope:
             self.opaque([name])
             return
         again: bool = name in self.declared
-        facts: Facts = self.settings.facts
         fix: Inference | None
         unsafe: bool
         origins: frozenset[str]
@@ -300,7 +300,7 @@ class Scope:
             self.kind.function is None
             and self.kind.owner is None
             and is_constant(name)
-            and name in facts.passed
+            and name in self.settings.facts.passed
             and chained is None
         )
         fix, unsafe, origins = self.valued(value, target.lineno, constant=constant)
@@ -310,16 +310,20 @@ class Scope:
         certain: str | None = certain_type(self, value, (None if fix is None else fix.annotation, unsafe))
         if self.kind.owner is not None:
             fix, unsafe, origins = self._member(name, fix)
-        if fix is None:
-            fix, unsafe, origins = self._unvalued(target, value, alias=chained is None and not again)
-        self.lifetime(name).bind(
-            at(target),
-            certain,
-            (fix.annotation, origins) if fix is not None and unsafe else None,
-        )
+        if fix is None or not self.writable(fix):
+            fix, unsafe, origins = self._unvalued(
+                target,
+                value,
+                (fix, unsafe, origins),
+                alias=chained is None and not again,
+            )
+        # Past `vague`, a type holds no other binding's fix to it: unknown there, and to value flow.
+        vague: bool = fix is not None and not self.writable(fix)
+        guess: Late | None = (fix.annotation, origins) if fix is not None and unsafe else None
+        self.lifetime(name).bind(at(target), certain, None if vague else guess)
         self.assigned(name, at(target))
         if again:
-            self.inferred.rebound(name, certain, (fix.annotation, origins) if fix and unsafe else None)
+            self.inferred.rebound(name, fix.annotation if fix and vague and not unsafe else certain, guess)
         kind: str | None
         if (kind := fills.empty(value)) is not None:
             _ = self.assignments.empty.setdefault(name, kind)
@@ -340,10 +344,13 @@ class Scope:
         self,
         target: ast.Name,
         value: ast.expr,
+        vague: tuple[Inference | None, bool, frozenset[str]],
         *,
         alias: bool,
     ) -> tuple[Inference | None, bool, frozenset[str]]:
         """Type a name its value gives no type: a module's type alias (`alias`: it may be one), or a hint.
+
+        `vague`: what `valued` made of it, a type too vague to write: the name's still, with neither.
 
         Returns:
           The inference, whether it's a guess, and what it rests on, as `valued` does.
@@ -361,10 +368,25 @@ class Scope:
             if alias and self.kind.function is None and self.kind.owner is None
             else None
         )
+        function: FunctionDef | None = self.kind.function
+        types: Typed = self.inferred.types
+        called: tuple[Inference, ast.expr] | None = (
+            None
+            if found is not None or function is None or vague[0] is not None
+            else callables.aliased(
+                target,
+                value,
+                function,
+                self.settings.known,
+                (types, lambda arg: inference(arg, self.settings.known, types)),
+            )
+        )
+        if called is not None:
+            found = called[0], *guesses_in(self, [called[1]])
         hint: Inference | None
         if found is None and (hint := self.hint(target, value)) is not None:
             found = hint, True, hint.kinds
-        return found or (None, False, frozenset())
+        return found or vague
 
     def _member(self, name: str, fix: Inference | None) -> tuple[Inference | None, bool, frozenset[str]]:
         """Offer a class body's fix only for a plain class's variable typed by its value: a guess.
@@ -574,7 +596,7 @@ class Scope:
 
         """
         policy: FixPolicy = self.settings.checks.fixes
-        if not policy.allows(fix.kinds) or not vague_fits(parsed(fix.annotation), self.settings.checks.vague):
+        if not policy.allows(fix.kinds) or not self.writable(fix):
             return None
         certain: bool = not unsafe or policy.trusts(origins)
         plan: ImportPlan = self.settings.known.names.plan or ImportPlan({}, frozenset(), 0)
@@ -596,6 +618,15 @@ class Scope:
             guard=guard or "",
             block=plan.checking.block,
         )
+
+    def writable(self, fix: Inference) -> bool:
+        """Check that a type is no vaguer than `vague` allows: one that isn't is known, and never written.
+
+        Returns:
+          Whether it is.
+
+        """
+        return _fits(fix.annotation, self.settings.checks.vague)
 
     def _first(
         self,
@@ -738,6 +769,17 @@ class Scope:
         )
 
 
+@lru_cache(maxsize=4096)  # a module's fixes are a few types, each asked again and again
+def _fits(annotation: str, level: int) -> bool:
+    """Check that a type, as text, is no vaguer than `level` allows (see `vague_fits`).
+
+    Returns:
+      Whether it is.
+
+    """
+    return vague_fits(parsed(annotation), level)
+
+
 def guesses_in(scope: Scope, values: Iterable[ast.expr]) -> tuple[bool, frozenset[str]]:
     """Work out whether any of `values`' types is a guess, and what the guesses rest on (see `guessing`).
 
@@ -772,8 +814,9 @@ def certain_type(
 
     `None` itself (which `--fix` never offers: `x: None = None` says nothing) is `"None"` here. A
     copy of a name typed as a union is unknown: an `isinstance` or `is None` check before it may
-    have narrowed the name, which value flow (blind to control flow) can't see. `worked_out`: `--fix`'s
-    annotation for `value` and whether it's a guess, if they're known already.
+    have narrowed the name, which value flow (blind to control flow) can't see. A type vaguer than
+    `vague` allows is unknown too: its `Any` fits whatever the name is declared. `worked_out`:
+    `--fix`'s annotation for `value` and whether it's a guess, if they're known already.
 
     Returns:
       The type as text, or `None` if it's unknown or only a guess.
@@ -789,7 +832,26 @@ def certain_type(
     )
     if isinstance(value, _READS) and annotation is not None and len(members(annotation) or ()) > 1:
         return None  # a read of a union is narrowed where the code checks it, which value flow can't see
-    return None if unsafe else annotation
+    if unsafe or annotation is None or not vague_fits(parsed(annotation), scope.settings.checks.vague):
+        return None
+    return annotation
+
+
+def guessed_type(scope: Scope, value: ast.expr) -> Late | None:
+    """Infer `value`'s type where `--fix` only guesses it: what `certain_type` leaves unknown.
+
+    Returns:
+      The type and what the guess rests on; `None` if it's unknown, certain, or vaguer than `vague`
+      allows.
+
+    """
+    annotation: str | None = inferred(value, scope.settings.known, scope.inferred.types)
+    unsafe: bool
+    origins: frozenset[str]
+    unsafe, origins = guesses_in(scope, [value])
+    if not unsafe or annotation is None or not vague_fits(parsed(annotation), scope.settings.checks.vague):
+        return None
+    return annotation, origins
 
 
 def imports_of(annotation: str, plan: ImportPlan) -> tuple[str, ...]:

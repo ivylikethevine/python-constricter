@@ -65,7 +65,7 @@ from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, TypeVar, cast
 
 from constricter.fix.core.signatures import Signature
-from stdlib_tables.elements import element
+from stdlib_tables.elements import element, entered_by_base
 from stdlib_tables.overloads import CONTAINERS, SCALARS, Overloads
 from stdlib_tables.reading import (
     ANY,
@@ -113,6 +113,7 @@ INPUTS: Final = (
     "constricter/rules/annotations.py",
     "constricter/rules/decorators.py",
     "constricter/rules/flow.py",
+    "constricter/rules/keys.py",
     "constricter/rules/quoted.py",
     "constricter/rules/syntax.py",
     "constricter/rules/walked.py",
@@ -175,7 +176,7 @@ class _Tables(NamedTuple):
     aliases: Table
     methods: dict[str, Table]
     attributes: dict[str, Table]
-    method_overloads: dict[str, Table]  # each class's methods in `method_signatures`
+    method_overloads: dict[str, Table]  # each class's methods in `method_signatures` (`await m`: awaited)
     method_signatures: dict[str, list[Signatures]]  # as `overloads`, by where they're defined
     type_parameters: Table  # each generic class's, in order, comma-separated (`_T=`: with a default)
     bases: Table  # each class's public ancestors in the tables, nearest first, comma-separated
@@ -367,6 +368,10 @@ def _enter_generic(tables: _Tables, reader: _Reader, klass: ClassRef, path: str)
     for name, (method, signatures) in reader.overloads.methods(klass, (), inherited=False).items():
         tables.method_overloads.setdefault(path, {})[name] = method
         tables.method_signatures[method] = [signatures]
+    given: str | None
+    if (given := entered_by_base(reader.overloads, klass)) is not None:  # `with closing(thing)`: by its base
+        tables.method_overloads.setdefault(path, {})[_ENTER] = f"{path}.{_ENTER}"
+        tables.method_signatures[f"{path}.{_ENTER}"] = [[Signature(params=[], returns=given)]]
     # What it inherits with one type, whatever its arguments (`TextIOWrapper.read()`, `TextIOBase`'s).
     own: dict[str, Binding] = reader.reading.body(klass)
     _enter_members(

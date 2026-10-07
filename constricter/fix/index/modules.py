@@ -8,9 +8,12 @@ to; `constricter.fix.index.project` looks things up in it for each file.
 """
 
 import ast
+import bisect
 import itertools
+import re
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
@@ -18,11 +21,13 @@ from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.core.imports import taken_names
 from constricter.fix.core.known import Origin, Passed, Returns
+from constricter.fix.core.signatures import AWAIT
 from constricter.fix.index.declared import Declarations, Signature, declarations, overloads
 from constricter.fix.values import classvars
 from constricter.fix.values.returned import unannotated, yields_itself
 from constricter.rules import parsed
 from constricter.rules.annotations import (
+    awaited_returns,
     defined_type_vars,
     dotted,
     generic_classes,
@@ -30,8 +35,10 @@ from constricter.rules.annotations import (
     node_name,
 )
 from constricter.rules.decorators import Held, Pass, is_fixture
+from constricter.rules.keys import key, optional
 from constricter.rules.syntax import child_statements, top_level
 from constricter.rules.tables import Tables, module_tables
+from constricter.rules.walked import classes as walked_classes
 from constricter.rules.walked import of_type
 
 _PACKAGE: Final = "__init__"
@@ -41,6 +48,10 @@ _DECIDED: Final = frozenset({"version_info", "platform", "TYPE_CHECKING"})
 SUFFIX: Final = ".py"
 CONFTEST: Final = "conftest"  # the module pytest reads a directory's fixtures from
 _UNNAMED: Final = frozenset({"__call__", "__enter__"})  # members a statement takes without naming them
+_GET: Final = "get"
+_CLASS: Final = "class"  # `project.CLASS`: the kind of name `classes_under` spells, with an alias
+_ANNOTATION: Final = 200  # the longest string read for the names a type in it is written with
+_DOTTED: Final = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+")
 STUB: Final = ".pyi"
 
 
@@ -115,6 +126,40 @@ class Module(NamedTuple):
     # A checked file's functions defined with `@overload`, each with its overloads' signatures.
     overloads: Mapping[str, tuple[Signature, ...]] = {}
     folder: str = ""  # a checked file's directory: where pytest looks for the `conftest.py`s above it
+    # Its classes' methods a `return` could type (as `unannotated`), by name, whatever the class.
+    loose: frozenset[str] = frozenset()
+    # Its classes' methods declared to return a bare `Self` (see `annotations.self_returns`).
+    selfish: Mapping[str, frozenset[str]] = {}
+    awaits: Mapping[str, str] = {}  # what awaiting each of its `async def`s' calls gives (`awaited_returns`)
+    # The dotted names a checked file writes (`u.helper`, `pkg.m.Row`, in a string too), by their
+    # first name: of all a module it imports has, what it can mean (see `written_under`).
+    written: Mapping[str, tuple[str, ...]] = {}
+
+
+# The classes a module names by its own imports: each one's spelling, its module and its name
+# there; and the generic ones it spells through a module.
+_Spelled: TypeAlias = tuple[list[tuple[str, str, str]], list[str]]
+_Under: TypeAlias = list[tuple[str, Origin]]  # classes' spellings after a package's name, and what each is
+
+
+@dataclass
+class Memo:
+    """What's worked out once of an index's classes, for every file that asks.
+
+    Which classes its modules define, what they're named by and their bases don't change as the
+    files are checked (what their functions return does): what follows from those alone is kept
+    here, by the index that has it and each one made from it with the same modules.
+    """
+
+    # A package's and its submodules' classes or aliases: each one's spelling after the package's
+    # name, and what it is, by the package and the kind.
+    under: dict[tuple[str, str], _Under] = field(default_factory=dict)
+    # What a module names (see `_Spelled`), by its name and folder.
+    spelled: dict[tuple[str, str], _Spelled] = field(default_factory=dict)
+    # A class's line of bases (see `own_types.lineages`), by its path.
+    lines: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # The members a class declares a type for (attributes, methods' returns), by its module and name.
+    members: dict[tuple[str, str], frozenset[str]] = field(default_factory=dict)
 
 
 class Index(NamedTuple):
@@ -125,6 +170,7 @@ class Index(NamedTuple):
     repeated: frozenset[str] = frozenset()  # the names more than one file has: `modules` has the last
     # Each checked `conftest.py` outside any package, by its directory: several share the one name.
     conftests: Mapping[str, Module] = {}
+    memo: Memo | None = None  # `None`: nothing is kept (an index made by hand)
 
 
 @lru_cache(maxsize=65536)  # asked of each checked file a dozen times: its folders are looked at once
@@ -270,7 +316,7 @@ def indexed(found: Iterable[Module | None]) -> Index:
             if module.name == CONFTEST and module.folder:
                 conftests[module.folder] = module
     repeated: frozenset[str] = frozenset(name for name, count in counts.items() if count > 1)
-    return Index(modules, sorted(modules), repeated, conftests)
+    return Index(modules, sorted(modules), repeated, conftests, Memo())
 
 
 def read(path: Path, name: str | None = None) -> Module | None:
@@ -309,6 +355,10 @@ def read(path: Path, name: str | None = None) -> Module | None:
         unannotated(tree.body),
         _called(tree, names),
         generics=generic_classes(tree),
+        loose=frozenset().union(*(unannotated(node.body) for node in walked_classes(tree))),
+        selfish=dict(own.order.selfish),
+        awaits=awaited_returns(tree),
+        written={} if name is not None else _written(tree),
         passed=frozenset() if name is not None else _passed(tree, names),
         method_calls=frozenset() if name is not None else _method_calls(tree),
         attributes=frozenset() if name is not None else _attributes(tree),
@@ -332,6 +382,98 @@ def read(path: Path, name: str | None = None) -> Module | None:
         overloads={} if name is not None else overloads(tree),
         folder="" if name is not None else str(path.resolve().parent),
     )
+
+
+def _written(tree: ast.Module) -> dict[str, tuple[str, ...]]:
+    """Find the dotted names a module writes: each attribute chain on a name, and those its strings hold.
+
+    A string's (an annotation in quotes, a `cast`'s target) and a type comment's count: a type may
+    be written in either.
+
+    Returns:
+      Them, sorted, by their first name; each chain's own beginnings too (`pkg.m`, of `pkg.m.Row`).
+
+    """
+    found: set[str] = set()
+    node: ast.AST
+    for node in of_type(tree, ast.Attribute):
+        text: str | None
+        if (text := dotted(cast("ast.Attribute", node))) is not None:
+            found.add(text)
+    texts: list[str] = [
+        node.value
+        for node in cast("list[ast.Constant]", of_type(tree, ast.Constant))
+        if isinstance(node.value, str) and len(node.value) <= _ANNOTATION
+    ]
+    texts.extend(
+        cast("str | None", getattr(node, "type_comment", None)) or ""
+        for kind in (ast.FunctionDef, ast.AsyncFunctionDef, ast.Assign, ast.For, ast.With, ast.arg)
+        for node in of_type(tree, kind)
+    )
+    chain: str
+    for chain in cast("list[str]", _DOTTED.findall("\n".join(texts))):
+        parts: list[str] = chain.split(".")
+        found.update(".".join(parts[:count]) for count in range(2, len(parts) + 1))
+    grouped: dict[str, list[str]] = {}
+    for chain in sorted(found):
+        grouped.setdefault(chain.partition(".")[0], []).append(chain)
+    return {root: tuple(chains) for root, chains in grouped.items()}
+
+
+def written_under(target: Module, local: str) -> Iterator[tuple[str, str, str]]:
+    """Find the names `target` writes under `local`, a module it imports (`u.helper`, `pkg.util.helper`).
+
+    Yields:
+      Each one, the submodule it's written through (`""`, or `.util`), and its last name.
+
+    """
+    prefix: str = f"{local}."
+    chain: str
+    for chain in target.written.get(local.partition(".")[0], ()):
+        if chain.startswith(prefix):
+            sub: str
+            name: str
+            sub, _, name = chain.removeprefix(local).rpartition(".")
+            yield chain, sub, name
+
+
+def submodules(catalog: Index, prefix: str) -> Iterator[Module]:
+    """Find the module named `prefix`, and every module dotted under it (`pkg.util` under `pkg`).
+
+    A module's identifier characters all sort after `.`, so the names in `[prefix, prefix + "/")` are
+    exactly `prefix` itself and those starting with `prefix + "."` (`/` is the character after `.`).
+
+    Yields:
+      Each such module, by name.
+
+    """
+    start: int = bisect.bisect_left(catalog.names, prefix)
+    stop: int = bisect.bisect_left(catalog.names, f"{prefix}/")
+    name: str
+    for name in catalog.names[start:stop]:
+        yield catalog.modules[name]
+
+
+def classes_under(catalog: Index, local: str, package: str, kind: str) -> Iterator[tuple[str, Origin]]:
+    """Spell the classes (or, by `kind`, the aliases) of `package` and its submodules as a file may name them.
+
+    One importing it as `local`: every one, written in the file or not, since a type written for it
+    may name any (`m.Row`, by `import m`).
+
+    Returns:
+      Each spelling (`m.Row`, `pkg.m.Row`), and the module and name it is.
+
+    """
+    found: _Under | None
+    if (found := None if catalog.memo is None else catalog.memo.under.get((package, kind))) is None:
+        found = [
+            (f"{other.name.removeprefix(package)}.{name}", (other.name, name))
+            for other in submodules(catalog, package)
+            for name in (other.classes if kind == _CLASS else other.aliases)
+        ]
+        if catalog.memo is not None:
+            catalog.memo.under[package, kind] = found
+    return ((f"{local}{suffix}", origin) for suffix, origin in found)
 
 
 def _fixtures(tree: ast.Module) -> dict[str, bool]:
@@ -534,7 +676,9 @@ def _method_calls(tree: ast.Module) -> frozenset[str]:
 def _attributes(tree: ast.Module) -> frozenset[str]:
     """Name the attributes the module takes of anything: `x` in `a.x`, `astype` in `a.astype(x)`.
 
-    And those its statements take without naming them: a call's `__call__`, a `with`'s `__enter__`.
+    And those its statements take without naming them: a call's `__call__`, a `with`'s `__enter__`;
+    and the literal keys it reads of anything (`d["x"]`, `d.get("x")`), as a `TypedDict`'s are held
+    (see `keys.key`, `keys.optional`), and the methods it awaits a call of, as an `async def`'s are held.
 
     Returns:
       Them: all of another file's class's members it can use.
@@ -543,7 +687,53 @@ def _attributes(tree: ast.Module) -> frozenset[str]:
     named: frozenset[str] = frozenset(
         node.attr for node in cast("list[ast.Attribute]", of_type(tree, ast.Attribute))
     )
-    return named | _UNNAMED
+    indexes: list[ast.expr] = [
+        node.slice for node in cast("list[ast.Subscript]", of_type(tree, ast.Subscript))
+    ]
+    indexes.extend(
+        node.args[0]
+        for node in cast("list[ast.Call]", of_type(tree, ast.Call))
+        if node.args and isinstance(node.func, ast.Attribute) and node.func.attr == _GET
+    )
+    awaited: frozenset[str] = frozenset(
+        AWAIT + node.value.func.attr
+        for node in cast("list[ast.Await]", of_type(tree, ast.Await))
+        if isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Attribute)
+    )
+    keys: frozenset[str] = frozenset(
+        spelled(index.value)
+        for index in indexes
+        if isinstance(index, ast.Constant) and isinstance(index.value, str)
+        for spelled in (key, optional)
+    )
+    return named | keys | awaited | _quoted(tree) | _UNNAMED
+
+
+def _quoted(tree: ast.Module) -> frozenset[str]:
+    """Name the attributes the module's quoted annotations take: `Study` in `study: "optuna.Study"`.
+
+    Returns:
+      Them.
+
+    """
+    functions: list[ast.FunctionDef | ast.AsyncFunctionDef] = cast(
+        "list[ast.FunctionDef | ast.AsyncFunctionDef]",
+        of_type(tree, ast.FunctionDef, ast.AsyncFunctionDef),
+    )
+    annotations: list[ast.expr | None] = [
+        *(node.annotation for node in cast("list[ast.arg]", of_type(tree, ast.arg))),
+        *(node.annotation for node in cast("list[ast.AnnAssign]", of_type(tree, ast.AnnAssign))),
+        *(node.returns for node in functions),
+    ]
+    return frozenset(
+        part
+        for annotation in annotations
+        if annotation is not None
+        for node in ast.walk(annotation)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        for dotted in cast("list[str]", _DOTTED.findall(node.value))
+        for part in dotted.split(".")[1:]
+    )
 
 
 def _source(path: Path) -> str | None:

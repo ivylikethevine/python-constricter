@@ -50,7 +50,8 @@ ANY_LENGTH: Final = "tuple[int, ...]"
         ("f'{0}'.upper()", "str"),
         ("'a=b'.partition('=')", "tuple[str, str, str]"),
         ("b'a'.rpartition(b'=')", "tuple[bytes, bytes, bytes]"),
-        ("(1).bit_length()", None),
+        ("(1).bit_length()", "int"),
+        ("(1).numerator()", None),
         ("TypeVar('T')", None),
         ("Counter()", None),
         ("path()", None),
@@ -375,7 +376,19 @@ def test_a_classmethods_cls_is_not_typed_as_self() -> None:
         ("b: bytes", "b.hex()", "str"),
         ("b: bytes", "b.strip()", "bytes"),
         ("s: str", "s.unknown_method()", None),
-        ("n: int", "n.bit_length()", None),  # `int` isn't in `_METHOD_RETURNS`
+        ("n: int", "n.bit_length()", "int"),
+        ("n: int", "n.to_bytes(2, 'big')", "bytes"),
+        ("v: float", "v.is_integer()", "bool"),
+        ("v: float", "v.as_integer_ratio()", "tuple[int, int]"),
+        ("n: int", "n.unknown_method()", None),
+        ("xs: list[str]", "xs.count('a')", "int"),
+        ("xs: tuple[str, ...]", "xs.index('a', 1)", "int"),
+        ("xs: set[str]", "xs.issubset(other)", "bool"),
+        ("xs: frozenset[str]", "xs.isdisjoint(other)", "bool"),
+        ("xs: set[str]", "xs.difference(other)", "set[str]"),
+        ("xs: frozenset[str]", "xs.intersection(a, b)", "frozenset[str]"),
+        ("xs: set[str]", "xs.union(other)", None),  # of both their elements
+        ("xs: dict[str, int]", "xs.count('a')", None),
     ],
 )
 def test_fixes_infer_a_typed_locals_method_call(param: str, call: str, fix: str | None) -> None:

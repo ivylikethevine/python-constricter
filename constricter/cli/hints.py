@@ -33,7 +33,7 @@ from functools import partial
 from pathlib import Path
 from typing import IO, Final, NamedTuple, Self, TypeAlias, cast
 
-from constricter.cli import edits, guard, protocol
+from constricter.cli import edits, guard, protocol, remembered
 from constricter.cli.protocol import SERVERS, HintError, HungError, Server
 from constricter.fix.core.known import Hints, Offered
 
@@ -264,7 +264,8 @@ class Checker:
     def tasks(self, files: Mapping[Path, str]) -> list[_Task]:
         """Make each server's work on `files`: its own files first, then new ones as it's free for them.
 
-        A file abandoned (see `_alone`) isn't asked about again.
+        A file abandoned (see `_alone`), in this run or an earlier one (see `remembered`), isn't
+        asked about again.
 
         Returns:
           A task per server, giving the hints of every file it was sent.
@@ -274,8 +275,14 @@ class Checker:
         path: Path
         for path in files.keys() & self.assigned.keys() - self.abandoned:
             own.setdefault(self.assigned[path], {})[path] = files[path]
+        # One it hung on in an earlier run, unchanged since: left without hints from the start.
+        self.abandoned.update(
+            path
+            for path in files.keys() - self.assigned.keys() - self.abandoned
+            if remembered.hung(self.name, self.command, files[path])
+        )
         fresh: list[Path] = sorted(
-            files.keys() - self.assigned.keys(),
+            files.keys() - self.assigned.keys() - self.abandoned,
             key=lambda new: (-len(files[new]), new),
         )
         batches: queue.SimpleQueue[dict[Path, str]] = queue.SimpleQueue()
@@ -352,6 +359,7 @@ class Checker:
                 found.update(server.answers(server.ask({path: text})))
             except HungError as hung:
                 self.abandoned.add(path)
+                remembered.remember(self.name, self.command, text)
                 if len(self.abandoned) > _MOST_ABANDONED:
                     error: str = f"{self.name} hung on {len(self.abandoned)} file(s), each asked about alone"
                     raise HintError(error) from hung

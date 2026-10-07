@@ -535,3 +535,93 @@ def test_parametrize_types_nothing_it_doesnt_write_out() -> None:
         g = n
     """
     assert _fixes(source) == [(name, None) for name in "abcdefg"]
+
+
+CYCLE_CONFTEST: Final = """
+import uuid
+
+import pytest
+
+from pkg.tests.test_io import label
+
+
+@pytest.fixture
+def temp_file(tmp_path):
+    file_path = tmp_path / str(uuid.uuid4())
+    return file_path
+
+
+def stem():
+    return label()
+"""
+CYCLE_PATHS: Final = "from pathlib import Path\n\n\ndef root() -> Path:\n    return Path()\n"
+CYCLE_TEST: Final = """
+from pkg import conftest
+from pkg.paths import root
+
+
+def label():
+    return "x"
+
+
+def test_stem():
+    base = root()
+    assert conftest.stem()
+
+
+def test_copy(temp_file):
+    path = temp_file
+"""
+LATER_TEST: Final = "def test_copy(temp_file):\n    path = temp_file\n"
+COPIED: Final = "    path: Path = temp_file\n"
+
+
+def test_a_file_fixed_and_checked_again_keeps_the_imports_it_wrote(tmp_path: Path) -> None:
+    """A `conftest.py` and a test calling each other's functions are checked twice, their text fixed between.
+
+    The fixture's `Path`, by the import the first check added to the `conftest.py`, is still named
+    for the tests checked after it; and the import for type checking the first check wrote in the
+    test is one it has, at its second: nothing is left for another pass.
+    """
+    _ = _write(tmp_path, "pkg/__init__.py", "")
+    _ = _write(tmp_path, "pkg/paths.py", CYCLE_PATHS)
+    _ = _write(tmp_path, "pkg/conftest.py", CYCLE_CONFTEST)
+    _ = _write(tmp_path, "pkg/tests/__init__.py", "")
+    cycle: Path = _write(tmp_path, "pkg/tests/test_io.py", CYCLE_TEST)
+    later: Path = _write(tmp_path, "pkg/tests/test_later.py", LATER_TEST)
+    _ = cli.main(["--fix", "-q", "--unsafe-fixes", "--jobs=1", str(tmp_path)])
+    assert COPIED in cycle.read_text(encoding="utf-8")
+    assert COPIED in later.read_text(encoding="utf-8")
+    assert cli.main(["--diff", "-q", "--unsafe-fixes", "--jobs=1", str(tmp_path)]) == cli.EXIT_CLEAN
+
+
+RUN_IMPORT: Final = "from pathlib import Path\n"
+RUN_TEST: Final = """
+from pkg import conftest
+
+
+def label():
+    return "x"
+
+
+def test_stem(tmp_path):
+    kept = tmp_path / "y"
+    assert conftest.stem()
+
+
+def test_copy(temp_file):
+    path = temp_file
+"""
+
+
+def test_an_import_a_fix_wrote_to_run_is_one_the_file_has(tmp_path: Path) -> None:
+    """`tmp_path`'s `Path`, imported to run by the first check's fix, names the fixture's at the second."""
+    _ = _write(tmp_path, "pkg/__init__.py", "")
+    _ = _write(tmp_path, "pkg/conftest.py", CYCLE_CONFTEST)
+    _ = _write(tmp_path, "pkg/tests/__init__.py", "")
+    tests: Path = _write(tmp_path, "pkg/tests/test_io.py", RUN_TEST)
+    _ = cli.main(["--fix", "-q", "--unsafe-fixes", "--jobs=1", str(tmp_path)])
+    fixed: str = tests.read_text(encoding="utf-8")
+    assert RUN_IMPORT in fixed
+    assert COPIED in fixed
+    assert cli.main(["--diff", "-q", "--unsafe-fixes", "--jobs=1", str(tmp_path)]) == cli.EXIT_CLEAN

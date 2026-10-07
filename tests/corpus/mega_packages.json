@@ -1,0 +1,984 @@
+[
+  {
+    "name": "black",
+    "why": "a typed application",
+    "version": "26.10.0",
+    "where": "d9/38/02b7c5d2475f40c000a142b3bcddd29ff6674617eba1b2236f0cda9fff41",
+    "archive": "black-26.10.0.tar.gz",
+    "sha256": "b3476ce71b494fc6e39d77e75488e8339a87583029bbf608416e955c83582bd6",
+    "package": "black-26.10.0/src/black",
+    "suite": {
+      "repository": "https://github.com/psf/black",
+      "tag": "26.10.0",
+      "source": "src/black",
+      "install": [
+        "pip -e .[d] --group cov-tests"
+      ],
+      "tests": "tests --run-optional no_jupyter -n {workers}",
+      "checks": []
+    }
+  },
+  {
+    "name": "poetry",
+    "why": "a typed application",
+    "version": "2.5.1",
+    "where": "43/86/204ef622b09005c0290b4cb23cc8178b0fdd52d8d6b36ad6d78dab447035",
+    "archive": "poetry-2.5.1.tar.gz",
+    "sha256": "19fbd566efced512be58989a756aa1333cdc9b6aabb4fc84fd1ec9d29ee74874",
+    "package": "poetry-2.5.1/src/poetry",
+    "alone": "its CI installs it with Poetry itself"
+  },
+  {
+    "name": "pdm",
+    "why": "a typed application",
+    "version": "2.29.2",
+    "where": "66/4c/ff78fd6aeb244ac8b3a4596ffc6b223b8d4341d649d47e1c786b8e35983c",
+    "archive": "pdm-2.29.2.tar.gz",
+    "sha256": "bad9705e9482e7d877a53380ff25273b01e9c1d313ee6ce7b215a6562a9d8bdd",
+    "package": "pdm-2.29.2/src/pdm",
+    "suite": {
+      "repository": "https://github.com/pdm-project/pdm",
+      "tag": "2.29.2",
+      "source": "src/pdm",
+      "install": [
+        "pip -e . --group test"
+      ],
+      "tests": "-n {workers} tests -m 'not network'",
+      "checks": []
+    }
+  },
+  {
+    "name": "hatch",
+    "why": "a typed application",
+    "version": "1.18.1",
+    "where": "91/81/a5a77aaa23df824562d50ad25eeb52ae6446924d0dc68c7c19ed6d8b171f",
+    "archive": "hatch-1.18.1.tar.gz",
+    "sha256": "222fff78e197cf12a39db7efe5318ca403f2614db213416fd106a6c3260ef221",
+    "package": "hatch-1.18.1/src/hatch",
+    "alone": "its tests run through its own environments"
+  },
+  {
+    "name": "tox",
+    "why": "a typed application",
+    "version": "4.64.9",
+    "where": "5b/ce/062f2b42f95cfcbb9f1d7450820d29afffd4cd1967bdaa5e70ae3ad0d7b8",
+    "archive": "tox-4.64.9.tar.gz",
+    "sha256": "6e85d720e350f1fb598498f3b4e742d0afa0a1e2b2e5e8203452729a3fa1da2c",
+    "package": "tox-4.64.9/src/tox",
+    "suite": {
+      "repository": "https://github.com/tox-dev/tox",
+      "tag": "4.64.9",
+      "source": "src/tox",
+      "install": [
+        "pip -e .[completion] --group test"
+      ],
+      "tests": "",
+      "checks": []
+    }
+  },
+  {
+    "name": "nox",
+    "why": "a typed application",
+    "version": "2026.8.17",
+    "where": "be/65/4cef8ae8f6dbcb5753b202e46791277f1ea0b4a0650d1a6cb940c468b143",
+    "archive": "nox-2026.8.17.tar.gz",
+    "sha256": "8d9c69c9b996a59db1eb2c6968deaebc2edbc55317d205981bbc4a37351d3f2e",
+    "package": "nox-2026.8.17/nox",
+    "suite": {
+      "repository": "https://github.com/wntrblm/nox",
+      "tag": "2026.08.17",
+      "source": "nox",
+      "install": [
+        "pip -e .[tox-to-nox,pbs] --group test uv"
+      ],
+      "tests": "-n {workers} -m 'not conda'",
+      "checks": []
+    }
+  },
+  {
+    "name": "pre-commit",
+    "why": "a typed application",
+    "version": "4.6.2",
+    "where": "74/89/1f3e8e1fc3e97de0fa963495832f581f025f29471602a309e48808244292",
+    "archive": "pre_commit-4.6.2.tar.gz",
+    "sha256": "8f5d7bfb021ecdbcd9d49d89847082dd24172ccde534390081a679ad046e2441",
+    "package": "pre_commit-4.6.2/pre_commit",
+    "suite": {
+      "repository": "https://github.com/pre-commit/pre-commit",
+      "tag": "v4.6.2",
+      "source": "pre_commit",
+      "install": [
+        "pip -e . -r requirements-dev.txt"
+      ],
+      "tests": "tests --ignore=tests/languages",
+      "checks": []
+    }
+  },
+  {
+    "name": "sphinx",
+    "why": "a typed application",
+    "version": "9.1.0",
+    "where": "cd/bd/f08eb0f4eed5c83f1ba2a3bd18f7745a2b1525fad70660a1c00224ec468a",
+    "archive": "sphinx-9.1.0.tar.gz",
+    "sha256": "7741722357dd75f8190766926071fed3bdc211c74dd2d7d4df5404da95930ddb",
+    "package": "sphinx-9.1.0/sphinx",
+    "suite": {
+      "repository": "https://github.com/sphinx-doc/sphinx",
+      "tag": "v9.1.0",
+      "source": "sphinx",
+      "install": [
+        "pip -e . --group test --group types"
+      ],
+      "tests": "-n {workers} --dist=worksteal",
+      "checks": [
+        "mypy"
+      ]
+    }
+  },
+  {
+    "name": "mkdocs",
+    "why": "a typed application",
+    "version": "1.6.1",
+    "where": "bc/c6/bbd4f061bd16b378247f12953ffcb04786a618ce5e904b8c5a01a0309061",
+    "archive": "mkdocs-1.6.1.tar.gz",
+    "sha256": "7b432f01d928c084353ab39c57282f29f92136665bdd6abf7c1ec8d822ef86f2",
+    "package": "mkdocs-1.6.1/mkdocs",
+    "suite": {
+      "repository": "https://github.com/mkdocs/mkdocs",
+      "tag": "1.6.1",
+      "source": "mkdocs",
+      "install": [
+        "pip -e ."
+      ],
+      "tests": "!python -m unittest discover -s mkdocs -p *tests.py",
+      "checks": []
+    }
+  },
+  {
+    "name": "pipx",
+    "why": "a typed application",
+    "version": "1.17.11",
+    "where": "e9/bf/2cbb3730d2420e39c31214873e37641acd656316cbe9ad94562fb35b21f2",
+    "archive": "pipx-1.17.11.tar.gz",
+    "sha256": "7e3d172161ab5c45275cfc04bebf7ce2367d9879d252cf3b29535c4f5e3f607f",
+    "package": "pipx-1.17.11/src/pipx",
+    "alone": "its tests download packages"
+  },
+  {
+    "name": "streamlink",
+    "why": "a typed application",
+    "version": "8.6.1",
+    "where": "a2/64/2ecd92de6d19a724634f29748f81aab8e68d34bbaa1d7cfcaa4f3a101988",
+    "archive": "streamlink-8.6.1.tar.gz",
+    "sha256": "29ba76ed6d6913c9e69bc730fc584b581b2860022af18661a1d08c8daee03642",
+    "package": "streamlink-8.6.1/src/streamlink",
+    "suite": {
+      "repository": "https://github.com/streamlink/streamlink",
+      "tag": "8.6.1",
+      "source": "src/streamlink",
+      "install": [
+        "sync --frozen --all-extras --group test --group typing"
+      ],
+      "tests": "",
+      "checks": [
+        "mypy --no-incremental"
+      ]
+    }
+  },
+  {
+    "name": "copier",
+    "why": "a typed application",
+    "version": "9.18.2",
+    "where": "f9/60/2fe1777b27f489450ed8ac5c75390caf91a175d647be05b4284bf515b413",
+    "archive": "copier-9.18.2.tar.gz",
+    "sha256": "0f97902fee79374551c9391fb1132f5a038079f3b497f4dad673295489fc032e",
+    "package": "copier-9.18.2/copier",
+    "suite": {
+      "repository": "https://github.com/copier-org/copier",
+      "tag": "v9.18.2",
+      "source": "copier",
+      "install": [
+        "sync --frozen"
+      ],
+      "tests": "",
+      "checks": []
+    }
+  },
+  {
+    "name": "flake8",
+    "why": "a typed application",
+    "version": "7.4.1",
+    "where": "c2/94/85870fc02dfe4ab0885c440e7e41f6a986b10e43eca6717e90f8ce1215cc",
+    "archive": "flake8-7.4.1.tar.gz",
+    "sha256": "84ea5afcaf344487b0ea5baaebb8100f4cfaebc01f755998f75876664029f587",
+    "package": "flake8-7.4.1/src/flake8",
+    "suite": {
+      "repository": "https://github.com/PyCQA/flake8",
+      "tag": "7.4.1",
+      "source": "src/flake8",
+      "install": [
+        "pip -e . pytest coverage covdefaults"
+      ],
+      "tests": "",
+      "checks": []
+    }
+  },
+  {
+    "name": "mypy",
+    "why": "a typed application",
+    "version": "2.4.0",
+    "where": "34/4e/64300736cf0a0373a27b94a91b664ee7382e36f77b0621bae6381da3e180",
+    "archive": "mypy-2.4.0.tar.gz",
+    "sha256": "77bdaebd452f43fcfc4cc3ba94352a3ea537cd01e3f2d0879f48673d2ec00d6e",
+    "package": "mypy-2.4.0/mypy",
+    "suite": {
+      "repository": "https://github.com/python/mypy",
+      "tag": "v2.4.0",
+      "source": "mypy",
+      "install": [
+        "pip -r test-requirements.txt -e ."
+      ],
+      "tests": "-n {workers}",
+      "checks": [
+        "python -m mypy --config-file mypy_self_check.ini -p mypy"
+      ]
+    }
+  },
+  {
+    "name": "httpx",
+    "why": "`asyncio` code",
+    "version": "0.28.1",
+    "where": "b1/df/48c586a5fe32a0f01324ee087459e112ebb7224f646c0b5023f5e79e9956",
+    "archive": "httpx-0.28.1.tar.gz",
+    "sha256": "75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc",
+    "package": "httpx-0.28.1/httpx",
+    "suite": {
+      "repository": "https://github.com/encode/httpx",
+      "tag": "0.28.1",
+      "source": "httpx",
+      "install": [
+        "pip -r requirements.txt"
+      ],
+      "tests": "-W ignore::DeprecationWarning",
+      "checks": [
+        "mypy httpx tests"
+      ]
+    },
+    "port": "8000"
+  },
+  {
+    "name": "starlette",
+    "why": "`asyncio` code",
+    "version": "1.7.0",
+    "where": "7b/2b/3850dc6bf7ef71b088962eba31dafc6cffd2f96e577ebb0bb316df96da3e",
+    "archive": "starlette-1.7.0.tar.gz",
+    "sha256": "c79f74ea63cff761804fbbfb182f1e0b440c2d07b164d24700c5a1bab5d6ff5d",
+    "package": "starlette-1.7.0/starlette",
+    "suite": {
+      "repository": "https://github.com/Kludex/starlette",
+      "tag": "1.7.0",
+      "source": "starlette",
+      "install": [
+        "sync --frozen"
+      ],
+      "tests": "",
+      "checks": [
+        "mypy starlette tests benchmarks"
+      ]
+    }
+  },
+  {
+    "name": "uvicorn",
+    "why": "`asyncio` code",
+    "version": "0.54.0",
+    "where": "da/34/30e9280707135d2cfc589dfff3cb796bd07a3aeb1a3e415ba09dd89d7bb4",
+    "archive": "uvicorn-0.54.0.tar.gz",
+    "sha256": "a2e33cbfaa0306f8e6b0c13e0cb89d7d7a2da3e62b90c66e18c33d9807b28620",
+    "package": "uvicorn-0.54.0/uvicorn",
+    "suite": {
+      "repository": "https://github.com/Kludex/uvicorn",
+      "tag": "0.54.0",
+      "source": "uvicorn",
+      "install": [
+        "sync --frozen"
+      ],
+      "tests": "",
+      "checks": [
+        "mypy uvicorn tests"
+      ]
+    },
+    "port": "8000"
+  },
+  {
+    "name": "anyio",
+    "why": "`asyncio` code",
+    "version": "4.15.1",
+    "where": "a9/d2/f4d173e22df740bc37b1db102b386ba719b66e95b0f0d751f556b387e6d2",
+    "archive": "anyio-4.15.1.tar.gz",
+    "sha256": "9f28306018cbd6d329e64a36d58256edff76dd996fe423bc957326e578b82a94",
+    "package": "anyio-4.15.1/src/anyio",
+    "suite": {
+      "repository": "https://github.com/agronholm/anyio",
+      "tag": "4.15.1",
+      "source": "src/anyio",
+      "install": [
+        "pip -e .[trio] --group test"
+      ],
+      "tests": "-m 'not network'",
+      "checks": []
+    }
+  },
+  {
+    "name": "websockets",
+    "why": "`asyncio` code",
+    "version": "17.2",
+    "where": "01/89/3f825ab71c242fffb62ea8fe638741c290f62f8d7aadf8125ff897747af3",
+    "archive": "websockets-17.2.tar.gz",
+    "sha256": "36c2fb94c990cc2545143b12690e2de6c16300f9dbe5b4f33fa300cf57dc8792",
+    "package": "websockets-17.2/src/websockets",
+    "suite": {
+      "repository": "https://github.com/python-websockets/websockets",
+      "tag": "17.2",
+      "source": "src/websockets",
+      "install": [
+        "pip -e . mitmproxy python-socks[asyncio] trio werkzeug mypy"
+      ],
+      "tests": "!python -m unittest",
+      "checks": [
+        "mypy --strict src"
+      ]
+    },
+    "port": "8000"
+  },
+  {
+    "name": "hypercorn",
+    "why": "`asyncio` code",
+    "version": "0.18.0",
+    "where": "44/01/39f41a014b83dd5c795217362f2ca9071cf243e6a75bdcd6cd5b944658cc",
+    "archive": "hypercorn-0.18.0.tar.gz",
+    "sha256": "d63267548939c46b0247dc8e5b45a9947590e35e64ee73a23c074aa3cf88e9da",
+    "package": "hypercorn-0.18.0/src/hypercorn",
+    "suite": {
+      "repository": "https://github.com/pgjones/hypercorn",
+      "tag": "0.18.0",
+      "source": "src/hypercorn",
+      "install": [
+        "pip -e . httpx hypothesis pytest pytest-asyncio pytest-cov pytest-trio trio mypy"
+      ],
+      "tests": "",
+      "checks": [
+        "mypy src/hypercorn/ tests/"
+      ]
+    }
+  },
+  {
+    "name": "quart",
+    "why": "`asyncio` code",
+    "version": "0.23.1",
+    "where": "6b/81/34396f67e09e7a0609261f1ef0f43b26f5d67e8f2dc4d34b4953061560f2",
+    "archive": "quart-0.23.1.tar.gz",
+    "sha256": "1ca848415910bd2eb75e9d9b452388f892a37be222602a373622e6c633d1efbf",
+    "package": "quart-0.23.1/src/quart",
+    "suite": {
+      "repository": "https://github.com/pallets/quart",
+      "tag": "0.23.1",
+      "source": "src/quart",
+      "install": [
+        "sync --frozen --group tests --group typing"
+      ],
+      "tests": "",
+      "checks": [
+        "mypy"
+      ]
+    }
+  },
+  {
+    "name": "aiohttp",
+    "why": "`asyncio` code",
+    "version": "3.14.4",
+    "where": "93/2f/6a91adaa2dc26877d6ed2f54c0370c8910f019db7d77c5c6a194611e93ea",
+    "archive": "aiohttp-3.14.4.tar.gz",
+    "sha256": "831fc5bd39ec2517851e348f613ddb5447a47cf4b71cb09845af7ad7ed45d8f9",
+    "package": "aiohttp-3.14.4/aiohttp",
+    "suite": {
+      "repository": "https://github.com/aio-libs/aiohttp",
+      "tag": "v3.14.4",
+      "source": "aiohttp",
+      "install": [
+        "pip -r requirements/test.in -c requirements/test.txt",
+        "pip -e ."
+      ],
+      "tests": "-m 'not dev_mode and not autobahn'",
+      "checks": []
+    },
+    "environment": {
+      "AIOHTTP_NO_EXTENSIONS": "1"
+    },
+    "port": "8000"
+  },
+  {
+    "name": "fastapi",
+    "why": "`asyncio` code",
+    "version": "0.142.2",
+    "where": "56/4f/f7c30a73127e0a8bbffe788369b8359e530b01ae06e2757936fa35bc5e6d",
+    "archive": "fastapi-0.142.2.tar.gz",
+    "sha256": "06366626f2e70576367714d9ab2fe8472e6c8456dba69b399f9f797ab5e92570",
+    "package": "fastapi-0.142.2/fastapi",
+    "suite": {
+      "repository": "https://github.com/fastapi/fastapi",
+      "tag": "0.142.2",
+      "source": "fastapi",
+      "install": [
+        "sync --no-dev --group tests --extra all"
+      ],
+      "tests": "-n {workers} --dist loadgroup tests",
+      "checks": []
+    },
+    "environment": {
+      "PYTHONPATH": "./docs_src"
+    }
+  },
+  {
+    "name": "textual",
+    "why": "`asyncio` code",
+    "version": "8.2.8",
+    "where": "00/21/39a76b01bd5eea82a04baaca7580e105d8c59450df03998345bb2cfb307b",
+    "archive": "textual-8.2.8.tar.gz",
+    "sha256": "3f106a9fbc73e39dd266c9712432087de78a6d644084c7c241d6a25c3169115b",
+    "package": "textual-8.2.8/src/textual",
+    "alone": "its CI installs it with Poetry"
+  },
+  {
+    "name": "mcp",
+    "why": "`asyncio` code",
+    "version": "2.3.0",
+    "where": "9d/8d/e0d339616f4810e9051d4aba6887afab289ab1f81875fe908b606cdfd0e3",
+    "archive": "mcp-2.3.0.tar.gz",
+    "sha256": "8b147a50441cf059dc88c684e0aeed3687f0aa0f39c6cde7b90330effd2b34d8",
+    "package": "mcp-2.3.0/src/mcp",
+    "suite": {
+      "repository": "https://github.com/modelcontextprotocol/python-sdk",
+      "tag": "v2.3.0",
+      "source": "src/mcp",
+      "install": [
+        "sync --frozen --all-extras"
+      ],
+      "tests": "-n {workers}",
+      "checks": [
+        "pyright"
+      ]
+    }
+  },
+  {
+    "name": "pytest",
+    "why": "a pytest-heavy test tree",
+    "version": "9.1.1",
+    "where": "e4/47/b9efed96c114afcfa3c9d3fe98a76a1d14c74a9e266d397cf6eb64be5e01",
+    "archive": "pytest-9.1.1.tar.gz",
+    "sha256": "1088fbde8f2b49d95a549a195707afa7a76a3ce9bcadc26b6d71f0ffda5fe313",
+    "package": "pytest-9.1.1/src/_pytest",
+    "suite": {
+      "repository": "https://github.com/pytest-dev/pytest",
+      "tag": "9.1.1",
+      "source": "src/_pytest",
+      "install": [
+        "pip -e .[dev] pytest-xdist"
+      ],
+      "tests": "-n {workers} testing",
+      "checks": []
+    }
+  },
+  {
+    "name": "attrs",
+    "why": "a pytest-heavy test tree",
+    "version": "26.1.0",
+    "where": "9a/8e/82a0fe20a541c03148528be8cac2408564a6c9a0cc7e9171802bc1d26985",
+    "archive": "attrs-26.1.0.tar.gz",
+    "sha256": "d03ceb89cb322a8fd706d4fb91940737b6642aa36998fe130a9bc96c985eff32",
+    "package": "attrs-26.1.0/src/attr",
+    "suite": {
+      "repository": "https://github.com/python-attrs/attrs",
+      "tag": "26.1.0",
+      "source": "src/attr",
+      "install": [
+        "sync --frozen --group tests"
+      ],
+      "tests": "-n {workers}",
+      "checks": []
+    }
+  },
+  {
+    "name": "werkzeug",
+    "why": "a pytest-heavy test tree",
+    "version": "3.1.9",
+    "where": "a4/34/4dd12fc8bb7d61c91467ec3efe415ffa7d5456f799954b40c5bbaeae470e",
+    "archive": "werkzeug-3.1.9.tar.gz",
+    "sha256": "55ca7c70a75689be937aa27f8ff4b018f06ff4838fc73045560bf0f5a1291060",
+    "package": "werkzeug-3.1.9/src/werkzeug",
+    "suite": {
+      "repository": "https://github.com/pallets/werkzeug",
+      "tag": "3.1.9",
+      "source": "src/werkzeug",
+      "install": [
+        "sync --frozen --group tests --group typing"
+      ],
+      "tests": "",
+      "checks": [
+        "mypy"
+      ]
+    }
+  },
+  {
+    "name": "cattrs",
+    "why": "a pytest-heavy test tree",
+    "version": "26.2.1",
+    "where": "23/75/e72b839c3dc869c990b4842f3dba730bdcdf5215f68fc7955edf849a1792",
+    "archive": "cattrs-26.2.1.tar.gz",
+    "sha256": "679132bfdc225c5ee40c024fc42519954767c387f950dc6751946c586bccdc6d",
+    "package": "cattrs-26.2.1/src/cattrs",
+    "suite": {
+      "repository": "https://github.com/python-attrs/cattrs",
+      "tag": "v26.2.1",
+      "source": "src/cattrs",
+      "install": [
+        "sync --all-extras --group test --group lint"
+      ],
+      "tests": "-n {workers} tests",
+      "checks": []
+    }
+  },
+  {
+    "name": "structlog",
+    "why": "a pytest-heavy test tree",
+    "version": "26.1.0",
+    "where": "5e/89/b4a0bcfdf4f71a3dea31379f095929613d7e4528a0996bca6aa964cd0dca",
+    "archive": "structlog-26.1.0.tar.gz",
+    "sha256": "f63a716cbd1b1291cf7661de7794b455acfa4c43c5bcf1630e6ad5ddc1adb3b7",
+    "package": "structlog-26.1.0/src/structlog",
+    "suite": {
+      "repository": "https://github.com/hynek/structlog",
+      "tag": "26.1.0",
+      "source": "src/structlog",
+      "install": [
+        "pip -e . --group tests mypy"
+      ],
+      "tests": "",
+      "checks": [
+        "mypy src"
+      ]
+    }
+  },
+  {
+    "name": "urllib3",
+    "why": "a pytest-heavy test tree",
+    "version": "2.8.0",
+    "where": "e3/05/b17359e1cefb4f909b5e40b1b90a496d987258916dbbf88e842c729f510e",
+    "archive": "urllib3-2.8.0.tar.gz",
+    "sha256": "63bf2ead4c879426ebf22ef2a781eeb4aa3b4ae798a0435506f8687fd5bb9b63",
+    "package": "urllib3-2.8.0/src/urllib3",
+    "alone": "its test dependencies are a nox session's"
+  },
+  {
+    "name": "coverage",
+    "why": "a pytest-heavy test tree",
+    "version": "7.16.2",
+    "where": "2f/55/d1eaf3e73781174340a00dc1ba2aee8a65f82fadb18e2797b192b6b3925b",
+    "archive": "coverage-7.16.2.tar.gz",
+    "sha256": "ca64d9f1f384f151b9511bec01126072acd2f313439f8ed015a22d8790aab6fa",
+    "package": "coverage-7.16.2/coverage",
+    "alone": "its tests run through its own `igor.py`"
+  },
+  {
+    "name": "xarray",
+    "why": "numpy's types",
+    "version": "2026.9.0",
+    "where": "ff/f5/781c70b234f54e0401f4f7c4427a7486da38d50dbb138c7d7c55144b3d86",
+    "archive": "xarray-2026.9.0.tar.gz",
+    "sha256": "6abc69694c22fa1f0fb2f357ff4e41d88beb4477ed71091f944b7dbf67ed54fe",
+    "package": "xarray-2026.9.0/xarray",
+    "suite": {
+      "repository": "https://github.com/pydata/xarray",
+      "tag": "v2026.09.0",
+      "source": "xarray",
+      "install": [
+        "pip -e . pytest pytest-xdist pytest-mypy-plugins pytest-asyncio"
+      ],
+      "tests": "-n {workers} xarray",
+      "checks": []
+    }
+  },
+  {
+    "name": "networkx",
+    "why": "numpy's types",
+    "version": "3.7",
+    "where": "dc/76/3af777226b63a5e64a6b36b1ec5855c14e2b94a37096d4760e595fc43511",
+    "archive": "networkx-3.7.tar.gz",
+    "sha256": "fd77a511bd90f39f3d016351345b52cf5319b813bdca01de3f755d3cca62e96a",
+    "package": "networkx-3.7/networkx",
+    "suite": {
+      "repository": "https://github.com/networkx/networkx",
+      "tag": "networkx-3.7",
+      "source": "networkx",
+      "install": [
+        "pip -e .[default,test] pytest-xdist mypy"
+      ],
+      "tests": "-n {workers} --doctest-modules --pyargs networkx",
+      "checks": [
+        "mypy -p networkx"
+      ]
+    }
+  },
+  {
+    "name": "pint",
+    "why": "numpy's types",
+    "version": "0.26.1",
+    "where": "9f/bc/2c38c32e0fb1f966d3695f4493a3f3ce2cc0cca1bbe7c958b92261b31af9",
+    "archive": "pint-0.26.1.tar.gz",
+    "sha256": "1bbde36eae57a5a289cd05081c6405618a5899814940752064ce351cd0204f71",
+    "package": "pint-0.26.1/pint",
+    "suite": {
+      "repository": "https://github.com/hgrecco/pint",
+      "tag": "0.26.1",
+      "source": "pint",
+      "install": [
+        "pip -e .[test,numpy] pyright"
+      ],
+      "tests": "--benchmark-skip",
+      "checks": [
+        "pyright"
+      ]
+    }
+  },
+  {
+    "name": "dask",
+    "why": "numpy's types",
+    "version": "2026.8.0",
+    "where": "33/a7/6b3c7ac32b642fbbe0821111654e0bd8cfbe88f68560bcf23cc78ab35c71",
+    "archive": "dask-2026.8.0.tar.gz",
+    "sha256": "8a94c37b5de6d869343340dc26c3c3acca7ec48a3abdabe00ea3abb1125884d5",
+    "package": "dask-2026.8.0/dask",
+    "suite": {
+      "repository": "https://github.com/dask/dask",
+      "tag": "2026.8.0",
+      "source": "dask",
+      "install": [
+        "pip -e .[complete,test]"
+      ],
+      "tests": "-n {workers} dask",
+      "checks": []
+    }
+  },
+  {
+    "name": "zarr",
+    "why": "numpy's types",
+    "version": "3.4.0",
+    "where": "ae/29/6330391bab511e2428c2409fc15f6f32e4def9b2ee5eec4e95b8300304be",
+    "archive": "zarr-3.4.0.tar.gz",
+    "sha256": "b68676576a6fc42683dfcc0daeb3c0e994f71e1680696990bde056bd3acf3542",
+    "package": "zarr-3.4.0/src/zarr",
+    "suite": {
+      "repository": "https://github.com/zarr-developers/zarr-python",
+      "tag": "v3.4.0",
+      "source": "src/zarr",
+      "install": [
+        "pip -e . --group test"
+      ],
+      "tests": "--ignore tests/benchmarks",
+      "checks": []
+    }
+  },
+  {
+    "name": "nibabel",
+    "why": "numpy's types",
+    "version": "5.4.2",
+    "where": "a3/01/3d2cc510c616bc8e27be17a063070d9126f69407961594a9ae734ea51121",
+    "archive": "nibabel-5.4.2.tar.gz",
+    "sha256": "d5f4b9076a13178ae7f7acf18c8dbd503ee1c4d5c0c23b85df7be87efcbb49da",
+    "package": "nibabel-5.4.2/nibabel",
+    "suite": {
+      "repository": "https://github.com/nipy/nibabel",
+      "tag": "5.4.2",
+      "source": "nibabel",
+      "install": [
+        "pip -e .[test] pytest-xdist mypy"
+      ],
+      "tests": "!python -m pytest -q -rfE --doctest-modules --doctest-plus --pyargs nibabel -n {workers}",
+      "checks": [
+        "mypy nibabel"
+      ]
+    }
+  },
+  {
+    "name": "seaborn",
+    "why": "numpy's types",
+    "version": "0.13.2",
+    "where": "86/59/a451d7420a77ab0b98f7affa3a1d78a313d2f7281a57afb1a34bae8ab412",
+    "archive": "seaborn-0.13.2.tar.gz",
+    "sha256": "93e60a40988f4d65e9f4885df477e2fdaff6b73a9ded434c1ab356dd57eefff7",
+    "package": "seaborn-0.13.2/seaborn",
+    "suite": {
+      "repository": "https://github.com/mwaskom/seaborn",
+      "tag": "v0.13.2",
+      "source": "seaborn",
+      "install": [
+        "pip -e .[dev,stats]"
+      ],
+      "tests": "-n {workers} tests",
+      "checks": [
+        "mypy --follow-imports=skip seaborn/_core seaborn/_marks seaborn/_stats"
+      ]
+    }
+  },
+  {
+    "name": "optuna",
+    "why": "numpy's types",
+    "version": "5.0.0",
+    "where": "27/6d/7bd33b5ed3a83f1c1517fb20c54c7dbf59e6c76430d9b26d3205074ff6b0",
+    "archive": "optuna-5.0.0.tar.gz",
+    "sha256": "358bb878b7b1e20e90dc944ac4261796dd3d5c2b7860aa960a08fc10e0b5beff",
+    "package": "optuna-5.0.0/optuna",
+    "suite": {
+      "repository": "https://github.com/optuna/optuna",
+      "tag": "v5.0.0",
+      "source": "optuna",
+      "install": [
+        "sync --group test --group checking"
+      ],
+      "tests": "tests -m 'not slow' -n {workers}",
+      "checks": [
+        "mypy ."
+      ]
+    }
+  },
+  {
+    "name": "altair",
+    "why": "its own `TypedDict`s and overloads",
+    "version": "6.3.0",
+    "where": "e8/de/9731304fae332b5783fdc3ed18531dfaf4a3cc62a66aaaa74c047355b70f",
+    "archive": "altair-6.3.0.tar.gz",
+    "sha256": "fa632121aca6d0fcb198a3d8a9f7d937fa5b7518ec947951cfffb44e736d97c8",
+    "package": "altair-6.3.0/altair",
+    "suite": {
+      "repository": "https://github.com/vega/altair",
+      "tag": "v6.3.0",
+      "source": "altair",
+      "install": [
+        "pip -e .[dev,all]"
+      ],
+      "tests": "--pyargs -n {workers} --doctest-modules --doctest-ignore-import-errors tests",
+      "checks": [
+        "mypy altair tests tools"
+      ]
+    }
+  },
+  {
+    "name": "stripe",
+    "why": "its own `TypedDict`s and overloads",
+    "version": "16.0.0",
+    "where": "0b/a7/4a8546b293a09f39a2b55ca8a11539ae9654126df59065868c5d3993f0dd",
+    "archive": "stripe-16.0.0.tar.gz",
+    "sha256": "5016068d54aebb43e61b3c377ef45bede4e0b4eb1817d7a12af81630c55a23d2",
+    "package": "stripe-16.0.0/stripe",
+    "alone": "its tests need a `stripe-mock` server"
+  },
+  {
+    "name": "strawberry-graphql",
+    "why": "its own `TypedDict`s and overloads",
+    "version": "0.332.0",
+    "where": "b6/b4/61a2535754776d331a37752d9a2c7b6e0a5493c3d90cd5193fe10f223ea2",
+    "archive": "strawberry_graphql-0.332.0.tar.gz",
+    "sha256": "73126346571b6338d8b6b0d04879002b63076f04eb735795ce9464aa6d304ef2",
+    "package": "strawberry_graphql-0.332.0/strawberry",
+    "suite": {
+      "repository": "https://github.com/strawberry-graphql/strawberry",
+      "tag": "0.332.0",
+      "source": "strawberry",
+      "install": [
+        "sync --no-group=integrations"
+      ],
+      "tests": "-n {workers} --ignore=tests/typecheckers --ignore=tests/cli --ignore=tests/benchmarks",
+      "checks": [
+        "mypy --config-file mypy.ini"
+      ]
+    }
+  },
+  {
+    "name": "litestar",
+    "why": "its own `TypedDict`s and overloads",
+    "version": "2.24.0",
+    "where": "42/f6/33619a1562c6732dab211a967b1e7af3285de29d655c0b37b3f379aa2700",
+    "archive": "litestar-2.24.0.tar.gz",
+    "sha256": "8f4b137cb115554b9fbc12bd01d398d5bb40ba85f2d333dd73f4b747308bbb46",
+    "package": "litestar-2.24.0/litestar",
+    "suite": {
+      "repository": "https://github.com/litestar-org/litestar",
+      "tag": "v2.24.0",
+      "source": "litestar",
+      "install": [
+        "sync"
+      ],
+      "tests": "tests -n {workers}",
+      "checks": [
+        "mypy",
+        "pyright"
+      ]
+    }
+  },
+  {
+    "name": "narwhals",
+    "why": "its own overloads",
+    "version": "2.26.0",
+    "where": "35/68/5351e34623d253423240ea7de3f8fc74fa8ab14b1ab3c0ec4ac8997413c9",
+    "archive": "narwhals-2.26.0.tar.gz",
+    "sha256": "6b9cadca82f375c7e4cf584fdc86ca25da54827307a9c58f94547ee6104b82dd",
+    "package": "narwhals-2.26.0/src/narwhals",
+    "suite": {
+      "repository": "https://github.com/narwhals-dev/narwhals",
+      "tag": "v2.26.0",
+      "source": "src/narwhals",
+      "install": [
+        "pip -e .[pandas,polars,pyarrow] --group tests --group plugins --group typing"
+      ],
+      "tests": "tests",
+      "checks": [
+        "pyright",
+        "mypy"
+      ]
+    }
+  },
+  {
+    "name": "click",
+    "why": "its own `TypedDict`s and overloads",
+    "version": "8.5.0",
+    "where": "c7/0e/7fa0ef50764b67090eca4114772a2abf8b6148198475e54c660b97caeee6",
+    "archive": "click-8.5.0.tar.gz",
+    "sha256": "ba0d2089de75ea0310e2dde03160e6ca10009947fb95a182f9b54021bb272e34",
+    "package": "click-8.5.0/src/click",
+    "suite": {
+      "repository": "https://github.com/pallets/click",
+      "tag": "8.5.0",
+      "source": "src/click",
+      "install": [
+        "sync --frozen --group tests --group typing"
+      ],
+      "tests": "",
+      "checks": [
+        "mypy"
+      ]
+    }
+  },
+  {
+    "name": "pygments",
+    "why": "untyped, for contrast",
+    "version": "2.21.0",
+    "where": "49/2e/ced460408999b33da6b31b0021b0f37d329e202d4169aeb164493778f25b",
+    "archive": "pygments-2.21.0.tar.gz",
+    "sha256": "610ca751c9bc2492b38eb9a38a7fbc93edbbb2d7182edaf34e66ae493dee5c8c",
+    "package": "pygments-2.21.0/pygments",
+    "suite": {
+      "repository": "https://github.com/pygments/pygments",
+      "tag": "2.21.0",
+      "source": "pygments",
+      "install": [
+        "pip -e . pytest~=8.2 pytest-cov pytest-randomly wcag-contrast-ratio"
+      ],
+      "tests": "!python -m pytest -q -rfE",
+      "checks": []
+    }
+  },
+  {
+    "name": "celery",
+    "why": "untyped, for contrast",
+    "version": "5.6.3",
+    "where": "e8/b4/a1233943ab5c8ea05fb877a88a0a0622bf47444b99e4991a8045ac37ea1d",
+    "archive": "celery-5.6.3.tar.gz",
+    "sha256": "177006bd2054b882e9f01be59abd8529e88879ef50d7918a7050c5a9f4e12912",
+    "package": "celery-5.6.3/celery",
+    "suite": {
+      "repository": "https://github.com/celery/celery",
+      "tag": "v5.6.3",
+      "source": "celery",
+      "install": [
+        "pip -e . -r requirements/test.txt"
+      ],
+      "tests": "t/unit",
+      "checks": []
+    }
+  },
+  {
+    "name": "botocore",
+    "why": "untyped, for contrast",
+    "version": "1.43.108",
+    "where": "61/16/6b4477f433da2c11193802f538330ce080076c2f38d817ad437ed3cd1465",
+    "archive": "botocore-1.43.108.tar.gz",
+    "sha256": "ee4f75cf3bdbb0da7912e089950e8112f692016539d939312c771499958e6cfd",
+    "package": "botocore-1.43.108/botocore",
+    "suite": {
+      "repository": "https://github.com/boto/botocore",
+      "tag": "1.43.108",
+      "source": "botocore",
+      "install": [
+        "pip -r requirements-dev-lock.txt -e ."
+      ],
+      "tests": "-n {workers} tests/unit",
+      "checks": []
+    }
+  },
+  {
+    "name": "joblib",
+    "why": "untyped, for contrast",
+    "version": "1.6.0",
+    "where": "d5/1d/537ab090f302b838943a1b56497dd53059b9a9b46a074936470173a2e207",
+    "archive": "joblib-1.6.0.tar.gz",
+    "sha256": "2ccc96785b12046c08fd6d55839c12857831b54a3c1673ffadd2f04bfc4eda03",
+    "package": "joblib-1.6.0/joblib",
+    "suite": {
+      "repository": "https://github.com/joblib/joblib",
+      "tag": "1.6.0",
+      "source": "joblib",
+      "install": [
+        "pip -e . pytest pytest-timeout numpy"
+      ],
+      "tests": "joblib --timeout=120",
+      "checks": []
+    }
+  },
+  {
+    "name": "mako",
+    "why": "untyped, for contrast",
+    "version": "1.4.3",
+    "where": "5a/09/e07c4b5579a79f4b16f8d4f29f6c54514ac787c4ad506b8c4f28a0e6b0bf",
+    "archive": "mako-1.4.3.tar.gz",
+    "sha256": "cd6537fe88d5fec315c55c2f8529bc4ce7a9a352ad7db3eeaa6a66e2dd4ec37a",
+    "package": "mako-1.4.3/mako",
+    "suite": {
+      "repository": "https://github.com/sqlalchemy/mako",
+      "tag": "rel_1_4_3",
+      "source": "mako",
+      "install": [
+        "pip -e . --group tests"
+      ],
+      "tests": "",
+      "checks": []
+    }
+  },
+  {
+    "name": "boltons",
+    "why": "untyped, for contrast",
+    "version": "26.2.0",
+    "where": "71/56/14c4a4931910a81ddeccfbe227925ea738e3c445d3e2af960f0bcbba1616",
+    "archive": "boltons-26.2.0.tar.gz",
+    "sha256": "d39cfd15c1a1c3bd4d705c82252fa9edb8e4f5e8cc039f8e39afac7b1b47e92c",
+    "package": "boltons-26.2.0/boltons",
+    "suite": {
+      "repository": "https://github.com/mahmoud/boltons",
+      "tag": "26.2.0",
+      "source": "boltons",
+      "install": [
+        "pip -e . --group dev"
+      ],
+      "tests": "--doctest-modules boltons tests",
+      "checks": []
+    }
+  }
+]

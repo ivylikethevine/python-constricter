@@ -6,6 +6,119 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--infer-with` remembers a file its checker's server hung on, and leaves it without hints from the
+  start of the next run, where it waited out the server's silence twice and restarted it each time
+  (four minutes of a basedpyright-hinted fix of pandas, 439s to 198s). It's remembered by the file's
+  text and the checker's executable, in the cache: a changed file, or a new version of the checker,
+  is asked again.
+- The command leaves as soon as it has written its output, not by the interpreter's own exit, which
+  freed every parsed file and the index an object at a time: 15 of the 67 seconds of a check of
+  pandas in one process. With `--jobs=1` on 16 CPUs the standard library checks in 55s, from 74s
+  (67s at 0.3.3), and pandas in 60s, from 66s (55s at 0.3.3). The `constricter` script is
+  `constricter.__main__:run` now; `constricter.cli.command.main` still returns its status.
+- A check is a little faster in one process: whether a fix's type is too vague to write is worked
+  out once for each type, not for each binding, and the empty containers a class's attributes start
+  as once for the class, not for each of its methods. The same offences and fixes.
+- `--fix` no longer writes these, each a type error on a package outside the corpora: `ClassVar[T]`
+  or `Final[T]` for a copy of an attribute declared so (it's a `T`; a bare `Final` has no fix);
+  `bytes` for `data[0]` (an `int`; an index of unknown type has none); `typing.Self` where the file
+  imports `typing_extensions` too, under `if TYPE_CHECKING:` or not (`te.Self`, which older Pythons
+  have); a type variable defined under `if TYPE_CHECKING:` (it's found as one now, and never written
+  unbound); `V | None` for a `TypedDict`'s `d.get("key")` where the key is required (it's `V`:
+  `total=False`, `Required` and `NotRequired` are read now, a base's keys by the base's own); and
+  `list[T | None]` for `[a] if a else []`, where `a` is narrowed. A comprehension filtered by
+  `isinstance` of its own elements is a guess whatever their type, as one over a union was.
+- One `--fix --unsafe-fixes` pass leaves nothing for a second in three more cases: a receiver typed
+  by an alias whose import the fix adds (`NDArray`, by `np.array`) has its methods as the file's own
+  import names them (`np.typing.NDArray`); a class the package a fix imports re-exports (`ds.Range`,
+  by `from pkg import structures as ds`) has its members before any annotation names it; and so has
+  one only a quoted annotation names (`study: "optuna.Study"`).
+- `--infer-with` no longer crashes on a hint naming a class from a file no import can name
+  (`v3.0.0.c.py`): the hint has no fix.
+- A check with `--jobs` is faster where files import much. Each worker is sent the index, once, and
+  works out what its own files import from the others, which the main process did for every file
+  while the workers waited; the index keeps what its modules' classes are named by, their lines of
+  bases and their members, which each file asked again; and a file passes over the classes whose
+  members it takes none of. On 16 CPUs pandas checks in 11s from 41s (22s at 0.3.3), the standard
+  library in 15s from 18.7s, with the same offences and fixes.
+- `--fix` adds fewer type errors still: a call of an unannotated function whose `return`s give an
+  `X | None` is a guess now (a checker takes it for anything, and what's done with it unchecked for
+  `None` is an error only once declared); a name a `# type: ignore` line of its function uses has no
+  fix (declared, it leaves the comment nothing to excuse); and a call of another file's overloaded
+  function has none where a signature of it returns a type whose import the file can't take
+  (`types.ModuleType`, in a file with a local `types`).
+- `--fix` adds fewer type errors of its own: `self.__class__` is `type(self)`, a `type[Self]` in a
+  method that says `Self` (`c = self.__class__.__new__(self.__class__)` is a `Self`, not the class
+  its `return c` then fails as); and a builtin class passed where an installed signature takes a
+  bounded `type[T]` (`np.zeros(n, dtype=bool)`) no longer binds `T`, which a numpy scalar alone
+  fits: it has no fix, where it was a `np.dtype[bool]` no checker accepts.
+- One `--fix --unsafe-fixes` pass leaves a second nothing to change again, on every corpus: a `with`
+  target is typed by its manager's `__enter__`'s `return`s the first time, wherever the class is; a
+  name bound to `None` then `total += guess` is `T | None` as a guess; a file fixed and checked
+  again (its callers typing its parameters, or files calling each other) keeps the imports its first
+  check wrote, for itself and for the files reading its types; and a class that binds a name itself
+  (a `cached_property`) no longer reads a base's annotation of it.
+- `--fix` picks a checked file's overload by the checked files' own classes: a parameter typed as
+  nothing but such classes, or as an iterable of them, takes an argument by its class's bases, so
+  `concat([df, df])` is a `DataFrame` where another overload takes `Series`.
+- `--fix` types an attribute read off an installed method's call whose return no file can name:
+  `out = capsys.readouterr().out` is a `str` (pytest's `CaptureResult` is private), by the
+  receiver's type arguments. An installed class defined under `if TYPE_CHECKING:` is read too.
+- `--fix` types what `with mock.patch(target) as m:` binds (and `patch.object`), given no `new`: a
+  `MagicMock | AsyncMock`, as typeshed declares it.
+- `--fix` types a lambda bound to a name by its body, where that rests on no name of its own or its
+  function's: `first = lambda: 1` is a `Callable[[], int]`.
+- `--fix` follows another checked file's class of several bases to the one library class its lines
+  reach (`self.id()` under `class Tests(Case)`, `Case(Mixin, unittest.TestCase)` in another file).
+- An empty container of `self` is typed by what the module's classes under its own add to it too
+  (`self.items = []` in a base, `self.items.append(x)` in a subclass), and read as that on them.
+- A check lists a module's functions by the names a file writes, not every function of every module
+  it imports; and a file checked a second time, its functions' parameters typed by their callers,
+  starts from where its first check ended, checking again only those functions and what their new
+  types reach (not with `--fix`, whose text has changed by then).
+- `--fix` types a function or a bound method bound to a name in a function as a `Callable[..., R]`,
+  by what its call gives whatever it's passed: `dump = json.dumps` is a `Callable[..., str]`,
+  `grow = item.grow` a `Callable[..., int]` (a new fix kind, `callable`).
+- `--fix` types `await` of a call to a checked file's `async def` method (`await self.fetch()`, its
+  class's own or a base's, in the module or another checked file) and to another checked file's
+  `async def` function (`await load(url)`, however it's imported).
+- `--fix` types a classmethod or staticmethod called on a class under another checked file's
+  (`Sub.make()`, `make` its imported base's: a `Sub`, where it returns `Self`).
+- An empty container bound to a local is still typed by what's added to it, where every use of that
+  local only reads it (`items = self.items`, then `len(items)`).
+- `--fix` types `await` of a generic standard-library class's coroutine by its receiver
+  (`item = await queue.get()` on an `asyncio.Queue[Item]` is an `Item`).
+- `--fix` binds a bound type variable to its argument's type where the function has one signature:
+  `contextlib.closing(conn)` is a `contextlib.closing[Conn]`, `dataclasses.replace(point)` a
+  `Point`, `ast.copy_location(node, old)` its `node`'s type, and
+  `io.BufferedReader(io.FileIO(path))` an `io.BufferedReader[io.FileIO]`. And a `with` target by its
+  context manager's base (`with contextlib.closing(sock) as s` declares `s: socket.socket`, by
+  `AbstractContextManager[T, None]`).
+- With `--unsafe-fixes`, `--fix` types a call of another checked file's unannotated method by its
+  `return`s, as it does such a function's: `path = self.mktemp()` under an imported base whose
+  `mktemp` returns a string, `tool.name()` on an imported class's instance. A file is checked after
+  the modules whose classes' methods it may call so.
+- `--fix` looks past another checked file's mixin for a member it doesn't bind: `self.id()` under
+  `class Tests(Mixin, unittest.TestCase)` is a `str`, where `Mixin` and its bases, in other files,
+  end at no library class.
+- `--fix` types a `TypedDict`'s key read by a literal, on a value typed as the class:
+  `movie["year"]` by the key's declared type (less `Required`, `NotRequired` or `ReadOnly`),
+  `movie.get("year")` as that or `None`, and a loop over `movie["tags"]` by its elements. A class
+  under `TypedDict` or under one of its module's, with its bases' keys, in the module, another
+  checked file or an installed package that declares its types (`schema["ref"]` on a pydantic-core
+  `ModelSchema`): 31 more fixes on pydantic.
+- `--fix` types an attribute a class takes from a base: `self.limit` under a class whose base
+  declares `limit: int`, by an annotation, a `self.x: T` or a `@property`, through the module's own
+  classes and then another checked file's, as an inherited method is found; `cls.limit` too. Not
+  where a class before the base binds the name another way, nor past a generic base.
+- A type too vague to write (`vague`) is still its name's: `fields = schema.fields()`, declared a
+  `dict[str, Any]`, has no fix, and `for name in fields` now declares `name: str`. By a function's,
+  a method's or a property's declared return, `typing.cast` and a callable's call; a part of an
+  unpacked call too. 13 more fixes on pydantic, and no new basedpyright error with these three.
+- `--fix` types more builtin methods: an `int`'s and a `float`'s with one return (`n.bit_length()`,
+  `n.to_bytes(2, "big")`, `x.is_integer()`), a `list`'s and a `tuple`'s `count` and `index`, and a
+  `set`'s and a `frozenset`'s `issubset`, `issuperset` and `isdisjoint` (a `bool`), `difference` and
+  `intersection` (the receiver's own type).
 - `--fix` no longer types a standard-library call by a declaration only some supported Pythons have,
   where the others declare it another way: `importlib.metadata.entry_points()`, overloaded before
   3.12 (a `SelectableGroups` then, where the file couldn't name `EntryPoints`),

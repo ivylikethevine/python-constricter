@@ -16,6 +16,30 @@ _SELF: Final = "Self"
 # What `__iter__` returns that yields its first type argument.
 _YIELDING: Final = frozenset({"Iterator", "Iterable", "Generator"})
 _NAME: Final = re.compile(r"\w+")
+_ENTER: Final = "__enter__"
+# The bases whose first type argument is what entering an instance gives.
+_MANAGERS: Final = frozenset({"AbstractContextManager", "ContextManager"})
+
+
+def entered_by_base(overloads: Overloads, klass: ClassRef) -> str | None:
+    """Read what entering a class's instance gives, where only a base says: its first type argument.
+
+    `contextlib.closing[_SupportsCloseT]`'s, under `AbstractContextManager[_SupportsCloseT, None]`.
+
+    Returns:
+      It, as a template the class's type arguments bind; or `None` for a class defining `__enter__`
+      itself, one under no such base, or a `T` that can't be written.
+
+    """
+    node: ast.ClassDef | None = overloads.reading.class_node(klass)
+    if node is None or _ENTER in overloads.reading.body(klass):
+        return None
+    base: ast.expr
+    for base in node.bases:
+        if isinstance(base, ast.Subscript) and ast.unparse(base.value).rpartition(".")[2] in _MANAGERS:
+            index: ast.expr = base.slice
+            return overloads.template(index.elts[0] if isinstance(index, ast.Tuple) else index, klass.module)
+    return None
 
 
 def element(overloads: Overloads, klass: ClassRef) -> str | None:

@@ -268,6 +268,7 @@ def test_an_empty_display_takes_the_type_of_the_container_beside_it() -> None:
         either: list[str] | list[int],
         c: bool,
         q,
+        one: str | None,
     ) -> None:
         a = names or []
         b = maybe or []
@@ -289,6 +290,7 @@ def test_an_empty_display_takes_the_type_of_the_container_beside_it() -> None:
         w = q if c else []
         x = names if c else {}
         y = [n][:1] or []
+        z = [one] if one else []
     """
     assert _fixed(source) == {
         "a": ("list[str]", False),
@@ -311,6 +313,7 @@ def test_an_empty_display_takes_the_type_of_the_container_beside_it() -> None:
         "w": (None, False),
         "x": (None, False),
         "y": ("list[int]", False),
+        "z": (None, False),  # holds what's tested: narrowed there
     }
 
 

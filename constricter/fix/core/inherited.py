@@ -14,13 +14,15 @@ from collections.abc import Iterator, Mapping, Sequence
 from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias
 
+from constricter.fix.core.signatures import AWAIT
 from constricter.rules.annotations import generic_classes, node_name
 from constricter.rules.syntax import FUNCTION_DEFS, child_statements, expressions
 from constricter.rules.walked import classes, walk
 
 # Bases that give an instance no member a method call could reach.
 _EMPTY: Final = frozenset({"object", "Generic", "Protocol", "ABC"})
-# The standard-library class a line of bases ends at, and the names the classes before it bind.
+# The standard-library class a line of bases ends at (`""`: at none, the line known whole), and the
+# names the classes before it bind.
 Beyond: TypeAlias = tuple[str, frozenset[str]]
 
 
@@ -32,7 +34,8 @@ class Lineage(NamedTuple):
     ends it; `bound`: the names each class's body binds; `selfish`: its methods declared to return a
     bare `Self` (see `self_returns`), which an inheriting class's instance gives as its own class.
     `beyond`: for a base another checked file defines, the standard-library class its own bases end
-    at, and the names bound on the way there (see `constricter.fix.index.beyond`).
+    at, and the names bound on the way there (see `constricter.fix.index.beyond`); one whose bases
+    end at none (a mixin) doesn't end the order, which goes on past it for what it doesn't bind.
     """
 
     order: Mapping[str, tuple[str, ...]] = MappingProxyType({})
@@ -53,13 +56,22 @@ class Lineage(NamedTuple):
         found: str | None = (
             receiver
             if receiver not in self.bound or name in self.bound[receiver]
-            else next(
-                (base for base in self.order[receiver] if base not in self.bound or name in self.bound[base]),
-                None,
-            )
+            else next((base for base in self.order[receiver] if self._binds(base, name)), None)
         )
         library: Beyond | None = self.beyond.get(found or "")
-        return found if library is None or name in library[1] else library[0]
+        return found if library is None or name in library[1] else library[0] or None
+
+    def _binds(self, base: str, name: str) -> bool:
+        """Check whether `base`, of a class's order, is where the search for `name` ends.
+
+        Returns:
+          Whether it binds it, or may: another file's class, but one known whole that doesn't.
+
+        """
+        end: Beyond | None = self.beyond.get(base)
+        if end is not None and not end[0]:
+            return name in end[1]
+        return base not in self.bound or name in self.bound[base]
 
     def selfish_of(self, owner: str) -> frozenset[str]:
         """Name the methods an instance of `owner` has that are declared to return a bare `Self`.
@@ -92,10 +104,10 @@ class Lineage(NamedTuple):
                 name: str
                 annotation: str
                 for name, annotation in methods.get(base, {}).items():
-                    if name not in hidden:
+                    if name.removeprefix(AWAIT) not in hidden:
                         selfish: bool = name in self.selfish.get(base, ())
                         found.setdefault(owner, {})[name] = owner if selfish else annotation
-                hidden |= self.bound.get(base, frozenset())
+                hidden |= self.bound.get(base, frozenset()) | self.beyond.get(base, ("", frozenset()))[1]
         return found
 
 
@@ -123,7 +135,10 @@ def lineage(
         for node in nodes
         if counts[node.name] == 1
     }
-    seen: frozenset[str] = frozenset(parents) - generic
+    # A class of the module's is seen through; so is another file's known whole (see `Lineage.beyond`).
+    seen: frozenset[str] = (frozenset(parents) - generic).union(
+        base for base, end in (beyond or {}).items() if not end[0]
+    )
     order: dict[str, tuple[str, ...]] = {}
     name: str
     for name in parents:

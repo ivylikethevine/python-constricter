@@ -136,7 +136,29 @@ _BYTES_METHODS: Final = {
 }
 
 
-METHOD_RETURNS: Final = {"str": _STR_METHODS, "bytes": _BYTES_METHODS}
+_INT_METHODS: Final = {
+    "as_integer_ratio": "tuple[int, int]",
+    "bit_count": "int",
+    "bit_length": "int",
+    "conjugate": "int",
+    "to_bytes": "bytes",
+}
+_FLOAT_METHODS: Final = {
+    "as_integer_ratio": "tuple[int, int]",
+    "conjugate": "float",
+    "hex": "str",
+    "is_integer": "bool",
+}
+METHOD_RETURNS: Final = {
+    "str": _STR_METHODS,
+    "bytes": _BYTES_METHODS,
+    "int": _INT_METHODS,
+    "float": _FLOAT_METHODS,
+}
+# Methods that give the same type whatever their container holds, and whatever they're passed.
+_COUNTS: Final = frozenset({"count", "index"})  # a `list`'s or a `tuple`'s: an `int`
+_SET_TESTS: Final = frozenset({"isdisjoint", "issubset", "issuperset"})  # a `bool`
+_SET_KEEPS: Final = frozenset({"difference", "intersection"})  # the receiver's own type
 
 
 def element_method(root: ast.expr, receiver: str, call: ast.Call, method: str) -> str | None:
@@ -170,6 +192,27 @@ def element_method(root: ast.expr, receiver: str, call: ast.Call, method: str) -
             return ast.unparse(sole(element))
         case ast.Subscript(value=ast.Name(id="dict" | "Dict"), slice=ast.Tuple(elts=[key, element])):
             return _dict_method(call_shape, key, element)
+        case _:
+            return None
+
+
+def uniform_method(root: ast.expr, receiver: str, method: str) -> str | None:
+    """Infer a builtin container's method call that gives one type whatever it holds, or is passed.
+
+    A `list`'s or `tuple`'s `count` and `index` are `int`s, a `set`'s or `frozenset`'s `issubset`
+    and its like `bool`s, and its `difference` and `intersection` the receiver's own type.
+
+    Returns:
+      The annotation as source text, or `None` for any other method or receiver.
+
+    """
+    match root:
+        case ast.Subscript(value=ast.Name(id="list" | "List" | "tuple" | "Tuple")) if method in _COUNTS:
+            return "int"
+        case ast.Subscript(value=ast.Name(id="set" | "Set" | "frozenset" | "FrozenSet")) if (
+            method in _SET_TESTS | _SET_KEEPS
+        ):
+            return "bool" if method in _SET_TESTS else receiver
         case _:
             return None
 

@@ -2,6 +2,7 @@
 """What `--fix` knows: a module's declarations it infers from (`Known`), and what it infers (`Inference`)."""
 
 import builtins
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -28,6 +29,7 @@ else:
 
 _BUILTINS: Final = frozenset(dir(builtins))
 _DOT: Final = "."
+_NAME: Final = re.compile(r"[A-Za-z_]\w*")  # each name in a return's template
 # What a name refers to: a module and an attribute of it (`None`: the module itself).
 Origin: TypeAlias = tuple[str, str | None]
 # How a return template starts that's the type itself, as the module calling it writes it: a
@@ -358,13 +360,15 @@ class Returns(NamedTuple):
     `calls`: each function's type, by its name (or, imported, as the importing file spells it: `f`,
     `u.f`); `guesses`: for one whose `return`s are guesses, what they rest on (`FIX_KINDS`);
     `names`: what each name their types use that the module imports for type checking alone
-    (see `Guarded`) refers to.
+    (see `Guarded`) refers to. `methods`: its classes' methods' (`Returned.methods`), by class (as
+    the importing file spells it), a guessed one's origins in `guesses` as `C.m`.
     """
 
     # Plain `dict`s, not `MappingProxyType`s: the CLI's worker processes are sent them, pickled.
     calls: Mapping[str, str] = {}
     guesses: Mapping[str, frozenset[str]] = {}
     names: Mapping[str, Origin] = {}
+    methods: Mapping[str, Mapping[str, str]] = {}
 
 
 class Offered(NamedTuple):
@@ -446,7 +450,7 @@ class Outside(NamedTuple):
     files settles it (`None`: as the file alone sees, see `constricter.fix.values.classvars`); `members`:
     the variables of the plain classes it imports from them, typed by their values, as it spells
     each class. `same`: each group of ways it spells one class or alias another module defines
-    (`CoreSchema`, `core_schema.CoreSchema`; see `project.same`). `partial`: the returns of other
+    (`CoreSchema`, `core_schema.CoreSchema`; see `linked.same`). `partial`: the returns of other
     checked files' functions and methods that only an unpacking can use (see `Partial`). `tuples`:
     the named tuples it imports from them, as it spells each (see `Indirect.tuples`).
     """
@@ -476,21 +480,31 @@ class Outside(NamedTuple):
     fixtures: Mapping[str, Passed] = {}
     # Its classes' bases other checked files define: where each one's own end (see `Lineage.beyond`).
     beyond: Mapping[str, Beyond] = {}
+    # What awaiting a call of each `async def` it imports from them gives, as it spells the call.
+    awaits: Mapping[str, str] = {}
 
-    def usable(self, taken: frozenset[str]) -> "Outside":
+    def usable(self, taken: frozenset[str], present: frozenset[str]) -> "Outside":
         """Drop what other files offer whose type needs a name imported that the module binds already.
 
         That's a name to import under `if TYPE_CHECKING:` (see `Guarded`) that the module binds anywhere
         else, a function's local or parameter included: the import would shadow it, or it the import.
+        A checked file's overloaded function is dropped whole, if any of its signatures returns such a
+        type: which one a call takes isn't known here.
+        `present`: those it imports so already (see `imports.present`), which `--fix` wrote since the
+        files were indexed: each is one the file has.
 
         Returns:
           What's left.
 
         """
+        guarded: dict[str, Guarded] = {
+            name: Guarded(found.origin, None) if name in present else found
+            for name, found in self.guarded.items()
+        }
         clashing: frozenset[str] = frozenset(
-            name for name, found in self.guarded.items() if found.statement is not None and name in taken
+            name for name, found in guarded.items() if found.statement is not None and name in taken
         )
-        if not clashing:
+        if not clashing and guarded == self.guarded:
             return self
         members: Classes | None = self.classes
         return Outside(
@@ -500,12 +514,21 @@ class Outside(NamedTuple):
             else Classes(free_of_all(members.attributes, clashing), free_of_all(members.methods, clashing)),
             self.hints,
             self.type_vars,
-            Returns(free_of(self.returned.calls, clashing), self.returned.guesses, self.returned.names),
-            {name: found for name, found in self.guarded.items() if name not in clashing},
+            Returns(
+                free_of(self.returned.calls, clashing),
+                self.returned.guesses,
+                self.returned.names,
+                free_of_all(self.returned.methods, clashing),
+            ),
+            {name: found for name, found in guarded.items() if name not in clashing},
             self.generics,
             self.callees,
             self.parameters,
-            self.overloaded,
+            {
+                callee: signatures
+                for callee, signatures in self.overloaded.items()
+                if not any(clashing.intersection(_NAME.findall(each.returns or "")) for each in signatures)
+            },
             self.installed_classes,
             self.installed_parameters,
             self.installed_lineage,
@@ -517,6 +540,8 @@ class Outside(NamedTuple):
             Partial(free_of(self.partial.calls, clashing), free_of_all(self.partial.methods, clashing)),
             free_of(self.tuples, clashing),
             {name: typed for name, typed in self.fixtures.items() if not roots(typed[0]) & clashing},
+            self.beyond,
+            free_of(self.awaits, clashing),
         )
 
 

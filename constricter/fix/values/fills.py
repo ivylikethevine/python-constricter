@@ -5,9 +5,9 @@ A guess (`--unsafe-fixes`): only this function's own uses are seen, and somethin
 add to it. So every use of the name must be one of a few that can't: a fill whose value's type is
 known (`append`, `insert`, `add`, `setdefault`, `x[k] = v`; `extend` and `update`, by their one
 argument's elements), a read (`x[k]`, `x.get(k)`, iterating it, `len(x)`, `", ".join(x)`,
-`x + more`, `[*x]`, returning it, alone or in a tuple), or one that only shrinks or reorders it
-(`pop`, `sort`, `clear`). Anything else (passing it to another function, aliasing it, a nested
-function that sees it) leaves it alone.
+`x + more`, `[*x]`, returning it, alone or in a tuple), one that only shrinks or reorders it
+(`pop`, `sort`, `clear`), or a local bound to it (`alias = x`) whose own uses all only read it.
+Anything else (passing it to another function, a nested function that sees it) leaves it alone.
 
 An instance attribute bound to one (`self.items = []`) is judged the same way, each read of it in its
 class's methods a use (`stored`): `constricter.fix.values.returned` types it from them all.
@@ -131,7 +131,7 @@ def filled(
     node: ast.Name
     for node in found.names.get(name, []):
         fill: Fill | bool
-        if (fill := _use(node, kind, found.parents)) is False:
+        if (fill := _use(node, kind, found.parents)) is False and not _only_read(node, kind, found):
             return None
         if isinstance(fill, Fill):
             fills.append(fill)
@@ -149,14 +149,37 @@ def stored(body: Sequence[ast.stmt], kinds: Mapping[str, str]) -> Iterator[tuple
 
     """
     parents: dict[int, ast.AST] = {}
+    found: Uses | None = None  # read only for an attribute a local is bound to
     node: ast.AST
     attr: str
     for node in own_nodes(body, parents):
         match node:
             case ast.Attribute(value=ast.Name(id="self"), attr=attr, ctx=ast.Load()) if attr in kinds:
-                yield attr, _use(node, kinds[attr], parents)
+                use: Fill | bool = _use(node, kinds[attr], parents)
+                if use is False and isinstance(parents.get(id(node)), ast.Assign):
+                    found = found or uses(body)
+                    use = _only_read(node, kinds[attr], found._replace(parents={**found.parents, **parents}))
+                yield attr, use
             case _:
                 pass
+
+
+def _only_read(node: ast.expr, kind: str, found: Uses) -> bool:
+    """Check whether a read binding the container to a local (`alias = x`) adds nothing to it.
+
+    Returns:
+      Whether every use of that local, in no nested scope, only reads it.
+
+    """
+    name: str
+    value: ast.expr
+    match found.parents.get(id(node)):
+        case ast.Assign(targets=[ast.Name(id=name)], value=value) if (
+            value is node and name not in found.nested
+        ):
+            return all(_use(use, kind, found.parents) is True for use in found.names.get(name, []))
+        case _:
+            return False
 
 
 def _use(node: ast.expr, kind: str, parents: Mapping[int, ast.AST]) -> Fill | bool:

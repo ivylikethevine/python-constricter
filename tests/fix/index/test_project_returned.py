@@ -8,8 +8,10 @@ from typing import Final
 import pytest
 
 from constricter.cli import command as cli
-from constricter.fix.core.known import Returns
-from constricter.fix.index import order, project
+from constricter.cli import schedule
+from constricter.cli.runs import CheckRun, FileRun
+from constricter.fix.core.known import Outside, Returns
+from constricter.fix.index import linked, order, project
 
 DEEP: Final = "def base():\n    return 41\n"
 UTIL: Final = """
@@ -194,7 +196,7 @@ def test_a_package_function_is_not_taken_for_a_submodule(tmp_path: Path) -> None
 def test_returns_are_recorded_only_for_indexed_modules() -> None:
     """A module the index doesn't have gets nothing."""
     catalog: project.Index = project.Index({"m": project.Module("m", {}, {})}, ["m"])
-    found: project.Index = project.with_returned(
+    found: project.Index = linked.with_returned(
         catalog,
         {"m": Returns({"f": "int"}), "gone": Returns({"g": "str"})},
     )
@@ -256,3 +258,19 @@ def test_a_library_return_its_module_imports_types_calls_in_one_pass(
     assert cli.main(["--fix", "-q", str(tmp_path)]) == cli.EXIT_CLEAN
     assert typed in use.read_text(encoding="utf-8")
     assert cli.main(["--diff", "-q", str(tmp_path)]) == cli.EXIT_CLEAN
+
+
+def test_a_worker_checks_again_only_what_imports_something_new(tmp_path: Path) -> None:
+    """Asked again with nothing new returned, a worker leaves the file as it was checked."""
+    first: Path = _write(tmp_path / "a.py", CYCLE_A)
+    _ = _write(tmp_path / "b.py", CYCLE_B)
+    schedule.know(schedule.sent(project.index(sorted(tmp_path.glob("*.py")))))
+    seen: list[Path] = []
+
+    def check(path: Path, _known: Outside) -> FileRun:
+        seen.append(path)
+        return CheckRun()
+
+    assert schedule.check_asked(check, ([(first, ())], {}, False)) == [CheckRun()]
+    assert schedule.check_asked(check, ([(first, ())], {}, True)) == [None]
+    assert seen == [first]

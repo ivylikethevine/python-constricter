@@ -8,6 +8,7 @@ from typing import Final
 _LITERAL: Final = "Literal"  # its strings are values, not quoted types
 _ANNOTATED: Final = "Annotated"  # its first argument alone is a type
 _QUOTES: Final = frozenset("'\"")
+_QUALIFIERS: Final = frozenset({"ClassVar", "Final"})  # around an attribute's type
 
 
 def _head(node: ast.expr) -> str:
@@ -50,6 +51,26 @@ def written(annotation: ast.expr) -> str:
     """
     text: str = ast.unparse(annotation)
     return ast.unparse(_unquoted(annotation)) if _QUOTES.intersection(text) else text
+
+
+def unqualified(annotation: ast.expr) -> str:
+    """Write an attribute's annotation (see `written`), less the `ClassVar` or `Final` around its type.
+
+    Returns:
+      The text; nothing for a bare `Final`, which leaves the type to the value.
+
+    """
+    name: str
+    inner: ast.expr
+    match annotation:
+        case ast.Name(id=name) | ast.Attribute(attr=name) if name in _QUALIFIERS:
+            return ""
+        case ast.Subscript(value=ast.Name(id=name) | ast.Attribute(attr=name), slice=inner) if (
+            name in _QUALIFIERS
+        ):
+            return unqualified(inner)
+        case _:
+            return written(annotation)
 
 
 def _unquoted(node: ast.expr) -> ast.expr:

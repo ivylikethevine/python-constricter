@@ -3,12 +3,13 @@
 
 import ast
 import bisect
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from itertools import accumulate
 from typing import Final, TypeAlias, cast
 from weakref import WeakKeyDictionary
 
-from constricter.fix.core.known import Checking, ImportPlan, Origin
+from constricter.fix.core.known import Checking, Guarded, ImportPlan, Origin, Returns
+from constricter.rules.annotations import roots
 from constricter.rules.syntax import FunctionDef, Start, import_bindings
 from constricter.rules.walked import of_type
 
@@ -82,6 +83,36 @@ def added_origin(statement: str) -> Origin:
     name: str
     module, _, name = statement.removeprefix("from ").removeprefix("import ").partition(" import ")
     return module, name or None
+
+
+def added_dotted(statement: str) -> str:
+    """Spell what an added import binds, dotted: `m.T` for `from m import T`, `m` for `import m`.
+
+    Returns:
+      It.
+
+    """
+    module: str
+    name: str | None
+    module, name = added_origin(statement)
+    return f"{module}.{name}" if name else module
+
+
+def present(found: ImportPlan, guarded: Mapping[str, Guarded]) -> frozenset[str]:
+    """Name those of `guarded` the module imports already as their statements would.
+
+    Under `if TYPE_CHECKING:`, or to run: a fix of its own may have added either.
+
+    Returns:
+      Each name whose import to add is one the module has.
+
+    """
+    return frozenset(
+        name
+        for name, each in guarded.items()
+        if each.statement is not None
+        and added_dotted(each.statement) in {found.checking.bound.get(name), found.bound.get(name)}
+    )
 
 
 def _is_checking(test: ast.expr) -> bool:
@@ -378,3 +409,29 @@ def _after(tree: ast.Module) -> int:
             break
         after = stmt.end_lineno or stmt.lineno
     return after
+
+
+def exported_names(
+    returns: Returns,
+    guarded: Mapping[str, Guarded],
+    added: Mapping[str, str],
+) -> dict[str, Origin]:
+    """Find what each name `returns`' types use refers to, where the module doesn't import it to run.
+
+    Imported for type checking alone (`guarded`), or by an import its fixes add (`added`): a library
+    type it doesn't import yet (`types.ModuleType`) is named for its importers too, or they'd type
+    its calls only on a second pass, once the import is in the source.
+
+    Returns:
+      Each such name's origin.
+
+    """
+    return {
+        name: guarded[name].origin if name in guarded else added_origin(added[name])
+        for annotation in (
+            *returns.calls.values(),
+            *(a for m in returns.methods.values() for a in m.values()),
+        )
+        for name in roots(annotation)
+        if name in guarded or name in added
+    }

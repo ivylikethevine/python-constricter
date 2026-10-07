@@ -39,7 +39,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Final, NamedTuple, TextIO, TypeAlias, cast
 
-from tests.corpus.corpus_table import WORK, Corpus, corpora
+from tests.corpus.corpus_table import JOBS, WORK, Corpus, corpora
 
 _Json: TypeAlias = "str | int | bool | list[_Json] | dict[str, _Json] | None"
 _Result: TypeAlias = dict[str, _Json]
@@ -54,7 +54,7 @@ _Section: TypeAlias = tuple[str, list[str]]  # a heading, and the lines under it
 _CODES: Final = frozenset({"LVA001", "LVA002", "LVA004"})
 # How this checkout's constricter checks each corpus (its warnings about the corpus's own code, off).
 _CHECK: Final = ("-W", "ignore", "-m", "constricter", "--format=json", "--level=suffocate")
-_EVERYWHERE: Final = ("--all-scopes", "--jobs=0")
+_EVERYWHERE: Final = ("--all-scopes", JOBS)
 _NAME: Final = re.compile(r"'([^']+)'")
 _BUILTINS: Final = frozenset(dir(builtins))
 _STDLIB: Final = frozenset(sys.stdlib_module_names)

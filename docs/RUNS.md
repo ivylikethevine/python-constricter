@@ -68,6 +68,742 @@ Earlier suites, on 0.2.4-rc.5:
 fastapi's one failure is its CLI test, which fails as released too (it looks for a path this
 checkout doesn't have).
 
+## Super corpora
+
+Every corpus, every way (`tests/corpus/super_corpora.py`): constricter 0.3.4+dev (`7beb46878c67`),
+Python 3.14.7, on AMD Ryzen 7 9700X 8-Core Processor (16 CPUs, 60 GB, Linux): `--jobs=4`, 8 workers
+a suite, each step started once the CPUs it keeps busy are free, then each corpus's timed check
+alone with every CPU. The run took 29 minutes. Timings don't compare across machines.
+
+Offences per code at `suffocate`, with `all-scopes` (Python 3.14.7); the total row gives each code's
+share of them:
+
+| Corpus           | Version | constricter | Files |        `LVA001` |      `LVA002` |       `LVA004` |   `LVA005` |   `LVA006` |  `LVA009` | `LVA011` |   Total |
+| ---------------- | ------- | ----------- | ----: | --------------: | ------------: | -------------: | ---------: | ---------: | --------: | -------: | ------: |
+| standard library | 3.14    | 0.3.4+dev   | 1,867 |          88,584 |        12,335 |         12,783 |         57 |         14 |         8 |        0 | 113,781 |
+| django           | 5.2.17  | 0.3.4+dev   |   883 |           9,921 |         2,167 |          5,081 |          0 |          0 |         1 |        0 |  17,170 |
+| sqlalchemy       | 2.0.54  | 0.3.4+dev   |   257 |           8,504 |         1,567 |          2,339 |        551 |        124 |         1 |        1 |  13,087 |
+| pydantic         | 2.13.5  | 0.3.4+dev   |   105 |           2,023 |           438 |            631 |        190 |         13 |         0 |        0 |   3,295 |
+| pandas           | 3.0.6   | 0.3.4+dev   | 1,421 |          73,367 |         2,778 |          1,648 |        134 |          2 |         1 |        1 |  77,931 |
+| twisted          | 12.3.0  | 0.3.4+dev   |   819 |          13,310 |         1,349 |          3,215 |          0 |          0 |         0 |        0 |  17,874 |
+| pip              | 20.3.4  | 0.3.4+dev   |   366 |           5,902 |         1,150 |          1,872 |          0 |          0 |         0 |        0 |   8,924 |
+| **Total**        |         | 0.3.4+dev   | 5,718 | 201,611 (80.0%) | 21,784 (8.6%) | 27,569 (10.9%) | 932 (0.4%) | 153 (0.1%) | 11 (0.0%) | 2 (0.0%) | 252,062 |
+
+Errors / warnings at each level, by the version's own rules and defaults; what `--fix` fixed and
+what `--unsafe-fixes` guessed on top (each also as a share of the offences at `suffocate`), files a
+fix broke, and what a second pass would still fix:
+
+| Corpus           | constricter |   `relaxed` |         `strict` |     `constrict` | `suffocate` |          Fixed |        Guessed | Broken | Left |
+| ---------------- | ----------- | ----------: | ---------------: | --------------: | ----------: | -------------: | -------------: | -----: | ---: |
+| standard library | 0.3.4+dev   | 0 / 113,710 | 101,367 / 12,414 |    113,710 / 71 | 113,781 / 0 | 36,385 (32.0%) | 13,496 (11.9%) |      0 |    0 |
+| django           | 0.3.4+dev   |  0 / 17,170 |   15,002 / 2,168 |      17,170 / 0 |  17,170 / 0 |  2,595 (15.1%) |  2,817 (16.4%) |      0 |    0 |
+| sqlalchemy       | 0.3.4+dev   |  0 / 12,411 |   10,843 / 2,244 |    12,411 / 676 |  13,087 / 0 |  1,787 (13.7%) |     856 (6.5%) |      0 |    0 |
+| pydantic         | 0.3.4+dev   |   0 / 3,092 |      2,654 / 641 |     3,092 / 203 |   3,295 / 0 |  1,137 (34.5%) |    447 (13.6%) |      0 |    0 |
+| pandas           | 0.3.4+dev   |  0 / 77,794 |   75,015 / 2,916 |    77,794 / 137 |  77,931 / 0 | 16,010 (20.5%) | 24,352 (31.2%) |      0 |    0 |
+| twisted          | 0.3.4+dev   |  0 / 17,874 |   16,525 / 1,349 |      17,874 / 0 |  17,874 / 0 |  2,423 (13.6%) |  4,716 (26.4%) |      0 |    0 |
+| pip              | 0.3.4+dev   |   0 / 8,924 |    7,774 / 1,150 |       8,924 / 0 |   8,924 / 0 |  2,203 (24.7%) |  1,234 (13.8%) |      0 |    0 |
+| **Total**        | 0.3.4+dev   | 0 / 250,975 | 229,180 / 22,882 | 250,975 / 1,087 | 252,062 / 0 | 62,540 (24.8%) | 47,918 (19.0%) |      0 |    0 |
+
+Annotation coverage (`--coverage` with `all-scopes`, counted by this checkout for every version):
+the share of bindings typed as released, after `--fix`, and after `--fix --unsafe-fixes`, and how
+much each raised it: in percentage points, and as a share of the bindings that were untyped:
+
+| Corpus           | constricter | Typed as released | After `--fix` | After `--unsafe-fixes` |           Raised by `--fix` |         Raised with guesses |
+| ---------------- | ----------- | ----------------: | ------------: | ---------------------: | --------------------------: | --------------------------: |
+| standard library | 0.3.4+dev   |              1.2% |         32.8% |                  44.5% | +31.6 pts, 32.0% of untyped | +43.4 pts, 43.9% of untyped |
+| django           | 0.3.4+dev   |              0.0% |         15.1% |                  31.5% | +15.1 pts, 15.1% of untyped | +31.5 pts, 31.5% of untyped |
+| sqlalchemy       | 0.3.4+dev   |             14.8% |         27.0% |                  32.9% | +12.3 pts, 14.4% of untyped | +18.1 pts, 21.3% of untyped |
+| pydantic         | 0.3.4+dev   |             21.8% |         50.6% |                  61.9% | +28.7 pts, 36.8% of untyped | +40.0 pts, 51.2% of untyped |
+| pandas           | 0.3.4+dev   |              1.6% |         21.9% |                  52.7% | +20.2 pts, 20.6% of untyped | +51.1 pts, 51.9% of untyped |
+| twisted          | 0.3.4+dev   |              0.0% |         13.6% |                  39.9% | +13.6 pts, 13.6% of untyped | +39.9 pts, 39.9% of untyped |
+| pip              | 0.3.4+dev   |              1.5% |         25.8% |                  39.4% | +24.3 pts, 24.7% of untyped | +37.9 pts, 38.5% of untyped |
+| **Total**        | 0.3.4+dev   |              2.2% |         26.6% |                  45.3% | +24.4 pts, 24.9% of untyped | +43.0 pts, 44.0% of untyped |
+
+Fixes per mechanism (`--format=json`'s `kinds`), certain / guessed: a fix resting on several counts
+for each.
+
+| Mechanism       | standard library |        django | sqlalchemy |  pydantic |        pandas |     twisted |       pip | Certain | Guessed |
+| --------------- | ---------------: | ------------: | ---------: | --------: | ------------: | ----------: | --------: | ------: | ------: |
+| `literal`       |   15,198 / 3,216 | 1,890 / 1,759 |  574 / 424 | 284 / 207 |   7,744 / 722 | 1,467 / 522 | 928 / 534 |  28,085 |   7,384 |
+| `constructor`   |      228 / 4,244 |       1 / 547 |    0 / 214 |    0 / 97 |    0 / 20,721 |   2 / 3,298 |   5 / 313 |     236 |  29,434 |
+| `stdlib`        |   14,355 / 1,789 |      273 / 70 |   135 / 28 |   88 / 19 |   1,184 / 101 |    406 / 31 | 555 / 102 |  16,996 |   2,140 |
+| `container`     |      4,372 / 926 |     286 / 181 |   129 / 37 |   67 / 13 |   2,046 / 709 |   293 / 107 |  244 / 80 |   7,437 |   2,053 |
+| `loop`          |    4,992 / 1,201 |      184 / 64 |   244 / 53 |  177 / 30 |   1,091 / 372 |    284 / 79 |  188 / 78 |   7,160 |   1,877 |
+| `copy`          |    3,206 / 1,347 |      91 / 120 |   166 / 95 |  154 / 41 |   831 / 1,154 |    133 / 84 | 168 / 143 |   4,749 |   2,984 |
+| `call`          |         207 / 26 |        17 / 1 |   141 / 14 |  200 / 17 |   4,812 / 626 |       8 / 0 |  258 / 30 |   5,643 |     714 |
+| `method`        |      1,389 / 253 |      118 / 29 |   340 / 32 |  205 / 34 | 1,097 / 1,539 |    100 / 32 |  276 / 47 |   3,525 |   1,966 |
+| `returned`      |      747 / 2,710 |      67 / 304 |     3 / 34 |     0 / 0 |     177 / 271 |    19 / 707 |  23 / 126 |   1,036 |   4,152 |
+| `rebound`       |       14 / 2,327 |       0 / 201 |    0 / 125 |    0 / 67 |     2 / 1,711 |     0 / 143 |   2 / 217 |      18 |   4,791 |
+| `builtin`       |      2,270 / 271 |      232 / 46 |   174 / 13 |   69 / 11 |      863 / 80 |    323 / 23 |  149 / 34 |   4,080 |     478 |
+| `member`        |        0 / 1,573 |     0 / 1,542 |    0 / 323 |   0 / 172 |       0 / 138 |     0 / 353 |   0 / 366 |       0 |   4,467 |
+| `arithmetic`    |      2,123 / 559 |     169 / 110 |    96 / 42 |    18 / 4 |     371 / 140 |    142 / 65 |  122 / 48 |   3,041 |     968 |
+| `unpack`        |    1,261 / 1,079 |       42 / 34 |    80 / 21 |  110 / 40 |     531 / 188 |   104 / 140 |   95 / 40 |   2,223 |   1,542 |
+| `assigned`      |        0 / 1,065 |        0 / 26 |     0 / 22 |    0 / 41 |        0 / 84 |     0 / 165 |    0 / 35 |       0 |   1,438 |
+| `subscript`     |        523 / 183 |       24 / 13 |    63 / 12 |   47 / 14 |      144 / 80 |     22 / 18 |   40 / 18 |     863 |     338 |
+| `open`          |        742 / 153 |        22 / 8 |      8 / 1 |     1 / 0 |       96 / 23 |      49 / 1 |    71 / 6 |     989 |     192 |
+| `attribute`     |         112 / 59 |         0 / 0 |   194 / 41 |   60 / 31 |     283 / 239 |       0 / 0 |     4 / 4 |     653 |     374 |
+| `comprehension` |        382 / 125 |       36 / 21 |     16 / 7 |   24 / 11 |      208 / 71 |     15 / 19 |   20 / 17 |     701 |     271 |
+| `builder`       |         376 / 72 |         7 / 4 |     38 / 6 |    12 / 1 |      170 / 23 |       9 / 3 |    32 / 3 |     644 |     112 |
+| `conditional`   |         224 / 37 |       71 / 15 |     26 / 5 |   25 / 10 |      177 / 33 |       0 / 0 |    17 / 5 |     540 |     105 |
+| `filled`        |          0 / 324 |       0 / 123 |     0 / 34 |     0 / 6 |        0 / 50 |      0 / 17 |    0 / 42 |       0 |     596 |
+| `final`         |          0 / 373 |        0 / 62 |      0 / 4 |    0 / 18 |         0 / 6 |      0 / 63 |    0 / 36 |       0 |     562 |
+| `joined`        |          0 / 148 |         0 / 6 |      0 / 4 |     0 / 5 |       0 / 305 |      0 / 14 |    0 / 10 |       0 |     492 |
+| `optional`      |         156 / 80 |        25 / 9 |    27 / 10 |     7 / 3 |       29 / 15 |       2 / 5 |   15 / 17 |     261 |     139 |
+| `alias`         |           33 / 0 |         0 / 0 |    163 / 0 |   128 / 0 |         3 / 0 |       0 / 0 |    29 / 0 |     356 |       0 |
+| `callable`      |         194 / 21 |         2 / 0 |      1 / 1 |     0 / 0 |       34 / 13 |       8 / 4 |     1 / 1 |     240 |      40 |
+| `boolean`       |           57 / 5 |        15 / 2 |    26 / 12 |     9 / 2 |       49 / 12 |       0 / 0 |    16 / 2 |     172 |      35 |
+| `compare`       |           69 / 9 |         3 / 2 |      9 / 5 |     4 / 2 |       33 / 15 |       0 / 2 |     4 / 2 |     122 |      37 |
+| `cast`          |            1 / 0 |         0 / 0 |    56 / 17 |   15 / 11 |       37 / 12 |       0 / 0 |     0 / 0 |     109 |      40 |
+
+Untyped bindings (`corpus_untyped`): those `--fix` offers only a guess for, those it offers nothing
+for, and the commonest shapes of the values with no fix:
+
+| Corpus           | Untyped | Only a guess |         No fix | In files that don't parse |
+| ---------------- | ------: | -----------: | -------------: | ------------------------: |
+| standard library | 113,702 |       13,499 | 63,825 (56.1%) |                         0 |
+| django           |  17,169 |        2,817 | 11,757 (68.5%) |                         0 |
+| sqlalchemy       |  12,410 |          856 |  9,767 (78.7%) |                         0 |
+| pydantic         |   3,092 |          447 |  1,508 (48.8%) |                         0 |
+| pandas           |  77,793 |       24,343 | 37,440 (48.1%) |                         0 |
+| twisted          |  17,874 |        4,716 | 10,735 (60.1%) |                         0 |
+| pip              |   8,924 |        1,234 |  5,487 (61.5%) |                         0 |
+
+| No fix: the value's shape           | standard library | django | sqlalchemy | pydantic | pandas | twisted | pip |  Total |
+| ----------------------------------- | ---------------: | -----: | ---------: | -------: | -----: | ------: | --: | -----: |
+| call: chained .method()             |            3,436 |  1,356 |        955 |      122 |  5,079 |   1,260 | 506 | 12,714 |
+| call: local.method()                |            3,381 |    550 |        490 |      111 |  6,811 |     614 | 294 | 12,251 |
+| call: self.method()                 |            7,118 |    988 |        601 |       54 |    570 |   1,164 | 273 | 10,768 |
+| call: module.func()                 |            4,065 |    143 |        127 |       20 |  4,153 |     351 | 315 |  9,174 |
+| call: imported function             |            1,933 |    662 |        346 |      113 |  1,626 |     239 | 257 |  5,176 |
+| call: param.method()                |            1,216 |    658 |        453 |      102 |  1,516 |     243 | 256 |  4,444 |
+| copy: param (unannotated)           |            1,091 |    346 |        174 |        0 |  1,971 |     287 | 252 |  4,121 |
+| attr: self.x                        |            2,394 |    345 |        409 |       17 |    319 |     291 | 156 |  3,931 |
+| copy: local                         |            2,057 |    437 |        341 |       35 |    406 |     264 | 228 |  3,768 |
+| subscript: other                    |            1,018 |    266 |        345 |       33 |  1,519 |     341 | 170 |  3,692 |
+| call: imported.attr()               |            1,523 |    302 |        305 |       33 |    664 |     743 | 118 |  3,688 |
+| attr: chained                       |            1,482 |    406 |        550 |       34 |    812 |     212 |  74 |  3,570 |
+| None literal                        |            2,181 |    366 |        179 |       19 |    158 |     427 | 189 |  3,519 |
+| list (mixed/unknown elements)       |            2,022 |    147 |         51 |        7 |    751 |     256 |  68 |  3,302 |
+| empty list                          |            1,664 |    442 |        110 |       15 |    271 |     551 | 171 |  3,224 |
+| tuple (mixed/unknown elements)      |            1,961 |    191 |        196 |       34 |    364 |     274 | 108 |  3,128 |
+| other constant                      |            1,115 |    281 |        720 |       16 |    140 |     610 |  20 |  2,902 |
+| binop (unknown operands)            |            1,184 |    127 |         72 |       20 |  1,120 |     131 | 124 |  2,778 |
+| call: module function (unannotated) |            1,981 |    194 |         56 |        0 |    267 |     150 | 121 |  2,769 |
+| subscript: local[...]               |              729 |    172 |        186 |       12 |    944 |     108 | 119 |  2,270 |
+
+Each package's own tests and type checks, as released and after fixing its source
+(`corpus_suite.py`): the tests' outcome, and the type errors a fixed run has that the released one
+hasn't, by the mechanisms of the fixes they're traced to:
+
+| Package    | Tag        | Released                                                   | After `--fix`                                                          | After `--fix --unsafe-fixes`                                           |
+| ---------- | ---------- | ---------------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| django     | 5.2.17     | 17,578 ran, 1 failures, 1,149 skipped, 5 expected failures | the same (394 files changed, 2652 insertions(+), 2350 deletions(-))    | the same (567 files changed, 5611 insertions(+), 5058 deletions(-))    |
+| sqlalchemy | rel_2_0_54 | 26,643 passed, 985 skipped                                 | the same (163 files changed, 1674 insertions(+), 1308 deletions(-))    | the same (195 files changed, 2723 insertions(+), 2243 deletions(-))    |
+| pydantic   | v2.13.5    | 6,439 passed, 329 skipped, 27 xfailed                      | the same (73 files changed, 1094 insertions(+), 808 deletions(-))      | the same (80 files changed, 1660 insertions(+), 1266 deletions(-))     |
+| pandas     | v3.0.6     | 165,407 passed, 24,659 skipped, 753 xfailed, 84 xpassed    | the same (1049 files changed, 16910 insertions(+), 14493 deletions(-)) | the same (1197 files changed, 41588 insertions(+), 38226 deletions(-)) |
+
+| Package    | Checks                             | Released errors | New: `--fix` | New: `--fix --unsafe-fixes` | New: `--infer-with basedpyright,ty` |
+| ---------- | ---------------------------------- | --------------: | -----------: | --------------------------: | ----------------------------------: |
+| sqlalchemy | `mypy noxfile.py ./lib/sqlalchemy` |               0 |            0 |                           9 |                                  20 |
+| pydantic   | `pyright pydantic`                 |             191 |            9 |                          10 |                                  19 |
+| pandas     | `mypy; pyright`                    |              74 |            0 |                          48 |                                  99 |
+
+- sqlalchemy, `--fix --unsafe-fixes`: `stdlib (guess)` 4, `container+copy+stdlib (guess)` 2,
+  `copy (guess)` 2, `returned (guess)` 1
+- sqlalchemy, `--infer-with basedpyright,ty`: `checker (guess)` 8, `stdlib (guess)` 4,
+  `container+copy+stdlib (guess)` 2, `(untraced)` 2, `copy (guess)` 2, `returned (guess)` 1, `loop`
+  1
+- pydantic, `--fix`: `call` 9
+- pydantic, `--fix --unsafe-fixes`: `call` 9, `constructor+rebound (guess)` 1
+- pydantic, `--infer-with basedpyright,ty`: `call` 9, `checker (guess)` 6, `(untraced)` 2,
+  `copy+loop+rebound (guess)` 1, `constructor+rebound (guess)` 1
+- pandas, `--fix --unsafe-fixes`: `returned (guess)` 21, `copy+loop (guess)` 5, `(untraced)` 3,
+  `builtin+stdlib` 2, `builtin+stdlib+subscript (guess)` 2, `literal` 1, `loop+subscript (guess)` 1,
+  `literal+rebound (guess)` 1, and 12 of other mechanisms
+- pandas, `--infer-with basedpyright,ty`: `(untraced)` 23, `returned (guess)` 22, `checker (guess)`
+  17, `copy+loop (guess)` 5, `method (guess)` 3, `builtin+stdlib` 2, `literal+rebound (guess)` 2,
+  `builder+container+literal+loop` 2, and 23 of other mechanisms
+
+`--fix --unsafe-fixes --infer-with` each checker, on a copy: what it fixed (and how many more than
+without the hints), the typed share after, and the files it broke:
+
+| Corpus           | Fixed and guessed | With `basedpyright` | Typed | Broken |       With `ty` | Typed | Broken |
+| ---------------- | ----------------: | ------------------: | ----: | -----: | --------------: | ----: | -----: |
+| standard library |            49,881 |     58,193 (+8,312) | 51.7% |      0 | 55,992 (+6,111) | 49.8% |      0 |
+| django           |             5,412 |        5,853 (+441) | 34.1% |      0 |    5,633 (+221) | 32.8% |      0 |
+| sqlalchemy       |             2,643 |        3,544 (+901) | 39.1% |      0 |    2,962 (+319) | 35.1% |      0 |
+| pydantic         |             1,584 |        1,800 (+216) | 67.3% |      0 |    1,715 (+131) | 65.2% |      0 |
+| pandas           |            40,362 |     47,300 (+6,938) | 61.4% |      0 | 46,806 (+6,444) | 60.8% |      0 |
+| twisted          |             7,139 |        8,030 (+891) | 44.9% |      0 |    7,579 (+440) | 42.4% |      0 |
+| pip              |             3,437 |        4,250 (+813) | 48.4% |      0 |    3,780 (+343) | 43.2% |      0 |
+
+Seconds per step (and the CPUs its processes kept busy, on average), side by side; then the check at
+`suffocate` alone with every CPU: its seconds, per file, the main process's CPU seconds (and their
+share of the check's), and the second round's, of a profiled check:
+
+| Corpus           | Files |   `table` |  `census` | `infer-basedpyright` | `infer-ty` |   `tests` |     `types` | Check | Per file | Main process |           Second round |
+| ---------------- | ----: | --------: | --------: | -------------------: | ---------: | --------: | ----------: | ----: | -------: | -----------: | ---------------------: |
+| standard library | 1,867 | 208 (5.2) | 173 (1.1) |            750 (1.4) |  394 (1.4) |         - |           - |  15.5 |   8.3 ms |    4.0 (25%) | 5.7 (57% of the first) |
+| django           |   883 |  48 (3.5) |  22 (1.3) |             56 (3.3) |   73 (1.2) | 321 (4.8) |           - |   3.4 |   3.9 ms |    0.8 (25%) | 1.2 (49% of the first) |
+| sqlalchemy       |   257 |  46 (2.8) |  12 (1.6) |             71 (2.9) |   55 (1.2) | 389 (5.4) |    92 (3.2) |   3.0 |  11.8 ms |    0.5 (18%) | 0.6 (25% of the first) |
+| pydantic         |   105 |  10 (2.7) |   7 (1.1) |             36 (2.0) |   20 (0.9) | 219 (0.5) |   146 (1.5) |   0.7 |   6.2 ms |    0.2 (23%) |  0.0 (0% of the first) |
+| pandas           | 1,421 | 324 (3.5) | 191 (0.9) |            878 (1.3) |  945 (1.0) | 806 (3.5) | 1,166 (3.3) |  12.7 |   8.9 ms |    3.1 (24%) | 2.1 (17% of the first) |
+| twisted          |   819 |  40 (3.4) |  25 (1.1) |             99 (2.3) |   80 (1.0) |         - |           - |   2.6 |   3.2 ms |    0.7 (26%) | 0.8 (38% of the first) |
+| pip              |   366 |  33 (2.9) |  19 (1.1) |             74 (2.2) |   58 (1.0) |         - |           - |   2.5 |   6.9 ms |    0.4 (17%) | 0.9 (61% of the first) |
+
+## Mega corpora
+
+52 more packages, every way (`tests/corpus/mega_corpora.py`): constricter 0.3.4+dev
+(`cb29eed31b83`), Python 3.14.7, on AMD Ryzen 7 9700X 8-Core Processor (16 CPUs, 60 GB, Linux):
+`--jobs=4`, 8 workers a suite, each step started once the CPUs it keeps busy are free, then each
+corpus's timed check alone with every CPU. The run took 54 minutes. Timings don't compare across
+machines.
+
+Offences per code at `suffocate`, with `all-scopes` (Python 3.14.7); the total row gives each code's
+share of them:
+
+| Corpus             | Version   | constricter | Files |        `LVA001` |       `LVA002` | `LVA003` |       `LVA004` |     `LVA005` |     `LVA006` |  `LVA009` | `LVA010` | `LVA011` |   Total |
+| ------------------ | --------- | ----------- | ----: | --------------: | -------------: | -------: | -------------: | -----------: | -----------: | --------: | -------: | -------: | ------: |
+| black              | 26.10.0   | 0.3.4+dev   |    25 |             996 |            232 |        0 |             45 |            5 |            4 |         0 |        0 |        0 |   1,282 |
+| poetry             | 2.5.1     | 0.3.4+dev   |   193 |           1,788 |            394 |        0 |            205 |           19 |            4 |         0 |        0 |        0 |   2,410 |
+| pdm                | 2.29.2    | 0.3.4+dev   |   128 |           2,114 |            417 |        0 |            187 |           37 |            2 |         0 |        0 |        0 |   2,757 |
+| hatch              | 1.18.1    | 0.3.4+dev   |   136 |           1,157 |            326 |        0 |             84 |           12 |            3 |         0 |        0 |        0 |   1,582 |
+| tox                | 4.64.9    | 0.3.4+dev   |   129 |           1,369 |            286 |        0 |            107 |           18 |            5 |         0 |        0 |        0 |   1,785 |
+| nox                | 2026.8.17 | 0.3.4+dev   |    24 |             410 |             65 |        0 |             39 |            8 |            1 |         0 |        0 |        0 |     523 |
+| pre-commit         | 4.6.2     | 0.3.4+dev   |    67 |             566 |             77 |        0 |            163 |            1 |            2 |         0 |        0 |        0 |     809 |
+| sphinx             | 9.1.0     | 0.3.4+dev   |   243 |           5,505 |          1,336 |        1 |          1,131 |           73 |           29 |         5 |        0 |        3 |   8,083 |
+| mkdocs             | 1.6.1     | 0.3.4+dev   |    61 |           1,674 |            198 |        0 |            460 |            8 |            0 |         0 |        0 |        0 |   2,340 |
+| pipx               | 1.17.11   | 0.3.4+dev   |    50 |             795 |            147 |        0 |             74 |            5 |           11 |         0 |        0 |        0 |   1,032 |
+| streamlink         | 8.6.1     | 0.3.4+dev   |   227 |           2,080 |            310 |        0 |            639 |           37 |           11 |         0 |        0 |        0 |   3,077 |
+| copier             | 9.18.2    | 0.3.4+dev   |    24 |             273 |             39 |        0 |             72 |           12 |            0 |         0 |        0 |        0 |     396 |
+| flake8             | 7.4.1     | 0.3.4+dev   |    33 |             208 |             69 |        0 |             64 |            2 |            1 |         0 |        0 |        0 |     344 |
+| mypy               | 2.4.0     | 0.3.4+dev   |   195 |           9,008 |          2,197 |        0 |            196 |          340 |           45 |         0 |        1 |        1 |  11,788 |
+| httpx              | 0.28.1    | 0.3.4+dev   |    23 |             395 |            112 |        0 |             62 |            1 |            0 |         0 |        0 |        0 |     570 |
+| starlette          | 1.7.0     | 0.3.4+dev   |    36 |             499 |             99 |        0 |            146 |           18 |            0 |         0 |        0 |        0 |     762 |
+| uvicorn            | 0.54.0    | 0.3.4+dev   |    45 |             363 |             71 |        0 |             55 |           11 |            4 |         0 |        0 |        0 |     504 |
+| anyio              | 4.15.1    | 0.3.4+dev   |    46 |             615 |             77 |        0 |             23 |           26 |            6 |         0 |        0 |        0 |     747 |
+| websockets         | 17.2      | 0.3.4+dev   |    52 |             605 |             85 |        0 |            101 |            0 |            0 |         0 |        0 |        0 |     791 |
+| hypercorn          | 0.18.0    | 0.3.4+dev   |    39 |             220 |             67 |        0 |             68 |            8 |            0 |         0 |        0 |        0 |     363 |
+| quart              | 0.23.1    | 0.3.4+dev   |    34 |             315 |             66 |        0 |            101 |            5 |            0 |         0 |        0 |        0 |     487 |
+| aiohttp            | 3.14.4    | 0.3.4+dev   |    54 |           1,307 |            195 |        0 |            355 |           13 |            5 |         1 |        0 |        0 |   1,876 |
+| fastapi            | 0.142.2   | 0.3.4+dev   |    52 |             586 |            105 |        0 |             51 |           98 |            5 |         0 |        0 |        0 |     845 |
+| textual            | 8.2.8     | 0.3.4+dev   |   247 |           4,979 |            718 |        0 |            786 |           31 |           26 |         0 |        0 |        0 |   6,540 |
+| mcp                | 2.3.0     | 0.3.4+dev   |   124 |           1,356 |            173 |        0 |            192 |          105 |            8 |         0 |        0 |        0 |   1,834 |
+| pytest             | 9.1.1     | 0.3.4+dev   |    78 |           2,363 |            470 |        0 |            170 |           33 |            9 |         0 |        0 |        0 |   3,045 |
+| attrs              | 26.1.0    | 0.3.4+dev   |    13 |             285 |             50 |        0 |             58 |            2 |            0 |         1 |        0 |        0 |     396 |
+| werkzeug           | 3.1.9     | 0.3.4+dev   |    52 |             835 |            235 |        0 |            223 |           15 |            1 |         0 |        0 |        0 |   1,309 |
+| cattrs             | 26.2.1    | 0.3.4+dev   |    36 |             420 |             70 |        0 |             30 |            9 |            1 |         0 |        0 |        0 |     530 |
+| structlog          | 26.1.0    | 0.3.4+dev   |    21 |             156 |             47 |        0 |            113 |           12 |            1 |         0 |        0 |        0 |     329 |
+| urllib3            | 2.8.0     | 0.3.4+dev   |    36 |             443 |             57 |        0 |            134 |            5 |            1 |         2 |        0 |        0 |     642 |
+| coverage           | 7.16.2    | 0.3.4+dev   |    44 |           1,024 |            307 |        0 |            171 |            3 |            0 |         1 |        0 |        0 |   1,506 |
+| xarray             | 2026.9.0  | 0.3.4+dev   |   199 |          18,968 |          1,599 |        0 |            777 |          255 |           20 |         0 |        0 |        0 |  21,619 |
+| networkx           | 3.7       | 0.3.4+dev   |   583 |          18,854 |          3,221 |        0 |            381 |            8 |            0 |         0 |        0 |        0 |  22,464 |
+| pint               | 0.26.1    | 0.3.4+dev   |   109 |           2,591 |            297 |        0 |            190 |           14 |            2 |         0 |        0 |        0 |   3,094 |
+| dask               | 2026.8.0  | 0.3.4+dev   |   361 |          20,748 |          1,691 |        0 |          1,733 |           76 |            5 |         2 |        0 |        1 |  24,256 |
+| zarr               | 3.4.0     | 0.3.4+dev   |    98 |           1,874 |            370 |        0 |            167 |           26 |           35 |         0 |        0 |        0 |   2,472 |
+| nibabel            | 5.4.2     | 0.3.4+dev   |   229 |           6,504 |          1,032 |        0 |            932 |            5 |            1 |         0 |        0 |        0 |   8,474 |
+| seaborn            | 0.13.2    | 0.3.4+dev   |    54 |           2,361 |            370 |        0 |            164 |           23 |            3 |         0 |        0 |        0 |   2,921 |
+| optuna             | 5.0.0     | 0.3.4+dev   |   220 |           2,740 |            446 |        0 |            412 |           28 |            4 |         0 |        0 |        0 |   3,630 |
+| altair             | 6.3.0     | 0.3.4+dev   |    55 |             814 |            130 |        0 |            765 |           60 |            8 |         0 |        0 |        0 |   1,777 |
+| stripe             | 16.0.0    | 0.3.4+dev   | 1,460 |           1,772 |             49 |        0 |          1,536 |           16 |          854 |         0 |        0 |        0 |   4,227 |
+| strawberry-graphql | 0.332.0   | 0.3.4+dev   |   244 |           1,436 |            243 |        0 |            127 |          137 |            2 |         0 |        0 |        0 |   1,945 |
+| litestar           | 2.24.0    | 0.3.4+dev   |   374 |           1,474 |            306 |        0 |            125 |          166 |           12 |         4 |        0 |        0 |   2,087 |
+| narwhals           | 2.26.0    | 0.3.4+dev   |   162 |           2,775 |            106 |        0 |            239 |           62 |            5 |         0 |        0 |        0 |   3,187 |
+| click              | 8.5.0     | 0.3.4+dev   |    17 |             481 |             58 |        0 |             69 |           28 |            1 |         0 |        0 |        0 |     637 |
+| pygments           | 2.21.0    | 0.3.4+dev   |   343 |           1,124 |            539 |        0 |          6,003 |            0 |            0 |         0 |        0 |        0 |   7,666 |
+| celery             | 5.6.3     | 0.3.4+dev   |   161 |           2,202 |            331 |        0 |          1,215 |            0 |            0 |         2 |        0 |        0 |   3,750 |
+| botocore           | 1.43.108  | 0.3.4+dev   |    76 |           2,825 |            367 |        0 |            594 |            2 |            0 |         0 |        0 |        0 |   3,788 |
+| joblib             | 1.6.0     | 0.3.4+dev   |    73 |           1,842 |            158 |        0 |            239 |            1 |            0 |         0 |        0 |        0 |   2,240 |
+| mako               | 1.4.3     | 0.3.4+dev   |    33 |             411 |            120 |        0 |             85 |            1 |            0 |         0 |        0 |        0 |     617 |
+| boltons            | 26.2.0    | 0.3.4+dev   |    30 |           1,073 |            197 |        0 |            229 |            0 |            0 |         0 |        0 |        0 |   1,499 |
+| **Total**          |           | 0.3.4+dev   | 7,448 | 137,578 (74.9%) | 20,727 (11.3%) | 1 (0.0%) | 22,287 (12.1%) | 1,880 (1.0%) | 1,137 (0.6%) | 18 (0.0%) | 1 (0.0%) | 5 (0.0%) | 183,634 |
+
+Errors / warnings at each level, by the version's own rules and defaults; what `--fix` fixed and
+what `--unsafe-fixes` guessed on top (each also as a share of the offences at `suffocate`), files a
+fix broke, and what a second pass would still fix:
+
+| Corpus             | constricter |   `relaxed` |         `strict` |     `constrict` | `suffocate` |          Fixed |        Guessed | Broken | Left |
+| ------------------ | ----------- | ----------: | ---------------: | --------------: | ----------: | -------------: | -------------: | -----: | ---: |
+| black              | 0.3.4+dev   |   0 / 1,273 |      1,041 / 241 |       1,273 / 9 |   1,282 / 0 |    692 (54.0%) |    182 (14.2%) |      0 |    0 |
+| poetry             | 0.3.4+dev   |   0 / 2,387 |      1,993 / 417 |      2,387 / 23 |   2,410 / 0 |    791 (32.8%) |    299 (12.4%) |      0 |    0 |
+| pdm                | 0.3.4+dev   |   0 / 2,718 |      2,301 / 456 |      2,718 / 39 |   2,757 / 0 |  1,086 (39.4%) |    354 (12.8%) |      0 |    0 |
+| hatch              | 0.3.4+dev   |   0 / 1,567 |      1,241 / 341 |      1,567 / 15 |   1,582 / 0 |    502 (31.7%) |    182 (11.5%) |      0 |    0 |
+| tox                | 0.3.4+dev   |   0 / 1,762 |      1,476 / 309 |      1,762 / 23 |   1,785 / 0 |    916 (51.3%) |     160 (9.0%) |      0 |    0 |
+| nox                | 0.3.4+dev   |     0 / 514 |         449 / 74 |         514 / 9 |     523 / 0 |    283 (54.1%) |      52 (9.9%) |      0 |    0 |
+| pre-commit         | 0.3.4+dev   |     0 / 806 |         729 / 80 |         806 / 3 |     809 / 0 |    349 (43.1%) |      80 (9.9%) |      0 |    0 |
+| sphinx             | 0.3.4+dev   |   0 / 7,978 |    6,636 / 1,447 |     7,977 / 106 |   8,083 / 0 |  3,041 (37.6%) |    949 (11.7%) |      0 |    0 |
+| mkdocs             | 0.3.4+dev   |   0 / 2,332 |      2,134 / 206 |       2,332 / 8 |   2,340 / 0 |    768 (32.8%) |    463 (19.8%) |      0 |    0 |
+| pipx               | 0.3.4+dev   |   0 / 1,016 |        869 / 163 |      1,016 / 16 |   1,032 / 0 |    653 (63.3%) |    122 (11.8%) |      0 |    0 |
+| streamlink         | 0.3.4+dev   |   0 / 3,029 |      2,719 / 358 |      3,029 / 48 |   3,077 / 0 |    663 (21.5%) |     244 (7.9%) |      0 |    0 |
+| copier             | 0.3.4+dev   |     0 / 384 |         345 / 51 |        384 / 12 |     396 / 0 |    164 (41.4%) |     44 (11.1%) |      0 |    0 |
+| flake8             | 0.3.4+dev   |     0 / 341 |         272 / 72 |         341 / 3 |     344 / 0 |    168 (48.8%) |     49 (14.2%) |      0 |    0 |
+| mypy               | 0.3.4+dev   |  0 / 11,401 |    9,204 / 2,583 |    11,401 / 387 |  11,788 / 0 |  4,561 (38.7%) |  1,842 (15.6%) |      0 |    0 |
+| httpx              | 0.3.4+dev   |     0 / 569 |        457 / 113 |         569 / 1 |     570 / 0 |    263 (46.1%) |     83 (14.6%) |      0 |    0 |
+| starlette          | 0.3.4+dev   |     0 / 744 |        645 / 117 |        744 / 18 |     762 / 0 |    297 (39.0%) |    111 (14.6%) |      0 |    0 |
+| uvicorn            | 0.3.4+dev   |     0 / 489 |         418 / 86 |        489 / 15 |     504 / 0 |    219 (43.5%) |      46 (9.1%) |      0 |    0 |
+| anyio              | 0.3.4+dev   |     0 / 715 |        638 / 109 |        715 / 32 |     747 / 0 |    197 (26.4%) |      63 (8.4%) |      0 |    0 |
+| websockets         | 0.3.4+dev   |     0 / 791 |         706 / 85 |         791 / 0 |     791 / 0 |    322 (40.7%) |    116 (14.7%) |      0 |    0 |
+| hypercorn          | 0.3.4+dev   |     0 / 355 |         288 / 75 |         355 / 8 |     363 / 0 |    126 (34.7%) |     64 (17.6%) |      0 |    0 |
+| quart              | 0.3.4+dev   |     0 / 482 |         416 / 71 |         482 / 5 |     487 / 0 |    143 (29.4%) |      37 (7.6%) |      0 |    0 |
+| aiohttp            | 0.3.4+dev   |   0 / 1,858 |      1,662 / 214 |      1,858 / 18 |   1,876 / 0 |    647 (34.5%) |    257 (13.7%) |      0 |    0 |
+| fastapi            | 0.3.4+dev   |     0 / 742 |        637 / 208 |       742 / 103 |     845 / 0 |    245 (29.0%) |      65 (7.7%) |      0 |    0 |
+| textual            | 0.3.4+dev   |   0 / 6,483 |      5,765 / 775 |      6,483 / 57 |   6,540 / 0 |  2,495 (38.1%) |    814 (12.4%) |      0 |    0 |
+| mcp                | 0.3.4+dev   |   0 / 1,721 |      1,548 / 286 |     1,721 / 113 |   1,834 / 0 |    676 (36.9%) |    251 (13.7%) |      0 |    0 |
+| pytest             | 0.3.4+dev   |   0 / 3,003 |      2,533 / 512 |      3,003 / 42 |   3,045 / 0 |  1,292 (42.4%) |    315 (10.3%) |      0 |    0 |
+| attrs              | 0.3.4+dev   |     0 / 394 |         343 / 53 |         394 / 2 |     396 / 0 |     95 (24.0%) |      13 (3.3%) |      0 |    0 |
+| werkzeug           | 0.3.4+dev   |   0 / 1,293 |      1,058 / 251 |      1,293 / 16 |   1,309 / 0 |    511 (39.0%) |    154 (11.8%) |      0 |    0 |
+| cattrs             | 0.3.4+dev   |     0 / 520 |         450 / 80 |        520 / 10 |     530 / 0 |    103 (19.4%) |      46 (8.7%) |      0 |    0 |
+| structlog          | 0.3.4+dev   |     0 / 316 |         269 / 60 |        316 / 13 |     329 / 0 |     97 (29.5%) |      29 (8.8%) |      0 |    0 |
+| urllib3            | 0.3.4+dev   |     0 / 636 |         577 / 65 |         636 / 6 |     642 / 0 |    240 (37.4%) |     64 (10.0%) |      0 |    0 |
+| coverage           | 0.3.4+dev   |   0 / 1,503 |      1,195 / 311 |       1,503 / 3 |   1,506 / 0 |    765 (50.8%) |    228 (15.1%) |      0 |    0 |
+| xarray             | 0.3.4+dev   |  0 / 21,344 |   19,745 / 1,874 |    21,344 / 275 |  21,619 / 0 |  3,487 (16.1%) |  3,445 (15.9%) |      0 |    0 |
+| networkx           | 0.3.4+dev   |  0 / 22,456 |   19,235 / 3,229 |      22,456 / 8 |  22,464 / 0 |  3,867 (17.2%) |  2,627 (11.7%) |      0 |    0 |
+| pint               | 0.3.4+dev   |   0 / 3,078 |      2,781 / 313 |      3,078 / 16 |   3,094 / 0 |    542 (17.5%) |     185 (6.0%) |      0 |    0 |
+| dask               | 0.3.4+dev   |  0 / 24,174 |   22,481 / 1,775 |     24,174 / 82 |  24,256 / 0 |  3,025 (12.5%) |  2,741 (11.3%) |      0 |    0 |
+| zarr               | 0.3.4+dev   |   0 / 2,411 |      2,041 / 431 |      2,411 / 61 |   2,472 / 0 |  1,034 (41.8%) |     157 (6.4%) |      0 |    0 |
+| nibabel            | 0.3.4+dev   |   0 / 8,468 |    7,436 / 1,038 |       8,468 / 6 |   8,474 / 0 |  1,755 (20.7%) |    998 (11.8%) |      0 |    0 |
+| seaborn            | 0.3.4+dev   |   0 / 2,895 |      2,525 / 396 |      2,895 / 26 |   2,921 / 0 |    614 (21.0%) |     287 (9.8%) |      0 |    0 |
+| optuna             | 0.3.4+dev   |   0 / 3,598 |      3,152 / 478 |      3,598 / 32 |   3,630 / 0 |  1,417 (39.0%) |    382 (10.5%) |      0 |    0 |
+| altair             | 0.3.4+dev   |   0 / 1,709 |      1,579 / 198 |      1,709 / 68 |   1,777 / 0 |    362 (20.4%) |      77 (4.3%) |      0 |    0 |
+| stripe             | 0.3.4+dev   |   0 / 3,357 |      3,308 / 919 |     3,357 / 870 |   4,227 / 0 |    562 (13.3%) |    665 (15.7%) |      0 |    0 |
+| strawberry-graphql | 0.3.4+dev   |   0 / 1,806 |      1,563 / 382 |     1,806 / 139 |   1,945 / 0 |    497 (25.6%) |    207 (10.6%) |      0 |    0 |
+| litestar           | 0.3.4+dev   |   0 / 1,909 |      1,599 / 488 |     1,909 / 178 |   2,087 / 0 |    597 (28.6%) |     181 (8.7%) |      0 |    0 |
+| narwhals           | 0.3.4+dev   |   0 / 3,120 |      3,014 / 173 |      3,120 / 67 |   3,187 / 0 |    929 (29.1%) |     140 (4.4%) |      0 |    0 |
+| click              | 0.3.4+dev   |     0 / 608 |         550 / 87 |        608 / 29 |     637 / 0 |    281 (44.1%) |     86 (13.5%) |      0 |    0 |
+| pygments           | 0.3.4+dev   |   0 / 7,666 |      7,127 / 539 |       7,666 / 0 |   7,666 / 0 |     726 (9.5%) |     243 (3.2%) |      0 |    0 |
+| celery             | 0.3.4+dev   |   0 / 3,750 |      3,417 / 333 |       3,750 / 0 |   3,750 / 0 |    501 (13.4%) |     363 (9.7%) |      0 |    0 |
+| botocore           | 0.3.4+dev   |   0 / 3,786 |      3,419 / 369 |       3,786 / 2 |   3,788 / 0 |    543 (14.3%) |    593 (15.7%) |      0 |    0 |
+| joblib             | 0.3.4+dev   |   0 / 2,239 |      2,081 / 159 |       2,239 / 1 |   2,240 / 0 |    511 (22.8%) |    274 (12.2%) |      0 |    0 |
+| mako               | 0.3.4+dev   |     0 / 616 |        496 / 121 |         616 / 1 |     617 / 0 |     69 (11.2%) |     70 (11.3%) |      0 |    0 |
+| boltons            | 0.3.4+dev   |   0 / 1,499 |      1,302 / 197 |       1,499 / 0 |   1,499 / 0 |    334 (22.3%) |     124 (8.3%) |      0 |    0 |
+| **Total**          | 0.3.4+dev   | 0 / 180,611 | 159,865 / 23,768 | 180,610 / 3,024 | 183,634 / 0 | 45,023 (24.5%) | 21,623 (11.8%) |      0 |    0 |
+
+Annotation coverage (`--coverage` with `all-scopes`, counted by this checkout for every version):
+the share of bindings typed as released, after `--fix`, and after `--fix --unsafe-fixes`, and how
+much each raised it: in percentage points, and as a share of the bindings that were untyped:
+
+| Corpus             | constricter | Typed as released | After `--fix` | After `--unsafe-fixes` |           Raised by `--fix` |         Raised with guesses |
+| ------------------ | ----------- | ----------------: | ------------: | ---------------------: | --------------------------: | --------------------------: |
+| black              | 0.3.4+dev   |             15.9% |         61.6% |                  73.6% | +45.7 pts, 54.4% of untyped | +57.8 pts, 68.7% of untyped |
+| poetry             | 0.3.4+dev   |             12.7% |         41.6% |                  52.6% | +28.9 pts, 33.1% of untyped | +39.9 pts, 45.7% of untyped |
+| pdm                | 0.3.4+dev   |             11.7% |         47.0% |                  58.5% | +35.3 pts, 40.0% of untyped | +46.8 pts, 53.0% of untyped |
+| hatch              | 0.3.4+dev   |              6.3% |         36.3% |                  47.2% | +30.0 pts, 32.0% of untyped | +40.9 pts, 43.7% of untyped |
+| tox                | 0.3.4+dev   |             16.0% |         59.7% |                  67.3% | +43.7 pts, 52.0% of untyped | +51.3 pts, 61.1% of untyped |
+| nox                | 0.3.4+dev   |             17.1% |         62.7% |                  71.1% | +45.6 pts, 55.1% of untyped | +54.0 pts, 65.2% of untyped |
+| pre-commit         | 0.3.4+dev   |              6.4% |         46.9% |                  56.2% | +40.5 pts, 43.3% of untyped | +49.8 pts, 53.2% of untyped |
+| sphinx             | 0.3.4+dev   |             10.4% |         44.6% |                  55.3% | +34.2 pts, 38.1% of untyped | +44.8 pts, 50.0% of untyped |
+| mkdocs             | 0.3.4+dev   |              4.5% |         36.0% |                  54.9% | +31.4 pts, 32.9% of untyped | +50.4 pts, 52.8% of untyped |
+| pipx               | 0.3.4+dev   |             42.1% |         79.3% |                  86.3% | +37.2 pts, 64.3% of untyped | +44.2 pts, 76.3% of untyped |
+| streamlink         | 0.3.4+dev   |             42.8% |         55.3% |                  59.9% | +12.5 pts, 21.9% of untyped | +17.1 pts, 29.9% of untyped |
+| copier             | 0.3.4+dev   |             19.0% |         53.6% |                  62.9% | +34.6 pts, 42.7% of untyped | +43.9 pts, 54.2% of untyped |
+| flake8             | 0.3.4+dev   |              9.3% |         54.0% |                  67.0% | +44.7 pts, 49.3% of untyped | +57.7 pts, 63.6% of untyped |
+| mypy               | 0.3.4+dev   |             16.8% |         50.1% |                  63.5% | +33.3 pts, 40.0% of untyped | +46.7 pts, 56.2% of untyped |
+| httpx              | 0.3.4+dev   |              6.3% |         49.6% |                  63.3% | +43.3 pts, 46.2% of untyped | +57.0 pts, 60.8% of untyped |
+| starlette          | 0.3.4+dev   |             10.3% |         46.1% |                  59.5% | +35.8 pts, 39.9% of untyped | +49.2 pts, 54.8% of untyped |
+| uvicorn            | 0.3.4+dev   |             23.6% |         57.8% |                  65.0% | +34.2 pts, 44.8% of untyped | +41.4 pts, 54.2% of untyped |
+| anyio              | 0.3.4+dev   |             27.8% |         47.7% |                  54.0% | +19.9 pts, 27.6% of untyped | +26.3 pts, 36.4% of untyped |
+| websockets         | 0.3.4+dev   |             13.8% |         48.9% |                  61.5% | +35.1 pts, 40.7% of untyped | +47.7 pts, 55.4% of untyped |
+| hypercorn          | 0.3.4+dev   |             32.4% |         56.4% |                  68.6% | +24.0 pts, 35.5% of untyped | +36.2 pts, 53.5% of untyped |
+| quart              | 0.3.4+dev   |             10.9% |         37.3% |                  44.2% | +26.4 pts, 29.7% of untyped | +33.3 pts, 37.3% of untyped |
+| aiohttp            | 0.3.4+dev   |             23.7% |         50.3% |                  60.8% | +26.6 pts, 34.8% of untyped | +37.2 pts, 48.7% of untyped |
+| fastapi            | 0.3.4+dev   |             42.0% |         61.1% |                  66.2% | +19.2 pts, 33.0% of untyped | +24.2 pts, 41.8% of untyped |
+| textual            | 0.3.4+dev   |             15.6% |         48.1% |                  58.7% | +32.5 pts, 38.5% of untyped | +43.1 pts, 51.0% of untyped |
+| mcp                | 0.3.4+dev   |             30.7% |         57.9% |                  68.0% | +27.2 pts, 39.3% of untyped | +37.3 pts, 53.9% of untyped |
+| pytest             | 0.3.4+dev   |             12.1% |         49.9% |                  59.2% | +37.8 pts, 43.0% of untyped | +47.0 pts, 53.5% of untyped |
+| attrs              | 0.3.4+dev   |              0.8% |         24.7% |                  28.0% | +24.0 pts, 24.2% of untyped | +27.3 pts, 27.5% of untyped |
+| werkzeug           | 0.3.4+dev   |             14.3% |         48.2% |                  58.4% | +33.9 pts, 39.5% of untyped | +44.1 pts, 51.4% of untyped |
+| cattrs             | 0.3.4+dev   |              7.0% |         25.4% |                  33.6% | +18.4 pts, 19.8% of untyped | +26.7 pts, 28.7% of untyped |
+| structlog          | 0.3.4+dev   |             25.6% |         48.5% |                  55.3% | +22.8 pts, 30.7% of untyped | +29.6 pts, 39.9% of untyped |
+| urllib3            | 0.3.4+dev   |             25.8% |         53.9% |                  61.4% | +28.1 pts, 37.9% of untyped | +35.6 pts, 47.9% of untyped |
+| coverage           | 0.3.4+dev   |             10.1% |         55.9% |                  69.5% | +45.8 pts, 50.9% of untyped | +59.5 pts, 66.1% of untyped |
+| xarray             | 0.3.4+dev   |              4.6% |         20.2% |                  35.6% | +15.6 pts, 16.3% of untyped | +31.0 pts, 32.5% of untyped |
+| networkx           | 0.3.4+dev   |              0.3% |         17.4% |                  29.1% | +17.2 pts, 17.2% of untyped | +28.8 pts, 28.9% of untyped |
+| pint               | 0.3.4+dev   |              5.1% |         21.8% |                  27.5% | +16.7 pts, 17.6% of untyped | +22.4 pts, 23.6% of untyped |
+| dask               | 0.3.4+dev   |              1.1% |         13.4% |                  24.7% | +12.4 pts, 12.5% of untyped | +23.6 pts, 23.9% of untyped |
+| zarr               | 0.3.4+dev   |             21.7% |         55.3% |                  60.4% | +33.6 pts, 42.9% of untyped | +38.7 pts, 49.4% of untyped |
+| nibabel            | 0.3.4+dev   |              1.0% |         21.5% |                  33.2% | +20.5 pts, 20.7% of untyped | +32.2 pts, 32.5% of untyped |
+| seaborn            | 0.3.4+dev   |              6.9% |         26.7% |                  35.9% | +19.7 pts, 21.2% of untyped | +29.0 pts, 31.1% of untyped |
+| optuna             | 0.3.4+dev   |              7.5% |         43.9% |                  53.7% | +36.4 pts, 39.4% of untyped | +46.3 pts, 50.0% of untyped |
+| altair             | 0.3.4+dev   |             49.6% |         60.3% |                  62.5% | +10.7 pts, 21.2% of untyped | +12.9 pts, 25.7% of untyped |
+| stripe             | 0.3.4+dev   |             89.5% |         91.3% |                  93.4% |  +1.8 pts, 16.7% of untyped |  +3.8 pts, 36.6% of untyped |
+| strawberry-graphql | 0.3.4+dev   |             30.1% |         49.3% |                  57.3% | +19.2 pts, 27.5% of untyped | +27.3 pts, 39.0% of untyped |
+| litestar           | 0.3.4+dev   |             44.9% |         62.2% |                  67.4% | +17.3 pts, 31.3% of untyped | +22.5 pts, 40.8% of untyped |
+| narwhals           | 0.3.4+dev   |             21.7% |         45.0% |                  48.5% | +23.3 pts, 29.8% of untyped | +26.8 pts, 34.3% of untyped |
+| click              | 0.3.4+dev   |             31.5% |         63.1% |                  72.8% | +31.7 pts, 46.2% of untyped | +41.4 pts, 60.4% of untyped |
+| pygments           | 0.3.4+dev   |              0.0% |          9.5% |                  12.6% |   +9.5 pts, 9.5% of untyped | +12.6 pts, 12.6% of untyped |
+| celery             | 0.3.4+dev   |              0.4% |         13.7% |                  23.4% | +13.3 pts, 13.4% of untyped | +23.0 pts, 23.1% of untyped |
+| botocore           | 0.3.4+dev   |              0.5% |         14.7% |                  30.3% | +14.3 pts, 14.3% of untyped | +29.8 pts, 30.0% of untyped |
+| joblib             | 0.3.4+dev   |              0.0% |         22.8% |                  35.1% | +22.8 pts, 22.8% of untyped | +35.0 pts, 35.0% of untyped |
+| mako               | 0.3.4+dev   |              0.6% |         11.8% |                  23.1% | +11.1 pts, 11.2% of untyped | +22.4 pts, 22.6% of untyped |
+| boltons            | 0.3.4+dev   |              0.0% |         22.3% |                  30.6% | +22.3 pts, 22.3% of untyped | +30.6 pts, 30.6% of untyped |
+| **Total**          | 0.3.4+dev   |             21.6% |         41.2% |                  50.6% | +19.5 pts, 24.9% of untyped | +28.9 pts, 36.9% of untyped |
+
+Fixes per mechanism (`--format=json`'s `kinds`), certain / guessed: a fix resting on several counts
+for each.
+
+| Mechanism       |    black |   poetry |      pdm |    hatch |      tox |     nox | pre-commit |    sphinx |   mkdocs |     pipx | streamlink |  copier |  flake8 |        mypy |   httpx | starlette | uvicorn |   anyio | websockets | hypercorn |  quart |  aiohttp | fastapi |   textual |      mcp |   pytest |  attrs | werkzeug |  cattrs | structlog | urllib3 | coverage |      xarray |    networkx |     pint |        dask |     zarr |   nibabel |  seaborn |   optuna |  altair |    stripe | strawberry-graphql | litestar | narwhals |   click |  pygments |    celery |  botocore |   joblib |    mako |  boltons | Certain | Guessed |
+| --------------- | -------: | -------: | -------: | -------: | -------: | ------: | ---------: | --------: | -------: | -------: | ---------: | ------: | ------: | ----------: | ------: | --------: | ------: | ------: | ---------: | --------: | -----: | -------: | ------: | --------: | -------: | -------: | -----: | -------: | ------: | --------: | ------: | -------: | ----------: | ----------: | -------: | ----------: | -------: | --------: | -------: | -------: | ------: | --------: | -----------------: | -------: | -------: | ------: | --------: | --------: | --------: | -------: | ------: | -------: | ------: | ------: |
+| `literal`       | 159 / 26 | 224 / 64 | 239 / 60 | 198 / 67 | 311 / 41 | 84 / 14 |   114 / 40 | 791 / 256 | 230 / 26 | 188 / 20 |   164 / 85 | 34 / 10 | 42 / 13 |   895 / 172 |  84 / 9 |  138 / 21 |  87 / 6 |  35 / 2 |    72 / 11 |   33 / 31 | 17 / 7 | 176 / 60 | 43 / 11 | 424 / 141 | 118 / 33 | 349 / 49 | 74 / 3 | 137 / 54 | 63 / 15 |    31 / 8 | 94 / 22 | 160 / 39 | 1,370 / 122 | 2,649 / 347 | 228 / 32 | 1,471 / 656 | 237 / 29 | 671 / 178 | 338 / 88 | 280 / 68 | 187 / 4 | 147 / 647 |           133 / 27 | 155 / 27 | 529 / 18 | 65 / 19 | 577 / 119 | 245 / 205 | 312 / 343 | 258 / 34 | 34 / 14 | 115 / 36 |  15,809 |   4,429 |
+| `constructor`   |   1 / 66 |  0 / 123 |  4 / 136 |   1 / 53 |   0 / 49 |  1 / 15 |     0 / 21 |   0 / 250 |  0 / 241 |   0 / 45 |     0 / 79 |  0 / 14 |  0 / 10 |     0 / 804 |  2 / 37 |    0 / 42 |  0 / 19 |  1 / 31 |     0 / 37 |    0 / 11 | 0 / 21 |   0 / 58 |  2 / 29 |   0 / 272 |  0 / 128 |   2 / 83 |  0 / 3 |   0 / 26 |  0 / 15 |    0 / 13 |  0 / 10 |   0 / 53 |   0 / 2,639 |   6 / 1,905 |   0 / 80 |   5 / 1,560 |   0 / 49 |   0 / 572 |  0 / 105 |  0 / 107 |  3 / 56 |     0 / 5 |            1 / 116 |   0 / 65 |   0 / 28 |  0 / 15 |    0 / 47 |   0 / 103 |   1 / 121 |  0 / 147 |  0 / 35 |   1 / 26 |      31 |  10,575 |
+| `loop`          | 164 / 21 | 174 / 33 | 216 / 56 | 122 / 30 | 199 / 18 |  51 / 6 |     61 / 4 | 630 / 163 |  69 / 25 | 104 / 13 |    85 / 21 |  21 / 6 |  44 / 7 | 1,256 / 285 | 35 / 20 |   32 / 14 |  41 / 7 |  18 / 5 |    45 / 16 |   27 / 14 | 22 / 3 |  92 / 25 |  44 / 5 | 368 / 101 |  94 / 11 | 246 / 63 |  2 / 2 |  86 / 31 | 11 / 12 |    14 / 3 |  25 / 8 | 217 / 34 |   532 / 173 |   674 / 135 | 119 / 25 |   573 / 168 | 232 / 21 |  281 / 43 |  92 / 28 | 322 / 71 |  49 / 6 |    12 / 4 |            81 / 21 | 128 / 30 |  70 / 10 | 48 / 11 |   54 / 11 |   45 / 10 |   31 / 25 |   52 / 9 |   9 / 0 |  36 / 19 |   8,055 |   1,882 |
+| `copy`          |  91 / 44 | 161 / 58 | 175 / 69 |  84 / 29 | 160 / 31 | 45 / 10 |    105 / 6 | 443 / 149 |  70 / 29 | 110 / 20 |    84 / 28 | 27 / 13 |  30 / 7 |   803 / 344 |  24 / 7 |   19 / 17 |  14 / 2 |  24 / 8 |    31 / 18 |    23 / 2 | 10 / 2 |  81 / 52 |  27 / 9 | 797 / 164 |  85 / 21 | 166 / 73 |  5 / 5 |  62 / 25 |  6 / 15 |    21 / 5 | 31 / 18 | 151 / 55 |   390 / 248 |   332 / 188 |  70 / 26 |   235 / 292 | 216 / 41 |  245 / 94 |  50 / 41 | 242 / 96 | 35 / 10 |     9 / 3 |            66 / 23 |  98 / 34 |  74 / 20 | 27 / 21 |   41 / 23 |   35 / 22 |   25 / 23 |  32 / 17 |   2 / 2 |  27 / 31 |   6,216 |   2,590 |
+| `method`        | 117 / 17 | 194 / 22 | 239 / 38 |  72 / 12 | 162 / 15 |  35 / 4 |     63 / 8 | 746 / 129 |  38 / 71 |   72 / 6 |   111 / 24 |  23 / 5 | 26 / 11 |   642 / 231 | 89 / 17 |    48 / 6 |  31 / 4 |   2 / 6 |    63 / 12 |    14 / 8 | 32 / 1 | 135 / 40 |  46 / 6 |  337 / 88 | 125 / 40 | 269 / 35 |  7 / 0 | 123 / 19 |  23 / 0 |     5 / 1 |  35 / 8 | 207 / 53 |   249 / 423 |    101 / 11 |   41 / 8 |    116 / 49 | 140 / 15 |   40 / 62 |  79 / 12 | 266 / 53 |  29 / 1 |    40 / 3 |           137 / 29 | 128 / 18 |   50 / 4 | 64 / 17 |    21 / 9 |    57 / 5 |   41 / 12 |   38 / 7 |   3 / 0 |  29 / 10 |   5,800 |   1,685 |
+| `call`          | 163 / 10 |   40 / 7 | 165 / 21 |   55 / 3 |   99 / 6 |  63 / 3 |    155 / 5 |  406 / 41 |  200 / 5 | 191 / 14 |    188 / 4 |  27 / 3 |  27 / 2 | 1,130 / 103 |  17 / 1 |    17 / 3 |  10 / 0 |  41 / 0 |    47 / 11 |    19 / 0 | 19 / 0 |   47 / 3 |  76 / 5 |  171 / 28 |  149 / 9 | 192 / 12 | 11 / 1 |   73 / 3 |  13 / 3 |    20 / 1 |  25 / 3 |   80 / 5 |  1,023 / 47 |       7 / 1 |  88 / 12 |    386 / 33 | 239 / 14 |  278 / 37 |   15 / 1 | 321 / 25 |  67 / 3 |    26 / 2 |            83 / 20 |  107 / 8 |  201 / 9 |  52 / 4 |     0 / 0 |    21 / 3 |     5 / 1 |    0 / 0 |   2 / 0 |    4 / 0 |   6,861 |     535 |
+| `stdlib`        |  50 / 10 | 155 / 28 | 245 / 38 |  73 / 12 | 159 / 18 | 67 / 11 |    132 / 6 |  347 / 49 | 190 / 13 | 134 / 15 |   100 / 20 |  59 / 4 |  53 / 2 |    489 / 62 |  25 / 8 |   23 / 19 |  44 / 3 | 72 / 18 |    66 / 17 |    20 / 4 | 30 / 3 | 115 / 32 |  25 / 3 |  147 / 15 | 106 / 14 | 253 / 45 |  3 / 1 | 105 / 13 |   1 / 0 |    23 / 1 |  48 / 7 | 134 / 21 |    201 / 33 |    312 / 45 |  69 / 10 |    276 / 54 |   70 / 1 |  417 / 39 |  57 / 10 |  99 / 16 |  33 / 6 |    79 / 3 |            56 / 10 |  66 / 13 |  40 / 13 | 50 / 12 |   57 / 13 |  116 / 10 |  135 / 16 | 143 / 36 |  16 / 9 |  76 / 13 |   5,861 |     874 |
+| `container`     |   17 / 3 |  36 / 12 |  79 / 14 |   36 / 5 |   38 / 3 |  16 / 4 |     45 / 3 |  160 / 69 | 128 / 46 |   25 / 4 |     43 / 7 |  10 / 0 |  18 / 0 |    140 / 60 |  16 / 0 |    13 / 5 |  10 / 2 |   3 / 2 |      8 / 0 |     7 / 3 |  7 / 1 |   33 / 7 |  11 / 2 |   78 / 28 |   29 / 6 |   54 / 4 |  7 / 0 |   26 / 2 |   3 / 4 |     3 / 0 |  22 / 6 |   31 / 9 |    589 / 92 | 1,378 / 123 |  92 / 13 |   522 / 385 |   24 / 5 |  323 / 56 | 115 / 39 |  24 / 12 |  23 / 4 |   119 / 2 |             10 / 5 |   32 / 6 |   39 / 4 |   6 / 6 |  205 / 39 |   45 / 19 |   64 / 54 |  42 / 11 |   8 / 0 |    8 / 7 |   4,820 |   1,193 |
+| `unpack`        |   30 / 7 |   22 / 6 |  89 / 22 |   26 / 7 |  85 / 12 |  25 / 3 |     64 / 4 |  281 / 58 |  30 / 51 |   74 / 3 |     39 / 6 |   9 / 0 |  19 / 6 |    360 / 95 |   7 / 1 |    21 / 8 |   8 / 2 |  13 / 4 |     47 / 8 |     3 / 2 | 12 / 0 |  62 / 22 |  32 / 3 |  720 / 90 |   69 / 8 |  96 / 16 | 10 / 1 |   64 / 9 |   0 / 0 |     5 / 0 |   2 / 5 |   54 / 9 |    313 / 43 |    151 / 43 |  69 / 10 |   143 / 124 | 111 / 10 |  142 / 28 |  28 / 11 | 107 / 22 |  10 / 2 |   246 / 2 |             32 / 7 |   22 / 6 |   74 / 6 |  18 / 5 |     2 / 8 |    24 / 4 |     6 / 2 |  27 / 41 |   2 / 0 |  43 / 18 |   3,948 |     860 |
+| `attribute`     |  84 / 24 |  75 / 14 | 111 / 29 |   37 / 4 |   79 / 6 |  22 / 4 |      1 / 0 |  326 / 71 |    7 / 3 |  34 / 12 |    40 / 17 |  20 / 2 |  10 / 3 |   692 / 149 |  11 / 2 |    14 / 3 |  56 / 5 |  22 / 4 |     33 / 8 |     8 / 7 | 14 / 2 |   79 / 9 |  25 / 6 |  539 / 88 |   71 / 9 | 131 / 38 |  0 / 0 |   29 / 6 |   3 / 0 |     6 / 2 |  13 / 1 |  77 / 23 |    136 / 47 |       0 / 0 |  30 / 18 |     40 / 29 |  118 / 8 |    12 / 5 |   15 / 6 | 148 / 24 |   7 / 0 |    14 / 1 |            61 / 17 |  44 / 16 |  51 / 13 |  30 / 8 |     0 / 0 |     2 / 1 |     0 / 0 |    0 / 0 |   0 / 0 |    0 / 0 |   3,377 |     744 |
+| `builtin`       |   50 / 4 |   38 / 3 |   43 / 8 |   26 / 5 |   45 / 2 |  10 / 2 |      9 / 0 |  143 / 15 |   37 / 4 |   17 / 5 |     67 / 7 |  10 / 0 |   3 / 3 |    212 / 20 |  22 / 1 |    27 / 2 |   5 / 1 |  10 / 1 |     30 / 4 |     3 / 2 |  7 / 0 |   51 / 7 |  13 / 1 |  178 / 28 |   41 / 4 |   92 / 7 |  3 / 0 |   31 / 3 |   4 / 2 |    10 / 0 |  14 / 2 |   54 / 3 |    260 / 23 |    455 / 42 |   66 / 6 |    433 / 49 |   59 / 5 |  196 / 29 |   83 / 8 | 125 / 27 |  15 / 1 |     8 / 1 |             27 / 7 |   27 / 3 |   44 / 5 |  23 / 3 |    32 / 2 |   66 / 10 |    46 / 2 |   67 / 4 |   8 / 2 |  96 / 12 |   3,441 |     387 |
+| `rebound`       |   0 / 39 |   0 / 64 |   0 / 68 |   0 / 34 |   0 / 39 |   0 / 9 |     0 / 20 |   0 / 271 |   0 / 40 |   0 / 28 |     1 / 40 |   0 / 9 |   0 / 8 |     0 / 428 |  0 / 17 |    0 / 21 |   0 / 8 |  0 / 16 |     0 / 29 |    0 / 16 |  0 / 7 |   0 / 65 |  0 / 16 |   0 / 235 |   0 / 22 |   0 / 65 |  0 / 3 |   0 / 44 |   0 / 6 |     0 / 2 |  0 / 13 |   0 / 55 |     0 / 212 |     7 / 344 |   0 / 57 |     3 / 367 |   0 / 55 |   1 / 139 |   0 / 74 |  0 / 111 |  0 / 10 |     1 / 9 |             0 / 35 |   0 / 26 |   0 / 28 |  0 / 32 |   26 / 57 |    0 / 34 |    0 / 26 |   1 / 50 |  0 / 14 |   0 / 29 |      40 |   3,446 |
+| `arithmetic`    |  36 / 10 |   27 / 8 |  28 / 13 |    3 / 0 |   31 / 2 |   6 / 0 |     13 / 1 |   84 / 28 |    3 / 0 |   35 / 3 |     22 / 2 |  13 / 2 |   3 / 2 |    132 / 23 |   6 / 5 |     6 / 3 |  25 / 0 |   2 / 0 |      1 / 3 |     6 / 3 |  1 / 0 |  31 / 11 |   5 / 2 |  146 / 46 |   12 / 0 |  55 / 25 |  2 / 0 |   17 / 5 |   1 / 1 |     2 / 2 |  18 / 0 |  30 / 12 |     88 / 33 |    273 / 89 |  28 / 10 |    173 / 55 |   47 / 5 |   80 / 40 |   16 / 5 |  77 / 18 |   4 / 0 |  18 / 154 |              8 / 0 |   15 / 1 |   12 / 4 |  17 / 5 |   33 / 14 |    16 / 6 |   22 / 15 |   33 / 9 |   3 / 3 |  22 / 10 |   1,787 |     688 |
+| `subscript`     |  63 / 17 |  22 / 13 |  40 / 13 |   11 / 8 |   26 / 6 |   4 / 2 |     16 / 2 |  120 / 63 |   12 / 2 |   21 / 5 |      6 / 5 |   5 / 1 |   2 / 1 |    232 / 72 |   7 / 3 |    12 / 3 |  12 / 4 |   4 / 3 |      4 / 0 |     4 / 3 |  4 / 0 |  34 / 11 |   8 / 1 |  143 / 34 |   28 / 5 |  41 / 16 |  0 / 0 |   19 / 5 |   0 / 0 |     0 / 0 |   4 / 1 |  27 / 11 |     48 / 25 |     41 / 23 |   18 / 8 |     60 / 26 |   24 / 8 |   32 / 17 |  38 / 15 |  72 / 20 |   8 / 1 |   219 / 1 |             23 / 6 |  26 / 12 |    4 / 4 |  23 / 2 |    21 / 6 |     9 / 2 |     7 / 0 |    5 / 2 |   0 / 0 |    3 / 7 |   1,612 |     495 |
+| `member`        |    0 / 0 |    0 / 8 |   0 / 27 |   0 / 52 |   0 / 13 |   0 / 3 |      0 / 0 |   0 / 136 |    0 / 4 |    0 / 9 |     0 / 44 |   0 / 0 |   0 / 6 |      0 / 51 |   0 / 5 |     0 / 9 |   0 / 1 |   0 / 0 |      0 / 3 |    0 / 18 |  0 / 3 |   0 / 15 |   0 / 0 |     0 / 2 |    0 / 0 |    0 / 3 |  0 / 2 |   0 / 18 |   0 / 0 |     0 / 0 |   0 / 8 |   0 / 14 |       0 / 4 |      0 / 26 |    0 / 8 |     0 / 418 |    0 / 7 |    0 / 73 |   0 / 31 |    0 / 3 |   0 / 2 |   0 / 492 |              0 / 2 |    0 / 2 |    0 / 0 |   0 / 3 |    0 / 62 |   0 / 122 |   0 / 308 |    0 / 3 |   0 / 2 |    0 / 8 |       0 |   2,030 |
+| `assigned`      |    0 / 2 |   0 / 15 |   0 / 49 |    0 / 8 |   0 / 11 |   0 / 7 |      0 / 0 |   0 / 108 |   0 / 44 |    0 / 5 |     0 / 13 |   0 / 0 |  0 / 15 |     0 / 239 |  0 / 12 |    0 / 13 |  0 / 11 |   1 / 8 |     0 / 26 |    0 / 10 |  0 / 2 |   0 / 54 |   1 / 6 |   0 / 163 |   0 / 45 |   0 / 53 |  0 / 1 |   0 / 32 |   0 / 0 |     0 / 3 |   0 / 4 |   0 / 47 |     0 / 117 |      0 / 31 |    0 / 4 |       0 / 2 |    0 / 8 |     0 / 6 |    0 / 6 |   0 / 55 |   0 / 1 |     0 / 0 |             0 / 17 |   0 / 34 |   0 / 32 |   0 / 8 |    0 / 29 |     0 / 4 |     0 / 4 |    0 / 4 |   0 / 5 |   0 / 10 |       2 |   1,383 |
+| `comprehension` |   17 / 2 |   7 / 14 |  31 / 17 |    8 / 5 |   34 / 2 |   7 / 3 |      9 / 0 |   32 / 11 |    8 / 8 |   12 / 3 |      7 / 3 |   4 / 2 |   6 / 2 |    144 / 32 |   3 / 3 |     3 / 3 |   6 / 0 |   2 / 0 |      3 / 0 |     0 / 1 |  1 / 0 |   11 / 3 |   7 / 4 |   43 / 19 |    7 / 2 |   21 / 2 |  0 / 0 |    7 / 0 |   1 / 1 |     2 / 1 |   5 / 1 |   30 / 2 |     73 / 75 |     74 / 31 |   18 / 2 |     91 / 36 |   35 / 2 |   39 / 16 |    8 / 5 |  48 / 19 |   5 / 0 |     2 / 1 |             10 / 4 |   35 / 7 |   11 / 5 |   3 / 3 |     2 / 1 |     4 / 5 |     7 / 1 |   11 / 7 |   0 / 0 |    6 / 3 |     960 |     369 |
+| `returned`      |    0 / 0 |    0 / 0 |    4 / 0 |    1 / 0 |    0 / 0 |   0 / 0 |      0 / 0 |     0 / 0 |  43 / 99 |    0 / 0 |      0 / 3 |   0 / 0 |   0 / 0 |       0 / 0 |   0 / 0 |     0 / 0 |   0 / 0 |   0 / 0 |      0 / 0 |     0 / 0 |  0 / 0 |    0 / 0 |   0 / 0 |     0 / 0 |    0 / 0 |   4 / 17 |  0 / 1 |    0 / 0 |   0 / 0 |     0 / 0 |   0 / 0 |    0 / 0 |     36 / 79 |    13 / 120 |    0 / 8 |   110 / 140 |    0 / 0 |   42 / 83 |   0 / 38 |    0 / 0 |   0 / 0 |    24 / 2 |              0 / 0 |    0 / 0 |    0 / 0 |   0 / 0 |     9 / 5 |    1 / 13 |   29 / 73 |   7 / 40 |  0 / 12 |    8 / 7 |     331 |     740 |
+| `conditional`   |   21 / 4 |  14 / 12 |   47 / 7 |   13 / 0 |   39 / 2 |  11 / 1 |      7 / 0 |   26 / 10 |    7 / 1 |   14 / 2 |      8 / 1 |   3 / 1 |   2 / 0 |     86 / 10 |   8 / 1 |     3 / 1 |  22 / 2 |   5 / 8 |     21 / 0 |     0 / 0 |  2 / 0 |    8 / 4 |   2 / 2 |   50 / 19 |   22 / 7 |   29 / 5 |  4 / 0 |    9 / 3 |   6 / 0 |     3 / 0 |   4 / 1 |    6 / 1 |      60 / 6 |     25 / 10 |    2 / 2 |     59 / 13 |   21 / 3 |    27 / 9 |   17 / 7 |   27 / 8 |   1 / 0 |     1 / 0 |             14 / 4 |   17 / 3 |   26 / 5 |   9 / 0 |    14 / 1 |     9 / 3 |     8 / 1 |    7 / 0 |   0 / 0 |    3 / 0 |     849 |     180 |
+| `builder`       |   10 / 1 |    7 / 0 |   31 / 6 |   10 / 4 |   19 / 4 |   7 / 1 |      4 / 2 |   100 / 7 |    1 / 0 |   10 / 0 |      5 / 0 |   2 / 0 |   8 / 0 |     68 / 11 |   0 / 0 |     3 / 2 |   2 / 1 |   2 / 0 |      4 / 2 |     2 / 1 |  2 / 0 |   14 / 0 |   5 / 1 |   29 / 11 |   15 / 1 |   14 / 1 |  0 / 0 |   10 / 2 |   0 / 0 |     0 / 0 |   4 / 0 |   17 / 2 |      61 / 9 |     104 / 5 |   14 / 5 |    112 / 12 |   34 / 1 |     8 / 1 |    4 / 0 |   15 / 5 |   0 / 0 |     0 / 1 |              2 / 0 |   10 / 2 |   22 / 0 |   0 / 1 |     5 / 0 |    11 / 1 |     2 / 1 |    3 / 1 |   0 / 0 |    3 / 1 |     815 |     106 |
+| `alias`         |   10 / 0 |   10 / 0 |    7 / 0 |    0 / 0 |   11 / 0 |   5 / 0 |      3 / 0 |     2 / 0 |    4 / 0 |    1 / 0 |      0 / 0 |  10 / 0 |   3 / 0 |       9 / 0 |  29 / 0 |    28 / 0 |  18 / 0 |   3 / 0 |     10 / 0 |    11 / 0 | 26 / 0 |   41 / 0 |   8 / 0 |    58 / 0 |   40 / 0 |   10 / 0 |  1 / 0 |    4 / 0 |   2 / 0 |     0 / 0 |  15 / 0 |   23 / 0 |     111 / 0 |       0 / 0 |   10 / 0 |       3 / 0 |   50 / 0 |     9 / 0 |   32 / 0 |    6 / 0 |   8 / 0 |    10 / 0 |             28 / 0 |   19 / 0 |    0 / 0 |   1 / 0 |     0 / 0 |     3 / 0 |     0 / 0 |    0 / 0 |   0 / 0 |    0 / 0 |     692 |       0 |
+| `filled`        |   0 / 15 |   0 / 28 |   0 / 11 |   0 / 14 |    0 / 8 |   0 / 3 |      0 / 5 |    0 / 57 |    0 / 1 |   0 / 13 |     0 / 14 |   0 / 5 |   0 / 5 |     0 / 130 |   0 / 3 |     0 / 0 |   0 / 1 |   0 / 0 |      0 / 6 |     0 / 3 |  0 / 1 |   0 / 13 |   0 / 1 |     0 / 2 |    0 / 0 |   0 / 17 |  0 / 2 |   0 / 16 |  0 / 11 |     0 / 0 |   0 / 3 |   0 / 16 |      0 / 26 |      0 / 20 |    0 / 1 |      0 / 57 |    0 / 7 |    0 / 13 |    0 / 8 |   0 / 33 |   0 / 1 |     0 / 0 |             0 / 16 |   0 / 12 |    0 / 1 |  0 / 11 |    0 / 12 |     0 / 2 |    0 / 18 |    0 / 5 |   0 / 1 |   0 / 14 |       0 |     662 |
+| `open`          |    5 / 0 |    7 / 2 |   39 / 5 |    6 / 3 |   11 / 0 |   6 / 0 |     22 / 2 |    41 / 3 |   31 / 3 |    6 / 0 |      1 / 1 |   4 / 0 |   0 / 0 |      59 / 8 |   0 / 0 |     1 / 0 |   0 / 1 |   0 / 0 |      0 / 0 |     2 / 1 |  1 / 0 |    1 / 2 |   0 / 0 |     7 / 2 |    2 / 0 |    8 / 2 |  0 / 0 |    0 / 2 |   0 / 0 |     0 / 0 |   2 / 0 |   12 / 1 |       4 / 3 |      13 / 1 |    0 / 0 |     25 / 10 |    1 / 0 |   60 / 15 |    0 / 0 |    7 / 0 |   1 / 0 |     0 / 0 |              1 / 0 |    2 / 0 |    0 / 0 |   1 / 0 |     7 / 5 |     4 / 0 |     4 / 0 |   18 / 9 |   4 / 1 |    1 / 0 |     427 |      82 |
+| `final`         |    0 / 2 |    0 / 4 |    0 / 7 |    0 / 6 |    0 / 8 |   0 / 4 |     0 / 27 |    0 / 16 |    0 / 1 |    0 / 0 |     0 / 14 |   0 / 5 |   0 / 2 |       0 / 7 |   0 / 0 |     0 / 4 |   0 / 2 |   0 / 0 |      0 / 3 |     0 / 5 |  0 / 2 |   0 / 11 |   0 / 7 |    0 / 26 |   0 / 26 |   0 / 11 |  0 / 1 |    0 / 3 |   0 / 0 |     0 / 6 |   0 / 5 |    0 / 4 |      0 / 16 |      0 / 11 |    0 / 2 |      0 / 13 |    0 / 2 |    0 / 12 |    0 / 0 |   0 / 24 |   0 / 2 |     0 / 1 |              0 / 9 |    0 / 7 |    0 / 4 |   0 / 3 |    0 / 11 |    0 / 62 |    0 / 18 |    0 / 9 |   0 / 1 |    0 / 5 |       0 |     431 |
+| `boolean`       |    9 / 2 |    9 / 3 |   12 / 3 |    2 / 1 |   15 / 1 |   4 / 0 |      3 / 0 |    16 / 3 |    1 / 1 |   16 / 3 |      6 / 1 |   1 / 0 |   2 / 0 |     44 / 15 |   4 / 0 |     3 / 4 |   1 / 0 |   0 / 0 |      2 / 1 |     2 / 0 |  0 / 0 |    4 / 5 |   9 / 4 |   13 / 11 |   13 / 1 |    8 / 4 |  3 / 0 |    3 / 2 |   1 / 0 |     4 / 0 |   4 / 0 |    3 / 1 |      17 / 1 |       6 / 2 |    1 / 0 |      10 / 2 |   10 / 1 |     2 / 0 |    7 / 2 |    5 / 1 |   2 / 0 |     2 / 0 |              7 / 0 |    7 / 1 |    7 / 0 |   4 / 2 |     0 / 3 |     7 / 0 |     9 / 2 |    3 / 1 |   0 / 0 |    9 / 0 |     332 |      84 |
+| `optional`      |    2 / 5 |    8 / 4 |    2 / 3 |    0 / 1 |    3 / 0 |   0 / 1 |      1 / 0 |   52 / 22 |    0 / 0 |    3 / 0 |      1 / 1 |   1 / 1 |   0 / 0 |     37 / 15 |   0 / 0 |     0 / 2 |   2 / 0 |   2 / 0 |      0 / 0 |     1 / 0 |  2 / 0 |    2 / 0 |   1 / 1 |     5 / 0 |    3 / 8 |   7 / 10 |  0 / 0 |    8 / 2 |   0 / 0 |     0 / 0 |   4 / 0 |    4 / 3 |      11 / 2 |       6 / 6 |    3 / 2 |      17 / 5 |    3 / 0 |     0 / 6 |    7 / 1 |    6 / 6 |   2 / 0 |     0 / 0 |              5 / 0 |    1 / 1 |    0 / 0 |   0 / 1 |     0 / 2 |     6 / 3 |     2 / 0 |    5 / 2 |   0 / 1 |    1 / 0 |     226 |     117 |
+| `cast`          |    3 / 0 |    2 / 0 |   14 / 5 |    0 / 0 |   17 / 6 |   2 / 0 |      0 / 0 |    54 / 7 |    0 / 0 |    0 / 2 |      1 / 1 |   1 / 0 |   0 / 0 |       6 / 3 |   0 / 0 |     0 / 2 |   0 / 0 |   6 / 4 |      4 / 2 |     0 / 0 |  0 / 1 |    3 / 1 |   6 / 0 |    10 / 5 |    2 / 3 |    5 / 0 |  0 / 0 |    5 / 3 |   0 / 0 |     2 / 0 |   0 / 1 |    7 / 0 |       5 / 5 |       0 / 0 |    0 / 0 |       0 / 0 |    6 / 1 |     0 / 0 |    0 / 0 |    3 / 0 |   0 / 1 |     0 / 1 |             17 / 6 |    7 / 6 |  21 / 19 |   4 / 1 |     0 / 0 |     0 / 0 |     0 / 0 |    0 / 0 |   0 / 0 |    0 / 0 |     213 |      86 |
+| `compare`       |    4 / 0 |    4 / 4 |    5 / 0 |    1 / 0 |    5 / 0 |   2 / 0 |      1 / 0 |    14 / 2 |    2 / 0 |    0 / 2 |      6 / 1 |   0 / 0 |   0 / 0 |      20 / 2 |   3 / 0 |     1 / 0 |   1 / 0 |   0 / 0 |      0 / 1 |     1 / 0 |  0 / 0 |    4 / 1 |   1 / 0 |    15 / 6 |    3 / 0 |    8 / 2 |  1 / 0 |    1 / 1 |   0 / 0 |     3 / 0 |   1 / 1 |    7 / 1 |       6 / 2 |      10 / 0 |    5 / 0 |     13 / 16 |    6 / 0 |     5 / 0 |    2 / 0 |    1 / 0 |   1 / 0 |     0 / 0 |              2 / 0 |    2 / 0 |    4 / 0 |   1 / 0 |     0 / 2 |     8 / 1 |     2 / 0 |    1 / 1 |   3 / 0 |    1 / 0 |     187 |      46 |
+| `await`         |    0 / 0 |    0 / 0 |    0 / 0 |    0 / 0 |    0 / 0 |   0 / 0 |      0 / 0 |     0 / 0 |    0 / 0 |    0 / 0 |      0 / 1 |   0 / 0 |   0 / 0 |       0 / 0 |   5 / 0 |     1 / 0 |   1 / 0 |   7 / 1 |     14 / 3 |     1 / 0 |  6 / 0 |  30 / 13 |   6 / 3 |     1 / 1 |  27 / 14 |    0 / 0 |  0 / 0 |    0 / 0 |   0 / 0 |     0 / 0 |   0 / 0 |    0 / 0 |       0 / 0 |       0 / 0 |    0 / 0 |       0 / 0 |   39 / 4 |     0 / 0 |    0 / 0 |    0 / 0 |   0 / 0 |    10 / 0 |              5 / 2 |    5 / 3 |    0 / 0 |   0 / 0 |     0 / 0 |     0 / 0 |     0 / 0 |    0 / 0 |   0 / 0 |    0 / 0 |     158 |      45 |
+| `joined`        |    0 / 1 |    0 / 0 |    0 / 2 |    0 / 0 |    0 / 1 |   0 / 1 |      0 / 0 |     0 / 2 |   0 / 17 |    0 / 0 |      0 / 1 |   0 / 0 |   0 / 0 |       0 / 1 |   0 / 0 |     0 / 2 |   0 / 0 |   0 / 0 |      0 / 0 |     0 / 0 |  0 / 0 |    0 / 3 |   0 / 0 |     0 / 2 |    0 / 0 |    0 / 1 |  0 / 0 |    0 / 1 |   0 / 0 |     0 / 0 |   0 / 1 |    1 / 0 |      0 / 32 |      2 / 49 |    0 / 1 |      0 / 29 |    0 / 3 |     0 / 8 |    0 / 5 |    0 / 2 |   0 / 0 |     0 / 0 |              0 / 3 |    0 / 5 |    0 / 2 |   0 / 0 |     0 / 1 |     0 / 2 |     0 / 6 |    0 / 0 |   0 / 0 |    0 / 3 |       3 |     187 |
+
+Untyped bindings (`corpus_untyped`): those `--fix` offers only a guess for, those it offers nothing
+for, and the commonest shapes of the values with no fix:
+
+| Corpus             | Untyped | Only a guess |         No fix | In files that don't parse |
+| ------------------ | ------: | -----------: | -------------: | ------------------------: |
+| black              |   1,273 |          182 |    399 (31.3%) |                         0 |
+| poetry             |   2,387 |          299 |  1,297 (54.3%) |                         0 |
+| pdm                |   2,718 |          354 |  1,278 (47.0%) |                         0 |
+| hatch              |   1,567 |          182 |    883 (56.3%) |                         0 |
+| tox                |   1,762 |          160 |    686 (38.9%) |                         0 |
+| nox                |     514 |           52 |    179 (34.8%) |                         0 |
+| pre-commit         |     806 |           80 |    248 (30.8%) |                         0 |
+| sphinx             |   7,972 |          949 |  3,983 (50.0%) |                         0 |
+| mkdocs             |   2,332 |          463 |  1,101 (47.2%) |                         0 |
+| pipx               |   1,016 |          122 |    241 (23.7%) |                         0 |
+| streamlink         |   3,029 |          244 |  2,122 (70.1%) |                         0 |
+| copier             |     384 |           44 |    176 (45.8%) |                         0 |
+| flake8             |     341 |           49 |    124 (36.4%) |                         0 |
+| mypy               |  11,401 |        1,841 |  4,999 (43.8%) |                         0 |
+| httpx              |     569 |           83 |    223 (39.2%) |                         0 |
+| starlette          |     744 |          111 |    336 (45.2%) |                         0 |
+| uvicorn            |     489 |           46 |    224 (45.8%) |                         0 |
+| anyio              |     715 |           63 |    455 (63.6%) |                         0 |
+| websockets         |     791 |          116 |    353 (44.6%) |                         0 |
+| hypercorn          |     355 |           64 |    165 (46.5%) |                         0 |
+| quart              |     482 |           37 |    302 (62.7%) |                         0 |
+| aiohttp            |   1,857 |          257 |    953 (51.3%) |                         0 |
+| fastapi            |     742 |           65 |    432 (58.2%) |                         0 |
+| textual            |   6,483 |          814 |  3,174 (49.0%) |                         0 |
+| mcp                |   1,721 |          251 |    794 (46.1%) |                         0 |
+| pytest             |   3,003 |          318 |  1,364 (45.4%) |                         0 |
+| attrs              |     393 |           13 |    285 (72.5%) |                         0 |
+| werkzeug           |   1,293 |          154 |    628 (48.6%) |                         0 |
+| cattrs             |     520 |           40 |    378 (72.7%) |                         0 |
+| structlog          |     316 |           29 |    190 (60.1%) |                         0 |
+| urllib3            |     634 |           64 |    330 (52.1%) |                         0 |
+| coverage           |   1,502 |          228 |    509 (33.9%) |                         0 |
+| xarray             |  21,344 |        3,445 | 14,412 (67.5%) |                         0 |
+| networkx           |  22,456 |        2,627 | 15,962 (71.1%) |                         0 |
+| pint               |   3,078 |          185 |  2,351 (76.4%) |                         0 |
+| dask               |  24,172 |        2,740 | 18,407 (76.2%) |                         0 |
+| zarr               |   2,411 |          157 |  1,220 (50.6%) |                         0 |
+| nibabel            |   8,468 |          998 |  5,715 (67.5%) |                         0 |
+| seaborn            |   2,895 |          287 |  1,994 (68.9%) |                         0 |
+| optuna             |   3,598 |          382 |  1,799 (50.0%) |                         0 |
+| altair             |   1,709 |           77 |  1,270 (74.3%) |                         0 |
+| stripe             |   3,357 |          665 |  2,130 (63.4%) |                         0 |
+| strawberry-graphql |   1,806 |          233 |  1,024 (56.7%) |                         0 |
+| litestar           |   1,905 |          181 |  1,127 (59.2%) |                         0 |
+| narwhals           |   3,120 |          140 |  2,051 (65.7%) |                         0 |
+| click              |     608 |           86 |    241 (39.6%) |                         0 |
+| pygments           |   7,666 |          243 |  6,697 (87.4%) |                         0 |
+| celery             |   3,748 |          363 |  2,884 (76.9%) |                         0 |
+| botocore           |   3,786 |          593 |  2,650 (70.0%) |                         0 |
+| joblib             |   2,239 |          274 |  1,454 (64.9%) |                         0 |
+| mako               |     616 |           70 |    477 (77.4%) |                         0 |
+| boltons            |   1,499 |          124 |  1,041 (69.4%) |                         0 |
+
+| No fix: the value's shape           | black | poetry | pdm | hatch | tox | nox | pre-commit | sphinx | mkdocs | pipx | streamlink | copier | flake8 | mypy | httpx | starlette | uvicorn | anyio | websockets | hypercorn | quart | aiohttp | fastapi | textual | mcp | pytest | attrs | werkzeug | cattrs | structlog | urllib3 | coverage | xarray | networkx | pint |  dask | zarr | nibabel | seaborn | optuna | altair | stripe | strawberry-graphql | litestar | narwhals | click | pygments | celery | botocore | joblib | mako | boltons |  Total |
+| ----------------------------------- | ----: | -----: | --: | ----: | --: | --: | ---------: | -----: | -----: | ---: | ---------: | -----: | -----: | ---: | ----: | --------: | ------: | ----: | ---------: | --------: | ----: | ------: | ------: | ------: | --: | -----: | ----: | -------: | -----: | --------: | ------: | -------: | -----: | -------: | ---: | ----: | ---: | ------: | ------: | -----: | -----: | -----: | -----------------: | -------: | -------: | ----: | -------: | -----: | -------: | -----: | ---: | ------: | -----: |
+| call: module.func()                 |     7 |     38 |  75 |    40 |  20 |  22 |         26 |     92 |     31 |   13 |         72 |      3 |      8 |   83 |     4 |        11 |       8 |    23 |         29 |        13 |     5 |      51 |       6 |      26 |  44 |     50 |     8 |       18 |      0 |         4 |      20 |       80 |  2,176 |    4,461 |  106 | 4,040 |   80 |     713 |     152 |    299 |     22 |      2 |                 24 |       12 |      147 |     8 |       62 |     59 |       63 |     95 |   28 |      30 | 13,509 |
+| call: chained .method()             |    21 |    164 | 180 |   146 | 138 |   8 |          5 |    495 |     29 |   10 |        487 |     37 |      6 |  384 |    24 |        26 |      43 |    29 |         32 |        28 |    23 |     111 |      42 |     143 |  82 |    160 |     3 |       64 |     15 |         8 |      39 |       33 |  1,609 |      486 |  144 | 1,453 |  102 |     415 |     133 |    222 |     61 |    276 |                100 |       97 |      237 |    32 |       73 |    208 |      353 |     92 |   22 |      65 |  9,195 |
+| call: imported function             |    12 |     57 |  60 |    58 |  25 |   4 |         11 |    232 |     38 |   12 |         77 |     12 |      1 |  528 |     0 |         9 |       3 |    36 |          0 |         4 |    14 |       8 |      39 |     141 |  52 |      9 |    35 |       39 |     54 |         5 |       9 |        7 |  1,254 |      725 |   88 | 1,873 |   95 |     383 |      90 |     70 |     19 |     16 |                 64 |       81 |      205 |    14 |       93 |    193 |       82 |    113 |    5 |      25 |  7,079 |
+| call: local.method()                |    31 |    137 | 127 |   138 |  44 |  13 |         16 |    237 |     65 |   38 |        120 |     11 |      5 |  195 |    20 |        30 |       7 |    19 |         41 |        12 |     9 |      67 |      29 |      82 |  37 |     58 |    12 |       34 |      8 |         1 |      27 |       35 |  1,341 |      816 |  164 | 1,442 |   70 |     332 |     130 |     72 |     47 |     11 |                 40 |       59 |      104 |    11 |       94 |    104 |      232 |    106 |   24 |      42 |  6,946 |
+| call: self.method()                 |     0 |    104 |  16 |     2 |  18 |   2 |          0 |     68 |    152 |    3 |        193 |      6 |      4 |  611 |    11 |        14 |       6 |     5 |          7 |         1 |    13 |      40 |       8 |     180 |  13 |     89 |     6 |       24 |      3 |         4 |       7 |       12 |    586 |      322 |  295 |   129 |   50 |     273 |     146 |     16 |    104 |     35 |                 52 |       59 |      119 |    15 |       50 |    190 |      373 |     32 |   31 |      74 |  4,573 |
+| other constant                      |     0 |     96 |  16 |     1 |   4 |   1 |          0 |    345 |      3 |    0 |        205 |      6 |      4 |   27 |     0 |         8 |       1 |     3 |          4 |         1 |     5 |      71 |       1 |     227 |   2 |     20 |     0 |       75 |      0 |         1 |       3 |        0 |     47 |        2 |    2 |    57 |   15 |      73 |      10 |      7 |    203 |      6 |                  7 |        5 |        0 |    17 |    2,312 |     89 |        9 |     38 |   11 |       0 |  4,040 |
+| call: param.method()                |     6 |     27 |  70 |    47 |  45 |   3 |          4 |    149 |     31 |   15 |         38 |      4 |      4 |  101 |    26 |        33 |      31 |    11 |         17 |        11 |     9 |      16 |      27 |      35 |  34 |     58 |     5 |       33 |     12 |        27 |      23 |       16 |    367 |      643 |  105 |   470 |   68 |     109 |     133 |     72 |     46 |     20 |                 20 |       53 |       80 |     7 |       82 |     91 |      253 |     39 |   38 |      30 |  3,694 |
+| dict (mixed/unknown elements)       |     1 |      9 |  17 |    17 |   8 |   4 |          4 |     64 |     43 |    0 |         48 |      2 |      1 |   11 |     8 |         6 |       6 |     0 |          4 |         2 |     3 |       5 |      11 |      18 |   4 |      6 |     4 |        4 |      4 |         2 |       6 |        3 |    224 |      169 |    4 |   431 |   11 |      34 |      32 |      7 |    473 |    911 |                  9 |       18 |       12 |     0 |      563 |     43 |       69 |     16 |   10 |       6 |  3,367 |
+| copy: local                         |    20 |     68 |  41 |    28 |  26 |   3 |          7 |    176 |     25 |   17 |        200 |      6 |     14 |  269 |     7 |         6 |       5 |    26 |          8 |         3 |    12 |      27 |      18 |     155 |  37 |     64 |     8 |       32 |     19 |         5 |      11 |       27 |    150 |      654 |   20 |   234 |   52 |     123 |      58 |     23 |     11 |     12 |                 28 |       32 |       19 |     4 |       59 |     61 |       72 |     34 |   15 |      38 |  3,069 |
+| binop (unknown operands)            |     7 |     25 |  17 |    10 |   6 |   1 |          5 |    106 |      0 |    8 |         15 |      7 |      2 |   84 |     0 |         5 |      24 |     3 |          8 |        10 |     2 |      15 |       3 |     104 |   6 |     28 |     2 |        2 |      2 |         1 |       2 |        9 |    739 |      383 |  136 |   403 |   62 |     211 |      77 |     85 |      6 |      4 |                 10 |        8 |       38 |     1 |      128 |     29 |       31 |     32 |    8 |      41 |  2,951 |
+| list (mixed/unknown elements)       |     4 |      3 |   9 |     7 |   0 |   4 |          1 |     73 |     13 |    1 |          9 |      1 |      1 |   28 |     1 |         0 |       3 |     2 |          2 |         2 |    10 |       0 |       3 |      37 |   1 |      8 |     0 |        4 |      2 |         0 |       3 |        9 |    221 |      272 |   19 |   354 |    6 |      83 |      26 |     10 |      0 |      4 |                  1 |        6 |        4 |     2 |    1,585 |      5 |       20 |     25 |    7 |      13 |  2,904 |
+| subscript: other                    |    36 |     27 |  29 |    43 |  27 |   2 |          0 |    111 |     10 |    3 |         37 |      5 |      9 |  228 |     5 |         1 |       0 |     9 |          8 |         0 |    25 |      19 |       1 |      82 |  10 |     47 |     1 |        6 |      6 |         2 |       7 |        8 |    253 |      326 |   16 |   331 |   29 |     215 |      71 |     55 |     10 |      1 |                 37 |       55 |       17 |     4 |       19 |     50 |       97 |     19 |   17 |      19 |  2,445 |
+| attr: chained                       |    19 |     45 |  72 |    18 |  31 |  13 |          1 |    188 |     26 |   14 |         31 |      5 |      4 |  256 |     7 |         6 |       6 |    15 |          6 |         2 |     3 |      40 |       5 |     189 |  13 |     70 |     3 |        5 |      5 |        12 |       6 |       13 |    251 |       79 |   67 |   178 |   43 |      84 |      43 |     35 |      7 |      0 |                 66 |       41 |      137 |     1 |       15 |     97 |       55 |     79 |   11 |      18 |  2,436 |
+| call: imported.attr()               |     0 |     65 |  36 |     3 |   3 |   3 |          0 |    262 |    369 |    1 |         74 |     29 |      2 |   27 |     0 |         0 |       0 |     2 |          0 |         0 |    20 |       5 |       6 |      33 |  17 |     13 |     1 |        3 |      0 |        16 |       1 |        0 |    393 |      157 |   80 |    90 |   11 |     216 |      19 |    115 |     12 |     12 |                  2 |        4 |        9 |     3 |      109 |     23 |       15 |    109 |   11 |       1 |  2,382 |
+| attr: self.x                        |     6 |     17 |  21 |     4 |  16 |   2 |          0 |     82 |     12 |    2 |         16 |      4 |      8 |   79 |    26 |         9 |       7 |    12 |         11 |         2 |     6 |      96 |      10 |     278 |  17 |     31 |    11 |       27 |      4 |         3 |      22 |       13 |     91 |      298 |   73 |   164 |   16 |     179 |      47 |     10 |      5 |     16 |                 19 |       38 |      112 |     8 |       42 |    167 |       60 |     25 |   17 |      70 |  2,311 |
+| tuple (mixed/unknown elements)      |     4 |      5 |  41 |     8 |  31 |   3 |         12 |     70 |     28 |    3 |         24 |      3 |      0 |   47 |     3 |         8 |       2 |     3 |         13 |         2 |     0 |      17 |       3 |      43 |  13 |     24 |     5 |        6 |      2 |         3 |       4 |        5 |     66 |      213 |  127 |   258 |   10 |     343 |      81 |     21 |      9 |      1 |                 14 |        4 |       62 |     0 |      351 |    153 |       25 |     24 |    6 |     102 |  2,305 |
+| call: module function (unannotated) |     0 |      0 |   5 |     3 |   0 |   0 |          0 |      0 |     31 |    0 |          4 |      0 |      0 |    0 |     0 |         0 |       0 |     0 |          0 |         0 |     0 |       1 |       0 |       0 |   3 |      8 |    16 |        0 |      0 |         0 |       0 |        0 |    401 |      474 |   37 |   493 |    0 |     173 |      24 |      0 |      7 |      3 |                  0 |        0 |        0 |     0 |       23 |     55 |       32 |     48 |   22 |      44 |  1,907 |
+| empty list                          |    11 |     38 |  13 |    37 |   6 |   3 |          2 |     96 |      7 |    3 |          9 |      2 |      5 |  241 |     3 |         1 |       3 |     1 |          2 |         2 |     9 |       9 |       2 |       6 |   0 |     51 |    11 |       20 |     18 |         4 |       4 |       21 |     84 |      198 |   13 |   295 |   14 |      55 |      55 |     67 |     10 |      0 |                 18 |       13 |        9 |     7 |      159 |     22 |       50 |     22 |   13 |      41 |  1,785 |
+| attr: local.x                       |    33 |     47 |  34 |     9 |  13 |   6 |          4 |     72 |      8 |    5 |          8 |      3 |      4 |  221 |     0 |         2 |       7 |    17 |          9 |         0 |     6 |      37 |      13 |     185 |  15 |     47 |     8 |        5 |     20 |         0 |       8 |       17 |    141 |      139 |   30 |   144 |    9 |     115 |      13 |     32 |     10 |     14 |                 46 |       32 |       29 |     1 |        9 |     44 |       24 |     17 |   10 |      14 |  1,736 |
+| attr: param.x                       |    59 |     47 |  40 |     7 |   5 |   7 |          3 |     77 |     37 |    3 |         20 |      0 |      2 |  241 |     3 |         2 |       0 |     6 |          2 |        13 |     6 |      30 |       5 |     100 |  23 |     61 |     3 |        2 |     15 |         1 |       4 |       13 |     84 |      105 |   26 |   110 |   22 |      78 |      12 |     69 |     13 |      0 |                 53 |       31 |       56 |     1 |       14 |     61 |       86 |     18 |   39 |      14 |  1,729 |
+
+Each package's own tests and type checks, as released and after fixing its source
+(`corpus_suite.py`): the tests' outcome, and the type errors a fixed run has that the released one
+hasn't, by the mechanisms of the fixes they're traced to:
+
+| Package            | Tag          | Released                                                                                        | After `--fix`                                                                                      | After `--fix --unsafe-fixes`                                                                       |
+| ------------------ | ------------ | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| black              | 26.10.0      | 519 passed, 1 skipped (run twice)                                                               | DIFFERENT: 1 failed, 518 passed, 1 skipped (21 files changed, 715 insertions(+), 516 deletions(-)) | DIFFERENT: 1 failed, 518 passed, 1 skipped (22 files changed, 900 insertions(+), 673 deletions(-)) |
+| pdm                | 2.29.2       | 1,472 passed, 1 skipped                                                                         | the same (100 files changed, 1223 insertions(+), 776 deletions(-))                                 | the same (104 files changed, 1593 insertions(+), 1048 deletions(-))                                |
+| tox                | 4.64.9       | 1 failed, 8,547 passed, 31 skipped                                                              | the same (93 files changed, 960 insertions(+), 636 deletions(-))                                   | the same (98 files changed, 1128 insertions(+), 759 deletions(-))                                  |
+| nox                | 2026.08.17   | 1 failed, 903 passed, 22 skipped, 1 xpassed                                                     | the same (21 files changed, 312 insertions(+), 217 deletions(-))                                   | the same (21 files changed, 365 insertions(+), 262 deletions(-))                                   |
+| pre-commit         | v4.6.2       | 3 failed, 637 passed, 1 skipped, 3 xfailed, 7 error                                             | the same (55 files changed, 511 insertions(+), 327 deletions(-))                                   | the same (57 files changed, 613 insertions(+), 394 deletions(-))                                   |
+| sphinx             | v9.1.0       | 9 failed, 2,393 passed, 22 skipped                                                              | the same (193 files changed, 3118 insertions(+), 2144 deletions(-))                                | the same (212 files changed, 4087 insertions(+), 2871 deletions(-))                                |
+| mkdocs             | 1.6.1        | 724 ran, 2 failures, 2 errors, 4 skipped                                                        | the same (44 files changed, 815 insertions(+), 631 deletions(-))                                   | the same (46 files changed, 1296 insertions(+), 1025 deletions(-))                                 |
+| streamlink         | 8.6.1        | 7,248 passed, 36 skipped                                                                        | the same (164 files changed, 1034 insertions(+), 532 deletions(-))                                 | the same (168 files changed, 1289 insertions(+), 741 deletions(-))                                 |
+| copier             | v9.18.2      | 1,330 passed, 28 skipped, 6 xfailed (run twice)                                                 | the same (13 files changed, 212 insertions(+), 145 deletions(-))                                   | the same (13 files changed, 258 insertions(+), 180 deletions(-))                                   |
+| flake8             | 7.4.1        | 468 passed                                                                                      | the same (24 files changed, 191 insertions(+), 119 deletions(-))                                   | the same (26 files changed, 242 insertions(+), 157 deletions(-))                                   |
+| mypy               | v2.4.0       | 14,464 passed, 366 skipped, 12 xfailed                                                          | the same (160 files changed, 4798 insertions(+), 3002 deletions(-))                                | the same (167 files changed, 6689 insertions(+), 4483 deletions(-))                                |
+| httpx              | 0.28.1       | 1 failed, 1,416 passed, 1 skipped                                                               | the same (16 files changed, 234 insertions(+), 194 deletions(-))                                   | the same (18 files changed, 349 insertions(+), 287 deletions(-))                                   |
+| starlette          | 1.7.0        | 1,271 passed, 2 skipped, 2 xfailed                                                              | the same (28 files changed, 315 insertions(+), 247 deletions(-))                                   | the same (32 files changed, 431 insertions(+), 336 deletions(-))                                   |
+| uvicorn            | 0.54.0       | 1,350 passed, 12 skipped                                                                        | the same (26 files changed, 230 insertions(+), 178 deletions(-))                                   | the same (27 files changed, 294 insertions(+), 218 deletions(-))                                   |
+| anyio              | 4.15.1       | 3,824 passed, 19 skipped, 5 xfailed                                                             | the same (25 files changed, 206 insertions(+), 159 deletions(-))                                   | the same (27 files changed, 274 insertions(+), 208 deletions(-))                                   |
+| websockets         | 17.2         | 2,589 ran, 8 skipped                                                                            | the same (39 files changed, 335 insertions(+), 233 deletions(-))                                   | the same (39 files changed, 452 insertions(+), 328 deletions(-))                                   |
+| hypercorn          | 0.18.0       | 2 failed, 194 passed                                                                            | the same (24 files changed, 141 insertions(+), 96 deletions(-))                                    | the same (25 files changed, 213 insertions(+), 147 deletions(-))                                   |
+| quart              | 0.23.1       | 255 passed                                                                                      | the same (22 files changed, 165 insertions(+), 115 deletions(-))                                   | the same (24 files changed, 222 insertions(+), 159 deletions(-))                                   |
+| fastapi            | 0.142.2      | 3,551 passed, 17 skipped, 4 xfailed                                                             | the same (25 files changed, 265 insertions(+), 182 deletions(-))                                   | the same (26 files changed, 332 insertions(+), 238 deletions(-))                                   |
+| mcp                | v2.3.0       | 1 xfailed                                                                                       | the same (80 files changed, 756 insertions(+), 516 deletions(-))                                   | the same (81 files changed, 1017 insertions(+), 739 deletions(-))                                  |
+| pytest             | 9.1.1        | 4,105 passed, 110 skipped, 14 xfailed, 1 xpassed, 1 error                                       | the same (65 files changed, 1394 insertions(+), 1003 deletions(-))                                 | the same (67 files changed, 1732 insertions(+), 1242 deletions(-))                                 |
+| attrs              | 26.1.0       | 1 failed, 1,382 passed, 2 skipped, 2 xfailed                                                    | the same (10 files changed, 97 insertions(+), 80 deletions(-))                                     | the same (10 files changed, 113 insertions(+), 91 deletions(-))                                    |
+| werkzeug           | 3.1.9        | 980 passed, 1 skipped                                                                           | the same (43 files changed, 520 insertions(+), 361 deletions(-))                                   | the same (43 files changed, 686 insertions(+), 473 deletions(-))                                   |
+| cattrs             | v26.2.1      | 994 passed, 15 xfailed                                                                          | the same (13 files changed, 109 insertions(+), 92 deletions(-))                                    | the same (23 files changed, 155 insertions(+), 129 deletions(-))                                   |
+| structlog          | 26.1.0       | 884 passed, 37 skipped                                                                          | the same (14 files changed, 107 insertions(+), 79 deletions(-))                                    | the same (16 files changed, 139 insertions(+), 106 deletions(-))                                   |
+| xarray             | v2026.09.0   | 2 failed, 6,334 passed, 9,626 skipped, 11 xfailed, 4 xpassed, 3 error                           | the same (151 files changed, 3576 insertions(+), 2606 deletions(-))                                | the same (162 files changed, 7053 insertions(+), 5898 deletions(-))                                |
+| networkx           | networkx-3.7 | 10,083 passed, 62 skipped, 741 xfailed                                                          | the same (405 files changed, 3892 insertions(+), 3159 deletions(-))                                | the same (463 files changed, 6537 insertions(+), 5615 deletions(-))                                |
+| pint               | 0.26.1       | 2,290 passed, 590 skipped, 11 xfailed                                                           | the same (68 files changed, 552 insertions(+), 371 deletions(-))                                   | the same (75 files changed, 760 insertions(+), 515 deletions(-))                                   |
+| dask               | 2026.8.0     | 1 failed, 16,200 passed, 1,089 skipped, 513 xfailed, 2 xpassed                                  | the same (267 files changed, 3234 insertions(+), 2410 deletions(-))                                | the same (295 files changed, 6050 insertions(+), 4836 deletions(-))                                |
+| zarr               | v3.4.0       | 108 failed, 8,422 passed, 1,210 skipped, 4 xfailed                                              | the same (66 files changed, 1078 insertions(+), 729 deletions(-))                                  | the same (69 files changed, 1242 insertions(+), 857 deletions(-))                                  |
+| nibabel            | 5.4.2        | 110 failed, 5,166 passed, 304 skipped, 40 xfailed, 19 error (its failures vary from run to run) | the same (180 files changed, 1912 insertions(+), 1310 deletions(-))                                | the same (196 files changed, 2965 insertions(+), 2188 deletions(-))                                |
+| seaborn            | v0.13.2      | 20 failed, 2,178 passed, 11 skipped, 6 xfailed, 8 error                                         | the same (42 files changed, 642 insertions(+), 489 deletions(-))                                   | the same (46 files changed, 980 insertions(+), 769 deletions(-))                                   |
+| optuna             | v5.0.0       | 263 failed, 4,203 passed, 43 skipped, 16 error                                                  | the same (144 files changed, 1542 insertions(+), 1038 deletions(-))                                | the same (148 files changed, 1961 insertions(+), 1349 deletions(-))                                |
+| altair             | v6.3.0       | 1,894 passed, 12 skipped, 6 xfailed, 4 xpassed                                                  | the same (38 files changed, 389 insertions(+), 307 deletions(-))                                   | the same (41 files changed, 469 insertions(+), 376 deletions(-))                                   |
+| strawberry-graphql | 0.332.0      | 51 failed, 2,521 passed, 3,293 skipped, 7 xfailed, 25 error                                     | the same (130 files changed, 654 insertions(+), 465 deletions(-))                                  | the same (151 files changed, 902 insertions(+), 671 deletions(-))                                  |
+| litestar           | v2.24.0      | 5 failed, 5,646 passed, 256 skipped, 13 xfailed, 30 xpassed                                     | the same (140 files changed, 606 insertions(+), 435 deletions(-))                                  | the same (172 files changed, 832 insertions(+), 589 deletions(-))                                  |
+| narwhals           | v2.26.0      | 12,080 passed, 235 skipped, 707 xfailed                                                         | the same (96 files changed, 999 insertions(+), 834 deletions(-))                                   | the same (97 files changed, 1154 insertions(+), 955 deletions(-))                                  |
+| click              | 8.5.0        | 1,991 passed, 24 skipped, 1 xfailed                                                             | the same (15 files changed, 286 insertions(+), 212 deletions(-))                                   | the same (15 files changed, 374 insertions(+), 286 deletions(-))                                   |
+| pygments           | 2.21.0       | 1 failed, 5,330 passed, 15 skipped                                                              | the same (130 files changed, 736 insertions(+), 632 deletions(-))                                  | the same (141 files changed, 989 insertions(+), 843 deletions(-))                                  |
+| celery             | v5.6.3       | 3 failed, 3,521 passed, 36 skipped, 3 xfailed                                                   | the same (99 files changed, 515 insertions(+), 431 deletions(-))                                   | the same (120 files changed, 916 insertions(+), 779 deletions(-))                                  |
+| botocore           | 1.43.108     | 4,600 passed, 96 skipped                                                                        | the same (60 files changed, 556 insertions(+), 506 deletions(-))                                   | the same (67 files changed, 1176 insertions(+), 1075 deletions(-))                                 |
+| joblib             | 1.6.0        | 7 failed, 1,485 passed, 45 skipped, 4 xpassed                                                   | the same (51 files changed, 520 insertions(+), 420 deletions(-))                                   | the same (56 files changed, 805 insertions(+), 634 deletions(-))                                   |
+| mako               | rel_1_4_3    | 615 passed                                                                                      | the same (23 files changed, 76 insertions(+), 54 deletions(-))                                     | the same (27 files changed, 147 insertions(+), 122 deletions(-))                                   |
+| boltons            | 26.2.0       | 672 passed                                                                                      | the same (26 files changed, 340 insertions(+), 257 deletions(-))                                   | the same (28 files changed, 470 insertions(+), 349 deletions(-))                                   |
+
+| Package            | Checks                                                                   | Released errors | New: `--fix` | New: `--fix --unsafe-fixes` | New: `--infer-with basedpyright,ty` |
+| ------------------ | ------------------------------------------------------------------------ | --------------: | -----------: | --------------------------: | ----------------------------------: |
+| sphinx             | `mypy`                                                                   |               3 |            0 |                           0 |                                  11 |
+| streamlink         | `mypy --no-incremental`                                                  |               0 |            0 |                           1 |                                   1 |
+| mypy               | `python -m mypy --config-file mypy_self_check.ini -p mypy`               |               0 |            0 |                          76 |                                  77 |
+| httpx              | `mypy httpx tests`                                                       |               0 |            0 |                           0 |                                   5 |
+| starlette          | `mypy starlette tests benchmarks`                                        |               0 |            0 |                           0 |                                  12 |
+| uvicorn            | `mypy uvicorn tests`                                                     |               0 |            0 |                           0 |                                   4 |
+| websockets         | `mypy --strict src`                                                      |               1 |            0 |                           0 |                                   6 |
+| hypercorn          | `mypy src/hypercorn/ tests/`                                             |              11 |            0 |                           2 |                                   4 |
+| quart              | `mypy`                                                                   |               0 |            0 |                           0 |                                   0 |
+| mcp                | `pyright`                                                                |               5 |            0 |                           0 |                                   0 |
+| werkzeug           | `mypy`                                                                   |               0 |            1 |                           1 |                                   1 |
+| structlog          | `mypy src`                                                               |               8 |            0 |                           6 |                                   6 |
+| networkx           | `mypy -p networkx`                                                       |               0 |            0 |                           0 |                                   1 |
+| pint               | `pyright`                                                                |               4 |            0 |                           0 |                                   0 |
+| nibabel            | `mypy nibabel`                                                           |               6 |            0 |                           0 |                                   0 |
+| seaborn            | `mypy --follow-imports=skip seaborn/_core seaborn/_marks seaborn/_stats` |              39 |            0 |                           2 |                                   2 |
+| optuna             | `mypy .`                                                                 |              52 |            0 |                          39 |                                  47 |
+| altair             | `mypy altair tests tools`                                                |               0 |            0 |                         128 |                                 134 |
+| strawberry-graphql | `mypy --config-file mypy.ini`                                            |              10 |            0 |                           9 |                                  16 |
+| litestar           | `mypy; pyright`                                                          |              77 |            0 |                           6 |                                   8 |
+| narwhals           | `pyright; mypy`                                                          |               6 |            0 |                           8 |                                  13 |
+| click              | `mypy`                                                                   |               0 |            0 |                           1 |                                   3 |
+
+- sphinx, `--infer-with basedpyright,ty`: `checker (guess)` 11
+- streamlink, `--fix --unsafe-fixes`: `copy+filled (guess)` 1
+- streamlink, `--infer-with basedpyright,ty`: `copy+filled (guess)` 1
+- mypy, `--fix --unsafe-fixes`: `call+rebound+unpack (guess)` 20, `constructor (guess)` 16, `call`
+  6, `copy+filled (guess)` 4, `call+rebound (guess)` 4, `method+rebound (guess)` 3,
+  `attribute+copy+filled (guess)` 3, `open+rebound (guess)` 3, and 17 of other mechanisms
+- mypy, `--infer-with basedpyright,ty`: `constructor (guess)` 16, `checker (guess)` 7, `(untraced)`
+  6, `copy+filled (guess)` 6, `call` 5, `copy+loop (guess)` 5, `call+rebound (guess)` 4,
+  `attribute+copy+filled (guess)` 3, and 25 of other mechanisms
+- httpx, `--infer-with basedpyright,ty`: `checker (guess)` 4, `copy+loop (guess)` 1
+- starlette, `--infer-with basedpyright,ty`: `checker (guess)` 12
+- uvicorn, `--infer-with basedpyright,ty`: `checker (guess)` 4
+- websockets, `--infer-with basedpyright,ty`: `checker (guess)` 3, `call` 3
+- hypercorn, `--fix --unsafe-fixes`: `open+rebound (guess)` 2
+- hypercorn, `--infer-with basedpyright,ty`: `open+rebound (guess)` 2, `checker (guess)` 2
+- werkzeug, `--fix`: `(untraced)` 1
+- werkzeug, `--fix --unsafe-fixes`: `(untraced)` 1
+- werkzeug, `--infer-with basedpyright,ty`: `(untraced)` 1
+- structlog, `--fix --unsafe-fixes`: `copy (guess)` 4, `(untraced)` 2
+- structlog, `--infer-with basedpyright,ty`: `copy (guess)` 4, `(untraced)` 2
+- networkx, `--infer-with basedpyright,ty`: `(untraced)` 1
+- seaborn, `--fix --unsafe-fixes`: `returned (guess)` 2
+- seaborn, `--infer-with basedpyright,ty`: `returned (guess)` 2
+- optuna, `--fix --unsafe-fixes`: `attribute+loop` 13,
+  `builtin+comprehension+copy+loop+rebound (guess)` 8, `(untraced)` 5, `copy+stdlib (guess)` 4,
+  `builder+comprehension+copy+loop (guess)` 3, `container+copy+rebound (guess)` 2,
+  `assigned+loop (guess)` 1, `conditional+copy+literal` 1, and 2 of other mechanisms
+- optuna, `--infer-with basedpyright,ty`: `attribute+loop` 13, `(untraced)` 9,
+  `builtin+comprehension+copy+loop+rebound (guess)` 8, `builtin+call` 4, `copy+stdlib (guess)` 4,
+  `checker (guess)` 4, `builder+comprehension+copy+loop (guess)` 3, `assigned+loop (guess)` 1, and 1
+  of other mechanisms
+- altair, `--fix --unsafe-fixes`: `(untraced)` 87, `constructor (guess)` 30,
+  `container+copy+rebound (guess)` 4, `call` 2, `call+unpack` 2,
+  `builtin+comprehension+copy+loop+stdlib` 2, `alias` 1
+- altair, `--infer-with basedpyright,ty`: `(untraced)` 89, `constructor (guess)` 30,
+  `container+copy+rebound (guess)` 4, `call` 3, `checker (guess)` 3, `call+unpack` 2,
+  `builtin+comprehension+copy+loop+stdlib` 2, `alias` 1
+- strawberry-graphql, `--fix --unsafe-fixes`:
+  `attribute+builtin+comprehension+copy+loop+rebound (guess)` 6, `copy+stdlib (guess)` 1,
+  `copy+filled (guess)` 1, `method+rebound+unpack (guess)` 1
+- strawberry-graphql, `--infer-with basedpyright,ty`:
+  `attribute+builtin+comprehension+copy+loop+rebound (guess)` 6, `checker (guess)` 5,
+  `copy+filled (guess)` 2, `copy+stdlib (guess)` 1, `method+rebound+unpack (guess)` 1,
+  `builder+copy+loop (guess)` 1
+- litestar, `--fix --unsafe-fixes`: `copy+stdlib (guess)` 5, `container+copy+joined+literal (guess)`
+  1
+- litestar, `--infer-with basedpyright,ty`: `copy+stdlib (guess)` 5, `checker (guess)` 2,
+  `container+copy+joined+literal (guess)` 1
+- narwhals, `--fix --unsafe-fixes`: `constructor (guess)` 7, `literal+rebound (guess)` 1
+- narwhals, `--infer-with basedpyright,ty`: `constructor (guess)` 7, `checker (guess)` 5,
+  `literal+rebound (guess)` 1
+- click, `--fix --unsafe-fixes`: `method (guess)` 1
+- click, `--infer-with basedpyright,ty`: `checker (guess)` 2, `method (guess)` 1
+- aiohttp: its `tests` couldn't be set up (hint: Build failures usually indicate a problem with the
+  package or the build environment)
+
+`--fix --unsafe-fixes --infer-with` each checker, on a copy: what it fixed (and how many more than
+without the hints), the typed share after, and the files it broke:
+
+| Corpus             | Fixed and guessed | With `basedpyright` | Typed | Broken |      With `ty` | Typed | Broken |
+| ------------------ | ----------------: | ------------------: | ----: | -----: | -------------: | ----: | -----: |
+| black              |               874 |           946 (+72) | 78.4% |      0 |      930 (+56) | 77.3% |      0 |
+| poetry             |             1,090 |        1,339 (+249) | 61.7% |      0 |   1,192 (+102) | 56.3% |      0 |
+| pdm                |             1,440 |        1,790 (+350) | 69.9% |      0 |   1,831 (+391) | 71.2% |      0 |
+| hatch              |               684 |          805 (+121) | 54.5% |      0 |     852 (+168) | 57.3% |      0 |
+| tox                |             1,076 |        1,312 (+236) | 78.6% |      0 |   1,233 (+157) | 74.8% |      0 |
+| nox                |               335 |           418 (+83) | 84.5% |      0 |      418 (+83) | 84.5% |      0 |
+| pre-commit         |               429 |          599 (+170) | 76.0% |      0 |     599 (+170) | 76.0% |      0 |
+| sphinx             |             3,990 |        4,722 (+732) | 63.5% |      0 |   4,794 (+804) | 64.3% |      0 |
+| mkdocs             |             1,231 |         1,318 (+87) | 58.5% |      0 |   1,352 (+121) | 59.9% |      0 |
+| pipx               |               775 |           852 (+77) | 90.6% |      0 |      865 (+90) | 91.4% |      0 |
+| streamlink         |               907 |        1,300 (+393) | 67.3% |      0 |   1,461 (+554) | 70.4% |      0 |
+| copier             |               208 |           230 (+22) | 67.5% |      0 |      218 (+10) | 65.0% |      0 |
+| flake8             |               217 |           241 (+24) | 73.4% |      0 |      255 (+38) | 77.1% |      0 |
+| mypy               |             6,403 |      8,292 (+1,889) | 77.3% |      0 | 8,598 (+2,195) | 79.5% |      0 |
+| httpx              |               346 |           415 (+69) | 74.6% |      0 |      367 (+21) | 66.7% |      0 |
+| starlette          |               408 |           483 (+75) | 68.5% |      0 |      463 (+55) | 66.1% |      0 |
+| uvicorn            |               265 |           349 (+84) | 78.1% |      0 |      314 (+49) | 72.7% |      0 |
+| anyio              |               260 |           359 (+99) | 64.0% |      0 |      344 (+84) | 62.5% |      0 |
+| websockets         |               438 |          549 (+111) | 73.6% |      0 |      525 (+87) | 71.0% |      0 |
+| hypercorn          |               190 |           213 (+23) | 73.0% |      0 |       194 (+4) | 69.3% |      0 |
+| quart              |               180 |           223 (+43) | 52.1% |      0 |      198 (+18) | 47.5% |      0 |
+| aiohttp            |               904 |        1,101 (+197) | 68.9% |      0 |   1,034 (+130) | 66.2% |      0 |
+| fastapi            |               310 |           357 (+47) | 69.9% |      0 |      354 (+44) | 69.7% |      0 |
+| textual            |             3,309 |      4,468 (+1,159) | 73.8% |      0 | 4,642 (+1,333) | 76.0% |      0 |
+| mcp                |               927 |        1,085 (+158) | 74.4% |      0 |   1,063 (+136) | 73.5% |      0 |
+| pytest             |             1,607 |        1,953 (+346) | 69.3% |      0 |   1,959 (+352) | 69.5% |      0 |
+| attrs              |               108 |           133 (+25) | 34.3% |      0 |      119 (+11) | 30.8% |      0 |
+| werkzeug           |               665 |          783 (+118) | 66.2% |      0 |     767 (+102) | 65.1% |      0 |
+| cattrs             |               149 |           192 (+43) | 41.3% |      0 |      179 (+30) | 39.0% |      0 |
+| structlog          |               126 |           155 (+29) | 62.1% |      0 |       133 (+7) | 56.9% |      0 |
+| urllib3            |               304 |           371 (+67) | 69.2% |      0 |      376 (+72) | 69.8% |      0 |
+| coverage           |               993 |         1,092 (+99) | 75.4% |      0 |   1,099 (+106) | 75.9% |      0 |
+| xarray             |             6,932 |      8,331 (+1,399) | 41.8% |      0 | 8,435 (+1,503) | 42.3% |      0 |
+| networkx           |             6,494 |      8,084 (+1,590) | 36.2% |      0 |   6,767 (+273) | 30.3% |      0 |
+| pint               |               727 |          869 (+142) | 31.9% |      0 |      791 (+64) | 29.5% |      0 |
+| dask               |             5,766 |        6,543 (+777) | 27.8% |      0 |   6,084 (+318) | 26.0% |      0 |
+| zarr               |             1,191 |        1,615 (+424) | 74.1% |      0 |   1,584 (+393) | 73.1% |      0 |
+| nibabel            |             2,753 |        3,267 (+514) | 39.2% |      0 |   3,035 (+282) | 36.5% |      0 |
+| seaborn            |               901 |        1,014 (+113) | 39.5% |      0 |      981 (+80) | 38.5% |      0 |
+| optuna             |             1,799 |        2,096 (+297) | 61.4% |      0 |   2,141 (+342) | 62.5% |      0 |
+| altair             |               439 |           508 (+69) | 64.6% |      0 |      492 (+53) | 64.1% |      0 |
+| stripe             |             1,227 |        1,474 (+247) | 94.1% |      0 |    1,287 (+60) | 93.6% |      0 |
+| strawberry-graphql |               704 |           800 (+96) | 61.0% |      0 |      770 (+66) | 59.9% |      0 |
+| litestar           |               778 |        1,006 (+228) | 74.0% |      0 |     941 (+163) | 72.1% |      0 |
+| narwhals           |             1,069 |        1,335 (+266) | 55.2% |      0 |   1,359 (+290) | 55.8% |      0 |
+| click              |               367 |           445 (+78) | 81.6% |      0 |      439 (+72) | 80.9% |      0 |
+| pygments           |               969 |        1,157 (+188) | 15.1% |      0 |   1,089 (+120) | 14.2% |      0 |
+| celery             |               864 |        1,018 (+154) | 27.5% |      0 |      933 (+69) | 25.2% |      0 |
+| botocore           |             1,136 |        1,286 (+150) | 34.3% |      0 |    1,204 (+68) | 32.1% |      0 |
+| joblib             |               785 |          915 (+130) | 40.9% |      0 |      847 (+62) | 37.8% |      0 |
+| mako               |               139 |           176 (+37) | 29.0% |      0 |      156 (+17) | 25.8% |      0 |
+| boltons            |               458 |           553 (+95) | 36.9% |      0 |      510 (+52) | 34.0% |      0 |
+
+Seconds per step (and the CPUs its processes kept busy, on average), side by side; then the check at
+`suffocate` alone with every CPU: its seconds, per file, the main process's CPU seconds (and their
+share of the check's), and the second round's, of a profiled check:
+
+| Corpus             | Files |  `table` | `census` | `infer-basedpyright` | `infer-ty` |     `tests` |   `types` | Check | Per file | Main process |            Second round |
+| ------------------ | ----: | -------: | -------: | -------------------: | ---------: | ----------: | --------: | ----: | -------: | -----------: | ----------------------: |
+| black              |    25 |  8 (1.1) |  3 (0.3) |             15 (0.8) |   10 (0.5) |    81 (5.0) |         - |   0.3 |  13.1 ms |    0.1 (17%) |   0.0 (0% of the first) |
+| poetry             |   193 | 11 (1.5) |  5 (0.4) |             16 (2.3) |   13 (0.6) |           - |         - |   0.5 |   2.3 ms |    0.1 (22%) |   0.0 (0% of the first) |
+| pdm                |   128 |  7 (2.0) |  6 (0.5) |             19 (2.3) |   10 (1.0) |    94 (4.6) |         - |   0.6 |   4.3 ms |    0.2 (29%) |  0.1 (14% of the first) |
+| hatch              |   136 |  6 (1.1) |  3 (0.3) |              7 (3.4) |    6 (0.9) |           - |         - |   0.6 |   4.3 ms |    0.1 (20%) |  0.2 (48% of the first) |
+| tox                |   129 |  8 (1.5) |  3 (0.8) |              8 (3.7) |    6 (1.2) |   489 (0.7) |         - |   0.4 |   3.3 ms |    0.1 (23%) |   0.0 (0% of the first) |
+| nox                |    24 |  4 (0.9) |  1 (0.6) |              7 (1.3) |    4 (0.6) |    51 (3.3) |         - |   0.3 |  11.7 ms |    0.0 (15%) |   0.0 (0% of the first) |
+| pre-commit         |    67 |  5 (1.1) |  1 (0.7) |              7 (2.2) |    4 (0.5) |   218 (0.8) |         - |   0.3 |   4.1 ms |    0.0 (17%) |   0.0 (0% of the first) |
+| sphinx             |   243 | 14 (3.8) |  7 (1.3) |             34 (2.6) |   28 (1.3) |    62 (6.8) |  42 (3.0) |   0.9 |   3.9 ms |    0.2 (19%) |   0.0 (0% of the first) |
+| mkdocs             |    61 | 10 (1.4) |  3 (0.4) |             10 (1.9) |    6 (0.6) |    36 (0.3) |         - |   0.7 |  11.1 ms |    0.1 (13%) |  0.2 (30% of the first) |
+| pipx               |    50 |  4 (2.4) |  1 (1.1) |             10 (1.7) |    6 (0.5) |           - |         - |   0.3 |   6.7 ms |    0.1 (17%) |   0.0 (0% of the first) |
+| streamlink         |   227 | 13 (2.4) |  5 (1.1) |             17 (3.0) |   11 (1.0) |    49 (0.8) |  68 (1.9) |   0.7 |   2.9 ms |    0.1 (21%) |   0.0 (0% of the first) |
+| copier             |    24 |  5 (0.6) |  1 (0.9) |             10 (1.1) |    5 (0.4) |  155 (12.2) |         - |   0.3 |  13.0 ms |    0.1 (18%) |   0.0 (0% of the first) |
+| flake8             |    33 |  3 (0.7) |  1 (0.6) |              5 (1.6) |    4 (0.4) |     7 (0.6) |         - |   0.3 |   7.8 ms |    0.0 (14%) |   0.0 (0% of the first) |
+| mypy               |   195 | 19 (5.5) |  9 (1.1) |             39 (2.8) |   31 (1.7) | 1,270 (5.8) | 116 (2.4) |   1.2 |   6.2 ms |    0.2 (18%) |   0.0 (0% of the first) |
+| httpx              |    23 |  5 (0.6) |  1 (0.7) |              6 (1.1) |    6 (0.5) |    24 (0.7) |  48 (0.9) |   0.3 |  12.9 ms |    0.1 (18%) |   0.0 (0% of the first) |
+| starlette          |    36 |  4 (0.7) |  1 (0.7) |              7 (1.5) |    4 (0.8) |    29 (0.7) |  24 (1.3) |   0.3 |   9.1 ms |    0.0 (13%) |   0.0 (0% of the first) |
+| uvicorn            |    45 |  4 (1.3) |  1 (0.6) |              7 (1.7) |    5 (0.6) |   122 (0.6) |  31 (1.1) |   0.3 |   6.8 ms |    0.0 (16%) |   0.0 (0% of the first) |
+| anyio              |    46 |  4 (1.4) |  2 (0.9) |             12 (1.5) |    7 (0.6) |   342 (0.5) |         - |   0.4 |   9.6 ms |    0.1 (14%) |   0.0 (0% of the first) |
+| websockets         |    52 |  4 (1.0) |  1 (0.6) |              9 (1.7) |    5 (0.6) |   323 (0.1) |  25 (1.5) |   0.3 |   5.8 ms |    0.0 (15%) |   0.0 (0% of the first) |
+| hypercorn          |    39 |  5 (1.0) |  1 (1.4) |              5 (1.7) |    4 (0.4) |    24 (0.2) |  18 (1.4) |   0.3 |   6.5 ms |    0.0 (16%) |   0.0 (0% of the first) |
+| quart              |    34 |  4 (0.8) |  1 (0.7) |              7 (1.7) |    5 (0.5) |    16 (0.3) |  28 (1.3) |   0.3 |   8.9 ms |    0.0 (15%) |   0.0 (0% of the first) |
+| aiohttp            |    54 |  7 (1.0) |  3 (0.5) |             23 (1.6) |    9 (0.9) |     1 (0.6) |         - |   0.5 |   8.9 ms |    0.1 (16%) |   0.0 (0% of the first) |
+| fastapi            |    52 |  4 (0.8) |  2 (1.0) |              8 (2.0) |    7 (0.7) |    51 (6.5) |         - |   0.4 |   8.1 ms |    0.1 (14%) |   0.0 (0% of the first) |
+| textual            |   247 | 16 (2.6) |  5 (0.7) |             23 (3.5) |   26 (1.1) |           - |         - |   0.8 |   3.3 ms |    0.2 (22%) |   0.1 (7% of the first) |
+| mcp                |   124 |  7 (1.4) |  2 (1.4) |             17 (2.2) |    7 (0.8) |    68 (4.2) |  58 (2.2) |   0.4 |   3.3 ms |    0.1 (21%) |   0.0 (0% of the first) |
+| pytest             |    78 | 10 (2.1) |  4 (0.9) |             12 (2.8) |    9 (0.9) |    92 (5.0) |         - |   0.6 |   7.7 ms |    0.1 (19%) |   0.0 (0% of the first) |
+| attrs              |    13 |  5 (0.9) |  1 (0.4) |              6 (1.1) |    5 (0.5) |    19 (3.5) |         - |   0.5 |  37.8 ms |     0.0 (7%) |  0.2 (77% of the first) |
+| werkzeug           |    52 |  7 (0.7) |  2 (0.9) |              9 (1.8) |    7 (0.8) |    35 (0.7) |  31 (1.3) |   0.4 |   7.0 ms |    0.1 (17%) |   0.0 (0% of the first) |
+| cattrs             |    36 |  4 (0.5) |  1 (0.4) |             12 (1.0) |    5 (0.5) |    67 (7.0) |         - |   0.4 |  11.4 ms |    0.1 (13%) |  0.1 (45% of the first) |
+| structlog          |    21 |  5 (0.6) |  1 (0.6) |              6 (1.1) |    3 (0.5) |    10 (0.6) |  16 (0.8) |   0.3 |  13.4 ms |    0.0 (16%) |   0.0 (0% of the first) |
+| urllib3            |    36 |  6 (1.1) |  1 (1.3) |              7 (1.7) |    6 (0.7) |           - |         - |   0.3 |   9.2 ms |    0.1 (17%) |   0.0 (0% of the first) |
+| coverage           |    44 |  6 (0.9) |  1 (0.6) |             14 (1.4) |    5 (0.7) |           - |         - |   0.3 |   7.5 ms |    0.1 (15%) |   0.0 (0% of the first) |
+| xarray             |   199 | 73 (3.7) | 23 (1.5) |            140 (2.9) |  123 (1.4) |   119 (4.2) |         - |   5.7 |  28.6 ms |    0.6 (10%) |  2.6 (77% of the first) |
+| networkx           |   583 | 40 (4.1) | 19 (1.2) |            117 (2.2) |   40 (1.6) |   132 (7.3) |  78 (4.0) |   2.7 |   4.6 ms |    0.7 (27%) |  0.7 (31% of the first) |
+| pint               |   109 | 12 (2.3) |  4 (0.5) |             23 (2.5) |   14 (0.9) |   133 (0.9) | 146 (1.7) |   1.0 |   9.5 ms |    0.2 (16%) |  0.3 (34% of the first) |
+| dask               |   361 | 73 (3.9) | 32 (1.3) |            113 (3.8) |  134 (1.3) |   582 (7.6) |         - |   6.8 |  18.8 ms |    1.6 (24%) | 4.7 (115% of the first) |
+| zarr               |    98 |  8 (2.8) |  3 (1.2) |             21 (2.5) |   15 (1.0) | 1,001 (0.7) |         - |   0.6 |   6.6 ms |    0.2 (23%) |   0.0 (0% of the first) |
+| nibabel            |   229 | 22 (3.0) | 11 (1.0) |             81 (2.6) |  137 (1.2) |   146 (5.4) | 155 (2.5) |   2.0 |   8.9 ms |    0.5 (23%) |  0.9 (62% of the first) |
+| seaborn            |    54 | 15 (1.9) |  6 (0.8) |             31 (1.9) |   12 (0.9) |   169 (9.9) |  79 (1.9) |   1.7 |  31.2 ms |    0.2 (10%) |  0.8 (90% of the first) |
+| optuna             |   220 | 11 (2.9) |  5 (1.1) |             21 (3.1) |   24 (1.2) |   472 (9.8) |  80 (2.2) |   0.9 |   4.3 ms |    0.3 (27%) |   0.0 (0% of the first) |
+| altair             |    55 | 13 (2.1) |  4 (0.7) |             26 (1.6) |   13 (1.0) |    83 (6.2) |  98 (1.2) |   1.2 |  20.9 ms |     0.1 (8%) |   0.1 (5% of the first) |
+| stripe             | 1,460 | 36 (4.6) | 15 (1.3) |            238 (2.7) |   35 (1.3) |           - |         - |   2.0 |   1.4 ms |    0.6 (28%) |   0.0 (0% of the first) |
+| strawberry-graphql |   244 |  7 (1.7) |  4 (0.8) |             13 (3.3) |   12 (0.9) |    55 (6.0) |  21 (4.0) |   0.6 |   2.5 ms |    0.2 (27%) |   0.0 (0% of the first) |
+| litestar           |   374 |  9 (2.2) |  6 (0.5) |             19 (3.3) |   12 (1.0) |   125 (4.5) | 240 (1.6) |   0.7 |   1.9 ms |    0.2 (31%) |   0.0 (0% of the first) |
+| narwhals           |   162 |  8 (2.7) |  4 (1.4) |             24 (3.4) |   24 (1.0) |   607 (0.8) | 196 (1.9) |   0.6 |   3.7 ms |    0.1 (20%) |   0.0 (0% of the first) |
+| click              |    17 |  5 (0.5) |  2 (0.4) |              8 (1.1) |    3 (0.7) |    22 (0.8) |  23 (0.9) |   0.4 |  20.9 ms |    0.0 (11%) |   0.0 (0% of the first) |
+| pygments           |   343 | 19 (2.6) |  7 (0.9) |             34 (1.8) |   19 (1.2) |    66 (0.9) |         - |   1.0 |   3.0 ms |    0.2 (19%) |  0.3 (38% of the first) |
+| celery             |   161 | 14 (2.6) |  5 (0.6) |             17 (3.4) |   17 (0.9) |   576 (0.5) |         - |   1.5 |   9.6 ms |    0.4 (28%) |  0.9 (98% of the first) |
+| botocore           |    76 | 12 (1.6) |  4 (1.0) |             13 (2.6) |    9 (0.7) |    98 (3.2) |         - |   1.1 |  14.5 ms |    0.2 (16%) |  0.5 (79% of the first) |
+| joblib             |    73 |  9 (1.8) |  5 (0.7) |             19 (2.2) |   19 (0.8) |   526 (1.9) |         - |   1.2 |  16.3 ms |    0.2 (15%) | 0.7 (120% of the first) |
+| mako               |    33 |  6 (1.0) |  2 (0.4) |              6 (1.8) |    4 (0.5) |    35 (0.2) |         - |   0.6 |  17.5 ms |    0.1 (18%) |  0.2 (52% of the first) |
+| boltons            |    30 |  5 (0.8) |  2 (0.5) |              9 (1.2) |    8 (0.8) |    11 (0.5) |         - |   0.5 |  15.6 ms |    0.1 (12%) |  0.2 (64% of the first) |
+
 ## constricter 0.2.2
 
 Offences per code at `suffocate`, with `all-scopes` (Python 3.14.7); the total row gives each code's
@@ -612,3 +1348,49 @@ much each raised it: in percentage points, and as a share of the bindings that w
 | twisted          | 0.3.3-rc.2  |              0.0% |         13.5% |                  38.9% | +13.5 pts, 13.5% of untyped | +38.9 pts, 38.9% of untyped |
 | pip              | 0.3.3-rc.2  |              1.5% |         26.0% |                  39.5% | +24.5 pts, 24.8% of untyped | +38.0 pts, 38.5% of untyped |
 | **Total**        | 0.3.3-rc.2  |              2.2% |         26.4% |                  44.8% | +24.2 pts, 24.7% of untyped | +42.5 pts, 43.5% of untyped |
+
+## constricter 0.3.4-rc.1
+
+Offences per code at `suffocate`, with `all-scopes` (Python 3.14.7); the total row gives each code's
+share of them:
+
+| Corpus           | Version | constricter | Files |        `LVA001` |      `LVA002` |       `LVA004` |   `LVA005` |   `LVA006` |  `LVA009` | `LVA011` |   Total |
+| ---------------- | ------- | ----------- | ----: | --------------: | ------------: | -------------: | ---------: | ---------: | --------: | -------: | ------: |
+| standard library | 3.14    | 0.3.4-rc.1  | 1,867 |          88,584 |        12,335 |         12,783 |         57 |         14 |         8 |        0 | 113,781 |
+| django           | 5.2.17  | 0.3.4-rc.1  |   883 |           9,921 |         2,167 |          5,081 |          0 |          0 |         1 |        0 |  17,170 |
+| sqlalchemy       | 2.0.54  | 0.3.4-rc.1  |   257 |           8,504 |         1,567 |          2,339 |        551 |        124 |         1 |        1 |  13,087 |
+| pydantic         | 2.13.5  | 0.3.4-rc.1  |   105 |           2,023 |           438 |            631 |        190 |         13 |         0 |        0 |   3,295 |
+| pandas           | 3.0.6   | 0.3.4-rc.1  | 1,421 |          73,367 |         2,778 |          1,648 |        134 |          2 |         1 |        1 |  77,931 |
+| twisted          | 12.3.0  | 0.3.4-rc.1  |   819 |          13,310 |         1,349 |          3,215 |          0 |          0 |         0 |        0 |  17,874 |
+| pip              | 20.3.4  | 0.3.4-rc.1  |   366 |           5,902 |         1,150 |          1,872 |          0 |          0 |         0 |        0 |   8,924 |
+| **Total**        |         | 0.3.4-rc.1  | 5,718 | 201,611 (80.0%) | 21,784 (8.6%) | 27,569 (10.9%) | 932 (0.4%) | 153 (0.1%) | 11 (0.0%) | 2 (0.0%) | 252,062 |
+
+Errors / warnings at each level, by the version's own rules and defaults; what `--fix` fixed and
+what `--unsafe-fixes` guessed on top (each also as a share of the offences at `suffocate`), files a
+fix broke, and what a second pass would still fix:
+
+| Corpus           | constricter |   `relaxed` |         `strict` |     `constrict` | `suffocate` |          Fixed |        Guessed | Broken | Left |
+| ---------------- | ----------- | ----------: | ---------------: | --------------: | ----------: | -------------: | -------------: | -----: | ---: |
+| standard library | 0.3.4-rc.1  | 0 / 113,710 | 101,367 / 12,414 |    113,710 / 71 | 113,781 / 0 | 36,397 (32.0%) | 13,454 (11.8%) |      0 |    8 |
+| django           | 0.3.4-rc.1  |  0 / 17,170 |   15,002 / 2,168 |      17,170 / 0 |  17,170 / 0 |  2,595 (15.1%) |  2,817 (16.4%) |      0 |    2 |
+| sqlalchemy       | 0.3.4-rc.1  |  0 / 12,411 |   10,843 / 2,244 |    12,411 / 676 |  13,087 / 0 |  1,827 (14.0%) |     866 (6.6%) |      0 |    0 |
+| pydantic         | 0.3.4-rc.1  |   0 / 3,092 |      2,654 / 641 |     3,092 / 203 |   3,295 / 0 |  1,165 (35.4%) |    461 (14.0%) |      0 |    0 |
+| pandas           | 0.3.4-rc.1  |  0 / 77,794 |   75,015 / 2,916 |    77,794 / 137 |  77,931 / 0 | 16,166 (20.7%) | 24,315 (31.2%) |      0 |  123 |
+| twisted          | 0.3.4-rc.1  |  0 / 17,874 |   16,525 / 1,349 |      17,874 / 0 |  17,874 / 0 |  2,423 (13.6%) |  4,716 (26.4%) |      0 |    0 |
+| pip              | 0.3.4-rc.1  |   0 / 8,924 |    7,774 / 1,150 |       8,924 / 0 |   8,924 / 0 |  2,219 (24.9%) |  1,239 (13.9%) |      0 |    0 |
+| **Total**        | 0.3.4-rc.1  | 0 / 250,975 | 229,180 / 22,882 | 250,975 / 1,087 | 252,062 / 0 | 62,792 (24.9%) | 47,868 (19.0%) |      0 |  133 |
+
+Annotation coverage (`--coverage` with `all-scopes`, counted by this checkout for every version):
+the share of bindings typed as released, after `--fix`, and after `--fix --unsafe-fixes`, and how
+much each raised it: in percentage points, and as a share of the bindings that were untyped:
+
+| Corpus           | constricter | Typed as released | After `--fix` | After `--unsafe-fixes` |           Raised by `--fix` |         Raised with guesses |
+| ---------------- | ----------- | ----------------: | ------------: | ---------------------: | --------------------------: | --------------------------: |
+| standard library | 0.3.4-rc.1  |              1.2% |         32.8% |                  44.5% | +31.6 pts, 32.0% of untyped | +43.3 pts, 43.8% of untyped |
+| django           | 0.3.4-rc.1  |              0.0% |         15.1% |                  31.5% | +15.1 pts, 15.1% of untyped | +31.5 pts, 31.5% of untyped |
+| sqlalchemy       | 0.3.4-rc.1  |             14.8% |         27.3% |                  33.2% | +12.5 pts, 14.7% of untyped | +18.5 pts, 21.7% of untyped |
+| pydantic         | 0.3.4-rc.1  |             21.8% |         51.3% |                  62.9% | +29.4 pts, 37.7% of untyped | +41.1 pts, 52.6% of untyped |
+| pandas           | 0.3.4-rc.1  |              1.6% |         22.1% |                  52.8% | +20.4 pts, 20.8% of untyped | +51.2 pts, 52.0% of untyped |
+| twisted          | 0.3.4-rc.1  |              0.0% |         13.6% |                  39.9% | +13.6 pts, 13.6% of untyped | +39.9 pts, 39.9% of untyped |
+| pip              | 0.3.4-rc.1  |              1.5% |         26.0% |                  39.7% | +24.5 pts, 24.9% of untyped | +38.2 pts, 38.7% of untyped |
+| **Total**        | 0.3.4-rc.1  |              2.2% |         26.7% |                  45.3% | +24.5 pts, 25.0% of untyped | +43.1 pts, 44.1% of untyped |

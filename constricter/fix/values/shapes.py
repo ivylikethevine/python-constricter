@@ -12,17 +12,18 @@ whose type is a union of two types or more isn't taken at all.
 """
 
 import ast
+import re
 from collections.abc import Callable
 from typing import Final, TypeAlias
 
 from constricter.fix.core.known import ImportPlan, Inference, Known, Partial
 from constricter.fix.libraries import stdlib
-from constricter.fix.values.members import parsed, partial_method
-from constricter.rules.annotations import vague_fits
+from constricter.fix.values.members import keyed, may_miss, parsed, partial_method
 from constricter.rules.flow import members
 
 Infer: TypeAlias = Callable[[ast.expr], Inference | None]
 _NONE: Final = "None"
+_HOLDS_NONE: Final = re.compile(r"\b(?:None|Optional)\b")
 _READS: Final = (ast.Name, ast.Attribute, ast.Subscript)
 _CONDITIONAL: Final = "conditional"  # the fix kind of `a if c else b`
 _BOOLEAN: Final = "boolean"  # the fix kind of `a or b`
@@ -163,7 +164,8 @@ def emptied(value: ast.IfExp, infer: Infer) -> Inference | None:
 
     Returns:
       The inference, or `None` if neither side or both are an empty display, the other's type isn't
-      that container's, or it may be `None` and `c` tests it another way: it's narrowed there.
+      that container's, or it may be `None` and `c` tests it another way, or holds what `c` tests
+      and may be `None`: it's narrowed there.
 
     """
     sides: list[ast.expr] = [side for side in (value.body, value.orelse) if _empty(side) is None]
@@ -175,6 +177,13 @@ def emptied(value: ast.IfExp, infer: Infer) -> Inference | None:
         return None
     annotation: str = found.annotation
     tested: set[str] = {ast.unparse(node) for node in ast.walk(value.test) if isinstance(node, _READS)}
+    held: bool = any(
+        ast.unparse(node) in tested
+        for node in ast.walk(sides[0])
+        if node is not sides[0] and isinstance(node, _READS)
+    )
+    if held and _HOLDS_NONE.search(container):  # `[a] if a else []`: `a` is narrowed in the display
+        return None
     if _NONE in types and ast.unparse(sides[0]) in tested:
         if sides[0] is not value.body or ast.unparse(value.test) != ast.unparse(sides[0]):
             return None
@@ -267,37 +276,55 @@ def class_of(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
     )
 
 
-def defaulted(receiver: str, call: ast.Call, infer: Infer) -> Inference | None:
+def defaulted(receiver: str, call: ast.Call, infer: Infer, known: Known) -> Inference | None:
     """Infer `d.get(key, default)` on a `dict[K, V]`, by a default of type `V`: `V` (`V | None`, by `None`).
+
+    And on a `TypedDict`'s instance, by the literal key's type `V` (see `members.keyed`), with no
+    default too: `V` for a required key, `V | None` for one that may be missing.
 
     Returns:
       The inference, or `None` for any other call, or a default of another type.
 
     """
-    item: ast.expr
-    default: ast.expr
+    index: ast.expr
+    rest: list[ast.expr]
     attr: str
-    match parsed(receiver), call:
-        case (
-            ast.Subscript(value=ast.Name(id="dict" | "Dict"), slice=ast.Tuple(elts=[_, item])),
-            ast.Call(func=ast.Attribute(attr=attr), args=[_, default], keywords=[]),
-        ) if attr == _GET:
-            text: str = ast.unparse(item)
-            reason: str = "`dict.get` with a default of its values' type"
-            if is_none(default):
-                union: str | None = or_none(text)
-                return None if union is None else Inference(union, reason, frozenset({_METHOD}))
-            found: Inference | None = infer(default)
-            same: bool = found is not None and found.annotation == text
-            return Inference(text, reason, found.kinds | {_METHOD}) if found and same else None
+    match call:
+        case ast.Call(func=ast.Attribute(attr=attr), args=[index, *rest], keywords=[]) if (
+            attr == _GET and len(rest) <= 1
+        ):
+            pass
         case _:
             return None
+    item: ast.expr
+    text: str
+    reason: str
+    match parsed(receiver):
+        case ast.Subscript(value=ast.Name(id="dict" | "Dict"), slice=ast.Tuple(elts=[_, item])) if rest:
+            text, reason = ast.unparse(item), "`dict.get` with a default of its values' type"
+        case _:
+            key: Inference | None
+            if (key := keyed(receiver, index, known)) is None:
+                return None
+            text, reason = key.annotation, f"`get` of {key.reason}"
+            if not may_miss(receiver, index, known) and _NONE not in (members(text) or ()):
+                if not rest:
+                    return Inference(text, reason, frozenset({_METHOD}))
+                if is_none(rest[0]):  # `V` to pyright, `V | None` to mypy
+                    return None
+    if not rest or is_none(rest[0]):
+        union: str | None = or_none(text)
+        return None if union is None else Inference(union, reason, frozenset({_METHOD}))
+    found: Inference | None = infer(rest[0])
+    same: bool = found is not None and found.annotation == text
+    return Inference(text, reason, found.kinds | {_METHOD}) if found and same else None
 
 
 def partly(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
-    """Infer a call whose declared return has a vague part, for an unpacking to split.
+    """Infer a call whose declared return has a vague part: no fix past `vague`, but what's read of it is.
 
-    A function's, or a method's on a receiver whose type is known (see `known.Partial`).
+    A function's, or a method's on a receiver whose type is known (see `known.Partial`): an
+    unpacking splits it, and a loop over it has its elements (`for name in hints()`, a `str`).
 
     Returns:
       The whole return, vague parts and all; or `None` for any other value.
@@ -325,17 +352,6 @@ def partly(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
             )
         case _:
             return None
-
-
-def vaguely(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
-    """Infer a call whose declared return has a vague part, whole, where `vague` allows it.
-
-    Returns:
-      `partly`'s inference, or `None` if it's vaguer than `Limits.vague` allows.
-
-    """
-    found: Inference | None = partly(value, known, infer)
-    return found if found is not None and vague_fits(parsed(found.annotation), known.limits.vague) else None
 
 
 def attribute_of(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
