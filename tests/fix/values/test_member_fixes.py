@@ -158,3 +158,13 @@ def test_a_dict_view_on_a_chained_receiver_is_certain() -> None:
         ("key", "str", False),
         ("count", "int", False),
     ]
+
+
+def test_a_variable_a_base_declares_a_classvar_is_left_alone() -> None:
+    """Annotated in the subclass, it would be an instance variable over the base's class variable."""
+    source: str = _CLASSES + 'class Sub(Index):\n  kind = "sub"\n  other = "new"\n'
+    found: list[Offence] = check_source(source, checks=Checks(all_scopes=True))
+    assert [(o.name, o.fix) for o in found if o.name in {"kind", "other"}] == [
+        ("kind", None),
+        ("other", "str"),
+    ]

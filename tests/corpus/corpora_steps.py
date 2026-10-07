@@ -176,6 +176,7 @@ def _constricter(args: Sequence[str]) -> str:
         cwd=_ROOT,
         env={**os.environ, "PATH": os.pathsep.join((beside, os.environ.get("PATH", os.defpath)))},
     )
+    _ = sys.stderr.write(done.stderr)  # a crash's traceback, into the step's log
     return done.stdout
 
 
@@ -235,7 +236,9 @@ def tests_step(corpus: Corpus, suite: corpus_suite.Suite) -> Tested:
 
     Each run's output is kept in `corpus_suite.WORK`'s `outputs/`. Where a fixed run's outcome
     differs from the released one's, the released tests are run again, and that run stands for
-    them: a first run after a clone has differed from every later one, fixed or not.
+    them: a first run after a clone has differed from every later one, fixed or not. A fixed run
+    that still differs is fixed and run again too, and its second outcome stands: a test that fails
+    one run in some isn't the fix's.
 
     Returns:
       Their outcomes.
@@ -264,6 +267,18 @@ def tests_step(corpus: Corpus, suite: corpus_suite.Suite) -> Tested:
     again: bool
     if again := any(outcome != released for _, _, outcome, _ in fixed):
         released = corpus_suite.tested(root, suite, kept / "released-again.txt")
+    at: int
+    for at, (label, _, outcome, _) in enumerate(fixed):
+        if outcome != released:
+            change = corpus_suite.fixed(root, suite, *dict(corpus_suite.MODES)[label])
+            start = time.perf_counter()
+            second: corpus_suite.Outcome = corpus_suite.tested(
+                root,
+                suite,
+                kept / f"{label.replace(' ', '')}-again.txt",
+            )
+            fixed[at] = (label, change, second, time.perf_counter() - start)
+            corpus_suite.reset(root, suite)
     return Tested(suite.tag, released, seconds, fixed, again)
 
 
@@ -278,27 +293,35 @@ def types_step(corpus: Corpus, suite: corpus_suite.Suite) -> Typechecked:
     hinting: str
     if hinting := ",".join(checkers()):
         modes.append((f"--infer-with {hinting}", ("--unsafe-fixes", "--infer-with", hinting)))
-    # With `APART_VARIABLE` set, a checkout for each fixed run, type-checked at once; else the
-    # tests' own, one run after another.
+    # With `APART_VARIABLE` set, a checkout for the released source and each fixed run, all
+    # type-checked at once; else the tests' own, one run after another.
     apart: bool = bool(os.environ.get(APART_VARIABLE))
     roots: list[Path] = [
         corpus_suite.checkout(corpus.name, suite, f"types{at}" if apart else "") for at in range(len(modes))
     ]
+    first: Path = corpus_suite.checkout(corpus.name, suite, "types-released") if apart else roots[0]
     root: Path
-    for root in dict.fromkeys(roots):
+    for root in dict.fromkeys((first, *roots)):
         corpus_suite.reset(root, suite)
-    released: list[corpus_suite.Complaint] = corpus_suite.complaints(roots[0], suite)
     pool: ThreadPoolExecutor
-    with ThreadPoolExecutor(len(modes) if apart else 1) as pool:
+    with ThreadPoolExecutor(len(modes) + 1 if apart else 1) as pool:
+        released: Future[list[corpus_suite.Complaint]] = pool.submit(corpus_suite.complaints, first, suite)
         comparing: list[Future[corpus_suite.Compared]] = [
-            pool.submit(corpus_suite.compared, each, suite, released, options)
+            pool.submit(
+                corpus_suite.compared,
+                each,
+                suite,
+                released.result,
+                options,
+                first if apart else None,
+            )
             for each, (_, options) in zip(roots, modes, strict=True)
         ]
     for root in dict.fromkeys(roots):
         corpus_suite.reset(root, suite)
     return Typechecked(
         "; ".join(" ".join(check) for check in suite.checks),
-        len(released),
+        len(released.result()),
         [(label, found.result()) for (label, _), found in zip(modes, comparing, strict=True)],
     )
 

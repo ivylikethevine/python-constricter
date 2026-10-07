@@ -55,6 +55,7 @@ def use(m: Movie, loose: Loose, boxed: Boxed[int], plain: Plain, key: str, maybe
     noted = m.get("note")
     kept = m.get("name", "")
     none = m.get("score", None)
+    never = m.get("year", None)
     other = m.get("year", "")
     missing = m["missing"]
     computed = m[key]
@@ -68,13 +69,14 @@ def use(m: Movie, loose: Loose, boxed: Boxed[int], plain: Plain, key: str, maybe
     guessed = made["year"]
 """
 _SHAPES: Final = """
-from typing import Literal, TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 
 class Shape(TypedDict):
     kind: Literal["circle", "square"]
     sides: int
     inner: "Shape"
+    label: NotRequired[str]
 """
 _MAIN: Final = """
 import pkg.shapes as s
@@ -88,6 +90,7 @@ class Solid(Shape):
 def f(shape: Shape, other: s.Shape, solid: Solid) -> None:
     sides = shape["sides"]
     again = other.get("sides")
+    label = other.get("label")
     inner = shape["inner"]
     kind = shape["kind"]
     inherited = solid["sides"]
@@ -96,7 +99,7 @@ def f(shape: Shape, other: s.Shape, solid: Solid) -> None:
 
 
 def test_a_literal_key_of_a_typed_dict_is_its_declared_type() -> None:
-    """Its own or a base's, less `Required` and its like; `get` is its default's, or one `None` already."""
+    """Its own or a base's, less `Required` and its like; `get` is `None` too for one that may be missing."""
     fixes: _Fixes = {o.name: (o.fix, o.unsafe) for o in check_source(textwrap.dedent(_LOCAL))}
     assert fixes == {
         "name": ("str", False),
@@ -104,15 +107,18 @@ def test_a_literal_key_of_a_typed_dict_is_its_declared_type() -> None:
         "score": ("float", False),
         "parent": ("Base", False),
         "tag": ("str", False),
-        "got": (None, False),  # `int` for a required key, `int | None` for any other
+        "got": ("int", False),  # a required key's
         "noted": ("str | None", False),  # either way
         "kept": ("str", False),
-        "none": (None, False),
+        "none": ("float | None", False),  # one that may be missing
         "word": ("str", False),  # a vague key's elements
         "narrowed": ("str", False),
         "made": ("Movie", True),
         "guessed": ("int", True),  # of a guessed receiver
-        **dict.fromkeys(("other", "missing", "computed", "extra", "count", "attribute"), (None, False)),
+        **dict.fromkeys(
+            ("other", "never", "missing", "computed", "extra", "count", "attribute"),
+            (None, False),
+        ),
     }
     kinds: dict[str, frozenset[str]] = {
         o.name: o.edit.kinds for o in check_source(textwrap.dedent(_LOCAL)) if o.edit is not None
@@ -128,7 +134,13 @@ def test_a_typed_dicts_annotations_are_its_keys() -> None:
     found: dict[str, dict[str, str]] = annotations.classes(ast.parse(textwrap.dedent(_LOCAL)))
     assert found == {
         "Base": {"[name]": "str", "[tags]": "list[str]", "[note]": "str | None"},
-        "Movie": {"[year]": "int", "[score]": "float", "[parent]": "Base"},
+        "Movie": {
+            "[year]": "int",
+            "[score]": "float",
+            "[score]?": "float",
+            "[parent]": "Base",
+            "[parent]?": "Base",
+        },
         "Loose": {"[extra]": "dict[str, typing.Any]"},
         "Boxed": {"item": "T", "count": "int"},
         "Plain": {"name": "str"},
@@ -152,6 +164,8 @@ def test_another_files_typed_dict_is_keyed_too(tmp_path: Path) -> None:
         "[kind]": "Literal['circle', 'square']",
         "[sides]": "int",
         "[inner]": "s.Shape",
+        "[label]": "str",
+        "[label]?": "str",
     }
     assert imported.classes.attributes["Shape"] == {
         **imported.classes.attributes["s.Shape"],
@@ -163,7 +177,8 @@ def test_another_files_typed_dict_is_keyed_too(tmp_path: Path) -> None:
     )
     assert {o.name: o.fix for o in found} == {
         "sides": "int",
-        "again": None,
+        "again": "int",
+        "label": "str | None",  # it may be missing
         "inner": "Shape",
         "kind": "Literal['circle', 'square']",
         "inherited": "int",

@@ -33,6 +33,7 @@ first round's list: an error about one is untraced.
 
 import ast
 import difflib
+import hashlib
 import json
 import os
 import re
@@ -42,7 +43,7 @@ import subprocess  # runs git, uv, the tests, the type checkers and constricter
 import sys
 import tempfile
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import IO, Final, NamedTuple, TypeAlias, cast
@@ -209,7 +210,8 @@ SUITES: Final = {
     ),
 }
 _EVERYWHERE: Final = ("--level=suffocate", "--all-scopes", f"--jobs={_JOBS}")
-_INSTALLED: Final = ".venv/corpus-suite-installed"  # written once every install command has succeeded
+# Written once every install command has succeeded: a hash of them, so changed ones are run again.
+_INSTALLED: Final = ".venv/corpus-suite-installed"
 # Each checker's settings file, what an empty one holds, and the `pyproject.toml` sections that stand
 # for it: pyrefly reads mypy's or Pyright's where it has none of its own.
 _SETTINGS: Final = (
@@ -236,6 +238,7 @@ _NAME: Final = re.compile(r"[A-Za-z_]\w*")
 _CONSTRICTER: Final = Path(sys.executable).with_name("constricter")
 _INSERTED: Final = "insert"  # difflib's opcode for lines only the fixed file has
 _EQUAL: Final = "equal"  # and for lines both have
+_Fixes: TypeAlias = dict[str, list[Fix]]  # those `--fix` makes, per file
 _Mode: TypeAlias = tuple[str, tuple[str, ...]]  # a fixed run's label, and its options beyond `--fix`
 MODES: Final[tuple[_Mode, ...]] = (("--fix", ()), ("--fix --unsafe-fixes", ("--unsafe-fixes",)))
 _TYPES: Final = "--types"
@@ -360,7 +363,7 @@ def _settled(root: Path) -> None:
 
 
 def checkout(name: str, suite: Suite, apart: str = "") -> Path:
-    """Clone (once) `suite` at its tag and install it and its test dependencies (once).
+    """Clone (once) `suite` at its tag and install it and its test dependencies (once for its commands).
 
     `apart`: names another checkout of it, for what's to run beside its tests (its type checks).
 
@@ -380,7 +383,10 @@ def checkout(name: str, suite: Suite, apart: str = "") -> Path:
             WORK,
         )
     _settled(root)
-    if not (root / _INSTALLED).exists():
+    marker: Path = root / _INSTALLED
+    wanted: str = hashlib.sha256(repr(suite.install).encode()).hexdigest()
+    done: str | None = marker.read_text(encoding="utf-8") if marker.exists() else None
+    if done is None or (done and done != wanted):  # an empty one is from before it held the hash
         command: tuple[str, ...]
         for command in suite.install:
             status: int
@@ -389,7 +395,8 @@ def checkout(name: str, suite: Suite, apart: str = "") -> Path:
             if status:
                 message: str = f"{name}: uv {' '.join(command)} failed:\n{output}"
                 raise RuntimeError(message)
-        _ = (root / _INSTALLED).write_text("", encoding="utf-8")
+    if done != wanted:
+        _ = marker.write_text(wanted, encoding="utf-8")
     return root
 
 
@@ -498,14 +505,17 @@ def _key(complaint: Complaint) -> tuple[str, str]:
     return complaint.path, _OTHER_LINE.sub("line N", complaint.message)
 
 
-def planned(root: Path, suite: Suite, *extra: str) -> dict[str, list[Fix]]:
-    """Reset the checkout's source, and list the fixes `--fix` (with `extra` options) makes in it.
+def planned(root: Path, suite: Suite, *extra: str, reset_first: bool = True) -> dict[str, list[Fix]]:
+    """Reset the checkout's source (unless told it's as released), and list the fixes `--fix` makes in it.
+
+    With `extra` options.
 
     Returns:
       Them, per file.
 
     """
-    reset(root, suite)
+    if reset_first:
+        reset(root, suite)
     done: subprocess.CompletedProcess[str] = _completed(
         [str(_CONSTRICTER), "--format=json", *extra, *_EVERYWHERE, suite.source],
         root,
@@ -691,27 +701,65 @@ class Compared(NamedTuple):
     new: list[Blamed]
 
 
-def compared(root: Path, suite: Suite, released: list[Complaint], options: tuple[str, ...]) -> Compared:
+def _listed_and_fixed(
+    root: Path,
+    suite: Suite,
+    options: tuple[str, ...],
+    unfixed: Path | None,
+) -> tuple[dict[str, list[Fix]], str]:
+    """List the fixes `--fix` makes with `options` (see `planned`), and make them in checkout `root`.
+
+    Listed on `unfixed` meanwhile, if there's one; else on `root`, first.
+
+    Returns:
+      The fixes, and the size of the change.
+
+    """
+    if unfixed is None:
+        return planned(root, suite, *options), fixed(root, suite, *options)
+    pool: ThreadPoolExecutor
+    with ThreadPoolExecutor(1) as pool:
+        listing: Future[_Fixes] = pool.submit(
+            planned,
+            unfixed,
+            suite,
+            *options,
+            reset_first=False,
+        )
+        change: str = fixed(root, suite, *options)
+    return listing.result(), change
+
+
+def compared(
+    root: Path,
+    suite: Suite,
+    released: Callable[[], list[Complaint]],
+    options: tuple[str, ...],
+    unfixed: Path | None = None,
+) -> Compared:
     """Fix the checkout's source with `options`, type-check it, and trace what's new since `released`.
+
+    `released` gives the released source's errors, asked for once this checkout's are in: they may
+    be found meanwhile, on another checkout. `unfixed`: such a checkout, its source as released,
+    where the fixes are listed while this one is fixed.
 
     Returns:
       The comparison.
 
     """
-    fixes: dict[str, list[Fix]] = planned(root, suite, *options)
-    change: str = fixed(root, suite, *options)
+    made: tuple[_Fixes, str] = _listed_and_fixed(root, suite, options, unfixed)
     after: list[Complaint] = complaints(root, suite)
-    before: Counter[tuple[str, str]] = Counter(_key(complaint) for complaint in released)
+    before: Counter[tuple[str, str]] = Counter(_key(complaint) for complaint in released())
     now: Counter[tuple[str, str]] = Counter(_key(complaint) for complaint in after)
     files: dict[str, _Fixed] = {}
     new: list[Blamed] = []
     complaint: Complaint
     for complaint in _new(root, after, now - before, files):
         file: _Fixed = _file(root, files, complaint.path)
-        fix: Fix | None = _blamed(complaint, file, fixes.get(complaint.path, []))
+        fix: Fix | None = _blamed(complaint, file, made[0].get(complaint.path, []))
         kind: str = "(untraced)" if fix is None else fix.kinds + (" (guess)" if fix.unsafe else "")
         new.append(Blamed(complaint, fix, kind))
-    return Compared(change, len(after), (before - now).total(), new)
+    return Compared(made[1], len(after), (before - now).total(), new)
 
 
 def _compare_types(
@@ -729,7 +777,7 @@ def _compare_types(
       Whether nothing is.
 
     """
-    found: Compared = compared(root, suite, released, options)
+    found: Compared = compared(root, suite, lambda: released, options)
     _ = sys.stdout.write(
         f"  {label} ({found.change}): {found.errors} errors: {len(found.new)} new, {found.gone} gone\n",
     )

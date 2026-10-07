@@ -259,7 +259,7 @@
       "install": [
         "pip -r requirements.txt"
       ],
-      "tests": "",
+      "tests": "-W ignore::DeprecationWarning",
       "checks": [
         "mypy httpx tests"
       ]
@@ -601,7 +601,7 @@
       "tag": "v2026.09.0",
       "source": "xarray",
       "install": [
-        "pip -e . pytest pytest-xdist pytest-mypy-plugins"
+        "pip -e . pytest pytest-xdist pytest-mypy-plugins pytest-asyncio"
       ],
       "tests": "-n {workers} xarray",
       "checks": []
@@ -702,7 +702,7 @@
       "install": [
         "pip -e .[test] pytest-xdist mypy"
       ],
-      "tests": "--doctest-modules --doctest-plus --pyargs nibabel -n {workers}",
+      "tests": "!python -m pytest -q -rfE --doctest-modules --doctest-plus --pyargs nibabel -n {workers}",
       "checks": [
         "mypy nibabel"
       ]
@@ -882,7 +882,7 @@
       "install": [
         "pip -e . pytest~=8.2 pytest-cov pytest-randomly wcag-contrast-ratio"
       ],
-      "tests": "",
+      "tests": "!python -m pytest -q -rfE",
       "checks": []
     }
   },

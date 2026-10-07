@@ -13,7 +13,8 @@ from typing import Final, TypeAlias, cast
 from weakref import WeakKeyDictionary
 
 from constricter.rules.decorators import Held, passing, spelled
-from constricter.rules.quoted import parsed, unqualified, written
+from constricter.rules.keys import keys
+from constricter.rules.quoted import parsed, written
 from constricter.rules.syntax import child_statements, declared_return, top_level
 
 _VAGUE: Final = frozenset({"Any", "object"})
@@ -90,7 +91,6 @@ _CLASS_SIDE: Final = frozenset({"classmethod", "staticmethod"})
 _ACCESSORS: Final = frozenset({"setter", "deleter"})  # `@name.setter`: the same property, not a redefinition
 _CLASS_VAR: Final = "ClassVar"
 _TYPED_DICT: Final = "TypedDict"
-_QUALIFIERS: Final = frozenset({"Required", "NotRequired", "ReadOnly"})  # around a `TypedDict` key's type
 _CAST: Final = "cast"
 _UNDECORATED: Final[frozenset[str]] = frozenset()  # no decorators: a plain method
 
@@ -212,7 +212,7 @@ def classes(tree: ast.Module) -> dict[str, dict[str, str]]:
     and a vague one too, as an annotation's is kept) all count; a name that names more than one class
     in the module (however unlikely) gets the last one's attributes. A `TypedDict` class (under
     `TypedDict`, or one of the module's defined before it; not a generic one) has its keys instead,
-    each spelled as `key` does.
+    each spelled as `keys.key` does.
 
     Returns:
       Each class's name, mapped to its attributes' names and annotation text.
@@ -229,7 +229,7 @@ def classes(tree: ast.Module) -> dict[str, dict[str, str]]:
             for base in node.bases
         ):
             keyed.add(node.name)
-            found[node.name] = _keys(node)
+            found[node.name] = keys(node)
         else:
             found[node.name] = {
                 **properties.get(node.name, {}),
@@ -237,29 +237,6 @@ def classes(tree: ast.Module) -> dict[str, dict[str, str]]:
                 **_attributes(node),
             }
     return found
-
-
-def key(name: str) -> str:
-    """Spell a `TypedDict`'s key as `classes` holds it: apart from any attribute's name.
-
-    Returns:
-      It.
-
-    """
-    return f"[{name}]"
-
-
-def _keys(node: ast.ClassDef) -> dict[str, str]:
-    return {
-        key(stmt.target.id): written(_unqualified(stmt.annotation))
-        for stmt in node.body
-        if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name)
-    }
-
-
-def _unqualified(annotation: ast.expr) -> ast.expr:  # a key's type, less the `Required` around it
-    qualified: bool = isinstance(annotation, ast.Subscript) and node_name(annotation.value) in _QUALIFIERS
-    return _unqualified(cast("ast.Subscript", annotation).slice) if qualified else annotation
 
 
 def class_attributes(tree: ast.Module) -> dict[str, dict[str, str]]:
@@ -369,12 +346,12 @@ def _attributes(node: ast.ClassDef) -> dict[str, str]:
     for stmt in node.body:
         match stmt:
             case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation):
-                attrs[name] = unqualified(annotation)
+                attrs[name] = written(annotation)
             case ast.FunctionDef() | ast.AsyncFunctionDef():
                 attrs.update(_self_attributes(stmt))
             case _:
                 pass
-    return {name: text for name, text in attrs.items() if text}
+    return attrs
 
 
 def _self_attributes(func: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[tuple[str, str]]:
@@ -393,7 +370,7 @@ def _self_attributes(func: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[t
                 target=ast.Attribute(value=ast.Name(id="self"), attr=name),
                 annotation=annotation,
             ):
-                yield name, unqualified(annotation)
+                yield name, written(annotation)
             case _:
                 pass
 

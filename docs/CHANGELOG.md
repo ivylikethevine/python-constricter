@@ -6,15 +6,18 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A check is a little faster in one process: whether a fix's type is too vague to write is worked
+  out once for each type, not for each binding, and the empty containers a class's attributes start
+  as once for the class, not for each of its methods. The same offences and fixes.
 - `--fix` no longer writes these, each a type error on a package outside the corpora: `ClassVar[T]`
   or `Final[T]` for a copy of an attribute declared so (it's a `T`; a bare `Final` has no fix);
   `bytes` for `data[0]` (an `int`; an index of unknown type has none); `typing.Self` where the file
   imports `typing_extensions` too, under `if TYPE_CHECKING:` or not (`te.Self`, which older Pythons
   have); a type variable defined under `if TYPE_CHECKING:` (it's found as one now, and never written
-  unbound); `V | None` for a `TypedDict`'s `d.get("key")` (a required key's is `V`, and which keys
-  are isn't read: no fix, unless `V` allows `None` itself); and `list[T | None]` for
-  `[a] if a else []`, where `a` is narrowed. A comprehension filtered by `isinstance` of its own
-  elements is a guess whatever their type, as one over a union was.
+  unbound); `V | None` for a `TypedDict`'s `d.get("key")` where the key is required (it's `V`:
+  `total=False`, `Required` and `NotRequired` are read now, a base's keys by the base's own); and
+  `list[T | None]` for `[a] if a else []`, where `a` is narrowed. A comprehension filtered by
+  `isinstance` of its own elements is a guess whatever their type, as one over a union was.
 - One `--fix --unsafe-fixes` pass leaves nothing for a second in three more cases: a receiver typed
   by an alias whose import the fix adds (`NDArray`, by `np.array`) has its methods as the file's own
   import names them (`np.typing.NDArray`); a class the package a fix imports re-exports (`ds.Range`,

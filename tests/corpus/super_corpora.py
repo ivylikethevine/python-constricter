@@ -15,13 +15,15 @@ busy are free (`Slots`): each works on a copy of its own, but a suite's type che
 for its tests on their checkout unless the plan gives them checkouts of their own (`Plan.apart`:
 pandas's, whose checks take the longest), and the tests of suites that bind one port, one at a
 time (`Plan.ports`). A step is expected to keep busy what it did in the last
-run that measured it (its CPU seconds over its seconds); else its suite's workers for its tests
+run that measured it (the CPU seconds of every process under it, over its seconds: see
+`corpora_cpu`); else its suite's workers for its tests
 (`corpus_suite.workers`), and `_STEP_CPUS` for any other: one of constricter's checks in bursts
 between stretches in one process, and a type checker runs in one or two. So a step in one process
 doesn't hold a share of the machine it leaves idle, and constricter gets `_JOBS_SHARE` of the CPUs
 as its `--jobs` for its bursts. The `check` steps run last, one at a time with every CPU, so their
 timings are of the check alone. The corpora of `_FIRST` (pandas, whose chain is the longest) start
-first and never wait for CPUs: the run ends when the longest chain does.
+first, never wait for CPUs, and take `_FIRST_JOBS` times the others' `--jobs`: the run ends when
+the longest chain does.
 
 Each step is a process of its own, its result kept in `local/super-corpora/<version>-<stamp>/`
 (the stamp: a hash of `constricter/`'s sources): a run that stopped starts again from the steps
@@ -50,6 +52,7 @@ from typing import Final, NamedTuple, TextIO, TypeAlias, cast
 from constricter import __version__
 from constricter.rules import parsed
 from tests.corpus import corpora_section, corpora_steps, corpus_suite, corpus_table
+from tests.corpus.corpora_cpu import Sampler
 from tests.corpus.corpora_steps import CHECK, Sizes, Step, Steps
 from tests.corpus.corpus_table import Corpus
 
@@ -61,6 +64,7 @@ _WORKERS_SHARE: Final = 2  # the most workers a suite's tests take: the CPUs ove
 _STEP_CPUS: Final = 2  # what a step other than a suite's tests keeps busy, unmeasured
 _APART_CPUS: Final = 8  # and a suite's type checks on checkouts of their own, each fixed run at once
 _FIRST: Final = ("pandas",)  # the corpora whose steps never wait: the longest chains
+_FIRST_JOBS: Final = 2  # and how many times the others' `--jobs` theirs take (a checker's servers too)
 _STEP_FLAG: Final = "--step"
 _FRESH_FLAG: Final = "--fresh"
 _PRINT_FLAG: Final = "--print"
@@ -237,6 +241,7 @@ class _Running(NamedTuple):
     slots: Slots
     before: Mapping[tuple[str, str], float]
     bound: Mapping[str, threading.Lock]  # each port's lock, held while a suite's tests have the port
+    sampler: Sampler  # counts each step's CPU seconds, its processes' processes' too
 
     def expected(self, corpus: Corpus, name: str) -> int:
         """Estimate the CPUs a step keeps busy (see the module's docstring).
@@ -256,17 +261,21 @@ class _Running(NamedTuple):
     def process(self, corpus: Corpus, name: str, out: Path, jobs: int) -> int:
         """Run a step in a process of its own, its output beside `out`, where it keeps its result.
 
+        With the CPU seconds of every process under it, where that's more than the step counted
+        itself: constricter's workers aren't its to wait for.
+
         Returns:
           Its exit status.
 
         """
         log: TextIO
-        with out.with_suffix(".log").open("w", encoding="utf-8") as log:
-            return subprocess.run(
+        step: subprocess.Popen[bytes]
+        with (
+            out.with_suffix(".log").open("w", encoding="utf-8") as log,
+            subprocess.Popen(
                 [sys.executable, "-m", self.plan.module, _STEP_FLAG, name, corpus.name, str(out)],
                 stdout=log,
                 stderr=subprocess.STDOUT,
-                check=False,
                 cwd=_ROOT,
                 env={
                     **os.environ,
@@ -274,7 +283,15 @@ class _Running(NamedTuple):
                     corpora_steps.WORKERS_VARIABLE: str(self.sized.workers),
                     corpora_steps.APART_VARIABLE: "1" if corpus.name in self.plan.apart else "",
                 },
-            ).returncode
+            ) as step,
+        ):
+            self.sampler.watch(step.pid)
+            status: int = step.wait()
+        used: float = self.sampler.used(step.pid)
+        kept: Step | None = None if status else _read(out)
+        if kept is not None and used > kept.cpu:
+            _ = out.write_bytes(pickle.dumps(kept._replace(cpu=used)))
+        return status
 
     def started(self, corpus: Corpus, name: str, cpus: int | None = None) -> Step:
         """Run a step (see `process`), unless the run has its result already.
@@ -306,7 +323,9 @@ class _Running(NamedTuple):
                 corpus,
                 name,
                 out,
-                self.sized.jobs if cpus is None else self.sized.cpus,
+                self.sized.cpus
+                if cpus is not None
+                else self.sized.jobs * (_FIRST_JOBS if corpus.name in _FIRST else 1),
             )
         seconds: float = time.perf_counter() - start
         done: Step | None = None if status else _read(out)
@@ -391,6 +410,7 @@ def main(argv: Sequence[str], plan: Plan = SUPER) -> int:
         Slots(sized.cpus),
         measured_before(plan, run),
         {port: threading.Lock() for port in set(plan.ports.values())},
+        Sampler(),
     )
     _ = sys.stderr.write(
         f"{run}: {len(chosen)} corpora, --jobs={sized.jobs}, {sized.workers} workers a suite\n",

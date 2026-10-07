@@ -20,7 +20,8 @@ For each corpus and version: a check at every level (with `--all-scopes`), count
 then `--fix` and `--fix --unsafe-fixes` on copies, counting what each fixed, what no longer
 compiles, and what a second pass would still fix; and the share of its bindings typed as released
 and after each (this checkout's `--coverage`, whatever the version). Each version's rows end in a
-total: each code's share of the offences, and what was fixed and guessed as a share of them.
+total: each code's share of the offences, and what was fixed and guessed as a share of them. A
+corpus's runs go side by side where `CORPUS_JOBS` leaves CPUs for more than one.
 `--write` adds a section per version to docs/RUNS.md, or replaces a release's section if it's there;
 `dev` is recorded under this checkout's version, so record it right after bumping the version for a
 release (`--replace` to overwrite a section already there). Timings go to standard error, not the
@@ -36,10 +37,12 @@ import subprocess  # runs each version under test
 import sys
 import sysconfig
 import textwrap
+import threading
 import time
 import warnings
 from collections import Counter
 from collections.abc import Iterable, Sequence
+from concurrent.futures import Future, ThreadPoolExecutor
 from importlib import metadata
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
@@ -63,6 +66,12 @@ PACKAGES: Final = (
 _SOURCES: Final = Path(__file__).with_name("corpus_sources.py")
 # How many worker processes each run takes: every CPU, unless `CORPUS_JOBS` says (see `super_corpora.py`).
 JOBS: Final = f"--jobs={os.environ.get('CORPUS_JOBS', '0')}"
+# How many of a corpus's runs go at once: what the CPUs hold of runs that size, one where each
+# takes every CPU.
+_AT_ONCE: Final = threading.BoundedSemaphore(
+    max(1, (os.cpu_count() or 1) // int(os.environ.get("CORPUS_JOBS") or (os.cpu_count() or 1))),
+)
+_GUESSED: Final = "-guessed"  # after a version, names the copy its guesses fix
 _EVERYWHERE: Final = ("--all-scopes", JOBS)
 _FIXED: Final = re.compile(r"fixed (\d+)")
 _TYPED: Final = re.compile(r"^Total: (\d+)/(\d+) typed", re.MULTILINE)  # `--coverage`'s summary
@@ -202,15 +211,16 @@ def _run(python: str, args: Sequence[str]) -> str:
 
     """
     WORK.mkdir(parents=True, exist_ok=True)
-    done: subprocess.CompletedProcess[str] = subprocess.run(
-        [python, "-I", "-W", "ignore", "-m", "constricter", *args],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        check=False,
-        cwd=WORK,
-        env={**os.environ, _VIRTUAL_ENV: sys.prefix},
-    )
+    with _AT_ONCE:
+        done: subprocess.CompletedProcess[str] = subprocess.run(
+            [python, "-I", "-W", "ignore", "-m", "constricter", *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+            cwd=WORK,
+            env={**os.environ, _VIRTUAL_ENV: sys.prefix},
+        )
     return done.stdout
 
 
@@ -276,8 +286,12 @@ def copied(corpus: Corpus, version: str) -> tuple[Path, list[Path]]:
     return root, valid
 
 
-def _checked(python: str, root: Path) -> tuple[Counter[str], dict[Level, tuple[int, int]]]:
-    """Check `root` at every level.
+# The offences per code at `suffocate`, and each level's errors and warnings.
+_Levels: TypeAlias = tuple[Counter[str], dict[Level, tuple[int, int]]]
+
+
+def _checked(python: str, root: Path) -> _Levels:
+    """Check `root` at every level, the levels at once (see `_AT_ONCE`).
 
     Returns:
       The offences per code at `suffocate` (which reports every code), and each level's errors and
@@ -286,12 +300,16 @@ def _checked(python: str, root: Path) -> tuple[Counter[str], dict[Level, tuple[i
     """
     codes: Counter[str] = Counter()
     levels: dict[Level, tuple[int, int]] = {}
+
+    def at(each: Level) -> str:
+        return _run(python, ["--format=json", f"--level={each.name.lower()}", *_EVERYWHERE, str(root)])
+
+    pool: ThreadPoolExecutor
+    with ThreadPoolExecutor(len(Level)) as pool:
+        outputs: list[str] = list(pool.map(at, Level))
     level: Level
-    for level in Level:
-        output: str = _run(
-            python,
-            ["--format=json", f"--level={level.name.lower()}", *_EVERYWHERE, str(root)],
-        )
+    output: str
+    for level, output in zip(Level, outputs, strict=True):
         results: list[dict[str, _Json]] = cast("list[dict[str, _Json]]", json.loads(output or "[]"))
         errors: int = sum(r["severity"] == _ERROR for r in results)
         levels[level] = (errors, len(results) - errors)
@@ -311,7 +329,7 @@ class _Fixing(NamedTuple):
 
 
 def _fixes(python: str, corpus: Corpus, version: str) -> _Fixing:
-    """Fix copies of `corpus`: certain fixes only, then guesses too.
+    """Fix copies of `corpus`: certain fixes only on one, guesses too on another, at once.
 
     Returns:
       How many certain fixes, how many more guesses, files the guesses broke, what a second pass
@@ -319,22 +337,34 @@ def _fixes(python: str, corpus: Corpus, version: str) -> _Fixing:
 
     """
     fixing: list[str] = ["--level=suffocate", *_EVERYWHERE]
-    root: Path
-    valid: list[Path]
-    root, _ = copied(corpus, version)
-    fixed: int | None = _fixed_count(_run(python, ["--fix", *fixing, str(root)]))
-    typed_fixed: Typed | None = None if fixed is None else _typed(root)
-    root, valid = copied(corpus, version)
-    both: int | None = _fixed_count(_run(python, ["--fix", "--unsafe-fixes", *fixing, str(root)]))
-    broken: int = sum(not compiles(path) for path in valid)
-    left: int = _run(python, ["--diff", "--unsafe-fixes", *fixing, str(root)]).count("\n+")
+
+    def certain() -> tuple[int | None, Typed | None]:
+        root: Path = copied(corpus, version)[0]
+        fixed: int | None = _fixed_count(_run(python, ["--fix", *fixing, str(root)]))
+        return fixed, None if fixed is None else _typed(root)
+
+    def guessed() -> tuple[int | None, int, int, Typed | None]:
+        root: Path
+        valid: list[Path]
+        root, valid = copied(corpus, f"{version}{_GUESSED}")
+        both: int | None = _fixed_count(_run(python, ["--fix", "--unsafe-fixes", *fixing, str(root)]))
+        broken: int = sum(not compiles(path) for path in valid)
+        left: int = _run(python, ["--diff", "--unsafe-fixes", *fixing, str(root)]).count("\n+")
+        return both, broken, left, None if both is None else _typed(root)
+
+    pool: ThreadPoolExecutor
+    with ThreadPoolExecutor(2) as pool:
+        first: Future[tuple[int | None, Typed | None]] = pool.submit(certain)
+        second: Future[tuple[int | None, int, int, Typed | None]] = pool.submit(guessed)
+    fixed: int | None = first.result()[0]
+    both: int | None = second.result()[0]
     return _Fixing(
         fixed,
         None if fixed is None or both is None else both - fixed,
-        broken,
-        left,
-        typed_fixed,
-        None if both is None else _typed(root),
+        second.result()[1],
+        second.result()[2],
+        first.result()[1],
+        second.result()[3],
     )
 
 
@@ -362,13 +392,17 @@ def measure(corpus: Corpus, version: str, name: str = __version__) -> Measured:
     start: float = time.perf_counter()
     python: str = interpreter(version)
     files: int = sum(1 for _ in paths.python_files([corpus.root]))
-    codes: Counter[str]
-    levels: dict[Level, tuple[int, int]]
-    codes, levels = _checked(python, corpus.root)
-    fixes: _Fixing = _fixes(python, corpus, version)
+    pool: ThreadPoolExecutor
+    with ThreadPoolExecutor(3) as pool:
+        checking: Future[_Levels] = pool.submit(_checked, python, corpus.root)
+        fixing: Future[_Fixing] = pool.submit(_fixes, python, corpus, version)
+        typing: Future[Typed] = pool.submit(_typed, corpus.root)
     seconds: float = time.perf_counter() - start
     _ = sys.stderr.write(f"{version} on {corpus.name}: {files} files in {seconds:.1f}s\n")
-    return Measured(corpus, label(version, name), files, codes, levels, *fixes, _typed(corpus.root))
+    codes: Counter[str]
+    levels: dict[Level, tuple[int, int]]
+    codes, levels = checking.result()
+    return Measured(corpus, label(version, name), files, codes, levels, *fixing.result(), typing.result())
 
 
 def table(rows: Sequence[Sequence[object]], right: int) -> list[str]:

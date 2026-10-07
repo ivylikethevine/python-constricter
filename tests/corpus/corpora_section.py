@@ -45,6 +45,7 @@ _TOP_SHAPES: Final = 20
 _TOP_KINDS: Final = 30
 _TOP_TRACED: Final = 8  # the mechanisms named for a fixed run's new type errors
 _PROSE_WIDTH: Final = 100  # .prettierrc.yaml's printWidth
+_WORD: Final = re.compile(r"(?:`[^`]*`|[^\s`])+")  # what Prettier keeps on one line
 _FAILED: Final = "failed"
 _MECHANISMS_NOTE: Final = (
     "Fixes per mechanism (`--format=json`'s `kinds`), certain / guessed: a fix resting on several "
@@ -205,18 +206,15 @@ def _typechecked(found: Steps) -> Typechecked | None:
 def _listed(start: str, items: Sequence[str]) -> list[str]:
     """Lay a list item's comma-separated `items` out after `start`, as Prettier fills a paragraph.
 
-    Each item whole on a line (a code span with a space in it isn't broken), the lines after the
-    first indented under the item.
+    Broken at any space but one in a code span, the lines after the first indented under the item.
 
     Returns:
       The lines.
 
     """
     lines: list[str] = [start]
-    at: int
-    item: str
-    for at, item in enumerate(items):
-        word: str = item if at == len(items) - 1 else f"{item},"
+    word: str
+    for word in cast("list[str]", _WORD.findall(", ".join(items))):
         if len(lines[-1]) + 1 + len(word) > _PROSE_WIDTH:
             lines.append(f"  {word}")
         else:

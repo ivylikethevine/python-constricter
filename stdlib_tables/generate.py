@@ -113,6 +113,7 @@ INPUTS: Final = (
     "constricter/rules/annotations.py",
     "constricter/rules/decorators.py",
     "constricter/rules/flow.py",
+    "constricter/rules/keys.py",
     "constricter/rules/quoted.py",
     "constricter/rules/syntax.py",
     "constricter/rules/walked.py",

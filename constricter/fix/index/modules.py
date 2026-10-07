@@ -32,10 +32,10 @@ from constricter.rules.annotations import (
     dotted,
     generic_classes,
     is_composite,
-    key,
     node_name,
 )
 from constricter.rules.decorators import Held, Pass, is_fixture
+from constricter.rules.keys import key, optional
 from constricter.rules.syntax import child_statements, top_level
 from constricter.rules.tables import Tables, module_tables
 from constricter.rules.walked import classes as walked_classes
@@ -678,7 +678,7 @@ def _attributes(tree: ast.Module) -> frozenset[str]:
 
     And those its statements take without naming them: a call's `__call__`, a `with`'s `__enter__`;
     and the literal keys it reads of anything (`d["x"]`, `d.get("x")`), as a `TypedDict`'s are held
-    (see `annotations.key`), and the methods it awaits a call of, as an `async def`'s are held.
+    (see `keys.key`, `keys.optional`), and the methods it awaits a call of, as an `async def`'s are held.
 
     Returns:
       Them: all of another file's class's members it can use.
@@ -701,9 +701,10 @@ def _attributes(tree: ast.Module) -> frozenset[str]:
         if isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Attribute)
     )
     keys: frozenset[str] = frozenset(
-        key(index.value)
+        spelled(index.value)
         for index in indexes
         if isinstance(index, ast.Constant) and isinstance(index.value, str)
+        for spelled in (key, optional)
     )
     return named | keys | awaited | _quoted(tree) | _UNNAMED
 

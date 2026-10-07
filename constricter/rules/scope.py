@@ -4,6 +4,7 @@
 import ast
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from functools import lru_cache
 from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.core.known import Hints, ImportPlan, Inference, Known, Passed, Typed
@@ -625,7 +626,7 @@ class Scope:
           Whether it is.
 
         """
-        return vague_fits(parsed(fix.annotation), self.settings.checks.vague)
+        return _fits(fix.annotation, self.settings.checks.vague)
 
     def _first(
         self,
@@ -766,6 +767,17 @@ class Scope:
         return (
             None if type_comment is not None and self.settings.checks.type_comments else self.kind.unannotated
         )
+
+
+@lru_cache(maxsize=4096)  # a module's fixes are a few types, each asked again and again
+def _fits(annotation: str, level: int) -> bool:
+    """Check that a type, as text, is no vaguer than `level` allows (see `vague_fits`).
+
+    Returns:
+      Whether it is.
+
+    """
+    return vague_fits(parsed(annotation), level)
 
 
 def guesses_in(scope: Scope, values: Iterable[ast.expr]) -> tuple[bool, frozenset[str]]:

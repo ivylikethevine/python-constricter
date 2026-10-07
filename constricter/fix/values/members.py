@@ -19,7 +19,9 @@ from constricter.fix.libraries import overloads, stdlib
 from constricter.fix.libraries.library import library_awaited
 from constricter.fix.values.returns import METHOD_RETURNS, element_method, uniform_method
 from constricter.fix.values.targets import sole
-from constricter.rules.annotations import dotted, key, node_name, roots
+from constricter.rules.annotations import dotted, node_name, roots
+from constricter.rules.keys import key, optional
+from constricter.rules.quoted import unqualified
 
 if TYPE_CHECKING:
     from constricter.fix.core.inherited import Lineage
@@ -149,7 +151,7 @@ def _declared(
     """
     found: str | None
     if (found := None if call is not None else known.classes.get(receiver, {}).get(name)) is not None:
-        return Inference(found, _annotation_of(receiver, name), frozenset({_ATTRIBUTE}))
+        return _attribute(found, receiver, name)
     lineage: Lineage = known.class_side.lineage
     owner: str | None = _declarer(receiver, name, known) if call is None else lineage.definer(receiver, name)
     found = (known.methods if call is not None else known.classes).get(owner or "", {}).get(prefix + name)
@@ -157,14 +159,25 @@ def _declared(
         return None
     if call is None:
         # Another file's base's: not one typed as that class, which may be its property's `Self`.
-        return (
-            None if found == owner else Inference(found, _annotation_of(owner, name), frozenset({_ATTRIBUTE}))
-        )
+        return None if found == owner else _attribute(found, owner, name)
     if owner != receiver and name in lineage.selfish.get(owner, ()):
         found = receiver
     elif owner != receiver and owner not in lineage.bound and found == owner:
         return None  # another file's class, or its `Self`: the receiver's own class
     return Inference(found, _declared_return(owner, name), frozenset({_METHOD}))
+
+
+def _attribute(found: str, owner: str, name: str) -> Inference | None:
+    """Offer an attribute's declared type, less the `ClassVar` or `Final` around it.
+
+    The tables keep those: a subclass's variable a base declares a `ClassVar` isn't one to annotate.
+
+    Returns:
+      The inference; `None` for a bare `Final`, which leaves the type to the value.
+
+    """
+    text: str = unqualified(parsed(found))
+    return Inference(text, _annotation_of(owner, name), frozenset({_ATTRIBUTE})) if text else None
 
 
 def awaited(value: ast.expr, known: Known, infer: Callable[[ast.expr], Inference | None]) -> Inference | None:
@@ -291,7 +304,7 @@ def member(receiver: str, name: str, call: ast.Call | None, known: Known) -> Inf
 def keyed(receiver: str, index: ast.expr, known: Known) -> Inference | None:
     """Type `d["key"]`, `d` a value typed as a `TypedDict` class: the key's declared type.
 
-    The class's own key, or one it takes from a base (see `annotations.key`, `_declared`).
+    The class's own key, or one it takes from a base (see `keys.key`, `_declared`).
 
     Returns:
       Its inference, or `None` for any other index or receiver, or a key the class doesn't declare.
@@ -305,6 +318,18 @@ def keyed(receiver: str, index: ast.expr, known: Known) -> Inference | None:
             return None if found is None else Inference(found.annotation, reason, frozenset({_SUBSCRIPT}))
         case _:
             return None
+
+
+def may_miss(receiver: str, index: ast.expr, known: Known) -> bool:
+    """Check whether a `TypedDict` class's literal key may be missing (see `keys.optional`).
+
+    Returns:
+      Whether it may: `d.get("key")` is then `None` too.
+
+    """
+    return isinstance(index, ast.Constant) and (
+        _declared(receiver, optional(str(index.value)), None, known) is not None
+    )
 
 
 def returned_method(receiver: str, name: str, known: Known) -> tuple[str, str] | None:

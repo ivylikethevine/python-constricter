@@ -407,10 +407,19 @@ def empties(module: ast.Module, func: FunctionDef) -> Mapping[str, str]:
       Each one's kind; none for a function that isn't a class's own method.
 
     """
-    node: ast.ClassDef | None
-    if (node := _owners(module).get(id(func))) is None:
-        return {}
-    # Its own class's, and those of the module's classes it's under: their fills are its own too.
+    node: ast.ClassDef | None = _owners(module).get(id(func))
+    return {} if node is None else _class_empties(module, node)
+
+
+@lru_cache(maxsize=1024)  # asked of each of a class's methods as it's checked
+def _class_empties(module: ast.Module, node: ast.ClassDef) -> Mapping[str, str]:
+    """Find the attributes of `self` a class, or one above it, binds to an empty container.
+
+    Returns:
+      Each one's kind.
+
+    """
+    # Its own, and those of the module's classes it's under: their fills are its own too.
     above: list[ast.ClassDef] = [each for each in classes(module) if node in _family(module, each)]
     return {attr: kind for each in (*above, node) for attr, (kind, _) in _emptied(module, each).items()}
 

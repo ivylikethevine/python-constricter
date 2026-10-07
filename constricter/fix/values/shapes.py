@@ -18,7 +18,7 @@ from typing import Final, TypeAlias
 
 from constricter.fix.core.known import ImportPlan, Inference, Known, Partial
 from constricter.fix.libraries import stdlib
-from constricter.fix.values.members import keyed, parsed, partial_method
+from constricter.fix.values.members import keyed, may_miss, parsed, partial_method
 from constricter.rules.flow import members
 
 Infer: TypeAlias = Callable[[ast.expr], Inference | None]
@@ -280,7 +280,7 @@ def defaulted(receiver: str, call: ast.Call, infer: Infer, known: Known) -> Infe
     """Infer `d.get(key, default)` on a `dict[K, V]`, by a default of type `V`: `V` (`V | None`, by `None`).
 
     And on a `TypedDict`'s instance, by the literal key's type `V` (see `members.keyed`), with no
-    default too where `V` may be `None` itself.
+    default too: `V` for a required key, `V | None` for one that may be missing.
 
     Returns:
       The inference, or `None` for any other call, or a default of another type.
@@ -307,8 +307,11 @@ def defaulted(receiver: str, call: ast.Call, infer: Infer, known: Known) -> Infe
             if (key := keyed(receiver, index, known)) is None:
                 return None
             text, reason = key.annotation, f"`get` of {key.reason}"
-            if _NONE not in (members(text) or ()) and (not rest or is_none(rest[0])):
-                return None  # `V` for a required key, `V | None` for any other: which isn't read
+            if not may_miss(receiver, index, known) and _NONE not in (members(text) or ()):
+                if not rest:
+                    return Inference(text, reason, frozenset({_METHOD}))
+                if is_none(rest[0]):  # `V` to pyright, `V | None` to mypy
+                    return None
     if not rest or is_none(rest[0]):
         union: str | None = or_none(text)
         return None if union is None else Inference(union, reason, frozenset({_METHOD}))
