@@ -825,6 +825,23 @@ def certain_type(
     return annotation
 
 
+def guessed_type(scope: Scope, value: ast.expr) -> Late | None:
+    """Infer `value`'s type where `--fix` only guesses it: what `certain_type` leaves unknown.
+
+    Returns:
+      The type and what the guess rests on; `None` if it's unknown, certain, or vaguer than `vague`
+      allows.
+
+    """
+    annotation: str | None = inferred(value, scope.settings.known, scope.inferred.types)
+    unsafe: bool
+    origins: frozenset[str]
+    unsafe, origins = guesses_in(scope, [value])
+    if not unsafe or annotation is None or not vague_fits(parsed(annotation), scope.settings.checks.vague):
+        return None
+    return annotation, origins
+
+
 def imports_of(annotation: str, plan: ImportPlan) -> tuple[str, ...]:
     """Find the imports `annotation` needs: those `plan` added for a name it's written with.
 

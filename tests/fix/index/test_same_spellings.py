@@ -104,7 +104,7 @@ def test_a_later_binding_spelled_otherwise_fits_the_fix() -> None:
         guarded={"Schema": Guarded(("pkg.core", "Schema"), "from pkg.core import Schema")},
         same=(_SCHEMAS,),
     )
-    assert clashing.usable(frozenset({"Schema"})).same == (_SCHEMAS,)
+    assert clashing.usable(frozenset({"Schema"}), frozenset()).same == (_SCHEMAS,)
 
 
 def test_spellings_of_one_type_fit_each_other() -> None:

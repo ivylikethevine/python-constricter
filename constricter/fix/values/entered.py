@@ -12,15 +12,16 @@ one to such a method of its classes, on a receiver whose type is known (`self.de
 import ast
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from typing import Final
+from typing import Final, cast
 
 from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.libraries import stdlib
 from constricter.fix.values.inference import inference
 from constricter.rules.annotations import defined_type_vars, is_vague, node_name
-from constricter.rules.walked import classes
+from constricter.rules.syntax import Start
+from constricter.rules.walked import classes, of_type
 
-_ENTER: Final = "__enter__"
+ENTER: Final = "__enter__"
 _AENTER: Final = "__aenter__"
 _NONE: Final = "None"
 _MANAGER: Final = ["contextmanager"]  # the one decorator that makes a generator function a manager
@@ -139,6 +140,21 @@ def _patched(manager: ast.expr, known: Known) -> Inference | None:
             return None
 
 
+def targets(module: ast.Module) -> list[Start]:
+    """Find the `with` statements' managers that bind a target: each one's `__enter__` is called.
+
+    Returns:
+      Where each such manager starts (its line and column).
+
+    """
+    return [
+        (item.context_expr.lineno, item.context_expr.col_offset)
+        for node in cast("list[ast.With]", of_type(module, ast.With))
+        for item in node.items
+        if item.optional_vars is not None
+    ]
+
+
 def entering(manager: ast.expr) -> ast.Call:
     """Write the call a `with` statement makes of its context manager: `manager.__enter__()`.
 
@@ -146,7 +162,7 @@ def entering(manager: ast.expr) -> ast.Call:
       It, placed where `manager` is.
 
     """
-    method: ast.Attribute = ast.copy_location(ast.Attribute(manager, _ENTER, ast.Load()), manager)
+    method: ast.Attribute = ast.copy_location(ast.Attribute(manager, ENTER, ast.Load()), manager)
     return ast.copy_location(ast.Call(method, [], []), manager)
 
 

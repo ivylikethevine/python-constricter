@@ -14,7 +14,7 @@ import hashlib
 import sys
 import tarfile
 import urllib.request
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Final, NamedTuple
 
@@ -50,8 +50,8 @@ SOURCES: Final = {
 }
 
 
-def fetch(name: str, work: Path = WORK) -> Path:
-    """Download (once), check and unpack source `name`.
+def fetch(name: str, work: Path = WORK, sources: Mapping[str, Source] | None = None) -> Path:
+    """Download (once), check and unpack source `name` of `sources` (default: `SOURCES`), under `work`.
 
     Returns:
       Its package directory.
@@ -60,7 +60,7 @@ def fetch(name: str, work: Path = WORK) -> Path:
       ValueError: the download's SHA-256 isn't the pinned one.
 
     """
-    source: Source = SOURCES[name]
+    source: Source = (SOURCES if sources is None else sources)[name]
     root: Path = work / f"{name}-{source.version}"
     package: Path = root / source.package
     if package.is_dir():

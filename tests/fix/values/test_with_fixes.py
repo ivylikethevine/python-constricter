@@ -411,3 +411,29 @@ def test_a_manager_function_yields_its_iterators_element(returns: str, yielded: 
     """`Iterator[T]`'s `T`, or a `Generator`'s first argument: nothing else."""
     tree: ast.Module = ast.parse(f"@contextmanager\ndef m() -> {returns}:\n    yield\n")
     assert entered.managers(tree) == ({} if yielded is None else {"m": yielded})
+
+
+_LATER: Final = """
+def extract(path: str) -> None:
+    with Archive(path) as archive:
+        archive.close()
+
+
+class Archive:
+    def __init__(self, path: str) -> None:
+        self.path: str = path
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        self.close()
+
+    def close(self) -> None:
+        pass
+"""
+
+
+def test_a_manager_defined_after_its_with_is_entered_by_its_returns() -> None:
+    """The `with` calls `__enter__`: its function is checked again once that method's `return`s are read."""
+    assert _fixes(_LATER) == {"archive": ("Archive", True)}

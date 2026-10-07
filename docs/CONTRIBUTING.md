@@ -88,6 +88,12 @@ On a pull request that touches what `--fix` does, the Corpus coverage workflow c
 pydantic's share of bindings typed as released, after `--fix`, and after `--fix --unsafe-fixes`,
 beside the base branch's (`tests/corpus/corpus_coverage.py`), and edits the comment on each push.
 
+`local/.venv/bin/python -m tests.corpus.super_corpora` runs all of these on every corpus at once,
+for a machine with many cores: the table, the census, each installed checker's `--infer-with`, each
+package's suite and type checks, and a timed check, the corpora side by side and each step kept so a
+stopped run resumes. It writes [RUNS.md](RUNS.md)'s `Super corpora` section, with the machine it ran
+on, and exits 1 on anything a fix broke.
+
 `local/.venv/bin/python -m tests.corpus.corpus_untyped` counts what `--fix` still can't type on the
 same corpora, and why: each untyped binding by the statement that binds it and the shape of its
 value, in annotated functions or not, and each call through an import by where it comes from. It

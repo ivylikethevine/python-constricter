@@ -960,6 +960,9 @@ def same(catalog: Index, path: Path, guarded: Mapping[str, Guarded]) -> tuple[fr
 def with_returned(catalog: Index, found: Mapping[str, Returns]) -> Index:
     """Record what checked modules' unannotated functions return (`found`, by module name).
 
+    A module's names from an earlier check are kept: once `--fix` has written an import it added,
+    a later check no longer exports the name, and the index doesn't have the new import.
+
     Returns:
       The index, with them.
 
@@ -969,7 +972,8 @@ def with_returned(catalog: Index, found: Mapping[str, Returns]) -> Index:
     returns: Returns
     for name, returns in found.items():
         if name in modules:
-            modules[name] = modules[name]._replace(returned=returns)
+            names: dict[str, Origin] = {**modules[name].returned.names, **returns.names}
+            modules[name] = modules[name]._replace(returned=returns._replace(names=names))
     return catalog._replace(modules=modules)
 
 

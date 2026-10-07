@@ -19,7 +19,7 @@ from typing import Final, NamedTuple, TypeAlias, cast
 from constricter.fix.core import imports
 from constricter.fix.core.inherited import Lineage
 from constricter.fix.core.known import Guarded, Inference, Origin, Returned, Returns
-from constricter.fix.values import fills
+from constricter.fix.values import entered, fills
 from constricter.fix.values.inference import ASSIGNED
 from constricter.rules.annotations import roots
 from constricter.rules.decorators import FIXTURES, spelled
@@ -837,14 +837,15 @@ def _calls(module: ast.Module) -> tuple[list[tuple[int, int]], list[_Callee]]:
     """Find every call in the module, in source order, from its one shared walk (`nodes`).
 
     A function's (or statement's) calls are then those within its span of the source: no walk of
-    its own, which the rounds of `checker._returned` asked of every function again and again.
+    its own, which the rounds of `checker._returned` asked of every function again and again. A
+    `with` statement that binds a target calls its manager's `__enter__`.
 
     Returns:
       Where each call starts (its line and column), and what it calls: a name (`f()`) or an
       attribute (`x.m()`), each `None` if not.
 
     """
-    found: list[_Call] = []
+    found: list[_Call] = [(start, (None, entered.ENTER)) for start in entered.targets(module)]
     node: ast.AST
     name: str
     attr: str

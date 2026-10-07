@@ -143,3 +143,40 @@ def test_the_cli_types_a_method_of_another_files_base(tmp_path: Path) -> None:
     assert _UNFIXED in use.read_text(encoding="utf-8")
     _ = cli.main(["--fix", "-q", "--unsafe-fixes", "--jobs=1", str(tmp_path)])
     assert _GUESSED in use.read_text(encoding="utf-8")
+
+
+_LIBRARY: Final = """
+class BaseConfigurator:
+    def __init__(self, config):
+        self.config = config
+
+    def depth(self):
+        return len(self.config)
+"""
+_LIBRARY_USE: Final = """
+import logging.config
+
+
+def f() -> None:
+    made = logging.config.BaseConfigurator({})
+    size = made.depth()
+"""
+_LIBRARY_FIXED: Final = (
+    "    made: BaseConfigurator = logging.config.BaseConfigurator({})\n    size: int = made.depth()\n"
+)
+
+
+def test_a_checked_library_class_named_by_an_added_import_has_its_methods(tmp_path: Path) -> None:
+    """The standard library, checked: its class, named by an import a fix adds, is the one the file spells."""
+    (tmp_path / "logging").mkdir()
+    use: Path = tmp_path / "use.py"
+    path: Path
+    source: str
+    for path, source in (
+        (tmp_path / "logging" / "__init__.py", ""),
+        (tmp_path / "logging" / "config.py", _LIBRARY),
+        (use, _LIBRARY_USE),
+    ):
+        _ = path.write_text(textwrap.dedent(source), encoding="utf-8", newline="\n")
+    _ = cli.main(["--fix", "-q", "--unsafe-fixes", "--jobs=1", str(tmp_path)])
+    assert _LIBRARY_FIXED in use.read_text(encoding="utf-8")

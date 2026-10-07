@@ -181,10 +181,10 @@
 - **Safe by construction**: touches no class body but a plain class's, and that as a guess (no
   decorator, no metaclass, every base plain, a test case or a builtin exception or value class),
   keeps line endings and encodings, edits notebooks' cells in place, nothing broken on any corpus,
-  and the corpus packages' own test suites pass identically before and after. One pass converged on
-  every corpus, the standard library's tests included, up to 0.3.3 (a library type a callee's module
-  doesn't import yet is named for its callers by the import its own fixes add); not at 0.3.4-rc.1
-  (see [Next](#next)).
+  and the corpus packages' own test suites pass identically before and after. One pass converges on
+  every corpus, the standard library's tests included: a library type a callee's module doesn't
+  import yet is named for its callers by the import its own fixes add, and a file checked again
+  after its text is fixed keeps what its first check wrote.
 - **Fast enough**: the standard library checks in about 8s with `--jobs=1` and 1.5s with `--jobs=0`
   on 16 cores (from 227s profiled at 0.2.4): one shared walk of each module, kept with its tree from
   the cross-file index to the check, and a node's children listed without `ast`'s generators;
@@ -341,19 +341,7 @@ fix.
 
 ### Small: under 4 hours
 
-1. **One pass converges again.** At 0.3.4-rc.1 a second `--fix --unsafe-fixes` still changes
-   something on three corpora, where none did at 0.3.3: 123 added lines on pandas, 8 on the standard
-   library, 2 on django ([RUNS.md](RUNS.md), `Left`; a file's diff header counts as one). CI's
-   Corpus fix job fails on it. Django's two are `sql = "..." + self.bare_select_suffix`, a `str`
-   only the second time (`db/backends/oracle/features.py`), and an `archive: Archive` declared late
-   (`utils/archive.py`); pandas's and the standard library's aren't looked at. The likely cause, not
-   confirmed: the first pass annotates a base class's variable (a `member` guess), and a class under
-   it reads the attribute by that annotation only once it's in the source, where the guess itself
-   doesn't reach it. Run `--diff --unsafe-fixes` on each fixed copy under `local/corpus-table/dev/`,
-   group what's left by fix kind, and make the first pass see what the second does (or neither).
-   Done when `Left` is 0 on every corpus, with a test for each cause. About 3 hours; coverage
-   unchanged.
-2. **The slowdown since 0.3.3.** The corpus table's run for 0.3.4-rc.1 took over half as long again
+1. **The slowdown since 0.3.3.** The corpus table's run for 0.3.4-rc.1 took over half as long again
    as 0.3.3-rc.1's on the same machine (8 cores, `--jobs=0`): the standard library 499s from 338s,
    django 110s from 66s, sqlalchemy 88s from 61s, pydantic 22s from 18s, pandas 845s from 466s,
    twisted 77s from 65s, pip 54s from 48s: 28 minutes from 18. Not profiled, and other load on the
@@ -365,6 +353,38 @@ fix.
    standard library at both tags, and time `schedule.outside` apart from the check. Done when a
    check of the standard library is no slower than at 0.3.3, or each second it costs is accounted
    for by a fix it buys. About 3 hours; coverage unchanged.
+2. **A suite's workers, sized by the suite.** `super_corpora.py` gives every suite the same number
+   of pytest workers (a quarter of the CPUs), and `corpus_suite.py` four: django's runs in one
+   process whatever it's given, sqlalchemy's four kept 3.1 CPUs busy, and a 16-CPU machine with 60
+   GB sat under half used through a run. Give each `Suite` its own count (the CPUs it can use, and
+   the memory a worker of it takes), raise pandas's and sqlalchemy's to what the machine has free,
+   and run django's with `--parallel` where its databases clone (not under `forkserver`, on Python
+   3.14). Done when each suite's tests keep the workers they're given busy, by the run's own measure
+   (the CPU seconds each step records), and their outcomes are unchanged. About 2 hours; coverage
+   unchanged.
+
+3. **A corpus's steps, side by side.** `super_corpora.py` runs a corpus's steps one after another,
+   and pandas's take 55 to 60 minutes of a run the other six finish in 15: its table, census and
+   `--infer-with` steps each work on a copy of their own, and only its tests and type checks share a
+   checkout. Start every step when the CPUs it keeps busy are free, the type checks on checkouts of
+   their own for a corpus that long: one for each fixed run, so the four type-check the package at
+   once, and a suite's checkers (mypy, pyright) together. Done when pandas's steps end within 10
+   minutes of the run's start and its new type errors are the same counts as one after another.
+   About 3 hours; coverage unchanged.
+4. **The table's checks, at once.** `corpus_table.measure` runs constricter ten times over a corpus,
+   one after another: a check at each of four levels, two fixes, a second pass's diff and three
+   coverage counts, each indexing the corpus again (pandas's take 8 to 10 minutes). Run the level
+   checks together, and the two fixes on their copies together. Done when a corpus's `table` step
+   takes under half what it does, its tables unchanged. About 2 hours; coverage unchanged.
+5. **What an index's classes say, kept.** Each file asks again which classes the modules it imports
+   define, how it spells them and each one's line of bases (`project.spelled_classes`,
+   `own_types.lineages`), though none of it changes as files are checked. Keep them with the index.
+   Measured on the standard library with every CPU: 18.4s to 16.0s, the same offences and fixes.
+   Done when it's in, with that measured on pandas too. About 1 hour; coverage unchanged.
+6. **A step's CPU seconds, its workers' too.** A step records the CPU seconds of the processes it
+   waited for, which leaves out constricter's workers (the fork server starts them): its table step
+   reads 0.4 CPUs busy where a sampler sees 1.2. Count a step's whole process tree. Done when a
+   step's figure matches a sampler's within a tenth. About 1 hour; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -415,6 +435,27 @@ run:
    non-zero on anything a fix broke. Done when RUNS.md has a section from each, and each item above
    is closed or reopened by them. About 8 hours for the first and 10 for the second, beside the
    runs' own time; coverage measured, not added.
+
+7. **What a file knows from outside, worked out by its worker.** In a `--jobs` check the main
+   process works out each file's `Outside` (what it imports from the others: `schedule.outside`) and
+   sends it to the worker that checks the file, which waits for it: pandas's check with every CPU
+   takes 42s, 94% of it the main process's, and the standard library's 20s, 58% (10.4s at 0.3.3).
+   Profile the main process on pandas first; then give each worker the index, once, and let it work
+   out its own files' as it reaches them, the main process keeping only the order and what each
+   round returns. Done when the main process's share of pandas's check is under a quarter and the
+   check takes under 15s on 16 CPUs, its offences and fixes unchanged. About 6 hours; coverage
+   unchanged.
+8. **Only the classes a file uses.** A file is given the line of bases of every class it could name
+   through its imports (`own_types.lineages`), and every module's classes under each package it
+   imports, worked out and pickled for each file whether it names one or not. Work out a class's
+   when the check asks for it, or only for the names the file's text has. Done when `Outside` for a
+   file of the standard library's tests is under a tenth its pickled size, with the same fixes.
+   About 3 hours; coverage unchanged.
+9. **The index, kept between runs.** Every run reads and indexes every file again, ten times over in
+   a corpus's `table` step alone. Keep each file's module (`modules.read`'s) by its content's hash,
+   as an installed package's are (`installed`), dropped when the code that reads it changes. Done
+   when a second check of an unchanged standard library spends under a second indexing, and a
+   changed file's is read again. About 6 hours; coverage unchanged.
 
 What the finished items left, each under 3 hours and under 0.1%: a fixture's value bound to a name
 before its attribute is read (`both = capsys.readouterr()`, then `both.out`), a `parametrize` on a

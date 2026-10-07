@@ -3,12 +3,12 @@
 
 import ast
 import bisect
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from itertools import accumulate
 from typing import Final, TypeAlias, cast
 from weakref import WeakKeyDictionary
 
-from constricter.fix.core.known import Checking, ImportPlan, Origin
+from constricter.fix.core.known import Checking, Guarded, ImportPlan, Origin
 from constricter.rules.syntax import FunctionDef, Start, import_bindings
 from constricter.rules.walked import of_type
 
@@ -82,6 +82,33 @@ def added_origin(statement: str) -> Origin:
     name: str
     module, _, name = statement.removeprefix("from ").removeprefix("import ").partition(" import ")
     return module, name or None
+
+
+def added_dotted(statement: str) -> str:
+    """Spell what an added import binds, dotted: `m.T` for `from m import T`, `m` for `import m`.
+
+    Returns:
+      It.
+
+    """
+    module: str
+    name: str | None
+    module, name = added_origin(statement)
+    return f"{module}.{name}" if name else module
+
+
+def present(found: ImportPlan, guarded: Mapping[str, Guarded]) -> frozenset[str]:
+    """Name those of `guarded` the module imports under `if TYPE_CHECKING:` as their statements would.
+
+    Returns:
+      Each name whose import to add is one the module has.
+
+    """
+    return frozenset(
+        name
+        for name, each in guarded.items()
+        if each.statement is not None and found.checking.bound.get(name) == added_dotted(each.statement)
+    )
 
 
 def _is_checking(test: ast.expr) -> bool:

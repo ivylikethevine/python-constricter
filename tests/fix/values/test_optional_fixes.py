@@ -84,3 +84,35 @@ def test_a_name_a_nested_function_reads_isnt_declared_optional() -> None:
         "b": "int | None",
         "later": None,
     }
+
+
+GUESSED: Final = """
+class Table:
+    def one(self, rows: list[int]) -> int:
+        return len(rows)
+
+    def many(self, rows: list[int]) -> int:
+        return len(rows)
+
+    def insert(self, rows: list[int], multi: bool) -> int | None:
+        if multi:
+            run = self.many
+        else:
+            run = self.one
+        total = None
+        for _ in rows:
+            done = run(rows)
+            if total is None:
+                total = done
+            else:
+                total += done
+        return total
+"""
+
+
+def test_an_augmented_guess_is_one_of_the_names_types() -> None:
+    """`total += done`, `done` a guess, binds what it will once the guess is written: one pass finds it."""
+    found: list[Offence] = check_source(textwrap.dedent(GUESSED))
+    fixed: dict[str, tuple[str | None, bool]] = {o.name: (o.fix, o.unsafe) for o in found}
+    assert fixed["done"] == ("int", True)
+    assert fixed["total"] == ("int | None", True)

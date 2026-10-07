@@ -175,3 +175,29 @@ def test_another_files_base_gives_its_attributes(tmp_path: Path) -> None:
         (20, "inherited"): "int",
         (21, "own"): "str",
     }
+
+
+_REBOUND: Final = """
+from functools import cached_property
+
+
+class Base:
+    suffix: str = ""
+    limit: int = 3
+
+
+class Own(Base):
+    def read(self) -> None:
+        text = self.suffix
+        size = self.limit
+
+    @cached_property
+    def suffix(self):
+        return "" if self.limit else " FROM DUAL"
+"""
+
+
+def test_a_name_the_class_binds_itself_isnt_its_bases() -> None:
+    """A method of that name is the class's own: the base's annotation, once written, changes nothing."""
+    found: list[Offence] = check_source(textwrap.dedent(_REBOUND))
+    assert {o.name: o.fix for o in found} == {"text": None, "size": "int"}

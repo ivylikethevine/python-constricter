@@ -6,6 +6,12 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- One `--fix --unsafe-fixes` pass leaves a second nothing to change again, on every corpus: a `with`
+  target is typed by its manager's `__enter__`'s `return`s the first time, wherever the class is; a
+  name bound to `None` then `total += guess` is `T | None` as a guess; a file fixed and checked
+  again (its callers typing its parameters, or files calling each other) keeps the imports its first
+  check wrote, for itself and for the files reading its types; and a class that binds a name itself
+  (a `cached_property`) no longer reads a base's annotation of it.
 - `--fix` picks a checked file's overload by the checked files' own classes: a parameter typed as
   nothing but such classes, or as an iterable of them, takes an argument by its class's bases, so
   `concat([df, df])` is a `DataFrame` where another overload takes `Series`.

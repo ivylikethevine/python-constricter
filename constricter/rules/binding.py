@@ -22,7 +22,7 @@ from constricter.fix.values.inference import LoopPart, inference, looped, looped
 from constricter.fix.values.targets import iterated, unpacked
 from constricter.offences import COMMENT_TYPED_TARGET, UNTYPED_TARGET, Edit, Fix, at
 from constricter.rules.flow import augmented
-from constricter.rules.scope import Scope, certain_type, guesses_in
+from constricter.rules.scope import Late, Scope, certain_type, guessed_type, guesses_in
 from constricter.rules.syntax import captures, comment_type, target_names, type_comment_span
 
 _COMMENT: Final = "comment"  # the fix kind of LVA003's declaration
@@ -77,7 +77,7 @@ def bind(scope: Scope, stmt: ast.stmt) -> None:
         case ast.AugAssign(target=ast.Name(id=name) as single, op=op, value=value):
             own: str | None = None if name in scope.inferred.guesses else scope.inferred.types.get(name)
             bound: str | None = augmented(op, certain_type(scope, value), own)
-            scope.lifetime(name).bind(at(single), bound)
+            scope.lifetime(name).bind(at(single), bound, None if bound else _augmented_guess(scope, stmt))
             scope.inferred.rebound(name, bound)
         case _:
             pass
@@ -438,3 +438,22 @@ def _bind_captures(scope: Scope, cases: list[ast.match_case]) -> None:
     for case in cases:
         for name, where in captures(case.pattern, scope.settings.lines):
             scope.bind(name, where, UNTYPED_TARGET)
+
+
+def _augmented_guess(scope: Scope, stmt: ast.AugAssign) -> Late | None:
+    """Guess the type `name op= value` binds, where the name's type or the value's is only a guess.
+
+    As the statement binds it once `--fix` has written those guesses, and they're declared.
+
+    Returns:
+      The type and what the guess rests on, or `None` if it's unknown still.
+
+    """
+    name: str = cast("ast.Name", stmt.target).id
+    operand: Late | None = guessed_type(scope, stmt.value)
+    certain: str | None = None if operand else certain_type(scope, stmt.value)
+    bound: str | None = augmented(stmt.op, operand[0] if operand else certain, scope.inferred.types.get(name))
+    none: frozenset[str] = frozenset()
+    own: frozenset[str] = scope.inferred.origins.get(name, none) if name in scope.inferred.guesses else none
+    origins: frozenset[str] = own | (operand[1] if operand else none)
+    return (bound, origins) if bound is not None and origins else None

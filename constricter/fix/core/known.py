@@ -481,20 +481,26 @@ class Outside(NamedTuple):
     # What awaiting a call of each `async def` it imports from them gives, as it spells the call.
     awaits: Mapping[str, str] = {}
 
-    def usable(self, taken: frozenset[str]) -> "Outside":
+    def usable(self, taken: frozenset[str], present: frozenset[str]) -> "Outside":
         """Drop what other files offer whose type needs a name imported that the module binds already.
 
         That's a name to import under `if TYPE_CHECKING:` (see `Guarded`) that the module binds anywhere
         else, a function's local or parameter included: the import would shadow it, or it the import.
+        `present`: those it imports so already (see `imports.present`), which `--fix` wrote since the
+        files were indexed: each is one the file has.
 
         Returns:
           What's left.
 
         """
+        guarded: dict[str, Guarded] = {
+            name: Guarded(found.origin, None) if name in present else found
+            for name, found in self.guarded.items()
+        }
         clashing: frozenset[str] = frozenset(
-            name for name, found in self.guarded.items() if found.statement is not None and name in taken
+            name for name, found in guarded.items() if found.statement is not None and name in taken
         )
-        if not clashing:
+        if not clashing and guarded == self.guarded:
             return self
         members: Classes | None = self.classes
         return Outside(
@@ -510,7 +516,7 @@ class Outside(NamedTuple):
                 self.returned.names,
                 free_of_all(self.returned.methods, clashing),
             ),
-            {name: found for name, found in self.guarded.items() if name not in clashing},
+            {name: found for name, found in guarded.items() if name not in clashing},
             self.generics,
             self.callees,
             self.parameters,

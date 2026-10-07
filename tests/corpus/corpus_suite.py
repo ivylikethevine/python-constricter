@@ -42,6 +42,7 @@ import subprocess  # runs git, uv, the tests, the type checkers and constricter
 import sys
 from collections import Counter
 from collections.abc import Sequence
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import IO, Final, NamedTuple, TypeAlias, cast
 
@@ -55,9 +56,13 @@ class Suite(NamedTuple):
     tag: str
     source: str  # relative to the checkout
     install: tuple[tuple[str, ...], ...]  # `uv` commands installing it and its tests' dependencies in `.venv`
-    tests: tuple[str, ...]  # the command running its tests, the first word from `.venv/bin`
+    # The command running its tests, the first word from `.venv/bin`; `_WORKERS` in a word stands for
+    # how many processes it's to take (see `workers`).
+    tests: tuple[str, ...]
     checks: tuple[tuple[str, ...], ...] = ()  # its CI's type checks, each's first word from `.venv/bin`
     left_out: str = ""  # requirements it can't build here, which `--excludes -` reads
+    most: int = 1  # the most processes its tests can keep busy
+    worker_memory: float = 1.0  # the gigabytes one of them takes
 
 
 class Outcome(NamedTuple):
@@ -87,6 +92,22 @@ class Fix(NamedTuple):
 
 
 WORK: Final = Path(__file__).resolve().parents[2] / "local" / "corpus-suites"
+# How many processes constricter takes here: every CPU, unless `CORPUS_JOBS` says; and the most a
+# suite's tests may: half the CPUs, unless `CORPUS_SUITE_WORKERS` says (see `super_corpora.py`).
+_JOBS: Final = os.environ.get("CORPUS_JOBS", "0")
+_MOST_WORKERS: Final = int(os.environ.get("CORPUS_SUITE_WORKERS", "0")) or max(1, (os.cpu_count() or 2) // 2)
+_WORKERS: Final = "{workers}"  # in a test command's word: how many processes to take
+_GIGABYTE: Final = 2**30
+_MEMORY_SHARE: Final = 2  # the tests' workers' part of the machine's memory: a half
+# Django's `runtests.py` under `fork`: with `forkserver`, Python 3.14's default on Linux, Django 5.2
+# can't clone a SQLite test database for each process.
+_DJANGO_FORKED: Final = (
+    "import multiprocessing, runpy, sys; "
+    "multiprocessing.set_start_method('fork'); "
+    "sys.argv[0] = 'tests/runtests.py'; "
+    "sys.path.insert(0, 'tests'); "
+    "runpy.run_path('tests/runtests.py', run_name='__main__')"
+)
 _PYTHON: Final = sys.executable
 _VENV: Final = ("venv", "-q", "--allow-existing", "--python", _PYTHON, ".venv")
 _PYTEST: Final = "python -m pytest -q -rfE -p no:cacheprovider"
@@ -141,21 +162,22 @@ SUITES: Final = {
         "lib/sqlalchemy",
         (_VENV, _words("pip install -q -e . --group tests --group tests-sqlite-asyncio --group mypy")),
         (
-            *_words(f"{_PYTEST} -n 4 -m 'not memory_intensive and not mypy' --db sqlite"),
+            *_words(f"{_PYTEST} -n {_WORKERS} -m 'not memory_intensive and not mypy' --db sqlite"),
             *_words("--dbdriver sqlite --dbdriver pysqlite_numeric --dbdriver aiosqlite"),
         ),
         (_words("mypy noxfile.py ./lib/sqlalchemy"),),
+        most=16,
     ),
-    # Its `runtests.py` on SQLite, in one process: on Linux, Python 3.14 starts processes with
-    # `forkserver`, which Django 5.2 can't clone a SQLite test database for. It has no type checker.
+    # Its `runtests.py` on SQLite, its processes forked (see `_DJANGO_FORKED`). It has no type checker.
     # pylibmc needs libmemcached's headers, and its tests need a memcached server, so they skip anyway.
     "django": Suite(
         "https://github.com/django/django",
         "5.2.17",
         "django",
         (_VENV, _words("pip install -q -e . -r tests/requirements/py3.txt --excludes -")),
-        _words("python -Wall tests/runtests.py --parallel=1"),
+        ("python", "-Wall", "-c", _DJANGO_FORKED, f"--parallel={_WORKERS}"),
         left_out="pylibmc",
+        most=16,
     ),
     # Its CI's unit tests, `-m "not slow and not network and not single_cpu"` (about 190,000, a few
     # minutes over four workers), with its required dependencies and its tests' from its
@@ -171,11 +193,16 @@ SUITES: Final = {
             ("pip", "install", "-q", *_PANDAS),
             _words("pip install -q --no-build-isolation -e ."),
         ),
-        _words(f"{_PYTEST} -n 4 --dist=worksteal -m 'not slow and not network and not single_cpu' pandas"),
+        (
+            *_words(f"{_PYTEST} -n {_WORKERS} --dist=worksteal"),
+            *_words("-m 'not slow and not network and not single_cpu' pandas"),
+        ),
         (("mypy",), ("pyright",)),
+        most=32,
+        worker_memory=1.5,
     ),
 }
-_EVERYWHERE: Final = ("--level=suffocate", "--all-scopes", "--jobs=0")
+_EVERYWHERE: Final = ("--level=suffocate", "--all-scopes", f"--jobs={_JOBS}")
 _INSTALLED: Final = ".venv/corpus-suite-installed"  # written once every install command has succeeded
 # Each checker's settings file, what an empty one holds, and the `pyproject.toml` sections that stand
 # for it: pyrefly reads mypy's or Pyright's where it has none of its own.
@@ -200,7 +227,7 @@ _CONSTRICTER: Final = Path(sys.executable).with_name("constricter")
 _INSERTED: Final = "insert"  # difflib's opcode for lines only the fixed file has
 _EQUAL: Final = "equal"  # and for lines both have
 _Mode: TypeAlias = tuple[str, tuple[str, ...]]  # a fixed run's label, and its options beyond `--fix`
-_MODES: Final[tuple[_Mode, ...]] = (("--fix", ()), ("--fix --unsafe-fixes", ("--unsafe-fixes",)))
+MODES: Final[tuple[_Mode, ...]] = (("--fix", ()), ("--fix --unsafe-fixes", ("--unsafe-fixes",)))
 _TYPES: Final = "--types"
 _INFER_WITH: Final = "--infer-with"
 
@@ -304,8 +331,10 @@ def _settled(root: Path) -> None:
             _ = stream.write(f"/{name}\n")
 
 
-def checkout(name: str, suite: Suite) -> Path:
+def checkout(name: str, suite: Suite, apart: str = "") -> Path:
     """Clone (once) `suite` at its tag and install it and its test dependencies (once).
+
+    `apart`: names another checkout of it, for what's to run beside its tests (its type checks).
 
     Returns:
       The checkout.
@@ -314,7 +343,7 @@ def checkout(name: str, suite: Suite) -> Path:
       RuntimeError: an install command failed.
 
     """
-    root: Path = WORK / f"{name}-{suite.tag}"
+    root: Path = WORK / (f"{name}-{suite.tag}-{apart}" if apart else f"{name}-{suite.tag}")
     uv: str = os.environ.get("UV") or shutil.which("uv") or "uv"
     if not root.is_dir():
         WORK.mkdir(parents=True, exist_ok=True)
@@ -336,14 +365,33 @@ def checkout(name: str, suite: Suite) -> Path:
     return root
 
 
-def tested(root: Path, suite: Suite) -> Outcome:
-    """Run the checkout's tests.
+def workers(suite: Suite) -> int:
+    """Size a suite's tests' processes: what it can keep busy, within the CPUs and memory it may take.
+
+    Returns:
+      How many.
+
+    """
+    try:
+        memory: int = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+    except (AttributeError, ValueError, OSError):
+        return min(suite.most, _MOST_WORKERS)
+    fitting: int = int(memory / _MEMORY_SHARE / _GIGABYTE / suite.worker_memory)
+    return max(1, min(suite.most, _MOST_WORKERS, fitting))
+
+
+def tested(root: Path, suite: Suite, keep: Path | None) -> Outcome:
+    """Run the checkout's tests, writing their output to `keep` unless it's `None`.
 
     Returns:
       Their outcome.
 
     """
-    output: str = _output(_venv(root, suite.tests), root)
+    command: list[str] = [word.replace(_WORKERS, str(workers(suite))) for word in suite.tests]
+    output: str = _output(_venv(root, command), root)
+    if keep is not None:
+        keep.parent.mkdir(parents=True, exist_ok=True)
+        _ = keep.write_text(output, encoding="utf-8")
     ran: re.Match[str] | None = _RAN.search(output)
     counts: dict[str, int]
     if ran:
@@ -359,6 +407,11 @@ def tested(root: Path, suite: Suite) -> Outcome:
     return Outcome(counts, frozenset(cast("list[str]", _FAILED.findall(output))))
 
 
+def reset(root: Path, suite: Suite) -> None:
+    """Take the checkout's source back to its tag's."""
+    _ = _output(["git", "checkout", "-q", "--", suite.source], root)
+
+
 def fixed(root: Path, suite: Suite, *extra: str) -> str:
     """Reset the checkout's source, then `--fix` it (with `extra` options).
 
@@ -366,23 +419,28 @@ def fixed(root: Path, suite: Suite, *extra: str) -> str:
       The size of the change, as `git diff --shortstat` puts it.
 
     """
-    _ = _output(["git", "checkout", "-q", "--", suite.source], root)
+    reset(root, suite)
     _ = _output([str(_CONSTRICTER), "--fix", *extra, *_EVERYWHERE, "-q", suite.source], root)
     return _output(["git", "diff", "--shortstat"], root).strip()
 
 
 def complaints(root: Path, suite: Suite) -> list[Complaint]:
-    """Run the checkout's type checks.
+    """Run the checkout's type checks, together.
 
     Returns:
       Their errors, each file relative to the checkout.
 
     """
     found: list[Complaint] = []
-    check: tuple[str, ...]
-    for check in suite.checks:
+    pool: ThreadPoolExecutor
+    with ThreadPoolExecutor(max(1, len(suite.checks))) as pool:
+        checking: list[Future[str]] = [
+            pool.submit(_output, _venv(root, check), root) for check in suite.checks
+        ]
+    checked: Future[str]
+    for checked in checking:
         match: re.Match[str]
-        for match in _ERROR.finditer(_output(_venv(root, check), root)):
+        for match in _ERROR.finditer(checked.result()):
             path: Path = Path(match["path"])
             relative: str = str(path.relative_to(root) if path.is_relative_to(root) else path)
             found.append(Complaint(relative, int(match["line"]), match["message"].strip()))
@@ -406,7 +464,7 @@ def planned(root: Path, suite: Suite, *extra: str) -> dict[str, list[Fix]]:
       Them, per file.
 
     """
-    _ = _output(["git", "checkout", "-q", "--", suite.source], root)
+    reset(root, suite)
     done: subprocess.CompletedProcess[str] = _completed(
         [str(_CONSTRICTER), "--format=json", *extra, *_EVERYWHERE, suite.source],
         root,
@@ -575,27 +633,44 @@ def _blamed(complaint: Complaint, file: _Fixed, fixes: list[Fix]) -> Fix | None:
     return max(candidates, key=lambda fix: fix.line) if candidates else None
 
 
-def _report_new(
-    root: Path,
-    new: list[Complaint],
-    fixes: dict[str, list[Fix]],
-    files: dict[str, _Fixed],
-) -> None:
-    """Print each new error with the fix it's traced to, and their count per mechanism."""
-    per_kind: Counter[str] = Counter()
-    lines: list[str] = []
+class Blamed(NamedTuple):
+    """A new error, the fix it's traced to (`None`: untraced), and that fix's mechanisms."""
+
     complaint: Complaint
-    for complaint in new:
+    fix: Fix | None
+    kind: str  # `fix.kinds`, with ` (guess)` for a guess's; `(untraced)`
+
+
+class Compared(NamedTuple):
+    """What type-checking a fixed checkout gave beside the released one's errors."""
+
+    change: str  # the fix's size, as `git diff --shortstat` puts it
+    errors: int
+    gone: int
+    new: list[Blamed]
+
+
+def compared(root: Path, suite: Suite, released: list[Complaint], options: tuple[str, ...]) -> Compared:
+    """Fix the checkout's source with `options`, type-check it, and trace what's new since `released`.
+
+    Returns:
+      The comparison.
+
+    """
+    fixes: dict[str, list[Fix]] = planned(root, suite, *options)
+    change: str = fixed(root, suite, *options)
+    after: list[Complaint] = complaints(root, suite)
+    before: Counter[tuple[str, str]] = Counter(_key(complaint) for complaint in released)
+    now: Counter[tuple[str, str]] = Counter(_key(complaint) for complaint in after)
+    files: dict[str, _Fixed] = {}
+    new: list[Blamed] = []
+    complaint: Complaint
+    for complaint in _new(root, after, now - before, files):
         file: _Fixed = _file(root, files, complaint.path)
         fix: Fix | None = _blamed(complaint, file, fixes.get(complaint.path, []))
         kind: str = "(untraced)" if fix is None else fix.kinds + (" (guess)" if fix.unsafe else "")
-        per_kind[kind] += 1
-        what: str = "" if fix is None else f" [{fix.name}: {fix.annotation}, line {fix.line}]"
-        lines.append(f"      {kind}: {complaint.path}:{complaint.line}{what}: {complaint.message}\n")
-    count: int
-    for kind, count in per_kind.most_common():
-        _ = sys.stdout.write(f"    {kind}: {count}\n")
-    _ = sys.stdout.writelines(sorted(lines))
+        new.append(Blamed(complaint, fix, kind))
+    return Compared(change, len(after), (before - now).total(), new)
 
 
 def _compare_types(
@@ -607,25 +682,32 @@ def _compare_types(
 ) -> bool:
     """Fix the checkout's source with `options`, type-check it, and print what's new since `released`.
 
+    Each new error with the fix it's traced to, and their count per mechanism.
+
     Returns:
       Whether nothing is.
 
     """
-    fixes: dict[str, list[Fix]] = planned(root, suite, *options)
-    change: str = fixed(root, suite, *options)
-    after: list[Complaint] = complaints(root, suite)
-    before: Counter[tuple[str, str]] = Counter(_key(complaint) for complaint in released)
-    now: Counter[tuple[str, str]] = Counter(_key(complaint) for complaint in after)
-    files: dict[str, _Fixed] = {}
-    new: list[Complaint] = _new(root, after, now - before, files)
+    found: Compared = compared(root, suite, released, options)
     _ = sys.stdout.write(
-        f"  {label} ({change}): {len(after)} errors: {len(new)} new, {(before - now).total()} gone\n",
+        f"  {label} ({found.change}): {found.errors} errors: {len(found.new)} new, {found.gone} gone\n",
     )
-    _report_new(root, new, fixes, files)
-    return not new
+    lines: list[str] = []
+    each: Blamed
+    for each in found.new:
+        fix: Fix | None = each.fix
+        what: str = "" if fix is None else f" [{fix.name}: {fix.annotation}, line {fix.line}]"
+        where: str = f"{each.complaint.path}:{each.complaint.line}"
+        lines.append(f"      {each.kind}: {where}{what}: {each.complaint.message}\n")
+    kind: str
+    count: int
+    for kind, count in Counter(each.kind for each in found.new).most_common():
+        _ = sys.stdout.write(f"    {kind}: {count}\n")
+    _ = sys.stdout.writelines(sorted(lines))
+    return not found.new
 
 
-def check_types(names: Sequence[str], modes: Sequence[_Mode] = _MODES) -> int:
+def check_types(names: Sequence[str], modes: Sequence[_Mode] = MODES) -> int:
     """Run each suite's type checks (default: every one's) as released, then fixed in each of `modes`.
 
     Returns:
@@ -637,7 +719,7 @@ def check_types(names: Sequence[str], modes: Sequence[_Mode] = _MODES) -> int:
     for name in names or [name for name, suite in SUITES.items() if suite.checks]:
         suite: Suite = SUITES[name]
         root: Path = checkout(name, suite)
-        _ = _output(["git", "checkout", "-q", "--", suite.source], root)
+        reset(root, suite)
         released: list[Complaint] = complaints(root, suite)
         checks: str = "; ".join(" ".join(check) for check in suite.checks)
         _ = sys.stdout.write(f"{name} {suite.tag}: {checks}: released: {len(released)} errors\n")
@@ -645,7 +727,7 @@ def check_types(names: Sequence[str], modes: Sequence[_Mode] = _MODES) -> int:
         options: tuple[str, ...]
         for label, options in modes:
             clean = _compare_types(root, suite, released, label, options) and clean
-        _ = _output(["git", "checkout", "-q", "--", suite.source], root)
+        reset(root, suite)
     return 0 if clean else 1
 
 
@@ -657,7 +739,7 @@ def _arguments(argv: Sequence[str]) -> tuple[list[str], list[_Mode]]:
 
     """
     rest: list[str] = list(argv)
-    modes: list[_Mode] = list(_MODES)
+    modes: list[_Mode] = list(MODES)
     if _INFER_WITH in rest:
         at: int = rest.index(_INFER_WITH)
         checkers: str = rest.pop(at + 1)
@@ -685,15 +767,15 @@ def main(argv: Sequence[str]) -> int:
     for name in names or SUITES:
         suite: Suite = SUITES[name]
         root: Path = checkout(name, suite)
-        _ = _output(["git", "checkout", "-q", "--", suite.source], root)
-        released: Outcome = tested(root, suite)
+        reset(root, suite)
+        released: Outcome = tested(root, suite, None)
         _ = sys.stdout.write(f"{name} {suite.tag}: released: {released.counts}\n")
         label: str
         options: tuple[str, ...]
         test: str
         for label, options in modes:
             change: str = fixed(root, suite, *options)
-            outcome: Outcome = tested(root, suite)
+            outcome: Outcome = tested(root, suite, None)
             verdict: str = "same" if outcome == released else "DIFFERENT"
             _ = sys.stdout.write(f"  {label} ({change}): {outcome.counts}: {verdict}\n")
             for test in sorted(outcome.failed ^ released.failed):
@@ -701,7 +783,7 @@ def main(argv: Sequence[str]) -> int:
                     f"    {'now fails' if test in outcome.failed else 'now passes'}: {test}\n",
                 )
             same = same and outcome == released
-        _ = _output(["git", "checkout", "-q", "--", suite.source], root)
+        reset(root, suite)
     return 0 if same else 1
 
 

@@ -287,7 +287,8 @@ def checked_tree(
 
     """
     own = own or module_tables(tree)
-    outside = None if outside is None else outside.usable(imports.plan(tree).taken)
+    read: ImportPlan = imports.plan(tree)
+    outside = None if outside is None else outside.usable(read.taken, imports.present(read, outside.guarded))
     done: _Round = _resumed(tree, checks, outside) or _started(tree, checks, lines, own, outside)
     # Kept with the tree, for as long as it is: a second check may only know its parameters anew.
     vars(tree)[_KEPT] = _Kept(outside, checks, done)

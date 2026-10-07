@@ -12,7 +12,8 @@ from collections.abc import Callable, Sequence
 from functools import lru_cache
 from typing import TYPE_CHECKING, Final, TypeAlias
 
-from constricter.fix.core.known import Inference, Known
+from constricter.fix.core.imports import added_dotted
+from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.core.signatures import AWAIT
 from constricter.fix.libraries import overloads, stdlib
 from constricter.fix.libraries.library import library_awaited
@@ -204,13 +205,15 @@ def _declarer(receiver: str, name: str, known: Known) -> str | None:
     """Find the base whose declared attribute `name` an instance of `receiver` has.
 
     The first of its order that declares it (in a method too, `self.x: T`, which no class body
-    binds), unless a class of the module's before it binds the name another way.
+    binds), unless `receiver` or a class of the module's before it binds the name another way.
 
     Returns:
       It, or `None`.
 
     """
     lineage: Lineage = known.class_side.lineage
+    if name in lineage.bound.get(receiver, ()):
+        return None
     base: str
     for base in lineage.order.get(receiver, ()):
         if name in known.classes.get(base, {}):
@@ -306,7 +309,9 @@ def returned_method(receiver: str, name: str, known: Known) -> tuple[str, str] |
     """Look up a method of a value typed `receiver` typed only by its `return`s (a guess, see `Returned`).
 
     The receiver's class's own, or the base's that defines it (see `Lineage`): but not one whose
-    type names that base, which may be the receiver's own class (`return self`).
+    type names that base, which may be the receiver's own class (`return self`). A class named by
+    an import a fix added (`Tool`, by `from tools import Tool`) is looked up as the module spells
+    it (`tools.Tool`): it's a standard-library class another checked file defines.
 
     Returns:
       The class that defines it and its type, or `None` if it isn't one (a certain source is asked
@@ -315,6 +320,9 @@ def returned_method(receiver: str, name: str, known: Known) -> tuple[str, str] |
     """
     owner: str | None = known.class_side.lineage.definer(receiver, name)
     found: str | None = known.returned.methods.get(owner or "", {}).get(name)
+    plan: ImportPlan | None = known.names.plan
+    if found is None and owner == receiver and plan is not None and receiver in plan.added:
+        found = known.returned.methods.get(added_dotted(plan.added[receiver]), {}).get(name)
     if found is None or owner is None or (owner != receiver and owner in roots(found)):
         return None
     return owner, found

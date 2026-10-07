@@ -61,7 +61,9 @@ PACKAGES: Final = (
     "pandas",
 )
 _SOURCES: Final = Path(__file__).with_name("corpus_sources.py")
-_EVERYWHERE: Final = ("--all-scopes", "--jobs=0")
+# How many worker processes each run takes: every CPU, unless `CORPUS_JOBS` says (see `super_corpora.py`).
+JOBS: Final = f"--jobs={os.environ.get('CORPUS_JOBS', '0')}"
+_EVERYWHERE: Final = ("--all-scopes", JOBS)
 _FIXED: Final = re.compile(r"fixed (\d+)")
 _TYPED: Final = re.compile(r"^Total: (\d+)/(\d+) typed", re.MULTILINE)  # `--coverage`'s summary
 _SECTION: Final = "## constricter "
@@ -212,7 +214,13 @@ def _run(python: str, args: Sequence[str]) -> str:
     return done.stdout
 
 
-def _compiles(path: Path) -> bool:
+def compiles(path: Path) -> bool:
+    """Check whether the file at `path` compiles, its warnings unsaid.
+
+    Returns:
+      Whether it does.
+
+    """
     source: bytes = path.read_bytes()
     with warnings.catch_warnings(action="ignore"):  # the standard library's tests warn
         try:
@@ -248,7 +256,7 @@ def _typed(root: Path) -> Typed:
     return Typed(int(found.group(1)), int(found.group(2))) if found else Typed(0, 0)
 
 
-def _copy(corpus: Corpus, version: str) -> tuple[Path, list[Path]]:
+def copied(corpus: Corpus, version: str) -> tuple[Path, list[Path]]:
     """Copy a corpus's Python files under `WORK`, fresh, for one version to fix.
 
     Returns:
@@ -263,7 +271,7 @@ def _copy(corpus: Corpus, version: str) -> tuple[Path, list[Path]]:
         copy: Path = root / source.relative_to(corpus.root)
         copy.parent.mkdir(parents=True, exist_ok=True)
         _ = shutil.copyfile(source, copy)
-        if _compiles(copy):
+        if compiles(copy):
             valid.append(copy)
     return root, valid
 
@@ -313,12 +321,12 @@ def _fixes(python: str, corpus: Corpus, version: str) -> _Fixing:
     fixing: list[str] = ["--level=suffocate", *_EVERYWHERE]
     root: Path
     valid: list[Path]
-    root, _ = _copy(corpus, version)
+    root, _ = copied(corpus, version)
     fixed: int | None = _fixed_count(_run(python, ["--fix", *fixing, str(root)]))
     typed_fixed: Typed | None = None if fixed is None else _typed(root)
-    root, valid = _copy(corpus, version)
+    root, valid = copied(corpus, version)
     both: int | None = _fixed_count(_run(python, ["--fix", "--unsafe-fixes", *fixing, str(root)]))
-    broken: int = sum(not _compiles(path) for path in valid)
+    broken: int = sum(not compiles(path) for path in valid)
     left: int = _run(python, ["--diff", "--unsafe-fixes", *fixing, str(root)]).count("\n+")
     return _Fixing(
         fixed,
@@ -363,7 +371,7 @@ def measure(corpus: Corpus, version: str, name: str = __version__) -> Measured:
     return Measured(corpus, label(version, name), files, codes, levels, *fixes, _typed(corpus.root))
 
 
-def _table(rows: Sequence[Sequence[object]], right: int) -> list[str]:
+def table(rows: Sequence[Sequence[object]], right: int) -> list[str]:
     """Lay a table out as Prettier does, so CI's `prettier --check` passes on what this writes.
 
     `rows[0]` is the header; the first `right` columns align left, the rest (numbers) right.
@@ -558,14 +566,14 @@ def tables(measured: Sequence[Measured]) -> str:
         [m for m in measured if m.version == version]
         for version in dict.fromkeys(m.version for m in measured)
     ]
-    first: list[str] = _table(
+    first: list[str] = table(
         [
             ["Corpus", "Version", "constricter", "Files", *(f"`{code}`" for code in codes), "Total"],
             *(row for rows in versions for row in _code_rows(rows, codes)),
         ],
         right=3,
     )
-    second: list[str] = _table(
+    second: list[str] = table(
         [
             [
                 "Corpus",
@@ -580,7 +588,7 @@ def tables(measured: Sequence[Measured]) -> str:
         ],
         right=2,
     )
-    third: list[str] = _table(
+    third: list[str] = table(
         [
             [
                 "Corpus",

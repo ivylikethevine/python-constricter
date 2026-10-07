@@ -145,6 +145,15 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 "tests/fix/libraries/test_stdlib_tables.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The census of what `--fix` can't type runs this checkout's constricter on each corpus.
 "tests/corpus/corpus_untyped.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
+# The super corpora run starts each step as a process, and keeps each one's result as a pickle it
+# alone writes and reads, under `local/`; its steps run this checkout's constricter.
+"tests/corpus/super_corpora.py" = [
+    "suspicious-subprocess-import",
+    "subprocess-without-shell-equals-true",
+    "suspicious-pickle-import",
+    "suspicious-pickle-usage",
+]
+"tests/corpus/corpora_steps.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The local CI runner runs the workflow's own steps (and git) as subprocesses.
 "tests/ci_local.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
 # Installed modules' reads are cached as pickles, written and read by constricter alone in the
