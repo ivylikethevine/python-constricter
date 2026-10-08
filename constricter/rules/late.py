@@ -220,12 +220,14 @@ def fills(scope: Scope) -> None:
 
 
 def widens(scope: Scope, tree: ast.Module) -> None:
-    """Offer a wider type to each name's first plain assignment that still has no fix, where `fix-widen` asks.
+    """Offer a wider type to each name's first binding that still has no fix, where `fix-widen` asks.
 
-    A type vaguer than `vague` allows, written anyway (`vague`: a guess); `Any` for the elements of
-    an empty container nothing fills, or of a display of mixed or unknown ones (see
+    A type vaguer than `vague` allows, written anyway (`vague`: a guess); `Any` for the elements
+    of an empty container nothing fills, or of a display of mixed or unknown ones (see
     `widened.container`); `Any` for a call of no known type (see `widened.called`), whatever the
-    name is bound to later. Each marked where its statement ends.
+    name is bound to later. A plain assignment's is marked where its statement ends; a loop's, an
+    unpacking's or a `with`'s name, typed vaguely or taken of such a call, is declared before its
+    statement.
     """
     widen: frozenset[str] = scope.settings.checks.fixes.widen
     plan: ImportPlan | None = scope.settings.known.names.plan
@@ -245,19 +247,25 @@ def widens(scope: Scope, tree: ast.Module) -> None:
         fix: Fix | None
         # Bound again, it may be anything else: a wider type that isn't `Any` could be wrong.
         once: bool = len(lifetime.bindings) == 1
+        # What's declared before its statement isn't its value, but taken from it: no container's.
+        whole: bool = once and o.name not in scope.assignments.chained
         if once and known is not None and VAGUE_KIND in widen and not scope.writable(known):
             found = known._replace(kinds=known.kinds | {VAGUE_KIND})
-            fix = scope.offer(found, frozenset({VAGUE_KIND}), unsafe=True)
+            fix = scope.placed(o.name, found, frozenset({VAGUE_KIND}), unsafe=True)
         else:
             if known is None:
-                found = (widened.container(bound[1], plan, widen) if once else None) or widened.called(
+                found = (widened.container(bound[1], plan, widen) if whole else None) or widened.called(
                     bound[1],
-                    widened.Caller(scope.settings.owners.get(id(scope.kind.function)), scope.declared),
+                    widened.Caller(
+                        scope.settings.owners.get(id(scope.kind.function)),
+                        scope.declared,
+                        scope.settings.facts.untyped,
+                    ),
                     widened.own(tree),
                     plan,
                     widen,
                 )
-            fix = None if found is None else scope.offer(found, frozenset(), unsafe=False)
+            fix = None if found is None else scope.placed(o.name, found, frozenset(), unsafe=False)
         if fix is not None:
             scope.offences[index] = replace(o, edit=fix._replace(mark=bound[1].end_lineno or o.line))
 

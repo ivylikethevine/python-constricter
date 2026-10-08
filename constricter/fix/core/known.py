@@ -464,7 +464,8 @@ class Outside:  # pylint: disable=too-many-instance-attributes
     (`CoreSchema`, `core_schema.CoreSchema`; see `linked.same`). `partial`: the returns of other
     checked files' functions and methods that only an unpacking can use (see `Partial`). `tuples`:
     the named tuples it imports from them, as it spells each (see `Indirect.tuples`), and `unions`
-    their type aliases of a union (see `Indirect.unions`).
+    their type aliases of a union (see `Indirect.unions`). `untyped`: the functions it calls of
+    theirs that declare no return, as it spells each call (see `linked.untyped`).
     """
 
     calls: Mapping[str, str] = field(default_factory=dict[str, str])
@@ -508,6 +509,7 @@ class Outside:  # pylint: disable=too-many-instance-attributes
     # The names it imports that another checked module binds by assignment (see `linked.values`).
     values: frozenset[str] = frozenset()
     unions: Mapping[str, str] = field(default_factory=dict[str, str])
+    untyped: frozenset[str] = frozenset()
 
     def usable(self, taken: frozenset[str], present: frozenset[str]) -> "Outside":
         """Drop what other files offer whose type needs a name imported that the module binds already.
@@ -573,6 +575,7 @@ class Outside:  # pylint: disable=too-many-instance-attributes
             awaits=free_of(self.awaits, clashing),
             values=self.values,
             unions=self.unions,
+            untyped=self.untyped,
         )
 
 

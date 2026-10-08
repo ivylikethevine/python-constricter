@@ -821,7 +821,7 @@ does:
 | `mixed-containers`   | `list[Any]`, `tuple[Any, ...]`, `dict[str, Any]` for a display of mixed things | certain |
 | `unions`             | `int \| str` for a name bound to values of two or three types                  | a guess |
 | `vague`              | a type vaguer than `vague` allows (`dict[str, Any]`), written anyway           | a guess |
-| `untyped-calls`      | `Any` for a call of the module's own function that declares no return          | certain |
+| `untyped-calls`      | `Any` for a call of a checked file's function that declares no return          | certain |
 | `unknown-calls`      | `Any` for any other call of no known type                                      | certain |
 
 ```toml
@@ -845,19 +845,25 @@ fix-widen = ["untyped-parameters", "empty-containers"]
   `dict[str, Any]`), which `--fix` otherwise never writes.
 
 - `untyped-calls`: `x = helper()` or `x = self.load()`, awaited or not, where `--fix` has no type
-  for the call and its function declares no return: a top-level function of the module's, or a
-  method its class or one of the class's bases in the module defines, called on `self` or `cls`.
+  for the call and its function declares no return: a top-level function of the module's, a method
+  its class or one of the class's bases in the module defines, called on `self` or `cls`, or a
+  function another checked file defines, called by its name or through its module (`u.helper()`).
   `Any` there is what a checker that reads no body (mypy) takes the call for already; one that reads
   its `return`s (pyright) loses what it inferred. Not a function that's decorated (but as a static
-  or class method) or defined twice, nor an `async def` called without `await`.
+  or class method) or defined twice, nor an `async def` called without `await`; another file's
+  `async def` is `unknown-calls`'.
 - `unknown-calls`: every other call `--fix` has no type for (`x = obj.method()`,
   `x = module.func()`, an imported function's). The widest of the kinds: it hides whatever a checker
   made of the call. Not a call `--fix` types and doesn't write (a `re.Match[str] | None` nothing
   narrows): a checker knows that one.
 
-The containers, `unions` and `vague` are for a function's names bound once (a union's, of course,
-more than once), by a statement of their own; the calls' are for a function's names first bound by
-one, whatever they're bound to later.
+The containers and `unions` are for a function's names bound once (a union's, of course, more than
+once), by a statement of their own; the calls' are for a function's names first bound by one,
+whatever they're bound to later. The calls' and `vague` type what a loop, an unpacking or a `with`
+binds too, declared on a line of its own before the statement: each name of
+`for key, row in obj.rows():`, `a, b = helper()` or `with obj.open() as (f, g):` is `Any`, by the
+call's kind (`a, b = 1, helper()` types `b` by its own value), and a loop's target over a
+`list[dict[str, Any]]` is `vague`'s. Not a chained assignment's names, nor a `:=`'s.
 
 On SQLAlchemy 2.0.54, with `--unsafe-fixes`: 175 bindings by `untyped-parameters`, 196 by
 `empty-containers`, 98 by `mixed-containers`, 184 by `vague` and 9 by `unions`, 662 together (4.5%
@@ -865,17 +871,21 @@ of its bindings); one pass leaves a second nothing. basedpyright then reports no
 under a rule it hadn't one for, and 22 errors fewer: an `Any` written hides what a checker had
 inferred, most of all in a display (13 of them by `mixed-containers`).
 
-On pydantic 2.13.5, `--fix` with the two kinds of call marks 325 of its 3,956 bindings (8.2%), all
-by `unknown-calls`: every function of pydantic's declares its return. With `--unsafe-fixes` and
-every kind, 507 are widened, from 187 without the calls': 74.3% of its bindings typed or widened,
-from 66.2%. One pass leaves a second nothing. basedpyright reports 165 errors before and after: two
-fewer, which the `Any`s hide, and two more, of one statement and its copy in `pydantic.v1`
-(`name = name or parts.local_part`, `name` a `str | None`, `parts` from a package that isn't
-installed): assigned an explicit `Any`, a name keeps its declared type, where a value the checker
-couldn't type at all left it a `str`.
+On pydantic 2.13.5, `--fix` with the two kinds of call marks 519 of its 3,956 bindings (13.1%), all
+by `unknown-calls`: every function of pydantic's declares its return. 194 of them are a loop's, an
+unpacking's or a `with`'s. With `--unsafe-fixes` and every kind, 773 are widened, from 187 without
+the calls' (72 of them a loop's or an unpacking's by `vague`): 81.0% of its bindings typed or
+widened, from 66.2%. A second pass adds two unions, of types the file can name only by the imports
+the first wrote. basedpyright reports two errors fewer, which the `Any`s hide, and four more. Two
+are of one statement and its copy in `pydantic.v1` (`name = name or parts.local_part`, `name` a
+`str | None`, `parts` from a package that isn't installed): assigned an explicit `Any`, a name keeps
+its declared type, where a value the checker couldn't type at all left it a `str`. Two are of one
+loop's target (`for base in reversed(cls.__mro__):`, then
+`if not dataclasses.is_dataclass(base): continue`): declared `Any`, it's narrowed to a dataclass or
+an instance of one, where the `type` the checker inferred was narrowed to the class.
 
 Every statement a widening writes ends with `# constricter: auto`, after any comment already there
-(on its last line, if it has several; a union's declaration, on its own):
+(on its last line, if it has several; a declaration before its statement, on its own):
 
 ```python
 def load(reader, count):
@@ -892,6 +902,7 @@ A marked annotation is `--fix`'s own, not the author's:
   widening;
 - once its value's type is known (the parameter annotated, say), it's reported as LVA005 with that
   type as its fix: `--fix` writes it over the annotation and deletes the mark, a guess where the
-  type is one. Not a union's declaration, which has no value of its own.
+  type is one. Not a declaration on a line of its own (a union's, a loop's target's), which has no
+  value.
 
 Take the mark off a line to keep its annotation as written.

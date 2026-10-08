@@ -179,13 +179,15 @@
   one for, and 22 fewer, which the `Any`s hide (13 by `mixed-containers`). The first unions, of
   guessed values or changed by `+=`, brought 3 errors with 15 fixes. And two for a function's name
   bound to a call of no known type, `Any`, certain, whatever the name is bound to later:
-  `untyped-calls` (the module's own function, or a method of the class or its bases in the module on
-  `self`, that declares no return: what mypy takes it for) and `unknown-calls` (any other). On
-  pydantic, with `--unsafe-fixes` and every kind: 507 bindings widened from 187, 74.3% typed or
-  widened from 66.2%, all 320 by `unknown-calls` (its functions all declare their returns);
-  basedpyright finds two errors fewer and two more (a name declared `str | None`, assigned an
-  explicit `Any`, keeps that type). None of the kinds is counted on the seven corpora, nor run
-  through the packages' suites.
+  `untyped-calls` (the module's own function, a method of the class or its bases in the module on
+  `self`, or another checked file's function, that declares no return: what mypy takes it for) and
+  `unknown-calls` (any other). Both, and `vague`, type what a loop, an unpacking or a `with` binds
+  too, declared before the statement. On pydantic, with `--unsafe-fixes` and every kind: 773
+  bindings widened from 187, 81.0% typed or widened from 66.2%, 514 by `unknown-calls` (its
+  functions all declare their returns); basedpyright finds two errors fewer and four more (a name
+  declared `str | None`, assigned an explicit `Any`, keeps that type; a loop's target declared
+  `Any`, which a `TypeIs` narrows otherwise than the `type` it was). None of the kinds is counted on
+  the seven corpora, nor run through the packages' suites.
 - **Each checker's servers, by its own measure**: every checker gets up to four, and a server's
   memory is its checker's (`Server.fitting`). basedpyright's each hold the whole program (0.6 GB and
   130 bytes for each byte of the files); `ty`'s and pyrefly's each hold their share, so the files
@@ -551,17 +553,17 @@ fix.
    `overloads.py`). Done when the tables come out byte for byte the same with `stubs.py` a layer
    over it. About 5 hours; coverage unchanged.
 
-9. **Wider: a call's value, past a plain assignment.** `untyped-calls` and `unknown-calls` write
-   `Any` for `x = call()` in a function ([Done](#--fix)): of the 56,540 bindings with no fix that
-   are a call on what has no type, those a statement of their own binds. Left: a loop's target, an
-   unpacking's names and a `with`'s, each declared before its statement (on pydantic, of the 1,017
-   bindings every kind leaves, 180, 92 and 3 are a call's, to 86 plain assignments: a name bound
-   before, or a type `--fix` knows and doesn't write); a function of another checked file's that
-   declares no return, `unknown-calls` now and `Any` to mypy too; and a count: neither kind is
-   measured on the seven corpora, and no package's own checker has run after `untyped-calls`
-   (pydantic has no such call). Done when each is counted on the corpora, and `untyped-calls` brings
-   mypy nothing new on the corpus packages. About 4 hours, for up to 22% of the offences with what's
-   done, none of it a type.
+9. **Wider: a call's value, counted.** `untyped-calls` and `unknown-calls` write `Any` for what a
+   plain assignment, a loop, an unpacking or a `with` binds to a call of no known type in a function
+   ([Done](#--fix)): of the 56,540 bindings with no fix that are a call on what has no type. Left: a
+   count, since neither kind is measured on the seven corpora, and no package's own checker has run
+   after `untyped-calls` (pydantic has no such call); a declared widening replaced once its type is
+   known, as an assignment's is (a loop's target's `Any`, a union's); and a second pass of every
+   kind that adds nothing (on pydantic it adds two unions, one of them of one type the file spells
+   two ways, `CoreSchema | core_schema.CoreSchema`, once the first pass's import names it). Done
+   when each kind is counted on the corpora, and `untyped-calls` brings mypy nothing new on the
+   corpus packages. About 3 hours, for up to 22% of the offences with what's done, none of it a
+   type.
 
 What the finished items left, each under 3 hours and under 0.1%: a fixture's value bound to a name
 before its attribute is read (`both = capsys.readouterr()`, then `both.out`), a `parametrize` on a

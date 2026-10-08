@@ -217,7 +217,7 @@ def _settings(
             stdlib.generics(stdlib.origins(tree)) | (outside.generics if outside else frozenset[str]()),
             entered.managers(tree),
             defined_type_vars(tree) | free,
-        ),
+        )._replace(untyped=frozenset() if outside is None else outside.untyped),
         Seeded(
             keyed(tree, {} if outside is None else outside.parameters),
             {} if outside is None else outside.fixtures,

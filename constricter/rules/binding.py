@@ -176,6 +176,61 @@ def _bind_unpacked(scope: Scope, stmt: ast.Assign, target: ast.expr, value: ast.
         _bind_declaration(scope, stmt, name, code, typed)
 
 
+def _source(stmt: ast.stmt, name: ast.Name) -> ast.expr | None:
+    """Find what a loop iterates, an unpacking splits or a `with` enters to bind `name`.
+
+    Returns:
+      It, or `None` for a name `stmt` binds otherwise (a `:=`'s, a chained assignment's).
+
+    """
+    target: ast.expr
+    value: ast.expr
+    items: list[ast.withitem]
+    pairs: Iterator[tuple[ast.Name, ast.expr]]
+    match stmt:
+        case ast.For(target=target, iter=value) | ast.AsyncFor(target=target, iter=value):
+            pairs = ((each, value) for each in target_names(target))
+        case ast.Assign(targets=[target], value=value):
+            pairs = _sources(target, value)
+        case ast.With(items=items) | ast.AsyncWith(items=items):
+            pairs = (
+                (each, item.context_expr)
+                for item in items
+                if item.optional_vars is not None
+                for each in target_names(item.optional_vars)
+            )
+        case _:
+            return None
+    return next((taken for each, taken in pairs if each is name), None)
+
+
+def _sources(target: ast.expr, value: ast.expr) -> Iterator[tuple[ast.Name, ast.expr]]:
+    """Pair each name an unpacking of `value` into `target` binds with what it's taken from.
+
+    Yields:
+      Each name, with its own value where a display of as many is split with the target (see
+      `_unpacked`), else with `value`.
+
+    """
+    targets: list[ast.expr]
+    values: list[ast.expr]
+    match (target, value):
+        case (
+            ast.Tuple(elts=targets) | ast.List(elts=targets),
+            ast.Tuple(elts=values) | ast.List(elts=values),
+        ) if len(targets) == len(values) and not any(
+            isinstance(part, ast.Starred) for part in (*targets, *values)
+        ):
+            part: ast.expr
+            item: ast.expr
+            for part, item in zip(targets, values, strict=True):
+                yield from _sources(part, item)
+        case _:
+            name: ast.Name
+            for name in target_names(target):
+                yield name, value
+
+
 def _unpacked(scope: Scope, stmt: ast.Assign, target: ast.expr, value: ast.expr) -> Iterator[_Named]:
     """Type each name an unpacking of `value` into `target` binds.
 
@@ -312,7 +367,9 @@ def _bind_declaration(
     """Bind one name a statement binds, offering to declare it before `stmt` as `typed` has it.
 
     `typed`: its inference (`None`: unknown, when the type checker's hint is asked), whether that's a
-    guess, and what the guess rests on.
+    guess, and what the guess rests on. A loop's, an unpacking's or a `with`'s name left with no fix
+    is noted with what it's taken from (see `_source`), for `late.widens`, whose wider type is
+    declared before `stmt` too.
     """
     found: Inference | None
     unsafe: bool
@@ -337,6 +394,10 @@ def _bind_declaration(
             origins if unsafe else None,
             again=name.id in scope.declared,
         )
+    source: ast.expr | None
+    if (source := None if fix or name.id in scope.declared else _source(stmt, name)) is not None:
+        scope.assignments.plain[name.id] = (name, source, found)
+        scope.assignments.chained[name.id] = (stmt.lineno, stmt.col_offset)
     certain: bool = found is not None and not unsafe and scope.writable(found)
     scope.bind(name.id, at(name), code, fix, found.annotation if found is not None and certain else None)
 

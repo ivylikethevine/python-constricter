@@ -10,8 +10,11 @@ import pytest
 
 from constricter import Checks, FixPolicy, Offence, annotation_coverage, check_source
 from constricter.cli import command as cli
+from constricter.cli import schedule
 from constricter.fix.core import fixes
+from constricter.fix.index import linked, project
 from constricter.noqa import lines
+from constricter.offences import WIDEN_KINDS
 from constricter.rules import widened
 from constricter.rules.checker import Coverage
 
@@ -569,3 +572,194 @@ def test_a_widened_calls_mark_ends_its_statement() -> None:
     ]
     again: list[Offence] = check_source("".join(fixed), checks=_CALLS)
     assert {o.name for o in again if o.fix is not None} == set()
+
+
+TARGETS: Final = """
+from typing import Any
+
+
+def helper(x):
+    return x.y
+
+
+def load() -> list[dict[str, Any]]:
+    return []
+
+
+def f(other, rows: list[int]):
+    for a, b in other.pairs():
+        pass
+    for c in helper(other):
+        pass
+    for d, e in enumerate(other.rows()):
+        pass
+    g, (h, *i) = helper(other)
+    j, k = 1, other.load()
+    with other.lock(), other.open() as m, helper(1) as (n, p):
+        pass
+    for q in rows:
+        pass
+    for r in other:
+        pass
+    s, t = other
+    for u in [other, 1]:
+        pass
+    v = w = other.load()
+    for x in load():
+        pass
+    y, z = (af := other.load()), 1
+    return a, b, c, d, e, g, h, i, j, k, m, n, p, q, r, s, t, u, v, w, x, y, z, af
+
+
+async def later(other):
+    async for aa in other.rows():
+        pass
+    async with other.open() as ab, helper(1) as (ac, ad):
+        pass
+    for ae in await other.load():
+        pass
+    ae = 1
+    return aa, ab, ac, ad, ae
+
+
+for top in helper(1):
+    pass
+"""
+_VAGUE: Final = "    x: dict[str, Any]  # constricter: auto\n"
+_DECLARED: Final = [
+    "    a: Any  # constricter: auto\n",
+    "    b: Any  # constricter: auto\n",
+    "    for a, b in other.pairs():\n",
+    "        pass\n",
+    "    c: Any  # constricter: auto\n",
+    "    for c in helper(other):\n",
+    "        pass\n",
+    "    d: int\n",
+    "    e: Any  # constricter: auto\n",
+    "    for d, e in enumerate(other.rows()):\n",
+    "        pass\n",
+    "    g: Any  # constricter: auto\n",
+    "    h: Any  # constricter: auto\n",
+    "    i: Any  # constricter: auto\n",
+    "    g, (h, *i) = helper(other)\n",
+    "    j: int\n",
+    "    k: Any  # constricter: auto\n",
+    "    j, k = 1, other.load()\n",
+    "    m: Any  # constricter: auto\n",
+    "    n: Any  # constricter: auto\n",
+    "    p: Any  # constricter: auto\n",
+    "    with other.lock(), other.open() as m, helper(1) as (n, p):\n",
+]
+
+
+def test_what_a_loop_an_unpacking_or_a_with_takes_of_a_call_is_any() -> None:
+    """Each name, by the call's kind, whatever it's bound to later; a type too vague to write is `vague`'s.
+
+    A loop's target, an unpacking's names (a display's, each by its own value), a `with`'s, `async`
+    or not. Not what's taken of anything but a call (a parameter, a display, which is no
+    container's type here), a chained assignment's names, a `:=`'s, nor a module's.
+    """
+    checks: Checks = Checks(fixes=FixPolicy(widen=WIDEN_KINDS), all_scopes=True)
+    found: _Found = _found(TARGETS, checks)
+    assert {name for name, fix in found.items() if fix == _UNTYPED} == {*"cghinp"}
+    assert {name for name, fix in found.items() if fix == _UNKNOWN} == {*"abekm", "aa", "ab", "ae"}
+    assert {name: fix[0] for name, fix in found.items() if fix[0] != _SPELLED} == {
+        "d": "int",
+        "j": "int",
+        "q": "int",
+        "x": "dict[str, Any]",
+        "z": "int",
+        **dict.fromkeys(["r", "s", "t", "u", "v", "w", "y", "af", "ac", "ad", "top"]),
+    }
+    assert found["x"][1:] == (True, frozenset({"call", "loop", "vague"}))
+    source: str = textwrap.dedent(TARGETS)
+    assert _VAGUE in fixes.apply(lines(source), check_source(source, checks=checks))
+
+
+def test_a_widened_targets_declaration_goes_before_its_statement() -> None:
+    """Marked on its own line; a second pass finds nothing more, and `--coverage` counts each widened."""
+    source: str = textwrap.dedent(TARGETS)
+    fixed: list[str] = fixes.apply(lines(source), check_source(source, checks=_CALLS))
+    start: int = fixed.index(_DECLARED[0])
+    end: int = start + len(_DECLARED)
+    assert fixed[start:end] == _DECLARED
+    again: list[Offence] = check_source("".join(fixed), checks=_CALLS)
+    assert {o.name for o in again if o.fix is not None} == set()
+    assert annotation_coverage("".join(fixed)) == Coverage(4, 29, 14)
+
+
+_UTIL: Final = """
+import pytest
+
+
+def helper(x):
+    return x.y
+
+
+def typed(x) -> int:
+    return x.y
+
+
+def commented(x):
+    # type: (int) -> int
+    return x.y
+
+
+async def later(x):
+    return x.y
+
+
+@pytest.fixture
+def fixed():
+    return object()
+
+
+def unused(x):
+    return x.y
+"""
+_MAIN: Final = """
+import util
+from util import commented, fixed, helper, later, typed, unused
+
+
+async def f(other):
+    a = helper(other)
+    b = util.helper(other)
+    c = typed(other)
+    d = commented(other)
+    e = await later(other)
+    g = fixed()
+    for h in helper(other):
+        pass
+    i = other.helper()
+    return a, b, c, d, e, g, h, i, unused
+
+
+def shadowing(helper, util):
+    j = helper(1)
+    k = util.helper(1)
+    return j, k
+"""
+
+
+def test_another_checked_files_function_declaring_no_return_is_an_untyped_call(tmp_path: Path) -> None:
+    """As the file spells its call, by name or through its module; what a loop takes of it too.
+
+    Not one declaring a return, by a `# type:` comment either, an `async def`, a fixture, one the
+    file never calls, nor a name its function binds.
+    """
+    _ = (tmp_path / "util.py").write_text(textwrap.dedent(_UTIL), encoding="utf-8")
+    main: Path = tmp_path / "main.py"
+    _ = main.write_text(textwrap.dedent(_MAIN), encoding="utf-8")
+    catalog: project.Index = project.index(sorted(tmp_path.glob("*.py")))
+    assert linked.untyped(catalog, main) == {"helper", "util.helper"}
+    assert not linked.untyped(catalog, tmp_path / "missing.py")
+    found: list[Offence] = check_source(
+        main.read_text(encoding="utf-8"),
+        checks=_CALLS,
+        outside=schedule.outside(catalog, main, {}),
+    )
+    fixed: _Found = {o.name: (o.fix, o.unsafe, o.edit.kinds if o.edit else frozenset()) for o in found}
+    assert {name for name, fix in fixed.items() if fix == _UNTYPED} == {"a", "b", "h"}
+    assert {name for name, fix in fixed.items() if fix == _UNKNOWN} == {"e", "g", "i", "j", "k"}
+    assert {name: fix[0] for name, fix in fixed.items() if fix[0] != _SPELLED} == {"c": "int", "d": "int"}

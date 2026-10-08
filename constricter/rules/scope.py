@@ -130,8 +130,8 @@ Placed: TypeAlias = tuple[tuple[int, int], bool]
 class Assignments:
     """A scope's plain `name = value` (or `name: T = value`) bindings, for LVA012 and `--fix`.
 
-    `chained`: where each name a chained assignment binds first (`a = b = 0`) starts; its fix,
-    whenever it's made (`optional`, `filled`), declares it there, as it can't annotate it.
+    `chained`: where the statement starts that first binds a name it can't annotate (`a = b = 0`,
+    a loop's, an unpacking's, a `with`'s): a fix made late (`optional`, `filled`) declares it there.
     """
 
     found: dict[str, list[Placed]] = field(default_factory=dict[str, list[Placed]])  # each name's
@@ -139,8 +139,8 @@ class Assignments:
     empty: dict[str, str] = field(default_factory=dict[str, str])  # names first bound empty: their kind
     chained: dict[str, tuple[int, int]] = field(default_factory=dict[str, tuple[int, int]])
     widened: set[str] = field(default_factory=set[str])  # the names a marked line annotates (see `widened`)
-    # Each name first bound by a statement of its own: its target, its value, and the value's type
-    # as `--fix` infers it, where it does (for the wider types `late.widens` may offer it).
+    # Each name `late.widens` may offer a wider type: its target, its value (what a loop's, an
+    # unpacking's or a `with`'s is taken from: then in `chained` too), and the type `--fix` infers.
     plain: dict[str, "Plain"] = field(default_factory=dict[str, "Plain"])
 
 

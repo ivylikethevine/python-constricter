@@ -22,7 +22,7 @@ from constricter.offences import (
     UNTYPED_CALLS,
     UNTYPED_PARAMETERS,
 )
-from constricter.rules.annotations import node_name
+from constricter.rules.annotations import dotted, node_name
 from constricter.rules.syntax import FUNCTION_DEFS, FunctionDef
 from constricter.rules.walked import children, classes, walk
 
@@ -165,10 +165,15 @@ class Own(NamedTuple):
 
 
 class Caller(NamedTuple):
-    """The function a call is in: its class, where it reads a method's `self`, and the names it binds."""
+    """The function a call is in: its class, where it reads a method's `self`, and the names it binds.
+
+    `untyped`: the other checked files' functions its module calls that declare no return, as it
+    spells them (see `Outside.untyped`).
+    """
 
     owner: str | None
     bound: Collection[str]
+    untyped: Collection[str] = ()
 
 
 @lru_cache(maxsize=2)  # asked of each scope of a module in turn
@@ -255,6 +260,17 @@ def _undeclared(function: FunctionDef, *, awaited: bool) -> bool:
     )
 
 
+def _imported(func: ast.expr, caller: Caller) -> bool:
+    """Check whether a call's function is another checked file's that declares no return.
+
+    Returns:
+      Whether `func` spells one of `caller.untyped`, through no name its function binds.
+
+    """
+    spelled: str | None = dotted(func)
+    return spelled is not None and spelled in caller.untyped and spelled.partition(".")[0] not in caller.bound
+
+
 def called(
     value: ast.expr,
     caller: Caller,
@@ -264,10 +280,11 @@ def called(
 ) -> Inference | None:
     """Type a call of no known type as `Any`, awaited or not.
 
-    Kind `untyped-calls` where it calls a function of the module's that declares no return, which
-    a checker reading no body takes for anything already: a top-level function by its name, or a
-    method of `caller`'s class (or of its bases in the module) on `self` or `cls`. Kind
-    `unknown-calls` for any other. Only the kinds among `kinds`.
+    Kind `untyped-calls` where it calls a function that declares no return, which a checker
+    reading no body takes for anything already: a top-level function of the module's by its name,
+    a method of `caller`'s class (or of its bases in the module) on `self` or `cls`, or another
+    checked file's function (`caller.untyped`), not awaited. Kind `unknown-calls` for any other.
+    Only the kinds among `kinds`.
 
     Returns:
       The inference, or `None`: for any other value, or where the module (`plan`) can't name `Any`.
@@ -288,7 +305,11 @@ def called(
             callee = _method(found, owner, name)
         case _:
             pass
-    untyped: bool = callee is not None and _undeclared(callee, awaited=awaited)
+    untyped: bool = (
+        (not awaited and _imported(call.func, caller))
+        if callee is None
+        else _undeclared(callee, awaited=awaited)
+    )
     kind: str = UNTYPED_CALLS if untyped else UNKNOWN_CALLS
     spelled: str | None
     if (spelled := plan.spell(ANY) if kind in kinds else None) is None:

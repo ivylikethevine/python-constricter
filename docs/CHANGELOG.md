@@ -6,6 +6,13 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `fix-widen`'s two kinds of call, and `vague`, type what a loop, an unpacking or a `with` binds
+  too, each name declared on a marked line of its own before the statement
+  (`for key, row in obj.rows():`, `a, b = helper()`, `with obj.open() as f:`); and `untyped-calls`
+  takes a call of another checked file's function that declares no return (`u.helper()`), which was
+  `unknown-calls`'. On pydantic, `--fix` with the calls' kinds marks 519 of 3,956 bindings (13.1%),
+  from 325; with every kind and `--unsafe-fixes`, 773 from 507. basedpyright finds two more errors,
+  of one loop's target a `TypeIs` then narrows.
 - `fix-widen` has two more kinds, for a function's name bound to a call `--fix` has no type for,
   each `Any`, marked: `untyped-calls` (a call of the module's own function or method that declares
   no return, `x = helper()`, `x = self.load()`: what mypy takes it for already) and `unknown-calls`

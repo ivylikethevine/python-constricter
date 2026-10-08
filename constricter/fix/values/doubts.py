@@ -89,6 +89,8 @@ class Facts(NamedTuple):
     rebound: Mapping[str, Sequence[Start]] | None = None
     # Where its functions' own imports start, in source order (see `imports.inner_imports`).
     lazy: Sequence[Start] | None = None
+    # The other checked files' functions it calls that declare no return (see `Outside.untyped`).
+    untyped: frozenset[str] = frozenset()
 
 
 def facts(

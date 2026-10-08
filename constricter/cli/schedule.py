@@ -85,6 +85,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         beyond=beyond.library_bases(modules, path),
         awaits=awaits.calls(modules, path, guarded),
         values=linked.values(modules, path),
+        untyped=linked.untyped(modules, path),
         unions=tuples.unions(modules, path, guarded),
     )
 

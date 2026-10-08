@@ -81,7 +81,7 @@ FIX_KINDS: dict[str, str] = {
     "vague": "a type vaguer than `vague` allows, written anyway, marked (`fix-widen`; a guess)",
     "empty-containers": "an empty container nothing in sight fills: `list[Any]`, marked (`fix-widen`)",
     "mixed-containers": "a display of mixed or unknown elements: `list[Any]`, marked (`fix-widen`)",
-    "untyped-calls": "a call of the module's own function declaring no return: `Any`, marked (`fix-widen`)",
+    "untyped-calls": "a call of a checked file's function declaring no return: `Any`, marked (`fix-widen`)",
     "unknown-calls": "any other call of no known type: `Any`, marked (`fix-widen`)",
 }
 UNTYPED_PARAMETERS: Final = "untyped-parameters"
