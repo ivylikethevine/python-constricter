@@ -50,7 +50,7 @@ def test_none_then_one_type_is_optional() -> None:
         "b": None,  # two types
         "c": None,  # an unknown one
         "d": None,  # never rebound
-        "e": None,  # a loop target
+        "e": "int | None",  # then a loop's target, of a known element
         "g": "int | None",
         "i": None,  # a copy of a union is never certain
         "j": None,  # a type that allows `None` already

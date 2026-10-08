@@ -6,6 +6,20 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix --unsafe-fixes` guesses wrong less often, by what packages outside the corpora showed: a
+  name bound to `TypeAliasType(...)` is a type, as one bound to `TypeVar(...)` is, and has no fix
+  (altair: 128 new type errors to 4); an empty container isn't typed by a name its function tests
+  where that name is what's added (`xs.append(d)` under `isinstance(d, C)` holds the narrowed type);
+  a comprehension that keeps a name only `if x is not None` holds no `None`, so
+  `min([v for v in values if v is not None])` is a `str`, not a `str | None`; and a call typed by a
+  read that a test around it narrows (`copy.deepcopy(x)` in `if x:`) has no fix, where it was a
+  guess of the declared type. A comprehension or a generator that keeps a name only if
+  `isinstance(x, C)` holds `C`s (`next(t for t in types if isinstance(t, ObjectType))` is an
+  `ObjectType`; several classes, or a variable, leave it untyped). A name bound again to a call on
+  itself whose type isn't known (`item = proper(item)`) has no fix: of 37 such guesses on four
+  packages 7 were wrong, of the 542 other rebound ones 16. And a later `with` or `for` target of a
+  known type holds the first binding's fix to it: `with open(path) as f` then
+  `with open(path, "rb") as f` are two types, and `f` has none.
 - `--infer-with` remembers a file its checker's server hung on, and leaves it without hints from the
   start of the next run, where it waited out the server's silence twice and restarted it each time
   (four minutes of a basedpyright-hinted fix of pandas, 439s to 198s). It's remembered by the file's

@@ -243,6 +243,37 @@ filterwarnings = ["error"]
 xfail_strict = true
 cache_dir = "local/.pytest_cache"
 
+# What `lint-imports` (import-linter) holds the package's layout to.
+[tool.importlinter]
+root_package = "constricter"
+
+[[tool.importlinter.contracts]]
+name = "constricter.fix's layers import only those before them"
+type = "layers"
+layers = [
+    "constricter.fix.index",
+    "constricter.fix.values",
+    "constricter.fix.libraries",
+    "constricter.fix.core",
+]
+
+[[tool.importlinter.contracts]]
+name = "the rules and the fixes import neither the command nor the plugins"
+type = "forbidden"
+source_modules = ["constricter.rules", "constricter.fix", "constricter.offences"]
+forbidden_modules = ["constricter.cli", "constricter.plugins", "constricter.trace"]
+
+[[tool.importlinter.contracts]]
+name = "constricter.rules.walked imports nothing of constricter's"
+type = "forbidden"
+source_modules = ["constricter.rules.walked"]
+forbidden_modules = [
+    "constricter.cli",
+    "constricter.fix",
+    "constricter.offences",
+    "constricter.plugins",
+]
+
 [tool.coverage.run]
 data_file = "local/.coverage"
 source = ["constricter"]

@@ -159,3 +159,50 @@ def test_a_name_first_bound_to_no_known_type_is_a_guess_later() -> None:
         "size": False,
         "same": False,
     }
+
+
+def test_a_name_bound_again_to_a_call_on_itself_has_no_fix() -> None:
+    """`item = proper(item)` converts as often as not: a call on something else stays a guess."""
+    source: str = """
+    def g(text: str, proper, n: int) -> None:
+        a = "x"
+        a = proper(a)
+        b = "x"
+        b = proper(text)
+        c = "x"
+        c = proper(flag=c)
+        d = 1
+        d = abs(d)
+    """
+    found: list[Offence] = check_source(textwrap.dedent(source))
+    assert {o.name: (o.fix, o.unsafe) for o in found} == {
+        "a": (None, False),
+        "b": ("str", True),
+        "c": (None, False),
+        "d": ("int", False),  # of a known type: it fits
+    }
+
+
+def test_a_later_with_or_loop_target_holds_the_first_bindings_fix() -> None:
+    """Its known type fits the fix, or leaves none: `open(path)` then `open(path, "rb")` are two types."""
+    source: str = """
+    def g(path: str, names: list[str], counts: list[int]) -> None:
+        with open(path) as a:
+            print(a)
+        with open(path, "rb") as a:
+            print(a)
+        with open(path) as b:
+            print(b)
+        with open(path) as b:
+            print(b)
+        for c in names:
+            print(c)
+        for c in counts:
+            print(c)
+    """
+    found: list[Offence] = check_source(textwrap.dedent(source))
+    assert {o.name: (o.fix, o.unsafe) for o in found} == {
+        "a": (None, False),
+        "b": ("TextIOWrapper", False),
+        "c": (None, False),
+    }

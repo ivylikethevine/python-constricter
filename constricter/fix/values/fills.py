@@ -138,6 +138,26 @@ def filled(
     return _typed(fills, kind, known, declared) if fills else None
 
 
+def added_names(found: Uses, name: str, kind: str) -> frozenset[str]:
+    """Name what the body (`found`) adds to container `name` that is a bare name: `d`, in `xs.append(d)`.
+
+    Where the function tests one (`isinstance(d, C)`), what's added is narrowed there: its
+    declared type isn't the elements'.
+
+    Returns:
+      The names.
+
+    """
+    fills: list[Fill] = [
+        fill
+        for fill in (_use(node, kind, found.parents) for node in found.names.get(name, []))
+        if isinstance(fill, Fill) and not fill.spread
+    ]
+    return frozenset(
+        part.id for fill in fills for part in (fill.key, fill.value) if isinstance(part, ast.Name)
+    )
+
+
 def stored(body: Sequence[ast.stmt], kinds: Mapping[str, str]) -> Iterator[tuple[str, Fill | bool]]:
     """Judge each read of `self`'s attributes bound to an empty container, in one method's body.
 
