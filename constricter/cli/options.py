@@ -358,7 +358,7 @@ def _parser() -> argparse.ArgumentParser:
         type=_widen_kinds,
         default=[],
         metavar="KINDS",
-        help="also write these wider types, each line marked (untyped-parameters; all: every one)",
+        help="also write these wider types, each marked (untyped-parameters, unions, ...; all: every one)",
     )
     _ = parser.add_argument(
         "--fix-plain-bases",

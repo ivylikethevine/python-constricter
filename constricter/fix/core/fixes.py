@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from operator import itemgetter
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.offences import MARK, Edit, Fix, Offence
+from constricter.offences import MARK, WIDEN_KINDS, Edit, Fix, Offence
 
 _HEADER: Final = 2  # a file's shebang and coding lines come first, if it has them
 # The last lines `_missing` read, stripped each way (see there): the lines, their count, and the set.
@@ -71,7 +71,8 @@ def replacement(lines: Sequence[str], offence: Offence) -> Replacement | None:
             statement: str = lines[fix.span[0] - 1]
             indent: str = statement[: len(statement) - len(statement.lstrip())]
             ending: str = statement.removeprefix(statement.rstrip("\r\n")) or "\n"
-            return Replacement(fix.span[0], "", "", f"{indent}{offence.name}: {fix.annotation}{ending}")
+            mark: str = f"  {MARK}" if fix.kinds & WIDEN_KINDS else ""
+            return Replacement(fix.span[0], "", "", f"{indent}{offence.name}: {fix.annotation}{mark}{ending}")
         raw: bytes = lines[offence.line - 1].encode()
         start: int = fix.span[0] if fix.edit is Edit.REPLACE else offence.col + len(offence.name.encode())
         end: int = fix.span[1] if fix.edit is Edit.REPLACE else start
@@ -83,7 +84,8 @@ def replacement(lines: Sequence[str], offence: Offence) -> Replacement | None:
 def dropped(lines: Sequence[str], offence: Offence) -> Replacement | None:
     """Turn a fix's `drop` into a text edit: deleting those columns of its statement's line.
 
-    A declaration's statement is the one it goes before; a replaced annotation's, the offence's own.
+    A declaration's statement is the one it goes before; a replaced annotation's ends on the fix's
+    `mark` line (the offence's own, if none).
 
     Returns:
       The edit, or none without one (or with columns that don't land on characters, as
@@ -94,7 +96,7 @@ def dropped(lines: Sequence[str], offence: Offence) -> Replacement | None:
     if fix is None or fix.drop is None:
         return None
     with contextlib.suppress(UnicodeDecodeError, IndexError):
-        line: int = fix.span[0] if fix.edit is Edit.DECLARE else offence.line
+        line: int = fix.span[0] if fix.edit is Edit.DECLARE else fix.mark or offence.line
         raw: bytes = lines[line - 1].encode()
         start: int
         end: int
@@ -104,16 +106,17 @@ def dropped(lines: Sequence[str], offence: Offence) -> Replacement | None:
 
 
 def marked(lines: Sequence[str], offence: Offence) -> Replacement | None:
-    """Turn a widening's mark into a text edit: `MARK` at the end of the offence's line.
+    """Turn a widening's mark into a text edit: `MARK` at the end of its statement's last line.
 
     Returns:
-      The edit, or none for any other fix.
+      The edit, or none for any other fix, or a declaration (whose own line `replacement` marks).
 
     """
-    if offence.edit is None or not offence.edit.marked:
+    fix: Fix | None = offence.edit
+    if fix is None or fix.edit is not Edit.ANNOTATE or not fix.kinds & WIDEN_KINDS:
         return None
-    body: str = lines[offence.line - 1].rstrip("\r\n")
-    return Replacement(offence.line, body, "", f"  {MARK}")
+    line: int = fix.mark or offence.line
+    return Replacement(line, lines[line - 1].rstrip("\r\n"), "", f"  {MARK}")
 
 
 def replacements(lines: Sequence[str], offence: Offence) -> tuple[Replacement, ...]:
@@ -254,8 +257,8 @@ def apply(lines: Sequence[str], offences: Sequence[Offence]) -> list[str]:
             end: int = edit.columns[1]
             text[edit.line - 1] = edit.prefix + edit.text + text[edit.line - 1][end:]
             if (mark := marked(text, fixed)) is not None:
-                ending: str = text[edit.line - 1].removeprefix(mark.prefix)
-                text[edit.line - 1] = mark.prefix + mark.text + ending
+                ending: str = text[mark.line - 1].removeprefix(mark.prefix)
+                text[mark.line - 1] = mark.prefix + mark.text + ending
     return text
 
 

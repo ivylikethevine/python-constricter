@@ -120,6 +120,8 @@ class Kind(NamedTuple):
         return () if self.function is None else self.function.body
 
 
+# A name's first plain assignment: its target, its value, and the value's inferred type, if any.
+Plain: TypeAlias = tuple[ast.Name, ast.expr, Inference | None]
 # One plain assignment: where, and whether it's in a loop's body.
 Placed: TypeAlias = tuple[tuple[int, int], bool]
 
@@ -137,6 +139,9 @@ class Assignments:
     empty: dict[str, str] = field(default_factory=dict[str, str])  # names first bound empty: their kind
     chained: dict[str, tuple[int, int]] = field(default_factory=dict[str, tuple[int, int]])
     widened: set[str] = field(default_factory=set[str])  # the names a marked line annotates (see `widened`)
+    # Each name first bound by a statement of its own: its target, its value, and the value's type
+    # as `--fix` infers it, where it does (for the wider types `late.widens` may offer it).
+    plain: dict[str, "Plain"] = field(default_factory=dict[str, "Plain"])
 
 
 # A name typed late: its type, and what that rests on if it's a guess (`FIX_KINDS`).
@@ -684,7 +689,6 @@ class Scope:
             guarded=guarded,
             guard=guard or "",
             block=plan.checking.block,
-            marked=widening,
         )
 
     def _offered(
@@ -705,7 +709,10 @@ class Scope:
         fix: Fix | None
         if typed[0] is not None and (fix := self.placed(target.id, typed[0], typed[2], unsafe=typed[1])):
             return fix
-        if widen is None or UNTYPED_PARAMETERS not in self.settings.checks.fixes.widen:
+        if widen is None:
+            return None
+        self.assignments.plain[target.id] = (target, widen, typed[0])
+        if UNTYPED_PARAMETERS not in self.settings.checks.fixes.widen:
             return None
         found = widened.wider(
             self.kind.function,
@@ -840,13 +847,13 @@ class Scope:
         """
         return [name for name in self.first if self._covered(name)]
 
-    def annotation(self, name: str, annotation: ast.expr) -> None:
+    def annotation(self, name: str, annotation: ast.expr, *, marked: bool = False) -> None:
         """Report a vague annotation (LVA005), too deep a one (LVA006), or too long a tuple (LVA011).
 
-        Vague as far as `vague` allows (see `vague_fits`) isn't LVA005, nor is a widening's own (a
-        marked line's: see `widened`).
+        Vague as far as `vague` allows (see `vague_fits`) isn't LVA005, nor is a widening's own
+        (`marked`: see `widened`).
         """
-        if annotation.lineno not in self.settings.known.limits.marks and not vague_fits(
+        if not marked and not vague_fits(
             annotation,
             self.settings.checks.vague,
         ):

@@ -16,7 +16,6 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.core.imports import taken_names
@@ -74,11 +73,11 @@ class Module:  # pylint: disable=too-many-instance-attributes
     name: str
     returns: dict[str, str]
     names: dict[str, Origin]
-    classes: Mapping[str, Mapping[str, str]] = MappingProxyType({})
-    methods: Mapping[str, Mapping[str, str]] = MappingProxyType({})
+    classes: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
+    methods: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
     type_vars: frozenset[str] = frozenset()  # its module-level type variables
     # What it imports under a top-level `if` or `try` (`if TYPE_CHECKING:`), for `type_vars` alone.
-    guarded: Mapping[str, Origin] = MappingProxyType({})
+    guarded: Mapping[str, Origin] = field(default_factory=dict[str, Origin])
     unannotated: frozenset[str] = frozenset()  # its functions a `return` could type (`returned`)
     called: frozenset[str] = frozenset()  # what it calls through its top-level names (`f`, `u.f`)
     passed: frozenset[str] = frozenset()  # what it passes as an argument through them (`np.float64`)

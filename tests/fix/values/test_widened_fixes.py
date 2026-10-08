@@ -138,7 +138,7 @@ def test_a_widenings_line_is_marked_and_its_edits_say_so() -> None:
     found: list[Offence] = check_source(source, checks=_WIDEN)
     fixed: list[str] = fixes.apply(lines(source), found)
     assert [line for line in fixed if line.endswith(_MARK)] == _MARKED
-    first: Offence = next(o for o in found if o.edit and o.edit.marked)
+    first: Offence = next(o for o in found if o.edit and o.edit.kinds)
     edits: tuple[fixes.Replacement, ...] = fixes.replacements(lines(source), first)
     assert [(edit.prefix, edit.deleted, edit.text) for edit in edits] == [
         ("    a", "", ": Any"),
@@ -263,3 +263,112 @@ def test_an_unknown_widening_exits_2(
         _ = cli.main([])
     assert exit_info.value.code == cli.EXIT_ERROR
     assert capsys.readouterr().err.endswith("[tool.constricter] has an invalid fix-widen = ['nope']\n")
+
+
+_ALL: Final = Checks(
+    fixes=FixPolicy(widen=frozenset({"unions", "vague", "empty-containers", "mixed-containers"})),
+)
+WIDER: Final = """
+from typing import Any
+
+
+def load() -> dict[str, Any]:
+    return {}
+
+
+def f(flag, other):
+    a = 1
+    if flag:
+        a = "x"
+    b = load()
+    c = []
+    d = {}
+    e = set()
+    g = [1, "a", other]
+    h = (flag, other)
+    i = {"k": other, "n": 2}
+    j = {
+        other: 1,
+        **i,
+    }
+    k = {flag, other}
+    m = []
+    m.append(3)
+    n = 1.5
+    n = "s"
+    n = None
+    p = 1
+    p = "s"
+    p = b""
+    p = 2.5
+    q = 1
+    q = other
+    r = []
+    r = other
+    s = load()
+    s = other
+    t = other
+    u = v = []
+    w = "text"
+"""
+_WIDER: Final = [
+    ("a", "int | str", True, frozenset({"literal", "rebound", "unions"})),
+    ("b", "dict[str, Any]", True, frozenset({"call", "vague"})),
+    ("c", "list[Any]", False, frozenset({"empty-containers"})),
+    ("d", "dict[Any, Any]", False, frozenset({"empty-containers"})),
+    ("e", "set[Any]", False, frozenset({"empty-containers"})),
+    ("g", "list[Any]", False, frozenset({"mixed-containers"})),
+    ("h", "tuple[Any, ...]", False, frozenset({"mixed-containers"})),
+    ("i", "dict[str, Any]", False, frozenset({"mixed-containers"})),
+    ("j", "dict[Any, Any]", False, frozenset({"mixed-containers"})),
+    ("k", "set[Any]", False, frozenset({"mixed-containers"})),
+    ("m", "list[int]", True, frozenset({"filled", "literal"})),
+    ("n", "float | str | None", True, frozenset({"literal", "rebound", "unions"})),
+    ("q", "int", True, frozenset({"literal", "rebound"})),  # a later value of no known type: as it was
+    ("w", "str", False, frozenset({"literal"})),
+]
+_WRITTEN: Final = [
+    "    a: int | str  # constricter: auto\n",
+    "    b: dict[str, Any] = load()  # constricter: auto\n",
+    "    c: list[Any] = []  # constricter: auto\n",
+    "    }  # constricter: auto\n",
+]
+
+
+def test_each_wider_type_is_its_own_kind() -> None:
+    """A union of two or three types and a vague type are guesses; a container of `Any` is certain.
+
+    Not four types' union, nor one with a value of no known type; and no container or vague type
+    for a name bound again, a chained assignment's, or a value of no type at all.
+    """
+    found: _Found = _found(WIDER, _ALL)
+    assert [(name, *fix) for name, fix in found.items() if fix[0] is not None] == _WIDER
+    assert {name for name, fix in found.items() if fix[0] is None} == {"p", "r", "s", "t", "u", "v"}
+    assert {fix[0] for fix in _found(WIDER, Checks()).values()} == {None, "str", "int", "list[int]"}
+
+
+def test_a_wider_types_mark_ends_its_statement() -> None:
+    """A declaration's own line; an assignment's last line, however many it's on."""
+    source: str = textwrap.dedent(WIDER)
+    fixed: list[str] = fixes.apply(lines(source), check_source(source, checks=_ALL))
+    marked: list[str] = [line for line in fixed if line.endswith(_MARK)]
+    assert [marked[0], marked[1], marked[2], marked[8]] == _WRITTEN
+    again: list[Offence] = check_source("".join(fixed), checks=_ALL._replace(vague=-1))
+    assert {o.name for o in again} == {"p", "r", "s", "t", "u", "v"}
+
+
+def test_a_widening_types_nothing_read_of_its_name() -> None:
+    """What a marked annotation says isn't its value's type: a second pass finds no more than the first."""
+    source: str = "def f(other):\n    stack = []\n    top = stack.pop()\n    return top, other\n"
+    checks: Checks = Checks(fixes=FixPolicy(widen=frozenset({"vague", "empty-containers"})))
+    once: str = "".join(fixes.apply(lines(source), check_source(source, checks=checks)))
+    assert [(o.name, o.fix) for o in check_source(once, checks=checks)] == [("top", None)]
+
+
+def test_late_wider_types_are_for_a_functions_names() -> None:
+    """Not a module's or a class's, which something out of sight may bind again; nor without `Any` to name."""
+    source: str = "CACHE = {}\n\n\nclass C:\n    seen = []\n"
+    checks: Checks = _ALL._replace(all_scopes=True)
+    assert [o.fix for o in check_source(source, checks=checks)] == [None, None]
+    unnamed: str = "Any = typing = 1\ndef f():\n    c = {}\n"
+    assert [o.fix for o in check_source(unnamed, checks=_ALL)] == [None]

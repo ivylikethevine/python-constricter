@@ -164,24 +164,29 @@
   parameter (what no checker types wider than the run saw), a class the file doesn't name imported
   under `if TYPE_CHECKING:`. On pandas's `tests/frame/methods`: 128 more fixes of 4,616 bindings.
 - **Wider types, chosen** (`fix-widen`, [FIXES.md](FIXES.md#wider-types-fix-widen)): each a fix kind
-  of its own, off unless listed (`all`: every one). A line one writes ends with
-  `# constricter: auto`: LVA005 passes over it, `--coverage` counts it apart (typed, widened), and
-  once its value's type is known `--fix` writes that over it and drops the mark, as it never does an
-  author's annotation. Not `object` at any level: it hides no error, and nearly every use of the
-  value then is one. The first kind, `untyped-parameters`: `Any` for `x = param` and
-  `y = param.method()`, the parameter with no annotation and no default (one with a default a
-  checker types by it), never bound again. On sqlalchemy it annotates 175 bindings; basedpyright
-  finds no new error after it, and 6 fewer, which the `Any` hides. Not counted on the seven yet
-  (8,565 bindings came of an unannotated parameter, defaults included).
-- **Each checker's servers, by its own measure**: a server's memory is its checker's (`Server`:
-  basedpyright's 0.6 GB and 130 bytes for each byte of the files, `ty`'s 0.3 GB and 45), and `ty`
-  gets up to four as basedpyright does: a hinted check of pandas takes 36s with one, 25s with two,
-  22s with three and 21s with four (1.2 GB with one, 2.5 GB with four). pyrefly's isn't measured:
-  one server, by basedpyright's figures.
-- **Hints asked for while the files are indexed**: with `--infer-with`, the servers answer while the
-  files are indexed, and a check takes the longer of the two. No gain measured with every CPU (a
-  hinted check of pandas 118s, from 117s: its workers index in a second or two, and the servers'
-  answers are what's waited for).
+  of its own, off unless listed (`all`: every one). A statement one writes ends with
+  `# constricter: auto`: LVA005 passes over it, `--coverage` counts it apart (typed, widened), it
+  types nothing read of its name (so one pass still leaves a second nothing), and once its value's
+  type is known `--fix` writes that over it and drops the mark, as it never does an author's
+  annotation. Not `object` at any level: it hides no error, and nearly every use of the value then
+  is one. Five kinds: `untyped-parameters` (`Any` for `x = param` and `y = param.method()`, the
+  parameter with no annotation and no default, which a checker types by it), `empty-containers`
+  (`list[Any]` for an empty one nothing fills) and `mixed-containers` (`list[Any]`,
+  `tuple[Any, ...]`, `dict[str, Any]` for a display of mixed or unknown elements), certain; `unions`
+  (two or three certain types' union, not for a name changed in place) and `vague` (a known type
+  vaguer than `vague` allows), guesses. On sqlalchemy, with `--unsafe-fixes`: 175, 196, 98, 9 and
+  184 bindings, 662 together (4.5%); basedpyright finds no error in a file under a rule it hadn't
+  one for, and 22 fewer, which the `Any`s hide (13 by `mixed-containers`). The first unions, of
+  guessed values or changed by `+=`, brought 3 errors with 15 fixes. Not counted on the seven
+  corpora, nor run through the packages' suites.
+- **Each checker's servers, by its own measure**: every checker gets up to four, and a server's
+  memory is its checker's (`Server.fitting`). basedpyright's each hold the whole program (0.6 GB and
+  130 bytes for each byte of the files); `ty`'s and pyrefly's each hold their share, so the files
+  count once among them (0.4 GB a server and 38 bytes a byte; 0.45 GB and 175). A hinted check of
+  pandas: `ty` 36s with one server, 25s with two, 21s with four (1.2 GB, 1.7, 2.5); pyrefly 69s, 29s
+  and 18s (4.2 GB, 4.6, 5.5). Measured, and left out: asking for the hints while the files are
+  indexed gained nothing with every CPU (a hinted check of pandas 118s, from 117s: the workers index
+  in a second or two), and a worker forked while the servers' threads ran hung on Python 3.11.
 - **A hung server is restarted**: one silent for 120s is restarted and each file it hadn't answered
   asked about alone; a file it hangs on again has no hints, named on standard error.
 - **No new type errors**: `corpus_suite.py --types` runs pydantic's, sqlalchemy's and pandas's own
@@ -539,39 +544,17 @@ fix.
    `overloads.py`). Done when the tables come out byte for byte the same with `stubs.py` a layer
    over it. About 5 hours; coverage unchanged.
 
-9. **A wider type, marked, where a narrow one isn't known.** A name bound to two types is left
-   untyped (a union is the author's to write), and a type vaguer than `vague` allows is known and
-   never written. Counted on the standard library, pandas, django, sqlalchemy and pydantic, of
-   224,160 untyped bindings with 99,411 fixed: the union of a rebound name's types (`int | str`)
-   fixes 1,248 more, and a vague type written anyway (`dict[str, Any]`) 1,238; a read typed as
-   declared where a test narrows it 304, and a copy of an `X | None` 222, each withheld for the type
-   errors it brought. All four, 2,869: 44.3% to 45.6%. The other 122,000 have no type at all to
-   widen, and `Any` for them turns off what a checker that reads an unannotated function's `return`s
-   (pyright) had inferred. Write the first two as guesses, two kinds of `fix-widen` (see
-   [FIXES.md](FIXES.md#wider-types-fix-widen)), each line marked. Recommended: both, the union
-   first. Done when the corpus packages' suites and type checkers find nothing new after them, and a
-   marked annotation is replaced once its type is known. About 6 hours, for about 1% (some 2,500
-   guesses).
-
-10. **Wider: a container whose elements aren't known.** An empty list nothing in sight fills (3,224
-    bindings), and a display of mixed or unknown elements (3,302 lists, 3,128 tuples): `list[Any]`,
-    `tuple[Any, ...]`, `dict[str, Any]` where the keys are known, marked. An empty container is one
-    a checker asks an annotation for anyway. Drawback: for a display with elements, a checker infers
-    more than `list[Any]` says (`list[int | str]`), and the annotation hides it. Recommended: the
-    empty ones, as a kind of their own; the mixed ones as another, off unless asked for. Done when
-    the checkers find nothing new after the empty ones, and what they find after the mixed ones is
-    counted. About 4 hours, for about 1.3% (3,224) and 2.6% (6,430).
-11. **Wider: a call on what has no type.** `obj.method()`, `module.func()`, a chain of them: at
-    least 56,540 bindings with no fix (12,714 chained, 12,251 on a local, 10,768 on `self`, 9,174 on
-    a module, 5,176 an imported function, 3,688 an imported attribute, 2,769 a module's own
-    unannotated function). `Any`, marked. Drawback: the largest by far, and the costliest: mypy
-    takes an unannotated function's call for `Any` already, but pyright reads its `return`s, and an
-    `Any` written over what it inferred turns that checking off. Recommended: as two kinds. One for
-    a call of the checked files' own unannotated function, which mypy sees as `Any` too (count it
-    first: `self.method()` and a module's own are 13,537 at most); one for every other call, for a
-    project that chooses coverage over pyright's inference. Done when each is counted, and the first
-    brings mypy nothing new on the corpus packages. About 6 hours, for up to 22% of the offences,
-    none of it a type.
+9. **Wider: a call on what has no type.** `obj.method()`, `module.func()`, a chain of them: at least
+   56,540 bindings with no fix (12,714 chained, 12,251 on a local, 10,768 on `self`, 9,174 on a
+   module, 5,176 an imported function, 3,688 an imported attribute, 2,769 a module's own unannotated
+   function). `Any`, marked. Drawback: the largest by far, and the costliest: mypy takes an
+   unannotated function's call for `Any` already, but pyright reads its `return`s, and an `Any`
+   written over what it inferred turns that checking off. Recommended: as two kinds. One for a call
+   of the checked files' own unannotated function, which mypy sees as `Any` too (count it first:
+   `self.method()` and a module's own are 13,537 at most); one for every other call, for a project
+   that chooses coverage over pyright's inference. Done when each is counted, and the first brings
+   mypy nothing new on the corpus packages. About 6 hours, for up to 22% of the offences, none of it
+   a type.
 
 What the finished items left, each under 3 hours and under 0.1%: a fixture's value bound to a name
 before its attribute is read (`both = capsys.readouterr()`, then `both.out`), a `parametrize` on a

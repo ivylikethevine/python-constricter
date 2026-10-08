@@ -10,7 +10,6 @@ import json
 import sys
 import tokenize
 from collections.abc import Callable, Mapping, Sequence
-from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
@@ -522,20 +521,17 @@ def _checked_all(
       What each file found, and the index of every file's module.
 
     """
-    coverage: bool = options.mode is Mode.COVERAGE  # needs nothing from the other files
-    pool: Workers | None = started(paths, options.jobs) if options.jobs != 1 and len(paths) > 1 else None
-    hinted: _Hinted = {}
-    if session is None:
-        modules = modules or _indexed(paths, pool, coverage=coverage)
-    else:
-        asking: ThreadPoolExecutor
-        with ThreadPoolExecutor(1) as asking:
-            # The servers answer while the files are indexed: both take the longer of the two, not their sum.
-            asked: Future[_Hinted] = asking.submit(session.hints, _texts(paths))
-            modules = modules or _indexed(paths, pool, coverage=coverage)
-            hinted = asked.result()
+    # Before a worker starts: one forked while the servers' threads run could wait on a lock one holds.
+    hinted: _Hinted = {} if session is None else session.hints(_texts(paths))
     if options.input.trace is not None:
         hinted = traced.merged(hinted, traced.load(options.input.trace), paths)
+    coverage: bool = options.mode is Mode.COVERAGE  # needs nothing from the other files
+    pool: Workers | None = started(paths, options.jobs) if options.jobs != 1 and len(paths) > 1 else None
+    if modules is None and pool:
+        modules = project.Index({}, []) if coverage else pool.index()
+    elif modules is None:
+        modules = project.Index({}, []) if coverage else project.index(paths)
+        collecting.indexed()
     if not coverage:
         modules = plain.settled(
             decorated.passed(installed.with_installed(modules, installed.search_path())),
@@ -548,22 +544,6 @@ def _checked_all(
         (modules, hinted),
         _merged if options.mode is Mode.FIX else None,
     )
-
-
-def _indexed(paths: Sequence[Path], pool: Workers | None, *, coverage: bool) -> project.Index:
-    """Index `paths`, by the workers of `pool` if there are any; `coverage` needs no index.
-
-    Returns:
-      The index of every file's module.
-
-    """
-    if coverage:
-        return project.Index({}, [])
-    if pool:
-        return pool.index()
-    modules: project.Index = project.index(paths)
-    collecting.indexed()
-    return modules
 
 
 def _merged(before: FileRun, after: FileRun) -> FileRun:

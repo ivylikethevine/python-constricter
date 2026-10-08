@@ -33,8 +33,9 @@ class Server(NamedTuple):
     """A checker's language server: how it's started, and how many are worth running at once.
 
     Its executable, the arguments that start it over stdio, and the most of it to run (up to
-    `MAX_SERVERS`; one for a checker that works in parallel itself). And the memory one takes, as
-    measured: `memory` bytes before the files, and `per_byte` more for each byte of them.
+    `MAX_SERVERS`). And the memory its servers take, as measured: `memory` bytes each before the
+    files, and `per_byte` more for each byte of them: each server's again where each holds the
+    `whole` program, once among them all where each holds what it's asked about.
     """
 
     executable: str
@@ -42,19 +43,30 @@ class Server(NamedTuple):
     most: int
     memory: int
     per_byte: int
+    whole: bool = False
+
+    def fitting(self, budget: int, size: int) -> int:
+        """Count the servers that fit in `budget` bytes, for files of `size` bytes together.
+
+        Returns:
+          It: none where one doesn't fit.
+
+        """
+        if self.whole:
+            return budget // (self.memory + self.per_byte * size)
+        return max(0, budget - self.per_byte * size) // self.memory
 
 
 MAX_SERVERS: Final = 4  # a checker's, at most: each holds its own copy of the program it checks
 SERVERS: Final = {
     # One thread each: more servers check more at once (sqlalchemy's hints: 10.8s with one, 7.2s with four).
-    # 1.2 GB for sqlalchemy's 8 MB, 3.4 for pandas's 21.
-    "basedpyright": Server("basedpyright-langserver", ("--stdio",), MAX_SERVERS, 600 << 20, 130),
+    # Each holds the whole program: 1.2 GB for sqlalchemy's 8 MB, 3.4 for pandas's 21.
+    "basedpyright": Server("basedpyright-langserver", ("--stdio",), MAX_SERVERS, 600 << 20, 130, whole=True),
     # Parallel itself, and still quicker shared out: a hinted check of pandas takes 36s with one, 25s
-    # with two, 22s with three and 21s with four (sqlalchemy's hints 0.9s with one, 0.7s with four).
-    # 0.4 GB for pydantic's 2 MB, 0.6 for sqlalchemy's 8, 1.2 for pandas's 21.
-    "ty": Server("ty", ("server",), MAX_SERVERS, 300 << 20, 45),
-    # Parallel too; its memory isn't measured, and is taken for basedpyright's.
-    "pyrefly": Server("pyrefly", ("lsp",), 1, 600 << 20, 130),
+    # with two, 22s with three and 21s with four (1.2 GB with one, 1.7 with two, 2.5 with four).
+    "ty": Server("ty", ("server",), MAX_SERVERS, 420 << 20, 38),
+    # Parallel too: pandas's takes 69s with one, 29s with two and 18s with four (4.2 GB, 4.6, 5.5).
+    "pyrefly": Server("pyrefly", ("lsp",), MAX_SERVERS, 450 << 20, 175),
 }
 _PROBE: Final = "--version"  # quick for each; basedpyright-langserver's exits 1 all the same
 _PROBE_TIMEOUT: Final = 10.0  # seconds it may take

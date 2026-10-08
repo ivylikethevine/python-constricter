@@ -486,17 +486,20 @@ def _augmented_guess(scope: Scope, stmt: ast.AugAssign) -> Late | None:
 def annotated(scope: Scope, stmt: ast.AnnAssign, target: ast.Name) -> None:
     """Bind the name an annotated assignment declares (`name: T`, `name: T = value`).
 
-    One a widening annotated (a marked line's: see `widened`) is typed by its value where `--fix`
-    now knows it (see `_rewidened`).
+    One a widening annotated (its statement's last line is marked: see `widened`) is typed by its
+    value where `--fix` now knows it (see `_rewidened`), and has no type otherwise: a second pass
+    then finds nothing the first didn't.
     """
     name: str = target.id
     annotation: ast.expr = stmt.annotation
     fresh: bool = name not in scope.declared
+    marked: bool = stmt.end_lineno in scope.settings.known.limits.marks
     scope.declare(name)
-    scope.annotation(name, annotation)
-    if fresh and annotation.lineno in scope.settings.known.limits.marks and _rewidened(scope, stmt, target):
+    scope.annotation(name, annotation, marked=marked)
+    if fresh and marked and _rewidened(scope, stmt, target):
         return
-    scope.inferred.declare(name, annotation)
+    if not marked:  # a widening's type says nothing of the value: what's read of the name has none
+        scope.inferred.declare(name, annotation)
     scope.lifetime(name).declare(ast.unparse(annotation), at(target), _span(annotation, target))
     if stmt.value is not None:
         scope.lifetime(name).bind(at(target), certain_type(scope, stmt.value))
@@ -529,7 +532,8 @@ def _rewidened(scope: Scope, stmt: ast.AnnAssign, target: ast.Name) -> bool:
     )
     if found is None or fix is None:
         return False
-    marked: Fix = fix._replace(drop=scope.settings.known.limits.marks[stmt.annotation.lineno])
+    last: int = stmt.end_lineno or target.lineno
+    marked: Fix = fix._replace(drop=scope.settings.known.limits.marks[last], mark=last)
     scope.offences.append(Offence(*at(stmt.annotation), name, VAGUE_TYPE, marked))
     scope.lifetime(name).bind(at(target), None if unsafe else found.annotation)
     scope.assigned(name, at(target))

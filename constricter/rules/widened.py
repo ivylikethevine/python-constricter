@@ -12,7 +12,8 @@ from functools import lru_cache
 from typing import Final
 
 from constricter.fix.core.known import ImportPlan, Inference
-from constricter.offences import MARK, UNTYPED_PARAMETERS
+from constricter.fix.values import fills
+from constricter.offences import EMPTY_CONTAINERS, MARK, MIXED_CONTAINERS, UNTYPED_PARAMETERS
 from constricter.rules.syntax import FunctionDef
 from constricter.rules.walked import walk
 
@@ -101,3 +102,42 @@ def wider(
             return None if spelled is None else Inference(spelled, reason, frozenset({UNTYPED_PARAMETERS}))
         case _:
             return None
+
+
+def container(value: ast.expr, plan: ImportPlan, kinds: Collection[str]) -> Inference | None:
+    """Type a container whose elements aren't known with `Any` for them: `list[Any]`, `dict[str, Any]`.
+
+    An empty one nothing in sight fills (`[]`, `dict()`: kind `empty-containers`), or a display
+    whose elements' types differ or aren't known (`[1, "a"]`, `(x, y)`: `mixed-containers`); a dict
+    display's keys are `str` where each is a string. Only the kinds among `kinds`.
+
+    Returns:
+      The inference, or `None`: for any other value, or where the module (`plan`) can't name `Any`.
+
+    """
+    empty: str | None = fills.empty(value)
+    kind: str = EMPTY_CONTAINERS if empty is not None else MIXED_CONTAINERS
+    spelled: str | None
+    if (spelled := plan.spell(ANY) if kind in kinds else None) is None:
+        return None
+    keys: list[ast.expr | None]
+    annotation: str | None
+    match value:
+        case ast.List(elts=[_, *_]):
+            annotation = f"list[{spelled}]"
+        case ast.Set():
+            annotation = f"set[{spelled}]"
+        case ast.Tuple(elts=[_, *_]):
+            annotation = f"tuple[{spelled}, ...]"
+        case ast.Dict(keys=[_, *_] as keys):
+            texts: bool = all(isinstance(key, ast.Constant) and isinstance(key.value, str) for key in keys)
+            annotation = f"dict[{'str' if texts else spelled}, {spelled}]"
+        case _:
+            annotation = {"list": f"list[{spelled}]", "set": f"set[{spelled}]"}.get(
+                empty or "",
+                f"dict[{spelled}, {spelled}]" if empty else None,
+            )
+    if annotation is None:
+        return None
+    reason: str = "an empty container nothing fills" if empty else "a display of mixed or unknown elements"
+    return Inference(annotation, reason, frozenset({kind}))

@@ -226,11 +226,10 @@ class Checker:
     """One checker's servers, and which of them has each file.
 
     It has as many as its files need (one per `_FILES_PER_SERVER`), up to the command's `--jobs`, the
-    checker's own most (`Server.most`: one for a checker that works in parallel itself), and as many
-    as fit in its memory: `--infer-memory` (never more than is available), or by default `MEMORY`
-    (never more than half what's available). Each server loads the whole program it checks, which
-    takes (as measured, see `Server`) its checker's `memory` plus `per_byte` for each byte of the files.
-    One server it always has, whatever the memory.
+    checker's own most (`Server.most`), and as many as fit in its memory: `--infer-memory` (never
+    more than is available), or by default `MEMORY` (never more than half what's available). Each
+    server loads the whole program it checks, or its share of it, by its checker's own measure (see
+    `Server.fitting`). One server it always has, whatever the memory.
 
     The files are handed out a few at a time (`_BATCH`), the biggest first, to whichever server is
     free: one file's analysis can take far longer than another's, and none waits on a busy one. A
@@ -257,7 +256,7 @@ class Checker:
 
         """
         size: int = sum(len(text) for text in files.values())
-        fit: int = max(1, self.memory // (self.server.memory + self.server.per_byte * size))
+        fit: int = max(1, self.server.fitting(self.memory, size))
         return max(len(self.servers), min(self.most, -(-len(files) // _FILES_PER_SERVER), fit))
 
     def tasks(self, files: Mapping[Path, str]) -> list[_Task]:

@@ -22,18 +22,24 @@ from constricter.fix.values.doubts import contains_inner, narrowing, spelled_sel
 from constricter.fix.values.inference import RETURNED
 from constricter.offences import (
     CAN_BE_FINAL,
+    EMPTY_CONTAINERS,
+    MIXED_CONTAINERS,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
+    UNIONS,
     UNTYPED_TARGET,
+    VAGUE_KIND,
+    WIDEN_KINDS,
     Edit,
     Fix,
     Offence,
     at,
 )
+from constricter.rules import widened
 from constricter.rules.annotations import node_name, roots
 from constricter.rules.flow import Binding, Lifetime, members
 from constricter.rules.rebinding import Refit, refit
-from constricter.rules.scope import FINAL_KIND, Late, Scope, imports_of
+from constricter.rules.scope import FINAL_KIND, Late, Plain, Scope, imports_of
 from constricter.rules.syntax import FunctionDef
 from constricter.rules.walked import children
 
@@ -51,6 +57,8 @@ _IGNORE: Final = re.compile(r"#\s*type:\s*ignore")  # a comment excusing its lin
 _WORD: Final = re.compile(r"[A-Za-z_]\w*")
 # The guesses of a value a type checker takes for anything: held to no class until declared.
 _UNCHECKED: Final = hinted.KINDS | {RETURNED}
+# The wider types `widens` offers, once a scope's other fixes are settled.
+_LATE_WIDENINGS: Final = frozenset({VAGUE_KIND, EMPTY_CONTAINERS, MIXED_CONTAINERS})
 # The arms a binding is in: each branching statement around it (by `id()`), and which of its arms.
 _Arms: TypeAlias = tuple[tuple[int, int], ...]
 
@@ -119,7 +127,13 @@ def rebinds(scope: Scope) -> None:
                 scope.offences[index] = replace(o, edit=None)
             continue
         # A widening's `Any` takes whatever the name is bound to later.
-        if o.code not in _DECLARING or fix is None or fix.marked or lifetime is None or lifetime.escaped:
+        if (
+            o.code not in _DECLARING
+            or fix is None
+            or fix.kinds & WIDEN_KINDS
+            or lifetime is None
+            or lifetime.escaped
+        ):
             continue
         first: Binding
         rest: list[Binding]
@@ -142,7 +156,13 @@ def rebinds(scope: Scope) -> None:
             # that knows the other's holds it to the first.
             scope.offences[index] = replace(o, edit=None)
             continue
-        found: Refit | Fix | None = refit(o, fix, rest, scope.settings.hierarchy, self_type)
+        found: Refit | Fix | None = refit(
+            o,
+            fix,
+            rest,
+            scope.settings.hierarchy,
+            (self_type, _unites(scope, o.name)),
+        )
         refitted: Fix | None = _offered(scope, found) if isinstance(found, Refit) else found
         scope.offences[index] = replace(o, edit=refitted)
 
@@ -193,6 +213,40 @@ def fills(scope: Scope) -> None:
         scope.offences[index] = replace(o, edit=fix)
         # What the scope infers from it (its `return`s) knows its type, a guess.
         scope.inferred.late[o.name] = (found.annotation, frozenset({_FILLED}))
+
+
+def widens(scope: Scope) -> None:
+    """Offer a wider type to each name's first plain assignment that still has no fix, where `fix-widen` asks.
+
+    A type vaguer than `vague` allows, written anyway (`vague`: a guess); `Any` for the elements of
+    an empty container nothing fills, or of a display of mixed or unknown ones (see
+    `widened.container`). Each marked where its statement ends.
+    """
+    widen: frozenset[str] = scope.settings.checks.fixes.widen
+    plan: ImportPlan | None = scope.settings.known.names.plan
+    if not widen & _LATE_WIDENINGS or plan is None or not scope.kind.fixable:
+        return
+    index: int
+    o: Offence
+    for index, o in enumerate(scope.offences):
+        bound: Plain | None = scope.assignments.plain.get(o.name)
+        lifetime: Lifetime | None = scope.flow.get(o.name)
+        if o.edit is not None or bound is None or at(bound[0]) != (o.line, o.col):
+            continue
+        # Bound again, or written out of sight, it may be anything else: a wider type could be wrong.
+        if lifetime is None or lifetime.escaped or len(lifetime.bindings) != 1:
+            continue
+        known: Inference | None = bound[2]
+        found: Inference | None
+        fix: Fix | None
+        if known is not None and VAGUE_KIND in widen and not scope.writable(known):
+            found = known._replace(kinds=known.kinds | {VAGUE_KIND})
+            fix = scope.offer(found, frozenset({VAGUE_KIND}), unsafe=True)
+        else:
+            found = None if known is not None else widened.container(bound[1], plan, widen)
+            fix = None if found is None else scope.offer(found, frozenset(), unsafe=False)
+        if fix is not None:
+            scope.offences[index] = replace(o, edit=fix._replace(mark=bound[1].end_lineno or o.line))
 
 
 def shadowed(scope: Scope) -> None:
@@ -373,6 +427,37 @@ def _final_fix(fix: Fix, plan: ImportPlan) -> Fix:
 
     """
     return fix._replace(imports=imports_of(fix.annotation, plan), after=plan.after)
+
+
+def _unites(scope: Scope, name: str) -> bool:
+    """Check whether `name`'s values of several types may be declared their union (`fix-widen`'s `unions`).
+
+    Returns:
+      Whether they may: where it's asked for, in a function, of a name it doesn't change in place
+      (`name += more`, which no union of its types need take).
+
+    """
+    function: FunctionDef | None = scope.kind.function
+    return (
+        UNIONS in scope.settings.checks.fixes.widen
+        and function is not None
+        and name not in _augmented(function)
+    )
+
+
+@lru_cache(maxsize=64)  # asked of each of a function's names bound again
+def _augmented(function: FunctionDef) -> frozenset[str]:
+    """Name what a function changes in place: `name += more`.
+
+    Returns:
+      Each such name.
+
+    """
+    return frozenset(
+        node.target.id
+        for node in ast.walk(function)
+        if isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name)
+    )
 
 
 @lru_cache(maxsize=1024)  # asked of each of a function's names bound again

@@ -653,16 +653,18 @@ class's alias, or a class of a package that isn't checked, is left out.
 
 With several checkers, each name takes the first checker's hint, in the order they're named, that
 passes the checks above: one checker's `Unknown` falls back to the next's type. They're asked at the
-same time, each over its own servers. basedpyright, which works one file at a time, and `ty` get up
-to four servers (more only repeat each other's work: SQLAlchemy's hints took 20s with one
-basedpyright server, 11s with four, 18s with sixteen; a check of pandas with `ty`'s 36s with one,
-25s with two, 21s with four), as `--jobs` allows, one per 32 files; pyrefly, which works in parallel
-itself, gets one. Free servers take the files a few at a time, the biggest first, each always with
-its next few asked before its last few are answered. Each server holds its own copy of the program
-it checks, counted by its checker's own measure: basedpyright's about 1.2 GB for SQLAlchemy and 3.4
-GB for pandas, `ty`'s 0.6 and 1.2. `--infer-memory GB` (`infer-memory`) caps what a checker's
-servers use together: by default 8 GB, or half the memory available if that's less; set, never more
-than is available. One server a checker always gets.
+same time, each over its own servers. A checker gets up to four servers, as `--jobs` allows, one per
+32 files (more only repeat each other's work: SQLAlchemy's hints took 20s with one basedpyright
+server, 11s with four, 18s with sixteen). `ty` and pyrefly work in parallel themselves, and are
+still quicker shared out: a hinted check of pandas takes 36s with one `ty` server and 21s with four,
+69s with one of pyrefly's and 18s with four. Free servers take the files a few at a time, the
+biggest first, each always with its next few asked before its last few are answered. A server's
+memory is counted by its checker's own measure: each of basedpyright's holds its own copy of the
+program it checks (about 1.2 GB for SQLAlchemy, 3.4 GB for pandas), while `ty`'s and pyrefly's each
+hold what they're asked about (pandas: 1.2 GB in one `ty` server and 2.5 GB in four, 4.2 GB and 5.5
+GB for pyrefly). `--infer-memory GB` (`infer-memory`) caps what a checker's servers use together: by
+default 8 GB, or half the memory available if that's less; set, never more than is available. One
+server a checker always gets.
 
 Each server runs behind a small guard process, which passes its input and output through and kills
 it (and anything it started: a venv's `basedpyright-langserver` starts `node`) once constricter has
@@ -743,47 +745,48 @@ Each fix names the mechanisms that decided it, parts included (`[1, 2]` is a `co
 `literal`s), by a stable id: `--show-fixes` prints them after the reason (`[container, literal]`),
 and `--format=json`'s `fix` object has them as `kinds`.
 
-| Id                   | Decided by                                                                                           |
-| -------------------- | ---------------------------------------------------------------------------------------------------- |
-| `literal`            | a literal, an f-string, `not x`, or `x in y` or `x is y`                                             |
-| `container`          | a list, set, tuple or dict display whose elements' types agree                                       |
-| `joined`             | a list, set or dict display whose elements' types differ, as their union (a guess)                   |
-| `copy`               | a copy of a local whose type is known                                                                |
-| `subscript`          | a subscript of a container whose type is known                                                       |
-| `attribute`          | an attribute of a class the module (or another checked file) defines                                 |
-| `method`             | a method with a fixed or declared return type, on a value whose type is known                        |
-| `builtin`            | a builtin with a fixed return type (`len`, `str`), or one its arguments decide (`min`)               |
-| `call`               | a function, classmethod or staticmethod that declares its return type                                |
-| `constructor`        | a call to a capitalised name, taken to construct one (a guess)                                       |
-| `conditional`        | both sides of `a if c else b`, or one side and `None`                                                |
-| `boolean`            | `a or b` or `a and b`, its operands of one type                                                      |
-| `compare`            | a comparison of builtin values (`n < 3`), always a `bool`                                            |
-| `arithmetic`         | arithmetic on builtin values, a `pathlib` path's `/`, a library class's operator                     |
-| `comprehension`      | a list, set or dict comprehension's elements                                                         |
-| `builder`            | `sorted`, `list`, `set`, `frozenset` or `tuple` of known elements                                    |
-| `await`              | `await` of a checked file's `async def`, a function or a method                                      |
-| `loop`               | what a loop (or `sorted`, `list`, ...) iterates over                                                 |
-| `unpack`             | an unpacking, each name by its own value, or the value's type split over them                        |
-| `narrow`             | LVA008's or LVA010's narrower annotation (a guess)                                                   |
-| `cast`               | `typing.cast(T, x)`: its `T`                                                                         |
-| `comment`            | LVA003: the loop's own `# type:` comment, as a declaration                                           |
-| `redundant`          | LVA007: the repeated annotation, dropped                                                             |
-| `untyped-parameters` | what comes of a parameter no annotation types: `Any`, marked ([`fix-widen`](#wider-types-fix-widen)) |
-| `stdlib`             | the standard library's functions, classes and members, from typeshed (`uuid4`)                       |
-| `open`               | `open(path, mode)`'s file object, by its literal mode (`io.TextIOWrapper`, ...)                      |
-| `final`              | LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)                        |
-| `checker`            | a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)                       |
-| `traced`             | what a traced run bound the name to (`--infer-from`; a guess)                                        |
-| `rebound`            | a name later bound to a wider type: the type every value fits (`int`, then `float`)                  |
-| `optional`           | `x = None`, then only ever a value of one known type `T`: `T \| None`                                |
-| `filled`             | an empty container, then only what the function adds to it (a guess)                                 |
-| `returned`           | an unannotated function's own `return`s, or a generator's `yield`s (a method's: a guess)             |
-| `assigned`           | an unannotated instance attribute's every `self.x = value` in its class (a guess)                    |
-| `member`             | a plain class's variable, by its literal value in the class's body (a guess)                         |
-| `alias`              | a module's type alias, a subscript or a union of types: `TypeAlias`                                  |
-| `callable`           | a function or a bound method bound to a name, by what its call gives                                 |
-| `callers`            | an unannotated parameter every call in the checked files passes one type (a guess)                   |
-| `fixture`            | a test's parameter, by its pytest fixture's value or its `parametrize` literals (a guess)            |
+| Id              | Decided by                                                                                |
+| --------------- | ----------------------------------------------------------------------------------------- |
+| `literal`       | a literal, an f-string, `not x`, or `x in y` or `x is y`                                  |
+| `container`     | a list, set, tuple or dict display whose elements' types agree                            |
+| `joined`        | a list, set or dict display whose elements' types differ, as their union (a guess)        |
+| `copy`          | a copy of a local whose type is known                                                     |
+| `subscript`     | a subscript of a container whose type is known                                            |
+| `attribute`     | an attribute of a class the module (or another checked file) defines                      |
+| `method`        | a method with a fixed or declared return type, on a value whose type is known             |
+| `builtin`       | a builtin with a fixed return type (`len`, `str`), or one its arguments decide (`min`)    |
+| `call`          | a function, classmethod or staticmethod that declares its return type                     |
+| `constructor`   | a call to a capitalised name, taken to construct one (a guess)                            |
+| `conditional`   | both sides of `a if c else b`, or one side and `None`                                     |
+| `boolean`       | `a or b` or `a and b`, its operands of one type                                           |
+| `compare`       | a comparison of builtin values (`n < 3`), always a `bool`                                 |
+| `arithmetic`    | arithmetic on builtin values, a `pathlib` path's `/`, a library class's operator          |
+| `comprehension` | a list, set or dict comprehension's elements                                              |
+| `builder`       | `sorted`, `list`, `set`, `frozenset` or `tuple` of known elements                         |
+| `await`         | `await` of a checked file's `async def`, a function or a method                           |
+| `loop`          | what a loop (or `sorted`, `list`, ...) iterates over                                      |
+| `unpack`        | an unpacking, each name by its own value, or the value's type split over them             |
+| `narrow`        | LVA008's or LVA010's narrower annotation (a guess)                                        |
+| `cast`          | `typing.cast(T, x)`: its `T`                                                              |
+| `comment`       | LVA003: the loop's own `# type:` comment, as a declaration                                |
+| `redundant`     | LVA007: the repeated annotation, dropped                                                  |
+| `stdlib`        | the standard library's functions, classes and members, from typeshed (`uuid4`)            |
+| `open`          | `open(path, mode)`'s file object, by its literal mode (`io.TextIOWrapper`, ...)           |
+| `final`         | LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)             |
+| `checker`       | a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)            |
+| `traced`        | what a traced run bound the name to (`--infer-from`; a guess)                             |
+| `rebound`       | a name later bound to a wider type: the type every value fits (`int`, then `float`)       |
+| `optional`      | `x = None`, then only ever a value of one known type `T`: `T \| None`                     |
+| `filled`        | an empty container, then only what the function adds to it (a guess)                      |
+| `returned`      | an unannotated function's own `return`s, or a generator's `yield`s (a method's: a guess)  |
+| `assigned`      | an unannotated instance attribute's every `self.x = value` in its class (a guess)         |
+| `member`        | a plain class's variable, by its literal value in the class's body (a guess)              |
+| `alias`         | a module's type alias, a subscript or a union of types: `TypeAlias`                       |
+| `callable`      | a function or a bound method bound to a name, by what its call gives                      |
+| `callers`       | an unannotated parameter every call in the checked files passes one type (a guess)        |
+| `fixture`       | a test's parameter, by its pytest fixture's value or its `parametrize` literals (a guess) |
+
+The wider types `fix-widen` adds are kinds too: see [below](#wider-types-fix-widen).
 
 A project chooses which apply, in `[tool.constricter]` or on the command line:
 
@@ -806,31 +809,55 @@ a fix. The defaults (every mechanism, nothing trusted) are the plain certain/gue
 
 ## Wider types (`fix-widen`)
 
-Where a value has no type `--fix` can work out, it writes none. `fix-widen` (`--fix-widen KINDS`)
-names the wider types it may write instead, each a fix kind of its own, off unless listed (`all`:
-every one), and answering to `fix-ignore` as any kind does:
+Where a value has no type `--fix` can work out, or none it may write, it writes none. `fix-widen`
+(`--fix-widen KINDS`) names the wider types it may write instead, each a fix kind of its own, off
+unless listed (`all`: every one), and answering to `fix-ignore` and `unsafe-fix-select` as any kind
+does:
 
-| Id                   | Writes                                                                           |
-| -------------------- | -------------------------------------------------------------------------------- |
-| `untyped-parameters` | `Any` for what comes of a parameter no annotation types: a copy, a method's call |
+| Id                   | Writes                                                                         |         |
+| -------------------- | ------------------------------------------------------------------------------ | ------- |
+| `untyped-parameters` | `Any` for what comes of a parameter no annotation types                        | certain |
+| `empty-containers`   | `list[Any]`, `dict[Any, Any]`, `set[Any]` for an empty one nothing fills       | certain |
+| `mixed-containers`   | `list[Any]`, `tuple[Any, ...]`, `dict[str, Any]` for a display of mixed things | certain |
+| `unions`             | `int \| str` for a name bound to values of two or three types                  | a guess |
+| `vague`              | a type vaguer than `vague` allows (`dict[str, Any]`), written anyway           | a guess |
 
 ```toml
 [tool.constricter]
-fix-widen = ["untyped-parameters"]
+fix-widen = ["untyped-parameters", "empty-containers"]
 ```
 
-`untyped-parameters`: `x = param` and `y = param.read()`, each on one line, where `param` has no
-annotation and no default, isn't `self`, `cls`, `*args` or `**kwargs`, and is never bound again in
-its function. `Any` there says what every checker takes the value for already; a parameter with a
-default is one a checker types by it, and is left. The fix is certain, whatever the name is bound to
-later. On SQLAlchemy 2.0.54 it annotates 175 bindings, and basedpyright finds no new error after it
-and 6 fewer: an `Any` written hides what a checker had inferred of the name's later values.
+- `untyped-parameters`: `x = param` and `y = param.read()`, each on one line, where `param` has no
+  annotation and no default, isn't `self`, `cls`, `*args` or `**kwargs`, and is never bound again in
+  its function. `Any` there says what every checker takes the value for already; a parameter with a
+  default is one a checker types by it, and is left. Whatever the name is bound to later.
+- `empty-containers`: `[]`, `{}`, `list()`, `dict()` or `set()` bound to a function's name that
+  nothing in sight fills (what its function adds to one types it still, as `filled` does).
+- `mixed-containers`: a list, set, tuple or dict display whose elements' types differ or aren't
+  known. A dict's keys are `str` where each is a string; a tuple is `tuple[Any, ...]`, whatever its
+  length.
+- `unions`: a name bound to values of two or three types that fit no one of them (`x = 1`, then
+  `x = "a"`), declared their union on a line of its own before its first binding. Only of values
+  whose types are certain, and not for a name its function changes in place (`x += more`).
+- `vague`: a value whose type is known and vaguer than `vague` allows (a call declared to return a
+  `dict[str, Any]`), which `--fix` otherwise never writes.
 
-Every line a widening writes ends with `# constricter: auto`, after any comment already there:
+The last four are for a function's names bound once (a union's, of course, more than once), by a
+statement of their own.
+
+On SQLAlchemy 2.0.54, with `--unsafe-fixes`: 175 bindings by `untyped-parameters`, 196 by
+`empty-containers`, 98 by `mixed-containers`, 184 by `vague` and 9 by `unions`, 662 together (4.5%
+of its bindings); one pass leaves a second nothing. basedpyright then reports no error in a file
+under a rule it hadn't one for, and 22 errors fewer: an `Any` written hides what a checker had
+inferred, most of all in a display (13 of them by `mixed-containers`).
+
+Every statement a widening writes ends with `# constricter: auto`, after any comment already there
+(on its last line, if it has several; a union's declaration, on its own):
 
 ```python
 def load(reader, count):
     text: Any = reader.read()  # constricter: auto
+    seen: list[Any] = []  # constricter: auto
 ```
 
 A marked annotation is `--fix`'s own, not the author's:
@@ -838,8 +865,10 @@ A marked annotation is `--fix`'s own, not the author's:
 - LVA005 passes over it;
 - `--coverage` counts it apart: `3/4 typed (75.0%), 1 widened` (`widened` in `--format=json`), and
   `--fail-under` reads the typed share alone;
+- it types nothing read of its name: what `--fix` infers from the name is what it was before the
+  widening;
 - once its value's type is known (the parameter annotated, say), it's reported as LVA005 with that
   type as its fix: `--fix` writes it over the annotation and deletes the mark, a guess where the
-  type is one.
+  type is one. Not a union's declaration, which has no value of its own.
 
 Take the mark off a line to keep its annotation as written.

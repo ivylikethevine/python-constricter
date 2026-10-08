@@ -77,10 +77,18 @@ FIX_KINDS: dict[str, str] = {
     "comment": "LVA003: the loop's own `# type:` comment, as a declaration",
     "redundant": "LVA007: the repeated annotation, dropped",
     "untyped-parameters": "what comes of a parameter no annotation types: `Any`, marked (`fix-widen`)",
+    "unions": "a name bound to values of two or three types: their union, marked (`fix-widen`; a guess)",
+    "vague": "a type vaguer than `vague` allows, written anyway, marked (`fix-widen`; a guess)",
+    "empty-containers": "an empty container nothing in sight fills: `list[Any]`, marked (`fix-widen`)",
+    "mixed-containers": "a display of mixed or unknown elements: `list[Any]`, marked (`fix-widen`)",
 }
-# The kinds that write a wider type than the value's own, each offered only where `fix-widen` names it.
-WIDEN_KINDS: Final = frozenset({"untyped-parameters"})
 UNTYPED_PARAMETERS: Final = "untyped-parameters"
+UNIONS: Final = "unions"
+VAGUE_KIND: Final = "vague"
+EMPTY_CONTAINERS: Final = "empty-containers"
+MIXED_CONTAINERS: Final = "mixed-containers"
+# The kinds that write a wider type than the value's own, each offered only where `fix-widen` names it.
+WIDEN_KINDS: Final = frozenset({UNTYPED_PARAMETERS, UNIONS, VAGUE_KIND, EMPTY_CONTAINERS, MIXED_CONTAINERS})
 # What ends a line a widening wrote: its annotation is `--fix`'s to replace, and isn't LVA005.
 MARK: Final = "# constricter: auto"
 CONSTRUCTOR: Final = "constructor"
@@ -145,14 +153,16 @@ class Fix(NamedTuple):
     span: tuple[int, int] = (0, 0)  # see `Edit`; columns count UTF-8 bytes, as `ast`'s do
     kinds: frozenset[str] = frozenset()  # every `FIX_KINDS` mechanism that decided it
     # The columns to delete too: with `Edit.DECLARE`, on the statement's line (the type comment it
-    # replaces); with `Edit.REPLACE`, on the offence's (the `MARK` of the widening it replaces).
+    # replaces); with `Edit.REPLACE`, on line `mark` (the `MARK` of the widening it replaces).
     drop: tuple[int, int] | None = None
     imports: tuple[str, ...] = ()  # statements the annotation needs added (`from io import BytesIO`)
     after: int = 0  # the line they go after (see `fix.core.imports.plan`)
     guarded: tuple[str, ...] = ()  # statements the annotation needs added under `if TYPE_CHECKING:`
     guard: str = ""  # how the module names `TYPE_CHECKING`, for a new such block
     block: tuple[int, int] = (0, 0)  # the first and last line of the body of one there is (see `ImportPlan`)
-    marked: bool = False  # a widening (see `WIDEN_KINDS`): its line ends with `MARK`
+    # The line whose end a widening's `MARK` goes at (see `WIDEN_KINDS`), or its replacement's is
+    # dropped from: its statement's last, where that isn't the offence's own (0).
+    mark: int = 0
 
 
 class FixPolicy(NamedTuple):

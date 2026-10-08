@@ -305,10 +305,7 @@ def test_files_are_shared_among_servers_and_stay_with_theirs(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Many files are shared among a checker's servers, a file staying with its own the next time.
-
-    `pyrefly` works in parallel itself: it gets one server, whatever `--jobs` says.
-    """
+    """Many files are shared among a checker's servers, a file staying with its own the next time."""
     _fake(monkeypatch)
     monkeypatch.setattr(hints, "available_memory", lambda: 64 << 30)  # plenty, whatever the machine has
     files: dict[Path, str] = {tmp_path / f"m{n}.py": f"x{n} = 1  # hint: int\n" * (n + 1) for n in range(40)}
@@ -319,7 +316,7 @@ def test_files_are_shared_among_servers_and_stay_with_theirs(
         first: dict[Path, int] = dict(pyright.assigned)
         some: dict[Path, str] = dict(list(files.items())[:3])
         again: dict[Path, tuple[Hints, ...]] = session.hints(some)
-        assert [len(checker.servers) for checker in session.checkers] == [2, 1]
+        assert [len(checker.servers) for checker in session.checkers] == [2, 2]
         assert set(first.values()) <= {0, 1}  # whichever was free took each batch
         assert pyright.assigned == first
     assert [len(found[path][0].types) for path in files] == [text.count("\n") for text in files.values()]
@@ -760,6 +757,11 @@ def test_servers_are_as_many_as_fit_in_memory(monkeypatch: pytest.MonkeyPatch, t
     checker: hints.Checker = hints.Checker(_CHECKER, tmp_path, 8, 8 << 30)
     assert [checker.wanted(small), checker.wanted(big)] == [4, 1]
     assert hints.Checker(_CHECKER, tmp_path, 8, 1 << 20).wanted(small) == 1
+    # One whose servers each hold their share of the files: their memory is counted once among them.
+    sharing: hints.Checker = hints.Checker("pyrefly", tmp_path, 8, 40 << 30)
+    tight: hints.Checker = hints.Checker("pyrefly", tmp_path, 8, 35 << 30)
+    assert [sharing.wanted(small), sharing.wanted(big), tight.wanted(big)] == [4, 4, 1]
+    assert protocol.SERVERS["pyrefly"].fitting(1 << 30, 200 << 20) == 0
 
 
 def test_available_memory_is_what_the_system_says(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
