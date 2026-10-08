@@ -6,6 +6,11 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A check with `--jobs` keeps its worker processes for all of its rounds, where each round started
+  new ones: a file checked again (its callers typing its parameters) is checked by the worker that
+  has its tree and how its first check ended, as one process does it. The standard library checks in
+  12.9s from 14.4s on 16 CPUs, and a parallel check's findings are now exactly one process's: two of
+  pandas's 77,931 differed (a type alias's fix, a guess in one and certain in the other).
 - `--fix --unsafe-fixes` guesses wrong less often, by what packages outside the corpora showed: a
   name bound to `TypeAliasType(...)` is a type, as one bound to `TypeVar(...)` is, and has no fix
   (altair: 128 new type errors to 4); an empty container isn't typed by a name its function tests

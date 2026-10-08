@@ -2,9 +2,11 @@
 """Worker processes for `--jobs`: each indexes its own share of the files, then checks it."""
 
 import contextlib
+import copy
 import gc
 import importlib
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Generator, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Self, TypeAlias, cast
 
@@ -70,6 +72,21 @@ class Workers:
         """Stop the workers."""
         self.stack.close()
 
+    def over(self, paths: Sequence[Path]) -> "Workers":
+        """Ask these workers about `paths` alone, some of their files: each has what it had of them.
+
+        Returns:
+          Them, each with its share of `paths`.
+
+        """
+        place: dict[Path, int] = {path: at for at, path in enumerate(paths)}
+        some: Workers = copy.copy(self)
+        some.paths = paths
+        some.shares = [
+            [place[self.paths[at]] for at in share if self.paths[at] in place] for share in self.shares
+        ]
+        return some
+
     def index(self) -> project.Index:
         """Index every file, each worker its share.
 
@@ -109,6 +126,46 @@ class Workers:
 
         """
         return self.pools[worker].submit(function, check, asked)
+
+
+@dataclass
+class _Kept:
+    """A run's workers, started for its first round and asked again in each later one."""
+
+    stack: contextlib.ExitStack | None = None
+    workers: Workers | None = None
+
+
+_KEPT: Final = _Kept()
+
+
+@contextlib.contextmanager
+def kept() -> Generator[None]:
+    """Keep the workers `started` starts until the block ends: a run's rounds share them.
+
+    A file's second check is then by the process that has its tree and how its first check ended,
+    where new processes would parse it and check it whole.
+    """
+    stack: contextlib.ExitStack
+    with contextlib.ExitStack() as stack:
+        _KEPT.stack = stack
+        try:
+            yield
+        finally:
+            _KEPT.stack = _KEPT.workers = None
+
+
+def started(paths: Sequence[Path], jobs: int) -> Workers:
+    """Start workers for `paths`, or ask the run's (see `kept`) about these of their files.
+
+    Returns:
+      The workers.
+
+    """
+    if _KEPT.workers is not None:
+        return _KEPT.workers.over(paths)
+    _KEPT.workers = (_KEPT.stack or contextlib.ExitStack()).enter_context(Workers(paths, jobs))
+    return _KEPT.workers
 
 
 def first_done(pending: Collection[Answering]) -> set[Answering]:

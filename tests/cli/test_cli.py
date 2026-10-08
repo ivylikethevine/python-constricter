@@ -582,6 +582,25 @@ def test_jobs_check_files_in_parallel_in_order(
     assert capsys.readouterr() == serial
 
 
+_HALVED: Final = "fix 'half': `int`"  # by its callers' arguments: a second round's
+
+
+def test_jobs_check_a_file_again_by_the_worker_that_checked_it(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A file its callers type the parameters of is checked again where it was first: as one at a time."""
+    _ = _write(tmp_path / "called.py", "def scaled(size):\n    half = size\n    return half\n")
+    _ = _write(tmp_path / "caller.py", "from called import scaled\n\n\ndef f() -> None:\n    a = scaled(2)\n")
+    _ = _write(tmp_path / "other.py", "from called import scaled\n\nb = scaled(3)\n")
+    shown: list[str] = ["--show-fixes", "--unsafe-fixes", "--all-scopes", str(tmp_path)]
+    assert cli.main(["--jobs=1", *shown]) == cli.EXIT_FOUND
+    serial: tuple[str, str] = capsys.readouterr()
+    assert _HALVED in serial[0]
+    assert cli.main(["--jobs=2", *shown]) == cli.EXIT_FOUND
+    assert capsys.readouterr() == serial
+
+
 def test_jobs_workers_index_and_check_their_own_shares(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

@@ -394,20 +394,13 @@ fix.
    longest waiting step now goes first. What's left to try: pandas's steps counted against the
    share, not let through it; and the items below that shorten a hinted fix. Done when a run takes
    under 20 minutes with the same counts. About 3 hours; coverage unchanged.
-3. **One set of workers for a run's rounds.** `command._checked_all` starts a `Workers` each time
-   it's called: for the first round, for the second (`_checked_more`), and for each of an
-   `--infer-with` fix's rounds (up to `HINT_ROUNDS`). Each time the processes start again, are sent
-   the whole index again (`schedule.sent` pickles it for each `_Pooled`), and parse their files
-   again. Keep the workers, their trees and their index for the command, and send only what a round
-   changed. Done when a second round starts no process and sends no module it didn't change. About 3
-   hours; coverage unchanged.
-4. **Hints asked for while the files are indexed.** `command._checked_all` waits for `session.hints`
+3. **Hints asked for while the files are indexed.** `command._checked_all` waits for `session.hints`
    before it starts a worker or reads a file: with `--infer-with`, indexing (a third of a check of
    the standard library) starts only once every server has answered every file. basedpyright's
    servers work 150 CPU seconds on pandas before their first answers, the checker's own processes
    idle meanwhile. Index while they answer. Done when a hinted check of pandas takes the longer of
    the two, not their sum. About 2 hours; coverage unchanged.
-5. **Each checker's servers, by its own measure.** How many servers a checker gets is decided by
+4. **Each checker's servers, by its own measure.** How many servers a checker gets is decided by
    basedpyright's memory (`hints._SERVER_MEMORY` and `_MEMORY_PER_BYTE`: 3.4 GB for pandas, so two
    within the default 8 GB) whatever the checker: ty's one server took 2.1 GB there. And ty has one
    server at most (`protocol.SERVERS`), measured on sqlalchemy, which it answers in 0.9s: on pandas
@@ -415,32 +408,31 @@ fix.
    and measure ty with two and four servers on pandas. Done when each checker's count is by its own
    memory, and ty's most is what the measurement says. About 2 hours; coverage unchanged.
 
-6. **The layers, checked.** `constricter.fix`'s four layers import only those before them, the rules
+5. **The layers, checked.** `constricter.fix`'s four layers import only those before them, the rules
    and the fixes import neither the command nor the plugins, and `rules.walked` imports nothing of
    constricter's: stated here, kept by hand. `import-linter` (a development dependency) checks each
    as a contract; all three hold on the code as it is. Add them to `pyproject.toml`, and
    `lint-imports` to CI's lint job. Done when a `fix.core` module importing `fix.index` fails CI.
    About 1 hour; coverage unchanged.
-7. **Profiles and timings that can be trusted.** `corpus_profile.py` runs `cProfile`, which charged
+6. **Profiles and timings that can be trusted.** `corpus_profile.py` runs `cProfile`, which charged
    a check's slowdown to the functions called most and missed the 15 seconds the interpreter's exit
    took; the timings behind this list were shell loops, one run each. Profile with `py-spy` (it
    samples from outside, the workers too), and time with `hyperfine` (several runs, their spread: a
    check of pandas is 50.3s ± 0.2). Done when `corpus_profile.py` writes a sampled profile, and a
    script times the standard library and pandas at `--jobs` 1 and every CPU for two checkouts. About
    3 hours; coverage unchanged.
-8. **Timings kept between runs.** Each speed item here is done at a number no one records: the next
+7. **Timings kept between runs.** Each speed item here is done at a number no one records: the next
    change is measured against a figure in this file. `pytest-benchmark` or `asv` (development
    dependencies) keep a check's time per commit. Done when a pull request's check of pydantic is
    compared with its base's, as its coverage is. About 3 hours; coverage unchanged.
-9. **The tests, in parallel.** 4,800 tests take 50 seconds in one process. `pytest-xdist` runs them
+8. **The tests, in parallel.** 4,800 tests take 50 seconds in one process. `pytest-xdist` runs them
    on every CPU; the seven that start `--jobs` workers of their own are to run alone. Done when the
    suite takes under 15 seconds here with the same coverage. About 1 hour; coverage unchanged.
-10. **A step's processes, by `psutil`.** `tests/corpus/corpora_cpu.py` reads `/proc` itself for each
-    step's CPU seconds, on Linux alone. `psutil` (for the corpus scripts only) reads a process's
-    children anywhere, and their memory, which the scripts size workers by. Done when the module is
-    a few lines over it, and a step records its tree's peak memory. About 1 hour; coverage
-    unchanged.
-11. **`Module` and `Outside`, by name.** Both are tuples of 25 to 40 fields, built by position
+9. **A step's processes, by `psutil`.** `tests/corpus/corpora_cpu.py` reads `/proc` itself for each
+   step's CPU seconds, on Linux alone. `psutil` (for the corpus scripts only) reads a process's
+   children anywhere, and their memory, which the scripts size workers by. Done when the module is a
+   few lines over it, and a step records its tree's peak memory. About 1 hour; coverage unchanged.
+10. **`Module` and `Outside`, by name.** Both are tuples of 25 to 40 fields, built by position
     (`schedule.outside` passes 24 arguments in order): a field added in the middle shifts every one
     after it, unseen where two neighbours share a type. Build them by keyword, as frozen dataclasses
     with slots (the standard library's), and time it: `Module`'s are pickled to the workers. Done
@@ -466,17 +458,25 @@ fix.
    Done when each package's errors left are its environment's, or under one for each hundred of its
    guesses. About 3 hours; coverage down by the guesses withdrawn.
 
-2. **The main process, in a parallel check.** A module's functions are found by the names a file
-   writes (`Module.written`), and each worker works out what its own files import. The last run that
-   timed it, before the workers did, had the main process at 41% to 46% of a `--jobs` check
-   (pandas's 90%, of 26.9s; 11.5s now). Time it again (`corpus_profile.py`), and move what's left of
-   its share to the workers. Done when it's under a tenth of a check of the standard library. About
-   4 hours; coverage unchanged.
+2. **A parallel check, past its longest chain.** With every CPU the standard library checks in 12.9s
+   and pandas in 11.3s (14.4s and 11.4s before the workers were kept for a run's rounds): 46s and
+   50s in one process, 29s in two, 18s in four, 13.7s and 12.9s in eight, so about 10s of each
+   doesn't shorten with more. It isn't the main process (indexing, ordering and telling the workers
+   take 2 to 3s) but the order: a file waits for those whose unannotated functions it calls, 29 deep
+   in the standard library, and pandas's 217 files that call each other go round up to four times
+   before the other 1,200 start. Most of those edges are by a method's name alone (`loose.needs`:
+   12,704 of the standard library's, to 3,400 by an imported function). Tried, and slower: a worker
+   with nothing to do checking files ahead of their turn, each confirmed when its turn came (16.0s
+   from 14.4s: most are checked twice, and 25 of pandas's findings then differed). Left to try: an
+   edge only where the receiver's class is known to be the other module's; and a file checked again
+   from where its first check ended when what it imports returns anew, as it is when its parameters
+   are typed. Done when the standard library checks in under 9s with every CPU, its findings the
+   same. About 8 hours; coverage unchanged.
 3. **A file checked again, whole.** A file whose functions' parameters every call types is checked
-   again from where its first check ended (`checker._resumed`): not with `--fix` (its text has
-   changed), LVA012, or in another worker process than the first check's. That second round costs
-   42% of the first on the standard library, 33% on django, 60% on pip and 6% on pandas. Done when
-   it's under a tenth on each. About 5 hours; coverage unchanged.
+   again from where its first check ended (`checker._resumed`), in the process that checked it
+   first, a worker too now: not with `--fix` (its text has changed) or LVA012. That second round
+   costs 42% of the first on the standard library in one process, 33% on django, 60% on pip and 6%
+   on pandas. Done when it's under a tenth on each. About 5 hours; coverage unchanged.
 4. **Only the classes a file uses.** A file is given the line of bases of every class it could name
    through its imports (`own_types.lineages`), and every module's classes under each package it
    imports, worked out for each file whether it names one or not; it passes over the classes whose
