@@ -8,6 +8,7 @@ re-exports, to what that base inherits from and what it declares.
 """
 
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -57,7 +58,8 @@ def settled(catalog: Index, entries: Sequence[str] = ()) -> Index:
     }
     return catalog._replace(
         modules={
-            name: module._replace(
+            name: replace(
+                module,
                 plain=frozenset(
                     each
                     for each in module.bases

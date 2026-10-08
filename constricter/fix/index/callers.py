@@ -11,6 +11,7 @@ a caller outside the checked files may pass anything.
 """
 
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Final, TypeAlias
 
@@ -149,5 +150,5 @@ def with_parameters(catalog: project.Index, found: Mapping[str, Seeds]) -> proje
     modules: dict[str, project.Module] = dict(catalog.modules)
     name: str
     for name in found.keys() & modules.keys():
-        modules[name] = modules[name]._replace(parameters=found[name])
+        modules[name] = replace(modules[name], parameters=found[name])
     return catalog._replace(modules=modules)

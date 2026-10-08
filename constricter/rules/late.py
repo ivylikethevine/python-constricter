@@ -118,7 +118,8 @@ def rebinds(scope: Scope) -> None:
             if len(lifetime.bindings) > 1:  # a constant's `Final` (see `_constant`): bound again, it's none
                 scope.offences[index] = replace(o, edit=None)
             continue
-        if o.code not in _DECLARING or fix is None or lifetime is None or lifetime.escaped:
+        # A widening's `Any` takes whatever the name is bound to later.
+        if o.code not in _DECLARING or fix is None or fix.marked or lifetime is None or lifetime.escaped:
             continue
         first: Binding
         rest: list[Binding]

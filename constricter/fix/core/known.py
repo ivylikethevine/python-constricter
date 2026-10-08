@@ -321,11 +321,13 @@ class Limits(NamedTuple):
     """What the rules let an annotation be, which `--fix` writes no further than.
 
     `max_length`: the longest tuple display typed element by element (LVA011's); `vague`: how vague a
-    type may be (LVA005's level, see `annotations.vague_fits`).
+    type may be (LVA005's level, see `annotations.vague_fits`). `marks`: the lines a widening marked,
+    whose annotations are vaguer by design, each with its mark's columns (see `rules.widened`).
     """
 
     max_length: int = MAX_LENGTH
     vague: int = VAGUE
+    marks: Mapping[int, tuple[int, int]] = MappingProxyType({})
 
 
 @dataclass(frozen=True)
@@ -441,7 +443,8 @@ class Observed(NamedTuple):
     escaped: frozenset[Callee] = frozenset()
 
 
-class Outside(NamedTuple):
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Outside:  # pylint: disable=too-many-instance-attributes
     """What the CLI knows of a file from outside it, for `--fix`.
 
     `calls`: the return types of functions other checked files define, `returned` those of their
@@ -464,36 +467,47 @@ class Outside(NamedTuple):
     their type aliases of a union (see `Indirect.unions`).
     """
 
-    calls: Mapping[str, str] = {}
+    calls: Mapping[str, str] = field(default_factory=dict[str, str])
     classes: Classes | None = None
     hints: tuple[Hints, ...] = ()  # each checker's, in the order they were named
     type_vars: frozenset[str] = frozenset()
-    returned: Returns = Returns()
-    guarded: Mapping[str, Guarded] = {}
+    returned: Returns = field(default_factory=Returns)
+    guarded: Mapping[str, Guarded] = field(default_factory=dict[str, Guarded])
     generics: frozenset[str] = frozenset()  # other checked files' generic classes, as it spells them
-    callees: Mapping[str, Callee] = {}
-    parameters: Mapping[str, Mapping[str, Passed]] = {}  # see `Seeds`
-    overloaded: Mapping[str, tuple[ReadSignature, ...]] = {}  # see `LibraryNames.installed`
+    callees: Mapping[str, Callee] = field(default_factory=dict[str, Callee])
+    # See `Seeds`
+    parameters: Mapping[str, Mapping[str, Passed]] = field(
+        default_factory=dict[str, Mapping[str, Passed]],
+    )
+    # See `LibraryNames.installed`
+    overloaded: Mapping[str, tuple[ReadSignature, ...]] = field(
+        default_factory=dict[str, tuple[ReadSignature, ...]],
+    )
     installed_classes: frozenset[str] = frozenset()  # see `LibraryNames.classes`
-    installed_parameters: Mapping[str, tuple[str, ...]] = {}  # see `LibraryNames.parameters`
-    installed_lineage: Mapping[str, tuple[str, ...]] = {}  # see `LibraryNames.lineage`
-    installed_aliases: Mapping[str, Expansion] = {}  # see `LibraryNames.aliases`
+    # See `LibraryNames.parameters`
+    installed_parameters: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
+    # See `LibraryNames.lineage`
+    installed_lineage: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
+    # See `LibraryNames.aliases`
+    installed_aliases: Mapping[str, Expansion] = field(
+        default_factory=dict[str, Expansion],
+    )
     # The classes it imports under `if TYPE_CHECKING:` alone, which an annotation can name (see `offers.own`).
-    checking: Mapping[str, Guarded] = {}
+    checking: Mapping[str, Guarded] = field(default_factory=dict[str, Guarded])
     plain: frozenset[str] | None = None
-    members: Mapping[str, Mapping[str, str]] = {}
+    members: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
     same: tuple[frozenset[str], ...] = ()
-    partial: Partial = Partial()
-    tuples: Mapping[str, str] = {}
+    partial: Partial = field(default_factory=Partial)
+    tuples: Mapping[str, str] = field(default_factory=dict[str, str])
     # The pytest fixtures its tests can take: each one's value's type (see `constricter.fix.index.fixtures`).
-    fixtures: Mapping[str, Passed] = {}
+    fixtures: Mapping[str, Passed] = field(default_factory=dict[str, Passed])
     # Its classes' bases other checked files define: where each one's own end (see `Lineage.beyond`).
-    beyond: Mapping[str, Beyond] = {}
+    beyond: Mapping[str, Beyond] = field(default_factory=dict[str, Beyond])
     # What awaiting a call of each `async def` it imports from them gives, as it spells the call.
-    awaits: Mapping[str, str] = {}
+    awaits: Mapping[str, str] = field(default_factory=dict[str, str])
     # The names it imports that another checked module binds by assignment (see `linked.values`).
     values: frozenset[str] = frozenset()
-    unions: Mapping[str, str] = {}
+    unions: Mapping[str, str] = field(default_factory=dict[str, str])
 
     def usable(self, taken: frozenset[str], present: frozenset[str]) -> "Outside":
         """Drop what other files offer whose type needs a name imported that the module binds already.
@@ -520,42 +534,45 @@ class Outside(NamedTuple):
             return self
         members: Classes | None = self.classes
         return Outside(
-            free_of(self.calls, clashing),
-            None
+            calls=free_of(self.calls, clashing),
+            classes=None
             if members is None
             else Classes(free_of_all(members.attributes, clashing), free_of_all(members.methods, clashing)),
-            self.hints,
-            self.type_vars,
-            Returns(
+            hints=self.hints,
+            type_vars=self.type_vars,
+            returned=Returns(
                 free_of(self.returned.calls, clashing),
                 self.returned.guesses,
                 self.returned.names,
                 free_of_all(self.returned.methods, clashing),
             ),
-            {name: found for name, found in guarded.items() if name not in clashing},
-            self.generics,
-            self.callees,
-            self.parameters,
-            {
+            guarded={name: found for name, found in guarded.items() if name not in clashing},
+            generics=self.generics,
+            callees=self.callees,
+            parameters=self.parameters,
+            overloaded={
                 callee: signatures
                 for callee, signatures in self.overloaded.items()
                 if not any(clashing.intersection(_NAME.findall(each.returns or "")) for each in signatures)
             },
-            self.installed_classes,
-            self.installed_parameters,
-            self.installed_lineage,
-            self.installed_aliases,
-            self.checking,
-            self.plain,
-            self.members,
-            self.same,
-            Partial(free_of(self.partial.calls, clashing), free_of_all(self.partial.methods, clashing)),
-            free_of(self.tuples, clashing),
-            {name: typed for name, typed in self.fixtures.items() if not roots(typed[0]) & clashing},
-            self.beyond,
-            free_of(self.awaits, clashing),
-            self.values,
-            self.unions,
+            installed_classes=self.installed_classes,
+            installed_parameters=self.installed_parameters,
+            installed_lineage=self.installed_lineage,
+            installed_aliases=self.installed_aliases,
+            checking=self.checking,
+            plain=self.plain,
+            members=self.members,
+            same=self.same,
+            partial=Partial(
+                free_of(self.partial.calls, clashing),
+                free_of_all(self.partial.methods, clashing),
+            ),
+            tuples=free_of(self.tuples, clashing),
+            fixtures={name: typed for name, typed in self.fixtures.items() if not roots(typed[0]) & clashing},
+            beyond=self.beyond,
+            awaits=free_of(self.awaits, clashing),
+            values=self.values,
+            unions=self.unions,
         )
 
 

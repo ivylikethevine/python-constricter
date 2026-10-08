@@ -76,7 +76,13 @@ FIX_KINDS: dict[str, str] = {
     "narrow": "LVA008's or LVA010's narrower annotation (a guess)",
     "comment": "LVA003: the loop's own `# type:` comment, as a declaration",
     "redundant": "LVA007: the repeated annotation, dropped",
+    "untyped-parameters": "what comes of a parameter no annotation types: `Any`, marked (`fix-widen`)",
 }
+# The kinds that write a wider type than the value's own, each offered only where `fix-widen` names it.
+WIDEN_KINDS: Final = frozenset({"untyped-parameters"})
+UNTYPED_PARAMETERS: Final = "untyped-parameters"
+# What ends a line a widening wrote: its annotation is `--fix`'s to replace, and isn't LVA005.
+MARK: Final = "# constricter: auto"
 CONSTRUCTOR: Final = "constructor"
 MEMBER: Final = "member"
 NARROW: Final = "narrow"
@@ -138,34 +144,42 @@ class Fix(NamedTuple):
     edit: Edit = Edit.ANNOTATE
     span: tuple[int, int] = (0, 0)  # see `Edit`; columns count UTF-8 bytes, as `ast`'s do
     kinds: frozenset[str] = frozenset()  # every `FIX_KINDS` mechanism that decided it
-    # With `Edit.DECLARE`: the columns to delete on the statement's line too (the type comment it replaces).
+    # The columns to delete too: with `Edit.DECLARE`, on the statement's line (the type comment it
+    # replaces); with `Edit.REPLACE`, on the offence's (the `MARK` of the widening it replaces).
     drop: tuple[int, int] | None = None
     imports: tuple[str, ...] = ()  # statements the annotation needs added (`from io import BytesIO`)
     after: int = 0  # the line they go after (see `fix.core.imports.plan`)
     guarded: tuple[str, ...] = ()  # statements the annotation needs added under `if TYPE_CHECKING:`
     guard: str = ""  # how the module names `TYPE_CHECKING`, for a new such block
     block: tuple[int, int] = (0, 0)  # the first and last line of the body of one there is (see `ImportPlan`)
+    marked: bool = False  # a widening (see `WIDEN_KINDS`): its line ends with `MARK`
 
 
 class FixPolicy(NamedTuple):
     """Which `FIX_KINDS` `--fix` offers (`select`, empty for all, less `ignore`), and which guesses it trusts.
 
     A guess is certain when every guessing mechanism it rests on (`constructor`, `narrow`, through
-    any guessed local it copies) is in `unsafe_select`, as ruff's `extend-safe-fixes` does.
+    any guessed local it copies) is in `unsafe_select`, as ruff's `extend-safe-fixes` does. A
+    widening (see `WIDEN_KINDS`) is offered only if it's in `widen`.
     """
 
     select: frozenset[str] = frozenset()
     ignore: frozenset[str] = frozenset()
     unsafe_select: frozenset[str] = frozenset()
+    widen: frozenset[str] = frozenset()
 
     def allows(self, kinds: frozenset[str]) -> bool:
         """Check whether a fix decided by `kinds` is offered.
 
         Returns:
-          Whether every one is selected and none ignored.
+          Whether every one is selected, none ignored, and each widening asked for.
 
         """
-        return (not self.select or kinds <= self.select) and not kinds & self.ignore
+        return (
+            (not self.select or kinds <= self.select)
+            and not kinds & self.ignore
+            and kinds & WIDEN_KINDS <= self.widen
+        )
 
     def trusts(self, origins: frozenset[str]) -> bool:
         """Check whether a guess resting on `origins` is promoted to certain.

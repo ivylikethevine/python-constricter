@@ -20,7 +20,7 @@ from constricter.fix.values.doubts import bare
 from constricter.fix.values.entered import entered, entered_async, entering
 from constricter.fix.values.inference import LoopPart, inference, looped, looped_parts
 from constricter.fix.values.targets import iterated, unpacked
-from constricter.offences import COMMENT_TYPED_TARGET, UNTYPED_TARGET, Edit, Fix, at
+from constricter.offences import COMMENT_TYPED_TARGET, UNTYPED_TARGET, VAGUE_TYPE, Edit, Fix, Offence, at
 from constricter.rules.flow import augmented, members
 from constricter.rules.scope import Late, Scope, certain_type, guessed_type, guesses_in
 from constricter.rules.syntax import captures, comment_type, target_names, type_comment_span
@@ -481,3 +481,68 @@ def _augmented_guess(scope: Scope, stmt: ast.AugAssign) -> Late | None:
     own: frozenset[str] = scope.inferred.origins.get(name, none) if name in scope.inferred.guesses else none
     origins: frozenset[str] = own | (operand[1] if operand else none)
     return (bound, origins) if bound is not None and origins else None
+
+
+def annotated(scope: Scope, stmt: ast.AnnAssign, target: ast.Name) -> None:
+    """Bind the name an annotated assignment declares (`name: T`, `name: T = value`).
+
+    One a widening annotated (a marked line's: see `widened`) is typed by its value where `--fix`
+    now knows it (see `_rewidened`).
+    """
+    name: str = target.id
+    annotation: ast.expr = stmt.annotation
+    fresh: bool = name not in scope.declared
+    scope.declare(name)
+    scope.annotation(name, annotation)
+    if fresh and annotation.lineno in scope.settings.known.limits.marks and _rewidened(scope, stmt, target):
+        return
+    scope.inferred.declare(name, annotation)
+    scope.lifetime(name).declare(ast.unparse(annotation), at(target), _span(annotation, target))
+    if stmt.value is not None:
+        scope.lifetime(name).bind(at(target), certain_type(scope, stmt.value))
+        scope.assigned(name, at(target))
+
+
+def _rewidened(scope: Scope, stmt: ast.AnnAssign, target: ast.Name) -> bool:
+    """Offer a marked annotation's value's own type in its place (LVA005), where `--fix` now knows it.
+
+    The annotation is a widening's (see `widened`): the name is first bound here, as it was before
+    it was written. Its fix writes over the annotation and deletes the mark; the name is then what
+    its value makes it, to the rest of the scope.
+
+    Returns:
+      Whether it's offered; not for an annotation over several lines, a value `--fix` still can't
+      type, or a scope it leaves alone.
+
+    """
+    name: str = target.id
+    span: tuple[int, int] | None = _span(stmt.annotation, target)
+    scope.assignments.widened.add(name)
+    if stmt.value is None or span is None or not scope.kind.fixable:
+        return False
+    found: Inference | None
+    unsafe: bool
+    origins: frozenset[str]
+    found, unsafe, origins = scope.valued(stmt.value, target.lineno)
+    fix: Fix | None = (
+        None if found is None else scope.offer(found, origins, unsafe=unsafe, edit=Edit.REPLACE, span=span)
+    )
+    if found is None or fix is None:
+        return False
+    marked: Fix = fix._replace(drop=scope.settings.known.limits.marks[stmt.annotation.lineno])
+    scope.offences.append(Offence(*at(stmt.annotation), name, VAGUE_TYPE, marked))
+    scope.lifetime(name).bind(at(target), None if unsafe else found.annotation)
+    scope.assigned(name, at(target))
+    scope.inferred.learn(name, found.annotation, origins if unsafe else None)
+    return True
+
+
+def _span(annotation: ast.expr, target: ast.expr) -> tuple[int, int] | None:
+    """Find an annotation's columns, if it's all on its target's line (so `--fix` can rewrite it).
+
+    Returns:
+      Its start and end columns (UTF-8 bytes, as `ast` counts), or `None`.
+
+    """
+    one_line: bool = annotation.lineno == annotation.end_lineno == target.lineno
+    return (annotation.col_offset, annotation.end_col_offset or 0) if one_line else None

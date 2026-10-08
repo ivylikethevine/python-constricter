@@ -96,11 +96,11 @@ def test_a_later_binding_spelled_otherwise_fits_the_fix() -> None:
         """,
     )
     calls: dict[str, str] = {"first": "Schema", "second": "core.Schema"}
-    found: list[Offence] = check_source(source, outside=Outside(calls, same=(_SCHEMAS,)))
+    found: list[Offence] = check_source(source, outside=Outside(calls=calls, same=(_SCHEMAS,)))
     assert [(o.name, o.fix, o.unsafe) for o in found] == [("schema", "Schema", False)]
-    assert [o.fix for o in check_source(source, outside=Outside(calls))] == [None]
+    assert [o.fix for o in check_source(source, outside=Outside(calls=calls))] == [None]
     clashing: Outside = Outside(
-        calls,
+        calls=calls,
         guarded={"Schema": Guarded(("pkg.core", "Schema"), "from pkg.core import Schema")},
         same=(_SCHEMAS,),
     )

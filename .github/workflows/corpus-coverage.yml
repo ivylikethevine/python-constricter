@@ -1,7 +1,8 @@
 name: Corpus coverage
 
 # A pull request's annotation coverage on one corpus package, beside its base's: typed as released,
-# after `--fix`, and after `--fix --unsafe-fixes` (tests/corpus/corpus_coverage.py), as one comment
+# after `--fix`, and after `--fix --unsafe-fixes`, and how long a check of it takes each
+# (tests/corpus/corpus_coverage.py), as one comment
 # edited in place on every push. A report, not a gate. Only when what `--fix` does can have changed,
 # and never a fork's, whose token can't comment.
 
@@ -163,6 +164,24 @@ jobs:
               printf ' - |\n'
             fi
           }
+          # took <side>: the milliseconds its check took, or nothing
+          took() {
+            local v
+            v="$(jq -r --arg s "$1" '.timed[$s] | if type == "number" then floor else "" end' "$file" || true)"
+            [[ "$v" =~ ^[1-9][0-9]*$ ]] || v=""
+            printf '%s' "$v"
+          }
+          # timing: a sentence comparing the two checks' times, or nothing
+          timing() {
+            local now was
+            now="$(took head)"
+            was="$(took base)"
+            [ -n "$now" ] && [ -n "$was" ] || return 0
+            awk -v a="$now" -v b="$was" -v ref="$BASE_REF" 'BEGIN {
+              printf "A check in one process takes %.2fs with this PR and %.2fs with `%s` (%+.1f%%), ", a / 1000, b / 1000, ref, 100 * (a - b) / b
+              printf "each the median of 5 runs on this runner.\n\n"
+            }'
+          }
           version="$(jq -r '.version // ""' "$file" || true)"
           [[ "$version" =~ ^[0-9A-Za-z.+-]{1,32}$ ]] || version=""
           [[ "$BASE_REF" =~ ^[0-9A-Za-z._/-]{1,64}$ ]] || BASE_REF=base
@@ -180,6 +199,7 @@ jobs:
             row 'This PR' head
             change_row
             printf '\n'
+            timing
             printf 'Each side fixes with its own constricter; this PR counts both, with `--coverage` and `all-scopes`. '
             printf 'Measured at %s by [this run](%s).\n' "$HEAD_SHA" \
               "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"

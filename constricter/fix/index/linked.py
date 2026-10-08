@@ -8,6 +8,7 @@ checked module's functions return (`with_returned`).
 """
 
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 
 from constricter.fix.core.known import Guarded, Origin, Returns
@@ -84,7 +85,7 @@ def with_returned(catalog: Index, found: Mapping[str, Returns]) -> Index:
     for name, returns in found.items():
         if name in modules:
             names: dict[str, Origin] = {**modules[name].returned.names, **returns.names}
-            modules[name] = modules[name]._replace(returned=returns._replace(names=names))
+            modules[name] = replace(modules[name], returned=returns._replace(names=names))
     return catalog._replace(modules=modules)
 
 

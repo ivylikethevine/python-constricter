@@ -1,80 +1,63 @@
 # SPDX-License-Identifier: MIT
-"""The CPU seconds a process and everything under it used, read from `/proc` while it runs.
+"""The CPU seconds and the memory a process and everything under it used, read by `psutil` while it runs.
 
 A step's own count (`resource.getrusage`) has only the processes it waited for, which leaves out
-constricter's workers: the fork server starts them, and no one waits for it. One thread reads every
-process's parent and CPU time every `_EVERY` seconds, and keeps the most each process under a
-watched one was seen to have used: a process is counted to its last reading before it ended. Where
-there's no `/proc`, nothing is counted.
+constricter's workers: the fork server starts them, and no one waits for it. One thread reads each
+watched process's tree every `_EVERY` seconds, and keeps the most each process in it was seen to
+have used (a process is counted to its last reading before it ended), and the most memory the tree
+held at one reading.
 """
 
-import os
+import contextlib
 import threading
 from functools import partial
-from pathlib import Path
-from typing import Final
+from typing import Final, NamedTuple, cast
 
-_PROC: Final = Path("/proc")
+import psutil
+
 _EVERY: Final = 2.0  # seconds between readings
-_STATE: Final = 0  # a `stat` line's fields after the command's name: its state, then its parent
-_PARENT: Final = 1
-_USER: Final = 11
-_SYSTEM: Final = 12
 _WOKEN: Final = True  # what the thread's wait gives once it's told to stop
 
 
-def _readings() -> dict[int, tuple[int, int]]:
-    """Read every process's parent and the clock ticks it has used.
+class Used(NamedTuple):
+    """What a watched process's tree was seen to use: its CPU seconds, and the most memory at once (bytes)."""
+
+    cpu: float = 0.0
+    memory: int = 0
+
+
+def _reading(root: int) -> dict[int, tuple[float, int]]:
+    """Read the CPU seconds and the resident memory of process `root` and each process under it.
 
     Returns:
-      Them, by its id; none where `/proc` can't be read.
+      Them, by each one's id; nothing for a process that ended.
 
     """
-    found: dict[int, tuple[int, int]] = {}
-    try:
-        entries: list[Path] = [entry for entry in _PROC.iterdir() if entry.name.isdigit()]
-    except OSError:
-        return found
-    entry: Path
-    for entry in entries:
-        try:
-            line: str = (entry / "stat").read_text(encoding="utf-8", errors="replace")
-        except OSError:  # it ended since it was listed
-            continue
-        fields: list[str] = line.rpartition(")")[2].split()  # a command's name may hold spaces
-        if len(fields) > _SYSTEM and fields[_STATE]:
-            found[int(entry.name)] = (int(fields[_PARENT]), int(fields[_USER]) + int(fields[_SYSTEM]))
+    found: dict[int, tuple[float, int]] = {}
+    tree: list[psutil.Process] = []
+    with contextlib.suppress(psutil.Error):
+        top: psutil.Process = psutil.Process(root)
+        tree = [top, *top.children(recursive=True)]
+    process: psutil.Process
+    for process in tree:
+        with contextlib.suppress(psutil.Error), process.oneshot():  # it may have ended since it was listed
+            user: float
+            system: float
+            user, system, *_ = process.cpu_times()
+            # Its resident memory, the first field on every platform (the stubs know only three's).
+            held: int = cast("tuple[int, ...]", process.memory_info())[0]
+            found[process.pid] = (user + system, held)
     return found
 
 
-def _watched(
-    process: int,
-    found: dict[int, tuple[int, int]],
-    watched: dict[int, dict[int, int]],
-) -> int | None:
-    """Find the watched process a process is, or is under.
-
-    Returns:
-      Its id, or `None`.
-
-    """
-    above: int = process
-    for _ in found:  # no deeper than there are processes
-        if above in watched:
-            return above
-        if above not in found:
-            break
-        above = found[above][0]
-    return None
-
-
 class Sampler:
-    """Counts the CPU seconds of each watched process's tree, from a thread of its own."""
+    """Counts the CPU seconds and the memory of each watched process's tree, from a thread of its own."""
 
     def __init__(self) -> None:
         """Start with nothing watched; the thread starts with the first `watch`."""
         self._lock: threading.Lock = threading.Lock()
-        self._used: dict[int, dict[int, int]] = {}  # each watched process's tree: each one's ticks
+        self._used: dict[int, dict[int, float]] = {}  # each watched process's tree: each one's seconds
+        self._peak: dict[int, int] = {}  # the most each tree held at one reading
         self._wake: threading.Event = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -82,20 +65,20 @@ class Sampler:
         """Start counting process `root` and what it starts."""
         with self._lock:
             self._used[root] = {}
+            self._peak[root] = 0
             if self._thread is None:
                 self._thread = threading.Thread(target=self._sample, daemon=True)
                 self._thread.start()
 
-    def used(self, root: int) -> float:
+    def used(self, root: int) -> Used:
         """Stop counting process `root`.
 
         Returns:
-          The CPU seconds its tree was seen to use.
+          What its tree was seen to use.
 
         """
         with self._lock:
-            ticks: int = sum(self._used.pop(root, {}).values())
-        return ticks / os.sysconf("SC_CLK_TCK")
+            return Used(sum(self._used.pop(root, {}).values()), self._peak.pop(root, 0))
 
     def _sample(self) -> None:
         for _ in iter(partial(self._wake.wait, _EVERY), _WOKEN):
@@ -103,12 +86,17 @@ class Sampler:
 
     def read(self) -> None:
         """Take one reading, for every watched process."""
-        found: dict[int, tuple[int, int]] = _readings()
         with self._lock:
-            process: int
-            ticks: int
-            above: int | None
-            for process, (_, ticks) in found.items():
-                if (above := _watched(process, found, self._used)) is not None:
-                    tree: dict[int, int] = self._used[above]
-                    tree[process] = max(tree.get(process, 0), ticks)
+            roots: list[int] = list(self._used)
+        root: int
+        for root in roots:
+            found: dict[int, tuple[float, int]] = _reading(root)
+            with self._lock:
+                if root not in self._used:  # no longer watched
+                    continue
+                tree: dict[int, float] = self._used[root]
+                process: int
+                seconds: float
+                for process, (seconds, _) in found.items():
+                    tree[process] = max(tree.get(process, 0.0), seconds)
+                self._peak[root] = max(self._peak[root], sum(memory for _, memory in found.values()))

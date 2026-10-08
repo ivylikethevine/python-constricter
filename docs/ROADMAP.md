@@ -163,6 +163,25 @@
   kind `traced`, for a local bound once, outside any loop, to a value taken from an unannotated
   parameter (what no checker types wider than the run saw), a class the file doesn't name imported
   under `if TYPE_CHECKING:`. On pandas's `tests/frame/methods`: 128 more fixes of 4,616 bindings.
+- **Wider types, chosen** (`fix-widen`, [FIXES.md](FIXES.md#wider-types-fix-widen)): each a fix kind
+  of its own, off unless listed (`all`: every one). A line one writes ends with
+  `# constricter: auto`: LVA005 passes over it, `--coverage` counts it apart (typed, widened), and
+  once its value's type is known `--fix` writes that over it and drops the mark, as it never does an
+  author's annotation. Not `object` at any level: it hides no error, and nearly every use of the
+  value then is one. The first kind, `untyped-parameters`: `Any` for `x = param` and
+  `y = param.method()`, the parameter with no annotation and no default (one with a default a
+  checker types by it), never bound again. On sqlalchemy it annotates 175 bindings; basedpyright
+  finds no new error after it, and 6 fewer, which the `Any` hides. Not counted on the seven yet
+  (8,565 bindings came of an unannotated parameter, defaults included).
+- **Each checker's servers, by its own measure**: a server's memory is its checker's (`Server`:
+  basedpyright's 0.6 GB and 130 bytes for each byte of the files, `ty`'s 0.3 GB and 45), and `ty`
+  gets up to four as basedpyright does: a hinted check of pandas takes 36s with one, 25s with two,
+  22s with three and 21s with four (1.2 GB with one, 2.5 GB with four). pyrefly's isn't measured:
+  one server, by basedpyright's figures.
+- **Hints asked for while the files are indexed**: with `--infer-with`, the servers answer while the
+  files are indexed, and a check takes the longer of the two. No gain measured with every CPU (a
+  hinted check of pandas 118s, from 117s: its workers index in a second or two, and the servers'
+  answers are what's waited for).
 - **A hung server is restarted**: one silent for 120s is restarted and each file it hadn't answered
   asked about alone; a file it hangs on again has no hints, named on standard error.
 - **No new type errors**: `corpus_suite.py --types` runs pydantic's, sqlalchemy's and pandas's own
@@ -263,6 +282,16 @@
   another platform's); and closed two items that waited on a run: django's suite is the same after
   `fix-plain-bases`' guesses, and one `--fix --unsafe-fixes` pass leaves a second nothing on any of
   the seven.
+- **Profiles and timings that can be trusted**: **`tests/corpus/corpus_profile.py`** runs the check
+  under `py-spy`, which samples it from outside, its workers too (`--jobs N`), and prints each
+  module's and function's own and whole time; **`tests/corpus/corpus_timing.py OTHER`** times the
+  standard library and pandas at `--jobs` 1 and every CPU with this checkout and another, under
+  `hyperfine`, with each mean and its spread. And the Corpus coverage workflow's comment on a pull
+  request says how long a check of pydantic takes with it and with its base, the median of 5 runs
+  each on the same runner: kept with the run, not per commit (`pytest-benchmark` and `asv` keep a
+  history a runner's noise would fill).
+- **A step's processes, by `psutil`**: `corpora_cpu` reads a step's process tree with it, on any
+  platform, and keeps the most memory the tree held at once beside its CPU seconds.
 - **Python 3**: the standard library, `django` (the 5.2 LTS, for 3.11), `sqlalchemy`, `pydantic` and
   `pandas` 3.0.6 (1,421 files with its tests: overloads, generics, `TYPE_CHECKING` imports).
 - **Python 2**: Twisted 12.3.0 (pure Python 2, 147 of 819 files unparsable) and pip 20.3.4 (the most
@@ -309,6 +338,14 @@
   coverage. A tree CI already passed (the merge to `main` after its pull request, the release tag on
   it) isn't tested again: a `tested-tree` artifact records each passing tree, and the next run on it
   skips every job.
+- **The layers, checked**: `import-linter` holds `constricter.fix`'s four layers to importing only
+  those before them, the rules and the fixes to importing neither the command nor the plugins, and
+  `rules.walked` to nothing of constricter's (`[tool.importlinter]`; `lint-imports` in the Lint
+  job).
+- **The tests, in parallel**: `pytest -n auto --dist loadgroup` (pytest-xdist, as
+  `tests/ci_local.py` runs them) takes 16s with coverage on 16 CPUs, from 50s in one process; the
+  eight that start `--jobs` workers of their own share a worker. The floor is the fuzz test, 11s in
+  one process: its 150 examples split over workers were each smaller, so they aren't.
 - **Security** (`security.yml`, weekly too): CodeQL, zizmor (pedantic), actionlint, pip-audit,
   dependency review, and gitleaks over the whole history; OpenSSF Scorecard; lychee on links.
 - **Pinning**: actions by SHA, Python dependencies by hash (`uv.lock`, checked in CI), npm by
@@ -336,6 +373,10 @@
   standard-library tables in `constricter/fix/tables/`, their generator in `stdlib_tables/`; docs in
   `docs/` (changelog, contributing, security, integrations, fixes, runs), release notes grouped by
   `.github/release.yml`, issue and PR templates, CODEOWNERS.
+- **`Module` and `Outside`, by name**: frozen dataclasses with slots, every field given by keyword
+  (they were tuples of 25 to 40 fields built by position). A check is no slower: the standard
+  library's 48.3s in one process and 13.0s on 16 CPUs (48.5s and 13.0s before), pandas's 51.6s and
+  10.8s (51.0s and 11.0s).
 - **Packages weighed and left out.** constricter has no runtime dependency, and installs where only
   pure Python does (PyPy, free-threaded builds). `pygls` or `lsprotocol` for the checkers' servers
   (`cli/hints.py`): the protocol's types are the small part, and the rest (servers sized by memory,
@@ -394,78 +435,19 @@ fix.
    longest waiting step now goes first. What's left to try: pandas's steps counted against the
    share, not let through it; and the items below that shorten a hinted fix. Done when a run takes
    under 20 minutes with the same counts. About 3 hours; coverage unchanged.
-3. **Hints asked for while the files are indexed.** `command._checked_all` waits for `session.hints`
-   before it starts a worker or reads a file: with `--infer-with`, indexing (a third of a check of
-   the standard library) starts only once every server has answered every file. basedpyright's
-   servers work 150 CPU seconds on pandas before their first answers, the checker's own processes
-   idle meanwhile. Index while they answer. Done when a hinted check of pandas takes the longer of
-   the two, not their sum. About 2 hours; coverage unchanged.
-4. **Each checker's servers, by its own measure.** How many servers a checker gets is decided by
-   basedpyright's memory (`hints._SERVER_MEMORY` and `_MEMORY_PER_BYTE`: 3.4 GB for pandas, so two
-   within the default 8 GB) whatever the checker: ty's one server took 2.1 GB there. And ty has one
-   server at most (`protocol.SERVERS`), measured on sqlalchemy, which it answers in 0.9s: on pandas
-   its server works 129 of a fix's 155 seconds, on one core. Give `Server` its own memory figures,
-   and measure ty with two and four servers on pandas. Done when each checker's count is by its own
-   memory, and ty's most is what the measurement says. About 2 hours; coverage unchanged.
-
-5. **The layers, checked.** `constricter.fix`'s four layers import only those before them, the rules
-   and the fixes import neither the command nor the plugins, and `rules.walked` imports nothing of
-   constricter's: stated here, kept by hand. `import-linter` (a development dependency) checks each
-   as a contract; all three hold on the code as it is. Add them to `pyproject.toml`, and
-   `lint-imports` to CI's lint job. Done when a `fix.core` module importing `fix.index` fails CI.
-   About 1 hour; coverage unchanged.
-6. **Profiles and timings that can be trusted.** `corpus_profile.py` runs `cProfile`, which charged
-   a check's slowdown to the functions called most and missed the 15 seconds the interpreter's exit
-   took; the timings behind this list were shell loops, one run each. Profile with `py-spy` (it
-   samples from outside, the workers too), and time with `hyperfine` (several runs, their spread: a
-   check of pandas is 50.3s ± 0.2). Done when `corpus_profile.py` writes a sampled profile, and a
-   script times the standard library and pandas at `--jobs` 1 and every CPU for two checkouts. About
-   3 hours; coverage unchanged.
-7. **Timings kept between runs.** Each speed item here is done at a number no one records: the next
-   change is measured against a figure in this file. `pytest-benchmark` or `asv` (development
-   dependencies) keep a check's time per commit. Done when a pull request's check of pydantic is
-   compared with its base's, as its coverage is. About 3 hours; coverage unchanged.
-8. **The tests, in parallel.** 4,800 tests take 50 seconds in one process. `pytest-xdist` runs them
-   on every CPU; the seven that start `--jobs` workers of their own are to run alone. Done when the
-   suite takes under 15 seconds here with the same coverage. About 1 hour; coverage unchanged.
-9. **A step's processes, by `psutil`.** `tests/corpus/corpora_cpu.py` reads `/proc` itself for each
-   step's CPU seconds, on Linux alone. `psutil` (for the corpus scripts only) reads a process's
-   children anywhere, and their memory, which the scripts size workers by. Done when the module is a
-   few lines over it, and a step records its tree's peak memory. About 1 hour; coverage unchanged.
-10. **`Module` and `Outside`, by name.** Both are tuples of 25 to 40 fields, built by position
-    (`schedule.outside` passes 24 arguments in order): a field added in the middle shifts every one
-    after it, unseen where two neighbours share a type. Build them by keyword, as frozen dataclasses
-    with slots (the standard library's), and time it: `Module`'s are pickled to the workers. Done
-    when neither is built by position and a check is no slower. About 3 hours; coverage unchanged.
-
-11. **How wide a type `--fix` may write, chosen.** The wider types below are each a fix kind of its
-    own, off unless asked for: `fix-widen = ["unions", "vague", "untyped-parameters", ...]` in
-    `[tool.constricter]` (`--fix-widen` on the command line), `"all"` for every one, and each still
-    answers to `fix-ignore` and `unsafe-fix-select` as any kind does. Every line one writes is
-    marked (`# constricter: auto`): LVA005 passes over a marked line, `--coverage` counts it apart
-    (typed, widened), and a later `--fix` may replace what it wrote there, as it never does an
-    author's annotation. Not `object` at any level: it hides no error, and nearly every use of the
-    value then is one. Done when each kind below is on or off by the setting alone, and a marked
-    annotation is replaced once its type is known. About 3 hours; no coverage by itself.
-12. **Wider: what comes of an unannotated parameter.** `x = param` and `y = param.method()`, the
-    parameter untyped: 8,565 bindings with no fix on the seven corpora (4,121 copies, 4,444 method
-    calls). `Any`, marked, says what every checker already takes it for (mypy an `Any`, pyright an
-    unknown): nothing is lost, and a later `--fix` types it once the parameter is annotated.
-    Drawback: it says nothing a reader couldn't see, and an `Any` written reads as chosen.
-    Recommended: the first to build. Done when the corpus packages' checkers find nothing new after
-    it. About 3 hours, for about 3.4% of the untyped bindings (8,565 widened).
-13. **Wider: `None`, then a value of no known type.** `x = None`, bound later to what `--fix` can't
-    type: 3,519 bindings. `Any | None`, marked. Drawback: a checker reads it as `Any`, so it says
-    only that `None` is possible, which the first line already did; and where the later value is one
-    a checker can type, the `Any` hides it. Recommended: last of these, if at all. Done when the
-    checkers find nothing new after it. About 2 hours, for about 1.4% (3,519 widened).
-14. **Wider: `Any` for whatever is left.** An attribute, a subscript or arithmetic on what has no
-    type: the rest of the bindings with no fix. `Any`, marked: every binding is then annotated.
-    Drawback: the same as for a call's (see the Medium item), with less to say for it: pyright reads
-    types through attributes and operators that `--fix` doesn't, and loses each one written over.
-    Recommended: not by default, and only for a project checked by mypy alone. Done when
-    `--coverage` reads 100% typed or widened on a corpus with it on. About 2 hours; the rest of the
-    offences, none of it a type.
+3. **Wider: `None`, then a value of no known type.** `x = None`, bound later to what `--fix` can't
+   type: 3,519 bindings. `Any | None`, marked, a kind of `fix-widen`. Drawback: a checker reads it
+   as `Any`, so it says only that `None` is possible, which the first line already did; and where
+   the later value is one a checker can type, the `Any` hides it. Recommended: last of these, if at
+   all. Done when the checkers find nothing new after it. About 2 hours, for about 1.4% (3,519
+   widened).
+4. **Wider: `Any` for whatever is left.** An attribute, a subscript or arithmetic on what has no
+   type: the rest of the bindings with no fix. `Any`, marked: every binding is then annotated.
+   Drawback: the same as for a call's (see the Medium item), with less to say for it: pyright reads
+   types through attributes and operators that `--fix` doesn't, and loses each one written over.
+   Recommended: not by default, and only for a project checked by mypy alone. Done when `--coverage`
+   reads 100% typed or widened on a corpus with it on. About 2 hours; the rest of the offences, none
+   of it a type.
 
 ### Medium: 4 to 8 hours
 
@@ -565,10 +547,11 @@ fix.
    declared where a test narrows it 304, and a copy of an `X | None` 222, each withheld for the type
    errors it brought. All four, 2,869: 44.3% to 45.6%. The other 122,000 have no type at all to
    widen, and `Any` for them turns off what a checker that reads an unannotated function's `return`s
-   (pyright) had inferred. Write the first two as guesses, two kinds of `fix-widen` (see "How wide a
-   type `--fix` may write, chosen"), each line marked. Recommended: both, the union first. Done when
-   the corpus packages' suites and type checkers find nothing new after them, and a marked
-   annotation is replaced once its type is known. About 6 hours, for about 1% (some 2,500 guesses).
+   (pyright) had inferred. Write the first two as guesses, two kinds of `fix-widen` (see
+   [FIXES.md](FIXES.md#wider-types-fix-widen)), each line marked. Recommended: both, the union
+   first. Done when the corpus packages' suites and type checkers find nothing new after them, and a
+   marked annotation is replaced once its type is known. About 6 hours, for about 1% (some 2,500
+   guesses).
 
 10. **Wider: a container whose elements aren't known.** An empty list nothing in sight fills (3,224
     bindings), and a display of mixed or unknown elements (3,302 lists, 3,128 tuples): `list[Any]`,

@@ -20,6 +20,7 @@ import sys
 import sysconfig
 import tempfile
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import replace
 from functools import lru_cache
 from pathlib import Path
 from typing import Final, cast
@@ -119,7 +120,7 @@ def _generics(modules: Mapping[str, Module], module: Module) -> Module:
         for name, names in bases.items()
         if name in module.generics and not any(_is_type_var(modules, module, found) for found in names)
     )
-    return module._replace(generics=module.generics - bound) if bound else module
+    return replace(module, generics=module.generics - bound) if bound else module
 
 
 def _is_type_var(modules: Mapping[str, Module], module: Module, name: str, hops: int = _HOPS) -> bool:

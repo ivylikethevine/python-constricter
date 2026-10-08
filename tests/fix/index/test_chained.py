@@ -65,7 +65,7 @@ def f(row: "u.Row") -> None:
 def test_a_methods_returns_attribute_is_a_signature_of_the_methods() -> None:
     """A class under `if TYPE_CHECKING:` is read; one signature, a class of its module, as many arguments."""
     tree: ast.Module = ast.parse(textwrap.dedent(_STUB))
-    module: modules.Module = modules.Module("stub", {}, {}, declared=declarations(tree))
+    module: modules.Module = modules.Module(name="stub", returns={}, names={}, declared=declarations(tree))
     assert module.declared is not None
     klass: Class = module.declared.classes["Fixture"]
     assert module.declared.classes["Result"].attributes == {"out": "AnyStr", "code": "int"}

@@ -12,6 +12,9 @@ from constricter.cli import command as cli
 from constricter.fix.core.known import Classes, Guarded, Outside
 from constricter.fix.index import project
 
+# Each starts `--jobs` workers of its own: one at a time, where the tests run at once (`pytest -n`).
+JOBS: pytest.MarkDecorator = pytest.mark.xdist_group("jobs")
+
 UTIL: Final = """
 from pkg.types import Row
 import pkg.types as t
@@ -95,6 +98,7 @@ def _package(root: Path) -> None:
     )
 
 
+@JOBS
 @pytest.mark.parametrize("jobs", ["1", "2"])
 def test_fix_annotates_calls_to_other_modules(tmp_path: Path, jobs: str) -> None:
     """`--fix` types a call to another checked file's function, when the file can name its type."""
@@ -147,8 +151,8 @@ def test_calls_skip_what_they_cannot_resolve(tmp_path: Path) -> None:
     assert not project.calls(index, tmp_path / "sheet.ipynb")
     assert not project.calls(index, tmp_path / "unknown.py")
     cycle: dict[str, project.Module] = {
-        "a": project.Module("a", {}, {"f": ("b", "f")}),
-        "b": project.Module("b", {}, {"f": ("a", "f")}),
+        "a": project.Module(name="a", returns={}, names={"f": ("b", "f")}),
+        "b": project.Module(name="b", returns={}, names={"f": ("a", "f")}),
     }
     assert not project.calls(project.Index(cycle, sorted(cycle)), Path("a.py"))
 
@@ -383,7 +387,7 @@ def test_an_imported_type_variable_is_never_a_calls_type(tmp_path: Path) -> None
     )
     outside: list[Offence] = check_source(
         uses.read_text(encoding="utf-8"),
-        outside=Outside(imported.calls, imported.classes),
+        outside=Outside(calls=imported.calls, classes=imported.classes),
     )
     assert {o.name: o.fix for o in (*inside, *outside)} == dict.fromkeys(("a", "b", "c", "d"))
 

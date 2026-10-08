@@ -4,7 +4,7 @@
 import textwrap
 from typing import Final
 
-from constricter import Checks, annotation_coverage, check_source
+from constricter import Checks, Coverage, annotation_coverage, check_source
 
 _SOURCE: Final = """
 import collections
@@ -49,4 +49,4 @@ def test_what_a_type_factory_makes_is_neither_reported_nor_counted() -> None:
     """
     source: str = textwrap.dedent(_SOURCE)
     assert [o.name for o in check_source(source, checks=Checks(all_scopes=True))] == ["V", "made"]
-    assert annotation_coverage(source, Checks(all_scopes=True)) == (0, 2)
+    assert annotation_coverage(source, Checks(all_scopes=True)) == Coverage(0, 2)

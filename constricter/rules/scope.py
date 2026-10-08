@@ -33,7 +33,9 @@ from constricter.offences import (
     NESTED_TYPE,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
+    UNTYPED_PARAMETERS,
     VAGUE_TYPE,
+    WIDEN_KINDS,
     Checks,
     Edit,
     Fix,
@@ -41,6 +43,7 @@ from constricter.offences import (
     Offence,
     at,
 )
+from constricter.rules import widened
 from constricter.rules.annotations import (
     depth,
     is_composite,
@@ -133,6 +136,7 @@ class Assignments:
     looping: int = 0  # how many loops deep the statement being visited is
     empty: dict[str, str] = field(default_factory=dict[str, str])  # names first bound empty: their kind
     chained: dict[str, tuple[int, int]] = field(default_factory=dict[str, tuple[int, int]])
+    widened: set[str] = field(default_factory=set[str])  # the names a marked line annotates (see `widened`)
 
 
 # A name typed late: its type, and what that rests on if it's a guess (`FIX_KINDS`).
@@ -358,11 +362,12 @@ class Scope:
             _ = self.assignments.empty.setdefault(name, kind)
         if chained is not None and not again:
             _ = self.assignments.chained.setdefault(name, (chained.lineno, chained.col_offset))
+        # A wider type only for a name first bound here, by a statement of its own.
         self._first(
             name,
             at(target),
             code,
-            None if fix is None else self.placed(name, fix, origins, unsafe=unsafe),
+            self._offered(target, (fix, unsafe, origins), None if chained is not None or again else value),
         )
         if fix is not None and aliased.declares(parsed(fix.annotation)):
             self.inferred.aliases.add(name)  # `TypeAlias` isn't its value's type
@@ -657,7 +662,8 @@ class Scope:
 
         """
         policy: FixPolicy = self.settings.checks.fixes
-        if not policy.allows(fix.kinds) or not self.writable(fix):
+        widening: bool = bool(fix.kinds & WIDEN_KINDS)  # written whatever `vague` allows, and marked
+        if not policy.allows(fix.kinds) or not (widening or self.writable(fix)):
             return None
         certain: bool = not unsafe or policy.trusts(origins)
         plan: ImportPlan = self.settings.known.names.plan or ImportPlan({}, frozenset(), 0)
@@ -678,7 +684,36 @@ class Scope:
             guarded=guarded,
             guard=guard or "",
             block=plan.checking.block,
+            marked=widening,
         )
+
+    def _offered(
+        self,
+        target: ast.Name,
+        typed: tuple[Inference | None, bool, frozenset[str]],
+        widen: ast.expr | None,
+    ) -> Fix | None:
+        """Offer `target`'s fix as `typed` has it (see `valued`), else a wider one for its value `widen`.
+
+        A wider type (see `widened.wider`) only where `fix-widen` asks for it.
+
+        Returns:
+          The fix, or `None`.
+
+        """
+        found: Inference | None
+        fix: Fix | None
+        if typed[0] is not None and (fix := self.placed(target.id, typed[0], typed[2], unsafe=typed[1])):
+            return fix
+        if widen is None or UNTYPED_PARAMETERS not in self.settings.checks.fixes.widen:
+            return None
+        found = widened.wider(
+            self.kind.function,
+            (target, widen),
+            self.inferred.types,
+            self.settings.known.names.plan,
+        )
+        return None if found is None else self.offer(found, frozenset(), unsafe=False)
 
     def writable(self, fix: Inference) -> bool:
         """Check that a type is no vaguer than `vague` allows: one that isn't is known, and never written.
@@ -808,9 +843,13 @@ class Scope:
     def annotation(self, name: str, annotation: ast.expr) -> None:
         """Report a vague annotation (LVA005), too deep a one (LVA006), or too long a tuple (LVA011).
 
-        Vague as far as `vague` allows (see `vague_fits`) isn't LVA005.
+        Vague as far as `vague` allows (see `vague_fits`) isn't LVA005, nor is a widening's own (a
+        marked line's: see `widened`).
         """
-        if not vague_fits(annotation, self.settings.checks.vague):
+        if annotation.lineno not in self.settings.known.limits.marks and not vague_fits(
+            annotation,
+            self.settings.checks.vague,
+        ):
             self.offences.append(Offence(*at(annotation), name, VAGUE_TYPE))
         if depth(annotation) >= self.settings.checks.nesting:
             self.offences.append(Offence(*at(annotation), name, NESTED_TYPE))

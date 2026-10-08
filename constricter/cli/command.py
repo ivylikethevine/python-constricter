@@ -10,6 +10,7 @@ import json
 import sys
 import tokenize
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
@@ -127,6 +128,7 @@ def _placed(offence: Offence, where: list[notebook.Line]) -> Offence:
 
 
 # One changed part of a fixed file (the file, or a notebook's cell): its label, old and new lines.
+_Hinted: TypeAlias = dict[Path, tuple[Hints, ...]]  # each file's hints, a checker's each
 _Change: TypeAlias = tuple[str, list[str], list[str]]
 # One JSON value a coverage report holds, and one file's row of them.
 _Scalar: TypeAlias = str | int | float
@@ -520,16 +522,20 @@ def _checked_all(
       What each file found, and the index of every file's module.
 
     """
-    hinted: dict[Path, tuple[Hints, ...]] = {} if session is None else session.hints(_texts(paths))
-    if options.input.trace is not None:
-        hinted = traced.merged(hinted, traced.load(options.input.trace), paths)
     coverage: bool = options.mode is Mode.COVERAGE  # needs nothing from the other files
     pool: Workers | None = started(paths, options.jobs) if options.jobs != 1 and len(paths) > 1 else None
-    if modules is None and pool:
-        modules = project.Index({}, []) if coverage else pool.index()
-    elif modules is None:
-        modules = project.Index({}, []) if coverage else project.index(paths)
-        collecting.indexed()
+    hinted: _Hinted = {}
+    if session is None:
+        modules = modules or _indexed(paths, pool, coverage=coverage)
+    else:
+        asking: ThreadPoolExecutor
+        with ThreadPoolExecutor(1) as asking:
+            # The servers answer while the files are indexed: both take the longer of the two, not their sum.
+            asked: Future[_Hinted] = asking.submit(session.hints, _texts(paths))
+            modules = modules or _indexed(paths, pool, coverage=coverage)
+            hinted = asked.result()
+    if options.input.trace is not None:
+        hinted = traced.merged(hinted, traced.load(options.input.trace), paths)
     if not coverage:
         modules = plain.settled(
             decorated.passed(installed.with_installed(modules, installed.search_path())),
@@ -542,6 +548,22 @@ def _checked_all(
         (modules, hinted),
         _merged if options.mode is Mode.FIX else None,
     )
+
+
+def _indexed(paths: Sequence[Path], pool: Workers | None, *, coverage: bool) -> project.Index:
+    """Index `paths`, by the workers of `pool` if there are any; `coverage` needs no index.
+
+    Returns:
+      The index of every file's module.
+
+    """
+    if coverage:
+        return project.Index({}, [])
+    if pool:
+        return pool.index()
+    modules: project.Index = project.index(paths)
+    collecting.indexed()
+    return modules
 
 
 def _merged(before: FileRun, after: FileRun) -> FileRun:
@@ -618,28 +640,51 @@ def _coverage(options: Options, paths: Sequence[Path], runs: Sequence[FileRun]) 
     counted: list[tuple[Path, Coverage]] = [
         (path, run.coverage) for path, run in zip(paths, covered, strict=True) if run.coverage is not None
     ]
-    total: Coverage = Coverage(sum(c.typed for _, c in counted), sum(c.total for _, c in counted))
+    total: Coverage = Coverage(
+        sum(c.typed for _, c in counted),
+        sum(c.total for _, c in counted),
+        sum(c.widened for _, c in counted),
+    )
     if options.output.fmt is Format.JSON:
         report: dict[str, _Scalar | list[_Row]] = {
-            "typed": total.typed,
-            "total": total.total,
-            "percent": round(total.percent, 1),
-            "files": [
-                {"path": str(path), "typed": c.typed, "total": c.total, "percent": round(c.percent, 1)}
-                for path, c in counted
-            ],
+            **_counts(total),
+            "files": [{"path": str(path), **_counts(c)} for path, c in counted],
         }
         _ = sys.stdout.write(json.dumps(report, indent=2) + "\n")
     else:
         path: Path
         c: Coverage
         for path, c in counted:
-            _ = sys.stdout.write(f"{path}: {c.typed}/{c.total} typed ({c.percent:.1f}%)\n")
-        _ = sys.stdout.write(
-            f"Total: {total.typed}/{total.total} typed ({total.percent:.1f}%) in {len(counted)} file(s).\n",
-        )
+            _ = sys.stdout.write(f"{path}: {_typed(c)}\n")
+        _ = sys.stdout.write(f"Total: {_typed(total)} in {len(counted)} file(s).\n")
     threshold: float | None = options.output.fail_under
     return EXIT_FOUND if threshold is not None and total.percent < threshold else EXIT_CLEAN
+
+
+def _counts(found: Coverage) -> _Row:
+    """Name a coverage's counts, for `--format=json`.
+
+    Returns:
+      Them, by name.
+
+    """
+    return {
+        "typed": found.typed,
+        "total": found.total,
+        "widened": found.widened,
+        "percent": round(found.percent, 1),
+    }
+
+
+def _typed(found: Coverage) -> str:
+    """Write a coverage as text: `3/4 typed (75.0%)`, then what a widening annotated, if anything.
+
+    Returns:
+      It.
+
+    """
+    wider: str = f", {found.widened} widened" if found.widened else ""
+    return f"{found.typed}/{found.total} typed ({found.percent:.1f}%){wider}"
 
 
 def _run(options: Options) -> int:

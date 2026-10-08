@@ -18,6 +18,8 @@ from constricter.cli.config import (
     project_root,
     unknown_codes,
     unknown_fix_kinds,
+    unknown_widen_kinds,
+    widen_kinds,
 )
 from constricter.cli.explain import explain
 from constricter.cli.paths import STDIN, excluded
@@ -131,6 +133,24 @@ def _fix_kinds(text: str) -> list[str]:
         message: str = f"no --fix mechanism is called {', '.join(unknown)} (see docs/FIXES.md)"
         raise argparse.ArgumentTypeError(message)
     return kinds
+
+
+def _widen_kinds(text: str) -> list[str]:
+    """Read a comma-separated list of the wider types `--fix` may write (`untyped-parameters`), or `all`.
+
+    Returns:
+      Them.
+
+    Raises:
+      argparse.ArgumentTypeError: One isn't a widening's id.
+
+    """
+    kinds: list[str] = [kind.strip() for kind in text.split(",") if kind.strip()]
+    unknown: list[str]
+    if unknown := unknown_widen_kinds(kinds):
+        message: str = f"no wider type is called {', '.join(unknown)} (see docs/FIXES.md)"
+        raise argparse.ArgumentTypeError(message)
+    return widen_kinds(kinds)
 
 
 def _version(text: str) -> tuple[int, int]:
@@ -332,6 +352,13 @@ def _parser() -> argparse.ArgumentParser:
         default=[],
         metavar="KINDS",
         help="treat guesses from these mechanisms (constructor, narrow) as certain",
+    )
+    _ = parser.add_argument(
+        "--fix-widen",
+        type=_widen_kinds,
+        default=[],
+        metavar="KINDS",
+        help="also write these wider types, each line marked (untyped-parameters; all: every one)",
     )
     _ = parser.add_argument(
         "--fix-plain-bases",
@@ -594,6 +621,7 @@ class Options:
                     frozenset(cast("list[str]", args.fix_select)),
                     frozenset(cast("list[str]", args.fix_ignore)),
                     frozenset(cast("list[str]", args.unsafe_fix_select)),
+                    frozenset(cast("list[str]", args.fix_widen)),
                 ),
                 min_python=cast("tuple[int, int] | None", args.min_python),
                 plain_bases=(*PLAIN_BASES, *cast("list[str]", args.fix_plain_bases)),

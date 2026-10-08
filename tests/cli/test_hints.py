@@ -25,6 +25,9 @@ from constricter.cli import guard, hints, protocol, remembered
 from constricter.cli.options import Options
 from constricter.fix.core.known import Hints, Offered
 
+# Each starts `--jobs` workers of its own: one at a time, where the tests run at once (`pytest -n`).
+JOBS: pytest.MarkDecorator = pytest.mark.xdist_group("jobs")
+
 _FAKE: Final = Path(__file__).with_name("fake_server.py")
 _Found: TypeAlias = dict[Path, tuple[Hints, ...]]
 _Asks: TypeAlias = Callable[[hints.Session, Mapping[Path, str]], _Found]
@@ -304,13 +307,13 @@ def test_files_are_shared_among_servers_and_stay_with_theirs(
 ) -> None:
     """Many files are shared among a checker's servers, a file staying with its own the next time.
 
-    `ty` works in parallel itself: it gets one server, whatever `--jobs` says.
+    `pyrefly` works in parallel itself: it gets one server, whatever `--jobs` says.
     """
     _fake(monkeypatch)
     monkeypatch.setattr(hints, "available_memory", lambda: 64 << 30)  # plenty, whatever the machine has
     files: dict[Path, str] = {tmp_path / f"m{n}.py": f"x{n} = 1  # hint: int\n" * (n + 1) for n in range(40)}
     session: hints.Session
-    with hints.Session([_CHECKER, "ty"], tmp_path, servers=8) as session:
+    with hints.Session([_CHECKER, "pyrefly"], tmp_path, servers=8) as session:
         found: dict[Path, tuple[Hints, ...]] = session.hints(files)
         pyright: hints.Checker = session.checkers[0]
         first: dict[Path, int] = dict(pyright.assigned)
@@ -382,6 +385,7 @@ def test_fix_repeats_while_the_hints_change(
     assert text.splitlines()[2:4] == fixed
 
 
+@JOBS
 def test_fix_stops_after_its_last_round(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

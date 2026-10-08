@@ -6,6 +6,19 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `fix-widen` (`--fix-widen KINDS`) names the wider types `--fix` may write where a value has no
+  type it can work out, each a fix kind of its own, off unless listed (`all`: every one). The first,
+  `untyped-parameters`: `Any` for what comes of a parameter no annotation types (`x = param`,
+  `y = param.read()`; not a parameter with a default, which a checker types by it). Every line a
+  widening writes ends with `# constricter: auto`: LVA005 passes over it, `--coverage` counts it
+  apart (`3/4 typed (75.0%), 1 widened`, and `widened` in its JSON), and once its value's type is
+  known it's reported as LVA005 with that type as its fix, which drops the mark. On SQLAlchemy it
+  annotates 175 bindings; basedpyright finds no new error after it (and 6 fewer, which the `Any`
+  hides).
+- With `--infer-with`, `ty` gets up to four servers, as basedpyright does (a hinted check of pandas
+  takes 21s, from 36s with one), and each checker's servers are counted by its own memory: `ty`'s
+  were by basedpyright's, nearly three times as much. The servers are asked while the files are
+  indexed.
 - `--fix --unsafe-fixes` no longer types what's read of a name that an arm of an `if`, a `try` or a
   `match` leaves with no known type, whatever another arm binds it to (`levels = index.multi()`,
   `else: levels = ["a"]`, then `for lvl in levels`): it may hold either. And a type alias of a union

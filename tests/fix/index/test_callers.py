@@ -151,7 +151,9 @@ def test_modules_of_one_name_arent_checked_again(tmp_path: Path) -> None:
 def test_calls_bind_as_python_binds_them() -> None:
     """Too many arguments, an unknown keyword, one bound twice, or unpacking: nothing is typed."""
     params: tuple[tuple[str, str, bool, bool], ...] = (("a", "p", False, False), ("b", "e", False, False))
-    catalog: project.Index = project.indexed([project.Module("m", {}, {}, open={"f": params})])
+    catalog: project.Index = project.indexed(
+        [project.Module(name="m", returns={}, names={}, open={"f": params})],
+    )
     typed: callers.Parameters = {"f": {"a": ("int", frozenset()), "b": ("str", frozenset())}}
 
     def found(*calls: Call) -> dict[str, callers.Parameters]:

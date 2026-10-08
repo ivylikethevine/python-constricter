@@ -37,9 +37,8 @@ from constricter.offences import (
     UNTYPED_TARGET,
     Checks,
     Offence,
-    at,
 )
-from constricter.rules import binding, late, parsed, recorded
+from constricter.rules import binding, late, parsed, recorded, widened
 from constricter.rules.annotations import (
     awaited_returns,
     casts,
@@ -57,7 +56,7 @@ from constricter.rules.flow import Finding, Hierarchy
 from constricter.rules.narrowing import flow_offences, module_flow, module_names
 from constricter.rules.quoted import written
 from constricter.rules.redundant import redundant
-from constricter.rules.scope import Kind, Late, Scope, Seeded, Settings, certain_type
+from constricter.rules.scope import Kind, Late, Scope, Seeded, Settings
 from constricter.rules.syntax import (
     BRANCHING,
     FUNCTION_DEFS,
@@ -197,7 +196,7 @@ def _settings(
                 {} if outside is None else outside.installed_aliases,
                 checks.min_python is not None and checks.min_python >= STARRED_SUBSCRIPTS,
             ),
-            Limits(checks.max_length, checks.vague),
+            Limits(checks.max_length, checks.vague, widened.marks(lines)),
         ),
         Hierarchy.for_module(
             tree,
@@ -380,7 +379,7 @@ def _resumed(tree: ast.Module, checks: Checks, outside: Outside | None) -> _Roun
     kept: _Kept | None = cast("_Kept | None", vars(tree).get(_KEPT))
     if kept is None or outside is None or kept.outside is None or checks.final or kept.checks != checks:
         return None
-    if outside._replace(parameters={}) != kept.outside._replace(parameters={}):
+    if replace(outside, parameters={}) != replace(kept.outside, parameters={}):
         return None
     seeded: Seeded = kept.done.settings.parameters or Seeded()
     passed: Mapping[int, Mapping[str, Passed]] = keyed(tree, outside.parameters)
@@ -426,10 +425,14 @@ def _settled(
 
 
 class Coverage(NamedTuple):
-    """How many of a module's typeable first bindings are typed, of how many."""
+    """How many of a module's typeable first bindings are typed, of how many.
+
+    `widened`: those a widening annotated (see `widened`), counted apart: not among the typed.
+    """
 
     typed: int
     total: int
+    widened: int = 0
 
     @property
     def percent(self) -> float:
@@ -453,7 +456,8 @@ def annotation_coverage(source: str | bytes, checks: Checks = DEFAULT_CHECKS) ->
     scopes: list[Scope] = _scopes(tree, settings)
     total: int = sum(len(scope.bound()) for scope in scopes)
     untyped: int = sum(o.code in _UNTYPED for scope in scopes for o in scope.reported())
-    return Coverage(total - untyped, total)
+    wider: int = sum(len(scope.assignments.widened.intersection(scope.bound())) for scope in scopes)
+    return Coverage(total - untyped - wider, total, wider)
 
 
 def _module_names(tree: ast.Module, settings: Settings) -> dict[str, Passed]:
@@ -738,8 +742,6 @@ def _declare(scope: Scope, stmt: ast.stmt) -> None:
     """Bind the names `stmt` binds that need no annotation, or carry their own."""
     aliases: list[ast.alias]
     names: list[str]
-    name: str
-    annotation: ast.expr
     handlers: list[ast.ExceptHandler]
     target: ast.Name
     match stmt:
@@ -757,14 +759,8 @@ def _declare(scope: Scope, stmt: ast.stmt) -> None:
             scope.opaque(names)
         case ast.Global(names=names) | ast.Nonlocal(names=names):
             scope.declared.update(names)
-        case ast.AnnAssign(target=ast.Name(id=name) as target, annotation=annotation):
-            scope.declare(name)
-            scope.annotation(name, annotation)
-            scope.inferred.declare(name, annotation)
-            scope.lifetime(name).declare(ast.unparse(annotation), at(target), _span(annotation, target))
-            if stmt.value is not None:
-                scope.lifetime(name).bind(at(target), certain_type(scope, stmt.value))
-                scope.assigned(name, at(target))
+        case ast.AnnAssign(target=ast.Name() as target):
+            binding.annotated(scope, stmt, target)
         case _ if type(stmt).__name__ == _TYPE_ALIAS:
             alias: ast.expr = cast("ast.expr", next(ast.iter_child_nodes(stmt)))  # its first field, the name
             scope.declared.update(name.id for name in target_names(alias))
@@ -774,17 +770,6 @@ def _declare(scope: Scope, stmt: ast.stmt) -> None:
             scope.opaque(names)
         case _:
             pass
-
-
-def _span(annotation: ast.expr, target: ast.expr) -> tuple[int, int] | None:
-    """Find an annotation's columns, if it's all on its target's line (so `--fix` can rewrite it).
-
-    Returns:
-      Its start and end columns (UTF-8 bytes, as `ast` counts), or `None`.
-
-    """
-    one_line: bool = annotation.lineno == annotation.end_lineno == target.lineno
-    return (annotation.col_offset, annotation.end_col_offset or 0) if one_line else None
 
 
 def _returned(

@@ -140,7 +140,8 @@ _Modes: TypeAlias = list[tuple[str, tuple[str, ...]]]  # each fixed run's label,
 class Step(NamedTuple):
     """One step's result as it's kept: what it gave (`None`: it failed), and what it took.
 
-    Its seconds, the CPU seconds of its processes, and the most memory one of them held (bytes).
+    Its seconds, the CPU seconds of its processes, and the most memory they held (bytes): one of
+    them, or all of them at once where the run samples its tree (`corpora_cpu`).
     """
 
     seconds: float

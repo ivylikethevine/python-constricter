@@ -27,13 +27,15 @@ uv pip install --python local/.venv --no-deps --no-build-isolation -e .
 Checks (as CI runs them), on `constricter stdlib_tables tests hatch_build.py` where they take paths:
 `ruff check .` (every rule, preview included), `ruff format --check .`, `basedpyright` (all), `mypy`
 (strict), `pylint` (every extension), `flake8`, `typos`, `validate-pyproject pyproject.toml`,
-`uv lock --check`, `constricter --level=suffocate --all-scopes`,
-`constricter --coverage --all-scopes --fail-under=100`, `pytest --cov` (100% branch coverage).
-Everything generated goes in `local/`, but the standard-library tables `--fix` reads
-(`constricter/fix/tables/`) and the tests' `stdlib_tables/partial.json`, which git ignores: a build
-(`hatch_build.py`), the editable install included, generates them from the typeshed stubs of the
-basedpyright `uv.lock` pins, in about 12 seconds on 4 cores (30 on one), wherever they're missing or
-stale. After changing the generator (`stdlib_tables/`) or the pinned basedpyright, run
+`lint-imports` (the layers `pyproject.toml` states), `uv lock --check`,
+`constricter --level=suffocate --all-scopes`,
+`constricter --coverage --all-scopes --fail-under=100`, `pytest --cov` (100% branch coverage; with
+`-n auto --dist loadgroup`, on every CPU). Everything generated goes in `local/`, but the
+standard-library tables `--fix` reads (`constricter/fix/tables/`) and the tests'
+`stdlib_tables/partial.json`, which git ignores: a build (`hatch_build.py`), the editable install
+included, generates them from the typeshed stubs of the basedpyright `uv.lock` pins, in about 12
+seconds on 4 cores (30 on one), wherever they're missing or stale. After changing the generator
+(`stdlib_tables/`) or the pinned basedpyright, run
 `local/.venv/bin/python -m stdlib_tables --if-stale`; `tests/fix/libraries/test_stdlib_tables.py`
 fails until then. Python is indented with 4 spaces. An editor running Pyright or basedpyright
 (Pylance, Neovim's Mason) needs no setting of its own: `pyrightconfig.json` points both at
@@ -59,15 +61,17 @@ Python's standard library, about 730 files in a few seconds) at `suffocate` and 
 offences per code, and any crash. `local/.venv/bin/python tests/corpus/corpus_fix.py [PATH]` runs
 `--fix --unsafe-fixes` on a copy of it (in `local/corpus-fix/`) and checks every file still compiles
 and a second pass has nothing left to fix.
-`local/.venv/bin/python tests/corpus/corpus_profile.py [PATH]` checks it under `cProfile`, in one
-process, and prints (as Markdown) constricter's slowest modules and functions, and where the rest of
-the time went; the profile is saved to `local/profile/`. CI runs all three, each in its own job (the
-profile's never fails the run), against the standard library and, from the pinned `corpus`
-dependency group (`django`, `sqlalchemy`, `pydantic`, `pandas` — a web framework, an ORM, a
-runtime-validation library and a data library), the same way, and against pure Python 2 (Twisted
-12.3.0) and pip 20.3.4 (2/3-era code whose `# type:` comments sit in modules with Python 2
-`__future__` imports), hash-pinned sdists `tests/corpus/corpus_sources.py` fetches, since neither
-installs as a dependency.
+`local/.venv/bin/python tests/corpus/corpus_profile.py [PATH]` checks it in a process `py-spy`
+samples from outside (its workers too, with `--jobs N`), and prints (as Markdown) constricter's
+slowest modules and functions, and where the rest of the time went; the samples are saved to
+`local/profile/`. `local/.venv/bin/python tests/corpus/corpus_timing.py OTHER` times a check of the
+standard library and pandas with this checkout and another (`hyperfine` has to be installed). CI
+runs all three, each in its own job (the profile's never fails the run), against the standard
+library and, from the pinned `corpus` dependency group (`django`, `sqlalchemy`, `pydantic`, `pandas`
+— a web framework, an ORM, a runtime-validation library and a data library), the same way, and
+against pure Python 2 (Twisted 12.3.0) and pip 20.3.4 (2/3-era code whose `# type:` comments sit in
+modules with Python 2 `__future__` imports), hash-pinned sdists `tests/corpus/corpus_sources.py`
+fetches, since neither installs as a dependency.
 
 `tests/corpus/corpus_suite.py` runs a Python 3 corpus package's own test suite (cloned at its pinned
 tag, with its test dependencies as its CI installs them, in `local/corpus-suites/`) as released,
@@ -131,6 +135,7 @@ Everything else is on. Some of these may be revisited.
 | ruff               | `incorrect-blank-line-before-class`, `multi-line-summary-second-line` (D203/D213)  | Each contradicts a rule that stays on (D211/D212); one of each pair has to go.                                        |
 | ruff (`tests/`)    | `assert` (S101)                                                                    | pytest works through `assert`.                                                                                        |
 | mypy, basedpyright | astroid's and fastjsonschema's untyped calls and missing stubs                     | Neither astroid (pylint's parser) nor fastjsonschema (the SARIF test's validator) ships type information.             |
+| pylint             | `too-many-instance-attributes` on `Module` and `Outside`                           | Each is a record of one file's tables, a field a table, built by keyword.                                             |
 | typos              | the word `astroid`                                                                 | A real package name.                                                                                                  |
 | typos              | `constricter/fix/tables/*.json`, `stdlib_tables/partial.json`                      | Generated from typeshed: the standard library's own names, which typos takes for misspellings.                        |
 | harden-runner      | `egress-policy: audit` on macOS and Windows, and in the weekly external-link check | harden-runner supports only audit on GitHub's macOS and Windows runners; external links can go anywhere.              |

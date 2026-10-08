@@ -13,6 +13,9 @@ from constricter.cli.runs import CheckRun, FileRun
 from constricter.fix.core.known import Outside, Returns
 from constricter.fix.index import linked, order, project
 
+# Each starts `--jobs` workers of its own: one at a time, where the tests run at once (`pytest -n`).
+JOBS: pytest.MarkDecorator = pytest.mark.xdist_group("jobs")
+
 DEEP: Final = "def base():\n    return 41\n"
 UTIL: Final = """
 from pkg.deep import base
@@ -113,6 +116,7 @@ def _package(root: Path) -> Path:
     return _write(root / "main.py", MAIN)
 
 
+@JOBS
 @pytest.mark.parametrize("jobs", ["1", "2"])
 def test_calls_to_other_files_unannotated_functions_are_typed(tmp_path: Path, jobs: str) -> None:
     """A chain over three files types in one run; a guess stays one, its type imported if it must be.
@@ -142,6 +146,7 @@ def test_a_guess_is_shown_as_one(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert all(line in shown for line in SHOWN)
 
 
+@JOBS
 @pytest.mark.parametrize("jobs", ["1", "2"])
 def test_files_calling_each_other_are_checked_again(tmp_path: Path, jobs: str) -> None:
     """In a cycle, each file is checked again while the other's `return`s type more of its calls."""
@@ -195,7 +200,7 @@ def test_a_package_function_is_not_taken_for_a_submodule(tmp_path: Path) -> None
 
 def test_returns_are_recorded_only_for_indexed_modules() -> None:
     """A module the index doesn't have gets nothing."""
-    catalog: project.Index = project.Index({"m": project.Module("m", {}, {})}, ["m"])
+    catalog: project.Index = project.Index({"m": project.Module(name="m", returns={}, names={})}, ["m"])
     found: project.Index = linked.with_returned(
         catalog,
         {"m": Returns({"f": "int"}), "gone": Returns({"g": "str"})},

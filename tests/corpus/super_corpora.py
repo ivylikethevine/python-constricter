@@ -52,7 +52,7 @@ from typing import Final, NamedTuple, TextIO, TypeAlias, cast
 from constricter import __version__
 from constricter.rules import parsed
 from tests.corpus import corpora_section, corpora_steps, corpus_suite, corpus_table
-from tests.corpus.corpora_cpu import Sampler
+from tests.corpus.corpora_cpu import Sampler, Used
 from tests.corpus.corpora_steps import CHECK, Sizes, Step, Steps
 from tests.corpus.corpus_table import Corpus
 
@@ -255,7 +255,7 @@ class _Running(NamedTuple):
     slots: Slots
     before: Mapping[tuple[str, str], tuple[float, float]]
     bound: Mapping[str, threading.Lock]  # each port's lock, held while a suite's tests have the port
-    sampler: Sampler  # counts each step's CPU seconds, its processes' processes' too
+    sampler: Sampler  # counts each step's CPU seconds and memory, its processes' processes' too
 
     def expected(self, corpus: Corpus, name: str) -> int:
         """Estimate the CPUs a step keeps busy (see the module's docstring).
@@ -301,10 +301,11 @@ class _Running(NamedTuple):
         ):
             self.sampler.watch(step.pid)
             status: int = step.wait()
-        used: float = self.sampler.used(step.pid)
+        used: Used = self.sampler.used(step.pid)
         kept: Step | None = None if status else _read(out)
-        if kept is not None and used > kept.cpu:
-            _ = out.write_bytes(pickle.dumps(kept._replace(cpu=used)))
+        if kept is not None and (used.cpu > kept.cpu or used.memory > kept.memory):
+            seen: Step = kept._replace(cpu=max(used.cpu, kept.cpu), memory=max(used.memory, kept.memory))
+            _ = out.write_bytes(pickle.dumps(seen))
         return status
 
     def started(self, corpus: Corpus, name: str, cpus: int | None = None) -> Step:
