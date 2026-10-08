@@ -612,3 +612,21 @@ def test_a_reexported_class_has_its_methods_in_the_same_run(
     path: Path = _write(tmp_path / "pkg" / "user.py", source)
     assert cli.main(["--fix", "-q", "--unsafe-fixes", "--jobs=1", *_SELECT, str(tmp_path)]) == cli.EXIT_CLEAN
     assert fixed in path.read_text(encoding="utf-8")
+
+
+_VALUE_CALLED: Final = '    a = F("x")\n    b: Real = Real()\n'
+
+
+def test_a_name_another_file_binds_by_assignment_constructs_nothing(tmp_path: Path) -> None:
+    """`F = other.Expression` there is a value, however it's capitalised: a call of it isn't taken for one."""
+    _ = _write(tmp_path / "pkg" / "__init__.py", "")
+    _ = _write(
+        tmp_path / "pkg" / "utils.py",
+        "import other\n\nF = other.Expression\n\n\nclass Real:\n    pass\n",
+    )
+    user: Path = _write(
+        tmp_path / "pkg" / "user.py",
+        'from pkg.utils import F, Real\n\n\ndef f() -> None:\n    a = F("x")\n    b = Real()\n',
+    )
+    _ = cli.main(["--fix", "-q", "--unsafe-fixes", "--jobs=1", *_SELECT, str(tmp_path)])
+    assert user.read_text(encoding="utf-8").endswith(_VALUE_CALLED)

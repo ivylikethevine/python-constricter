@@ -126,6 +126,8 @@ class Module(NamedTuple):
     # A checked file's functions defined with `@overload`, each with its overloads' signatures.
     overloads: Mapping[str, tuple[Signature, ...]] = {}
     folder: str = ""  # a checked file's directory: where pytest looks for the `conftest.py`s above it
+    # Its top-level names bound by assignment to a value: not a type alias, nor a type variable.
+    assigned: frozenset[str] = frozenset()
     # Its classes' methods a `return` could type (as `unannotated`), by name, whatever the class.
     loose: frozenset[str] = frozenset()
     # Its classes' methods declared to return a bare `Self` (see `annotations.self_returns`).
@@ -339,7 +341,8 @@ def read(path: Path, name: str | None = None) -> Module | None:
     except (SyntaxError, ValueError):  # a null byte is a ValueError
         return None
     own: Tables = module_tables(tree)
-    rebound: frozenset[str] = frozenset(bound for bound, count in _assigned(tree.body).items() if count > 1)
+    assigned: Counter[str] = _assigned(tree.body)
+    rebound: frozenset[str] = frozenset(bound for bound, count in assigned.items() if count > 1)
     if name is None:
         parsed.keep(source, (tree, own))  # for the check to take, rather than parse it and read it again
     named: str = name or module_name(path)
@@ -369,6 +372,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         passes=own.passes,
         aliases={alias: generic for alias, generic in _aliases(tree).items() if alias not in rebound},
         rebound=rebound,
+        assigned=frozenset(assigned) - _aliases(tree).keys() - defined_type_vars(tree),
         shadowed=frozenset(names) & taken_names(tree)[1] if name is None else frozenset(),
         bases={} if name is not None else classvars.bases(tree),
         bound=dict(own.order.bound),

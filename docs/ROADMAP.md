@@ -449,23 +449,22 @@ fix.
 ### Medium: 4 to 8 hours
 
 1. **What a guess breaks, by its cause.** After `--fix --unsafe-fixes` the packages' own type
-   checkers find 42 new errors on pandas, 10 on pydantic and 3 on sqlalchemy; on the 52 packages 33
-   on mypy, 10 on optuna, and 1 to 8 on each of seven more. Seven causes are fixed (altair's 128 are
-   none, mypy's 76 are 33, optuna's 39 are 10: see the changelog). What's left, by what it would
-   take:
-   - A name imported from a checked file that binds it by assignment, called and taken for a class
-     (`F = duckdb.FunctionExpression`, then `F(...)`): narwhals's 8. The index doesn't say which of
-     a module's names are plain assignments.
+   checkers find 42 new errors on pandas, 10 on pydantic and 3 on sqlalchemy; on the 52 packages 31
+   on mypy, and 1 to 6 on each of eight more. Nine causes are fixed (altair's 128 are none, mypy's
+   76 are 31, optuna's 39 are 3, narwhals's 8 are 1: see the changelog). What's left:
    - A type from a package the suite's own checker can't follow (`etree.Element`, of `lxml`): 14 of
      mypy's. Its environment's, as pydantic's 10 are; listed, not fixed.
    - What an unannotated function's `return`s give (`returned`), declared where a checker took
-     `Any`: about 20 of pandas's, each another latent error (an attribute set after construction, an
-     `X | None` used unchecked). No one cause.
+     `Any`: about 20 of pandas's, from 13 of its guesses, each another latent error (an attribute
+     set after construction, an `X | None` used unchecked). No one cause: count how many `returned`
+     guesses pandas has before judging the 13.
    - A name first an `X | None`, tested for `None` and bound again (`code = error.get("code")`, then
-     `if code is None: code = SYNTAX`): typed by its first value. Some of mypy's and optuna's.
+     `if code is None: code = SYNTAX`): typed by its first value. Three of mypy's.
+   - A module's name bound in each arm of an `if` to another function (`formatter = rich` /
+     `formatter = plain`): structlog's 6.
 
-   Done when no package has ten new errors after the guesses but by its own environment. About 4
-   hours; coverage down by the guesses withdrawn.
+   Done when each package's errors left are its environment's, or under one for each hundred of its
+   guesses. About 3 hours; coverage down by the guesses withdrawn.
 
 2. **The main process, in a parallel check.** A module's functions are found by the names a file
    writes (`Module.written`), and each worker works out what its own files import. The last run that

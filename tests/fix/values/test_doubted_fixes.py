@@ -394,6 +394,8 @@ def test_what_a_test_leaves_out_isnt_in_the_type() -> None:
         if template:
             e = copy.deepcopy(template)
             g = copy.deepcopy(other)
+            m = [template]
+            n = [other]
         h = next(v for v in values if isinstance(v, str) and v)
         i = [v for v in values if isinstance(v, (str, bytes))]
         j = [v for v in values if isinstance(v, kinds)]
@@ -410,4 +412,6 @@ def test_what_a_test_leaves_out_isnt_in_the_type() -> None:
         "i": (None, False),  # one of several
         "j": (None, False),  # whatever `kinds` holds
         "k": ("list[Trial]", True),
+        "m": (None, False),  # a display of what's narrowed there
+        "n": ("list[Trial | None]", False),
     }

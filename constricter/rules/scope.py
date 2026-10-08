@@ -426,7 +426,7 @@ class Scope:
         if fix is not None and (
             narrowed_first(value, fix)
             or narrowed_at(facts.narrowed, value, line, union=len(members(fix.annotation) or ()) > 1)
-            or self._takes_narrowed(fix, line)
+            or self._takes_narrowed(value, fix, line)
         ):
             fix = None
         if fix is None:
@@ -444,14 +444,21 @@ class Scope:
             unsafe = bool(origins)
         return fix, unsafe, origins
 
-    def _takes_narrowed(self, fix: Inference, line: int) -> bool:
+    def _takes_narrowed(self, value: ast.expr, fix: Inference, line: int) -> bool:
         """Check whether a fix takes its type from a read narrowed at `line`: `deepcopy(x)`, in `if x:`.
+
+        Or holds one in a display (`[x]`, there): its elements are the narrowed type's.
 
         Returns:
           Whether it does: the read has another type there than it's declared.
 
         """
         types: Mapping[str, str] = self.inferred.types
+        held: list[str] = [
+            element.id
+            for element in (value.elts if isinstance(value, ast.List | ast.Set | ast.Tuple) else ())
+            if isinstance(element, ast.Name)
+        ]
         return any(
             read_narrowed(
                 self.settings.facts.narrowed,
@@ -459,7 +466,7 @@ class Scope:
                 line,
                 union=len(members(types.get(read, "")) or ()) > 1,
             )
-            for read in fix.reads
+            for read in (*fix.reads, *held)
         )
 
     def _constant(self, fix: Inference) -> Inference | None:

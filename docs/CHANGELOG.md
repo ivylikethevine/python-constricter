@@ -19,7 +19,10 @@ Notable changes, newest first. Each release's full notes are generated from its 
   itself whose type isn't known (`item = proper(item)`) has no fix: of 37 such guesses on four
   packages 7 were wrong, of the 542 other rebound ones 16. And a later `with` or `for` target of a
   known type holds the first binding's fix to it: `with open(path) as f` then
-  `with open(path, "rb") as f` are two types, and `f` has none.
+  `with open(path, "rb") as f` are two types, and `f` has none. A capitalised name another checked
+  file binds by assignment (`F = duckdb.FunctionExpression`) is a value: `F(...)` is no longer taken
+  to construct an `F` (narwhals: 8 new errors to 1). And a display holding a name narrowed where
+  it's written (`studies = [study]` under `isinstance(study, Study)`) has no fix.
 - `--infer-with` remembers a file its checker's server hung on, and leaves it without hints from the
   start of the next run, where it waited out the server's silence twice and restarted it each time
   (four minutes of a basedpyright-hinted fix of pandas, 439s to 198s). It's remembered by the file's
