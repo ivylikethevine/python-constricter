@@ -105,6 +105,28 @@ def test_an_empty_container_is_typed_by_what_is_added() -> None:
     assert {name for name, fix in fixed.items() if not fix[0]} >= set("dgkqrtuvwxzCDEFG")
 
 
+def test_what_the_function_narrows_isnt_the_elements_type() -> None:
+    """A name added where a test has narrowed it has another type there than it's declared."""
+    source: str = """
+    def g(items: list[int | str], flags: list[bool]):
+        kept = []
+        whole = []
+        seen = []
+        for item in items:
+            whole.append(len(items))
+            if isinstance(item, int):
+                kept.append(item)
+        for flag in flags:
+            seen.append(flag)
+    """
+    found: list[Offence] = check_source(textwrap.dedent(source))
+    assert {o.name: o.fix for o in found if o.name in {"kept", "whole", "seen"}} == {
+        "kept": None,
+        "whole": "list[int]",
+        "seen": "list[bool]",
+    }
+
+
 def test_a_use_that_cannot_add_leaves_it_typed() -> None:
     """An operand, an unpacking, any `join`'s argument and a returned tuple's part only read it."""
     source: str = """

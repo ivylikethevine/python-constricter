@@ -482,6 +482,8 @@ class Outside(NamedTuple):
     beyond: Mapping[str, Beyond] = {}
     # What awaiting a call of each `async def` it imports from them gives, as it spells the call.
     awaits: Mapping[str, str] = {}
+    # The names it imports that another checked module binds by assignment (see `linked.values`).
+    values: frozenset[str] = frozenset()
 
     def usable(self, taken: frozenset[str], present: frozenset[str]) -> "Outside":
         """Drop what other files offer whose type needs a name imported that the module binds already.
@@ -542,6 +544,7 @@ class Outside(NamedTuple):
             {name: typed for name, typed in self.fixtures.items() if not roots(typed[0]) & clashing},
             self.beyond,
             free_of(self.awaits, clashing),
+            self.values,
         )
 
 

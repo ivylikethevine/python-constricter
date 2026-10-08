@@ -12,6 +12,11 @@ import enum
 import typing as t
 from collections import namedtuple
 from typing import NewType, ParamSpec, TypeVar
+
+if sys.version_info >= (3, 12):
+    from typing import TypeAliasType
+else:
+    from typing_extensions import TypeAliasType
 from typing_extensions import TypedDict
 
 from other import TypeVar as Unrelated
@@ -20,6 +25,8 @@ T = TypeVar("T")
 P = ParamSpec("P")
 U = t.TypeVar("U")
 UserId = NewType("UserId", int)
+Plugin = TypeAliasType("Plugin", list[T], type_params=(T,))
+Named = t.TypeAliasType("Named", int)
 Pair = namedtuple("Pair", "a b")
 Other = collections.namedtuple("Other", "a")
 Color = enum.Enum("Color", "RED GREEN")

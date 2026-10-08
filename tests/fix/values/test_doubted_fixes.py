@@ -53,14 +53,14 @@ def test_a_read_of_a_union_may_be_narrowed_where_it_is_so_is_a_guess() -> None:
         "a": (None, False),
         "b": (None, False),
         "d": (None, False),
-        "e": ("list[int | str]", True),
+        "e": ("list[int]", True),  # what it's checked for
         "g": ("list[int | str]", False),  # no condition to narrow it
         "h": ("list[int | None]", False),  # a container of one isn't narrowed with it
         "i": ("int | str", True),
         "j": (None, False),
         "k": (None, False),
         "m": (None, False),
-        "n": ("list[C]", True),  # narrowed to the class it's checked for
+        "n": ("list[D]", True),  # narrowed to the class it's checked for
         "o": ("list[C]", False),
     }
 
@@ -369,3 +369,49 @@ def render(parts: list[str], named: bool) -> str:
 def test_a_name_a_type_ignore_line_uses_has_no_fix() -> None:
     """Declared, it leaves the comment nothing to excuse, which a checker may report."""
     assert _found(_EXCUSED) == {"text": (None, False), "other": ("str", False)}
+
+
+def test_what_a_test_leaves_out_isnt_in_the_type() -> None:
+    """A comprehension keeping only what isn't `None` holds none; a narrowed read doesn't type a call."""
+    source: str = """
+    import copy
+
+    class Trial:
+        number: int = 0
+
+    def f(
+        values: list[str | None],
+        flags: list[int],
+        nones: list[None],
+        template: Trial | None,
+        other: Trial | None,
+        kinds: type,
+    ) -> None:
+        a = min([v for v in values if v is not None])
+        b = [v for v in values]
+        c = max([n for n in flags if n is not None])
+        d = [v for v in nones if v is not None]
+        if template:
+            e = copy.deepcopy(template)
+            g = copy.deepcopy(other)
+            m = [template]
+            n = [other]
+        h = next(v for v in values if isinstance(v, str) and v)
+        i = [v for v in values if isinstance(v, (str, bytes))]
+        j = [v for v in values if isinstance(v, kinds)]
+        k = [t for t in (template, other) if isinstance(t, Trial)]
+    """
+    assert _found(source) == {
+        "a": ("str", False),
+        "b": ("list[str | None]", False),
+        "c": ("int", False),
+        "d": (None, False),  # nothing is left
+        "e": (None, False),  # `template` is a `Trial` there
+        "g": ("Trial | None", False),
+        "h": ("str", False),  # the one class it's checked for
+        "i": (None, False),  # one of several
+        "j": (None, False),  # whatever `kinds` holds
+        "k": ("list[Trial]", True),
+        "m": (None, False),  # a display of what's narrowed there
+        "n": ("list[Trial | None]", False),
+    }

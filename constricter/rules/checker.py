@@ -161,7 +161,7 @@ def _settings(
         lines,
         Known(
             free_of(calls, free),
-            factories(tree),
+            factories(tree) | (frozenset[str]() if outside is None else outside.values),
             {**(imported.attributes if imported else {}), **free_of_all(own.classes, free)},
             {**(imported.methods if imported else {}), **free_of_all(own.methods, free)},
             Indirect(

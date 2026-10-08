@@ -22,7 +22,7 @@ from constricter.cli.paths import STDIN, python_files
 from constricter.cli.protocol import HintError
 from constricter.cli.report import Format, Result, fix_reasons, render, statistics
 from constricter.cli.runs import BaselineRun, CheckRun, CoverageRun, FileRun
-from constricter.cli.workers import Workers
+from constricter.cli.workers import Workers, kept, started
 from constricter.fix.core import fixes
 from constricter.fix.core.known import Callee, Hints, Outside, Returns
 from constricter.fix.index import callers, decorated, installed, loose, plain, project
@@ -340,6 +340,17 @@ def _cover_path(path: Path, _outside: Outside, options: Options) -> CoverageRun:
 
 
 def _check_all(options: Options) -> tuple[list[Path], list[FileRun]]:
+    """Check every file (see `_check_rounds`), its rounds by one set of worker processes.
+
+    Returns:
+      The names, and what each file found.
+
+    """
+    with kept():
+        return _check_rounds(options)
+
+
+def _check_rounds(options: Options) -> tuple[list[Path], list[FileRun]]:
     """Check every file (`--jobs` at a time), in order.
 
     With `--infer-with`, the type checker's server runs throughout: it's asked for every file's
@@ -513,28 +524,24 @@ def _checked_all(
     if options.input.trace is not None:
         hinted = traced.merged(hinted, traced.load(options.input.trace), paths)
     coverage: bool = options.mode is Mode.COVERAGE  # needs nothing from the other files
-    stack: contextlib.ExitStack
-    with contextlib.ExitStack() as stack:
-        pool: Workers | None = None
-        if options.jobs != 1 and len(paths) > 1:
-            pool = stack.enter_context(Workers(paths, options.jobs))
-        if modules is None and pool:
-            modules = project.Index({}, []) if coverage else pool.index()
-        elif modules is None:
-            modules = project.Index({}, []) if coverage else project.index(paths)
-            collecting.indexed()
-        if not coverage:
-            modules = plain.settled(
-                decorated.passed(installed.with_installed(modules, installed.search_path())),
-                options.checks.plain_bases,
-            )
-        return schedule.checked(
-            paths,
-            check,
-            pool,
-            (modules, hinted),
-            _merged if options.mode is Mode.FIX else None,
+    pool: Workers | None = started(paths, options.jobs) if options.jobs != 1 and len(paths) > 1 else None
+    if modules is None and pool:
+        modules = project.Index({}, []) if coverage else pool.index()
+    elif modules is None:
+        modules = project.Index({}, []) if coverage else project.index(paths)
+        collecting.indexed()
+    if not coverage:
+        modules = plain.settled(
+            decorated.passed(installed.with_installed(modules, installed.search_path())),
+            options.checks.plain_bases,
         )
+    return schedule.checked(
+        paths,
+        check,
+        pool,
+        (modules, hinted),
+        _merged if options.mode is Mode.FIX else None,
+    )
 
 
 def _merged(before: FileRun, after: FileRun) -> FileRun:

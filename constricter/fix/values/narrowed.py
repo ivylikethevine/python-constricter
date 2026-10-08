@@ -46,10 +46,17 @@ def narrowed_at(found: Regions, value: ast.expr, line: int, *, union: bool) -> b
       Whether it is.
 
     """
-    if not isinstance(value, _READS):
-        return False
-    spans: tuple[Region, ...] = found.get(ast.unparse(value), ())
-    return any(start <= line <= end and (check or union) for start, end, check in spans)
+    return isinstance(value, _READS) and read_narrowed(found, ast.unparse(value), line, union=union)
+
+
+def read_narrowed(found: Regions, read: str, line: int, *, union: bool) -> bool:
+    """Check whether a read, as text, is narrowed at `line` (see `narrowed_at`).
+
+    Returns:
+      Whether it is.
+
+    """
+    return any(start <= line <= end and (check or union) for start, end, check in found.get(read, ()))
 
 
 def _block(body: Sequence[ast.stmt]) -> Iterator[tuple[str, Region]]:

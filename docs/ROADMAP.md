@@ -336,6 +336,14 @@
   standard-library tables in `constricter/fix/tables/`, their generator in `stdlib_tables/`; docs in
   `docs/` (changelog, contributing, security, integrations, fixes, runs), release notes grouped by
   `.github/release.yml`, issue and PR templates, CODEOWNERS.
+- **Packages weighed and left out.** constricter has no runtime dependency, and installs where only
+  pure Python does (PyPy, free-threaded builds). `pygls` or `lsprotocol` for the checkers' servers
+  (`cli/hints.py`): the protocol's types are the small part, and the rest (servers sized by memory,
+  a hung one found, restarted and asked again) no library has. `LibCST` for the edits: a native
+  parser, for edits already proven on 59 packages. `platformdirs` for one function of ten lines.
+  `networkx` or `graphlib` for the files' order: `graphlib` refuses the cycles it's there to find.
+  `msgspec` or `orjson` for the index sent to workers: native, and the index is sent more often than
+  it needs to be first. `nox` for `tests/ci_local.py`, which reads its steps from CI's own workflow.
 - **Pyright and basedpyright in editors**: `pyrightconfig.json`, which both read first, holds the
   shared settings (`local/.venv`, and the code checked alone) and extends `pyproject.toml`, where
   only basedpyright finds a section (`typeCheckingMode = "all"`). Plain Pyright resolves the dev
@@ -386,27 +394,13 @@ fix.
    longest waiting step now goes first. What's left to try: pandas's steps counted against the
    share, not let through it; and the items below that shorten a hinted fix. Done when a run takes
    under 20 minutes with the same counts. About 3 hours; coverage unchanged.
-3. **Workers that leave as the command does.** The command no longer waits on the interpreter's own
-   exit, which took 15 of the 67 seconds of a check of pandas in one process; its workers still do:
-   `Workers.__exit__` shuts each pool down and waits, and each worker frees the trees it parsed and
-   the index it was sent an object at a time. With every CPU the standard library still checks in
-   15.8s, against 12.1s at 0.3.3. End a worker as the command ends, once its last answer is read.
-   Done when that check's time after its last file is under a tenth of a second, measured. About 1
-   hour; coverage unchanged.
-4. **One set of workers for a run's rounds.** `command._checked_all` starts a `Workers` each time
-   it's called: for the first round, for the second (`_checked_more`), and for each of an
-   `--infer-with` fix's rounds (up to `HINT_ROUNDS`). Each time the processes start again, are sent
-   the whole index again (`schedule.sent` pickles it for each `_Pooled`), and parse their files
-   again. Keep the workers, their trees and their index for the command, and send only what a round
-   changed. Done when a second round starts no process and sends no module it didn't change. About 3
-   hours; coverage unchanged.
-5. **Hints asked for while the files are indexed.** `command._checked_all` waits for `session.hints`
+3. **Hints asked for while the files are indexed.** `command._checked_all` waits for `session.hints`
    before it starts a worker or reads a file: with `--infer-with`, indexing (a third of a check of
    the standard library) starts only once every server has answered every file. basedpyright's
    servers work 150 CPU seconds on pandas before their first answers, the checker's own processes
    idle meanwhile. Index while they answer. Done when a hinted check of pandas takes the longer of
    the two, not their sum. About 2 hours; coverage unchanged.
-6. **Each checker's servers, by its own measure.** How many servers a checker gets is decided by
+4. **Each checker's servers, by its own measure.** How many servers a checker gets is decided by
    basedpyright's memory (`hints._SERVER_MEMORY` and `_MEMORY_PER_BYTE`: 3.4 GB for pandas, so two
    within the default 8 GB) whatever the checker: ty's one server took 2.1 GB there. And ty has one
    server at most (`protocol.SERVERS`), measured on sqlalchemy, which it answers in 0.9s: on pandas
@@ -414,28 +408,104 @@ fix.
    and measure ty with two and four servers on pandas. Done when each checker's count is by its own
    memory, and ty's most is what the measurement says. About 2 hours; coverage unchanged.
 
+5. **The layers, checked.** `constricter.fix`'s four layers import only those before them, the rules
+   and the fixes import neither the command nor the plugins, and `rules.walked` imports nothing of
+   constricter's: stated here, kept by hand. `import-linter` (a development dependency) checks each
+   as a contract; all three hold on the code as it is. Add them to `pyproject.toml`, and
+   `lint-imports` to CI's lint job. Done when a `fix.core` module importing `fix.index` fails CI.
+   About 1 hour; coverage unchanged.
+6. **Profiles and timings that can be trusted.** `corpus_profile.py` runs `cProfile`, which charged
+   a check's slowdown to the functions called most and missed the 15 seconds the interpreter's exit
+   took; the timings behind this list were shell loops, one run each. Profile with `py-spy` (it
+   samples from outside, the workers too), and time with `hyperfine` (several runs, their spread: a
+   check of pandas is 50.3s ± 0.2). Done when `corpus_profile.py` writes a sampled profile, and a
+   script times the standard library and pandas at `--jobs` 1 and every CPU for two checkouts. About
+   3 hours; coverage unchanged.
+7. **Timings kept between runs.** Each speed item here is done at a number no one records: the next
+   change is measured against a figure in this file. `pytest-benchmark` or `asv` (development
+   dependencies) keep a check's time per commit. Done when a pull request's check of pydantic is
+   compared with its base's, as its coverage is. About 3 hours; coverage unchanged.
+8. **The tests, in parallel.** 4,800 tests take 50 seconds in one process. `pytest-xdist` runs them
+   on every CPU; the seven that start `--jobs` workers of their own are to run alone. Done when the
+   suite takes under 15 seconds here with the same coverage. About 1 hour; coverage unchanged.
+9. **A step's processes, by `psutil`.** `tests/corpus/corpora_cpu.py` reads `/proc` itself for each
+   step's CPU seconds, on Linux alone. `psutil` (for the corpus scripts only) reads a process's
+   children anywhere, and their memory, which the scripts size workers by. Done when the module is a
+   few lines over it, and a step records its tree's peak memory. About 1 hour; coverage unchanged.
+10. **`Module` and `Outside`, by name.** Both are tuples of 25 to 40 fields, built by position
+    (`schedule.outside` passes 24 arguments in order): a field added in the middle shifts every one
+    after it, unseen where two neighbours share a type. Build them by keyword, as frozen dataclasses
+    with slots (the standard library's), and time it: `Module`'s are pickled to the workers. Done
+    when neither is built by position and a check is no slower. About 3 hours; coverage unchanged.
+
+11. **How wide a type `--fix` may write, chosen.** The wider types below are each a fix kind of its
+    own, off unless asked for: `fix-widen = ["unions", "vague", "untyped-parameters", ...]` in
+    `[tool.constricter]` (`--fix-widen` on the command line), `"all"` for every one, and each still
+    answers to `fix-ignore` and `unsafe-fix-select` as any kind does. Every line one writes is
+    marked (`# constricter: auto`): LVA005 passes over a marked line, `--coverage` counts it apart
+    (typed, widened), and a later `--fix` may replace what it wrote there, as it never does an
+    author's annotation. Not `object` at any level: it hides no error, and nearly every use of the
+    value then is one. Done when each kind below is on or off by the setting alone, and a marked
+    annotation is replaced once its type is known. About 3 hours; no coverage by itself.
+12. **Wider: what comes of an unannotated parameter.** `x = param` and `y = param.method()`, the
+    parameter untyped: 8,565 bindings with no fix on the seven corpora (4,121 copies, 4,444 method
+    calls). `Any`, marked, says what every checker already takes it for (mypy an `Any`, pyright an
+    unknown): nothing is lost, and a later `--fix` types it once the parameter is annotated.
+    Drawback: it says nothing a reader couldn't see, and an `Any` written reads as chosen.
+    Recommended: the first to build. Done when the corpus packages' checkers find nothing new after
+    it. About 3 hours, for about 3.4% of the untyped bindings (8,565 widened).
+13. **Wider: `None`, then a value of no known type.** `x = None`, bound later to what `--fix` can't
+    type: 3,519 bindings. `Any | None`, marked. Drawback: a checker reads it as `Any`, so it says
+    only that `None` is possible, which the first line already did; and where the later value is one
+    a checker can type, the `Any` hides it. Recommended: last of these, if at all. Done when the
+    checkers find nothing new after it. About 2 hours, for about 1.4% (3,519 widened).
+14. **Wider: `Any` for whatever is left.** An attribute, a subscript or arithmetic on what has no
+    type: the rest of the bindings with no fix. `Any`, marked: every binding is then annotated.
+    Drawback: the same as for a call's (see the Medium item), with less to say for it: pyright reads
+    types through attributes and operators that `--fix` doesn't, and loses each one written over.
+    Recommended: not by default, and only for a project checked by mypy alone. Done when
+    `--coverage` reads 100% typed or widened on a corpus with it on. About 2 hours; the rest of the
+    offences, none of it a type.
+
 ### Medium: 4 to 8 hours
 
-1. **What a guess breaks, by mechanism.** After `--fix --unsafe-fixes` the packages' own type
-   checkers find 48 new errors on pandas, 9 on sqlalchemy and 10 on pydantic, and on the 52 packages
-   128 on altair, 76 on mypy, 39 on optuna, and 1 to 9 on each of nine more. [RUNS.md](RUNS.md)
-   traces each to its fix's mechanisms: mypy's are a rebound name's (`call+rebound+unpack`, 20) and
-   a constructor's (16). A union of a display's elements (`joined`) and an overload picked by the
-   checked files' own classes are judged here too, as their own items were to be. For each mechanism
-   with ten errors or more: fix its cause, or offer nothing where the guess is wrong more often than
-   right. Done when no package has ten new errors after the guesses. About 8 hours; coverage down by
-   the guesses withdrawn.
-2. **The main process, in a parallel check.** A module's functions are found by the names a file
-   writes (`Module.written`), and each worker works out what its own files import. The last run that
-   timed it, before the workers did, had the main process at 41% to 46% of a `--jobs` check
-   (pandas's 90%, of 26.9s; 11.5s now). Time it again (`corpus_profile.py`), and move what's left of
-   its share to the workers. Done when it's under a tenth of a check of the standard library. About
-   4 hours; coverage unchanged.
+1. **What a guess breaks, by its cause.** After `--fix --unsafe-fixes` the packages' own type
+   checkers find 42 new errors on pandas, 10 on pydantic and 3 on sqlalchemy; on the 52 packages 31
+   on mypy, and 1 to 6 on each of eight more. Nine causes are fixed (altair's 128 are none, mypy's
+   76 are 31, optuna's 39 are 3, narwhals's 8 are 1: see the changelog). What's left:
+   - A type from a package the suite's own checker can't follow (`etree.Element`, of `lxml`): 14 of
+     mypy's. Its environment's, as pydantic's 10 are; listed, not fixed.
+   - What an unannotated function's `return`s give (`returned`), declared where a checker took
+     `Any`: about 20 of pandas's, from 13 of its guesses, each another latent error (an attribute
+     set after construction, an `X | None` used unchecked). No one cause: count how many `returned`
+     guesses pandas has before judging the 13.
+   - A name first an `X | None`, tested for `None` and bound again (`code = error.get("code")`, then
+     `if code is None: code = SYNTAX`): typed by its first value. Three of mypy's.
+   - A module's name bound in each arm of an `if` to another function (`formatter = rich` /
+     `formatter = plain`): structlog's 6.
+
+   Done when each package's errors left are its environment's, or under one for each hundred of its
+   guesses. About 3 hours; coverage down by the guesses withdrawn.
+
+2. **A parallel check, past its longest chain.** With every CPU the standard library checks in 12.9s
+   and pandas in 11.3s (14.4s and 11.4s before the workers were kept for a run's rounds): 46s and
+   50s in one process, 29s in two, 18s in four, 13.7s and 12.9s in eight, so about 10s of each
+   doesn't shorten with more. It isn't the main process (indexing, ordering and telling the workers
+   take 2 to 3s) but the order: a file waits for those whose unannotated functions it calls, 29 deep
+   in the standard library, and pandas's 217 files that call each other go round up to four times
+   before the other 1,200 start. Most of those edges are by a method's name alone (`loose.needs`:
+   12,704 of the standard library's, to 3,400 by an imported function). Tried, and slower: a worker
+   with nothing to do checking files ahead of their turn, each confirmed when its turn came (16.0s
+   from 14.4s: most are checked twice, and 25 of pandas's findings then differed). Left to try: an
+   edge only where the receiver's class is known to be the other module's; and a file checked again
+   from where its first check ended when what it imports returns anew, as it is when its parameters
+   are typed. Done when the standard library checks in under 9s with every CPU, its findings the
+   same. About 8 hours; coverage unchanged.
 3. **A file checked again, whole.** A file whose functions' parameters every call types is checked
-   again from where its first check ended (`checker._resumed`): not with `--fix` (its text has
-   changed), LVA012, or in another worker process than the first check's. That second round costs
-   42% of the first on the standard library, 33% on django, 60% on pip and 6% on pandas. Done when
-   it's under a tenth on each. About 5 hours; coverage unchanged.
+   again from where its first check ended (`checker._resumed`), in the process that checked it
+   first, a worker too now: not with `--fix` (its text has changed) or LVA012. That second round
+   costs 42% of the first on the standard library in one process, 33% on django, 60% on pip and 6%
+   on pandas. Done when it's under a tenth on each. About 5 hours; coverage unchanged.
 4. **Only the classes a file uses.** A file is given the line of bases of every class it could name
    through its imports (`own_types.lineages`), and every module's classes under each package it
    imports, worked out for each file whether it names one or not; it passes over the classes whose
@@ -460,6 +530,61 @@ fix.
    fixes made with their lines as they were, for `--show-fixes` and the report formats. Done when
    `corpus_suite.compared` runs constricter once, and blames the same errors on the same fixes.
    About 5 hours; coverage unchanged.
+
+7. **Compiled where it can be.** `mypyc` compiles the `rules` and `fix` packages as they are
+   annotated (every local is): 64 of their modules built, a check of pandas takes 38.0s from 50.3s
+   in one process and 9.1s from 11.0s with every CPU, the standard library 35.5s from 46.3s and
+   11.5s from 14.0s; one module alone (`rules.walked`) gains 2%. It took nine changes of four kinds
+   to the source to run right: an `else` after `if TYPE_CHECKING:` it takes for unreachable; a
+   `frozenset & d.keys()` five times, a `set` where typeshed says `frozenset`; `[_, *_] as args` in
+   a `case`, left unbound in its guard (twice); a name bound again by `:=` after an `is not None`
+   return, taken for `None`; a `dict` subclass's class-level default, and the tables' JSON cast to
+   tuples, each left interpreted. And of pandas's 77,931 findings two differ (a type alias's fix, a
+   guess where it's certain): unexplained. Ship it as optional wheels beside the pure one (as
+   Black's are), by `hatch-mypyc`, with the whole suite run on the compiled build and the corpora's
+   output compared with the pure one's. Done when a compiled wheel checks every corpus as the pure
+   one does, and CI builds and tests both. About 8 hours, for a check 1.2 to 1.3 times as fast.
+8. **The stubs, read by `typeshed-client`.** `stdlib_tables/stubs.py` (532 of the generator's 3,774
+   lines) decides each stub's `sys.platform` and `sys.version_info` blocks, lists what it binds and
+   exports, and follows re-exports: what `typeshed-client` does, given the pinned basedpyright's
+   typeshed. Its names agree with ours for all 752 modules on all 12 configurations; whether a
+   module exists differs for 147 pairs (`VERSIONS`), unread yet. A build dependency only: the tables
+   are generated before a wheel is made. It doesn't read types or match overloads (`reading.py`,
+   `overloads.py`). Done when the tables come out byte for byte the same with `stubs.py` a layer
+   over it. About 5 hours; coverage unchanged.
+
+9. **A wider type, marked, where a narrow one isn't known.** A name bound to two types is left
+   untyped (a union is the author's to write), and a type vaguer than `vague` allows is known and
+   never written. Counted on the standard library, pandas, django, sqlalchemy and pydantic, of
+   224,160 untyped bindings with 99,411 fixed: the union of a rebound name's types (`int | str`)
+   fixes 1,248 more, and a vague type written anyway (`dict[str, Any]`) 1,238; a read typed as
+   declared where a test narrows it 304, and a copy of an `X | None` 222, each withheld for the type
+   errors it brought. All four, 2,869: 44.3% to 45.6%. The other 122,000 have no type at all to
+   widen, and `Any` for them turns off what a checker that reads an unannotated function's `return`s
+   (pyright) had inferred. Write the first two as guesses, two kinds of `fix-widen` (see "How wide a
+   type `--fix` may write, chosen"), each line marked. Recommended: both, the union first. Done when
+   the corpus packages' suites and type checkers find nothing new after them, and a marked
+   annotation is replaced once its type is known. About 6 hours, for about 1% (some 2,500 guesses).
+
+10. **Wider: a container whose elements aren't known.** An empty list nothing in sight fills (3,224
+    bindings), and a display of mixed or unknown elements (3,302 lists, 3,128 tuples): `list[Any]`,
+    `tuple[Any, ...]`, `dict[str, Any]` where the keys are known, marked. An empty container is one
+    a checker asks an annotation for anyway. Drawback: for a display with elements, a checker infers
+    more than `list[Any]` says (`list[int | str]`), and the annotation hides it. Recommended: the
+    empty ones, as a kind of their own; the mixed ones as another, off unless asked for. Done when
+    the checkers find nothing new after the empty ones, and what they find after the mixed ones is
+    counted. About 4 hours, for about 1.3% (3,224) and 2.6% (6,430).
+11. **Wider: a call on what has no type.** `obj.method()`, `module.func()`, a chain of them: at
+    least 56,540 bindings with no fix (12,714 chained, 12,251 on a local, 10,768 on `self`, 9,174 on
+    a module, 5,176 an imported function, 3,688 an imported attribute, 2,769 a module's own
+    unannotated function). `Any`, marked. Drawback: the largest by far, and the costliest: mypy
+    takes an unannotated function's call for `Any` already, but pyright reads its `return`s, and an
+    `Any` written over what it inferred turns that checking off. Recommended: as two kinds. One for
+    a call of the checked files' own unannotated function, which mypy sees as `Any` too (count it
+    first: `self.method()` and a module's own are 13,537 at most); one for every other call, for a
+    project that chooses coverage over pyright's inference. Done when each is counted, and the first
+    brings mypy nothing new on the corpus packages. About 6 hours, for up to 22% of the offences,
+    none of it a type.
 
 What the finished items left, each under 3 hours and under 0.1%: a fixture's value bound to a name
 before its attribute is read (`both = capsys.readouterr()`, then `both.out`), a `parametrize` on a

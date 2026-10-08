@@ -17,7 +17,7 @@ from typing import Final
 from constricter.fix.core.known import ImportPlan, Inference
 from constricter.fix.values import fills as filling
 from constricter.fix.values import hinted
-from constricter.fix.values.doubts import contains_inner, spelled_self
+from constricter.fix.values.doubts import contains_inner, narrowing, spelled_self
 from constricter.offences import (
     CAN_BE_FINAL,
     UNANNOTATED,
@@ -26,6 +26,7 @@ from constricter.offences import (
     Edit,
     Fix,
     Offence,
+    at,
 )
 from constricter.rules.annotations import node_name, roots
 from constricter.rules.flow import Binding, Lifetime, members
@@ -97,7 +98,8 @@ def optionals(scope: Scope) -> None:
 def rebinds(scope: Scope) -> None:
     """Refit each first binding's fix to every value the name is bound to later (see `rebinding`).
 
-    A name something out of sight writes is left alone.
+    A name something out of sight writes is left alone, and one bound again to a call on itself
+    whose type isn't known has no fix: a fifth of those guesses were wrong, on the packages measured.
     """
     index: int
     o: Offence
@@ -117,6 +119,14 @@ def rebinds(scope: Scope) -> None:
         first, *rest = lifetime.bindings
         if first.at != (o.line, o.col) or not rest:
             continue
+        function: FunctionDef | None = scope.kind.function
+        if function is not None and any(
+            binding.value is None and binding.guess is None and binding.at in _converted(function)
+            for binding in rest
+        ):
+            # Bound again to a call on itself, of a type that isn't known: a conversion, as often as not.
+            scope.offences[index] = replace(o, edit=None)
+            continue
         found: Refit | Fix | None = refit(o, fix, rest, scope.settings.hierarchy, self_type)
         refitted: Fix | None = _offered(scope, found) if isinstance(found, Refit) else found
         scope.offences[index] = replace(o, edit=refitted)
@@ -135,7 +145,9 @@ def _offered(scope: Scope, found: Refit) -> Fix | None:
 def fills(scope: Scope) -> None:
     """Offer an empty container, bound nowhere else, the type of what its function adds to it.
 
-    A guess (see `constricter.fix.values.fills`), resting on `filled` for `unsafe-fix-select`.
+    A guess (see `constricter.fix.values.fills`), resting on `filled` for `unsafe-fix-select`. Not
+    where it's added a name its function tests (`isinstance(d, C)`, `d is None`, `if d`): a checker
+    takes the narrowed type for the elements'.
     """
     index: int
     o: Offence
@@ -148,6 +160,9 @@ def fills(scope: Scope) -> None:
         if lifetime is None or lifetime.escaped or len(lifetime.bindings) != 1:
             continue
         body = body or filling.uses(scope.kind.body())
+        function: FunctionDef | None = scope.kind.function
+        if function is not None and filling.added_names(body, o.name, kind) & narrowing(function):
+            continue  # what's added is narrowed where it's added
         found: Inference | None
         if (
             found := filling.filled(
@@ -317,6 +332,31 @@ def _final_fix(fix: Fix, plan: ImportPlan) -> Fix:
 
     """
     return fix._replace(imports=imports_of(fix.annotation, plan), after=plan.after)
+
+
+@lru_cache(maxsize=1024)  # asked of each of a function's names bound again
+def _converted(function: FunctionDef) -> frozenset[tuple[int, int]]:
+    """Find where a function binds a name to a call that takes the name itself: `item = proper(item)`.
+
+    Returns:
+      Where each such name is bound.
+
+    """
+    found: set[tuple[int, int]] = set()
+    node: ast.AST
+    name: str
+    target: ast.Name
+    call: ast.Call
+    for node in ast.walk(function):
+        match node:
+            case ast.Assign(targets=[ast.Name(id=name) as target], value=ast.Call() as call) if any(
+                isinstance(arg, ast.Name) and arg.id == name
+                for arg in (*call.args, *(keyword.value for keyword in call.keywords))
+            ):
+                found.add(at(target))
+            case _:
+                pass
+    return frozenset(found)
 
 
 @lru_cache(maxsize=1024)  # a function is finished twice: as it's checked, and with its module

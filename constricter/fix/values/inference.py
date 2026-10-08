@@ -67,6 +67,7 @@ _FACTORIES: Final = frozenset(
         "NewType",
         "ParamSpec",
         "StrEnum",
+        "TypeAliasType",
         "TypeVar",
         "TypeVarTuple",
         "TypedDict",
@@ -623,6 +624,7 @@ def _comprehension(
             )
         case _:
             element: Inference | None = inference(value.elt, known, inside)
+            element = element and shapes.sifted(value, element)
             kind: str = "list" if isinstance(value, ast.ListComp) else "set"
             return (
                 Inference(
@@ -925,6 +927,7 @@ def _generated(value: ast.GeneratorExp, known: Known, declared: Mapping[str, str
 
     """
     found: Inference | None = inference(value.elt, known, comprehended(value, known, declared))
+    found = found and shapes.sifted(value, found)
     filtered: bool = any(generator.ifs for generator in value.generators)
     if found is None or (filtered and _UNION.search(found.annotation)):
         return None

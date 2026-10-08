@@ -315,15 +315,17 @@ def f(item: int | str, other: int) -> None:
     if is_str(item):
         a = collections.deque([item])
     b = collections.deque([other])
+    c = collections.deque([item])
 """
 
 
 def test_a_read_the_function_tests_makes_a_type_it_binds_a_guess() -> None:
-    """A type checker sees `item` narrowed where it's read, and the `deque` of that type."""
+    """A type checker sees `item` narrowed where it's read, and the `deque` of that type: no fix there."""
     found: list[Offence] = check_source(textwrap.dedent(TESTED))
     assert {o.name: (o.fix, o.unsafe) for o in found if o.code == UNANNOTATED} == {
-        "a": ("collections.deque[int | str]", True),
+        "a": (None, False),
         "b": ("collections.deque[int]", False),
+        "c": ("collections.deque[int | str]", True),  # tested somewhere, not around it
     }
 
 

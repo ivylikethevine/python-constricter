@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: MIT
 """What the index says of checked modules together: one type's several spellings, and what's checked first.
 
-The ways a file spells one class or alias another module defines (`same`), the modules whose
+The ways a file spells one class or alias another module defines (`same`), the names it imports
+that are values where they're defined (`values`), the modules whose
 unannotated functions a module calls, checked before it (`needs`), and the index with what a
 checked module's functions return (`with_returned`).
 """
@@ -41,6 +42,30 @@ def same(catalog: Index, path: Path, guarded: Mapping[str, Guarded]) -> tuple[fr
             if (defined := project.definition(catalog.modules, origin, kind)) is not None:
                 groups.setdefault((defined[0].name, defined[1]), set()).add(name)
     return tuple(frozenset(group) for group in groups.values() if len(group) > 1)
+
+
+def values(catalog: Index, path: Path) -> frozenset[str]:
+    """Find the names the file at `path` imports that another checked module binds by assignment.
+
+    `F`, by `F = duckdb.FunctionExpression` there: a value, whatever its name looks like, and a call
+    of it constructs nothing a type can be written for.
+
+    Returns:
+      Them, as the file binds them; none for a file `catalog` doesn't have.
+
+    """
+    target: Module | None
+    if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
+        return frozenset()
+    found: set[str] = set()
+    local: str
+    origin: Origin
+    for local, origin in target.names.items():
+        where: Origin = project.canonical_origin(catalog.modules, origin)
+        defining: Module | None = catalog.modules.get(where[0])
+        if defining is not None and where[1] in defining.assigned and where[0] != target.name:
+            found.add(local)
+    return frozenset(found)
 
 
 def with_returned(catalog: Index, found: Mapping[str, Returns]) -> Index:

@@ -41,7 +41,15 @@ _FACTORIES: Final = frozenset(
         *(
             f"{module}.{name}"
             for module in ("typing", "typing_extensions")
-            for name in ("NamedTuple", "NewType", "ParamSpec", "TypeVar", "TypeVarTuple", "TypedDict")
+            for name in (
+                "NamedTuple",
+                "NewType",
+                "ParamSpec",
+                "TypeAliasType",
+                "TypeVar",
+                "TypeVarTuple",
+                "TypedDict",
+            )
         ),
         *(f"enum.{name}" for name in ("Enum", "Flag", "IntEnum", "IntFlag", "StrEnum")),
         "collections.namedtuple",

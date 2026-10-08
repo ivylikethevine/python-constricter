@@ -26,7 +26,7 @@ from constricter.fix.values.doubts import (
 from constricter.fix.values.guesses import guessed, guessing
 from constricter.fix.values.inference import inference, inferred
 from constricter.fix.values.members import parsed
-from constricter.fix.values.narrowed import narrowed_at
+from constricter.fix.values.narrowed import narrowed_at, read_narrowed
 from constricter.offences import (
     LONG_TUPLE,
     MEMBER,
@@ -268,9 +268,10 @@ class Scope:
 
         `code` is reported at `(line, col)` (`None` means typed), offering `fix` if there's one.
         `typed`: the value's certain type, if `--fix` knows it (a loop's element), which a name
-        declared already is then bound to.
+        declared already is then bound to, and which a fix for the name's first binding is held to
+        (see `rebinding`).
         """
-        self.lifetime(name).bind(where, None)
+        self.lifetime(name).bind(where, None, None if typed is None else (typed, frozenset()))
         if name in self.declared:
             self.inferred.rebound(name, typed)
         self._first(name, where, code, fix)
@@ -425,6 +426,7 @@ class Scope:
         if fix is not None and (
             narrowed_first(value, fix)
             or narrowed_at(facts.narrowed, value, line, union=len(members(fix.annotation) or ()) > 1)
+            or self._takes_narrowed(value, fix, line)
         ):
             fix = None
         if fix is None:
@@ -441,6 +443,31 @@ class Scope:
             )
             unsafe = bool(origins)
         return fix, unsafe, origins
+
+    def _takes_narrowed(self, value: ast.expr, fix: Inference, line: int) -> bool:
+        """Check whether a fix takes its type from a read narrowed at `line`: `deepcopy(x)`, in `if x:`.
+
+        Or holds one in a display (`[x]`, there): its elements are the narrowed type's.
+
+        Returns:
+          Whether it does: the read has another type there than it's declared.
+
+        """
+        types: Mapping[str, str] = self.inferred.types
+        held: list[str] = [
+            element.id
+            for element in (value.elts if isinstance(value, ast.List | ast.Set | ast.Tuple) else ())
+            if isinstance(element, ast.Name)
+        ]
+        return any(
+            read_narrowed(
+                self.settings.facts.narrowed,
+                read,
+                line,
+                union=len(members(types.get(read, "")) or ()) > 1,
+            )
+            for read in (*fix.reads, *held)
+        )
 
     def _constant(self, fix: Inference) -> Inference | None:
         """Declare an ALL_CAPS constant passed to a call `Final`, which keeps its literal's `Literal` type.
