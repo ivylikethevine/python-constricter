@@ -7,18 +7,29 @@ A marked annotation is `--fix`'s own: it isn't LVA005, `--coverage` counts it ap
 
 import ast
 import re
-from collections.abc import Collection, Sequence
+from collections import Counter
+from collections.abc import Collection, Mapping, Sequence
 from functools import lru_cache
-from typing import Final
+from typing import Final, NamedTuple
 
 from constricter.fix.core.known import ImportPlan, Inference
 from constricter.fix.values import fills
-from constricter.offences import EMPTY_CONTAINERS, MARK, MIXED_CONTAINERS, UNTYPED_PARAMETERS
-from constricter.rules.syntax import FunctionDef
-from constricter.rules.walked import walk
+from constricter.offences import (
+    EMPTY_CONTAINERS,
+    MARK,
+    MIXED_CONTAINERS,
+    UNKNOWN_CALLS,
+    UNTYPED_CALLS,
+    UNTYPED_PARAMETERS,
+)
+from constricter.rules.annotations import node_name
+from constricter.rules.syntax import FUNCTION_DEFS, FunctionDef
+from constricter.rules.walked import children, classes, walk
 
 ANY: Final = "typing.Any"
 _RECEIVERS: Final = frozenset({"self", "cls"})
+# The decorators that leave a method's call its own `return`s.
+_BINDERS: Final = frozenset({"staticmethod", "classmethod"})
 # The mark, ending its line, with the space before it: what a replaced widening's fix deletes.
 _MARKED: Final = re.compile(rf"[ \t]*{re.escape(MARK)}(?=[ \t]*[\r\n]*$)")
 
@@ -141,3 +152,150 @@ def container(value: ast.expr, plan: ImportPlan, kinds: Collection[str]) -> Infe
         return None
     reason: str = "an empty container nothing fills" if empty else "a display of mixed or unknown elements"
     return Inference(annotation, reason, frozenset({kind}))
+
+
+class Own(NamedTuple):
+    """A module's functions and classes a call may name, each defined once: what `called` looks through.
+
+    `functions`: its top-level functions, by name; `classes`: its classes, anywhere, by name.
+    """
+
+    functions: Mapping[str, FunctionDef]
+    classes: Mapping[str, ast.ClassDef]
+
+
+class Caller(NamedTuple):
+    """The function a call is in: its class, where it reads a method's `self`, and the names it binds."""
+
+    owner: str | None
+    bound: Collection[str]
+
+
+@lru_cache(maxsize=2)  # asked of each scope of a module in turn
+def own(tree: ast.Module) -> Own:
+    """Read a module's `Own`.
+
+    Returns:
+      It.
+
+    """
+    defined: list[FunctionDef | ast.ClassDef] = [
+        *(stmt for stmt in tree.body if isinstance(stmt, FUNCTION_DEFS)),
+        *classes(tree),
+    ]
+    count: Counter[str] = Counter(node.name for node in defined)
+    once: list[FunctionDef | ast.ClassDef] = [node for node in defined if count[node.name] == 1]
+    return Own(
+        {node.name: node for node in once if isinstance(node, FUNCTION_DEFS)},
+        {node.name: node for node in once if isinstance(node, ast.ClassDef)},
+    )
+
+
+def _method(found: Own, owner: str, name: str) -> FunctionDef | None:
+    """Find the method a class's instance takes by `name`: its own, or the first of its bases'.
+
+    Returns:
+      Its definition, or `None`: where a class on the way isn't the module's, or binds the name
+      more than once (overloads, a property's setter) or otherwise than by a `def`.
+
+    """
+    waiting: list[str | None] = [
+        None,
+        owner,
+    ]  # each class still to look in, the next one last; `None` ends it
+    current: str
+    for current in iter(waiting.pop, None):
+        node: ast.ClassDef | None
+        if (node := found.classes.get(current)) is None:
+            return None
+        bound: list[ast.AST]
+        if bound := _bindings(node, name):
+            method: ast.AST = bound[0]
+            return method if len(bound) == 1 and isinstance(method, FUNCTION_DEFS) else None
+        bases: list[str] = [base.id for base in node.bases if isinstance(base, ast.Name)]
+        if len(bases) != len(node.bases):
+            return None
+        waiting.extend(reversed(bases))
+    return None
+
+
+def _bindings(node: ast.ClassDef, name: str) -> list[ast.AST]:
+    """Find what binds `name` in a class's body: not in its methods' bodies, nor a nested class's.
+
+    Returns:
+      Each `def`, class and store of it.
+
+    """
+    found: list[ast.AST] = []
+    waiting: list[ast.AST | None] = [None, *node.body]  # each node still to read; `None` ends it
+    child: ast.AST
+    for child in iter(waiting.pop, None):
+        if isinstance(child, (*FUNCTION_DEFS, ast.ClassDef)):
+            found.extend([child] if child.name == name else [])
+        elif isinstance(child, ast.Name):
+            found.extend([child] if child.id == name and isinstance(child.ctx, ast.Store) else [])
+        else:
+            waiting.extend(children(child))
+    return found
+
+
+def _undeclared(function: FunctionDef, *, awaited: bool) -> bool:
+    """Check whether a function's call is one a checker reading no body takes for anything.
+
+    Returns:
+      Whether it declares no return, by an annotation or a type comment, is decorated at most as a
+      static or class method, and is an `async def` just where its call is `awaited`.
+
+    """
+    return (
+        function.returns is None
+        and not function.type_comment
+        and isinstance(function, ast.AsyncFunctionDef) == awaited
+        and all(node_name(decorator) in _BINDERS for decorator in function.decorator_list)
+    )
+
+
+def called(
+    value: ast.expr,
+    caller: Caller,
+    found: Own,
+    plan: ImportPlan,
+    kinds: Collection[str],
+) -> Inference | None:
+    """Type a call of no known type as `Any`, awaited or not.
+
+    Kind `untyped-calls` where it calls a function of the module's that declares no return, which
+    a checker reading no body takes for anything already: a top-level function by its name, or a
+    method of `caller`'s class (or of its bases in the module) on `self` or `cls`. Kind
+    `unknown-calls` for any other. Only the kinds among `kinds`.
+
+    Returns:
+      The inference, or `None`: for any other value, or where the module (`plan`) can't name `Any`.
+
+    """
+    awaited: bool = isinstance(value, ast.Await)
+    call: ast.expr = value.value if isinstance(value, ast.Await) else value
+    if not isinstance(call, ast.Call):
+        return None
+    callee: FunctionDef | None = None
+    name: str
+    receiver: str
+    owner: str
+    match call.func, caller.owner:
+        case ast.Name(id=name), _ if name not in caller.bound:
+            callee = found.functions.get(name)
+        case ast.Attribute(value=ast.Name(id=receiver), attr=name), str() as owner if receiver in _RECEIVERS:
+            callee = _method(found, owner, name)
+        case _:
+            pass
+    untyped: bool = callee is not None and _undeclared(callee, awaited=awaited)
+    kind: str = UNTYPED_CALLS if untyped else UNKNOWN_CALLS
+    spelled: str | None
+    if (spelled := plan.spell(ANY) if kind in kinds else None) is None:
+        return None
+    reason: str = (
+        f"a call of `{ast.unparse(call.func)}`, which declares no return"
+        if untyped
+        else "a call of no known type"
+    )
+    return Inference(spelled, reason, frozenset({kind}))

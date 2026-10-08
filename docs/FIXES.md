@@ -821,6 +821,8 @@ does:
 | `mixed-containers`   | `list[Any]`, `tuple[Any, ...]`, `dict[str, Any]` for a display of mixed things | certain |
 | `unions`             | `int \| str` for a name bound to values of two or three types                  | a guess |
 | `vague`              | a type vaguer than `vague` allows (`dict[str, Any]`), written anyway           | a guess |
+| `untyped-calls`      | `Any` for a call of the module's own function that declares no return          | certain |
+| `unknown-calls`      | `Any` for any other call of no known type                                      | certain |
 
 ```toml
 [tool.constricter]
@@ -842,14 +844,35 @@ fix-widen = ["untyped-parameters", "empty-containers"]
 - `vague`: a value whose type is known and vaguer than `vague` allows (a call declared to return a
   `dict[str, Any]`), which `--fix` otherwise never writes.
 
-The last four are for a function's names bound once (a union's, of course, more than once), by a
-statement of their own.
+- `untyped-calls`: `x = helper()` or `x = self.load()`, awaited or not, where `--fix` has no type
+  for the call and its function declares no return: a top-level function of the module's, or a
+  method its class or one of the class's bases in the module defines, called on `self` or `cls`.
+  `Any` there is what a checker that reads no body (mypy) takes the call for already; one that reads
+  its `return`s (pyright) loses what it inferred. Not a function that's decorated (but as a static
+  or class method) or defined twice, nor an `async def` called without `await`.
+- `unknown-calls`: every other call `--fix` has no type for (`x = obj.method()`,
+  `x = module.func()`, an imported function's). The widest of the kinds: it hides whatever a checker
+  made of the call. Not a call `--fix` types and doesn't write (a `re.Match[str] | None` nothing
+  narrows): a checker knows that one.
+
+The containers, `unions` and `vague` are for a function's names bound once (a union's, of course,
+more than once), by a statement of their own; the calls' are for a function's names first bound by
+one, whatever they're bound to later.
 
 On SQLAlchemy 2.0.54, with `--unsafe-fixes`: 175 bindings by `untyped-parameters`, 196 by
 `empty-containers`, 98 by `mixed-containers`, 184 by `vague` and 9 by `unions`, 662 together (4.5%
 of its bindings); one pass leaves a second nothing. basedpyright then reports no error in a file
 under a rule it hadn't one for, and 22 errors fewer: an `Any` written hides what a checker had
 inferred, most of all in a display (13 of them by `mixed-containers`).
+
+On pydantic 2.13.5, `--fix` with the two kinds of call marks 325 of its 3,956 bindings (8.2%), all
+by `unknown-calls`: every function of pydantic's declares its return. With `--unsafe-fixes` and
+every kind, 507 are widened, from 187 without the calls': 74.3% of its bindings typed or widened,
+from 66.2%. One pass leaves a second nothing. basedpyright reports 165 errors before and after: two
+fewer, which the `Any`s hide, and two more, of one statement and its copy in `pydantic.v1`
+(`name = name or parts.local_part`, `name` a `str | None`, `parts` from a package that isn't
+installed): assigned an explicit `Any`, a name keeps its declared type, where a value the checker
+couldn't type at all left it a `str`.
 
 Every statement a widening writes ends with `# constricter: auto`, after any comment already there
 (on its last line, if it has several; a union's declaration, on its own):

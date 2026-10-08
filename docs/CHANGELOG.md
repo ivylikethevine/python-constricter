@@ -6,6 +6,12 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `fix-widen` has two more kinds, for a function's name bound to a call `--fix` has no type for,
+  each `Any`, marked: `untyped-calls` (a call of the module's own function or method that declares
+  no return, `x = helper()`, `x = self.load()`: what mypy takes it for already) and `unknown-calls`
+  (any other: `x = obj.method()`, `x = module.func()`), whatever the name is bound to later. On
+  pydantic, `--fix` with both marks 325 of 3,956 bindings (8.2%, all `unknown-calls`); basedpyright
+  finds two errors fewer and two more.
 - `fix-widen` (`--fix-widen KINDS`) names the wider types `--fix` may write where a value has no
   type it can work out, or none it may write, each a fix kind of its own, off unless listed (`all`:
   every one): `untyped-parameters` (`Any` for what comes of a parameter no annotation types:

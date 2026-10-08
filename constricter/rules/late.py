@@ -27,6 +27,8 @@ from constricter.offences import (
     UNANNOTATED,
     UNANNOTATED_MEMBER,
     UNIONS,
+    UNKNOWN_CALLS,
+    UNTYPED_CALLS,
     UNTYPED_TARGET,
     VAGUE_KIND,
     WIDEN_KINDS,
@@ -58,7 +60,9 @@ _WORD: Final = re.compile(r"[A-Za-z_]\w*")
 # The guesses of a value a type checker takes for anything: held to no class until declared.
 _UNCHECKED: Final = hinted.KINDS | {RETURNED}
 # The wider types `widens` offers, once a scope's other fixes are settled.
-_LATE_WIDENINGS: Final = frozenset({VAGUE_KIND, EMPTY_CONTAINERS, MIXED_CONTAINERS})
+_LATE_WIDENINGS: Final = frozenset(
+    {VAGUE_KIND, EMPTY_CONTAINERS, MIXED_CONTAINERS, UNTYPED_CALLS, UNKNOWN_CALLS},
+)
 # The arms a binding is in: each branching statement around it (by `id()`), and which of its arms.
 _Arms: TypeAlias = tuple[tuple[int, int], ...]
 
@@ -215,12 +219,13 @@ def fills(scope: Scope) -> None:
         scope.inferred.late[o.name] = (found.annotation, frozenset({_FILLED}))
 
 
-def widens(scope: Scope) -> None:
+def widens(scope: Scope, tree: ast.Module) -> None:
     """Offer a wider type to each name's first plain assignment that still has no fix, where `fix-widen` asks.
 
     A type vaguer than `vague` allows, written anyway (`vague`: a guess); `Any` for the elements of
     an empty container nothing fills, or of a display of mixed or unknown ones (see
-    `widened.container`). Each marked where its statement ends.
+    `widened.container`); `Any` for a call of no known type (see `widened.called`), whatever the
+    name is bound to later. Each marked where its statement ends.
     """
     widen: frozenset[str] = scope.settings.checks.fixes.widen
     plan: ImportPlan | None = scope.settings.known.names.plan
@@ -233,17 +238,25 @@ def widens(scope: Scope) -> None:
         lifetime: Lifetime | None = scope.flow.get(o.name)
         if o.edit is not None or bound is None or at(bound[0]) != (o.line, o.col):
             continue
-        # Bound again, or written out of sight, it may be anything else: a wider type could be wrong.
-        if lifetime is None or lifetime.escaped or len(lifetime.bindings) != 1:
+        if lifetime is None or lifetime.escaped:  # written out of sight
             continue
         known: Inference | None = bound[2]
-        found: Inference | None
+        found: Inference | None = None
         fix: Fix | None
-        if known is not None and VAGUE_KIND in widen and not scope.writable(known):
+        # Bound again, it may be anything else: a wider type that isn't `Any` could be wrong.
+        once: bool = len(lifetime.bindings) == 1
+        if once and known is not None and VAGUE_KIND in widen and not scope.writable(known):
             found = known._replace(kinds=known.kinds | {VAGUE_KIND})
             fix = scope.offer(found, frozenset({VAGUE_KIND}), unsafe=True)
         else:
-            found = None if known is not None else widened.container(bound[1], plan, widen)
+            if known is None:
+                found = (widened.container(bound[1], plan, widen) if once else None) or widened.called(
+                    bound[1],
+                    widened.Caller(scope.settings.owners.get(id(scope.kind.function)), scope.declared),
+                    widened.own(tree),
+                    plan,
+                    widen,
+                )
             fix = None if found is None else scope.offer(found, frozenset(), unsafe=False)
         if fix is not None:
             scope.offences[index] = replace(o, edit=fix._replace(mark=bound[1].end_lineno or o.line))

@@ -81,14 +81,28 @@ FIX_KINDS: dict[str, str] = {
     "vague": "a type vaguer than `vague` allows, written anyway, marked (`fix-widen`; a guess)",
     "empty-containers": "an empty container nothing in sight fills: `list[Any]`, marked (`fix-widen`)",
     "mixed-containers": "a display of mixed or unknown elements: `list[Any]`, marked (`fix-widen`)",
+    "untyped-calls": "a call of the module's own function declaring no return: `Any`, marked (`fix-widen`)",
+    "unknown-calls": "any other call of no known type: `Any`, marked (`fix-widen`)",
 }
 UNTYPED_PARAMETERS: Final = "untyped-parameters"
 UNIONS: Final = "unions"
 VAGUE_KIND: Final = "vague"
 EMPTY_CONTAINERS: Final = "empty-containers"
 MIXED_CONTAINERS: Final = "mixed-containers"
+UNTYPED_CALLS: Final = "untyped-calls"
+UNKNOWN_CALLS: Final = "unknown-calls"
 # The kinds that write a wider type than the value's own, each offered only where `fix-widen` names it.
-WIDEN_KINDS: Final = frozenset({UNTYPED_PARAMETERS, UNIONS, VAGUE_KIND, EMPTY_CONTAINERS, MIXED_CONTAINERS})
+WIDEN_KINDS: Final = frozenset(
+    {
+        UNTYPED_PARAMETERS,
+        UNIONS,
+        VAGUE_KIND,
+        EMPTY_CONTAINERS,
+        MIXED_CONTAINERS,
+        UNTYPED_CALLS,
+        UNKNOWN_CALLS,
+    },
+)
 # What ends a line a widening wrote: its annotation is `--fix`'s to replace, and isn't LVA005.
 MARK: Final = "# constricter: auto"
 CONSTRUCTOR: Final = "constructor"

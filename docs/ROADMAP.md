@@ -177,8 +177,15 @@
   vaguer than `vague` allows), guesses. On sqlalchemy, with `--unsafe-fixes`: 175, 196, 98, 9 and
   184 bindings, 662 together (4.5%); basedpyright finds no error in a file under a rule it hadn't
   one for, and 22 fewer, which the `Any`s hide (13 by `mixed-containers`). The first unions, of
-  guessed values or changed by `+=`, brought 3 errors with 15 fixes. Not counted on the seven
-  corpora, nor run through the packages' suites.
+  guessed values or changed by `+=`, brought 3 errors with 15 fixes. And two for a function's name
+  bound to a call of no known type, `Any`, certain, whatever the name is bound to later:
+  `untyped-calls` (the module's own function, or a method of the class or its bases in the module on
+  `self`, that declares no return: what mypy takes it for) and `unknown-calls` (any other). On
+  pydantic, with `--unsafe-fixes` and every kind: 507 bindings widened from 187, 74.3% typed or
+  widened from 66.2%, all 320 by `unknown-calls` (its functions all declare their returns);
+  basedpyright finds two errors fewer and two more (a name declared `str | None`, assigned an
+  explicit `Any`, keeps that type). None of the kinds is counted on the seven corpora, nor run
+  through the packages' suites.
 - **Each checker's servers, by its own measure**: every checker gets up to four, and a server's
   memory is its checker's (`Server.fitting`). basedpyright's each hold the whole program (0.6 GB and
   130 bytes for each byte of the files); `ty`'s and pyrefly's each hold their share, so the files
@@ -544,17 +551,17 @@ fix.
    `overloads.py`). Done when the tables come out byte for byte the same with `stubs.py` a layer
    over it. About 5 hours; coverage unchanged.
 
-9. **Wider: a call on what has no type.** `obj.method()`, `module.func()`, a chain of them: at least
-   56,540 bindings with no fix (12,714 chained, 12,251 on a local, 10,768 on `self`, 9,174 on a
-   module, 5,176 an imported function, 3,688 an imported attribute, 2,769 a module's own unannotated
-   function). `Any`, marked. Drawback: the largest by far, and the costliest: mypy takes an
-   unannotated function's call for `Any` already, but pyright reads its `return`s, and an `Any`
-   written over what it inferred turns that checking off. Recommended: as two kinds. One for a call
-   of the checked files' own unannotated function, which mypy sees as `Any` too (count it first:
-   `self.method()` and a module's own are 13,537 at most); one for every other call, for a project
-   that chooses coverage over pyright's inference. Done when each is counted, and the first brings
-   mypy nothing new on the corpus packages. About 6 hours, for up to 22% of the offences, none of it
-   a type.
+9. **Wider: a call's value, past a plain assignment.** `untyped-calls` and `unknown-calls` write
+   `Any` for `x = call()` in a function ([Done](#--fix)): of the 56,540 bindings with no fix that
+   are a call on what has no type, those a statement of their own binds. Left: a loop's target, an
+   unpacking's names and a `with`'s, each declared before its statement (on pydantic, of the 1,017
+   bindings every kind leaves, 180, 92 and 3 are a call's, to 86 plain assignments: a name bound
+   before, or a type `--fix` knows and doesn't write); a function of another checked file's that
+   declares no return, `unknown-calls` now and `Any` to mypy too; and a count: neither kind is
+   measured on the seven corpora, and no package's own checker has run after `untyped-calls`
+   (pydantic has no such call). Done when each is counted on the corpora, and `untyped-calls` brings
+   mypy nothing new on the corpus packages. About 4 hours, for up to 22% of the offences with what's
+   done, none of it a type.
 
 What the finished items left, each under 3 hours and under 0.1%: a fixture's value bound to a name
 before its attribute is read (`both = capsys.readouterr()`, then `both.out`), a `parametrize` on a

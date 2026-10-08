@@ -942,7 +942,7 @@ def _finished(tree: ast.Module, scopes: Sequence[Scope]) -> None:
         late.optionals(scope)
         late.rebinds(scope)
         late.fills(scope)
-        late.widens(scope)
+        late.widens(scope, tree)
         late.shadowed(scope)
         late.excused(scope)
         late.unchecked(scope, tree)

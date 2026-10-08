@@ -372,3 +372,200 @@ def test_late_wider_types_are_for_a_functions_names() -> None:
     assert [o.fix for o in check_source(source, checks=checks)] == [None, None]
     unnamed: str = "Any = typing = 1\ndef f():\n    c = {}\n"
     assert [o.fix for o in check_source(unnamed, checks=_ALL)] == [None]
+
+
+_CALLS: Final = Checks(fixes=FixPolicy(widen=frozenset({"untyped-calls", "unknown-calls"})))
+_SPELLED: Final = "Any"
+_UNTYPED: Final = (_SPELLED, False, frozenset({"untyped-calls"}))
+_UNKNOWN: Final = (_SPELLED, False, frozenset({"unknown-calls"}))
+CALLS: Final = """
+import functools
+from typing import Any, TypeVar
+
+import external
+
+T = TypeVar("T")
+
+
+def helper(x):
+    return x.y
+
+
+def commented(x):
+    # type: (T) -> T
+    return x.y
+
+
+def same(x: T) -> T:
+    return x
+
+
+@functools.cache
+def cached(x):
+    return x.y
+
+
+async def later(x):
+    return x.y
+
+
+def twice(x):
+    return x.y
+
+
+def twice(x):
+    return x.z
+
+
+class Base:
+    def up(self):
+        return self.q
+
+
+class Left(Base):
+    pass
+
+
+class Right(Base):
+    def side(self):
+        return self.q
+
+
+class C(Left, Right):
+    alias = helper
+    if external.FLAG:
+        def guarded(self):
+            return self.q
+
+    def own(self):
+        value = self.q
+        return value
+
+    def value(self):
+        return self.q
+
+    @staticmethod
+    def stat(v):
+        return v.w
+
+    @classmethod
+    def make(cls):
+        made = cls.stat(1)
+        return made
+
+    @property
+    def prop(self):
+        return self.q
+
+    @prop.setter
+    def prop(self, new):
+        self.q = new
+
+    class Inner:
+        def own(self):
+            return 1
+
+    async def run(self, other):
+        a = helper(other)
+        b = self.own()
+        c = self.up()
+        d = self.side()
+        e = self.stat(other)
+        f = await later(other)
+        g = self.guarded()
+        h = self.value()
+        i = helper(
+            other,
+        )
+        j = helper(other)
+        j = 3
+        k = other.method()
+        m = external.load(1)
+        n = await other.fetch()
+        p = later(other)
+        q = self.prop()
+        r = self.alias()
+        s = self.missing()
+        t = same(other)
+        u = commented(other)
+        v = cached(other)
+        w = twice(other)
+        x = other.factory()()
+        y = other.attr
+        z = await other
+        return a, b, c, d, e, f, g, h, i, j, k, m, n, p, q, r, s, t, u, v, w, x, y, z
+
+
+class Outside(external.Base):
+    def run(self):
+        aa = self.up()
+        return aa
+
+
+class Under(Imported):
+    def run(self):
+        ab = self.up()
+
+        def inner():
+            ac = self.run()
+            return ac
+
+        return ab, inner
+
+
+def shadowing(helper, other):
+    ad = helper(other)
+    return ad
+
+
+def plain(self):
+    ae = self.own()
+    return ae
+"""
+
+
+def test_a_call_of_no_known_type_is_any() -> None:
+    """Of the module's own function that declares no return, one kind; of anything else, another.
+
+    A top-level function by its name, a method of the class or of its bases in the module on
+    `self` or `cls` (a function inside the method's too), awaited where it's an `async def`;
+    multi-line, or bound again later. Not one a parameter shadows, one decorated, declared by a type
+    comment or defined twice, a class's name bound otherwise, a method the module's classes don't
+    define, one under a base from elsewhere, nor a `self` that's no method's.
+    """
+    found: _Found = _found(CALLS, _CALLS)
+    assert {name for name, fix in found.items() if fix == _UNTYPED} == {*"abcdefghij", "made", "ac"}
+    assert {name for name, fix in found.items() if fix == _UNKNOWN} == {
+        *"kmnpqrstuvwx",
+        "aa",
+        "ab",
+        "ad",
+        "ae",
+    }
+    assert {name: fix[0] for name, fix in found.items() if fix[0] != _SPELLED} == dict.fromkeys(
+        ["value", "y", "z"],
+    )
+
+
+def test_each_call_kind_is_asked_for_alone() -> None:
+    """One kind writes nothing of the other's; neither, where the module can't name `Any`."""
+    kind: str
+    for kind in ("untyped-calls", "unknown-calls"):
+        checks: Checks = Checks(fixes=FixPolicy(widen=frozenset({kind})))
+        assert {fix[2] for fix in _found(CALLS, checks).values() if fix[0] == _SPELLED} == {frozenset({kind})}
+    unnamed: str = "Any = typing = 1\ndef helper(x):\n    return x.y\ndef f(o):\n    a = helper(o)\n"
+    assert [fix[0] for fix in _found(unnamed, _CALLS).values()] == [None]
+
+
+def test_a_widened_calls_mark_ends_its_statement() -> None:
+    """After the call's last line; a second pass finds nothing more."""
+    source: str = textwrap.dedent(CALLS)
+    fixed: list[str] = fixes.apply(lines(source), check_source(source, checks=_CALLS))
+    marked: list[str] = [line for line in fixed if line.endswith(_MARK)]
+    assert [marked[1], marked[9], marked[10]] == [
+        "        a: Any = helper(other)  # constricter: auto\n",
+        "        )  # constricter: auto\n",
+        "        j: Any = helper(other)  # constricter: auto\n",
+    ]
+    again: list[Offence] = check_source("".join(fixed), checks=_CALLS)
+    assert {o.name for o in again if o.fix is not None} == set()
