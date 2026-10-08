@@ -272,7 +272,7 @@
   (`python -m tests.corpus.corpus_untyped`; `--rows` writes every binding as JSON lines): each
   untyped binding, classified by the statement that binds it, the shape of its value, its scope,
   whether its function is annotated, and what a call through an import resolves to and where from.
-  On every corpus: 250,964 untyped bindings, 149,972 with no fix at all, 79% of those in functions
+  On every corpus: 250,958 untyped bindings, 141,733 with no fix at all, 79% of those in functions
   with no annotations. The items under [Next](#next) are sized by it: each count is the bindings
   with no fix an item could reach, not what it would fix. With no fix so far, each an item under
   Next now: `getattr(...)`, a bound method's alias (`append = parts.append`), `dict.get` on a
@@ -363,7 +363,7 @@
 ## Next
 
 By size (smallest first) and, within each, by value: the bindings with no fix an item could reach,
-of the 149,972 on the corpora, or of the 26,365 on pydantic, sqlalchemy and django for an item that
+of the 141,733 on the corpora, or of the 23,271 on pydantic, sqlalchemy and django for an item that
 needs `--infer-with`; what only makes a check faster comes last. An item's size is the hours an Opus
 5.5 agent would work on it, tests and docs included, apart from what it waits on (a full corpus run,
 a package's suite): each ends with that estimate, after what it is, why, how, and when it's done,

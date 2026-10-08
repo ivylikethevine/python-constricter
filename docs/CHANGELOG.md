@@ -15,8 +15,8 @@ Notable changes, newest first. Each release's full notes are generated from its 
   `DtypeObj`). A union bound again to a value of no known type has no type until its branch ends,
   where a copy was declared the whole union (`original_execution_options = execution_options`).
   These were the causes of two of pandas's new type errors after `--fix --unsafe-fixes`, and of
-  sqlalchemy's two. On pandas, 23,687 guesses from 23,710, with as many certain fixes; on pydantic
-  and sqlalchemy, 4 fixes fewer of 4,157.
+  sqlalchemy's two. On the seven corpora, 44,858 guesses from 44,942, and 64,371 certain fixes from
+  64,373.
 - `--fix --unsafe-fixes` adds fewer type errors, by what the corpus packages' own checkers found
   after it (pandas's 42 new errors are 7, sqlalchemy's 3 are 2, and pydantic's 9 left are its
   environment's). What an unannotated function's `return`s give, which a checker took for anything,
