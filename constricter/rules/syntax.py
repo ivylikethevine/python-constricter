@@ -21,6 +21,7 @@ FUNCTION_DEFS: tuple[type[ast.FunctionDef], type[ast.AsyncFunctionDef]] = (
 )
 # Statements whose nested statements may not all run (or not only once).
 BRANCHING: Final = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.TryStar, ast.Match)
+_LEAVING: Final = (ast.Return, ast.Raise, ast.Continue, ast.Break)
 # The nodes with a scope of their own: what's inside one isn't the enclosing function's.
 NESTED_SCOPES: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
 _END: Final = 1 << 62  # past any line: a module's span has no end
@@ -314,6 +315,25 @@ def child_statements(stmt: ast.stmt) -> list[ast.stmt]:
         case _:
             pass
     return children
+
+
+def arm_ends(stmt: ast.stmt) -> frozenset[int]:
+    """Find where each arm of a branching statement ends: a body, an `else`, a handler, a `match` case.
+
+    Returns:
+      Each arm's last statement, by its `id()`; not one that leaves (`return`, `raise`, ...), past
+      which its arm doesn't go on.
+
+    """
+    blocks: list[list[ast.stmt]]
+    match stmt:
+        case ast.If() | ast.For() | ast.AsyncFor() | ast.While():
+            blocks = [stmt.body, stmt.orelse]
+        case ast.Try() | ast.TryStar():
+            blocks = [stmt.body, *(handler.body for handler in stmt.handlers), stmt.orelse]
+        case _:  # a `match`, the one other branching statement
+            blocks = [case.body for case in cast("ast.Match", stmt).cases]
+    return frozenset(id(block[-1]) for block in blocks if block and not isinstance(block[-1], _LEAVING))
 
 
 def expressions(stmt: ast.stmt) -> Iterator[ast.AST]:

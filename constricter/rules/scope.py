@@ -156,6 +156,16 @@ class Inferred:
     seeded: dict[str, Late] = field(default_factory=dict[str, "Late"])
     # The names declared type aliases (`X: TypeAlias = ...`): `TypeAlias` isn't their values' type.
     aliases: set[str] = field(default_factory=set[str])
+    unions: Mapping[str, str] = field(default_factory=dict[str, str])  # see `Indirect.unions`
+
+    def members(self, annotation: str) -> frozenset[str]:
+        """Split a type into its union's members, an alias of a union read as the union it names.
+
+        Returns:
+          Them; none for a type that can't be read.
+
+        """
+        return members(self.unions.get(annotation, annotation)) or frozenset()
 
     def declare(self, name: str, annotation: ast.expr) -> None:
         """Record the type `name` is annotated with: its own from here on, or an alias's declaration."""
@@ -197,7 +207,9 @@ class Inferred:
         certain for a member of a declared union (`int | None`, then `1`), which every checker narrows;
         otherwise (mypy narrows nothing else, and an unknown value may be anything) what's inferred
         from it is a guess, resting on `rebound`. `guess`: the value's type where it's only a guess
-        (`config = config or Config()`), and what that rests on: the name's from here on, as one.
+        (`config = config or Config()`), and what that rests on: the name's from here on, as one. A
+        union bound to a value of no known type is narrowed to that: the name has no type until its
+        branch ends.
         """
         current: str | None = self.types.get(name)
         if current is None or typed == current:
@@ -206,9 +218,12 @@ class Inferred:
             self.types[name] = guess[0]
             self.guess(name, self.origins.get(name, frozenset()) | guess[1])
             return
+        union: frozenset[str] = self.members(current)
+        if typed is None and len(union) > 1:
+            self.types.forget(name)  # its type again past a branch (see `rejoined`), as a guess
         if typed is not None:
             self.types[name] = typed
-            if typed in (members(current) or ()) and len(members(current) or ()) > 1:
+            if typed in union and len(union) > 1:
                 return
         if name not in self.guesses:
             self.guess(name, frozenset({REBOUND}))
@@ -218,17 +233,24 @@ class Inferred:
 
         The branch may not have run: past it, a name is what it was, or what the branch made it. That's
         its type before, certainly, if that's a union the branch's type is a member of (`int | None`,
-        narrowed to `int` inside `if`); otherwise `rebound` already made it a guess. One of `untyped`,
-        bound before the branch to a value of no known type, may still hold it: it has none past it.
+        narrowed to `int` inside `if`); otherwise `rebound` already made it a guess, as it is where
+        the branch left it no type. One of `untyped`, bound before the branch or in an arm of it to a
+        value of no known type, may still hold it: it has none past it.
         """
         name: str
         annotation: str
         for name, annotation in before.items():
+            if name not in self.types and name not in self.guesses:
+                self.guess(name, frozenset({REBOUND}))
             self.types[name] = annotation
         for name in untyped & self.types.keys():
-            self.types.forget(name)
-            self.guesses.discard(name)
-            _ = self.origins.pop(name, None)
+            self.forget(name)
+
+    def forget(self, name: str) -> None:
+        """Take `name` for a value of no known type from here on."""
+        self.types.forget(name)
+        self.guesses.discard(name)
+        _ = self.origins.pop(name, None)
 
 
 class Scope:
@@ -248,7 +270,8 @@ class Scope:
         self.kind: Kind = kind or Kind(UNANNOTATED, fixable=True)
         self.offences: list[Offence] = []
         self.first: list[str] = []  # each first binding the rules cover, typed or not
-        self.inferred: Inferred = Inferred()  # what `--fix` knows of the names bound so far
+        # What `--fix` knows of the names bound so far.
+        self.inferred: Inferred = Inferred(unions=settings.known.indirect.unions)
         self.flow: dict[str, Lifetime] = {}  # every binding of each name, for value flow
         self.assignments: Assignments = Assignments()  # for LVA012
 
@@ -428,13 +451,19 @@ class Scope:
         fix: Inference | None
         if (fix := inference(value, self.settings.known, self.inferred.types)) is not None:
             fix = corrected(value, fix, self._owner(), facts.generics, self.settings.known.names.plan)
-        if fix is not None and (
-            narrowed_first(value, fix)
-            or narrowed_at(facts.narrowed, value, line, union=len(members(fix.annotation) or ()) > 1)
-            or self._takes_narrowed(value, fix, line)
+        # An alias of a union is narrowed as the union it names.
+        named: Inference | None = (
+            None
+            if fix is None
+            else fix._replace(annotation=self.inferred.unions.get(fix.annotation, fix.annotation))
+        )
+        if named is not None and (
+            narrowed_first(value, named)
+            or narrowed_at(facts.narrowed, value, line, union=len(members(named.annotation) or ()) > 1)
+            or self._takes_narrowed(value, named, line)
         ):
             fix = None
-        if fix is None:
+        if fix is None or named is None:
             return None, False, frozenset()
         unsafe: bool
         origins: frozenset[str]
@@ -469,7 +498,7 @@ class Scope:
                 self.settings.facts.narrowed,
                 read,
                 line,
-                union=len(members(types.get(read, "")) or ()) > 1,
+                union=len(self.inferred.members(types.get(read, ""))) > 1,
             )
             for read in (*fix.reads, *held)
         )

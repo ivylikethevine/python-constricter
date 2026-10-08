@@ -63,6 +63,7 @@ from constricter.rules.syntax import (
     FUNCTION_DEFS,
     FunctionDef,
     Start,
+    arm_ends,
     child_statements,
     collect_functions,
     expressions,
@@ -168,6 +169,7 @@ def _settings(
                 {**({} if outside is None else outside.awaits), **free_of(awaited_returns(tree), free)},
                 _partial(own, free, outside),
                 {**({} if outside is None else outside.tuples), **free_of(own.tuples, free)},
+                {**({} if outside is None else outside.unions), **own.unions},
             ),
             ClassSide(
                 free_of_all(own.order.flattened(class_attributes(tree)), free),
@@ -703,16 +705,18 @@ def _visit(scope: Scope, stmt: ast.stmt, head: ast.stmt | None = None) -> None:
         {id(s) for s in stmt.body} if isinstance(stmt, ast.For | ast.AsyncFor | ast.While) else set()
     )
     before: dict[str, str] | None = dict(scope.inferred.types) if isinstance(stmt, BRANCHING) else None
-    untyped: frozenset[str] = (
-        frozenset() if before is None else frozenset(scope.declared - scope.inferred.types.keys())
-    )
+    # What has no known type before it, or where one of its arms ends: it may still, past it.
+    untyped: set[str] = set() if before is None else scope.declared - scope.inferred.types.keys()
+    ends: frozenset[int] = frozenset() if before is None else arm_ends(stmt)
     child: ast.stmt
     for child in child_statements(stmt):
         scope.assignments.looping += id(child) in body
         _visit(scope, child, (head or stmt) if _is_elif(stmt, child) else None)
         scope.assignments.looping -= id(child) in body
+        if before is not None and id(child) in ends:
+            untyped |= scope.declared - scope.inferred.types.keys() - before.keys()
     if before is not None:
-        scope.inferred.rejoined(before, untyped)
+        scope.inferred.rejoined(before, frozenset(untyped))
 
 
 def _is_elif(stmt: ast.stmt, child: ast.stmt) -> bool:

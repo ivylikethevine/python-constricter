@@ -273,15 +273,7 @@ def _split(
     whole: str | None = None if typed is None else typed.annotation
     tuples: Mapping[str, str] = scope.settings.known.indirect.tuples
     parts: list[tuple[ast.Name, str | None]] = unpacked(target, whole, tuples)
-    # A union over several names, of anything but a tuple of that many, is by position as often
-    # as not (`name, length`, of `[["prefix", 24], ...]`): each has no fix.
-    fixed: bool = tuples.get(whole or "", whole or "").startswith(_TUPLE) and not (whole or "").endswith(_ANY)
-    mixed: bool = (
-        not fixed
-        and len(parts) > 1
-        and len({annotation for _, annotation in parts}) == 1
-        and len(members(parts[0][1] or "") or ()) > 1
-    )
+    mixed: bool = _by_position(parts, whole or "", tuples)
     for name, annotation in parts:
         part: Inference | None = (
             None
@@ -289,6 +281,25 @@ def _split(
             else Inference(annotation, typed.reason, typed.kinds | split)
         )
         yield name, (part, unsafe, origins)
+
+
+def _by_position(parts: list[tuple[ast.Name, str | None]], whole: str, tuples: Mapping[str, str]) -> bool:
+    """Whether `parts`, split from `whole`, share a union that may be by position.
+
+    A union over several names, of anything but a tuple of that many, is by position as often as
+    not (`name, length`, of `[["prefix", 24], ...]`): each has no fix.
+
+    Returns:
+      Whether each name's part is the same union, of a `whole` that isn't a tuple of that many.
+
+    """
+    fixed: bool = tuples.get(whole, whole).startswith(_TUPLE) and not whole.endswith(_ANY)
+    return (
+        not fixed
+        and len(parts) > 1
+        and len({annotation for _, annotation in parts}) == 1
+        and len(members(parts[0][1] or "") or ()) > 1
+    )
 
 
 def _bind_declaration(

@@ -512,12 +512,15 @@ than the fix says, the fix is changed, made a guess, or not offered:
   says where each is defined);
 - after it's bound again, a name is what it was bound to: certain where that's a member of its
   declared union (`int | None`, then `1`), which every checker narrows it to; a guess otherwise, and
-  where it was first bound to a value of no known type, which it may still hold
-  (`levels = index.multi()` under an `if`, `levels = ["a"]` under its `else`: `for lvl in levels`
-  declares `lvl: str` as a guess); bound again to a value whose type is a guess, it's that type from
-  there on, as a guess (`config = config or Config()`, then `config.limit`); and one of no known
-  type before a branch that binds it to a known one (a parameter, in `if flag: x = float(x)`) has
-  none past the branch, where it may hold either;
+  where it was first bound to a value of no known type (`levels = index.multi()`, then
+  `levels = ["a"]`: `for lvl in levels` declares `lvl: str` as a guess); bound again to a value
+  whose type is a guess, it's that type from there on, as a guess (`config = config or Config()`,
+  then `config.limit`). One of no known type before a branch that binds it to a known one (a
+  parameter, in `if flag: x = float(x)`) has none past the branch, where it may hold either; nor has
+  one an arm of an `if`, a `try` or a `match` leaves with no known type, whatever another arm binds
+  it to (`levels = index.multi()` under an `if`, `levels = ["a"]` under its `else`), unless that arm
+  leaves (`return`, `raise`, ...). A union bound to a value of no known type is narrowed to it: the
+  name has no type until its branch ends, and is the union again past it, as a guess;
 - a guess isn't offered where, once declared, it makes an error of what the function goes on to do
   with the name, by an unannotated function's `return`s, which a checker took for anything: a union
   of which an attribute or an item is taken where no test narrows it (`opt = registered(key)`, then
@@ -548,7 +551,10 @@ than the fix says, the fix is changed, made a guess, or not offered:
   where a test around it narrows it: in an `if`'s or `while`'s branch, a `match` case, or the rest
   of a block after an `assert` or an `if` that always leaves (`return`, `raise`, ...), for a check
   (`isinstance`, a `TypeGuard`, a `match`) whatever its type, and for a truth test or comparison
-  when it's a union;
+  when it's a union. A type alias of a union (`Key = Union[int, str]`,
+  `Maybe: TypeAlias = int | None`, the module's own or another checked file's, bound once at its top
+  level) is narrowed as the union it names, by a test or an assignment, and one of an `X | None`
+  isn't offered; a plain read of one stays certain, written as the alias;
 - an ALL_CAPS module-level name bound to a literal is a constant to pyright, which keeps its
   `Literal` type: `MODE = "r"`'s `str` would widen it. Passed to a call (where a parameter may take
   only some values), it's declared `MODE: Final = "r"`, which keeps the `Literal`: a guess, as

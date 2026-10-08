@@ -119,10 +119,8 @@ def test_a_name_first_bound_to_no_known_type_is_a_guess_later() -> None:
     source: str = textwrap.dedent(
         """\
         def f(index, flag, count):
-            if flag:
-                levels = index.multi()
-            else:
-                levels = ["a"]
+            levels = index.multi()
+            levels = ["a"]
             for lvl in levels:
                 pass
             copy = levels
@@ -205,4 +203,62 @@ def test_a_later_with_or_loop_target_holds_the_first_bindings_fix() -> None:
         "a": (None, False),
         "b": ("TextIOWrapper", False),
         "c": (None, False),
+    }
+
+
+def test_a_name_one_arm_binds_to_no_known_type_has_none_past_the_statement() -> None:
+    """It may hold either arm's value: an `if`'s, a `try`'s, a `match`'s; not an arm's that leaves."""
+    source: str = textwrap.dedent(
+        """\
+        def f(index, flag):
+            if flag:
+                levels = index.multi()
+            else:
+                levels = ["a"]
+            for lvl in levels:
+                pass
+            try:
+                rows = index.rows()
+            except ValueError:
+                rows = ["a"]
+            first = rows[0]
+            match flag:
+                case True:
+                    cells = index.cells()
+                case _:
+                    cells = ["a"]
+            cell = cells[0]
+            if flag:
+                names = index.names()
+                return
+            else:
+                names = ["a"]
+            name = names[0]
+        """,
+    )
+    found: dict[str, tuple[str | None, bool]] = {o.name: (o.fix, o.unsafe) for o in check_source(source)}
+    assert {name: found[name] for name in ("lvl", "first", "cell", "name")} == {
+        "lvl": (None, False),
+        "first": (None, False),
+        "cell": (None, False),
+        "name": ("str", True),
+    }
+
+
+def test_a_union_bound_to_no_known_type_has_none_until_its_branch_ends() -> None:
+    """A checker narrows it to the value; past the branch it's the union again, as a guess."""
+    source: str = textwrap.dedent(
+        """\
+        def f(index, flag: bool, line: int | str) -> None:
+            if flag:
+                line = index.first()
+                a = line
+                if index:
+                    line = 1
+            b = [line]
+        """,
+    )
+    assert {o.name: (o.fix, o.unsafe) for o in check_source(source)} == {
+        "a": (None, False),
+        "b": ("list[int | str]", True),
     }

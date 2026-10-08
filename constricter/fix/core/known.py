@@ -292,12 +292,15 @@ class Indirect(NamedTuple):
     `awaits`: what awaiting a call to each of the module's `async def`s gives (see
     `awaited_returns`); `partial`: those only an unpacking can use (see `Partial`), other checked
     files' too. `tuples`: the named tuples the module names, its own and other checked files', each
-    with the tuple unpacking one gives (see `targets.named_tuples`).
+    with the tuple unpacking one gives (see `targets.named_tuples`). `unions`: the type aliases of a
+    union it names, its own and other checked files', each with the union as its module writes it
+    (see `targets.aliased_unions`).
     """
 
     awaits: Mapping[str, str] = MappingProxyType({})
     partial: Partial = Partial()
     tuples: Mapping[str, str] = MappingProxyType({})
+    unions: Mapping[str, str] = MappingProxyType({})
 
 
 class ClassSide(NamedTuple):
@@ -457,7 +460,8 @@ class Outside(NamedTuple):
     each class. `same`: each group of ways it spells one class or alias another module defines
     (`CoreSchema`, `core_schema.CoreSchema`; see `linked.same`). `partial`: the returns of other
     checked files' functions and methods that only an unpacking can use (see `Partial`). `tuples`:
-    the named tuples it imports from them, as it spells each (see `Indirect.tuples`).
+    the named tuples it imports from them, as it spells each (see `Indirect.tuples`), and `unions`
+    their type aliases of a union (see `Indirect.unions`).
     """
 
     calls: Mapping[str, str] = {}
@@ -489,6 +493,7 @@ class Outside(NamedTuple):
     awaits: Mapping[str, str] = {}
     # The names it imports that another checked module binds by assignment (see `linked.values`).
     values: frozenset[str] = frozenset()
+    unions: Mapping[str, str] = {}
 
     def usable(self, taken: frozenset[str], present: frozenset[str]) -> "Outside":
         """Drop what other files offer whose type needs a name imported that the module binds already.
@@ -550,6 +555,7 @@ class Outside(NamedTuple):
             self.beyond,
             free_of(self.awaits, clashing),
             self.values,
+            self.unions,
         )
 
 

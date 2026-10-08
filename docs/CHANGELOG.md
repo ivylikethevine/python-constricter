@@ -6,6 +6,17 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix --unsafe-fixes` no longer types what's read of a name that an arm of an `if`, a `try` or a
+  `match` leaves with no known type, whatever another arm binds it to (`levels = index.multi()`,
+  `else: levels = ["a"]`, then `for lvl in levels`): it may hold either. And a type alias of a union
+  (`Key = Union[int, str]`, the module's or another checked file's) is narrowed as the union it
+  names: a copy under a test of it, or of an alias of an `X | None`, has no fix, and one bound again
+  to a member of it is that member, certainly (`dtype = cast(ExtensionDtype, dtype)`, of a
+  `DtypeObj`). A union bound again to a value of no known type has no type until its branch ends,
+  where a copy was declared the whole union (`original_execution_options = execution_options`).
+  These were the causes of two of pandas's new type errors after `--fix --unsafe-fixes`, and of
+  sqlalchemy's two. On pandas, 23,687 guesses from 23,710, with as many certain fixes; on pydantic
+  and sqlalchemy, 4 fixes fewer of 4,157.
 - `--fix --unsafe-fixes` adds fewer type errors, by what the corpus packages' own checkers found
   after it (pandas's 42 new errors are 7, sqlalchemy's 3 are 2, and pydantic's 9 left are its
   environment's). What an unannotated function's `return`s give, which a checker took for anything,

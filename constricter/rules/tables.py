@@ -9,7 +9,7 @@ from typing import Final, NamedTuple
 from constricter.fix.core.imports import rebound_names, taken_names
 from constricter.fix.core.inherited import Lineage, lineage
 from constricter.fix.core.signatures import AWAIT
-from constricter.fix.values.targets import named_tuples
+from constricter.fix.values.targets import aliased_unions, named_tuples
 from constricter.rules import walked
 from constricter.rules.annotations import (
     class_methods,
@@ -42,6 +42,7 @@ class Tables(NamedTuple):
     `side_calls`, `sides` as called on the class (see `_side_calls`). `partial` and
     `partial_methods`: its functions' and methods' returns that are tuples with a vague part.
     `tuples`: its named tuples, each with the tuple unpacking one gives (see `named_tuples`).
+    `unions`: its type aliases of a union, each with the union (see `aliased_unions`).
     """
 
     returns: dict[str, str]
@@ -56,6 +57,7 @@ class Tables(NamedTuple):
     partial_methods: dict[str, dict[str, str]]
     order: Lineage  # its classes' ancestry, as far as the module alone sees
     tuples: dict[str, str]
+    unions: dict[str, str]
 
 
 def module_tables(tree: ast.Module) -> Tables:
@@ -91,6 +93,7 @@ def module_tables(tree: ast.Module) -> Tables:
         partial_method_returns(tree),
         order,
         named_tuples(tree),
+        aliased_unions(tree),
     )
 
 

@@ -474,20 +474,16 @@ fix.
    its certain fixes bring (its environment's); the 52 packages aren't counted again since (31 on
    mypy, and 1 to 6 on each of eight more). Fixed on the seven: a union used unnarrowed, an
    attribute its class hasn't, a name typed in a branch and read past it, two arms of an `if` of
-   which one's type isn't known, a union split over an unpacking's names (see the changelog). What's
-   left:
+   which one's type isn't known, a union split over an unpacking's names (see the changelog); and,
+   not counted again since, what's read past such arms (`for lvl in levels`, 2 of pandas's 7) and a
+   copy of a union's alias bound again before it (sqlalchemy's 2). What's left:
    - A type from a package the suite's own checker can't follow (`etree.Element`, of `lxml`): 14 of
      mypy's. Its environment's, as pydantic's are; listed, not fixed.
    - A stub that says less than what runs (`Timestamp == index` is a `bool`, then `.any()`), and a
      `bytes` an f-string then prints (mypy's `str-bytes-safe`): 2 each of pandas's, by an
      unannotated method's `return`s. Latent errors, not wrong types.
-   - A loop over what callers pass (`for lvl in levels`), its elements then compared by identity
-     with a sentinel: 2 of pandas's.
    - A `None`, then only an `Index`, by an unannotated function's `return`s: declared, an argument
      taken from it is checked (`oindex._values`). One of pandas's.
-   - A copy of a parameter declared as an alias of a union, bound again before the copy
-     (`original_execution_options = execution_options`, then `.union(...)`): sqlalchemy's 2. An
-     alias isn't read as the union it names.
    - A name first an `X | None`, tested for `None` and bound again (`code = error.get("code")`, then
      `if code is None: code = SYNTAX`): typed by its first value. Three of mypy's.
 

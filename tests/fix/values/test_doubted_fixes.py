@@ -415,3 +415,50 @@ def test_what_a_test_leaves_out_isnt_in_the_type() -> None:
         "m": (None, False),  # a display of what's narrowed there
         "n": ("list[Trial | None]", False),
     }
+
+
+def test_an_alias_of_a_union_is_read_as_the_union() -> None:
+    """Where a checker narrows it: a copy of an `X | None`'s has no fix, nor one a test around it narrows.
+
+    Nor one of a name since bound to a value of no known type, which a checker narrows it to.
+    """
+    source: str = """
+    from typing import Optional, TypeAlias, Union
+
+    Key = Union[int, str]
+    Either: TypeAlias = "int | bytes"
+    Maybe = Optional[int]
+    Plain = int
+    Twice = int | str
+    Twice = int | bytes
+
+    def made(key):
+        return key
+
+    def f(key: Key, either: Either, maybe: Maybe, plain: Plain, twice: Twice, again: Key, flag: bool) -> None:
+        tested: Key = key
+        a = key
+        b = either
+        c = maybe
+        d = plain
+        e = twice
+        if tested:
+            g = tested
+        again = made(again)
+        h = again
+        if flag:
+            either = made(either)
+            i = either
+        j = either
+    """
+    assert _found(source) == {
+        "a": ("Key", False),
+        "b": ("Either", False),
+        "c": (None, False),
+        "d": ("Plain", False),
+        "e": ("Twice", False),  # a variable, to a checker: whatever it's declared as
+        "g": (None, False),
+        "h": (None, False),
+        "i": (None, False),
+        "j": ("Either", True),  # past the branch, either
+    }

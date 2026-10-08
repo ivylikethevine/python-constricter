@@ -121,6 +121,7 @@ class Module(NamedTuple):
     partial: Mapping[str, str] = {}
     partial_methods: Mapping[str, Mapping[str, str]] = {}
     tuples: Mapping[str, str] = {}  # its named tuples' fields (see `targets.named_tuples`)
+    unions: Mapping[str, str] = {}  # its type aliases of a union (see `targets.aliased_unions`)
     # Its top-level pytest fixtures, and whether each is a generator (its value is what it yields).
     fixtures: Mapping[str, bool] = {}
     # A checked file's functions defined with `@overload`, each with its overloads' signatures.
@@ -382,6 +383,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         partial=own.partial,
         partial_methods=own.order.flattened(own.partial_methods),
         tuples=own.tuples,
+        unions=own.unions,
         fixtures=_fixtures(tree),
         overloads={} if name is not None else overloads(tree),
         folder="" if name is not None else str(path.resolve().parent),

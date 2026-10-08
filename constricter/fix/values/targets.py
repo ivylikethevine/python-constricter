@@ -2,8 +2,9 @@
 """Types split over what a loop or an unpacking binds: a container's elements, a tuple's parts."""
 
 import ast
+import re
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from types import MappingProxyType
 from typing import Final, cast
 
@@ -56,6 +57,8 @@ _ITERATOR_KEYWORDS: Final = {
 _ANY_LENGTH: Final = 2
 _NAMED_TUPLE: Final = ["NamedTuple"]  # the one base of a class whose annotated variables are its fields
 _TUPLES: Final = frozenset({"tuple", "Tuple"})
+_UNIONS: Final = frozenset({"Union", "Optional"})
+_UNION: Final = re.compile(r"\||\b(?:Union|Optional)\[")  # in a quoted alias
 _TYPE_ALIAS: Final = "TypeAlias"
 _NO_TUPLES: Final[Mapping[str, str]] = MappingProxyType({})
 
@@ -95,21 +98,45 @@ def _aliased_tuples(tree: ast.Module) -> dict[str, str]:
       Each one's name, and the tuple's type as text.
 
     """
-    rebound: frozenset[str] = frozenset(rebound_names(tree))
     type_vars: frozenset[str] = defined_type_vars(tree)
-    found: dict[str, str] = {}
-    stmt: ast.stmt
-    for stmt in top_level(tree.body):
-        aliased: tuple[str, ast.expr] | None = _alias(stmt)
-        if (
-            aliased is not None
-            and aliased[0] not in rebound
-            and isinstance(aliased[1], ast.Subscript)
-            and node_name(aliased[1].value) in _TUPLES
-            and not type_vars & {node.id for node in ast.walk(aliased[1]) if isinstance(node, ast.Name)}
-        ):
-            found[aliased[0]] = written(aliased[1])
-    return found
+    return {
+        name: written(value)
+        for name, value in _aliases(tree)
+        if isinstance(value, ast.Subscript)
+        and node_name(value.value) in _TUPLES
+        and not type_vars & {node.id for node in ast.walk(value) if isinstance(node, ast.Name)}
+    }
+
+
+def aliased_unions(tree: ast.Module) -> dict[str, str]:
+    """Find the module's type aliases of a union: `Key = int | str`, `Key: TypeAlias = Union[int, str]`.
+
+    At its top level, bound once there. A value of one is narrowed as a union is, by a test or an
+    assignment, which its alias's name alone doesn't say.
+
+    Returns:
+      Each one's name, and the union as text.
+
+    """
+    return {
+        name: written(value)
+        for name, value in _aliases(tree)
+        if (isinstance(value, ast.BinOp) and isinstance(value.op, ast.BitOr))
+        or (isinstance(value, ast.Subscript) and node_name(value.value) in _UNIONS)
+        or (isinstance(value, ast.Constant) and isinstance(value.value, str) and _UNION.search(value.value))
+    }
+
+
+def _aliases(tree: ast.Module) -> list[tuple[str, ast.expr]]:
+    """Find what may be the module's type aliases: each name its top level binds once, as `_alias` reads it.
+
+    Returns:
+      Each one's name and value.
+
+    """
+    rebound: frozenset[str] = frozenset(rebound_names(tree))
+    read: Iterator[tuple[str, ast.expr] | None] = (_alias(stmt) for stmt in top_level(tree.body))
+    return [aliased for aliased in read if aliased is not None and aliased[0] not in rebound]
 
 
 def _alias(stmt: ast.stmt) -> tuple[str, ast.expr] | None:
