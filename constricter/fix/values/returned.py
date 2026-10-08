@@ -16,6 +16,7 @@ from collections.abc import Collection, Iterator, Mapping, Sequence
 from functools import lru_cache
 from typing import Final, NamedTuple, TypeAlias, cast
 
+from constricter.fix.core.imports import bound_within
 from constricter.fix.core.inherited import Lineage
 from constricter.fix.core.known import Inference, Returned, Returns
 from constricter.fix.values import entered, fills
@@ -178,8 +179,9 @@ def _attributes(
     """Find the class's unannotated instance attributes whose every assignment decides their type.
 
     One counts when every place the class's code stores or deletes it (`self.x`, anywhere in the
-    class) is a plain `self.x = value` in one of its own methods, the class's body doesn't bind the
-    name (a class attribute, a method, a property), and every value's type is known and the same, or
+    class) is a plain `self.x = value` in one of its own methods, neither the class's body nor a
+    class of the module's above it binds the name (a class attribute, a method, a property) or,
+    above it, stores it, and every value's type is known and the same, or
     numbers (`int`, then `float`: the widest). One bound to an empty container counts by what the
     class's methods, and those of the module's classes under it, add to it (see `_filled`). A guess:
     another file's subclass or outside code may assign it too.
@@ -203,6 +205,9 @@ def _attributes(
     for attr in stored[within(starts, node)]:
         stores[attr] = stores.get(attr, 0) + 1
     bound: frozenset[str] = _class_bound(node)
+    held: frozenset[str] = bound.union(
+        *((*_class_bound(base), *stored[within(starts, base)]) for base in _above(tree, node)),
+    )
     found: list[Recorded]
     for attr in sorted(_emptied(tree, node).keys() & values.keys() - bound):
         filled: tuple[str, frozenset[str]] | None
@@ -218,7 +223,7 @@ def _attributes(
         widest: str | None
         if (
             stores[attr] == len(found)
-            and attr not in bound
+            and attr not in held
             and all(value is not None for value, _ in found)
             and (widest := _widest(types)) is not None
         ):
@@ -261,6 +266,16 @@ def _family(module: ast.Module, node: ast.ClassDef) -> tuple[ast.ClassDef, ...]:
             names.add(each.name)
             found.append(each)
     return tuple(found)
+
+
+def _above(module: ast.Module, node: ast.ClassDef) -> list[ast.ClassDef]:
+    """Find the module's classes `node` is under, however far (see `_family`).
+
+    Returns:
+      Them.
+
+    """
+    return [each for each in classes(module) if node in _family(module, each)]
 
 
 def _under(
@@ -800,11 +815,7 @@ class Table:
     def _completed(self, func: FunctionDef) -> None:
         """Type the attributes of `func`'s class (and those above it) whose methods are all checked now."""
         own: ast.ClassDef | None = _owners(self.module).get(id(func))
-        above: list[ast.ClassDef] = (
-            []
-            if own is None
-            else [each for each in classes(self.module) if own in _family(self.module, each)]
-        )
+        above: list[ast.ClassDef] = [] if own is None else _above(self.module, own)
         node: ast.ClassDef
         for node in above if own is None else (own, *above):
             # With the classes under it: their methods fill its empty containers too.
@@ -914,6 +925,8 @@ def _return_type(
     types: set[str | None] = {None if found is None else found.annotation for found, _ in returns}
     found: str | None
     if (found := next(iter(types)) if len(types) == 1 else None) is None:
+        return None
+    if roots(found) & bound_within(func):  # a class it imports or defines itself: no caller can name it
         return None
     # An `X | None` is a guess: a type checker takes the unannotated function's call for anything,
     # and what its callers do with it unchecked for `None` is an error only once it's declared.

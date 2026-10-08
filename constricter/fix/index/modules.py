@@ -424,6 +424,16 @@ def _written(tree: ast.Module) -> dict[str, tuple[str, ...]]:
     return {root: tuple(chains) for root, chains in grouped.items()}
 
 
+def takes(module: Module, name: str) -> bool:
+    """Check whether `module` binds `name` by an import from another module: one to follow there.
+
+    Returns:
+      Whether it does.
+
+    """
+    return module.names.get(name, (module.name, None))[0] != module.name
+
+
 def written_under(target: Module, local: str) -> Iterator[tuple[str, str, str]]:
     """Find the names `target` writes under `local`, a module it imports (`u.helper`, `pkg.util.helper`).
 

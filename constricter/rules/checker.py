@@ -703,13 +703,16 @@ def _visit(scope: Scope, stmt: ast.stmt, head: ast.stmt | None = None) -> None:
         {id(s) for s in stmt.body} if isinstance(stmt, ast.For | ast.AsyncFor | ast.While) else set()
     )
     before: dict[str, str] | None = dict(scope.inferred.types) if isinstance(stmt, BRANCHING) else None
+    untyped: frozenset[str] = (
+        frozenset() if before is None else frozenset(scope.declared - scope.inferred.types.keys())
+    )
     child: ast.stmt
     for child in child_statements(stmt):
         scope.assignments.looping += id(child) in body
         _visit(scope, child, (head or stmt) if _is_elif(stmt, child) else None)
         scope.assignments.looping -= id(child) in body
     if before is not None:
-        scope.inferred.rejoined(before)
+        scope.inferred.rejoined(before, untyped)
 
 
 def _is_elif(stmt: ast.stmt, child: ast.stmt) -> bool:
@@ -952,6 +955,7 @@ def _finished(tree: ast.Module, scopes: Sequence[Scope]) -> None:
         late.fills(scope)
         late.shadowed(scope)
         late.excused(scope)
+        late.unchecked(scope, tree)
 
 
 def value_flow(

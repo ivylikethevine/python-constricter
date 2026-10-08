@@ -6,6 +6,25 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix --unsafe-fixes` adds fewer type errors, by what the corpus packages' own checkers found
+  after it (pandas's 42 new errors are 7, sqlalchemy's 3 are 2, and pydantic's 9 left are its
+  environment's). What an unannotated function's `return`s give, which a checker took for anything,
+  has no fix where declaring it makes an error of what its function does with the name: a union of
+  which an attribute or an item is taken where no test narrows it (`opt.cb`, of an `Option | None`),
+  and a class of the module's of which an attribute it hasn't is taken (`cfg.verbose`, where the
+  attributes are set from outside the class). A name of no known type before a branch that binds it
+  to a known one (a parameter, in `if flag: x = float(x)`) has none past the branch, where it was a
+  guess of the branch's; and a name bound in one arm of an `if`, `try` or `match` to a known type
+  and in another to one that isn't has no fix. A union isn't split over several names
+  (`for name, length in parts`, of a `list[list[str | int]]`); a display of an attribute narrowed
+  where it's written (`[self.offset]` under `isinstance`) has no fix, as one of a name had none; an
+  unannotated function returning a class its own body imports or defines types no call (the caller's
+  file couldn't name it); and an attribute a class above stores too isn't typed by the subclass's
+  assignments. On the seven corpora, 44,942 guesses from 47,918.
+- A function called through a module that imports it in turn is typed by its declared return, as one
+  imported by name is: `pd.array(...)` after `import pandas as pd`, by the `array` that
+  `pandas/__init__.py` imports from `pandas.core.api` (an `ExtensionArray`, imported for type
+  checking). On the seven corpora, 64,373 certain fixes from 62,540 (pandas: 16,826 from 16,010).
 - A check with `--jobs` keeps its worker processes for all of its rounds, where each round started
   new ones: a file checked again (its callers typing its parameters) is checked by the worker that
   has its tree and how its first check ended, as one process does it. The standard library checks in

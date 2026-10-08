@@ -65,6 +65,11 @@ class Typed(dict[str, str]):  # ruff: ignore[subclass-builtin]
         self.version += 1
         super().update(others)
 
+    def forget(self, name: str) -> None:
+        """Leave `name` with no type, and count it."""
+        self.version += 1
+        _ = super().pop(name, None)
+
 
 class Guarded(NamedTuple):
     """A name a file can write only in an annotation: imported under `if TYPE_CHECKING:` (see `project`).

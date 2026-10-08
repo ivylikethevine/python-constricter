@@ -10,7 +10,7 @@ it too.
 """
 
 import ast
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from typing import Final, TypeAlias, cast
 
 from constricter.fix.core.known import Inference, Known
@@ -21,12 +21,14 @@ from constricter.fix.values.entered import entered, entered_async, entering
 from constricter.fix.values.inference import LoopPart, inference, looped, looped_parts
 from constricter.fix.values.targets import iterated, unpacked
 from constricter.offences import COMMENT_TYPED_TARGET, UNTYPED_TARGET, Edit, Fix, at
-from constricter.rules.flow import augmented
+from constricter.rules.flow import augmented, members
 from constricter.rules.scope import Late, Scope, certain_type, guessed_type, guesses_in
 from constricter.rules.syntax import captures, comment_type, target_names, type_comment_span
 
 _COMMENT: Final = "comment"  # the fix kind of LVA003's declaration
 _UNPACK: Final = frozenset({"unpack"})  # the fix kind of an unpacking's split
+_TUPLE: Final = ("tuple[", "Tuple[")  # how a tuple's type starts
+_ANY: Final = ", ...]"  # and how one of any length ends
 # A name's inference (`None`: unknown), whether it's a guess, and what the guess rests on.
 # What `Scope.valued` gives.
 _Valued: TypeAlias = tuple[Inference | None, bool, frozenset[str]]
@@ -269,10 +271,21 @@ def _split(
     name: ast.Name
     annotation: str | None
     whole: str | None = None if typed is None else typed.annotation
-    for name, annotation in unpacked(target, whole, scope.settings.known.indirect.tuples):
+    tuples: Mapping[str, str] = scope.settings.known.indirect.tuples
+    parts: list[tuple[ast.Name, str | None]] = unpacked(target, whole, tuples)
+    # A union over several names, of anything but a tuple of that many, is by position as often
+    # as not (`name, length`, of `[["prefix", 24], ...]`): each has no fix.
+    fixed: bool = tuples.get(whole or "", whole or "").startswith(_TUPLE) and not (whole or "").endswith(_ANY)
+    mixed: bool = (
+        not fixed
+        and len(parts) > 1
+        and len({annotation for _, annotation in parts}) == 1
+        and len(members(parts[0][1] or "") or ()) > 1
+    )
+    for name, annotation in parts:
         part: Inference | None = (
             None
-            if typed is None or annotation is None
+            if typed is None or annotation is None or mixed
             else Inference(annotation, typed.reason, typed.kinds | split)
         )
         yield name, (part, unsafe, origins)

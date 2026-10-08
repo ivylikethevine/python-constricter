@@ -11,7 +11,10 @@ a union (`int | None`).
 
 import ast
 from collections.abc import Iterator, Mapping, Sequence
+from functools import lru_cache
 from typing import Final, TypeAlias, cast
+
+from constricter.rules.walked import walk
 
 # The lines a test governs (first and last, from 1), and whether it's a check, which narrows any
 # type (not a truth test or comparison, which narrows only a union); by each value it narrows.
@@ -57,6 +60,52 @@ def read_narrowed(found: Regions, read: str, line: int, *, union: bool) -> bool:
 
     """
     return any(start <= line <= end and (check or union) for start, end, check in found.get(read, ()))
+
+
+@lru_cache(maxsize=64)  # asked of each of a function's guessed unions
+def tested_lines(function: ast.AST) -> Mapping[str, frozenset[int]]:
+    """Find the lines on which a test of a function's own narrows a value it goes on to read.
+
+    A condition's own lines (`if opt and opt.cb:`), a conditional expression's
+    (`opt.cb if opt else None`), a filtered comprehension's, and those of an `and` or `or` anywhere
+    (`return opt and opt.cb`).
+
+    Returns:
+      Each value such a test narrows, as source text, and those lines.
+
+    """
+    found: dict[str, set[int]] = {}
+    node: ast.AST
+    for node in walk(function):
+        test: ast.expr
+        whole: ast.expr
+        for test, whole in _spanned(node):
+            lines: range = range(min(test.lineno, whole.lineno), (whole.end_lineno or whole.lineno) + 1)
+            text: str
+            for text, _ in _narrows(test):
+                found.setdefault(text, set()).update(lines)
+    return {text: frozenset(lines) for text, lines in found.items()}
+
+
+def _spanned(node: ast.AST) -> Iterator[tuple[ast.expr, ast.expr]]:
+    """Find the tests a node holds, each with the expression whose lines it narrows on.
+
+    Yields:
+      Each test, and that expression: the test itself, or what it's part of.
+
+    """
+    test: ast.expr
+    match node:
+        case ast.If(test=test) | ast.While(test=test) | ast.Assert(test=test):
+            yield test, test
+        case ast.IfExp(test=test):
+            yield test, node
+        case ast.BoolOp():
+            yield node, node
+        case ast.ListComp() | ast.SetComp() | ast.DictComp() | ast.GeneratorExp():
+            yield from ((test, node) for each in node.generators for test in each.ifs)
+        case _:
+            pass
 
 
 def _block(body: Sequence[ast.stmt]) -> Iterator[tuple[str, Region]]:

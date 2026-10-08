@@ -504,15 +504,34 @@ than the fix says, the fix is changed, made a guess, or not offered:
   on a line of its own before the first binding (annotated there, mypy wouldn't narrow it to the
   `int` it's bound to), and `total = 0` then `total += 0.5` declares `total: float` (fix kind
   `rebound`); another type that doesn't fit (`x = 1` then `x = "a"`, a class and its base) leaves it
-  untyped. A later value whose type isn't known may be anything, which makes the fix a guess. A
-  class or alias the file spells two ways is one type (`CoreSchema` and `core_schema.CoreSchema`,
-  after importing the name and its module; the CLI only, whose index says where each is defined);
+  untyped. A later value whose type isn't known may be anything, which makes the fix a guess, and no
+  fix where it's bound in another arm of the first one's `if`, `try` or `match` (`dtype = "None"`,
+  `else: dtype = self.categories.dtype`): only one arm runs, and a checker that knows the other's
+  type holds it to the first's. A class or alias the file spells two ways is one type (`CoreSchema`
+  and `core_schema.CoreSchema`, after importing the name and its module; the CLI only, whose index
+  says where each is defined);
 - after it's bound again, a name is what it was bound to: certain where that's a member of its
   declared union (`int | None`, then `1`), which every checker narrows it to; a guess otherwise, and
   where it was first bound to a value of no known type, which it may still hold
   (`levels = index.multi()` under an `if`, `levels = ["a"]` under its `else`: `for lvl in levels`
   declares `lvl: str` as a guess); bound again to a value whose type is a guess, it's that type from
-  there on, as a guess (`config = config or Config()`, then `config.limit`);
+  there on, as a guess (`config = config or Config()`, then `config.limit`); and one of no known
+  type before a branch that binds it to a known one (a parameter, in `if flag: x = float(x)`) has
+  none past the branch, where it may hold either;
+- a guess isn't offered where, once declared, it makes an error of what the function goes on to do
+  with the name, by an unannotated function's `return`s, which a checker took for anything: a union
+  of which an attribute or an item is taken where no test narrows it (`opt = registered(key)`, then
+  `opt.cb`), and a class of the module's by such `return`s of which an attribute it hasn't is taken
+  (`cfg.verbose`, of a class whose attributes are set from outside it; only a class whose attributes
+  are all in sight: undecorated, under the module's own classes alone, with no `__getattr__` or
+  `setattr`);
+- a union isn't split over several names (`for name, length in parts`, of `[["prefix", 24], ...]`, a
+  `list[list[str | int]]`): each is by position as often as not; a tuple of that many says which is
+  which, and is;
+- an unannotated function's `return` of a class its own body imports or defines types no call: no
+  caller can name it;
+- an instance attribute a class above also stores (`self.name = name` under a base's
+  `self.name = array.name`) is typed there, to a checker, not by the subclass's assignments;
 - a value typed the same whatever a guessed name in it is stays certain: `os.path.join(root, "x")`
   is a `str` by its literal, a guessed `root` or not; so does one typed whatever its parts are
   (`x.kind is None`, an f-string);

@@ -213,17 +213,22 @@ class Inferred:
         if name not in self.guesses:
             self.guess(name, frozenset({REBOUND}))
 
-    def rejoined(self, before: Mapping[str, str]) -> None:
+    def rejoined(self, before: Mapping[str, str], untyped: frozenset[str]) -> None:
         """Take each name a branch (`if`, a loop, `try`, `match`) retyped back to its type `before` it.
 
         The branch may not have run: past it, a name is what it was, or what the branch made it. That's
         its type before, certainly, if that's a union the branch's type is a member of (`int | None`,
-        narrowed to `int` inside `if`); otherwise `rebound` already made it a guess.
+        narrowed to `int` inside `if`); otherwise `rebound` already made it a guess. One of `untyped`,
+        bound before the branch to a value of no known type, may still hold it: it has none past it.
         """
         name: str
         annotation: str
         for name, annotation in before.items():
             self.types[name] = annotation
+        for name in untyped & self.types.keys():
+            self.types.forget(name)
+            self.guesses.discard(name)
+            _ = self.origins.pop(name, None)
 
 
 class Scope:
@@ -447,7 +452,7 @@ class Scope:
     def _takes_narrowed(self, value: ast.expr, fix: Inference, line: int) -> bool:
         """Check whether a fix takes its type from a read narrowed at `line`: `deepcopy(x)`, in `if x:`.
 
-        Or holds one in a display (`[x]`, there): its elements are the narrowed type's.
+        Or holds one in a display (`[x]`, `[self.x]`, there): its elements are the narrowed type's.
 
         Returns:
           Whether it does: the read has another type there than it's declared.
@@ -455,9 +460,9 @@ class Scope:
         """
         types: Mapping[str, str] = self.inferred.types
         held: list[str] = [
-            element.id
+            ast.unparse(element)
             for element in (value.elts if isinstance(value, ast.List | ast.Set | ast.Tuple) else ())
-            if isinstance(element, ast.Name)
+            if isinstance(element, _READS)
         ]
         return any(
             read_narrowed(

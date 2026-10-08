@@ -435,3 +435,20 @@ def exported_names(
         for name in roots(annotation)
         if name in guarded or name in added
     }
+
+
+def bound_within(func: ast.FunctionDef) -> frozenset[str]:
+    """Name what a function's own body imports or defines as a class, at any depth.
+
+    Returns:
+      Each name: one nothing outside the function can spell.
+
+    """
+    found: set[str] = set()
+    node: ast.AST
+    for node in ast.walk(func):
+        if isinstance(node, ast.ClassDef):
+            found.add(node.name)
+        elif isinstance(node, ast.Import | ast.ImportFrom):
+            found.update((alias.asname or alias.name).split(".")[0] for alias in node.names)
+    return frozenset(found)

@@ -9,7 +9,7 @@ import pytest
 
 from constricter import Offence, check_source
 from constricter.cli import command as cli
-from constricter.fix.core.known import Classes, Outside
+from constricter.fix.core.known import Classes, Guarded, Outside
 from constricter.fix.index import project
 
 UTIL: Final = """
@@ -386,3 +386,34 @@ def test_an_imported_type_variable_is_never_a_calls_type(tmp_path: Path) -> None
         outside=Outside(imported.calls, imported.classes),
     )
     assert {o.name: o.fix for o in (*inside, *outside)} == dict.fromkeys(("a", "b", "c", "d"))
+
+
+USES_REEXPORTED: Final = """
+import pkg as p
+import pkg.api
+
+def run() -> None:
+    a = p.make()
+    b = pkg.api.make()
+    c = p.bare()
+    d = p.missing()
+"""
+
+
+def test_a_call_through_a_module_follows_its_reexports(tmp_path: Path) -> None:
+    """`p.make()` is typed by the function `pkg/__init__.py` imports in turn, if it declares its return.
+
+    Not by one typed by its `return`s alone, which waits on its own module's check.
+    """
+    _ = _write(tmp_path / "pkg" / "__init__.py", "from pkg.api import Thing, make, bare\n")
+    _ = _write(tmp_path / "pkg" / "api.py", "from pkg.impl import Thing, make, bare\n")
+    _ = _write(
+        tmp_path / "pkg" / "impl.py",
+        "class Thing:\n    pass\n\ndef make() -> Thing:\n    return Thing()\n\ndef bare():\n    return 1\n",
+    )
+    uses: Path = _write(tmp_path / "uses.py", USES_REEXPORTED)
+    catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
+    guarded: dict[str, Guarded] = {}
+    assert project.calls(catalog, uses, guarded) == {"p.make": "Thing", "pkg.api.make": "Thing"}
+    assert [needed.statement for needed in guarded.values()] == ["from pkg.impl import Thing"]
+    assert project.returned(catalog, uses, {}).calls == {}

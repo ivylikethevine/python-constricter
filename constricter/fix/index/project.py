@@ -33,6 +33,7 @@ from constricter.fix.index.modules import (
     indexed,
     module_name,
     read,
+    takes,
     written_under,
 )
 from constricter.rules.annotations import node_name, roots
@@ -230,8 +231,8 @@ def spellings(catalog: Index, target: Module, kind: str) -> Iterator[tuple[str, 
     """Find what `target` imports that other modules may define as a `kind`, as it spells each call.
 
     Yields:
-      Each name as written (`helper`, `u.helper`, `pkg.util.helper`), and where it's from: a
-      module's function only where the file writes it (see `Module.written`).
+      Each name as written (`helper`, `u.helper`, `pkg.util.helper`), and where it's from: a module's
+      function, or a declared one it imports in turn (`pd.array`), only where the file writes it.
 
     """
     local: str
@@ -248,7 +249,8 @@ def spellings(catalog: Index, target: Module, kind: str) -> Iterator[tuple[str, 
             function: str
             for key, sub, function in written_under(target, local):  # of all it has, those the file calls
                 other: Module | None = catalog.modules.get(origin[0] + sub)
-                if other is not None and function in _kind(other, kind):
+                followed: bool = kind == _FUNCTION and other is not None and takes(other, function)
+                if other is not None and (followed or function in _kind(other, kind)):
                     yield key, (other.name, function)
 
 

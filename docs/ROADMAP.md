@@ -470,22 +470,30 @@ fix.
 ### Medium: 4 to 8 hours
 
 1. **What a guess breaks, by its cause.** After `--fix --unsafe-fixes` the packages' own type
-   checkers find 42 new errors on pandas, 10 on pydantic and 3 on sqlalchemy; on the 52 packages 31
-   on mypy, and 1 to 6 on each of eight more. Nine causes are fixed (altair's 128 are none, mypy's
-   76 are 31, optuna's 39 are 3, narwhals's 8 are 1: see the changelog). What's left:
+   checkers find 7 new errors on pandas (from 42), 2 on sqlalchemy and none on pydantic past the 9
+   its certain fixes bring (its environment's); the 52 packages aren't counted again since (31 on
+   mypy, and 1 to 6 on each of eight more). Fixed on the seven: a union used unnarrowed, an
+   attribute its class hasn't, a name typed in a branch and read past it, two arms of an `if` of
+   which one's type isn't known, a union split over an unpacking's names (see the changelog). What's
+   left:
    - A type from a package the suite's own checker can't follow (`etree.Element`, of `lxml`): 14 of
-     mypy's. Its environment's, as pydantic's 10 are; listed, not fixed.
-   - What an unannotated function's `return`s give (`returned`), declared where a checker took
-     `Any`: about 20 of pandas's, from 13 of its guesses, each another latent error (an attribute
-     set after construction, an `X | None` used unchecked). No one cause: count how many `returned`
-     guesses pandas has before judging the 13.
+     mypy's. Its environment's, as pydantic's are; listed, not fixed.
+   - A stub that says less than what runs (`Timestamp == index` is a `bool`, then `.any()`), and a
+     `bytes` an f-string then prints (mypy's `str-bytes-safe`): 2 each of pandas's, by an
+     unannotated method's `return`s. Latent errors, not wrong types.
+   - A loop over what callers pass (`for lvl in levels`), its elements then compared by identity
+     with a sentinel: 2 of pandas's.
+   - A `None`, then only an `Index`, by an unannotated function's `return`s: declared, an argument
+     taken from it is checked (`oindex._values`). One of pandas's.
+   - A copy of a parameter declared as an alias of a union, bound again before the copy
+     (`original_execution_options = execution_options`, then `.union(...)`): sqlalchemy's 2. An
+     alias isn't read as the union it names.
    - A name first an `X | None`, tested for `None` and bound again (`code = error.get("code")`, then
      `if code is None: code = SYNTAX`): typed by its first value. Three of mypy's.
-   - A module's name bound in each arm of an `if` to another function (`formatter = rich` /
-     `formatter = plain`): structlog's 6.
 
    Done when each package's errors left are its environment's, or under one for each hundred of its
-   guesses. About 3 hours; coverage down by the guesses withdrawn.
+   guesses: so on the seven; a run of the 52 says whether on them. About 2 hours; coverage down by
+   the guesses withdrawn.
 
 2. **A parallel check, past its longest chain.** With every CPU the standard library checks in 12.9s
    and pandas in 11.3s (14.4s and 11.4s before the workers were kept for a run's rounds): 46s and
