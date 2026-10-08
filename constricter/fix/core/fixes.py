@@ -138,6 +138,23 @@ def replacements(lines: Sequence[str], offence: Offence) -> tuple[Replacement, .
     return tuple(edit for edit in edits if edit is not None)
 
 
+def inserted(lines: Sequence[str], offences: Sequence[Offence]) -> list[int]:
+    """Find where `apply` adds lines to `lines`: each declaration, and the imports the fixes need.
+
+    Returns:
+      For each line it adds, the line (from 1) it goes before, sorted.
+
+    """
+    found: list[int] = [
+        o.edit.span[0] for o in offences if o.edit is not None and o.edit.edit is Edit.DECLARE
+    ]
+    line: int
+    added: list[str]
+    for line, added in _imported(lines, offences):
+        found.extend([line + 1] * len(added))
+    return sorted(found)
+
+
 def _imported(lines: Sequence[str], offences: Sequence[Offence]) -> list["_Run"]:
     """Place the imports `offences`' fixes need that `lines` doesn't have yet, each once.
 

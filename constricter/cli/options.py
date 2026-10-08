@@ -394,7 +394,7 @@ def _parser() -> argparse.ArgumentParser:
     _ = parser.add_argument(
         "--show-fixes",
         action="store_true",
-        help="after the report, list each fix and how the value decided it (text)",
+        help="after the report, list each fix and how the value decided it; with --fix, those made too",
     )
     _ = parser.add_argument(
         "--statistics",

@@ -27,8 +27,8 @@ decided that fix (`--format=json`'s `kinds`); the command exits 1 if a fixed run
 `--infer-with CHECKERS` adds a third fixed run, `--fix --unsafe-fixes --infer-with CHECKERS`: the
 checkers' servers (on `PATH`, or beside this Python) see the checkout's own environment and settings,
 as its type checks do (a checkout with no settings for Pyright or pyrefly is given empty ones, or
-their servers read this project's, above it). A hint's fix a later round of `--fix` makes isn't in the
-first round's list: an error about one is untraced.
+their servers read this project's, above it). Each fixed run lists the fixes it makes itself
+(`--fix --show-fixes --format=json`), a later round's too, on the lines they had as released.
 """
 
 import ast
@@ -505,19 +505,17 @@ def _key(complaint: Complaint) -> tuple[str, str]:
     return complaint.path, _OTHER_LINE.sub("line N", complaint.message)
 
 
-def planned(root: Path, suite: Suite, *extra: str, reset_first: bool = True) -> dict[str, list[Fix]]:
-    """Reset the checkout's source (unless told it's as released), and list the fixes `--fix` makes in it.
-
-    With `extra` options.
+def fixed_and_listed(root: Path, suite: Suite, *extra: str) -> tuple[dict[str, list[Fix]], str]:
+    """Reset the checkout's source, then `--fix` it (with `extra` options), in one run that lists its fixes.
 
     Returns:
-      Them, per file.
+      The fixes it made, per file, each on the line it was on before any; and the size of the
+      change, as `git diff --shortstat` puts it.
 
     """
-    if reset_first:
-        reset(root, suite)
+    reset(root, suite)
     done: subprocess.CompletedProcess[str] = _completed(
-        [str(_CONSTRICTER), "--format=json", *extra, *_EVERYWHERE, suite.source],
+        [str(_CONSTRICTER), "--fix", "--show-fixes", "--format=json", *extra, *_EVERYWHERE, suite.source],
         root,
     )
     _ = sys.stdout.write(done.stderr)  # its warnings: a file a checker's server hung on, say
@@ -527,7 +525,7 @@ def planned(root: Path, suite: Suite, *extra: str, reset_first: bool = True) -> 
     for result in results:
         fix: dict[str, _Json] | None = cast("dict[str, _Json] | None", result.get("fix"))
         quoted: re.Match[str] | None = re.search(r"'([^']+)'", str(result["message"]))
-        if fix and quoted and (extra or not fix["unsafe"]):
+        if fix and quoted and result["fixed"]:
             fixes.setdefault(str(result["path"]), []).append(
                 Fix(
                     str(result["path"]),
@@ -538,7 +536,7 @@ def planned(root: Path, suite: Suite, *extra: str, reset_first: bool = True) -> 
                     bool(fix["unsafe"]),
                 ),
             )
-    return fixes
+    return fixes, _output(["git", "diff", "--shortstat"], root).strip()
 
 
 def _origins(original: list[str], changed: list[str]) -> tuple[list[int], frozenset[int]]:
@@ -701,53 +699,22 @@ class Compared(NamedTuple):
     new: list[Blamed]
 
 
-def _listed_and_fixed(
-    root: Path,
-    suite: Suite,
-    options: tuple[str, ...],
-    unfixed: Path | None,
-) -> tuple[dict[str, list[Fix]], str]:
-    """List the fixes `--fix` makes with `options` (see `planned`), and make them in checkout `root`.
-
-    Listed on `unfixed` meanwhile, if there's one; else on `root`, first.
-
-    Returns:
-      The fixes, and the size of the change.
-
-    """
-    if unfixed is None:
-        return planned(root, suite, *options), fixed(root, suite, *options)
-    pool: ThreadPoolExecutor
-    with ThreadPoolExecutor(1) as pool:
-        listing: Future[_Fixes] = pool.submit(
-            planned,
-            unfixed,
-            suite,
-            *options,
-            reset_first=False,
-        )
-        change: str = fixed(root, suite, *options)
-    return listing.result(), change
-
-
 def compared(
     root: Path,
     suite: Suite,
     released: Callable[[], list[Complaint]],
     options: tuple[str, ...],
-    unfixed: Path | None = None,
 ) -> Compared:
     """Fix the checkout's source with `options`, type-check it, and trace what's new since `released`.
 
     `released` gives the released source's errors, asked for once this checkout's are in: they may
-    be found meanwhile, on another checkout. `unfixed`: such a checkout, its source as released,
-    where the fixes are listed while this one is fixed.
+    be found meanwhile, on another checkout.
 
     Returns:
       The comparison.
 
     """
-    made: tuple[_Fixes, str] = _listed_and_fixed(root, suite, options, unfixed)
+    made: tuple[_Fixes, str] = fixed_and_listed(root, suite, *options)
     after: list[Complaint] = complaints(root, suite)
     before: Counter[tuple[str, str]] = Counter(_key(complaint) for complaint in released())
     now: Counter[tuple[str, str]] = Counter(_key(complaint) for complaint in after)

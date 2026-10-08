@@ -30,16 +30,18 @@ def same(catalog: Index, path: Path, guarded: Mapping[str, Guarded]) -> tuple[fr
     target: Module | None
     if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
         return ()
-    checking: list[tuple[str, Origin]] = [
-        *target.guarded.items(),
-        *((name, found.origin) for name, found in guarded.items()),
-    ]
+    # With what it imports for type checking alone: a module so imported spells its types too.
+    checking: dict[str, Origin] = {
+        **target.guarded,
+        **{name: found.origin for name, found in guarded.items()},
+    }
+    named: Module = replace(target, names={**checking, **target.names})
     groups: dict[Origin, set[str]] = {}
     kind: str
     for kind in (project.CLASS, project.ALIAS):
         name: str
         origin: Origin
-        for name, origin in (*project.spellings(catalog, target, kind), *checking):
+        for name, origin in project.spellings(catalog, named, kind):
             defined: tuple[Module, str] | None
             if (defined := project.definition(catalog.modules, origin, kind)) is not None:
                 groups.setdefault((defined[0].name, defined[1]), set()).add(name)

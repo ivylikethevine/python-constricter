@@ -6,6 +6,15 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix --show-fixes` lists the fixes it made, after what it left: `fixed 'x': ...` as text, and in
+  `--format=json` (where every entry now says whether it's `fixed`) one entry for each, on the line
+  it had before any fix. Without `--show-fixes` a `--fix` run's JSON lists what's left, as it did.
+- A widening declared on a line of its own (`row: Any  # constricter: auto`, before a loop, an
+  unpacking or a `with`) is replaced as an assignment's is: once the statement types the name, and
+  nothing binds it again, it's reported as LVA005 with that type as its fix, which drops the mark.
+- A module imported for type checking alone spells its types as one imported to run does: a name
+  bound to `core_schema.CoreSchema`, then to `CoreSchema`, is one type's, where a second pass of
+  `fix-widen`'s `unions` declared it `CoreSchema | core_schema.CoreSchema`.
 - `fix-widen`'s two kinds of call, and `vague`, type what a loop, an unpacking or a `with` binds
   too, each name declared on a marked line of its own before the statement
   (`for key, row in obj.rows():`, `a, b = helper()`, `with obj.open() as f:`); and `untyped-calls`

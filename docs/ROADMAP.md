@@ -240,6 +240,11 @@
 - `--diff`, `--show-fixes`, `--statistics`, `--explain`, `--coverage` / `--fail-under`, baselines,
   `--jobs`, standard input, `--exit-zero`, `--output-file`, and `--exclude` globs that also skip
   directory names in a walk.
+- **A fix that says what it fixed**: `--fix --show-fixes` lists each fix it made after what it left,
+  as text (`fixed 'x'`) or in `--format=json` (`fixed` on every entry), a later round's too, each on
+  the line it had before any fix. `corpus_suite.compared` so runs constricter once for each fixed
+  run it type-checks, where it ran it twice: on pydantic the one run lists the 1,084 certain fixes
+  and the 1,569 with guesses that a check listed before it.
 - **Notebooks** (`.ipynb`), checked and fixed per cell; every JSON file read allows comments and
   trailing commas; every public entry point takes `str` or `bytes`.
 
@@ -523,15 +528,7 @@ fix.
    when a second check of an unchanged standard library spends under a second indexing, and a
    changed file's is read again. About 6 hours; coverage unchanged.
 
-6. **A fix that says what it fixed.** `--fix` reports what it left: `--format=json` after it lists
-   no fix it made. `corpus_suite.py` so runs constricter twice for each fixed run it type-checks,
-   once to list the fixes (`planned`) and once to make them (`fixed`), and with `--infer-with` each
-   gathers every hint again: on pandas, two more rounds of servers a run, 3.4 GB each. List the
-   fixes made with their lines as they were, for `--show-fixes` and the report formats. Done when
-   `corpus_suite.compared` runs constricter once, and blames the same errors on the same fixes.
-   About 5 hours; coverage unchanged.
-
-7. **Compiled where it can be.** `mypyc` compiles the `rules` and `fix` packages as they are
+6. **Compiled where it can be.** `mypyc` compiles the `rules` and `fix` packages as they are
    annotated (every local is): 64 of their modules built, a check of pandas takes 38.0s from 50.3s
    in one process and 9.1s from 11.0s with every CPU, the standard library 35.5s from 46.3s and
    11.5s from 14.0s; one module alone (`rules.walked`) gains 2%. It took nine changes of four kinds
@@ -544,7 +541,7 @@ fix.
    Black's are), by `hatch-mypyc`, with the whole suite run on the compiled build and the corpora's
    output compared with the pure one's. Done when a compiled wheel checks every corpus as the pure
    one does, and CI builds and tests both. About 8 hours, for a check 1.2 to 1.3 times as fast.
-8. **The stubs, read by `typeshed-client`.** `stdlib_tables/stubs.py` (532 of the generator's 3,774
+7. **The stubs, read by `typeshed-client`.** `stdlib_tables/stubs.py` (532 of the generator's 3,774
    lines) decides each stub's `sys.platform` and `sys.version_info` blocks, lists what it binds and
    exports, and follows re-exports: what `typeshed-client` does, given the pinned basedpyright's
    typeshed. Its names agree with ours for all 752 modules on all 12 configurations; whether a
@@ -553,17 +550,15 @@ fix.
    `overloads.py`). Done when the tables come out byte for byte the same with `stubs.py` a layer
    over it. About 5 hours; coverage unchanged.
 
-9. **Wider: a call's value, counted.** `untyped-calls` and `unknown-calls` write `Any` for what a
+8. **Wider: a call's value, counted.** `untyped-calls` and `unknown-calls` write `Any` for what a
    plain assignment, a loop, an unpacking or a `with` binds to a call of no known type in a function
    ([Done](#--fix)): of the 56,540 bindings with no fix that are a call on what has no type. Left: a
    count, since neither kind is measured on the seven corpora, and no package's own checker has run
-   after `untyped-calls` (pydantic has no such call); a declared widening replaced once its type is
-   known, as an assignment's is (a loop's target's `Any`, a union's); and a second pass of every
-   kind that adds nothing (on pydantic it adds two unions, one of them of one type the file spells
-   two ways, `CoreSchema | core_schema.CoreSchema`, once the first pass's import names it). Done
-   when each kind is counted on the corpora, and `untyped-calls` brings mypy nothing new on the
-   corpus packages. About 3 hours, for up to 22% of the offences with what's done, none of it a
-   type.
+   after `untyped-calls` (pydantic has no such call); and a second pass of every kind that adds
+   nothing: on pydantic it adds one union, of two values that are guesses until the first pass
+   declares what they rest on (`unions` joins certain types alone). Done when each kind is counted
+   on the corpora, and `untyped-calls` brings mypy nothing new on the corpus packages. About 2
+   hours, for up to 22% of the offences with what's done, none of it a type.
 
 What the finished items left, each under 3 hours and under 0.1%: a fixture's value bound to a name
 before its attribute is read (`both = capsys.readouterr()`, then `both.out`), a `parametrize` on a

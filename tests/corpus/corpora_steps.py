@@ -360,7 +360,6 @@ def types_step(corpus: Corpus, suite: corpus_suite.Suite) -> Typechecked:
                 suite,
                 released.result,
                 options,
-                first if apart else None,
             )
             for each, (_, options) in zip(roots, modes, strict=True)
         ]

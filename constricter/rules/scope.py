@@ -122,6 +122,7 @@ class Kind(NamedTuple):
 
 # A name's first plain assignment: its target, its value, and the value's inferred type, if any.
 Plain: TypeAlias = tuple[ast.Name, ast.expr, Inference | None]
+Bare: TypeAlias = tuple[ast.AnnAssign, Inference | None]
 # One plain assignment: where, and whether it's in a loop's body.
 Placed: TypeAlias = tuple[tuple[int, int], bool]
 
@@ -142,6 +143,8 @@ class Assignments:
     # Each name `late.widens` may offer a wider type: its target, its value (what a loop's, an
     # unpacking's or a `with`'s is taken from: then in `chained` too), and the type `--fix` infers.
     plain: dict[str, "Plain"] = field(default_factory=dict[str, "Plain"])
+    # Each marked declaration with no value (`x: Any`, before a loop), and what its name is bound to.
+    bare: dict[str, "Bare"] = field(default_factory=dict[str, "Bare"])
 
 
 # A name typed late: its type, and what that rests on if it's a guess (`FIX_KINDS`).

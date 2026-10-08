@@ -763,3 +763,53 @@ def test_another_checked_files_function_declaring_no_return_is_an_untyped_call(t
     assert {name for name, fix in fixed.items() if fix == _UNTYPED} == {"a", "b", "h"}
     assert {name for name, fix in fixed.items() if fix == _UNKNOWN} == {"e", "g", "i", "j", "k"}
     assert {name: fix[0] for name, fix in fixed.items() if fix[0] != _SPELLED} == {"c": "int", "d": "int"}
+
+
+REDECLARED: Final = """
+from typing import Any
+
+
+def load() -> list[dict[str, Any]]:
+    return []
+
+
+def f(rows: list[int], other, pairs: dict[str, bytes]):
+    x: Any  # constricter: auto
+    for x in rows:
+        pass
+    y: Any  # constricter: auto
+    for y in rows:
+        pass
+    y = "s"
+    z: Any  # constricter: auto
+    for z in other.load():
+        pass
+    k: Any  # constricter: auto
+    v: Any  # note  # constricter: auto
+    for k, v in pairs.items():
+        pass
+    w: Any  # constricter: auto
+    for w in load():
+        pass
+    a: int | str  # constricter: auto
+    a = 1
+    a = "s"
+"""
+_REDECLARED: Final = ["    x: int\n", "    k: str\n", "    v: bytes  # note\n"]
+
+
+def test_a_marked_declaration_is_replaced_once_its_names_type_is_known() -> None:
+    """A loop's target's, certain as its own fix would be; the mark goes with it.
+
+    Not one bound again, one whose value still has no type or none `--fix` may write, nor a union's.
+    """
+    source: str = textwrap.dedent(REDECLARED)
+    found: list[Offence] = check_source(source)
+    assert [(o.name, o.code, o.fix, o.unsafe) for o in found] == [
+        ("x", "LVA005", "int", False),
+        ("k", "LVA005", "str", False),
+        ("v", "LVA005", "bytes", False),
+    ]
+    fixed: list[str] = fixes.apply(lines(source), found)
+    assert [line for line in fixed if line in _REDECLARED] == _REDECLARED
+    assert check_source("".join(fixed)) == []

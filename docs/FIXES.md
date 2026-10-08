@@ -687,7 +687,9 @@ can't fix reported. The standard library and third-party packages are out of rea
 `--show-fixes` lists, after the report, each fix and how its value decided it (for `b = s.strip()`:
 `str`, from `str.strip`'s fixed return type), marking the guesses `--unsafe-fixes` would add;
 `--format=json` always carries the same as a `fix` object (`annotation`, `reason`, `unsafe`) on each
-result.
+result. With `--fix`, `--show-fixes` lists the fixes made too, after what's left: `fixed 'b'` as
+text, and in `--format=json` an entry whose `fixed` is true. Each is on the line it had before any
+fix, whichever round of `--fix` made it.
 
 The type hierarchy LVA008–LVA010 compare through is the numeric tower (`bool` < `int` < `float` <
 `complex`) plus the classes a module defines, under the bases they name.
@@ -875,12 +877,12 @@ On pydantic 2.13.5, `--fix` with the two kinds of call marks 519 of its 3,956 bi
 by `unknown-calls`: every function of pydantic's declares its return. 194 of them are a loop's, an
 unpacking's or a `with`'s. With `--unsafe-fixes` and every kind, 773 are widened, from 187 without
 the calls' (72 of them a loop's or an unpacking's by `vague`): 81.0% of its bindings typed or
-widened, from 66.2%. A second pass adds two unions, of types the file can name only by the imports
-the first wrote. basedpyright reports two errors fewer, which the `Any`s hide, and four more. Two
-are of one statement and its copy in `pydantic.v1` (`name = name or parts.local_part`, `name` a
-`str | None`, `parts` from a package that isn't installed): assigned an explicit `Any`, a name keeps
-its declared type, where a value the checker couldn't type at all left it a `str`. Two are of one
-loop's target (`for base in reversed(cls.__mro__):`, then
+widened, from 66.2%. A second pass adds one union, of two values that were guesses until the first
+declared what they rest on. basedpyright reports two errors fewer, which the `Any`s hide, and four
+more. Two are of one statement and its copy in `pydantic.v1` (`name = name or parts.local_part`,
+`name` a `str | None`, `parts` from a package that isn't installed): assigned an explicit `Any`, a
+name keeps its declared type, where a value the checker couldn't type at all left it a `str`. Two
+are of one loop's target (`for base in reversed(cls.__mro__):`, then
 `if not dataclasses.is_dataclass(base): continue`): declared `Any`, it's narrowed to a dataclass or
 an instance of one, where the `type` the checker inferred was narrowed to the class.
 
@@ -902,7 +904,8 @@ A marked annotation is `--fix`'s own, not the author's:
   widening;
 - once its value's type is known (the parameter annotated, say), it's reported as LVA005 with that
   type as its fix: `--fix` writes it over the annotation and deletes the mark, a guess where the
-  type is one. Not a declaration on a line of its own (a union's, a loop's target's), which has no
-  value.
+  type is one. A declaration on a line of its own, before a loop, an unpacking or a `with`, is
+  written over the same way once the statement types its name, if nothing binds the name again; a
+  union's is left.
 
 Take the mark off a line to keep its annotation as written.

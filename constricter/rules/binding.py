@@ -22,7 +22,7 @@ from constricter.fix.values.inference import LoopPart, inference, looped, looped
 from constricter.fix.values.targets import iterated, unpacked
 from constricter.offences import COMMENT_TYPED_TARGET, UNTYPED_TARGET, VAGUE_TYPE, Edit, Fix, Offence, at
 from constricter.rules.flow import augmented, members
-from constricter.rules.scope import Late, Scope, certain_type, guessed_type, guesses_in
+from constricter.rules.scope import Bare, Late, Scope, certain_type, guessed_type, guesses_in
 from constricter.rules.syntax import captures, comment_type, target_names, type_comment_span
 
 _COMMENT: Final = "comment"  # the fix kind of LVA003's declaration
@@ -379,6 +379,7 @@ def _bind_declaration(
     if (found is None or not scope.writable(found)) and (hint := scope.hint(name)) is not None:
         found, unsafe, origins = hint, True, hint.kinds
     fix: Fix | None = None
+    noted: Bare | None = scope.assignments.bare.get(name.id)
     if found is not None:
         fix = scope.offer(
             found,
@@ -392,8 +393,11 @@ def _bind_declaration(
             name.id,
             found.annotation,
             origins if unsafe else None,
-            again=name.id in scope.declared,
+            # A marked declaration with no value bound it to nothing.
+            again=name.id in scope.declared and noted is None,
         )
+    if found is not None and noted is not None and noted[1] is None:
+        scope.assignments.bare[name.id] = (noted[0], found)
     source: ast.expr | None
     if (source := None if fix or name.id in scope.declared else _source(stmt, name)) is not None:
         scope.assignments.plain[name.id] = (name, source, found)
@@ -576,12 +580,14 @@ def _rewidened(scope: Scope, stmt: ast.AnnAssign, target: ast.Name) -> bool:
 
     Returns:
       Whether it's offered; not for an annotation over several lines, a value `--fix` still can't
-      type, or a scope it leaves alone.
+      type, or a scope it leaves alone. One with no value is noted, for `redeclared`.
 
     """
     name: str = target.id
     span: tuple[int, int] | None = _span(stmt.annotation, target)
     scope.assignments.widened.add(name)
+    if stmt.value is None and span is not None and scope.kind.fixable:
+        scope.assignments.bare[name] = (stmt, None)
     if stmt.value is None or span is None or not scope.kind.fixable:
         return False
     found: Inference | None
@@ -600,6 +606,30 @@ def _rewidened(scope: Scope, stmt: ast.AnnAssign, target: ast.Name) -> bool:
     scope.assigned(name, at(target))
     scope.inferred.learn(name, found.annotation, origins if unsafe else None)
     return True
+
+
+def redeclared(scope: Scope) -> None:
+    """Offer each marked declaration with no value its name's type in its place (LVA005), once known.
+
+    `x: Any`, marked, before `for x in rows:`: where the loop, the unpacking or the `with` that
+    binds the name types it now, and nothing binds it again. The fix writes over the annotation and
+    deletes the mark, as `_rewidened`'s does; run once the scope is checked, and again without effect.
+    """
+    name: str
+    stmt: ast.AnnAssign
+    found: Inference | None
+    for name, (stmt, found) in list(scope.assignments.bare.items()):
+        del scope.assignments.bare[name]
+        span: tuple[int, int] | None = _span(stmt.annotation, stmt.target)
+        if found is None or span is None or scope.flow[name].escaped or len(scope.flow[name].bindings) != 1:
+            continue
+        guessed: bool = name in scope.inferred.guesses
+        origins: frozenset[str] = scope.inferred.origins.get(name, frozenset()) if guessed else frozenset()
+        fix: Fix | None
+        if (fix := scope.offer(found, origins, unsafe=guessed, edit=Edit.REPLACE, span=span)) is not None:
+            last: int = stmt.end_lineno or stmt.lineno
+            marked: Fix = fix._replace(drop=scope.settings.known.limits.marks[last], mark=last)
+            scope.offences.append(Offence(*at(stmt.annotation), name, VAGUE_TYPE, marked))
 
 
 def _span(annotation: ast.expr, target: ast.expr) -> tuple[int, int] | None:

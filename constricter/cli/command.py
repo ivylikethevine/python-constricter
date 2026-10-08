@@ -21,7 +21,7 @@ from constricter.cli.options import Mode, Options, Output
 from constricter.cli.paths import STDIN, python_files
 from constricter.cli.protocol import HintError
 from constricter.cli.report import Format, Result, fix_reasons, render, statistics
-from constricter.cli.runs import BaselineRun, CheckRun, CoverageRun, FileRun
+from constricter.cli.runs import Added, BaselineRun, CheckRun, CoverageRun, FileRun, merged
 from constricter.cli.workers import Workers, kept, started
 from constricter.fix.core import fixes
 from constricter.fix.core.known import Callee, Hints, Outside, Returns
@@ -309,7 +309,29 @@ def _handled(path: Path, text: tuple[str, Path], offences: list[Offence], option
         return CheckRun(results, baselined, error=f"{name}: error: {message}")
     if fixed:
         _ = parsed.take(raw)  # the tree of the text it had: no check will ask for it again
-    return CheckRun(left, baselined, fixed)
+    return CheckRun(
+        left,
+        baselined,
+        fixed,
+        made=[r._replace(replacements=(), fixed=True) for r in results if r.offence in fixing],
+        rounds=(_added(raw, name, fixing),),
+    )
+
+
+def _added(raw: str, name: Path, fixing: Sequence[Offence]) -> Added:
+    """Find the lines fixing `fixing` adds to `raw`, the text of `name` (see `fixes.inserted`).
+
+    Returns:
+      Each one's cell (`None` outside a notebook) and the line it goes before; a notebook's cells
+      get declarations alone.
+
+    """
+    if name.suffix != notebook.SUFFIX:
+        return tuple((None, line) for line in fixes.inserted(lines(raw), fixing))
+    declared: list[tuple[int, int]] = [
+        (o.cell or 0, o.edit.span[0]) for o in fixing if o.edit is not None and o.edit.edit is Edit.DECLARE
+    ]
+    return tuple(sorted(declared))
 
 
 def _baseline_path(path: Path, outside: Outside, options: Options) -> BaselineRun:
@@ -413,7 +435,7 @@ def _check_rounds(options: Options) -> tuple[list[Path], list[FileRun]]:
             index: int
             run: FileRun
             for index, run in zip(again, redone, strict=True):
-                runs[index] = _merged(runs[index], run)
+                runs[index] = merged(runs[index], run)
             again = [index for index, run in zip(again, redone, strict=True) if cast("CheckRun", run).fixed]
         checker: str
         path: Path
@@ -485,7 +507,7 @@ def _checked_more(
     at: int
     run: FileRun
     for at, run in zip(which, redone, strict=True):
-        runs[at] = _merged(runs[at], run) if how[1].mode is Mode.FIX else run
+        runs[at] = merged(runs[at], run) if how[1].mode is Mode.FIX else run
     return modules
 
 
@@ -542,20 +564,8 @@ def _checked_all(
         check,
         pool,
         (modules, hinted),
-        _merged if options.mode is Mode.FIX else None,
+        merged if options.mode is Mode.FIX else None,
     )
-
-
-def _merged(before: FileRun, after: FileRun) -> FileRun:
-    """Join a file's two `--fix` rounds' `CheckRun`s: what's left is the later's, what's fixed is both's.
-
-    Returns:
-      The joined run.
-
-    """
-    first: CheckRun = cast("CheckRun", before)
-    later: CheckRun = cast("CheckRun", after)
-    return replace(later, fixed=first.fixed + later.fixed)
 
 
 def _texts(paths: Sequence[Path]) -> dict[Path, str]:
@@ -588,10 +598,16 @@ def _report(options: Options, runs: Sequence[FileRun], files: int) -> int:
     results: list[Result] = [result for run in checked for result in run.results]
     output: Output = options.output
     text: bool = output.fmt in {Format.TEXT, Format.FULL}
+    # With `--show-fixes`, the fixes `--fix` made too: after the rest, as text or JSON.
+    shown: list[Result] = [*results, *(made for run in checked if output.show_fixes for made in run.made)]
     line: str
-    for line in statistics(results) if text and output.statistics else render(output.fmt, results):
+    for line in (
+        statistics(results)
+        if text and output.statistics
+        else render(output.fmt, shown if output.fmt is Format.JSON else results)
+    ):
         _ = sys.stdout.write(f"{line}\n")
-    for line in fix_reasons(results) if text and output.show_fixes else ():
+    for line in fix_reasons(shown) if text and output.show_fixes else ():
         _ = sys.stdout.write(f"{line}\n")
     errors: int = sum(r.offence.is_error(r.level) for r in results)
     if text and not output.quiet:
