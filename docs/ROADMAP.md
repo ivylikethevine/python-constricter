@@ -312,10 +312,10 @@
   run did is the fix's), a failed step's output is kept, and a changed `install` command reinstalls
   its checkout. The two scripts' first runs found a crash, four packages a second pass still changed
   and 17 type errors after `--fix`, each fixed since: after `--fix` no corpus's or package's own
-  checker finds a new error but pydantic's 9 (its environment's) and one of werkzeug's (`winreg`,
-  another platform's); and closed two items that waited on a run: django's suite is the same after
-  `fix-plain-bases`' guesses, and one `--fix --unsafe-fixes` pass leaves a second nothing on any of
-  the seven.
+  checker finds a new error but one of werkzeug's (`winreg`, another platform's: pydantic's 9 were
+  Pyright reading this project's settings, not its own); and closed two items that waited on a run:
+  django's suite is the same after `fix-plain-bases`' guesses, and one `--fix --unsafe-fixes` pass
+  leaves a second nothing on any of the seven.
 - **Profiles and timings that can be trusted**: **`tests/corpus/corpus_profile.py`** runs the check
   under `py-spy`, which samples it from outside, its workers too (`--jobs N`), and prints each
   module's and function's own and whole time; **`tests/corpus/corpus_timing.py OTHER`** times the
@@ -452,30 +452,31 @@ fix.
 ### Medium: 4 to 8 hours
 
 1. **What a guess breaks, by its cause.** After `--fix --unsafe-fixes` the packages' own type
-   checkers find 7 new errors on pandas (from 42), 2 on sqlalchemy and none on pydantic past the 9
-   its certain fixes bring (its environment's); the mega corpora's aren't counted again since (31 on
-   mypy, and 1 to 6 on each of eight more). Fixed on the seven: a union used unnarrowed, an
-   attribute its class hasn't, a name typed in a branch and read past it, two arms of an `if` of
-   which one's type isn't known, a union split over an unpacking's names (see the changelog); and,
-   not counted again since, what's read past such arms (`for lvl in levels`, 2 of pandas's 7) and a
-   copy of a union's alias bound again before it (sqlalchemy's 2). Fixed on the mega corpora's, one
-   error each, and not counted again since: a display of a bare `Final` name (litestar),
-   `copy.copy(self)` returned as `Self` (strawberry-graphql), a tested name added in a tuple
-   (click), and a `dict` comprehension an `isinstance` filters (optuna). What's left:
+   checkers find one new error on pandas (from 42), and none on sqlalchemy or pydantic; the mega
+   corpora's aren't counted again since (18 on mypy, and 1 or 2 on each of five more). Fixed on the
+   seven: a union used unnarrowed, an attribute its class hasn't, a name typed in a branch and read
+   past it, two arms of an `if` of which one's type isn't known, a union split over an unpacking's
+   names, what's read past such arms, a copy of a union's alias bound again before it, a comparison
+   used as more than a `bool`, a `bytes` formatted into a string and an attribute stored two ways
+   (see the changelog). Fixed on the mega corpora's, one error each, and not counted again since: a
+   display of a bare `Final` name (litestar), `copy.copy(self)` returned as `Self`
+   (strawberry-graphql), a tested name added in a tuple (click), and a `dict` comprehension an
+   `isinstance` filters (optuna). What's left:
    - A type from a package the suite's own checker can't follow (`etree.Element`, of `lxml`): 14 of
-     mypy's. Its environment's, as pydantic's are; listed, not fixed.
-   - A stub that says less than what runs (`Timestamp == index` is a `bool`, then `.any()`), and a
-     `bytes` an f-string then prints (mypy's `str-bytes-safe`): 2 each of pandas's, by an
-     unannotated method's `return`s. Latent errors, not wrong types.
+     mypy's. Its environment's; listed, not fixed.
    - A `None`, then only an `Index`, by an unannotated function's `return`s: declared, an argument
-     taken from it is checked (`oindex._values`). One of pandas's.
+     taken from it is checked (`oindex._values`). pandas's one. Nothing its function does with the
+     name says so: of pandas's 163 guesses by a method's `return`s, 22 are in code mypy checks.
+   - A declared return a checker reports where it's declared, copied to the call's name
+     (`-> Union[str]`; an alias its module binds in two branches): 4 in pydantic's `v1`, which its
+     own settings leave out.
    - A name first an `X | None`, tested for `None` and bound again (`code = error.get("code")`, then
      `if code is None: code = SYNTAX`): typed by its first value. Three of mypy's.
    - A display of a base's subclasses, declared their union and passed where a `dict` of the base is
      taken (`dict[str, A | B]` for a `dict[str, Base]`). One of optuna's.
 
    Done when each package's errors left are its environment's, or under one for each hundred of its
-   guesses: so on the seven; a mega corpora run says whether on its packages. About 2 hours;
+   guesses: so on the seven; a mega corpora run says whether on its packages. About an hour;
    coverage down by the guesses withdrawn.
 
 2. **A parallel check, past its longest chain.** With every CPU the standard library checks in 12.9s

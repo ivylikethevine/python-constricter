@@ -225,6 +225,8 @@ _SETTINGS: Final = (
     ("pyrightconfig.json", "{}\n", ("pyright", "basedpyright")),
     ("pyrefly.toml", "", ("pyrefly", "mypy", "pyright")),
 )
+_PYRIGHTS: Final = frozenset({"pyright", "basedpyright"})
+_PROJECT: Final = frozenset({"-p", "--project"})  # Pyright's option naming its settings
 # pytest's `-rfE` lines, and unittest's (Django's runner's) headers of each failure and error
 _FAILED: Final = re.compile(r"^(?:FAILED |ERROR |FAIL: |ERROR: )(\S+(?: \([\w.]+\))?)", re.MULTILINE)
 # pytest's summary's counts, but its warnings': those come and go between runs of the same code.
@@ -357,6 +359,20 @@ def _venv(root: Path, command: Sequence[str]) -> list[str]:
 
     """
     return [str(root / ".venv" / "bin" / command[0]), *command[1:]]
+
+
+def _own(check: Sequence[str]) -> list[str]:
+    """Hold Pyright's command to the checkout's settings.
+
+    Run with none named, it reads a `pyrightconfig.json` above the checkout (this project's) before
+    the checkout's own `pyproject.toml`.
+
+    Returns:
+      The check, with `--project .` where it's Pyright's and names no project.
+
+    """
+    named: bool = bool(_PROJECT.intersection(check))
+    return [*check, *(("--project", ".") if check[0] in _PYRIGHTS and not named else ())]
 
 
 def _settled(root: Path) -> None:
@@ -546,7 +562,7 @@ def complaints(root: Path, suite: Suite) -> list[Complaint]:
     pool: ThreadPoolExecutor
     with ThreadPoolExecutor(max(1, len(suite.checks))) as pool:
         checking: list[Future[str]] = [
-            pool.submit(_output, _venv(root, check), root) for check in suite.checks
+            pool.submit(_output, _venv(root, _own(check)), root) for check in suite.checks
         ]
     checked: Future[str]
     for checked in checking:

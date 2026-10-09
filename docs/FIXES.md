@@ -573,7 +573,12 @@ than the fix says, the fix is changed, made a guess, or not offered:
   `opt.cb`), and a class of the module's by such `return`s of which an attribute it hasn't is taken
   (`cfg.verbose`, of a class whose attributes are set from outside it; only a class whose attributes
   are all in sight: undecorated, under the module's own classes alone, with no `__getattr__` or
-  `setattr`);
+  `setattr`); a name whose comparison is used as more than a `bool` (`(when == index).any()`, an
+  operand of `&`, `|`, `^` or `~`: its class compares element by element, whatever its stubs say); a
+  `bytes` formatted into a string (`f"{raw}"`, `"{}".format(raw)`, `"%s" % raw`, which mypy reports;
+  not `f"{raw!r}"`); and a name stored, or an item of it, in an attribute the function stores
+  something else in too (`self.proc = buf[0:n]`, then `self.proc = decode(self.proc)`: the attribute
+  then has the name's type);
 - a union isn't split over several names (`for name, length in parts`, of `[["prefix", 24], ...]`, a
   `list[list[str | int]]`): each is by position as often as not; a tuple of that many says which is
   which, and is;

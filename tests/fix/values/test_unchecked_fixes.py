@@ -444,3 +444,60 @@ def test_a_name_bound_in_another_arm_to_an_unknown_type_has_no_fix() -> None:
         "j": ("int", False),
         "k": (None, False),
     }
+
+
+def test_a_guess_its_function_uses_as_its_type_doesnt_allow_has_no_fix() -> None:
+    """A comparison used as more than a `bool`, a `bytes` formatted, an attribute stored otherwise too."""
+    source: str = """
+    class Stamp: ...
+
+    class Reader:
+        def cast(self, v):
+            return Stamp()
+
+        def raw(self, n):
+            return b"abc"
+
+        def text(self, b: bytes) -> str:
+            return b.decode()
+
+        def f(self, start, index) -> None:
+            a = self.cast(start)
+            (a == index.values).any()
+            b = self.cast(start)
+            (b <= index) & index
+            c = self.cast(start)
+            ~(index != c)
+            d = self.cast(start)
+            (index < d)[0]
+            e = self.cast(start)
+            e == index
+            g = self.raw(1)
+            f"{g}"
+            h = self.raw(1)
+            "{} {}".format(h, 1)
+            i = self.raw(1)
+            "%s" % i
+            j = self.raw(1)
+            "%s %s" % (j, 1)
+            k = self.raw(1)
+            f"{k!r} {start}"
+            m = self.cast(1)
+            f"{m}"
+            n = self.raw(2)
+            self.proc = n[0:1]
+            self.proc = self.text(self.proc)
+            o = self.raw(2)
+            self.kept = o
+            self.kept = o
+            self.other, p = 1, self.raw(1)
+    """
+    found: dict[str, tuple[str | None, bool]] = _found(source)
+    assert {name for name, (fix, _) in found.items() if fix is None} == set("abcdghijn")
+    assert {name: fix for name, (fix, _) in found.items() if fix is not None} == {
+        "e": "Stamp",  # a comparison used as one
+        "k": "bytes",  # converted by the f-string itself
+        "m": "Stamp",  # not a `bytes`
+        "o": "bytes",  # the attribute holds nothing else
+        "p": "bytes",
+    }

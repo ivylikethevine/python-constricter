@@ -29,9 +29,9 @@ CI has none. On 0.2.4, and since (Unreleased: see [FIXES.md](FIXES.md#what-a-typ
 
 | Package    | Checker                            | Released errors | New after `--fix` | New after `--fix --unsafe-fixes` |
 | ---------- | ---------------------------------- | --------------: | ----------------: | -------------------------------: |
-| pydantic   | `pyright pydantic`                 |               0 |         18, now 0 |                        20, now 1 |
-| sqlalchemy | `mypy noxfile.py ./lib/sqlalchemy` |               0 |         61, now 0 |                       76, now 12 |
-| pandas     | mypy and pyright, as configured    |             259 |        117, now 0 |                      165, now 32 |
+| pydantic   | `pyright pydantic`                 |               0 |         18, now 0 |                        20, now 0 |
+| sqlalchemy | `mypy noxfile.py ./lib/sqlalchemy` |               0 |         61, now 0 |                        76, now 0 |
+| pandas     | mypy and pyright, as configured    |             259 |        117, now 0 |                       165, now 1 |
 
 `--types --infer-with CHECKERS` adds a run with the checkers' hints' fixes
 (`--fix --unsafe-fixes --infer-with CHECKERS`), here basedpyright's and ty's. New errors,
@@ -39,23 +39,19 @@ Unreleased:
 
 | Package    | Released errors | After `--fix` | After `--fix --unsafe-fixes` | With the hints' fixes |
 | ---------- | --------------: | ------------: | ---------------------------: | --------------------: |
-| pydantic   |             191 |             9 |                           10 |                    21 |
-| sqlalchemy |               0 |             0 |                           12 |                    36 |
-| pandas     |              70 |             0 |                           32 |                    84 |
+| pydantic   |               0 |             0 |                            0 |                     6 |
+| sqlalchemy |               0 |             0 |                            0 |                    10 |
+| pandas     |             259 |             0 |                            1 |                    73 |
 
-pydantic's 191 are this environment's (its pinned pyright finds none in its CI). Its 9 after `--fix`
-are released errors in a new place, each traced to its fix: 4 repeat an annotation pyright rejects
-where pydantic wrote it (`'AnyClassMethod'`, an alias its module binds in two branches, three times,
-and `Union[str]`), and 5 are the checkout's own path in a class's name, now caught at the annotation
-(4 of them one fix, `FieldInfo_: type[FieldInfo]`). Its one more after `--fix --unsafe-fixes` is a
-guess's (`PydanticExtraInfo`, for a name bound again to an `X | None`). pandas's 84 with the hints'
-fixes are 26 a hint's own fix's (`checker`), 12 untraced and 46 other mechanisms' (32 without the
-hints); it had 444 before a hint was held to what its function does with the name (see
-[FIXES.md](FIXES.md#a-type-checkers-types---infer-with)), which pydantic's and sqlalchemy's counts
-here predate. The checkers' hints vary from run to run: one function's 13 errors came and went
-between runs of the same code. basedpyright's server hangs twice on
-`pandas/tests/apply/test_series_apply.py` (on `np.array([np.sum, np.mean])`, as its command line
-does), which has no hints from it, and the run takes 32 minutes.
+Each Pyright run reads the checkout's own settings (`--project .`). pandas's one after
+`--fix --unsafe-fixes` is a guess's (`oindex: Index | None`, by an unannotated method's `return`s).
+With the hints' fixes, pandas's 73 are 55 a hint's own fix's (`checker`), 6 untraced and 12 other
+mechanisms' (one without the hints), sqlalchemy's 10 are 7, 2 and 1, and pydantic's 6 are 5 and one
+other mechanism's; pandas had 444 before a hint was held to what its function does with the name
+(see [FIXES.md](FIXES.md#a-type-checkers-types---infer-with)). The checkers' hints vary from run to
+run: one function's 13 errors came and went between runs of the same code. basedpyright's server
+hangs twice on `pandas/tests/apply/test_series_apply.py` (on `np.array([np.sum, np.mean])`, as its
+command line does), which has no hints from it.
 
 Earlier suites, on 0.2.4-rc.5:
 
@@ -1382,3 +1378,49 @@ much each raised it: in percentage points, and as a share of the bindings that w
 | twisted          | 0.3.5-rc.2  |              0.0% |         13.6% |                  39.6% | +13.6 pts, 13.6% of untyped | +39.6 pts, 39.6% of untyped |
 | pip              | 0.3.5-rc.2  |              1.5% |         26.3% |                  38.1% | +24.7 pts, 25.1% of untyped | +36.6 pts, 37.2% of untyped |
 | **Total**        | 0.3.5-rc.2  |              2.2% |         27.4% |                  45.4% | +25.2 pts, 25.7% of untyped | +43.1 pts, 44.1% of untyped |
+
+## constricter 0.3.6
+
+Offences per code at `suffocate`, with `all-scopes` (Python 3.14.7); the total row gives each code's
+share of them:
+
+| Corpus           | Version | constricter | Files |        `LVA001` |      `LVA002` |       `LVA004` |   `LVA005` |   `LVA006` |  `LVA009` | `LVA011` |   Total |
+| ---------------- | ------- | ----------- | ----: | --------------: | ------------: | -------------: | ---------: | ---------: | --------: | -------: | ------: |
+| standard library | 3.14    | 0.3.6       | 1,867 |          88,579 |        12,335 |         12,782 |         57 |         14 |         8 |        0 | 113,775 |
+| django           | 5.2.17  | 0.3.6       |   883 |           9,921 |         2,167 |          5,081 |          0 |          0 |         1 |        0 |  17,170 |
+| sqlalchemy       | 2.0.54  | 0.3.6       |   257 |           8,504 |         1,567 |          2,339 |        551 |        124 |         1 |        1 |  13,087 |
+| pydantic         | 2.13.5  | 0.3.6       |   105 |           2,023 |           438 |            631 |        190 |         13 |         0 |        0 |   3,295 |
+| pandas           | 3.0.6   | 0.3.6       | 1,421 |          73,367 |         2,778 |          1,648 |        134 |          2 |         1 |        1 |  77,931 |
+| twisted          | 12.3.0  | 0.3.6       |   819 |          13,310 |         1,349 |          3,215 |          0 |          0 |         0 |        0 |  17,874 |
+| pip              | 20.3.4  | 0.3.6       |   366 |           5,902 |         1,150 |          1,872 |          0 |          0 |         0 |        0 |   8,924 |
+| **Total**        |         | 0.3.6       | 5,718 | 201,606 (80.0%) | 21,784 (8.6%) | 27,568 (10.9%) | 932 (0.4%) | 153 (0.1%) | 11 (0.0%) | 2 (0.0%) | 252,056 |
+
+Errors / warnings at each level, by the version's own rules and defaults; what `--fix` fixed and
+what `--unsafe-fixes` guessed on top (each also as a share of the offences at `suffocate`), files a
+fix broke, and what a second pass would still fix:
+
+| Corpus           | constricter |   `relaxed` |         `strict` |     `constrict` | `suffocate` |          Fixed |        Guessed | Broken | Left |
+| ---------------- | ----------- | ----------: | ---------------: | --------------: | ----------: | -------------: | -------------: | -----: | ---: |
+| standard library | 0.3.6       | 0 / 113,704 | 101,361 / 12,414 |    113,704 / 71 | 113,775 / 0 | 37,395 (32.9%) | 12,336 (10.8%) |      0 |    0 |
+| django           | 0.3.6       |  0 / 17,170 |   15,002 / 2,168 |      17,170 / 0 |  17,170 / 0 |  2,618 (15.2%) |  2,661 (15.5%) |      0 |    0 |
+| sqlalchemy       | 0.3.6       |  0 / 12,411 |   10,843 / 2,244 |    12,411 / 676 |  13,087 / 0 |  1,829 (14.0%) |     801 (6.1%) |      0 |    0 |
+| pydantic         | 0.3.6       |   0 / 3,092 |      2,654 / 641 |     3,092 / 203 |   3,295 / 0 |  1,158 (35.1%) |    410 (12.4%) |      0 |    0 |
+| pandas           | 0.3.6       |  0 / 77,794 |   75,015 / 2,916 |    77,794 / 137 |  77,931 / 0 | 16,945 (21.7%) | 24,616 (31.6%) |      0 |    0 |
+| twisted          | 0.3.6       |  0 / 17,874 |   16,525 / 1,349 |      17,874 / 0 |  17,874 / 0 |  2,437 (13.6%) |  4,662 (26.1%) |      0 |    0 |
+| pip              | 0.3.6       |   0 / 8,924 |    7,774 / 1,150 |       8,924 / 0 |   8,924 / 0 |  2,253 (25.2%) |  1,133 (12.7%) |      0 |    0 |
+| **Total**        | 0.3.6       | 0 / 250,969 | 229,174 / 22,882 | 250,969 / 1,087 | 252,056 / 0 | 64,635 (25.6%) | 46,619 (18.5%) |      0 |    0 |
+
+Annotation coverage (`--coverage` with `all-scopes`, counted by this checkout for every version):
+the share of bindings typed as released, after `--fix`, and after `--fix --unsafe-fixes`, and how
+much each raised it: in percentage points, and as a share of the bindings that were untyped:
+
+| Corpus           | constricter | Typed as released | After `--fix` | After `--unsafe-fixes` |           Raised by `--fix` |         Raised with guesses |
+| ---------------- | ----------- | ----------------: | ------------: | ---------------------: | --------------------------: | --------------------------: |
+| standard library | 0.3.6       |              1.2% |         33.7% |                  44.4% | +32.5 pts, 32.9% of untyped | +43.2 pts, 43.7% of untyped |
+| django           | 0.3.6       |              0.0% |         15.3% |                  30.8% | +15.2 pts, 15.2% of untyped | +30.7 pts, 30.7% of untyped |
+| sqlalchemy       | 0.3.6       |             14.8% |         27.3% |                  32.8% | +12.6 pts, 14.7% of untyped | +18.1 pts, 21.2% of untyped |
+| pydantic         | 0.3.6       |             21.8% |         51.1% |                  61.5% | +29.3 pts, 37.5% of untyped | +39.6 pts, 50.7% of untyped |
+| pandas           | 0.3.6       |              1.6% |         23.0% |                  54.2% | +21.4 pts, 21.8% of untyped | +52.6 pts, 53.4% of untyped |
+| twisted          | 0.3.6       |              0.0% |         13.6% |                  39.7% | +13.6 pts, 13.6% of untyped | +39.7 pts, 39.7% of untyped |
+| pip              | 0.3.6       |              1.5% |         26.4% |                  38.9% | +24.9 pts, 25.2% of untyped | +37.4 pts, 37.9% of untyped |
+| **Total**        | 0.3.6       |              2.2% |         27.4% |                  45.6% | +25.2 pts, 25.8% of untyped | +43.3 pts, 44.3% of untyped |

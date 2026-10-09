@@ -6,6 +6,16 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A guess by an unannotated function's `return`s, or a checker's hint, isn't offered where its
+  function uses the name as the type doesn't allow: a comparison of it used as more than a `bool`
+  (`(start == index).any()`), a `bytes` formatted into a string (`f"{raw}"`), or the name, or an
+  item of it, stored in an attribute the function stores something else in too. On pandas: four
+  guesses fewer, and its own type checkers find one new error after `--fix --unsafe-fixes`, from 5;
+  on pydantic no fix changed.
+- `corpus_suite.py --types` runs Pyright with the checkout's own settings (`--project .`): it read
+  this project's `pyrightconfig.json`, above the checkout, before the checkout's `pyproject.toml`.
+  pydantic's 191 released errors and the 9 new after `--fix` were that: with its own settings it has
+  none of either.
 - Four fixes a package's own type checker found an error after, each a guess but the first, are
   right now or not offered. A module's name annotated with a bare `Final` is its value's type to the
   module's own body, as it was to its functions (`names: dict[str, str | Final]` was written for a

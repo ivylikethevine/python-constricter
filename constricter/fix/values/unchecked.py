@@ -5,13 +5,16 @@ A type checker takes a call of an unannotated function for anything, and checks 
 its value; declared, the value is held to its type. So a guess isn't offered where the function
 then takes an attribute its class hasn't (`cfg.verbose`, of a class whose attributes are set from
 outside it), nor a union's where it takes an attribute or an item of the name that no test narrows
-(`opt.cb`, of an `Option | None`).
+(`opt.cb`, of an `Option | None`). Nor where it uses a comparison of the name as more than a `bool`
+(`(when == index).any()`: the class compares element by element, whatever its stubs say), formats a
+`bytes` into a string (`f"{raw}"`, which mypy reports), or stores the name, or an item of it, in an
+attribute it stores something else in too (the attribute then has the name's type).
 """
 
 import ast
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from functools import lru_cache
-from typing import Final, TypeAlias
+from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.values.narrowed import Regions, read_narrowed, tested_lines
 from constricter.rules.syntax import FunctionDef
@@ -23,6 +26,9 @@ _DUNDER: Final = "__"
 # What gives a class attributes its body doesn't name.
 _DYNAMIC: Final = frozenset({"__getattr__", "__getattribute__", "setattr", "__dict__", "vars"})
 _OBJECT: Final = "object"
+_BYTES: Final = "bytes"
+_FORMAT: Final = "format"
+_BITWISE: Final = (ast.BitAnd, ast.BitOr, ast.BitXor)
 
 
 @lru_cache(maxsize=64)  # asked of each of a function's guesses
@@ -60,6 +66,116 @@ def unnarrowed(function: FunctionDef, name: str, regions: Regions) -> bool:
         line not in tested and not read_narrowed(regions, name, line, union=True)
         for line, _ in uses(function).get(name, ())
     )
+
+
+def misused(function: FunctionDef, name: str, annotation: str) -> bool:
+    """Check whether a function does with `name` what its type `annotation` makes an error of.
+
+    See `_compared`, `_formatted` and `_restored`.
+
+    Returns:
+      Whether it does.
+
+    """
+    found: _Misuses = _misuses(function)
+    return name in found.compared | found.restored or (annotation == _BYTES and name in found.formatted)
+
+
+class _Misuses(NamedTuple):
+    """The names a function compares, formats and stores as `misused` has it."""
+
+    compared: frozenset[str]
+    formatted: frozenset[str]
+    restored: frozenset[str]
+
+
+@lru_cache(maxsize=64)  # asked of each of a function's guesses
+def _misuses(function: FunctionDef) -> _Misuses:
+    compared: set[str] = set()
+    formatted: set[str] = set()
+    stored: dict[str, list[str]] = {}
+    target: ast.Attribute
+    value: ast.expr
+    node: ast.AST
+    for node in walk(function):
+        compared.update(_compared(node))
+        formatted.update(_formatted(node))
+        match node:
+            case ast.Assign(targets=[ast.Attribute() as target], value=value):
+                stored.setdefault(ast.unparse(target), []).append(_held(value))
+            case _:
+                pass
+    restored: set[str] = {name for names in stored.values() if len(set(names)) > 1 for name in names if name}
+    return _Misuses(frozenset(compared), frozenset(formatted), frozenset(restored))
+
+
+def _held(value: ast.expr) -> str:  # the name a stored value is, or is an item of; else nothing
+    name: str
+    match value:
+        case ast.Name(id=name) | ast.Subscript(value=ast.Name(id=name)):
+            return name
+        case _:
+            return ""
+
+
+def _compared(node: ast.AST) -> Iterator[str]:
+    """Name what `node` compares, where it uses the comparison as more than a `bool`.
+
+    An attribute or an item of it (`(a == b).any()`), or an operand of `&`, `|`, `^` or `~`.
+
+    Yields:
+      Each name compared.
+
+    """
+    used: list[ast.expr] = []
+    inner: ast.expr
+    left: ast.expr
+    right: ast.expr
+    op: ast.operator
+    match node:
+        case ast.Attribute(value=ast.Compare() as inner) | ast.Subscript(value=ast.Compare() as inner):
+            used.append(inner)
+        case ast.UnaryOp(op=ast.Invert(), operand=ast.Compare() as inner):
+            used.append(inner)
+        case ast.BinOp(left=left, op=op, right=right) if isinstance(op, _BITWISE):
+            used += [left, right]
+        case _:
+            pass
+    side: ast.expr
+    for inner in used:
+        if isinstance(inner, ast.Compare):
+            for side in (inner.left, *inner.comparators):
+                if isinstance(side, ast.Name):
+                    yield side.id
+
+
+def _formatted(node: ast.AST) -> Iterator[str]:
+    """Name what `node` formats into a string as `str()` would: `f"{x}"`, `"{}".format(x)`, `"%s" % x`.
+
+    Yields:
+      Each name; not one an f-string converts itself (`f"{x!r}"`).
+
+    """
+    given: list[ast.expr] = []
+    value: ast.expr
+    attr: str
+    args: list[ast.expr]
+    match node:
+        case ast.FormattedValue(value=value, conversion=-1):
+            given.append(value)
+        case ast.Call(func=ast.Attribute(value=ast.Constant(value=str()), attr=attr), args=args) if (
+            attr == _FORMAT
+        ):
+            given += args
+        case ast.BinOp(left=ast.Constant(value=str()), op=ast.Mod(), right=ast.Tuple(elts=args)):
+            given += args
+        case ast.BinOp(left=ast.Constant(value=str()), op=ast.Mod(), right=value):
+            given.append(value)
+        case _:
+            pass
+    for value in given:
+        if isinstance(value, ast.Name):
+            yield value.id
 
 
 def lacks(tree: ast.Module, function: FunctionDef, name: str, annotation: str) -> bool:
