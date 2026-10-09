@@ -22,6 +22,7 @@ _BINARY: Final = "b"
 _TEXT: Final = "t"
 _UPDATE: Final = "+"
 _WRAPPER: Final = "io.TextIOWrapper"
+_TEXT_FILE: Final = "typing.TextIO"  # what typeshed declares `tokenize.open` gives
 
 
 def opened(value: ast.expr, known: Known) -> Inference | None:
@@ -31,8 +32,8 @@ def opened(value: ast.expr, known: Known) -> Inference | None:
     `io.BufferedWriter` to write, and `io.BufferedRandom` for both (`+`). `buffering` or `opener`
     (in a position or by name) decides nothing: unbuffered, it's an `io.FileIO`. The builtin `open`,
     never one the module binds itself, and the standard library's own that open as it does
-    (`io.open`, `os.fdopen`); `tokenize.open`, always text; `gzip.open`, `bz2.open` and `lzma.open`
-    given a text mode; and `shelve.open`, a `shelve.Shelf[Any]`.
+    (`io.open`, `os.fdopen`); `tokenize.open`, always a `typing.TextIO`; `gzip.open`, `bz2.open` and
+    `lzma.open` given a text mode; and `shelve.open`, a `shelve.Shelf[Any]`.
 
     Returns:
       The inference (spelled, and imported if it must be, as the module can), or `None`.
@@ -68,9 +69,9 @@ def _by_opener(origin: str, mode: str | None, plan: ImportPlan) -> Inference | N
     if origin == _SHELF:
         parts: tuple[str | None, str | None] = (plan.spell("shelve.Shelf"), plan.spell("typing.Any"))
         spelled = None if None in parts else f"{parts[0]}[{parts[1]}]"
-    elif origin in _READERS or (
-        origin in _COMPRESSED and mode is not None and _TEXT in mode and _file_class(mode) is not None
-    ):
+    elif origin in _READERS:
+        spelled = plan.spell(_TEXT_FILE)
+    elif origin in _COMPRESSED and mode is not None and _TEXT in mode and _file_class(mode) is not None:
         spelled = plan.spell(_WRAPPER)
     reason: str = f"`{origin}`'s return type in typeshed"
     return None if spelled is None else Inference(spelled, reason, frozenset({"stdlib"}))

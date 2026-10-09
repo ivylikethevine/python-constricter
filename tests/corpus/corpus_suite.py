@@ -65,6 +65,7 @@ class Suite(NamedTuple):
     left_out: str = ""  # requirements it can't build here, which `--excludes -` reads
     most: int = 1  # the most processes its tests can keep busy
     worker_memory: float = 1.0  # the gigabytes one of them takes
+    submodules: bool = False  # its build needs its repository's submodules (aiohttp's, llhttp)
 
 
 class Outcome(NamedTuple):
@@ -224,6 +225,8 @@ _FAILED: Final = re.compile(r"^(?:FAILED |ERROR |FAIL: |ERROR: )(\S+(?: \([\w.]+
 _COUNTS: Final = re.compile(r"(\d+) (passed|failed|skipped|xfailed|xpassed|errors?)")
 # pytest's summary line, bare (`-q`) or between `=`s: its counts, before how long it took
 _SUMMARY: Final = re.compile(r"^(?:=+ )?((?:\d+ [a-z]+(?: [a-z]+)?(?:, )?)+) in \d[\d.]*s", re.MULTILINE)
+# pytest-pretty's, a count to a line under how long it took.
+_PRETTY: Final = re.compile(r"^Results \(\d[\d.]*s\):\n((?:[ \t]+\d+ [a-z]+\n?)+)", re.MULTILINE)
 _COLOUR: Final = re.compile(r"\x1b\[[0-9;]*m")  # a terminal's colours, which some suites force
 _RAN: Final = re.compile(r"^Ran (\d+) tests?", re.MULTILINE)  # unittest's summary starts here
 _UNITTEST: Final = re.compile(r"(failures|errors|skipped|expected failures|unexpected successes)=(\d+)")
@@ -387,6 +390,8 @@ def checkout(name: str, suite: Suite, apart: str = "") -> Path:
     wanted: str = hashlib.sha256(repr(suite.install).encode()).hexdigest()
     done: str | None = marker.read_text(encoding="utf-8") if marker.exists() else None
     if done is None or (done and done != wanted):  # an empty one is from before it held the hash
+        if suite.submodules:
+            _ = _output(["git", "submodule", "update", "-q", "--init", "--depth", "1"], root)
         command: tuple[str, ...]
         for command in suite.install:
             status: int
@@ -425,6 +430,19 @@ def stopped(outcome: Outcome) -> bool:
     return _STOPPED in outcome.failed
 
 
+def _summary(output: str) -> str:
+    """Find pytest's summary in a run's output: the last that reads as one.
+
+    Warnings, or what's on standard error, may come after it.
+
+    Returns:
+      Its counts' text; the output's last line if none does.
+
+    """
+    found: list[str] = cast("list[str]", _PRETTY.findall(output) or _SUMMARY.findall(output))
+    return found[-1] if found else output.strip().rsplit("\n", 1)[-1]
+
+
 def tested(root: Path, suite: Suite, keep: Path | None) -> Outcome:
     """Run the checkout's tests, writing their output to `keep` unless it's `None`.
 
@@ -439,19 +457,15 @@ def tested(root: Path, suite: Suite, keep: Path | None) -> Outcome:
         keep.parent.mkdir(parents=True, exist_ok=True)
         _ = keep.write_text(output, encoding="utf-8")
     ran: re.Match[str] | None = _RAN.search(output)
-    counts: dict[str, int]
-    if ran:
-        counts = {"ran": int(ran[1])} | {
-            kind: int(n) for kind, n in cast("list[tuple[str, str]]", _UNITTEST.findall(output, ran.end()))
-        }
-    else:
-        # The last line that reads as one: warnings, or what's on standard error, may come after it.
-        summaries: list[str] = cast("list[str]", _SUMMARY.findall(output))
-        summary: str = summaries[-1] if summaries else output.strip().rsplit("\n", 1)[-1]
-        counts = {
+    counts: dict[str, int] = (
+        {"ran": int(ran[1])}
+        | {kind: int(n) for kind, n in cast("list[tuple[str, str]]", _UNITTEST.findall(output, ran.end()))}
+        if ran
+        else {
             kind.rstrip("s") if kind.startswith("error") else kind: int(n)
-            for n, kind in cast("list[tuple[str, str]]", _COUNTS.findall(summary))
+            for n, kind in cast("list[tuple[str, str]]", _COUNTS.findall(_summary(output)))
         }
+    )
     return Outcome(counts, frozenset(cast("list[str]", _FAILED.findall(output))))
 
 

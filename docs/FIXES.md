@@ -409,11 +409,12 @@ checked file's function is entered the same way (the CLI only), by what it decla
 file is checked, yields; and its class's `__enter__` returning `self` gives the class, as a guess. A
 target that unpacks is split as an unpacking's value is (`with defs.entry(key) as (ref, schema):`),
 a vague part's name left alone. `with open(path, "rb") as f:` declares `f: io.BufferedReader`, by
-its mode, as `os.fdopen(fd, "rb")` does; `tokenize.open` gives an `io.TextIOWrapper`, as
-`gzip.open`, `bz2.open` and `lzma.open` do in a text mode; and `shelve.open` a `shelve.Shelf[Any]`,
-written from `vague` 0 (its keys are `str`s at any level). An `async with`'s target is typed by a
-standard-library manager's `__aenter__` (`async with asyncio.TaskGroup() as group:`), where that has
-one declared return; no other manager's, and not split over an unpacking.
+its mode, as `os.fdopen(fd, "rb")` does; `tokenize.open` gives a `typing.TextIO`, and `gzip.open`,
+`bz2.open` and `lzma.open` an `io.TextIOWrapper` in a text mode; and `shelve.open` a
+`shelve.Shelf[Any]`, written from `vague` 0 (its keys are `str`s at any level). An `async with`'s
+target is typed by a standard-library manager's `__aenter__`
+(`async with asyncio.TaskGroup() as group:`), where that has one declared return; no other
+manager's, and not split over an unpacking.
 
 A standard-library manager its arguments decide is matched as any such call is: a constructor whose
 `__init__` overloads declare the instance (`subprocess.Popen(cmd, text=True)` is a
@@ -692,11 +693,11 @@ same time, each over its own servers. A checker gets up to four servers, as `--j
 32 files (more only repeat each other's work: SQLAlchemy's hints took 20s with one basedpyright
 server, 11s with four, 18s with sixteen). `ty` and pyrefly work in parallel themselves, and are
 still quicker shared out: a hinted check of pandas takes 36s with one `ty` server and 21s with four,
-69s with one of pyrefly's and 18s with four. Free servers take the files a few at a time, the
+132s with one of pyrefly's and 32s with four. Free servers take the files a few at a time, the
 biggest first, each always with its next few asked before its last few are answered. A server's
 memory is counted by its checker's own measure: each of basedpyright's holds its own copy of the
 program it checks (about 1.2 GB for SQLAlchemy, 3.4 GB for pandas), while `ty`'s and pyrefly's each
-hold what they're asked about (pandas: 1.2 GB in one `ty` server and 2.5 GB in four, 4.2 GB and 5.5
+hold what they're asked about (pandas: 1.2 GB in one `ty` server and 2.5 GB in four, 2.8 GB and 4.2
 GB for pyrefly). `--infer-memory GB` (`infer-memory`) caps what a checker's servers use together: by
 default 8 GB, or half the memory available if that's less; set, never more than is available. One
 server a checker always gets.

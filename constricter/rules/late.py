@@ -329,14 +329,13 @@ def excused(scope: Scope) -> None:
     """Drop each fix of a name a line of its function excuses to a type checker (`# type: ignore`).
 
     `return text  # type: ignore[no-any-return]`: with `text` declared the line has nothing to
-    excuse, and a checker told to report unused comments reports that one.
+    excuse, and a checker told to report unused comments reports that one. A module's or a class
+    body's name, by any line of the file: it's read everywhere.
     """
     function: FunctionDef | None = scope.kind.function
     lines: Sequence[str] = scope.settings.lines
-    if function is None or not lines:
-        return
-    first: int = function.lineno - 1
-    last: int | None = function.end_lineno
+    first: int = 0 if function is None else function.lineno - 1
+    last: int | None = None if function is None else function.end_lineno
     excusing: list[str]
     if not (excusing := [line.partition("#")[0] for line in lines[first:last] if _IGNORE.search(line)]):
         return

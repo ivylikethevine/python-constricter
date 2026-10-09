@@ -201,9 +201,9 @@
 - **Each checker's servers, by its own measure**: every checker gets up to four, and a server's
   memory is its checker's (`Server.fitting`). basedpyright's each hold the whole program (0.6 GB and
   130 bytes for each byte of the files); `ty`'s and pyrefly's each hold their share, so the files
-  count once among them (0.4 GB a server and 38 bytes a byte; 0.45 GB and 175). A hinted check of
-  pandas: `ty` 36s with one server, 25s with two, 21s with four (1.2 GB, 1.7, 2.5); pyrefly 69s, 29s
-  and 18s (4.2 GB, 4.6, 5.5). Measured, and left out: asking for the hints while the files are
+  count once among them (0.4 GB a server and 38 bytes a byte; 0.47 GB and 120). A hinted check of
+  pandas: `ty` 36s with one server, 25s with two, 21s with four (1.2 GB, 1.7, 2.5); pyrefly 132s,
+  58s and 32s (2.8 GB, 3.2, 4.2). Measured, and left out: asking for the hints while the files are
   indexed gained nothing with every CPU (a hinted check of pandas 118s, from 117s: the workers index
   in a second or two), and a worker forked while the servers' threads ran hung on Python 3.11.
 - **A hung server is restarted**: one silent for 120s is restarted and each file it hadn't answered
@@ -298,7 +298,7 @@
   one step after another, and 23 since a file a checker hangs on is remembered. Of the steps waiting
   for CPUs the one expected to last longest goes first, and `CORPUS_SLOTS` shares out fewer CPUs
   than the machine reports. Measured, with no gain: the fixed copies on a `tmpfs`.
-- **`tests/corpus/mega_corpora.py`**, the same on 52 more packages `mega_packages.json` pins (45
+- **`tests/corpus/mega_corpora.py`**, the same on 40 more packages `mega_packages.json` pins (38
   with a suite read from their own CI): typed applications, `asyncio` code, pytest-heavy test trees,
   scientific packages on numpy's types, `TypedDict`s and overloads of their own, and untyped ones.
   54 minutes. A suite's tests are stopped after 15 minutes, suites binding one port run one at a
@@ -482,7 +482,7 @@ fix.
 
 1. **What a guess breaks, by its cause.** After `--fix --unsafe-fixes` the packages' own type
    checkers find 7 new errors on pandas (from 42), 2 on sqlalchemy and none on pydantic past the 9
-   its certain fixes bring (its environment's); the 52 packages aren't counted again since (31 on
+   its certain fixes bring (its environment's); the mega corpora's aren't counted again since (31 on
    mypy, and 1 to 6 on each of eight more). Fixed on the seven: a union used unnarrowed, an
    attribute its class hasn't, a name typed in a branch and read past it, two arms of an `if` of
    which one's type isn't known, a union split over an unpacking's names (see the changelog); and,
@@ -499,8 +499,8 @@ fix.
      `if code is None: code = SYNTAX`): typed by its first value. Three of mypy's.
 
    Done when each package's errors left are its environment's, or under one for each hundred of its
-   guesses: so on the seven; a run of the 52 says whether on them. About 2 hours; coverage down by
-   the guesses withdrawn.
+   guesses: so on the seven; a mega corpora run says whether on its packages. About 2 hours;
+   coverage down by the guesses withdrawn.
 
 2. **A parallel check, past its longest chain.** With every CPU the standard library checks in 12.9s
    and pandas in 11.3s (14.4s and 11.4s before the workers were kept for a run's rounds): 46s and

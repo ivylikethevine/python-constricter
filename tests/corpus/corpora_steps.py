@@ -84,7 +84,7 @@ class Census(NamedTuple):
 
 
 class Checked(NamedTuple):
-    """One timed check of a corpus at `suffocate`, with every CPU."""
+    """One timed check of a corpus at `suffocate`, with the CPUs the run gives it."""
 
     files: int
     seconds: float

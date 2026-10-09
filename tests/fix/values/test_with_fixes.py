@@ -579,7 +579,7 @@ def f(p: str, fd: int, mode: str) -> None:
 
 
 def test_other_library_openers_give_a_file_by_their_mode() -> None:
-    """`os.fdopen` as `open`; `tokenize.open`, always text; a compressed file's `open`, in a text mode."""
+    """`os.fdopen` as `open`; `tokenize.open`, a `TextIO`; a compressed file's `open`, in a text mode."""
     assert _fixes(_OPENERS) == {
         "a": ("io.TextIOWrapper", False),
         "b": ("io.BufferedReader", False),
@@ -587,7 +587,7 @@ def test_other_library_openers_give_a_file_by_their_mode() -> None:
         "d": ("io.FileIO", False),  # unbuffered: the tables'
         "e": (None, False),
         "g": (None, False),
-        "h": ("io.TextIOWrapper", False),
+        "h": ("TextIO", False),  # as typeshed declares it
         "i": ("io.TextIOWrapper", False),
         "j": ("io.TextIOWrapper", False),
         "k": ("lzma.LZMAFile", False),  # a binary mode's: the tables'

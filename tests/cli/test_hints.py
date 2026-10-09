@@ -759,7 +759,7 @@ def test_servers_are_as_many_as_fit_in_memory(monkeypatch: pytest.MonkeyPatch, t
     assert hints.Checker(_CHECKER, tmp_path, 8, 1 << 20).wanted(small) == 1
     # One whose servers each hold their share of the files: their memory is counted once among them.
     sharing: hints.Checker = hints.Checker("pyrefly", tmp_path, 8, 40 << 30)
-    tight: hints.Checker = hints.Checker("pyrefly", tmp_path, 8, 35 << 30)
+    tight: hints.Checker = hints.Checker("pyrefly", tmp_path, 8, 24 << 30)
     assert [sharing.wanted(small), sharing.wanted(big), tight.wanted(big)] == [4, 4, 1]
     assert protocol.SERVERS["pyrefly"].fitting(1 << 30, 200 << 20) == 0
 

@@ -371,6 +371,26 @@ def test_a_name_a_type_ignore_line_uses_has_no_fix() -> None:
     assert _found(_EXCUSED) == {"text": (None, False), "other": ("str", False)}
 
 
+_EXCUSED_MODULE: Final = """
+import asyncio
+import inspect
+
+if hasattr(inspect, "markcoroutinefunction"):
+    check = inspect.iscoroutinefunction
+else:
+    check = asyncio.iscoroutinefunction  # type: ignore[assignment]
+limit = 3
+"""
+
+
+def test_a_modules_name_a_type_ignore_line_uses_has_no_fix() -> None:
+    """A module's name, by any line of the file."""
+    assert _found(_EXCUSED_MODULE, Checks(all_scopes=True)) == {
+        "check": (None, False),
+        "limit": ("int", False),
+    }
+
+
 def test_what_a_test_leaves_out_isnt_in_the_type() -> None:
     """A comprehension keeping only what isn't `None` holds none; a narrowed read doesn't type a call."""
     source: str = """

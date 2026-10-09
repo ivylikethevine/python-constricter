@@ -65,8 +65,9 @@ SERVERS: Final = {
     # Parallel itself, and still quicker shared out: a hinted check of pandas takes 36s with one, 25s
     # with two, 22s with three and 21s with four (1.2 GB with one, 1.7 with two, 2.5 with four).
     "ty": Server("ty", ("server",), MAX_SERVERS, 420 << 20, 38),
-    # Parallel too: pandas's takes 69s with one, 29s with two and 18s with four (4.2 GB, 4.6, 5.5).
-    "pyrefly": Server("pyrefly", ("lsp",), MAX_SERVERS, 450 << 20, 175),
+    # Parallel too: pandas's takes 132s with one, 58s with two and 32s with four (2.8 GB, 3.2, 4.2);
+    # the standard library's 39 MB, 4.3 GB with one and 5.6 with four.
+    "pyrefly": Server("pyrefly", ("lsp",), MAX_SERVERS, 480 << 20, 120),
 }
 _PROBE: Final = "--version"  # quick for each; basedpyright-langserver's exits 1 all the same
 _PROBE_TIMEOUT: Final = 10.0  # seconds it may take

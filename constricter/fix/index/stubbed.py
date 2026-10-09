@@ -806,8 +806,8 @@ class _Reader:
         yield f"{origin[0]}.{origin[1]}"
         module: Module = self.modules[origin[0]]
         klass: Class | None
-        # None: one its module defines twice, a branch each (attrs's `AttrsInstance_`).
-        if (klass := cast("Declarations", module.declared).classes.get(origin[1] or "")) is None:
+        # No class: a checked file's protocol, or one its module defines twice (attrs's `AttrsInstance_`).
+        if module.declared is None or (klass := module.declared.classes.get(origin[1] or "")) is None:
             yield _UNFOLLOWED
             return
         base: str

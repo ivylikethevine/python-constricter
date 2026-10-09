@@ -296,7 +296,9 @@ def bases(tree: ast.Module, bound: Mapping[str, str]) -> dict[str, str]:
     """Spell the standard-library classes the module's classes inherit from (`unittest.TestCase`).
 
     Those the tables hold whole; and a generic one given all its arguments
-    (`collections.OrderedDict[str, int]`), which decide its members' types.
+    (`collections.OrderedDict[str, int]`), which decide its members' types: written with builtin
+    types, dotted names and the module's own classes alone, not a type variable, which means
+    nothing outside its class.
 
     Returns:
       Each, as the module's imports (`bound`, see `origins`) name it where it's a base, with its
@@ -304,13 +306,16 @@ def bases(tree: ast.Module, bound: Mapping[str, str]) -> dict[str, str]:
 
     """
     found: dict[str, str] = {}
+    plain: frozenset[str] = _BUILTIN_NAMES | {node.name for node in classes(tree)}
     base: ast.expr
     for base in (base for node in classes(tree) for base in node.bases):
         head: ast.expr = base.value if isinstance(base, ast.Subscript) else base
         path: str = resolved(head, bound) or ""
         path = _ALIASES.get(path, path)
         given: int = 0
-        if isinstance(base, ast.Subscript):
+        if isinstance(base, ast.Subscript) and all(
+            part.id in plain for part in ast.walk(base.slice) if isinstance(part, ast.Name)
+        ):
             given = len(base.slice.elts) if isinstance(base.slice, ast.Tuple) else 1
         if given and len(_TYPE_PARAMETERS.get(path, "").split(",")) == given and path in _TYPE_PARAMETERS:
             found[ast.unparse(base)] = ""

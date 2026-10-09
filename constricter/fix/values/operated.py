@@ -22,6 +22,7 @@ _NUMBERS: Final = _INTEGERS | {_FLOAT}
 _TEXTS: Final = frozenset({"str", "bytes"})
 _LIST: Final = "list"
 _TUPLE: Final = "tuple"
+_OPEN: Final = "["  # where a subscripted annotation's arguments start
 _SETS: Final = frozenset({"set", "frozenset"})
 _DICT: Final = "dict"
 _SAME_TYPE: Final = (ast.Add, ast.Sub, ast.Mult, ast.FloorDiv, ast.Mod)  # an `int`'s, or a `float`'s
@@ -59,13 +60,14 @@ def _root(annotation: str) -> str:
     """Name a subscripted annotation's outer type (`list` for `list[int]`).
 
     Returns:
-      Its text before the `[`, or nothing for one that isn't subscripted.
+      Its text before the `[`, or nothing for one that isn't subscripted: a union of them too.
 
     """
-    head: str
-    bracket: str
-    head, bracket, _ = annotation.partition("[")
-    return head if bracket else ""
+    if _OPEN not in annotation:  # an unknown operand's has no text at all
+        return ""
+    # `annotation` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
+    whole: ast.expr = ast.parse(annotation, mode="eval").body
+    return ast.unparse(whole.value) if isinstance(whole, ast.Subscript) else ""
 
 
 def _number(value: ast.BinOp, left: str, right: str) -> str | None:
@@ -164,7 +166,6 @@ def _parts(annotation: str) -> list[str] | None:
     """
     if _root(annotation) != _TUPLE:
         return None
-    # `annotation` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
     whole: ast.expr = cast("ast.Subscript", ast.parse(annotation, mode="eval").body).slice
     elements: list[ast.expr] = whole.elts if isinstance(whole, ast.Tuple) else [whole]
     starred: bool = any(isinstance(element, ast.Starred) for element in elements)

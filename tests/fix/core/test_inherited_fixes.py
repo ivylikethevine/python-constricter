@@ -321,6 +321,10 @@ import collections
 import threading
 import unittest
 from collections import UserDict
+from typing import TypeVar
+
+K = TypeVar("K")
+V = TypeVar("V")
 
 
 class Both(threading.Thread, unittest.TestCase):
@@ -367,6 +371,11 @@ class Under(Ordered):
         under = self.popitem()
 
 
+class Deep(collections.ChainMap[K, V]):
+    def total(self) -> None:
+        inside = self.maps
+
+
 class Hidden(Ordered):
     def popitem(self):
         return self.missing
@@ -375,7 +384,8 @@ class Hidden(Ordered):
         hidden = self.popitem()
 
 
-def use(ordered: Ordered, users: Users) -> None:
+def use(ordered: Ordered, users: Users, deep: Deep) -> None:
+    outside = deep.maps
     taken = ordered.popitem()
     read = users["a"]
     for each in ordered:
@@ -402,4 +412,6 @@ def test_an_order_goes_on_past_a_library_class_and_through_a_generic_one() -> No
         "each": ("str", False),
         # Two bases sharing an ancestor; a generic base without its arguments, or too few.
         **dict.fromkeys(("missing", "second", "bare", "short", "hidden"), (None, False)),
+        # A base given type variables: they mean nothing outside the class.
+        **dict.fromkeys(("inside", "outside"), (None, False)),
     }

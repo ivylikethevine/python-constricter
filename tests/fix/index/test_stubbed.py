@@ -406,6 +406,7 @@ def f(g: st.Grid[st.Float]) -> None:
     print(a)
 """
 THROUGH_FIXED: Final = "    a: st.Float = g.first()\n"
+PLUGIN_FIXED: Final = "    a: int = s.size()\n"
 MODERN_FIXED: Final = "    a: modern.Array[modern.Float] = modern.empty(n, modern.Float)\n"
 
 
@@ -455,6 +456,33 @@ def test_a_package_imported_through_another_module_is_followed(tmp_path: Path, s
     _ = main.write_text(THROUGH, encoding="utf-8")
     _ = cli.main(["--fix", "-q", str(package)])
     assert THROUGH_FIXED in main.read_text(encoding="utf-8")
+
+
+def test_an_installed_class_extending_a_checked_protocol_has_a_gap_in_its_lineage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A plugin's class whose base is a protocol of the files checked: the base isn't followed."""
+    plugin: dict[str, str] = {
+        "plug/py.typed": "",
+        "plug/__init__.py": "from app.base import Base\n\nclass Sub(Base):\n    def size(self) -> int: ...\n",
+    }
+    monkeypatch.setattr(sys, "path", [str(_site(tmp_path, plugin)), str(tmp_path), *sys.path])
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    package: Path = tmp_path / "app"
+    package.mkdir()
+    _ = (package / "__init__.py").write_text("", encoding="utf-8")
+    _ = (package / "base.py").write_text(
+        "from typing import Protocol\n\n\nclass Base(Protocol):\n    pass\n",
+        encoding="utf-8",
+    )
+    main: Path = package / "main.py"
+    _ = main.write_text(
+        "import plug\n\n\ndef f(s: plug.Sub) -> None:\n    a = s.size()\n    print(a)\n",
+        encoding="utf-8",
+    )
+    _ = cli.main(["--fix", "-q", str(package)])
+    assert PLUGIN_FIXED in main.read_text(encoding="utf-8")
 
 
 def test_signatures_are_read_once_per_index(tmp_path: Path, site: Path) -> None:
