@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
 from constricter.cli.protocol import SERVERS
 from constricter.jsonc import is_int
-from constricter.offences import FIX_KINDS, LEVELS, MESSAGES
+from constricter.offences import FIX_KINDS, LEVELS, MESSAGES, WIDEN_KINDS
 
 if TYPE_CHECKING:
     from datetime import date, datetime, time
@@ -32,6 +32,7 @@ def unknown_codes(codes: Sequence[str]) -> list[str]:
 
 DEFAULT_BASELINE: Final = "constricter-baseline.json"
 _MIN_PYTHON: Final = "min_python"
+_ALL_KINDS: Final = "all"  # `fix-widen`'s: every wider type
 _VERSION: Final = re.compile(r"\d+\.\d+")  # `min-python`'s: `3.11`
 # A lower bound among `requires-python`'s specifiers: `>=3.11`, `~=3.11`, `==3.11.*`, `>3.10`.
 _LOWER_BOUND: Final = re.compile(r"(?:>=|~=|==|>)\s*(\d+)(?:\.(\d+))?")
@@ -160,6 +161,31 @@ def unknown_fix_kinds(kinds: Sequence[str]) -> list[str]:
     return [kind for kind in kinds if kind not in FIX_KINDS]
 
 
+def unknown_widen_kinds(kinds: Sequence[str]) -> list[str]:
+    """Check `kinds` against `WIDEN_KINDS`' ids, and `all`.
+
+    Returns:
+      Those that aren't one.
+
+    """
+    return [kind for kind in kinds if kind not in WIDEN_KINDS | {_ALL_KINDS}]
+
+
+def widen_kinds(kinds: Sequence[str]) -> list[str]:
+    """Read `fix-widen`'s kinds, `all` as every one.
+
+    Returns:
+      Them.
+
+    """
+    return sorted(WIDEN_KINDS) if _ALL_KINDS in kinds else list(kinds)
+
+
+def _widen_kinds(value: _Toml) -> list[str] | None:
+    kinds: list[str] | None = [value] if isinstance(value, str) else _strings(value)
+    return None if kinds is None or unknown_widen_kinds(kinds) else widen_kinds(kinds)
+
+
 def _fix_kinds(value: _Toml) -> list[str] | None:
     kinds: list[str] | None = _strings(value)
     return None if kinds is None or unknown_fix_kinds(kinds) else kinds
@@ -246,6 +272,7 @@ _READERS: dict[str, Callable[[_Toml], Default | None]] = {
     "fix-select": _fix_kinds,
     "fix-ignore": _fix_kinds,
     "unsafe-fix-select": _fix_kinds,
+    "fix-widen": _widen_kinds,
     "fix-plain-bases": _strings,
     "type-comments": _flag,
     "all-scopes": _flag,

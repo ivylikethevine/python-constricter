@@ -29,6 +29,8 @@ if TYPE_CHECKING:
 _ATTRIBUTE: Final = "attribute"  # the fix kind of an attribute's annotation
 _METHOD: Final = "method"  # the fix kind of a method's return type
 _AWAIT: Final = "await"  # and of what awaiting a checked file's `async def` gives
+_RETURNED: Final = "returned"  # and of what `return`s alone decide
+_GENERIC: Final = "["  # in a base's text: a generic class's arguments
 _SLICE: Final = "slice"  # an index of this type slices
 _INT: Final = "int"
 _STR: Final = "str"
@@ -213,7 +215,86 @@ def awaited(value: ast.expr, known: Known, infer: Callable[[ast.expr], Inference
                 return found._replace(reason=f"{found.reason}, awaited", kinds=kinds)
         case _:
             pass
-    return library_awaited(value, known, infer)
+    return _awaited_returns(value, known, infer) or library_awaited(value, known, infer)
+
+
+def _awaited_returns(
+    value: ast.expr,
+    known: Known,
+    infer: Callable[[ast.expr], Inference | None],
+) -> Inference | None:
+    """Infer `await` of a call to a checked file's `async def` declaring no return, by its `return`s.
+
+    A function's, or a method's on a receiver whose type `infer` knows (see `awaited_origins`).
+
+    Returns:
+      The inference, or `None`.
+
+    """
+    call: ast.Call
+    match value:
+        case ast.Await(value=ast.Call() as call):
+            found: tuple[str, str, frozenset[str] | None] | None
+            if (found := _loose_await(call, known, infer)) is None:
+                return None
+            reason: str = f"`{found[0].replace(AWAIT, '')}`'s `return`s, awaited"
+            return Inference(found[1], reason, (found[2] or frozenset()) | {_RETURNED})
+        case _:
+            return None
+
+
+def awaited_origins(
+    call: ast.Call,
+    known: Known,
+    infer: Callable[[ast.expr], Inference | None],
+) -> frozenset[str] | None:
+    """Name what awaiting `call` rests on as a guess, where an `async def`'s `return`s type it.
+
+    A function's `return`s' own guesses; a method's too, and `returned`: a subclass may override it.
+
+    Returns:
+      Them (none: it's certain), or `None` for any other call.
+
+    """
+    found: tuple[str, str, frozenset[str] | None] | None
+    if (found := _loose_await(call, known, infer)) is None:
+        return None
+    rests: frozenset[str] = known.returned.guesses.get(found[0], frozenset())
+    return rests if found[2] is None else rests | {_RETURNED}
+
+
+def _loose_await(
+    call: ast.Call,
+    known: Known,
+    infer: Callable[[ast.expr], Inference | None],
+) -> tuple[str, str, frozenset[str] | None] | None:
+    """Find the `async def` declaring no return that `call` calls, typed by its `return`s (see `returned`).
+
+    Returns:
+      Its key in `Returned.guesses`, what awaiting it gives, and for a method the fix kinds its
+      receiver adds (`None`: a function); or `None`.
+
+    """
+    receiver: ast.expr
+    name: str
+    callee: str | None = dotted(call.func)
+    if callee is not None and f"{AWAIT}{callee}" in known.returned.calls:
+        return f"{AWAIT}{callee}", known.returned.calls[f"{AWAIT}{callee}"], None
+    match call.func:
+        case ast.Attribute(value=receiver, attr=name) if any(
+            f"{AWAIT}{name}" in methods for methods in known.returned.methods.values()
+        ):
+            owner: Inference | None = infer(receiver)
+            defined: tuple[str, str] | None = (
+                None
+                if owner is None
+                else returned_method(present(owner.annotation, name), f"{AWAIT}{name}", known)
+            )
+            if owner is None or defined is None:
+                return None
+            return f"{defined[0]}.{AWAIT}{name}", defined[1], owner.kinds - {"copy"}
+        case _:
+            return None
 
 
 def _declarer(receiver: str, name: str, known: Known) -> str | None:
@@ -262,7 +343,7 @@ def _library_base(receiver: str, name: str, call: ast.Call | None, known: Known)
     """Type a member a class of the module's takes from a standard-library base (see `stdlib.bases`).
 
     `self.id()` in a `unittest.TestCase`: the base's that the class's order ends at, where no class
-    before it binds the name (see `Lineage`).
+    before it binds the name (see `Lineage`); `self.data` under a `UserDict[str, bytes]`.
 
     Returns:
       Its inference, or `None`.
@@ -271,6 +352,8 @@ def _library_base(receiver: str, name: str, call: ast.Call | None, known: Known)
     owner: str | None = known.class_side.lineage.definer(receiver, name)
     if owner is None or owner == receiver:
         return None
+    if _GENERIC in owner:  # a generic one, given its arguments: they type its attributes
+        return None if call is not None else overloads.generic_member(owner, name, call, known)
     return stdlib.library_member(owner, name, call, known, inherited=True)
 
 
@@ -338,14 +421,15 @@ def returned_method(receiver: str, name: str, known: Known) -> tuple[str, str] |
     The receiver's class's own, or the base's that defines it (see `Lineage`): but not one whose
     type names that base, which may be the receiver's own class (`return self`). A class named by
     an import a fix added (`Tool`, by `from tools import Tool`) is looked up as the module spells
-    it (`tools.Tool`): it's a standard-library class another checked file defines.
+    it (`tools.Tool`): it's a standard-library class another checked file defines. An `async def`'s
+    is under `AWAIT` before its name: what awaiting its call gives.
 
     Returns:
       The class that defines it and its type, or `None` if it isn't one (a certain source is asked
       first, see `member`).
 
     """
-    owner: str | None = known.class_side.lineage.definer(receiver, name)
+    owner: str | None = known.class_side.lineage.definer(receiver, name.removeprefix(AWAIT))
     found: str | None = known.returned.methods.get(owner or "", {}).get(name)
     plan: ImportPlan | None = known.names.plan
     if found is None and owner == receiver and plan is not None and receiver in plan.added:
@@ -406,11 +490,12 @@ def class_variable(receiver: str, name: str, known: Known) -> str | None:
     binds it, too.
 
     Returns:
-      Its type, or `None` if it isn't one (a certain source is asked first, see `member`).
+      Its type, or `None` if it isn't one (a certain source is asked first, see `member`), or is
+      one of another file's that this one can't write.
 
     """
     owner: str | None = known.class_side.lineage.definer(class_of(receiver) or receiver, name)
-    return known.class_side.variables.get(owner or "", {}).get(name)
+    return known.class_side.variables.get(owner or "", {}).get(name) or None
 
 
 def subscripted(container: str, node: ast.Subscript, index: str | None) -> str | None:

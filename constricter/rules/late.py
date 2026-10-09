@@ -3,35 +3,46 @@
 
 `optionals` (`None`, then one type), `rebinds` (a fix refitted to every later value), `fills` (an
 empty container typed by what's added to it), `shadowed` (a fix naming a value of its own scope,
-dropped), `excused` (a fix of a name a `# type: ignore` line uses, dropped), and `finals` (LVA012's
-`Final`).
+dropped), `excused` (a fix of a name a `# type: ignore` line uses, dropped), `unchecked` (a guess
+its function's use of the name makes an error of, dropped), and `finals` (LVA012's `Final`).
 """
 
 import ast
 import re
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
 from functools import lru_cache
-from typing import Final
+from typing import Final, TypeAlias
 
+from constricter.fix.core.imports import imports_of
 from constricter.fix.core.known import ImportPlan, Inference
+from constricter.fix.values import callables, hinted
 from constricter.fix.values import fills as filling
-from constricter.fix.values import hinted
+from constricter.fix.values import unchecked as misused
 from constricter.fix.values.doubts import contains_inner, narrowing, spelled_self
+from constricter.fix.values.inference import RETURNED
 from constricter.offences import (
     CAN_BE_FINAL,
+    EMPTY_CONTAINERS,
+    MIXED_CONTAINERS,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
+    UNIONS,
+    UNKNOWN_CALLS,
+    UNTYPED_CALLS,
     UNTYPED_TARGET,
+    VAGUE_KIND,
+    WIDEN_KINDS,
     Edit,
     Fix,
     Offence,
     at,
 )
+from constricter.rules import widened
 from constricter.rules.annotations import node_name, roots
 from constricter.rules.flow import Binding, Lifetime, members
 from constricter.rules.rebinding import Refit, refit
-from constricter.rules.scope import FINAL_KIND, Late, Scope, imports_of
+from constricter.rules.scope import FINAL_KIND, Late, Plain, Scope, guesses_in
 from constricter.rules.syntax import FunctionDef
 from constricter.rules.walked import children
 
@@ -39,6 +50,7 @@ _DISCARD: Final = "_"
 _OPTIONAL: Final = "optional"  # the fix kind of a `None` default rebound to one type
 _DECLARING: Final = frozenset({UNANNOTATED, UNTYPED_TARGET})  # the codes whose fix declares a name's type
 _FILLED: Final = "filled"  # the fix kind (and guessing mechanism) of an empty container filled later
+_CALLERS: Final = "callers"  # and of a parameter typed by what every call passes it
 _NONE: Final = "None"
 _FINAL: Final = "Final"
 _TYPING_FINAL: Final = "typing.Final"
@@ -47,6 +59,14 @@ _NO_ALIASES: Final = frozenset[str]()
 _INNER: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)  # what reads a name later
 _IGNORE: Final = re.compile(r"#\s*type:\s*ignore")  # a comment excusing its line to a type checker
 _WORD: Final = re.compile(r"[A-Za-z_]\w*")
+# The guesses of a value a type checker takes for anything: held to no class until declared.
+_UNCHECKED: Final = hinted.KINDS | {RETURNED}
+# The wider types `widens` offers, once a scope's other fixes are settled.
+_LATE_WIDENINGS: Final = frozenset(
+    {VAGUE_KIND, EMPTY_CONTAINERS, MIXED_CONTAINERS, UNTYPED_CALLS, UNKNOWN_CALLS},
+)
+# The arms a binding is in: each branching statement around it (by `id()`), and which of its arms.
+_Arms: TypeAlias = tuple[tuple[int, int], ...]
 
 
 def optionals(scope: Scope) -> None:
@@ -112,7 +132,14 @@ def rebinds(scope: Scope) -> None:
             if len(lifetime.bindings) > 1:  # a constant's `Final` (see `_constant`): bound again, it's none
                 scope.offences[index] = replace(o, edit=None)
             continue
-        if o.code not in _DECLARING or fix is None or lifetime is None or lifetime.escaped:
+        # A widening's `Any` takes whatever the name is bound to later.
+        if (
+            o.code not in _DECLARING
+            or fix is None
+            or fix.kinds & WIDEN_KINDS
+            or lifetime is None
+            or lifetime.escaped
+        ):
             continue
         first: Binding
         rest: list[Binding]
@@ -127,7 +154,21 @@ def rebinds(scope: Scope) -> None:
             # Bound again to a call on itself, of a type that isn't known: a conversion, as often as not.
             scope.offences[index] = replace(o, edit=None)
             continue
-        found: Refit | Fix | None = refit(o, fix, rest, scope.settings.hierarchy, self_type)
+        if function is not None and any(
+            binding.value is None and binding.guess is None and _apart(function, first.at, binding.at)
+            for binding in rest
+        ):
+            # Bound in one arm of an `if` to a known type, in another to one that isn't: a checker
+            # that knows the other's holds it to the first.
+            scope.offences[index] = replace(o, edit=None)
+            continue
+        found: Refit | Fix | None = refit(
+            o,
+            fix,
+            rest,
+            scope.settings.hierarchy,
+            (self_type, _unites(scope, o.name)),
+        )
         refitted: Fix | None = _offered(scope, found) if isinstance(found, Refit) else found
         scope.offences[index] = replace(o, edit=refitted)
 
@@ -180,6 +221,93 @@ def fills(scope: Scope) -> None:
         scope.inferred.late[o.name] = (found.annotation, frozenset({_FILLED}))
 
 
+def lambdas(scope: Scope) -> None:
+    """Offer a lambda bound once to a name, whose body rests on its parameters, a `Callable[..., R]`.
+
+    By what every call of it in its function passes them (see `callables.called`): a guess, resting
+    on `callers`. Not where a call passes a local bound more than once, whose type there isn't known.
+    """
+    function: FunctionDef | None = scope.kind.function
+    index: int
+    o: Offence
+    body: filling.Uses | None = None  # read once, for the first lambda to judge
+    for index, o in enumerate(scope.offences):
+        bound: Plain | None = scope.assignments.plain.get(o.name)
+        lifetime: Lifetime | None = scope.flow.get(o.name)
+        if function is None or _fixed(o) or bound is None or not isinstance(bound[1], ast.Lambda):
+            continue
+        if lifetime is None or lifetime.escaped or len(lifetime.bindings) != 1:
+            continue
+        body = body or filling.uses(function.body)
+        found: tuple[Inference, list[ast.expr]] | None = callables.called(
+            bound[1],
+            o.name,
+            body,
+            scope.settings.known,
+            scope.inferred.types,
+        )
+        if found is None or any(
+            isinstance(node, ast.Name) and len(scope.lifetime(node.id).bindings) > 1
+            for arg in found[1]
+            for node in ast.walk(arg)
+        ):
+            continue
+        origins: frozenset[str] = frozenset({_CALLERS}) | guesses_in(scope, found[1])[1]
+        scope.offences[index] = replace(o, edit=scope.placed(o.name, found[0], origins, unsafe=True))
+        scope.inferred.late[o.name] = (found[0].annotation, origins)
+
+
+def widens(scope: Scope, tree: ast.Module) -> None:
+    """Offer a wider type to each name's first binding that still has no fix, where `fix-widen` asks.
+
+    A type vaguer than `vague` allows, written anyway (`vague`: a guess); `Any` for the elements
+    of an empty container nothing fills, or of a display of mixed or unknown ones (see
+    `widened.container`); `Any` for a call of no known type (see `widened.called`), whatever the
+    name is bound to later. A plain assignment's is marked where its statement ends; a loop's, an
+    unpacking's or a `with`'s name, typed vaguely or taken of such a call, is declared before its
+    statement.
+    """
+    widen: frozenset[str] = scope.settings.checks.fixes.widen
+    plan: ImportPlan | None = scope.settings.known.names.plan
+    if not widen & _LATE_WIDENINGS or plan is None or not scope.kind.fixable:
+        return
+    index: int
+    o: Offence
+    for index, o in enumerate(scope.offences):
+        bound: Plain | None = scope.assignments.plain.get(o.name)
+        lifetime: Lifetime | None = scope.flow.get(o.name)
+        if o.edit is not None or bound is None or at(bound[0]) != (o.line, o.col):
+            continue
+        if lifetime is None or lifetime.escaped:  # written out of sight
+            continue
+        known: Inference | None = bound[2]
+        found: Inference | None = None
+        fix: Fix | None
+        # Bound again, it may be anything else: a wider type that isn't `Any` could be wrong.
+        once: bool = len(lifetime.bindings) == 1
+        # What's declared before its statement isn't its value, but taken from it: no container's.
+        whole: bool = once and o.name not in scope.assignments.chained
+        if once and known is not None and VAGUE_KIND in widen and not scope.writable(known):
+            found = known._replace(kinds=known.kinds | {VAGUE_KIND})
+            fix = scope.placed(o.name, found, frozenset({VAGUE_KIND}), unsafe=True)
+        else:
+            if known is None:
+                found = (widened.container(bound[1], plan, widen) if whole else None) or widened.called(
+                    bound[1],
+                    widened.Caller(
+                        scope.settings.owners.get(id(scope.kind.function)),
+                        scope.declared,
+                        scope.settings.facts.untyped,
+                    ),
+                    widened.own(tree),
+                    plan,
+                    widen,
+                )
+            fix = None if found is None else scope.placed(o.name, found, frozenset(), unsafe=False)
+        if fix is not None:
+            scope.offences[index] = replace(o, edit=fix._replace(mark=bound[1].end_lineno or o.line))
+
+
 def shadowed(scope: Scope) -> None:
     """Drop each fix whose annotation names a value its scope binds, which the name then is there.
 
@@ -201,14 +329,13 @@ def excused(scope: Scope) -> None:
     """Drop each fix of a name a line of its function excuses to a type checker (`# type: ignore`).
 
     `return text  # type: ignore[no-any-return]`: with `text` declared the line has nothing to
-    excuse, and a checker told to report unused comments reports that one.
+    excuse, and a checker told to report unused comments reports that one. A module's or a class
+    body's name, by any line of the file: it's read everywhere.
     """
     function: FunctionDef | None = scope.kind.function
     lines: Sequence[str] = scope.settings.lines
-    if function is None or not lines:
-        return
-    first: int = function.lineno - 1
-    last: int | None = function.end_lineno
+    first: int = 0 if function is None else function.lineno - 1
+    last: int | None = None if function is None else function.end_lineno
     excusing: list[str]
     if not (excusing := [line.partition("#")[0] for line in lines[first:last] if _IGNORE.search(line)]):
         return
@@ -216,6 +343,32 @@ def excused(scope: Scope) -> None:
     o: Offence
     for index, o in enumerate(scope.offences):
         if o.edit is not None and any(o.name in _WORD.findall(code) for code in excusing):
+            scope.offences[index] = replace(o, edit=None)
+
+
+def unchecked(scope: Scope, tree: ast.Module) -> None:
+    """Drop each guess that makes an error of what its function does with the name (see `misused`).
+
+    By an unannotated function's `return`s or a hint, which a checker held to nothing: a union,
+    bound once, of which an attribute or an item is taken where no test narrows it; and a class of
+    the module's of which an attribute it hasn't is taken. A certain fix too: a guess is one once
+    a first pass has declared what it rested on.
+    """
+    function: FunctionDef | None
+    if (function := scope.kind.function) is None:
+        return
+    index: int
+    o: Offence
+    for index, o in enumerate(scope.offences):
+        fix: Fix | None = o.edit
+        if fix is None or not fix.kinds & _UNCHECKED:
+            continue
+        lifetime: Lifetime | None = scope.flow.get(o.name)
+        union: frozenset[str] = members(fix.annotation) or frozenset()
+        once: bool = lifetime is not None and len(lifetime.bindings) == 1
+        if misused.lacks(tree, function, o.name, fix.annotation) or (
+            once and len(union) > 1 and misused.unnarrowed(function, o.name, scope.settings.facts.narrowed)
+        ):
             scope.offences[index] = replace(o, edit=None)
 
 
@@ -334,6 +487,37 @@ def _final_fix(fix: Fix, plan: ImportPlan) -> Fix:
     return fix._replace(imports=imports_of(fix.annotation, plan), after=plan.after)
 
 
+def _unites(scope: Scope, name: str) -> bool:
+    """Check whether `name`'s values of several types may be declared their union (`fix-widen`'s `unions`).
+
+    Returns:
+      Whether they may: where it's asked for, in a function, of a name it doesn't change in place
+      (`name += more`, which no union of its types need take).
+
+    """
+    function: FunctionDef | None = scope.kind.function
+    return (
+        UNIONS in scope.settings.checks.fixes.widen
+        and function is not None
+        and name not in _augmented(function)
+    )
+
+
+@lru_cache(maxsize=64)  # asked of each of a function's names bound again
+def _augmented(function: FunctionDef) -> frozenset[str]:
+    """Name what a function changes in place: `name += more`.
+
+    Returns:
+      Each such name.
+
+    """
+    return frozenset(
+        node.target.id
+        for node in ast.walk(function)
+        if isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name)
+    )
+
+
 @lru_cache(maxsize=1024)  # asked of each of a function's names bound again
 def _converted(function: FunctionDef) -> frozenset[tuple[int, int]]:
     """Find where a function binds a name to a call that takes the name itself: `item = proper(item)`.
@@ -357,6 +541,95 @@ def _converted(function: FunctionDef) -> frozenset[tuple[int, int]]:
             case _:
                 pass
     return frozenset(found)
+
+
+def _apart(function: FunctionDef, first: tuple[int, int], later: tuple[int, int]) -> bool:
+    """Check whether two bindings of a function's are in different arms of one statement.
+
+    Returns:
+      Whether they are: only one of them runs.
+
+    """
+    arms: Mapping[tuple[int, int], _Arms] = _arms(function)
+    taken: dict[int, int] = dict(arms.get(first, ()))
+    return any(taken.get(branch, arm) != arm for branch, arm in arms.get(later, ()))
+
+
+@lru_cache(maxsize=64)  # asked of each of a function's names bound again
+def _arms(function: FunctionDef) -> Mapping[tuple[int, int], _Arms]:
+    """Find, for each name a function's branches bind, the arms its binding is in.
+
+    An `if`'s body and its `else`, a `try`'s body and each handler, a `match`'s cases.
+
+    Returns:
+      Where each such name is bound, and each branching statement around it (by `id()`) with which
+      of its arms that's in.
+
+    """
+    found: dict[tuple[int, int], _Arms] = {}
+    # Each statement still to read, and the arms it's in; `None` ends it.
+    waiting: list[tuple[ast.stmt, _Arms] | None] = [
+        None,
+        *((stmt, ()) for stmt in function.body),
+    ]
+    stmt: ast.stmt
+    inside: _Arms
+    for stmt, inside in iter(waiting.pop, None):
+        if isinstance(stmt, (*_INNER, ast.ClassDef)):
+            continue
+        if inside:
+            found.update(
+                (at(name), inside)
+                for target in _targets(stmt)
+                for name in ast.walk(target)
+                if isinstance(name, ast.Name)
+            )
+        blocks: list[list[ast.stmt]] = _blocks(stmt)
+        arm: int
+        block: list[ast.stmt]
+        for arm, block in enumerate(blocks):
+            within: tuple[tuple[int, int], ...] = (
+                (*inside, (id(stmt), arm)) if _alternatives(stmt) else inside
+            )
+            waiting.extend([(child, within) for child in block])
+    return found
+
+
+def _alternatives(stmt: ast.stmt) -> bool:  # whether only one of its blocks runs, of those `_blocks` lists
+    return isinstance(stmt, ast.If | ast.Match | ast.Try | ast.TryStar)
+
+
+def _targets(stmt: ast.stmt) -> list[ast.expr]:  # what a statement assigns to
+    match stmt:
+        case ast.Assign():
+            return stmt.targets
+        case ast.AnnAssign() | ast.AugAssign():
+            return [stmt.target]
+        case _:
+            return []
+
+
+def _blocks(stmt: ast.stmt) -> list[list[ast.stmt]]:
+    """List a statement's blocks, those of which only one runs each as an arm.
+
+    Returns:
+      An `if`'s body and its `else`, a `try`'s body (with its `else`) and each handler's, a
+      `match`'s cases; any other statement's blocks.
+
+    """
+    match stmt:
+        case ast.If():
+            return [stmt.body, stmt.orelse]
+        case ast.Try() | ast.TryStar():
+            return [[*stmt.body, *stmt.orelse], *(handler.body for handler in stmt.handlers), stmt.finalbody]
+        case ast.Match():
+            return [case.body for case in stmt.cases]
+        case ast.For() | ast.AsyncFor() | ast.While():
+            return [stmt.body, stmt.orelse]
+        case ast.With() | ast.AsyncWith():
+            return [stmt.body]
+        case _:
+            return []
 
 
 @lru_cache(maxsize=1024)  # a function is finished twice: as it's checked, and with its module

@@ -502,7 +502,10 @@ class Overloads(Templates):
             if parameter.annotation is None
             else self.accepts(parameter.annotation, module)
         )
-        found: Accepts = Accepts(v=verdicts.values)
+        held: bool = self.reading.future_bound(parameter.annotation, module)  # by a future: no coroutine
+        found: Accepts = (
+            Accepts(v=verdicts.values, f=verdicts.bounded or "") if held else Accepts(v=verdicts.values)
+        )
         if verdicts.constants is not None:
             found["c"] = verdicts.constants
         if verdicts.literals is not None:

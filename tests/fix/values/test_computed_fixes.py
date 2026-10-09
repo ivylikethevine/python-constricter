@@ -100,6 +100,9 @@ LOCAL: str = "LVA001"  # an unannotated local's code
         ("frozenset(lines)", "frozenset[str]"),
         ("tuple(lines)", "tuple[str, ...]"),
         ("list(unknown())", None),
+        ("maybe + pair", None),  # a union with a tuple isn't one
+        ("some + some", None),
+        ("some * 2", None),
         ("await fetch()", "bytes"),
         ("await other()", None),
     ],
@@ -111,6 +114,7 @@ def test_a_computed_value_is_typed(value: str, fix: str | None) -> None:
         "async def f(\n"
         "    n: int, ratio: float, flag: bool, lines: list[str], ages: dict[str, int],\n"
         "    pair: tuple[int, str], row: tuple[int, ...], names: set[str], frozen: frozenset[str],\n"
+        "    maybe: tuple[int, str] | None, some: list[int] | None,\n"
         ") -> None:\n"
         f"    {NAME} = {value}\n"
     )

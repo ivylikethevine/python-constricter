@@ -2,10 +2,10 @@
 """The tuples a file's names stand for, other checked files': a named tuple's fields, an alias's tuple.
 
 What an unpacking splits a value of one of them by (see `targets.named_tuples`), spelled as the file
-can write it.
+can write it; and the unions its names for their aliases stand for (see `targets.aliased_unions`).
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 
 from constricter.fix.core.known import Guarded, Origin
@@ -27,12 +27,59 @@ def fields(catalog: Index, path: Path, guarded: dict[str, Guarded]) -> dict[str,
     target: Module | None
     if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
         return {}
-    modules: dict[str, Module] = catalog.modules
+    found: dict[str, str] = {}
+    key: str
+    defined: tuple[Module, str]
+    for key, defined in _named(catalog.modules, target, guarded, _tuples):
+        found.update(_fields(catalog.modules, target, key, defined, guarded))
+    return found
+
+
+def unions(catalog: Index, path: Path, guarded: dict[str, Guarded]) -> dict[str, str]:
+    """Find the unions the file at `path` names by other files' type aliases, by how it names them.
+
+    The aliases `fields` would find, were they tuples'.
+
+    Returns:
+      Each name, and the union as its own module writes it: read for its members, never written.
+
+    """
+    target: Module | None
+    if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
+        return {}
+    return {
+        key: defined[0].unions[defined[1]]
+        for key, defined in _named(catalog.modules, target, guarded, _unions)
+        if defined[1] in defined[0].unions
+    }
+
+
+def _tuples(module: Module) -> Mapping[str, str]:
+    return module.tuples
+
+
+def _unions(module: Module) -> Mapping[str, str]:
+    return module.unions
+
+
+def _named(
+    modules: Mapping[str, Module],
+    target: Module,
+    guarded: Mapping[str, Guarded],
+    held: Callable[[Module], Mapping[str, str]],
+) -> Iterator[tuple[str, tuple[Module, str]]]:
+    """Find the classes and aliases a file (`target`) names, and those of a module it imports that `held` has.
+
+    Yields:
+      Each one's name as the file spells it (`Pair`, or `shapes.Pair` after
+      `import pkg.shapes as shapes`), and where it's defined.
+
+    """
     named: list[tuple[str, Origin]] = [
         *((key, each.origin) for key, each in guarded.items()),
+        *target.guarded.items(),  # under `if TYPE_CHECKING:`
         *((key, origin) for key, origin in target.names.items() if origin[0] != target.name),
     ]
-    found: dict[str, str] = {}
     key: str
     origin: Origin
     for key, origin in named:
@@ -41,32 +88,11 @@ def fields(catalog: Index, path: Path, guarded: dict[str, Guarded]) -> dict[str,
             origin,
             ALIAS,
         )
-        found.update({} if defined is None else _fields(modules, target, key, defined, guarded))
+        if defined is not None:
+            yield key, defined
         module: Module | None
-        # `shapes.Pair`, after `import pkg.shapes as shapes`
         if origin[1] is None and (module := modules.get(origin[0])) is not None:
-            found.update(_module_fields(modules, target, key, module, guarded))
-    return found
-
-
-def _module_fields(
-    modules: Mapping[str, Module],
-    target: Module,
-    key: str,
-    module: Module,
-    guarded: dict[str, Guarded],
-) -> dict[str, str]:
-    """Spell the fields of the tuples a module the file imports as `key` names.
-
-    Returns:
-      Each one's name through `key`, and the tuple unpacking one gives.
-
-    """
-    found: dict[str, str] = {}
-    name: str
-    for name in module.tuples:
-        found.update(_fields(modules, target, f"{key}.{name}", (module, name), guarded))
-    return found
+            yield from ((f"{key}.{name}", (module, name)) for name in held(module))
 
 
 def _fields(

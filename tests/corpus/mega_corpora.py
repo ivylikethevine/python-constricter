@@ -12,8 +12,9 @@ names, and `archive`; fetched once into `local/mega-corpora/sources/`, its SHA-2
 (`package`, its directory in the sdist); and its `suite`, read from its own CI: the repository and
 tag to clone, its `source` there, the `uv` commands installing it (`pip ...` for
 `uv pip install`, into a venv made first; `sync ...` for `uv sync`), its `tests` (pytest's
-arguments, or a whole command after `!`; `{workers}` stands for its processes) and its type
-`checks`. `alone` says why a package has no suite here, `environment` what its commands need set,
+arguments, or a whole command after `!`; `{workers}` stands for its processes), its type
+`checks`, and whether its build needs its `submodules`. `alone` says why a package has no suite
+here, `environment` what its commands need set,
 and `port` the port its tests' own server binds: those of one port run one at a time (httpx's wait
 for theirs forever, where another suite has it). They're typed applications, `asyncio` code,
 pytest-heavy test trees, scientific packages on numpy's types, packages with `TypedDict`s and
@@ -107,6 +108,7 @@ def _suite(pinned: dict[str, _Json]) -> Suite:
         else (*_PYTEST, *shlex.split(tests)),
         tuple(tuple(shlex.split(check)) for check in cast("list[str]", pinned["checks"])),
         most=_MOST if _WORKERS in tests else 1,
+        submodules=bool(pinned.get("submodules")),
     )
 
 

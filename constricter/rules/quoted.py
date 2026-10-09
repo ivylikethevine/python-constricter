@@ -107,3 +107,14 @@ def _unquoted(node: ast.expr) -> ast.expr:
         case _:
             pass
     return found
+
+
+def quote(annotation: str) -> str:
+    """Quote an annotation: in double quotes, unless it has one or a backslash (a `Literal`'s string).
+
+    Returns:
+      It, as a string literal.
+
+    """
+    plain: bool = not {'"', "\\"} & set(annotation)
+    return f'"{annotation}"' if plain else ast.unparse(ast.Constant(annotation))

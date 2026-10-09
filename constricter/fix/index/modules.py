@@ -16,15 +16,15 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.core.imports import taken_names
-from constricter.fix.core.known import Origin, Passed, Returns
+from constricter.fix.core.known import Origin, Passed, Returns, Takers
 from constricter.fix.core.signatures import AWAIT
-from constricter.fix.index.declared import Declarations, Signature, declarations, overloads
-from constricter.fix.values import classvars
-from constricter.fix.values.returned import unannotated, yields_itself
+from constricter.fix.index.declared import Declarations, Signature, declarations, kinds, overloads
+from constricter.fix.values import classvars, entered, fills
+from constricter.fix.values.bodies import yields_itself
+from constricter.fix.values.returned import unannotated, untouched
 from constricter.rules import parsed
 from constricter.rules.annotations import (
     awaited_returns,
@@ -42,6 +42,7 @@ from constricter.rules.walked import classes as walked_classes
 from constricter.rules.walked import of_type
 
 _PACKAGE: Final = "__init__"
+_DOT: Final = "."
 _TYPE_ALIAS: Final = "TypeAlias"  # the annotation, and the node class of `type X = ...` (Python 3.12+)
 # What a type checker decides an `if` by, taking one arm alone: `sys.version_info`, `TYPE_CHECKING`.
 _DECIDED: Final = frozenset({"version_info", "platform", "TYPE_CHECKING"})
@@ -63,7 +64,8 @@ _EITHER: Final = "e"
 _KEYWORD: Final = "k"
 
 
-class Module(NamedTuple):
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Module:  # pylint: disable=too-many-instance-attributes
     """What one file offers and uses: its name, functions' return types, names' origins, and classes'.
 
     `classes` and `methods`: each class's attributes and its methods' returns (see `Classes`), those
@@ -73,69 +75,104 @@ class Module(NamedTuple):
     name: str
     returns: dict[str, str]
     names: dict[str, Origin]
-    classes: Mapping[str, Mapping[str, str]] = MappingProxyType({})
-    methods: Mapping[str, Mapping[str, str]] = MappingProxyType({})
+    classes: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
+    methods: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
     type_vars: frozenset[str] = frozenset()  # its module-level type variables
     # What it imports under a top-level `if` or `try` (`if TYPE_CHECKING:`), for `type_vars` alone.
-    guarded: Mapping[str, Origin] = MappingProxyType({})
+    guarded: Mapping[str, Origin] = field(default_factory=dict[str, Origin])
     unannotated: frozenset[str] = frozenset()  # its functions a `return` could type (`returned`)
     called: frozenset[str] = frozenset()  # what it calls through its top-level names (`f`, `u.f`)
     passed: frozenset[str] = frozenset()  # what it passes as an argument through them (`np.float64`)
     method_calls: frozenset[str] = frozenset()  # the methods it calls on anything (`astype` in `a.astype(x)`)
     attributes: frozenset[str] = frozenset()  # every attribute it reads or calls, of anything (`x` in `a.x`)
-    returned: Returns = Returns()  # what they return, once it's checked
+    returned: Returns = field(default_factory=Returns)  # what they return, once it's checked
     generics: frozenset[str] = frozenset()  # its generic classes, which a type mustn't write bare
     installed: bool = False  # an installed package's, read for its types alone (see `installed`)
     # Its plain top-level functions with a parameter left unannotated (see `open_functions`), and
     # what every call passes each such parameter, once they're all seen (see `callers`). Plain
     # `dict`s: the CLI's worker processes send modules back, pickled.
-    open: Mapping[str, tuple[Param, ...]] = {}
-    parameters: Mapping[str, Mapping[str, Passed]] = {}  # see `Seeds`
+    open: Mapping[str, tuple[Param, ...]] = field(default_factory=dict[str, tuple[Param, ...]])
+    # See `Seeds`
+    parameters: Mapping[str, Mapping[str, Passed]] = field(
+        default_factory=dict[str, Mapping[str, Passed]],
+    )
     declared: Declarations | None = None  # an installed module's, for its overloads (see `declared`)
     # Its functions declaring a return under decorators other modules may vouch for, each with those
-    # decorators as written, and its own decorators that give a function back (see `decorators`).
-    held: Mapping[str, Held] = {}
-    passes: Mapping[str, Pass] = {}
+    # Decorators as written, and its own decorators that give a function back (see `decorators`).
+    held: Mapping[str, Held] = field(default_factory=dict[str, Held])
+    passes: Mapping[str, Pass] = field(default_factory=dict[str, Pass])
     vouched: frozenset[str] = frozenset()  # those of `held` they vouched for, now among `returns`
-    aliases: Mapping[
-        str,
-        bool,
-    ] = {}  # its type aliases, and whether each takes type arguments (see `_aliases`)
+    # Its type aliases, and whether each takes type arguments (see `_aliases`)
+    aliases: Mapping[str, bool] = field(default_factory=dict[str, bool])
     # The names its top level assigns twice or more (see `_assigned`): variables, to a type checker.
     rebound: frozenset[str] = frozenset()
     # Its top-level names something in it binds as a value too (a local `m`, under `import pkg.m as m`).
     shadowed: frozenset[str] = frozenset()
     # Its classes' bases as written, their variables typed by their values, and which of them are
-    # plain, once the index settles it (see `constricter.fix.values.classvars`, `plain.settled`).
-    bases: Mapping[str, tuple[str, ...]] = {}
-    bound: Mapping[str, frozenset[str]] = {}  # the names each of its classes' bodies binds
-    members: Mapping[str, Mapping[str, str]] = {}
+    # Plain, once the index settles it (see `constricter.fix.values.classvars`, `plain.settled`).
+    bases: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
+    # The names each of its classes' bodies binds
+    bound: Mapping[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
+    members: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
     plain: frozenset[str] = frozenset()
     # Its classes' classmethods' and staticmethods' declared returns (see `annotations.class_methods`);
-    # those held back as `held` are, and those of them the index vouched for, now among `sides`.
-    sides: Mapping[str, Mapping[str, str]] = {}
-    held_sides: Mapping[str, Mapping[str, Held]] = {}
+    # Those held back as `held` are, and those of them the index vouched for, now among `sides`.
+    sides: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
+    held_sides: Mapping[str, Mapping[str, Held]] = field(default_factory=dict[str, Mapping[str, Held]])
     vouched_sides: frozenset[tuple[str, str]] = frozenset()
     # Its functions' and classes' methods' declared returns that are tuples with a vague part, which
-    # only an unpacking can use (see `known.Partial`): the methods as `methods` has them.
-    partial: Mapping[str, str] = {}
-    partial_methods: Mapping[str, Mapping[str, str]] = {}
-    tuples: Mapping[str, str] = {}  # its named tuples' fields (see `targets.named_tuples`)
+    # Only an unpacking can use (see `known.Partial`): the methods as `methods` has them.
+    partial: Mapping[str, str] = field(default_factory=dict[str, str])
+    partial_methods: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
+    # Its named tuples' fields (see `targets.named_tuples`)
+    tuples: Mapping[str, str] = field(default_factory=dict[str, str])
+    # Its type aliases of a union (see `targets.aliased_unions`)
+    unions: Mapping[str, str] = field(default_factory=dict[str, str])
     # Its top-level pytest fixtures, and whether each is a generator (its value is what it yields).
-    fixtures: Mapping[str, bool] = {}
+    fixtures: Mapping[str, bool] = field(default_factory=dict[str, bool])
     # A checked file's functions defined with `@overload`, each with its overloads' signatures.
-    overloads: Mapping[str, tuple[Signature, ...]] = {}
+    overloads: Mapping[str, tuple[Signature, ...]] = field(default_factory=dict[str, tuple[Signature, ...]])
     folder: str = ""  # a checked file's directory: where pytest looks for the `conftest.py`s above it
     # Its top-level names bound by assignment to a value: not a type alias, nor a type variable.
     assigned: frozenset[str] = frozenset()
     # Its classes' methods a `return` could type (as `unannotated`), by name, whatever the class.
     loose: frozenset[str] = frozenset()
     # Its classes' methods declared to return a bare `Self` (see `annotations.self_returns`).
-    selfish: Mapping[str, frozenset[str]] = {}
-    awaits: Mapping[str, str] = {}  # what awaiting each of its `async def`s' calls gives (`awaited_returns`)
+    selfish: Mapping[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
+    # What awaiting each of its `async def`s' calls gives (`awaited_returns`)
+    awaits: Mapping[str, str] = field(default_factory=dict[str, str])
     # The dotted names a checked file writes (`u.helper`, `pkg.m.Row`, in a string too), by their
-    # first name: of all a module it imports has, what it can mean (see `written_under`).
-    written: Mapping[str, tuple[str, ...]] = {}
+    # First name: of all a module it imports has, what it can mean (see `written_under`).
+    written: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
+    # Its top-level functions `@contextmanager` makes managers: what each declares it yields, `""`
+    # For one declaring nothing, which its `yield`s may type (see `constricter.fix.values.entered`).
+    managers: Mapping[str, str] = field(default_factory=dict[str, str])
+    # Its top-level `async def`s declaring no return, which their `return`s may type (see `returned`).
+    unawaited: frozenset[str] = frozenset()
+    # Its functions that declare a parameter a builtin container (see `constricter.fix.values.fills.takers`).
+    takers: Mapping[str, Takers] = field(default_factory=dict[str, Takers])
+    # A checked file's type aliases, type variables and protocols, read as a stub's (see `declared.kinds`).
+    kinds: Declarations | None = None
+    # The attributes its classes bind to an empty container and do no more with (see `returned.untouched`).
+    emptied: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
+
+    @property
+    def typing(self) -> Declarations | None:
+        """What its names stand for in a signature: an installed module's declarations, or its `kinds`."""
+        return self.declared or self.kinds
+
+    def reads(self, name: str | None) -> bool:
+        """Check whether a signature's name is read by what the module declares it: an alias, a type variable.
+
+        Returns:
+          Whether it is: any of an installed module's; a checked file's alias, type variable or protocol.
+
+        """
+        found: Declarations | None = self.kinds
+        return self.installed or (
+            found is not None
+            and any(name in each for each in (found.aliases, found.variables, found.protocols))
+        )
 
 
 # The classes a module names by its own imports: each one's spelling, its module and its name
@@ -154,7 +191,7 @@ class Memo:
     """
 
     # A package's and its submodules' classes or aliases: each one's spelling after the package's
-    # name, and what it is, by the package and the kind.
+    # Name, and what it is, by the package and the kind.
     under: dict[tuple[str, str], _Under] = field(default_factory=dict)
     # What a module names (see `_Spelled`), by its name and folder.
     spelled: dict[tuple[str, str], _Spelled] = field(default_factory=dict)
@@ -348,17 +385,17 @@ def read(path: Path, name: str | None = None) -> Module | None:
     named: str = name or module_name(path)
     names: dict[str, Origin] = _names(tree, named, is_package=path.stem == _PACKAGE)
     return Module(
-        named,
-        own.returns,
-        names,
-        own.classes,
-        own.order.flattened(own.methods),
-        defined_type_vars(tree),
-        _guarded(tree, named, is_package=path.stem == _PACKAGE),
-        unannotated(tree.body),
-        _called(tree, names),
+        name=named,
+        returns=own.returns,
+        names=names,
+        classes=own.classes,
+        methods=own.order.flattened(own.methods),
+        type_vars=defined_type_vars(tree),
+        guarded=_guarded(tree, named, is_package=path.stem == _PACKAGE),
+        unannotated=unannotated(tree.body),
+        called=_called(tree, names),
         generics=generic_classes(tree),
-        loose=frozenset().union(*(unannotated(node.body) for node in walked_classes(tree))),
+        loose=frozenset[str]().union(*(_loose(node.body) for node in walked_classes(tree))),
         selfish=dict(own.order.selfish),
         awaits=awaited_returns(tree),
         written={} if name is not None else _written(tree),
@@ -382,10 +419,48 @@ def read(path: Path, name: str | None = None) -> Module | None:
         partial=own.partial,
         partial_methods=own.order.flattened(own.partial_methods),
         tuples=own.tuples,
+        unions=own.unions,
         fixtures=_fixtures(tree),
         overloads={} if name is not None else overloads(tree),
         folder="" if name is not None else str(path.resolve().parent),
+        managers={} if name is not None else _managers(tree),
+        takers={} if name is not None else fills.takers(tree),
+        emptied={} if name is not None else untouched(tree),
+        kinds=None if name is not None else kinds(tree, _aliases(tree).keys() - rebound),
+        unawaited=frozenset(
+            stmt.name
+            for stmt in tree.body
+            if name is None and isinstance(stmt, ast.AsyncFunctionDef) and stmt.returns is None
+        ),
     )
+
+
+def _loose(body: Sequence[ast.stmt]) -> frozenset[str]:
+    """Name a class's methods whose `return`s could type their calls, as the files calling them name them.
+
+    Returns:
+      Each one's name, an `async def`'s after `AWAIT` (see `_attributes`).
+
+    """
+    return unannotated(body) | {
+        f"{AWAIT}{stmt.name}"
+        for stmt in body
+        if isinstance(stmt, ast.AsyncFunctionDef) and stmt.returns is None
+    }
+
+
+def _managers(tree: ast.Module) -> dict[str, str]:
+    """Find a module's top-level functions `@contextmanager` makes context managers.
+
+    Returns:
+      Each one's name, and what it declares it yields (`""`: nothing, see `entered.undeclared`).
+
+    """
+    declared: dict[str, str] = entered.managers(tree)
+    return {
+        **dict.fromkeys(entered.undeclared(tree), ""),
+        **{name: yielded for name, yielded in declared.items() if _DOT not in name},
+    }
 
 
 def _written(tree: ast.Module) -> dict[str, tuple[str, ...]]:
@@ -422,6 +497,16 @@ def _written(tree: ast.Module) -> dict[str, tuple[str, ...]]:
     for chain in sorted(found):
         grouped.setdefault(chain.partition(".")[0], []).append(chain)
     return {root: tuple(chains) for root, chains in grouped.items()}
+
+
+def takes(module: Module, name: str) -> bool:
+    """Check whether `module` binds `name` by an import from another module: one to follow there.
+
+    Returns:
+      Whether it does.
+
+    """
+    return module.names.get(name, (module.name, None))[0] != module.name
 
 
 def written_under(target: Module, local: str) -> Iterator[tuple[str, str, str]]:
@@ -664,17 +749,22 @@ def _passed(tree: ast.Module, names: Mapping[str, Origin]) -> frozenset[str]:
 
 
 def _method_calls(tree: ast.Module) -> frozenset[str]:
-    """Name the methods the module calls on anything: `astype` in `a.astype(x)`.
+    """Name the methods the module calls on anything: `astype` in `a.astype(x)`, and a `with`'s `__enter__`.
 
     Returns:
       Them.
 
     """
+    entering: bool = any(
+        item.optional_vars is not None
+        for node in cast("list[ast.With]", of_type(tree, ast.With))
+        for item in node.items
+    )
     return frozenset(
         node.func.attr
         for node in cast("list[ast.Call]", of_type(tree, ast.Call))
         if isinstance(node.func, ast.Attribute)
-    )
+    ) | (frozenset({entered.ENTER}) if entering else frozenset[str]())
 
 
 def _attributes(tree: ast.Module) -> frozenset[str]:

@@ -19,6 +19,7 @@ from typing import Final, TypeAlias
 from constricter.fix.core.known import ImportPlan, Inference, Known, Partial
 from constricter.fix.libraries import stdlib
 from constricter.fix.values.members import keyed, may_miss, parsed, partial_method
+from constricter.rules.annotations import dotted
 from constricter.rules.flow import members
 
 Infer: TypeAlias = Callable[[ast.expr], Inference | None]
@@ -465,3 +466,29 @@ def environment(value: ast.expr, known: Known) -> Inference | None:
             return Inference("str", f"`{_ENVIRON}`'s values", frozenset({_STDLIB}))
         case _:
             return None
+
+
+def cast(value: ast.expr, spellings: frozenset[str]) -> Inference | None:
+    """Infer `typing.cast(T, x)`: `T` as written, or a string's contents.
+
+    Returns:
+      The inference, or `None` if `value` isn't such a call, or `T` isn't an expression.
+
+    """
+    func: ast.expr
+    target: ast.expr
+    match value:
+        case ast.Call(func=func, args=[target, _], keywords=[]) if dotted(func) in spellings:
+            pass
+        case _:
+            return None
+    text: str = (
+        target.value.strip()
+        if isinstance(target, ast.Constant) and isinstance(target.value, str)
+        else ast.unparse(target)
+    )
+    try:
+        written: ast.expr = ast.parse(text, mode="eval").body
+    except SyntaxError:
+        return None
+    return Inference(ast.unparse(written), "`cast`'s target type", frozenset({"cast"}))

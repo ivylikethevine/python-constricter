@@ -8,6 +8,7 @@ variables their signatures name are found to be ones.
 """
 
 from collections.abc import Iterator, Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -46,7 +47,8 @@ def passed(catalog: Index) -> Index:
             if vouched.issuperset(held.decorators)
         }
         if more or sides:
-            found[module.name] = module._replace(
+            found[module.name] = replace(
+                module,
                 returns={**module.returns, **more},
                 vouched=frozenset(more),
                 sides=_with_sides(module.sides, sides),

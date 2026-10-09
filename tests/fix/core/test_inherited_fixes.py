@@ -314,3 +314,104 @@ def test_a_class_out_of_sight_defines_its_own() -> None:
     )
     asked: tuple[tuple[str, str], ...] = (("m.C", "x"), ("B", "x"), ("B", "y"), ("B", "z"))
     assert list(starmap(found.definer, asked)) == ["m.C", "B", "A", None]
+
+
+_SEVERAL: Final = """
+import collections
+import threading
+import unittest
+from collections import UserDict
+from typing import TypeVar
+
+K = TypeVar("K")
+V = TypeVar("V")
+
+
+class Both(threading.Thread, unittest.TestCase):
+    def run_it(self) -> None:
+        ident = self.id()
+        name = self.name
+        alive = self.is_alive()
+        missing = self.missing()
+
+
+class Shared(unittest.TestCase, unittest.IsolatedAsyncioTestCase):
+    def run_it(self) -> None:
+        first = self.id()
+        second = self.addAsyncCleanup(print)
+
+
+class Ordered(collections.OrderedDict[str, int]):
+    def total(self) -> None:
+        item = self.popitem()
+        for key in self:
+            pass
+        for k, v in self.items():
+            pass
+
+
+class Users(UserDict[str, bytes]):
+    def total(self) -> None:
+        data = self.data
+        user = self["a"]
+
+
+class Bare(collections.OrderedDict):
+    def total(self) -> None:
+        bare = self.popitem()
+
+
+class Short(collections.OrderedDict[str]):
+    def total(self) -> None:
+        short = self.popitem()
+
+
+class Under(Ordered):
+    def total(self) -> None:
+        under = self.popitem()
+
+
+class Deep(collections.ChainMap[K, V]):
+    def total(self) -> None:
+        inside = self.maps
+
+
+class Hidden(Ordered):
+    def popitem(self):
+        return self.missing
+
+    def total(self) -> None:
+        hidden = self.popitem()
+
+
+def use(ordered: Ordered, users: Users, deep: Deep) -> None:
+    outside = deep.maps
+    taken = ordered.popitem()
+    read = users["a"]
+    for each in ordered:
+        pass
+"""
+
+
+def test_an_order_goes_on_past_a_library_class_and_through_a_generic_one() -> None:
+    """Past one held whole, to the next base's members; a generic one's, by the arguments it's given."""
+    assert _fixes(_SEVERAL) == {
+        "ident": ("str", False),  # the second library class's: the first has no `id`
+        "name": ("str", False),
+        "alive": ("bool", False),
+        "first": ("str", False),
+        "item": ("tuple[str, int]", False),
+        "key": ("str", False),
+        "k": ("str", False),
+        "v": ("int", False),
+        "data": ("dict[str, bytes]", False),
+        "user": ("bytes", False),
+        "under": ("tuple[str, int]", False),
+        "taken": ("tuple[str, int]", False),
+        "read": ("bytes", False),
+        "each": ("str", False),
+        # Two bases sharing an ancestor; a generic base without its arguments, or too few.
+        **dict.fromkeys(("missing", "second", "bare", "short", "hidden"), (None, False)),
+        # A base given type variables: they mean nothing outside the class.
+        **dict.fromkeys(("inside", "outside"), (None, False)),
+    }

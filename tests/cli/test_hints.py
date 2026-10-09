@@ -25,6 +25,9 @@ from constricter.cli import guard, hints, protocol, remembered
 from constricter.cli.options import Options
 from constricter.fix.core.known import Hints, Offered
 
+# Each starts `--jobs` workers of its own: one at a time, where the tests run at once (`pytest -n`).
+JOBS: pytest.MarkDecorator = pytest.mark.xdist_group("jobs")
+
 _FAKE: Final = Path(__file__).with_name("fake_server.py")
 _Found: TypeAlias = dict[Path, tuple[Hints, ...]]
 _Asks: TypeAlias = Callable[[hints.Session, Mapping[Path, str]], _Found]
@@ -302,21 +305,18 @@ def test_files_are_shared_among_servers_and_stay_with_theirs(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Many files are shared among a checker's servers, a file staying with its own the next time.
-
-    `ty` works in parallel itself: it gets one server, whatever `--jobs` says.
-    """
+    """Many files are shared among a checker's servers, a file staying with its own the next time."""
     _fake(monkeypatch)
     monkeypatch.setattr(hints, "available_memory", lambda: 64 << 30)  # plenty, whatever the machine has
     files: dict[Path, str] = {tmp_path / f"m{n}.py": f"x{n} = 1  # hint: int\n" * (n + 1) for n in range(40)}
     session: hints.Session
-    with hints.Session([_CHECKER, "ty"], tmp_path, servers=8) as session:
+    with hints.Session([_CHECKER, "pyrefly"], tmp_path, servers=8) as session:
         found: dict[Path, tuple[Hints, ...]] = session.hints(files)
         pyright: hints.Checker = session.checkers[0]
         first: dict[Path, int] = dict(pyright.assigned)
         some: dict[Path, str] = dict(list(files.items())[:3])
         again: dict[Path, tuple[Hints, ...]] = session.hints(some)
-        assert [len(checker.servers) for checker in session.checkers] == [2, 1]
+        assert [len(checker.servers) for checker in session.checkers] == [2, 2]
         assert set(first.values()) <= {0, 1}  # whichever was free took each batch
         assert pyright.assigned == first
     assert [len(found[path][0].types) for path in files] == [text.count("\n") for text in files.values()]
@@ -382,6 +382,7 @@ def test_fix_repeats_while_the_hints_change(
     assert text.splitlines()[2:4] == fixed
 
 
+@JOBS
 def test_fix_stops_after_its_last_round(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -756,6 +757,11 @@ def test_servers_are_as_many_as_fit_in_memory(monkeypatch: pytest.MonkeyPatch, t
     checker: hints.Checker = hints.Checker(_CHECKER, tmp_path, 8, 8 << 30)
     assert [checker.wanted(small), checker.wanted(big)] == [4, 1]
     assert hints.Checker(_CHECKER, tmp_path, 8, 1 << 20).wanted(small) == 1
+    # One whose servers each hold their share of the files: their memory is counted once among them.
+    sharing: hints.Checker = hints.Checker("pyrefly", tmp_path, 8, 40 << 30)
+    tight: hints.Checker = hints.Checker("pyrefly", tmp_path, 8, 24 << 30)
+    assert [sharing.wanted(small), sharing.wanted(big), tight.wanted(big)] == [4, 4, 1]
+    assert protocol.SERVERS["pyrefly"].fitting(1 << 30, 200 << 20) == 0
 
 
 def test_available_memory_is_what_the_system_says(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

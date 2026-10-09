@@ -9,7 +9,7 @@ import ast
 from typing import TYPE_CHECKING, Final
 
 from constricter.fix.core.known import ImportPlan, Inference
-from constricter.fix.values import fills, returned
+from constricter.fix.values import bodies, entered, fills, returned
 from constricter.fix.values.inference import RETURNED, inference, looped
 from constricter.fix.values.targets import iterated
 from constricter.rules.scope import Scope, guesses_in
@@ -31,8 +31,8 @@ def returns(scope: Scope, func: FunctionDef, module: ast.Module) -> list[returne
       Each one's value.
 
     """
-    if isinstance(func, ast.FunctionDef) and returned.is_generator(module, func):
-        return _generator(scope, func)
+    if isinstance(func, ast.FunctionDef) and bodies.is_generator(module, func):
+        return _generator(scope, func, bare=entered.is_manager(func))
     return [
         (None, frozenset()) if value is None else _recorded(scope, value) for value in scope.inferred.returns
     ]
@@ -102,11 +102,12 @@ def _recorded(scope: Scope, value: ast.expr) -> returned.Recorded:
     return found, frozenset() if found is None else guesses_in(scope, [value])[1]
 
 
-def _generator(scope: Scope, func: ast.FunctionDef) -> list[returned.Recorded]:
+def _generator(scope: Scope, func: ast.FunctionDef, *, bare: bool = False) -> list[returned.Recorded]:
     """Record what calling a generator function gives, if its `yield`s decide it.
 
     Each a statement of its own (nothing is sent in), all of one type `T`, and no `return` of a
-    value: a `Generator[T, None, None]`, named as the module can.
+    value: a `Generator[T, None, None]`, named as the module can; `bare`: `T` itself, what `with`
+    gives of one `@contextmanager` makes a manager.
 
     Returns:
       That type, as a lone `return`'s value; or nothing.
@@ -125,10 +126,13 @@ def _generator(scope: Scope, func: ast.FunctionDef) -> list[returned.Recorded]:
     types: set[str | None] = {None if part is None else part.annotation for part, _ in found}
     element: str | None = next(iter(types)) if len(types) == 1 else None
     plan: ImportPlan | None = scope.settings.known.names.plan
-    spelled: str | None
-    if (spelled := None if plan is None or element is None else plan.spell(_GENERATOR)) is None:
+    spelled: str | None = None
+    if not bare and plan is not None and element is not None:
+        spelled = plan.spell(_GENERATOR)
+    if element is None or not (bare or spelled):
         return []
-    typed: Inference = Inference(f"{spelled}[{element}, None, None]", "its `yield`s", frozenset({RETURNED}))
+    text: str = element if bare else f"{spelled}[{element}, None, None]"
+    typed: Inference = Inference(text, "its `yield`s", frozenset({RETURNED}))
     return [(typed, frozenset[str]().union(*(origins for _, origins in found)))]
 
 

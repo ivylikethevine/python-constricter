@@ -205,3 +205,114 @@ def test_a_local_bound_to_it_that_only_reads_it_leaves_it_typed() -> None:
         "items": "list[int]",  # `self.items`, by its class's fills
         **dict.fromkeys(("b", "grown", "c", "seen", "loud")),
     }
+
+
+_PASSED: Final = """
+from typing import Any
+
+
+def add(names: list[str], extra: str) -> None:
+    names.append(extra)
+
+
+async def collect(*, into: list[int]) -> None:
+    into.append(1)
+
+
+def index(table: dict[str, int], /, seen: set[bytes]) -> None:
+    pass
+
+
+def loose(names, vague: list[Any], many: "list[str]", *, items: tuple[int, ...] = ()) -> None:
+    pass
+
+
+def spread(*names: list[str]) -> None:
+    pass
+
+
+@decorated
+def wrapped(names: list[str]) -> None:
+    pass
+
+
+def twice(names: list[str]) -> None:
+    pass
+
+
+def twice(names: list[int]) -> None:
+    pass
+
+
+class Holder:
+    pass
+
+
+def run(flag: bool, add_local: int) -> None:
+    names = []
+    add(names, "a")
+    nums = []
+    collect(into=nums)
+    table = {}
+    seen = set()
+    index(table, seen=seen)
+    both = []
+    add(both, "a")
+    both.append("b")
+    clash = []
+    add(clash, "a")
+    clash.append(1)
+    lost = []
+    loose(lost, [], [])
+    vague = []
+    loose(1, vague, [])
+    quoted = []
+    loose(1, [], quoted)
+    wrong = {}
+    add(wrong, "a")
+    by_position = []
+    index(by_position, set())
+    starred = []
+    add(*[1], starred)
+    varied = []
+    spread(varied)
+    hidden = []
+    wrapped(hidden)
+    redefined = []
+    twice(redefined)
+    unknown = []
+    missing(unknown)
+    named = []
+    add(named, extra=named)
+    nested = []
+    add((nested, 1), "a")
+    by_name = []
+    add(extra="a", names=by_name)
+    unpacked = []
+    add(**{"names": unpacked})
+"""
+
+
+def test_an_empty_container_is_typed_by_the_parameter_it_is_passed_to() -> None:
+    """A checked function's, declared a container of its kind; with its fills, where they agree."""
+    found: list[Offence] = check_source(textwrap.dedent(_PASSED))
+    assert {o.name: (o.fix, o.unsafe) for o in found} == {
+        "names": ("list[str]", True),
+        "nums": ("list[int]", True),
+        "table": ("dict[str, int]", True),
+        "seen": ("set[bytes]", True),
+        "both": ("list[str]", True),
+        "by_name": ("list[str]", True),
+        # A fill of another type; a parameter that says nothing, or something vague or quoted.
+        **dict.fromkeys(("clash", "lost", "vague", "quoted"), (None, False)),
+        # Another kind of container, a position only a keyword could fill, arguments unpacked.
+        **dict.fromkeys(("wrong", "by_position", "starred", "unpacked"), (None, False)),
+        # A function that takes any number, is decorated, defined twice, or isn't the module's.
+        **dict.fromkeys(("varied", "hidden", "redefined", "unknown"), (None, False)),
+        # Passed twice, once as what the parameter isn't; and inside another value.
+        **dict.fromkeys(("named", "nested"), (None, False)),
+    }
+    kinds: dict[str, frozenset[str]] = {o.name: o.edit.kinds for o in found if o.edit is not None}
+    assert kinds["names"] == {"filled"}
+    shadowed: str = textwrap.dedent(_PASSED).replace("add_local: int", "add: int")
+    assert {o.name: o.fix for o in check_source(shadowed)}["names"] is None  # a local of that name

@@ -28,6 +28,7 @@ from constricter.fix.core.signatures import (
     CONTAINER_BINDS,
     CONTAINER_VERDICTS,
     ELEMENT_VERDICTS,
+    FUTURE_BINDS,
     OWN,
     OWN_ELEMENTS,
     Accepts,
@@ -380,7 +381,7 @@ def _argument(value: ast.expr, infer: _Infer, known: Known) -> Argument:
                     if isinstance(node, ast.Name | ast.Attribute | ast.Subscript)
                 ),
                 returns=_function_return(value, known),
-                awaited=infer(ast.Await(value)) if isinstance(value, ast.Call) else None,
+                awaited=infer(ast.Await(value)) if isinstance(value, ast.Call | ast.Name) else None,
             )
 
 
@@ -781,6 +782,7 @@ def _binding(accepts: Accepts | None, arg: Argument) -> tuple[str, str] | None:
         (accepts.get(_ANYTHING), arg.text),
         (accepts.get(_RETURNED), None if arg.returns is None else arg.returns.annotation),
         (accepts.get(_AWAITED), None if arg.awaited is None else arg.awaited.annotation),
+        (accepts.get(FUTURE_BINDS), None if arg.awaited is None else arg.text),
     ):
         if named is not None and text is not None:
             return named, text
@@ -854,6 +856,7 @@ def _verdict(accepts: Accepts | None, arg: Argument) -> str:
             return _YES if set(wanted) & set(line) else _MAYBE if _UNFOLLOWED in line else _NO
     taken: bool = (
         (_ANYTHING in accepts and arg.text is not None)
+        or (FUTURE_BINDS in accepts and arg.awaited is not None and arg.text is not None)
         or (arg.elements is not None and arg.elements[0] in accepts.get("of", {}))
         or (_RETURNED in accepts and arg.returns is not None)
         or (_AWAITED in accepts and arg.awaited is not None)
@@ -870,7 +873,8 @@ def _container_verdict(accepts: Accepts, arg: Argument) -> str:
     """
     elements: tuple[str, tuple[str, ...]] | None
     if (elements := arg.elements) is None:
-        return _MAYBE
+        # A parameter bounded by a future takes no coroutine's call: awaitable, but no future.
+        return _NO if FUTURE_BINDS in accepts and arg.awaited is not None else _MAYBE
     verdict: str = accepts.get(CONTAINER_VERDICTS, {}).get(elements[0], _MAYBE)
     of: str | None = accepts.get(ELEMENT_VERDICTS, {}).get(elements[0])
     if verdict != _YES or of is None:

@@ -2,17 +2,20 @@
 """One scope being checked: what it binds and reports, what `--fix` knows of it, and its late fixes."""
 
 import ast
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from typing import Final, NamedTuple, TypeAlias
 
+from constricter.fix.core.imports import guarded_imports, imports_of
 from constricter.fix.core.known import Hints, ImportPlan, Inference, Known, Passed, Typed
 from constricter.fix.libraries import stdlib
+from constricter.fix.libraries.library import chains
 from constricter.fix.values import aliased, callables, fills, hinted
 from constricter.fix.values.doubts import (
     Facts,
     Owner,
+    as_declared,
     bare,
     corrected,
     doubts,
@@ -33,7 +36,9 @@ from constricter.offences import (
     NESTED_TYPE,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
+    UNTYPED_PARAMETERS,
     VAGUE_TYPE,
+    WIDEN_KINDS,
     Checks,
     Edit,
     Fix,
@@ -41,6 +46,7 @@ from constricter.offences import (
     Offence,
     at,
 )
+from constricter.rules import widened
 from constricter.rules.annotations import (
     depth,
     is_composite,
@@ -50,11 +56,12 @@ from constricter.rules.annotations import (
     vague_fits,
 )
 from constricter.rules.flow import Finding, Hierarchy, Lifetime, findings, members
-from constricter.rules.quoted import written
+from constricter.rules.quoted import quote, written
 from constricter.rules.rebinding import REBOUND
 from constricter.rules.syntax import FunctionDef, Start
 
 _SELF: Final = "self"
+_NONE: Final = "None"
 _CLASSMETHOD: Final = "classmethod"
 _STATICMETHOD: Final = "staticmethod"
 FINAL_KIND: Final = "final"  # the fix kind of LVA012's `Final`
@@ -89,12 +96,14 @@ class Seeded(NamedTuple):
     `callers`: what every call passes each parameter of its top-level functions, by `id()` (see
     `constricter.fix.index.callers`); `fixtures`: the pytest fixtures its tests can take, each one's
     value's type (see `constricter.fix.index.fixtures`). And `module`: the names the module binds
-    once, at its top level, each with its type there, which every function reads it as.
+    once, at its top level, each with its type there, which every function reads it as. `marked`:
+    what a class's `parametrize` gives each of its methods, by `id()` (see `calls.marked`).
     """
 
     callers: Mapping[int, Mapping[str, Passed]] = {}
     fixtures: Mapping[str, Passed] = {}
     module: Mapping[str, Passed] = {}
+    marked: Mapping[int, Mapping[str, Passed]] = {}
 
 
 class Kind(NamedTuple):
@@ -117,6 +126,9 @@ class Kind(NamedTuple):
         return () if self.function is None else self.function.body
 
 
+# A name's first plain assignment: its target, its value, and the value's inferred type, if any.
+Plain: TypeAlias = tuple[ast.Name, ast.expr, Inference | None]
+Bare: TypeAlias = tuple[ast.AnnAssign, Inference | None]
 # One plain assignment: where, and whether it's in a loop's body.
 Placed: TypeAlias = tuple[tuple[int, int], bool]
 
@@ -125,14 +137,20 @@ Placed: TypeAlias = tuple[tuple[int, int], bool]
 class Assignments:
     """A scope's plain `name = value` (or `name: T = value`) bindings, for LVA012 and `--fix`.
 
-    `chained`: where each name a chained assignment binds first (`a = b = 0`) starts; its fix,
-    whenever it's made (`optional`, `filled`), declares it there, as it can't annotate it.
+    `chained`: where the statement starts that first binds a name it can't annotate (`a = b = 0`,
+    a loop's, an unpacking's, a `with`'s): a fix made late (`optional`, `filled`) declares it there.
     """
 
     found: dict[str, list[Placed]] = field(default_factory=dict[str, list[Placed]])  # each name's
     looping: int = 0  # how many loops deep the statement being visited is
     empty: dict[str, str] = field(default_factory=dict[str, str])  # names first bound empty: their kind
     chained: dict[str, tuple[int, int]] = field(default_factory=dict[str, tuple[int, int]])
+    widened: set[str] = field(default_factory=set[str])  # the names a marked line annotates (see `widened`)
+    # Each name `late.widens` may offer a wider type: its target, its value (what a loop's, an
+    # unpacking's or a `with`'s is taken from: then in `chained` too), and the type `--fix` infers.
+    plain: dict[str, "Plain"] = field(default_factory=dict[str, "Plain"])
+    # Each marked declaration with no value (`x: Any`, before a loop), and what its name is bound to.
+    bare: dict[str, "Bare"] = field(default_factory=dict[str, "Bare"])
 
 
 # A name typed late: its type, and what that rests on if it's a guess (`FIX_KINDS`).
@@ -156,6 +174,16 @@ class Inferred:
     seeded: dict[str, Late] = field(default_factory=dict[str, "Late"])
     # The names declared type aliases (`X: TypeAlias = ...`): `TypeAlias` isn't their values' type.
     aliases: set[str] = field(default_factory=set[str])
+    unions: Mapping[str, str] = field(default_factory=dict[str, str])  # see `Indirect.unions`
+
+    def members(self, annotation: str) -> frozenset[str]:
+        """Split a type into its union's members, an alias of a union read as the union it names.
+
+        Returns:
+          Them; none for a type that can't be read.
+
+        """
+        return members(self.unions.get(annotation, annotation)) or frozenset()
 
     def declare(self, name: str, annotation: ast.expr) -> None:
         """Record the type `name` is annotated with: its own from here on, or an alias's declaration."""
@@ -197,33 +225,51 @@ class Inferred:
         certain for a member of a declared union (`int | None`, then `1`), which every checker narrows;
         otherwise (mypy narrows nothing else, and an unknown value may be anything) what's inferred
         from it is a guess, resting on `rebound`. `guess`: the value's type where it's only a guess
-        (`config = config or Config()`), and what that rests on: the name's from here on, as one.
+        (`config = config or Config()`), and what that rests on: the name's from here on, as one. A
+        union bound to a value of no known type is narrowed to that: the name has no type until its
+        branch ends.
         """
         current: str | None = self.types.get(name)
+        self.types.hold(name, None)
         if current is None or typed == current:
             return
         if typed is None and guess is not None:
             self.types[name] = guess[0]
             self.guess(name, self.origins.get(name, frozenset()) | guess[1])
             return
+        union: frozenset[str] = self.members(current)
+        if typed is None and len(union) > 1:
+            self.types.forget(name)  # its type again past a branch (see `rejoined`), as a guess
         if typed is not None:
             self.types[name] = typed
-            if typed in (members(current) or ()) and len(members(current) or ()) > 1:
+            if typed in union and len(union) > 1:
                 return
         if name not in self.guesses:
             self.guess(name, frozenset({REBOUND}))
 
-    def rejoined(self, before: Mapping[str, str]) -> None:
+    def rejoined(self, before: Mapping[str, str], untyped: frozenset[str]) -> None:
         """Take each name a branch (`if`, a loop, `try`, `match`) retyped back to its type `before` it.
 
         The branch may not have run: past it, a name is what it was, or what the branch made it. That's
         its type before, certainly, if that's a union the branch's type is a member of (`int | None`,
-        narrowed to `int` inside `if`); otherwise `rebound` already made it a guess.
+        narrowed to `int` inside `if`); otherwise `rebound` already made it a guess, as it is where
+        the branch left it no type. One of `untyped`, bound before the branch or in an arm of it to a
+        value of no known type, may still hold it: it has none past it.
         """
         name: str
         annotation: str
         for name, annotation in before.items():
+            if name not in self.types and name not in self.guesses:
+                self.guess(name, frozenset({REBOUND}))
             self.types[name] = annotation
+        for name in untyped & self.types.keys():
+            self.forget(name)
+
+    def forget(self, name: str) -> None:
+        """Take `name` for a value of no known type from here on."""
+        self.types.forget(name)
+        self.guesses.discard(name)
+        _ = self.origins.pop(name, None)
 
 
 class Scope:
@@ -243,7 +289,8 @@ class Scope:
         self.kind: Kind = kind or Kind(UNANNOTATED, fixable=True)
         self.offences: list[Offence] = []
         self.first: list[str] = []  # each first binding the rules cover, typed or not
-        self.inferred: Inferred = Inferred()  # what `--fix` knows of the names bound so far
+        # What `--fix` knows of the names bound so far.
+        self.inferred: Inferred = Inferred(unions=settings.known.indirect.unions)
         self.flow: dict[str, Lifetime] = {}  # every binding of each name, for value flow
         self.assignments: Assignments = Assignments()  # for LVA012
 
@@ -310,7 +357,7 @@ class Scope:
         # Value flow's type is `--fix`'s own, if certain: worked out once, here, for both.
         certain: str | None = certain_type(self, value, (None if fix is None else fix.annotation, unsafe))
         if self.kind.owner is not None:
-            fix, unsafe, origins = self._member(name, fix)
+            fix, unsafe, origins = self._member(name, fix, value)
         if fix is None or not self.writable(fix):
             fix, unsafe, origins = self._unvalued(
                 target,
@@ -330,16 +377,22 @@ class Scope:
             _ = self.assignments.empty.setdefault(name, kind)
         if chained is not None and not again:
             _ = self.assignments.chained.setdefault(name, (chained.lineno, chained.col_offset))
+        # A wider type only for a name first bound here, by a statement of its own.
         self._first(
             name,
             at(target),
             code,
-            None if fix is None else self.placed(name, fix, origins, unsafe=unsafe),
+            self._offered(target, (fix, unsafe, origins), None if chained is not None or again else value),
         )
         if fix is not None and aliased.declares(parsed(fix.annotation)):
             self.inferred.aliases.add(name)  # `TypeAlias` isn't its value's type
         elif fix is not None:
             self.inferred.learn(name, fix.annotation, origins if unsafe else None, again=again)
+        # A call of no type to write still types what's read of the name (`both.out`), bound once.
+        self.inferred.types.hold(
+            name,
+            value if fix is None and not again and chains(value, self.settings.known) else None,
+        )
 
     def _unvalued(
         self,
@@ -370,27 +423,38 @@ class Scope:
             else None
         )
         function: FunctionDef | None = self.kind.function
+        owner: str | None = self.kind.owner
         types: Typed = self.inferred.types
+        facts: Facts = self.settings.facts
+        # In a function; or a module's or a plain class's body, for a name first bound there.
+        body: bool = alias and (owner is None or owner in self.settings.known.class_side.plain)
         called: tuple[Inference, ast.expr] | None = (
             None
-            if found is not None or function is None or vague[0] is not None
+            if found is not None or vague[0] is not None or not (function is not None or body)
             else callables.aliased(
                 target,
                 value,
-                function,
+                callables.Site(function, owner, facts.attributed, facts.positional),
                 self.settings.known,
                 (types, lambda arg: inference(arg, self.settings.known, types)),
             )
         )
-        if called is not None:
+        if called is not None and owner is not None:  # a class's variable: a guess (see `_member`)
+            found = called[0]._replace(kinds=called[0].kinds | {MEMBER}), True, frozenset({MEMBER})
+        elif called is not None:
             found = called[0], *guesses_in(self, [called[1]])
         hint: Inference | None
         if found is None and (hint := self.hint(target, value)) is not None:
             found = hint, True, hint.kinds
         return found or vague
 
-    def _member(self, name: str, fix: Inference | None) -> tuple[Inference | None, bool, frozenset[str]]:
-        """Offer a class body's fix only for a plain class's variable typed by its value: a guess.
+    def _member(
+        self,
+        name: str,
+        fix: Inference | None,
+        value: ast.expr,
+    ) -> tuple[Inference | None, bool, frozenset[str]]:
+        """Offer a class body's fix only for a plain class's variable typed by its `value`: a guess.
 
         Returns:
           The inference, whether it's a guess, and what it rests on, as `valued` does; none for any
@@ -398,9 +462,13 @@ class Scope:
 
         """
         typed: str | None = self.settings.known.class_side.variables.get(self.kind.owner or "", {}).get(name)
-        if fix is None or typed is None or fix.annotation != typed:
+        # The variable's type is its value's, or what a base holds it to (`maxDiff`, an `int | None`).
+        held: frozenset[str] = frozenset() if typed is None else self.inferred.members(typed)
+        if fix is None and _NONE in held and isinstance(value, ast.Constant) and value.value is None:
+            fix = Inference(_NONE, "what a class above it declares it", frozenset())
+        if fix is None or typed is None or fix.annotation not in held:
             return None, False, frozenset()
-        return fix._replace(kinds=fix.kinds | {MEMBER}), True, frozenset({MEMBER})
+        return fix._replace(annotation=typed, kinds=fix.kinds | {MEMBER}), True, frozenset({MEMBER})
 
     def valued(
         self,
@@ -423,13 +491,22 @@ class Scope:
         fix: Inference | None
         if (fix := inference(value, self.settings.known, self.inferred.types)) is not None:
             fix = corrected(value, fix, self._owner(), facts.generics, self.settings.known.names.plan)
-        if fix is not None and (
-            narrowed_first(value, fix)
-            or narrowed_at(facts.narrowed, value, line, union=len(members(fix.annotation) or ()) > 1)
-            or self._takes_narrowed(value, fix, line)
+        # An alias of a union is narrowed as the union it names.
+        named: Inference | None = (
+            None
+            if fix is None
+            else fix._replace(annotation=self.inferred.unions.get(fix.annotation, fix.annotation))
+        )
+        if named is not None and (
+            (
+                narrowed_first(value, named)
+                and not (named.annotation != _NONE and as_declared(value, function, facts.tests))
+            )
+            or narrowed_at(facts.narrowed, value, line, union=len(members(named.annotation) or ()) > 1)
+            or self._takes_narrowed(value, named, line)
         ):
             fix = None
-        if fix is None:
+        if fix is None or named is None:
             return None, False, frozenset()
         unsafe: bool
         origins: frozenset[str]
@@ -447,7 +524,7 @@ class Scope:
     def _takes_narrowed(self, value: ast.expr, fix: Inference, line: int) -> bool:
         """Check whether a fix takes its type from a read narrowed at `line`: `deepcopy(x)`, in `if x:`.
 
-        Or holds one in a display (`[x]`, there): its elements are the narrowed type's.
+        Or holds one in a display (`[x]`, `[self.x]`, there): its elements are the narrowed type's.
 
         Returns:
           Whether it does: the read has another type there than it's declared.
@@ -455,16 +532,16 @@ class Scope:
         """
         types: Mapping[str, str] = self.inferred.types
         held: list[str] = [
-            element.id
+            ast.unparse(element)
             for element in (value.elts if isinstance(value, ast.List | ast.Set | ast.Tuple) else ())
-            if isinstance(element, ast.Name)
+            if isinstance(element, _READS)
         ]
         return any(
             read_narrowed(
                 self.settings.facts.narrowed,
                 read,
                 line,
-                union=len(members(types.get(read, "")) or ()) > 1,
+                union=len(self.inferred.members(types.get(read, ""))) > 1,
             )
             for read in (*fix.reads, *held)
         )
@@ -623,11 +700,12 @@ class Scope:
 
         """
         policy: FixPolicy = self.settings.checks.fixes
-        if not policy.allows(fix.kinds) or not self.writable(fix):
+        widening: bool = bool(fix.kinds & WIDEN_KINDS)  # written whatever `vague` allows, and marked
+        if not policy.allows(fix.kinds) or not (widening or self.writable(fix)):
             return None
         certain: bool = not unsafe or policy.trusts(origins)
         plan: ImportPlan = self.settings.known.names.plan or ImportPlan({}, frozenset(), 0)
-        guarded: tuple[str, ...] = _guarded_imports(fix.annotation, plan)
+        guarded: tuple[str, ...] = guarded_imports(fix.annotation, plan)
         guard: str | None = ""
         if guarded and plan.checking.block == (0, 0) and (guard := plan.spell(_TYPE_CHECKING)) is None:
             return None  # nothing can be `TYPE_CHECKING` to import them under
@@ -645,6 +723,37 @@ class Scope:
             guard=guard or "",
             block=plan.checking.block,
         )
+
+    def _offered(
+        self,
+        target: ast.Name,
+        typed: tuple[Inference | None, bool, frozenset[str]],
+        widen: ast.expr | None,
+    ) -> Fix | None:
+        """Offer `target`'s fix as `typed` has it (see `valued`), else a wider one for its value `widen`.
+
+        A wider type (see `widened.wider`) only where `fix-widen` asks for it.
+
+        Returns:
+          The fix, or `None`.
+
+        """
+        found: Inference | None
+        fix: Fix | None
+        if typed[0] is not None and (fix := self.placed(target.id, typed[0], typed[2], unsafe=typed[1])):
+            return fix
+        if widen is None:
+            return None
+        self.assignments.plain[target.id] = (target, widen, typed[0])
+        if UNTYPED_PARAMETERS not in self.settings.checks.fixes.widen:
+            return None
+        found = widened.wider(
+            self.kind.function,
+            (target, widen),
+            self.inferred.types,
+            self.settings.known.names.plan,
+        )
+        return None if found is None else self.offer(found, frozenset(), unsafe=False)
 
     def writable(self, fix: Inference) -> bool:
         """Check that a type is no vaguer than `vague` allows: one that isn't is known, and never written.
@@ -740,7 +849,7 @@ class Scope:
         )
         if not unbound and stdlib.evaluable(fix.annotation, self.settings.known):
             return offence
-        return replace(offence, edit=fix._replace(annotation=_quoted(fix.annotation)))
+        return replace(offence, edit=fix._replace(annotation=quote(fix.annotation)))
 
     def _covered(self, name: str) -> bool:
         """Check whether the rules cover `name` here.
@@ -771,12 +880,16 @@ class Scope:
         """
         return [name for name in self.first if self._covered(name)]
 
-    def annotation(self, name: str, annotation: ast.expr) -> None:
+    def annotation(self, name: str, annotation: ast.expr, *, marked: bool = False) -> None:
         """Report a vague annotation (LVA005), too deep a one (LVA006), or too long a tuple (LVA011).
 
-        Vague as far as `vague` allows (see `vague_fits`) isn't LVA005.
+        Vague as far as `vague` allows (see `vague_fits`) isn't LVA005, nor is a widening's own
+        (`marked`: see `widened`).
         """
-        if not vague_fits(annotation, self.settings.checks.vague):
+        if not marked and not vague_fits(
+            annotation,
+            self.settings.checks.vague,
+        ):
             self.offences.append(Offence(*at(annotation), name, VAGUE_TYPE))
         if depth(annotation) >= self.settings.checks.nesting:
             self.offences.append(Offence(*at(annotation), name, NESTED_TYPE))
@@ -850,7 +963,7 @@ def certain_type(
 
     """
     if isinstance(value, ast.Constant) and value.value is None:
-        return "None"
+        return _NONE
     annotation: str | None
     unsafe: bool
     annotation, unsafe = worked_out or (
@@ -879,38 +992,3 @@ def guessed_type(scope: Scope, value: ast.expr) -> Late | None:
     if not unsafe or annotation is None or not vague_fits(parsed(annotation), scope.settings.checks.vague):
         return None
     return annotation, origins
-
-
-def imports_of(annotation: str, plan: ImportPlan) -> tuple[str, ...]:
-    """Find the imports `annotation` needs: those `plan` added for a name it's written with.
-
-    Returns:
-      Their statements, sorted.
-
-    """
-    # `annotation` is always `ast.unparse`'s own output (or a name `plan` spelled), so it parses.
-    return tuple(sorted({plan.added[root] for root in roots(annotation) if root in plan.added}))
-
-
-def _guarded_imports(annotation: str, plan: ImportPlan) -> tuple[str, ...]:
-    """Find the imports under `if TYPE_CHECKING:` `annotation` needs (see `Guarded`).
-
-    Returns:
-      Their statements, sorted.
-
-    """
-    statements: Iterator[str | None] = (
-        plan.guarded[root].statement for root in roots(annotation) if root in plan.guarded
-    )
-    return tuple(sorted({statement for statement in statements if statement is not None}))
-
-
-def _quoted(annotation: str) -> str:
-    """Quote an annotation: in double quotes, unless it has one or a backslash (a `Literal`'s string).
-
-    Returns:
-      It, as a string literal.
-
-    """
-    plain: bool = not {'"', "\\"} & set(annotation)
-    return f'"{annotation}"' if plain else ast.unparse(ast.Constant(annotation))

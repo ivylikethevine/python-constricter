@@ -23,7 +23,7 @@ from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.core.imports import checking, inner_imports, rebound_names
-from constricter.fix.core.known import ImportPlan, Inference
+from constricter.fix.core.known import ImportPlan, Inference, Passed
 from constricter.fix.values.narrowed import Regions, regions
 from constricter.rules.annotations import generic_classes, node_name, roots
 from constricter.rules.flow import members
@@ -79,8 +79,9 @@ class Facts(NamedTuple):
     tests: Tests = Tests()  # what its tests read (see `tests`)
     narrowed: Regions = MappingProxyType({})  # where each value is narrowed (see `narrowed.regions`)
     inner: tuple[int, ...] = ()  # the lines functions and lambdas start on, sorted (see `inner_starts`)
-    # Its functions `@contextmanager` makes context managers: what `with` gives of each (see `entered`).
-    managers: Mapping[str, str] = MappingProxyType({})
+    # The functions `@contextmanager` makes context managers, its own and those it imports: what
+    # `with` gives of each, and what that rests on if it's a guess (see `entered`).
+    managers: Mapping[str, Passed] = MappingProxyType({})
     type_vars: frozenset[str] = frozenset()  # its type variables, its own and those it imports
     # Those each class's bases name (`class Row(Generic[_TP])`), bound in its methods.
     bound: Mapping[str, frozenset[str]] = MappingProxyType({})
@@ -89,19 +90,25 @@ class Facts(NamedTuple):
     rebound: Mapping[str, Sequence[Start]] | None = None
     # Where its functions' own imports start, in source order (see `imports.inner_imports`).
     lazy: Sequence[Start] | None = None
+    # The other checked files' functions it calls that declare no return (see `Outside.untyped`).
+    untyped: frozenset[str] = frozenset()
+    # The names it reads an attribute of (`run`, in `run.cache_clear()`), anywhere in it.
+    attributed: frozenset[str] = frozenset()
+    # Its functions' parameters' types, where a `Callable` can list them (see `callables.signatures`).
+    positional: Mapping[str, tuple[str, ...]] = MappingProxyType({})
 
 
 def facts(
     tree: ast.Module,
     selfish: Mapping[str, frozenset[str]],
     generics: frozenset[str],
-    managers: Mapping[str, str],
+    managers: Mapping[str, Passed],
     type_vars: frozenset[str],
 ) -> Facts:
     """Read a module's `Facts`.
 
     `selfish`: its `self_returns`; `generics`: the generic classes it names that others define;
-    `managers`: its `entered.managers`; `type_vars`: its type variables.
+    `managers`: its `entered.managers`, and those it imports; `type_vars`: its type variables.
 
     Returns:
       Them.
@@ -203,8 +210,8 @@ def narrowed_first(value: ast.expr, found: Inference) -> bool:
 
     A copy, attribute or subscript of an `X | None`, and a filtered comprehension over one, is nearly
     always checked for `None` before it's used (an `assert`, an early `return`, a walrus), and a
-    checker then takes it for the `X` it's narrowed to: declaring the union breaks that. A bare
-    `None` (a copy of a name only ever `None`) says nothing.
+    checker then takes it for the `X` it's narrowed to: declaring the union breaks that (but see
+    `as_declared`). A bare `None` (a copy of a name only ever `None`) says nothing.
 
     Returns:
       Whether it is.
@@ -215,6 +222,40 @@ def narrowed_first(value: ast.expr, found: Inference) -> bool:
     optional: bool = _NONE in (members(found.annotation) or ())
     filtered: bool = isinstance(value, _COMPREHENSIONS) and any(g.ifs for g in value.generators)
     return (isinstance(value, tuple(_READS)) and optional) or (filtered and _has_none(found.annotation))
+
+
+def as_declared(value: ast.expr, function: FunctionDef | None, found: Tests) -> bool:
+    """Check whether a read (`x`, `self.x`, `d[k]`) has, to a type checker, the type it's declared.
+
+    Nothing in its function narrows it: no test of it or of what it's read of (`self.conn`, in
+    `self.conn.pool`), and no store of either, which narrows as a test does.
+
+    Returns:
+      Whether it has; not for a module's or a class body's read.
+
+    """
+    if function is None or not isinstance(value, tuple(_READS)):
+        return False
+    text: str = ast.unparse(value)
+    return not any(
+        text == each or text.startswith((f"{each}.", f"{each}["))
+        for each in tested(function, found) | _stored(function)
+    )
+
+
+@lru_cache(maxsize=64)  # asked of each read of an `X | None` in the function's scope
+def _stored(function: FunctionDef) -> frozenset[str]:
+    """List what a function stores, the functions inside it too: `x`, `self.x`, `d[k]`.
+
+    Returns:
+      Each, as source text.
+
+    """
+    return frozenset(
+        ast.unparse(node)
+        for node in walk(function)
+        if isinstance(node, ast.Name | ast.Attribute | ast.Subscript) and not isinstance(node.ctx, ast.Load)
+    )
 
 
 def _sifted(value: _Comprehension) -> bool:

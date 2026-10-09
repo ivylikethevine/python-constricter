@@ -47,8 +47,6 @@ _Task: TypeAlias = Callable[[], _Found]  # one server's work: the hints of each 
 
 _BATCH: Final = 8  # files a free server takes at a time: few, so none is left with the slow ones
 MEMORY: Final = 8 << 30  # the most a checker's servers use together, by default (`--infer-memory`)
-_SERVER_MEMORY: Final = 600 << 20  # a server's memory, before the files (basedpyright's, measured)
-_MEMORY_PER_BYTE: Final = 130  # and for each byte of them: 1.2 GB for SQLAlchemy's 8 MB, 3.4 for pandas' 21
 _MEMINFO: Final = Path("/proc/meminfo")
 _FILES_PER_SERVER: Final = 32  # fewer files than this each don't pay for another server's start
 # Seconds without a word from a server before it's taken for hung. Not an answer's wait: pandas'
@@ -228,11 +226,10 @@ class Checker:
     """One checker's servers, and which of them has each file.
 
     It has as many as its files need (one per `_FILES_PER_SERVER`), up to the command's `--jobs`, the
-    checker's own most (`Server.most`: one for a checker that works in parallel itself), and as many
-    as fit in its memory: `--infer-memory` (never more than is available), or by default `MEMORY`
-    (never more than half what's available). Each server loads the whole program it checks, which
-    takes (as measured) about `_SERVER_MEMORY` plus `_MEMORY_PER_BYTE` for each byte of the files.
-    One server it always has, whatever the memory.
+    checker's own most (`Server.most`), and as many as fit in its memory: `--infer-memory` (never
+    more than is available), or by default `MEMORY` (never more than half what's available). Each
+    server loads the whole program it checks, or its share of it, by its checker's own measure (see
+    `Server.fitting`). One server it always has, whatever the memory.
 
     The files are handed out a few at a time (`_BATCH`), the biggest first, to whichever server is
     free: one file's analysis can take far longer than another's, and none waits on a busy one. A
@@ -244,7 +241,8 @@ class Checker:
         self.name: str = name
         self.root: Path = root
         self.command: list[str] = command(name)
-        self.most: int = max(1, min(servers, SERVERS[name].most))
+        self.server: Server = SERVERS[name]
+        self.most: int = max(1, min(servers, self.server.most))
         self.memory: int = budget(memory, available_memory())
         self.servers: list[Connection] = []
         self.assigned: dict[Path, int] = {}  # each file's server, by its place in `servers`
@@ -258,7 +256,7 @@ class Checker:
 
         """
         size: int = sum(len(text) for text in files.values())
-        fit: int = max(1, self.memory // (_SERVER_MEMORY + _MEMORY_PER_BYTE * size))
+        fit: int = max(1, self.server.fitting(self.memory, size))
         return max(len(self.servers), min(self.most, -(-len(files) // _FILES_PER_SERVER), fit))
 
     def tasks(self, files: Mapping[Path, str]) -> list[_Task]:

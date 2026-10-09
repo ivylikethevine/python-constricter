@@ -20,6 +20,9 @@ import pytest
 from constricter.cli import collecting, config, paths
 from constricter.cli import command as cli
 
+# Each starts `--jobs` workers of its own: one at a time, where the tests run at once (`pytest -n`).
+JOBS: pytest.MarkDecorator = pytest.mark.xdist_group("jobs")
+
 BROKEN: Final = """
 def broken(items: list[int]) -> None:
     plain = 1
@@ -189,6 +192,7 @@ def test_json_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
         "severity": "error",
         "message": PLAIN,
         "cell": None,
+        "fixed": False,
         "fix": {"annotation": "int", "reason": "a literal", "unsafe": False, "kinds": ["literal"]},
     }
     assert [(r["code"], r["severity"]) for r in results] == [
@@ -565,6 +569,7 @@ def test_max_is_the_strictest_check(
         _ = cli.main(["demo.py"])
 
 
+@JOBS
 @pytest.mark.parametrize("jobs", ["2", "0"])
 def test_jobs_check_files_in_parallel_in_order(
     tmp_path: Path,
@@ -585,6 +590,7 @@ def test_jobs_check_files_in_parallel_in_order(
 _HALVED: Final = "fix 'half': `int`"  # by its callers' arguments: a second round's
 
 
+@JOBS
 def test_jobs_check_a_file_again_by_the_worker_that_checked_it(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -748,8 +754,9 @@ def test_coverage_reports_the_typed_share(tmp_path: Path, capsys: pytest.Capture
     assert json.loads(capsys.readouterr().out) == {
         "typed": 0,
         "total": 3,
+        "widened": 0,
         "percent": 0.0,
-        "files": [{"path": str(demo), "typed": 0, "total": 3, "percent": 0.0}],
+        "files": [{"path": str(demo), "typed": 0, "total": 3, "widened": 0, "percent": 0.0}],
     }
 
 

@@ -57,6 +57,7 @@ corpus = [
     "django==5.2.17", # 6.x needs Python 3.12+; 5.2 is the current LTS and still supports 3.11
     "pandas==3.0.6", # a large, partly annotated data library: overloads, generics, TYPE_CHECKING imports
     "pydantic==2.13.5",
+    "py-spy", # tests/corpus/corpus_profile.py samples the check from outside, its workers too
     "sqlalchemy==2.0.54",
 ]
 dev = [
@@ -65,11 +66,15 @@ dev = [
     "build",
     "check-wheel-contents",
     "hypothesmith",
+    "import-linter", # the layers' contracts (see [tool.importlinter])
     "mypy",
     "pip-audit",
     "pre-commit",
+    "psutil", # tests/corpus/corpora_cpu.py: a step's process tree, its CPU seconds and memory
+    "pytest-xdist",
     "ruff",
     "twine",
+    "types-psutil",
     "typos",
     "validate-pyproject",
     "zizmor",
@@ -102,19 +107,13 @@ packages = ["constricter"]
 # The generator too: a wheel built from the sdist checks the tables it carries are current.
 only-include = ["constricter", "stdlib_tables", "hatch_build.py", "README.md", "LICENSE.md"]
 
-[tool.constricter]
-# Drafts for other projects (Trunk, conda-forge); Trunk's `basic.in.py` is untyped on purpose. The
-# directory name skips it in a walk; the path glob, where a file's named (pre-commit names each).
-exclude = ["upstream", "upstream/*"]
-
 [tool.ruff]
 line-length = 110
 indent-width = 4
 target-version = "py311"
 cache-dir = "local/.ruff_cache"
-# Drafts for other projects (Trunk, conda-forge), in their own formats; `basic.in.py` is untyped on purpose.
 # `.claude/worktrees/`: other checkouts of this repository, made by Claude Code's agents.
-extend-exclude = ["upstream", ".claude"]
+extend-exclude = [".claude"]
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -138,6 +137,11 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 "tests/corpus/corpus_table.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # `--infer-with`'s tests start its guard and a fake server, and a constricter to kill.
 "tests/cli/test_hints.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
+# The trace's tests run a traced pytest, whose pytest-xdist workers are processes of its own.
+"tests/test_trace.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
+# The profile and the timings run the check under `py-spy` and `hyperfine`.
+"tests/corpus/corpus_profile.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
+"tests/corpus/corpus_timing.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 "tests/corpus/corpus_suite.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
 # Hatchling's build hook interface: generating the tables needs neither the version nor the build data.
 "hatch_build.py" = ["unused-method-argument"]
@@ -239,6 +243,8 @@ required-version = ">=0.12.17"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["--strict-markers", "--strict-config"]
+# pytest-xdist's own, registered here for the runs without it (CI's).
+markers = ["xdist_group: tests that `--dist loadgroup` gives one worker"]
 filterwarnings = ["error"]
 xfail_strict = true
 cache_dir = "local/.pytest_cache"
@@ -261,7 +267,7 @@ layers = [
 name = "the rules and the fixes import neither the command nor the plugins"
 type = "forbidden"
 source_modules = ["constricter.rules", "constricter.fix", "constricter.offences"]
-forbidden_modules = ["constricter.cli", "constricter.plugins", "constricter.trace"]
+forbidden_modules = ["constricter.cli", "constricter.plugins", "constricter.recording", "constricter.trace"]
 
 [[tool.importlinter.contracts]]
 name = "constricter.rules.walked imports nothing of constricter's"

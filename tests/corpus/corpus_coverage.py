@@ -9,13 +9,16 @@ The corpus is this Python's standard library (`stdlib`) or one of the `corpus` g
 each side, `head` (this checkout) and `base` (the constricter that `--base`'s Python runs), it
 prints as JSON the corpus's bindings typed as released, after `--fix`, and after `--fix
 --unsafe-fixes`: each `[typed, total]`, `null` where that fix crashed. Every count is this
-checkout's `--coverage` with `all-scopes`, as corpus_table.py counts every version.
+checkout's `--coverage` with `all-scopes`, as corpus_table.py counts every version. And under
+`timed`, the milliseconds a check of it takes each side in one process: the median of `_RUNS`, the
+sides' runs in turn.
 """
 
 import argparse
 import importlib
 import json
 import platform
+import statistics
 import sys
 import sysconfig
 from collections.abc import Sequence
@@ -23,11 +26,13 @@ from importlib import metadata
 from pathlib import Path
 from typing import Final, TypeAlias, cast
 
-from tests.corpus.corpus_table import DEV, PACKAGES, Corpus, Typed, coverage, interpreter
+from tests.corpus.corpus_table import DEV, PACKAGES, Corpus, Typed, check_seconds, coverage, interpreter
 
 _Counts: TypeAlias = dict[str, list[int] | None]  # `[typed, total]` by when, `None` where a fix crashed
 
 _BASE: Final = "base"
+_HEAD: Final = "head"
+_RUNS: Final = 5  # timed checks a side
 _STDLIB: Final = "stdlib"
 
 
@@ -47,6 +52,22 @@ def _counts(found: tuple[Typed, Typed | None, Typed | None]) -> _Counts:
         "fixed": None if fixed is None else list(fixed),
         "guessed": None if guessed is None else list(guessed),
     }
+
+
+def _timed(sides: dict[str, str], root: Path) -> dict[str, int]:
+    """Time a check of `root` with each side's Python (`sides`), `_RUNS` times, a run of each in turn.
+
+    Returns:
+      Each side's median, in milliseconds.
+
+    """
+    taken: dict[str, list[float]] = {side: [] for side in sides}
+    for _ in range(_RUNS):
+        side: str
+        python: str
+        for side, python in sides.items():
+            taken[side].append(check_seconds(python, root))
+    return {side: round(statistics.median(each) * 1000) for side, each in taken.items()}
 
 
 def _corpus(name: str) -> Corpus:
@@ -78,11 +99,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     corpus: Corpus = _corpus(cast("str", options.corpus))
     # Absolute, since each run starts from `WORK`; not resolved, which would leave the venv.
     base: str = str(Path(cast("str", options.base)).absolute())
-    result: dict[str, str | _Counts] = {
+    result: dict[str, str | _Counts | dict[str, int]] = {
         "corpus": corpus.name,
         "version": corpus.version,
-        "head": _counts(coverage(interpreter(DEV), corpus, DEV)),
+        _HEAD: _counts(coverage(interpreter(DEV), corpus, DEV)),
         _BASE: _counts(coverage(base, corpus, _BASE)),
+        "timed": _timed({_HEAD: interpreter(DEV), _BASE: base}, corpus.root),
     }
     _ = sys.stdout.write(f"{json.dumps(result)}\n")
     return 0

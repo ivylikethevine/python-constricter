@@ -84,7 +84,7 @@ class Census(NamedTuple):
 
 
 class Checked(NamedTuple):
-    """One timed check of a corpus at `suffocate`, with every CPU."""
+    """One timed check of a corpus at `suffocate`, with the CPUs the run gives it."""
 
     files: int
     seconds: float
@@ -140,7 +140,8 @@ _Modes: TypeAlias = list[tuple[str, tuple[str, ...]]]  # each fixed run's label,
 class Step(NamedTuple):
     """One step's result as it's kept: what it gave (`None`: it failed), and what it took.
 
-    Its seconds, the CPU seconds of its processes, and the most memory one of them held (bytes).
+    Its seconds, the CPU seconds of its processes, and the most memory they held (bytes): one of
+    them, or all of them at once where the run samples its tree (`corpora_cpu`).
     """
 
     seconds: float
@@ -359,7 +360,6 @@ def types_step(corpus: Corpus, suite: corpus_suite.Suite) -> Typechecked:
                 suite,
                 released.result,
                 options,
-                first if apart else None,
             )
             for each, (_, options) in zip(roots, modes, strict=True)
         ]

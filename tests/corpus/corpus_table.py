@@ -224,6 +224,18 @@ def _run(python: str, args: Sequence[str]) -> str:
     return done.stdout
 
 
+def check_seconds(python: str, root: Path) -> float:
+    """Time one check of `root` by `python`'s constricter, in one process (see `_run`).
+
+    Returns:
+      The seconds it took.
+
+    """
+    start: float = time.perf_counter()
+    _ = _run(python, ["--level=suffocate", "--all-scopes", "--jobs=1", "--exit-zero", "-q", str(root)])
+    return time.perf_counter() - start
+
+
 def compiles(path: Path) -> bool:
     """Check whether the file at `path` compiles, its warnings unsaid.
 

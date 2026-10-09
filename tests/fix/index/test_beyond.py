@@ -9,7 +9,7 @@ from typing import Final
 import pytest
 
 from constricter.cli import command as cli
-from constricter.fix.index import beyond, project
+from constricter.fix.index import beyond, installed, project
 
 _TESTING: Final = """
 import unittest
@@ -206,7 +206,9 @@ def test_an_installed_packages_class_is_followed_too(tmp_path: Path, monkeypatch
 
 
 _LOUD: Final = "loud: int = self.id()"
+_TANGLED: Final = "tangled = self.id()"
 _MIXINS: Final = """
+import threading
 import unittest
 
 
@@ -231,11 +233,19 @@ class Mixed(Base, unittest.TestCase):
 
 class Both(unittest.TestCase, dict):
     pass
+
+
+class Threaded(threading.Thread, unittest.TestCase):
+    pass
+
+
+class Shared(unittest.TestCase, unittest.IsolatedAsyncioTestCase):
+    pass
 """
 _MIXED: Final = """
 import unittest
 
-from pkg.mixins import Both, Mixed, Named, Plain
+from pkg.mixins import Both, Mixed, Named, Plain, Shared, Threaded
 
 
 class Quiet(Plain, unittest.TestCase):
@@ -259,6 +269,18 @@ class Under(Mixed):
 class Twice(Both):
     def test(self) -> None:
         twice = self.id()
+
+
+class Runner(Threaded):
+    def test(self) -> None:
+        ident = self.id()
+        alive = self.is_alive()
+        neither = self.missing()
+
+
+class Tangled(Shared):
+    def test(self) -> None:
+        tangled = self.id()
 """
 
 
@@ -275,6 +297,8 @@ def test_another_files_mixin_doesnt_end_a_class_order(tmp_path: Path) -> None:
         "Plain": ("", frozenset({"Plain", "__init__", "Base", "name"})),
         # Behind a class of two bases: the one line that reaches a library class, with the other's names.
         "Mixed": ("unittest.TestCase", frozenset({"Mixed", "Base", "name"})),
+        # Behind two library classes: both, the first's members before the second's.
+        "Threaded": ("threading.Thread,unittest.TestCase", frozenset({"Threaded"})),
     }
     _ = cli.main(["--fix", "-q", "--jobs=1", str(tmp_path)])
     fixed: str = tests.read_text(encoding="utf-8")
@@ -283,4 +307,79 @@ def test_another_files_mixin_doesnt_end_a_class_order(tmp_path: Path) -> None:
     for line in ("quiet: str = self.id()", "name: str = self.name()", "level: int = self.level", _LOUD):
         assert f"        {line}\n" in fixed
     for line in ("under: str = self.id()", "helped: str = self.name()", "twice = self.id()"):
-        assert f"        {line}\n" in fixed  # not behind two library classes
+        assert f"        {line}\n" in fixed  # not behind a class out of sight
+    # `tangled`: behind two lines sharing an ancestor, which have no order.
+    for line in (
+        "ident: str = self.id()",
+        "alive: bool = self.is_alive()",
+        "neither = self.missing()",
+        _TANGLED,
+    ):
+        assert f"        {line}\n" in fixed
+
+
+_UNTYPED_PACKAGE: Final = {
+    "__init__.py": "from web.testing import Case as Case\n",
+    "testing.py": """
+        import unittest
+
+
+        class Simple(unittest.TestCase):
+            def helper(self) -> int:
+                return 1
+
+            def shortDescription(self):
+                return 1
+
+
+        class Case(Simple):
+            pass
+    """,
+}
+_UNDER_UNTYPED: Final = """
+import web.testing
+from web import Case
+
+
+class Tests(Case):
+    def test(self):
+        name = self.id()
+        short = self.shortDescription()
+        helped = self.helper()
+
+
+class Missing(web.testing.Gone):
+    def test(self):
+        gone = self.id()
+"""
+
+
+def test_a_package_declaring_no_types_is_followed_for_its_bases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """To the library class its classes end at; nothing they declare types a call, as no checker reads it."""
+    site: Path = tmp_path / "site" / "web"
+    site.mkdir(parents=True)
+    name: str
+    text: str
+    for name, text in _UNTYPED_PACKAGE.items():
+        _ = (site / name).write_text(textwrap.dedent(text), encoding="utf-8", newline="\n")
+    monkeypatch.setattr(sys, "path", [str(site.parent), *sys.path])
+    tests: Path = tmp_path / "project" / "test_it.py"
+    tests.parent.mkdir()
+    _ = tests.write_text(textwrap.dedent(_UNDER_UNTYPED), encoding="utf-8", newline="\n")
+    catalog: project.Index = project.index([tests])
+    assert beyond.library_bases(catalog, tests) == {
+        "Case": ("unittest.TestCase", frozenset({"Case", "Simple", "helper", "shortDescription"})),
+    }
+    assert installed.unseen("unittest.case") is None
+    assert installed.unseen("web.missing") is None
+    _ = cli.main(["--fix", "-q", "--unsafe-fixes", "--jobs=1", str(tests)])
+    fixed: list[str] = tests.read_text(encoding="utf-8").splitlines()
+    assert [line.strip() for line in fixed if _CALL in line] == [
+        "name: str = self.id()",
+        "short = self.shortDescription()",
+        "helped = self.helper()",
+        "gone = self.id()",
+    ]

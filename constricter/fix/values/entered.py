@@ -6,18 +6,20 @@
 declared `__enter__`, or an installed package's. A call to one of the module's own functions made a
 context manager by `@contextmanager` gives what it declares it yields (`Iterator[T]`'s `T`), as does
 one to such a method of its classes, on a receiver whose type is known (`self.defs.entry(key)`).
-`open(...)`'s is `constricter.fix.libraries.opened`'s, by its mode.
+One declaring no return gives what its `yield`s do (see `constricter.rules.recorded`), and another
+checked file's function either (see `constricter.fix.index.managed`). `open(...)`'s is
+`constricter.fix.libraries.opened`'s, by its mode.
 """
 
 import ast
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from typing import Final, cast
+from typing import Final, TypeAlias, cast
 
-from constricter.fix.core.known import ImportPlan, Inference, Known
+from constricter.fix.core.known import ImportPlan, Inference, Known, Passed
 from constricter.fix.libraries import stdlib
 from constricter.fix.values.inference import inference
-from constricter.rules.annotations import defined_type_vars, is_vague, node_name
+from constricter.rules.annotations import defined_type_vars, dotted, is_vague, node_name
 from constricter.rules.syntax import Start
 from constricter.rules.walked import classes, of_type
 
@@ -35,6 +37,39 @@ _STDLIB: Final = "stdlib"  # the fix kind of what typeshed declares
 _PATCHES: Final = {"unittest.mock.patch": 1, "unittest.mock.patch.object": 2}
 _REPLACEMENTS: Final = frozenset({"new", "new_callable"})  # the keywords that give the mock's replacement
 _MOCKS: Final = ("unittest.mock.MagicMock", "unittest.mock.AsyncMock")
+# Before a function's name in `Returned`'s tables: what `with` gives of one `@contextmanager` makes
+# a manager that declares no return, by its `yield`s.
+ENTERED: Final = "with "
+_RETURNED: Final = "returned"  # the fix kind of what `yield`s alone decide
+# What a `with` statement binds: its inference, the values it rests on, and what else a guess does.
+Entered: TypeAlias = tuple[Inference, list[ast.expr], frozenset[str]]
+
+
+def is_manager(func: ast.AST) -> bool:
+    """Check whether a function is one `@contextmanager` alone decorates, however it's imported.
+
+    Returns:
+      Whether it is: a plain `def`.
+
+    """
+    return (
+        isinstance(func, ast.FunctionDef)
+        and [node_name(decorator) for decorator in func.decorator_list] == _MANAGER
+    )
+
+
+def undeclared(tree: ast.Module) -> frozenset[str]:
+    """Name the module's top-level functions `@contextmanager` makes managers that declare no return.
+
+    Returns:
+      Them: each typed by its `yield`s, if at all.
+
+    """
+    return frozenset(
+        stmt.name
+        for stmt in tree.body
+        if isinstance(stmt, ast.FunctionDef) and is_manager(stmt) and stmt.returns is None
+    )
 
 
 def managers(tree: ast.Module) -> dict[str, str]:
@@ -79,7 +114,7 @@ def _managers(body: Sequence[ast.stmt], prefix: str, unusable: frozenset[str]) -
         if (
             isinstance(stmt, ast.FunctionDef)
             and counts[stmt.name] == 1
-            and [node_name(decorator) for decorator in stmt.decorator_list] == _MANAGER
+            and is_manager(stmt)
             and (yielded := _yielded(stmt.returns)) is not None
             and not unusable & {node_name(node) for node in ast.walk(yielded)}
         ):
@@ -170,7 +205,7 @@ def entered_async(
     manager: ast.expr,
     known: Known,
     declared: Mapping[str, str],
-) -> tuple[Inference, list[ast.expr]] | None:
+) -> Entered | None:
     """Infer what `async with manager as name:` binds `name` to: a standard-library manager's `__aenter__`'s.
 
     Returns:
@@ -179,50 +214,45 @@ def entered_async(
     """
     own: Inference | None = inference(manager, known, declared)
     found: Inference | None = None if own is None else stdlib.awaited_member(own.annotation, _AENTER, known)
-    return (
-        None if own is None or found is None else (found._replace(kinds=found.kinds | own.kinds), [manager])
-    )
+    if own is None or found is None:
+        return None
+    return found._replace(kinds=found.kinds | own.kinds), [manager], frozenset()
 
 
 def entered(
     manager: ast.expr,
     known: Known,
     declared: Mapping[str, str],
-    functions: Mapping[str, str],
-) -> tuple[Inference, list[ast.expr]] | None:
+    functions: Mapping[str, Passed],
+) -> Entered | None:
     """Infer what `with manager as name:` binds `name` to.
 
-    `declared`: the scope's typed names; `functions`: the module's `managers`.
+    `declared`: the scope's typed names; `functions`: the module's `managers`, and those it imports,
+    each with what it rests on if it's a guess.
 
     Returns:
-      The inference, and the values it rests on (a guess about one makes it a guess); or `None`.
+      The inference, the values it rests on (a guess about one makes it a guess) and what else it
+      does as a guess; or `None`.
 
     """
     name: str
     receiver: ast.expr
+    func: ast.expr
+    made: Entered | None
     match manager:
-        case ast.Call(func=ast.Name(id=name)) if name in functions and name not in declared:
-            yielded: Inference = Inference(
-                functions[name],
-                f"what `{name}`'s context manager yields",
-                frozenset({_CALL}),
-            )
-            return yielded, []
-        case ast.Call(func=ast.Attribute(value=receiver, attr=name)) if any(
-            key.endswith(f".{name}") for key in functions
-        ):
-            owner: Inference | None = inference(receiver, known, declared)
-            key: str = (
-                "" if owner is None else f"{known.class_side.lineage.definer(owner.annotation, name)}.{name}"
-            )
-            if owner is not None and key in functions:
-                reason: str = f"what `{key}`'s context manager yields"
-                return Inference(functions[key], reason, owner.kinds - {"copy"} | {_METHOD}), [receiver]
+        case ast.Call(func=ast.Name() | ast.Attribute() as func) if (
+            made := _function(dotted(func) or "", known, declared, functions)
+        ) is not None:
+            return made
+        case ast.Call(func=ast.Attribute(value=receiver, attr=name)) if (
+            made := _method(receiver, name, (known, declared), functions)
+        ) is not None:
+            return made
         case _:
             pass
     patched: Inference | None
     if (patched := _patched(manager, known)) is not None:
-        return patched, []
+        return patched, [], frozenset()
     # A standard-library manager that returns itself gives its own type, its type arguments included.
     own: Inference | None = inference(manager, known, declared)
     found: Inference | None = (
@@ -231,4 +261,71 @@ def entered(
         else inference(entering(manager), known, declared)
     )
     # What enters as `None` (a `catch_warnings()` that records nothing) binds nothing worth declaring.
-    return None if found is None or found.annotation == _NONE else (found, [manager])
+    return None if found is None or found.annotation == _NONE else (found, [manager], frozenset())
+
+
+def _method(
+    receiver: ast.expr,
+    name: str,
+    typed: tuple[Known, Mapping[str, str]],
+    functions: Mapping[str, Passed],
+) -> Entered | None:
+    """Infer what `with receiver.name(...) as target:` binds, for a method `@contextmanager` makes a manager.
+
+    Of the module's classes, on a receiver whose type is known (`typed`: the module's declarations
+    and the scope's names): what it declares it yields, or else what its `yield`s give, a guess as
+    a method's `return`s are.
+
+    Returns:
+      What `entered` does, or `None`.
+
+    """
+    known: Known
+    known, _ = typed
+    loose: str = f"{ENTERED}{name}"
+    if not any(key.endswith(f".{name}") for key in functions) and not any(
+        loose in methods for methods in known.returned.methods.values()
+    ):
+        return None  # most calls: no receiver to type
+    owner: Inference | None = inference(receiver, *typed)
+    definer: str | None = None if owner is None else known.class_side.lineage.definer(owner.annotation, name)
+    if owner is None or definer is None:
+        return None
+    reason: str = f"what `{definer}.{name}`'s context manager yields"
+    kinds: frozenset[str] = owner.kinds - {"copy"} | {_METHOD}
+    if f"{definer}.{name}" in functions:
+        return Inference(functions[f"{definer}.{name}"][0], reason, kinds), [receiver], frozenset()
+    yielded: str | None
+    if (yielded := known.returned.methods.get(definer, {}).get(loose)) is None:
+        return None
+    rests: frozenset[str] = known.returned.guesses.get(f"{definer}.{loose}", frozenset()) | {_RETURNED}
+    return Inference(yielded, reason, kinds | {_RETURNED}), [receiver], rests
+
+
+def _function(
+    callee: str,
+    known: Known,
+    declared: Mapping[str, str],
+    functions: Mapping[str, Passed],
+) -> Entered | None:
+    """Infer what `with callee(...) as name:` binds, for a function `@contextmanager` makes a manager.
+
+    One of `functions`, by what it declares it yields; or one of the module's own that declares
+    nothing, by its `yield`s (see `ENTERED`). Not through a name the scope types: a local.
+
+    Returns:
+      What `entered` does, or `None`.
+
+    """
+    if not callee or callee.partition(".")[0] in declared:
+        return None
+    reason: str = f"what `{callee}`'s context manager yields"
+    if callee in functions:
+        rests: frozenset[str] = functions[callee][1]
+        kinds: frozenset[str] = frozenset({_RETURNED if rests else _CALL})
+        return Inference(functions[callee][0], reason, kinds), [], rests
+    key: str
+    if (key := f"{ENTERED}{callee}") not in known.returned.calls:
+        return None
+    yielded: Inference = Inference(known.returned.calls[key], reason, frozenset({_RETURNED}))
+    return yielded, [], known.returned.guesses.get(key, frozenset())

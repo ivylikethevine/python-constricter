@@ -6,6 +6,116 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `python -m constricter.trace` records a type for each binding, not each function: what a name
+  holds as the statement binding it ends, followed line by line (`sys.monitoring`; `sys.settrace`
+  before Python 3.12). `--infer-from` so types a `for` loop's target, a name bound in a loop and one
+  bound again, and a local taken from an attribute of `self` that a class with no base stores only
+  unannotated parameters in. A parameter the function gives a default (but `None`), binds again,
+  tests by a call or matches is no longer taken for untyped: a checker types what's read of it. The
+  trace file's format changes (version 2: each file's `bindings`, by line and name): trace again. A
+  class defined in another is spelled (`Outer.Inner`), and a generic class's instance has its
+  arguments where it was made with them (`Box[int]()`) or is a builtin container of its own type
+  variables (`class Stack(list[T])`); no value's own code runs to spell it (a `__getattr__`, a
+  property). A pytest process the run starts is recorded too (pytest-xdist's workers:
+  `python -m constricter.trace -m pytest -n auto`), by a plugin the run names in `PYTEST_PLUGINS`.
+  The recorder is `constricter.recording`. On pandas's `tests/frame/methods`: 148 fixes from 128,
+  the traced tests taking 12.8s from 26.8s (9.4s untraced); with their whole suites traced
+  (`corpus_suite.py --types --trace`), 1,443 fixes on pandas and 179 on SQLAlchemy.
+- A class variable a `unittest` test case declares itself has that type, not its value's:
+  `maxDiff = 80` under a test case (or a framework's base, which may be one) is declared
+  `int | None`, which a type checker holds it to, and `maxDiff = None` is too, where it had no fix.
+  And a plain class's variable is typed by what the standard library gives its value, as the module
+  names it (`pattern = re.compile("x")`, `sep = os.sep`, `size = len(NAMES)`): a guess (`member`),
+  as one bound to a literal is; another file reading it writes the type by its own imports, or one
+  added for type checking. On Django: 40 more variables, and 12 more of what reads them.
+- A read of an `X | None` has a fix where nothing in its function narrows it: neither a test nor a
+  store of what's read, or of what that's read of. Its declared type, a guess
+  (`conn: Connection | None = self.conn`): what a type checker takes it for there. One the function
+  tests or stores still has none.
+- A loop over `os.walk(top)` is typed by `top`: `root: str`, `dirs: list[str]`, `files: list[str]`
+  where it's a `str` or a `pathlib` path, `bytes` where it's a `bytes`. And `iter(xs)` bound to a
+  name is an `Iterator` of what a loop over `xs` binds (`it: Iterator[str] = iter(names)`), imported
+  from `collections.abc` where the module doesn't name it.
+- `--fix` types more of what earlier items left (all in [FIXES.md](FIXES.md)): what's read of a name
+  bound to `capsys.readouterr()`, a class's `parametrize` and a fixture's `params`; a `with` target
+  of another checked file's `@contextmanager` function (by what it declares or yields) or class, of
+  `os.fdopen`, `tokenize.open`, `shelve.open` (from `vague` 0) and `assertLogs`;
+  `asyncio.ensure_future`, and `await` of an `async def` declaring no return, by its `return`s; a
+  lambda by what its calls pass it, a module's or a plain class's callable alias, and
+  `Callable[[A, B], R]` where a function's parameters are positional and every call passes them so;
+  a class under a package that declares no types (django's `TestCase`), under two library classes,
+  or under a generic library class given its arguments; an empty container by the parameter it's
+  passed to, or filled under another file's class; and a checked file's overloads through its
+  aliases, protocols and type variables, on its methods, and called through its module. On pydantic:
+  one more certain fix, none lost. The standard-library tables change (`assertLogs`'s private
+  classes, `ensure_future`'s future-bounded parameter): regenerate them.
+- `--fix --show-fixes` lists the fixes it made, after what it left: `fixed 'x': ...` as text, and in
+  `--format=json` (where every entry now says whether it's `fixed`) one entry for each, on the line
+  it had before any fix. Without `--show-fixes` a `--fix` run's JSON lists what's left, as it did.
+- A widening declared on a line of its own (`row: Any  # constricter: auto`, before a loop, an
+  unpacking or a `with`) is replaced as an assignment's is: once the statement types the name, and
+  nothing binds it again, it's reported as LVA005 with that type as its fix, which drops the mark.
+- A module imported for type checking alone spells its types as one imported to run does: a name
+  bound to `core_schema.CoreSchema`, then to `CoreSchema`, is one type's, where a second pass of
+  `fix-widen`'s `unions` declared it `CoreSchema | core_schema.CoreSchema`.
+- `fix-widen`'s two kinds of call, and `vague`, type what a loop, an unpacking or a `with` binds
+  too, each name declared on a marked line of its own before the statement
+  (`for key, row in obj.rows():`, `a, b = helper()`, `with obj.open() as f:`); and `untyped-calls`
+  takes a call of another checked file's function that declares no return (`u.helper()`), which was
+  `unknown-calls`'. On pydantic, `--fix` with the calls' kinds marks 519 of 3,956 bindings (13.1%),
+  from 325; with every kind and `--unsafe-fixes`, 773 from 507. basedpyright finds two more errors,
+  of one loop's target a `TypeIs` then narrows.
+- `fix-widen` has two more kinds, for a function's name bound to a call `--fix` has no type for,
+  each `Any`, marked: `untyped-calls` (a call of the module's own function or method that declares
+  no return, `x = helper()`, `x = self.load()`: what mypy takes it for already) and `unknown-calls`
+  (any other: `x = obj.method()`, `x = module.func()`), whatever the name is bound to later. On
+  pydantic, `--fix` with both marks 325 of 3,956 bindings (8.2%, all `unknown-calls`); basedpyright
+  finds two errors fewer and two more.
+- `fix-widen` (`--fix-widen KINDS`) names the wider types `--fix` may write where a value has no
+  type it can work out, or none it may write, each a fix kind of its own, off unless listed (`all`:
+  every one): `untyped-parameters` (`Any` for what comes of a parameter no annotation types:
+  `x = param`, `y = param.read()`), `empty-containers` (`list[Any]` for an empty one nothing fills),
+  `mixed-containers` (`list[Any]`, `tuple[Any, ...]`, `dict[str, Any]` for a display of mixed or
+  unknown elements), and, as guesses, `unions` (`int | str` for a name bound to two or three types)
+  and `vague` (a known type vaguer than `vague` allows, written anyway). Every statement a widening
+  writes ends with `# constricter: auto`: LVA005 passes over it, `--coverage` counts it apart
+  (`3/4 typed (75.0%), 1 widened`, and `widened` in its JSON), and once its value's type is known
+  it's reported as LVA005 with that type as its fix, which drops the mark. On SQLAlchemy all five
+  annotate 662 bindings (4.5%); basedpyright finds no error in a file under a rule it hadn't one
+  for, and 22 fewer, which the `Any`s hide.
+- With `--infer-with`, `ty` and pyrefly get up to four servers, as basedpyright does: a hinted check
+  of pandas takes 21s with `ty` (from 36s with one) and 18s with pyrefly (from 69s). Each checker's
+  servers are counted by its own memory, where all were by basedpyright's.
+- `--fix --unsafe-fixes` no longer types what's read of a name that an arm of an `if`, a `try` or a
+  `match` leaves with no known type, whatever another arm binds it to (`levels = index.multi()`,
+  `else: levels = ["a"]`, then `for lvl in levels`): it may hold either. And a type alias of a union
+  (`Key = Union[int, str]`, the module's or another checked file's) is narrowed as the union it
+  names: a copy under a test of it, or of an alias of an `X | None`, has no fix, and one bound again
+  to a member of it is that member, certainly (`dtype = cast(ExtensionDtype, dtype)`, of a
+  `DtypeObj`). A union bound again to a value of no known type has no type until its branch ends,
+  where a copy was declared the whole union (`original_execution_options = execution_options`).
+  These were the causes of two of pandas's new type errors after `--fix --unsafe-fixes`, and of
+  sqlalchemy's two. On the seven corpora, 44,858 guesses from 44,942, and 64,371 certain fixes from
+  64,373.
+- `--fix --unsafe-fixes` adds fewer type errors, by what the corpus packages' own checkers found
+  after it (pandas's 42 new errors are 7, sqlalchemy's 3 are 2, and pydantic's 9 left are its
+  environment's). What an unannotated function's `return`s give, which a checker took for anything,
+  has no fix where declaring it makes an error of what its function does with the name: a union of
+  which an attribute or an item is taken where no test narrows it (`opt.cb`, of an `Option | None`),
+  and a class of the module's of which an attribute it hasn't is taken (`cfg.verbose`, where the
+  attributes are set from outside the class). A name of no known type before a branch that binds it
+  to a known one (a parameter, in `if flag: x = float(x)`) has none past the branch, where it was a
+  guess of the branch's; and a name bound in one arm of an `if`, `try` or `match` to a known type
+  and in another to one that isn't has no fix. A union isn't split over several names
+  (`for name, length in parts`, of a `list[list[str | int]]`); a display of an attribute narrowed
+  where it's written (`[self.offset]` under `isinstance`) has no fix, as one of a name had none; an
+  unannotated function returning a class its own body imports or defines types no call (the caller's
+  file couldn't name it); and an attribute a class above stores too isn't typed by the subclass's
+  assignments. On the seven corpora, 44,942 guesses from 47,918.
+- A function called through a module that imports it in turn is typed by its declared return, as one
+  imported by name is: `pd.array(...)` after `import pandas as pd`, by the `array` that
+  `pandas/__init__.py` imports from `pandas.core.api` (an `ExtensionArray`, imported for type
+  checking). On the seven corpora, 64,373 certain fixes from 62,540 (pandas: 16,826 from 16,010).
 - A check with `--jobs` keeps its worker processes for all of its rounds, where each round started
   new ones: a file checked again (its callers typing its parameters) is checked by the worker that
   has its tree and how its first check ended, as one process does it. The standard library checks in

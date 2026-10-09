@@ -3,314 +3,305 @@
 
   python -m constricter.trace [--output FILE] [--root DIR] (-m MODULE | SCRIPT) [ARG ...]
 
-Runs the module or script as `python` would (`-m pytest`), and each time a function defined in a
-file under DIR (default: the working directory; nothing installed there) returns or yields, notes
-the type of each local it holds. At exit it writes them to FILE (default: `constricter-trace.json`)
-by each file's SHA-256, so a file edited since has none, and a copy of it has them all.
+Runs the module or script as `python` would (`-m pytest`), and each time a statement of a function
+defined in a file under DIR (default: the working directory; nothing installed there) ends, notes
+the type of each name it binds (see `constricter.recording`). At exit it writes them to FILE
+(default: `constricter-trace.json`).
 
-A value is spelled as its annotation: `None`, a builtin scalar, a builtin container or one of
-`collections`' by its first elements' types (`list[int]`, `dict[str, Row | None]`), a tuple by its
-parts' one type (`tuple[int, ...]`) or part by part, a class as `type[C]`, anything else by its
-class, written `module:Class`. What can't be spelled is `?`, which leaves its name untyped: a
-container of more than three types or nested past two levels, a mock, a class defined in a function
-or in another class. An empty container says nothing.
-
-Only this thread and those `threading` starts are recorded, not a child process (pytest-xdist's
-workers). A function that returns 20 times with nothing new is no longer looked at.
+Lines are followed by `sys.monitoring`, or `sys.settrace` on a Python without it (before 3.12). A
+pytest process the run starts (pytest-xdist's workers) records itself the same way: the run names
+this module in `PYTEST_PLUGINS`, and its trace has what each wrote as its session ended. No other
+child process is recorded.
 """
 
 import argparse
-import builtins
-import collections
-import hashlib
-import itertools
 import json
+import os
 import runpy
 import sys
+import tempfile
 import threading
-from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from types import CodeType, FrameType
-from typing import Final, TypeAlias, cast
+from typing import Final, Protocol, TypeAlias, cast
 
-VERSION: Final = 1  # the file's format
+from constricter.recording import Found, Recorder, merged, write
+
 DEFAULT: Final = "constricter-trace.json"
-UNKNOWN: Final = "?"  # a value that can't be spelled
-NONE: Final = "None"
-SEPARATOR: Final = ":"  # between a class's module and its name
-_SEQUENCES: Final = frozenset({list, set, frozenset, collections.deque, collections.Counter})
-_TUPLES: Final = frozenset({tuple})
-_MAPPINGS: Final = frozenset({dict, collections.defaultdict, collections.OrderedDict})
-# The classes a path is on one platform, as the one written for any.
-_PATHS: Final = {
-    "PosixPath": "Path",
-    "WindowsPath": "Path",
-    "PurePosixPath": "PurePath",
-    "PureWindowsPath": "PurePath",
-}
-_PATHLIB: Final = "pathlib"
-_BUILTINS: Final = "builtins"
-_MOCK: Final = "unittest.mock"
-_SAMPLE: Final = 20  # how many of a container's elements are looked at
-_DEPTH: Final = 2  # how deep a container's elements are spelled
-_MEMBERS: Final = 3  # how many types a container's elements may have
-_LENGTH: Final = 4  # the longest tuple spelled part by part
-_IDLE: Final = 20  # how many returns with nothing new end a function's recording
-_INSTALLED: Final = "site-packages"
+# What tells a pytest process a traced run started it: the run's process, its root, and where to write.
+ENVIRONMENT: Final = "CONSTRICTER_TRACE"
+_PLUGINS: Final = "PYTEST_PLUGINS"  # the modules every pytest process loads, by name
+_PLUGIN: Final = "constricter.trace"  # this one: `pytest_configure` and `pytest_unconfigure`
+_PARTS: Final = "*.json"  # what those processes write
+_LINE: Final = "line"  # `sys.settrace`'s events
 _RETURN: Final = "return"
+_EXCEPTION: Final = "exception"
+_TOOL: Final = "constricter"  # to `sys.monitoring`
+# Its ids no kind of tool has: this takes the first free. A profiler's is `cProfile`'s, which a run may start.
+_TOOLS: Final = (4, 3)
+_GETFRAME: Final = "_getframe"  # `sys`'s, which `inspect.currentframe` asks for each time
 _OPTIONS: Final = frozenset({"--output", "--root"})
 _MODULE: Final = "-m"
 _MAIN: Final = "__main__"
-_Held: TypeAlias = dict[str, list[str]]  # a function's locals' spellings, by name
+_Trace: TypeAlias = Callable[[FrameType, str, object], "_Trace | None"]  # a `sys.settrace` function
+_Callback: TypeAlias = Callable[..., object]  # what `sys.monitoring` reports an event to
+_Sentinel: TypeAlias = object  # what a callback answers to have an event reported no more
 
 
-def spelled(value: object, depth: int = _DEPTH) -> str | None:
-    """Spell `value`'s type as an annotation (see the module's docstring).
+class Events(Protocol):  # pylint: disable=too-few-public-methods
+    """`sys.monitoring.events`: the ones followed."""
 
-    Returns:
-      It; `UNKNOWN` for one that can't be spelled; `None` for one that says nothing (an empty
-      container, or one of them).
+    LINE: int
+    PY_RETURN: int
+    PY_START: int
+    RAISE: int
 
-    """
-    if value is None:
-        return NONE
-    if type(value) in _TUPLES:
-        return _tuple(cast("tuple[object, ...]", value), depth)
-    if type(value) in _SEQUENCES:
-        return _container(type(value), (cast("Iterable[object]", value),), depth)
-    if type(value) in _MAPPINGS:
-        return _container(
-            type(value),
-            (cast("Iterable[object]", value), cast("Mapping[object, object]", value).values()),
-            depth,
+
+class Monitoring(Protocol):
+    """`sys.monitoring` (Python 3.12), as it's used here."""
+
+    DISABLE: _Sentinel
+    events: Events
+
+    def get_tool(self, tool_id: int, /) -> str | None:
+        """Name the tool that has an id, if one has."""
+
+    def use_tool_id(self, tool_id: int, name: str, /) -> None:
+        """Claim a tool's id, under a name."""
+
+    def free_tool_id(self, tool_id: int, /) -> None:
+        """Give a tool's id up."""
+
+    def register_callback(self, tool_id: int, event: int, func: _Callback | None, /) -> object:
+        """Set what one event is reported to, or nothing."""
+
+    def set_events(self, tool_id: int, event_set: int, /) -> None:
+        """Choose the events reported of every function."""
+
+    def set_local_events(self, tool_id: int, code: CodeType, event_set: int, /) -> None:
+        """Choose the events reported of one function besides."""
+
+
+MONITORING: Final = cast("Monitoring | None", getattr(sys, "monitoring", None))
+
+
+# What finds a frame, held as this module is loaded: a run may take it away (a test of code without it).
+_frame: Final = cast("Callable[[int], FrameType]", getattr(sys, _GETFRAME))
+
+
+class Monitor:
+    """`sys.monitoring`'s callbacks: each recorded function's lines and returns, and every exception."""
+
+    def __init__(self, recorder: Recorder, monitoring: Monitoring) -> None:
+        """Tell `recorder` what `monitoring` reports."""
+        self.recorder: Recorder = recorder
+        self.monitoring: Monitoring = monitoring
+        self.codes: list[CodeType] = []  # each recorded function's, its lines and returns reported
+        self.tool: int = _TOOLS[0]  # its id, once started
+
+    def start(self) -> None:
+        """Have every function's start reported, and every exception."""
+        events: Events = self.monitoring.events
+        self.tool = next((tool for tool in _TOOLS if self.monitoring.get_tool(tool) is None), self.tool)
+        self.monitoring.use_tool_id(self.tool, _TOOL)
+        self._register(self.started, self.line, self.returned, self.raised)
+        self.monitoring.set_events(self.tool, events.PY_START | events.RAISE)
+
+    def stop(self) -> None:
+        """Have nothing reported any more."""
+        self.monitoring.set_events(self.tool, 0)
+        code: CodeType
+        for code in self.codes:
+            self.monitoring.set_local_events(self.tool, code, 0)
+        self._register(None, None, None, None)
+        self.monitoring.free_tool_id(self.tool)
+
+    def _register(self, *callbacks: _Callback | None) -> None:
+        """Set the callbacks for a start, a line, a return and an exception."""
+        events: Events = self.monitoring.events
+        event: int
+        callback: _Callback | None
+        for event, callback in zip(
+            (events.PY_START, events.LINE, events.PY_RETURN, events.RAISE),
+            callbacks,
+            strict=True,
+        ):
+            _ = self.monitoring.register_callback(self.tool, event, callback)
+
+    def started(self, code: CodeType, _offset: int) -> object:
+        """Have a recorded function's lines and returns reported, the first time it starts.
+
+        Returns:
+          `DISABLE`: no start of it is reported again.
+
+        """
+        if self.recorder.wanted(_frame(1)):
+            self.codes.append(code)
+            events: Events = self.monitoring.events
+            self.monitoring.set_local_events(
+                self.tool,
+                code,
+                events.LINE | events.PY_RETURN,
+            )
+        return self.monitoring.DISABLE
+
+    def line(self, _code: CodeType, _line: int) -> object:
+        """Tell the recorder its caller has arrived at a line.
+
+        Returns:
+          `DISABLE` for a function no longer recorded: that line of it isn't reported again.
+
+        """
+        frame: FrameType = _frame(1)
+        self.recorder.line(frame)
+        return None if self.recorder.wanted(frame) else self.monitoring.DISABLE
+
+    def returned(self, _code: CodeType, _offset: int, _value: object) -> object:
+        """Tell the recorder its caller returns.
+
+        Returns:
+          `DISABLE` for a function no longer recorded.
+
+        """
+        frame: FrameType = _frame(1)
+        self.recorder.left(frame)
+        return None if self.recorder.wanted(frame) else self.monitoring.DISABLE
+
+    def raised(self, _code: CodeType, _offset: int, _error: BaseException) -> None:
+        """Tell the recorder an exception is raised in its caller, or through it."""
+        self.recorder.raised(_frame(1))
+
+
+class Tracer:
+    """`sys.settrace`'s functions: each recorded function's lines, returns and exceptions."""
+
+    def __init__(self, recorder: Recorder) -> None:
+        """Tell `recorder` what the interpreter reports."""
+        self.recorder: Recorder = recorder
+        self.previous: tuple[_Trace | None, _Trace | None] = (
+            cast("_Trace | None", sys.gettrace()),
+            cast("_Trace | None", threading.gettrace()),
         )
-    if isinstance(value, type):
-        return UNKNOWN if named(value) == UNKNOWN else f"type[{named(value)}]"
-    return named(type(value))
+
+    def start(self) -> None:
+        """Trace this thread, and those `threading` starts."""
+        sys.settrace(self.entered)
+        threading.settrace(self.entered)
+
+    def stop(self) -> None:
+        """Trace as before."""
+        sys.settrace(self.previous[0])
+        threading.settrace(cast("_Trace", self.previous[1]))
+
+    def entered(self, frame: FrameType, _event: str, _arg: object) -> _Trace | None:
+        """Choose what traces a function that starts, or resumes.
+
+        Returns:
+          `within` for one to record, or `None`.
+
+        """
+        return self.within if self.recorder.wanted(frame) else None
+
+    def within(self, frame: FrameType, event: str, _arg: object) -> _Trace | None:
+        """Tell the recorder what a recorded function's frame does.
+
+        Returns:
+          Itself: what traces the frame next.
+
+        """
+        if event == _LINE:
+            self.recorder.line(frame)
+        elif event == _RETURN:
+            self.recorder.left(frame)
+        elif event == _EXCEPTION:
+            self.recorder.raised(frame)
+        return self.within
 
 
-def named(cls: type) -> str:
-    """Name a class as an annotation would: a builtin bare, another as `module:Class`.
-
-    Returns:
-      It; `UNKNOWN` for one no annotation can name (a function's, a nested one, a mock).
-
-    """
-    module: str = cls.__module__
-    name: str = cls.__qualname__
-    if module == _BUILTINS:
-        return name if cast("type | None", getattr(builtins, name, None)) is cls else UNKNOWN
-    if not name.isidentifier() or module.startswith(_MOCK):
-        return UNKNOWN
-    if cast("type | None", getattr(collections, name, None)) is cls:  # wherever it's defined
-        return f"{collections.__name__}{SEPARATOR}{name}"
-    if module.partition(".")[0] == _PATHLIB:
-        return f"{_PATHLIB}{SEPARATOR}{_PATHS.get(name, name)}"
-    # A private module's class, as the public one of its name has it (`_io`'s, in `io`).
-    public: str = module.lstrip("_")
-    exported: bool = cast("type | None", getattr(sys.modules.get(public), name, None)) is cls
-    return f"{public if exported else module}{SEPARATOR}{name}"
-
-
-def _joined(values: Iterable[object], depth: int) -> str | None:
-    """Spell the types of the first of `values` as one type, a union of up to `_MEMBERS`.
-
-    Returns:
-      It; `UNKNOWN` for more types than that, or any that is; `None` for none, or any saying nothing.
-
-    """
-    found: set[str | None] = {spelled(value, depth) for value in itertools.islice(values, _SAMPLE)}
-    if not found or None in found:
-        return None
-    types: list[str] = sorted(cast("set[str]", found), key=lambda text: (text == NONE, text))
-    return UNKNOWN if UNKNOWN in types or len(types) > _MEMBERS else " | ".join(types)
-
-
-def _container(kind: type, parts: tuple[Iterable[object], ...], depth: int) -> str | None:
-    """Spell a container of class `kind` by each of its type arguments' values (`parts`).
+def following(recorder: Recorder) -> Monitor | Tracer:
+    """Choose what tells `recorder` of the run's lines: `sys.monitoring` where there is one.
 
     Returns:
-      It (see `spelled`).
+      It, not started.
 
     """
-    if not depth:
-        return UNKNOWN
-    arguments: list[str | None] = [_joined(part, depth - 1) for part in parts]
-    if None in arguments:
-        return None
-    if UNKNOWN in arguments:
-        return UNKNOWN
-    return f"{named(kind)}[{', '.join(cast('list[str]', arguments))}]"
-
-
-def _tuple(value: tuple[object, ...], depth: int) -> str | None:
-    """Spell a tuple: by its parts' one type, of any length, or part by part up to `_LENGTH` long.
-
-    Returns:
-      It (see `spelled`); nothing for an empty one, which any tuple's type takes.
-
-    """
-    if not value or not depth:
-        return UNKNOWN if value else None
-    parts: list[str | None] = [spelled(part, depth - 1) for part in value[:_SAMPLE]]
-    if None in parts:
-        return None
-    if UNKNOWN in parts or (len(set(parts)) > 1 and len(value) > _LENGTH):
-        return UNKNOWN
-    spellings: list[str] = cast("list[str]", parts)
-    return f"tuple[{spellings[0]}, ...]" if len(set(parts)) == 1 else f"tuple[{', '.join(spellings)}]"
+    return Tracer(recorder) if MONITORING is None else Monitor(recorder, MONITORING)
 
 
 @dataclass
-class _Function:
-    """What one function's locals have held, by name; and how many returns in a row added nothing."""
+class _Worker:
+    """A pytest process a traced run started: what records it, and where it writes, while it has a session."""
 
-    held: dict[str, set[str]] = field(default_factory=dict[str, set[str]])
-    idle: int = 0
-
-
-class Recorder:
-    """A profile function (`sys.setprofile`) noting each returning function's locals' types."""
-
-    def __init__(self, root: Path) -> None:
-        """Record the functions of the files under `root`."""
-        self.root: Path = root.resolve()
-        # By the code object's id: two alike in two files are equal. None: not one to record.
-        self.functions: dict[int, _Function | None] = {}
-        self.codes: dict[int, CodeType] = {}  # each one seen, kept so its id stays its own
-        self.files: dict[str, Path | None] = {}  # each file's path under the root, if it's there
-        self.modules: dict[str, str] = {}  # the file of each module a recorded function is in
-
-    def __call__(self, frame: FrameType, event: str, _arg: object) -> None:
-        """Note the types of `frame`'s locals as its function returns or yields."""
-        if event != _RETURN:
-            return
-        code: CodeType = frame.f_code
-        if id(code) not in self.functions:
-            self.codes[id(code)] = code
-            self.functions[id(code)] = _Function() if self._wanted(code) else None
-            self.modules[str(frame.f_globals.get("__name__"))] = code.co_filename
-        function: _Function | None = self.functions[id(code)]
-        if function is None or function.idle >= _IDLE:
-            return
-        try:
-            function.idle = (
-                0
-                if _noted(
-                    function.held,
-                    (*code.co_varnames, *code.co_cellvars),
-                    cast("Mapping[str, object]", frame.f_locals),
-                )
-                else function.idle + 1
-            )
-        except (AttributeError, LookupError, RuntimeError, TypeError, ValueError):
-            # A container another thread changed, or a class that isn't one: its function isn't recorded.
-            self.functions[id(code)] = None
-
-    def _wanted(self, code: CodeType) -> bool:
-        """Check whether `code` is a function's, in a file under the root that isn't installed there.
-
-        Returns:
-          Whether it is.
-
-        """
-        return self._under(code.co_filename) is not None and not code.co_name.startswith("<")
-
-    def _under(self, filename: str) -> Path | None:
-        """Find the file `filename`'s path under the root.
-
-        Returns:
-          It, or `None` for a file elsewhere, or installed there (`site-packages`).
-
-        """
-        if filename not in self.files:
-            path: Path = Path(filename).resolve()
-            under: Path | None = path.relative_to(self.root) if path.is_relative_to(self.root) else None
-            self.files[filename] = None if under is None or _INSTALLED in under.parts else under
-        return self.files[filename]
-
-    def found(self) -> dict[str, object]:
-        """Gather what was recorded, as the file holds it.
-
-        Returns:
-          The format's version; each file by its SHA-256, with its path under the root and each
-          function's locals' spellings by its first line; and each recorded module's file's
-          SHA-256, by the name the run knew it by (`__main__`, for what it ran).
-
-        """
-        digests: dict[str, str | None] = {}
-        paths: dict[str, str] = {}
-        functions: dict[str, dict[str, _Held]] = {}
-        at: int
-        function: _Function | None
-        for at, function in self.functions.items():
-            code: CodeType = self.codes[at]
-            digest: str | None = _digest(code.co_filename, digests)
-            path: Path | None = self._under(code.co_filename)
-            if digest is None or path is None or function is None:
-                continue
-            _ = paths.setdefault(digest, path.as_posix())
-            merged: _Held = functions.setdefault(digest, {}).setdefault(str(code.co_firstlineno), {})
-            merged.update(
-                {
-                    name: sorted({*merged.get(name, ()), *types})
-                    for name, types in function.held.items()
-                    if types
-                },
-            )
-        return {
-            "version": VERSION,
-            "files": {
-                digest: {
-                    "path": paths[digest],
-                    "functions": {line: held for line, held in found.items() if held},
-                }
-                for digest, found in functions.items()
-            },
-            "modules": {
-                module: _digest(filename, digests)
-                for module, filename in self.modules.items()
-                if _digest(filename, digests) in functions
-            },
-        }
-
-    def write(self, output: Path) -> None:
-        """Write what was recorded to `output`."""
-        _ = output.write_text(json.dumps(self.found(), sort_keys=True) + "\n", encoding="utf-8")
+    sessions: int = 0
+    recorder: Recorder | None = None
+    follower: Monitor | Tracer | None = None
+    output: Path = Path()
 
 
-def _noted(held: dict[str, set[str]], names: Iterable[str], values: Mapping[str, object]) -> bool:
-    """Add the types of the locals `names` that a frame holds (`values`) to `held`.
+_WORKER: Final = _Worker()
+
+
+def pytest_configure() -> None:
+    """Record a pytest process a traced run started, from its first session: not the run's own."""
+    told: list[str] = cast("list[str]", json.loads(os.environ.get(ENVIRONMENT, "[]")))
+    if not told or told[0] == str(os.getpid()):
+        return
+    _WORKER.sessions += 1
+    if _WORKER.recorder is None:
+        _WORKER.recorder = Recorder(Path(told[1]))
+        _WORKER.follower = following(_WORKER.recorder)
+        _WORKER.output = Path(told[2]) / f"{os.getpid()}.json"
+        _WORKER.follower.start()
+
+
+def pytest_unconfigure() -> None:
+    """Write what such a process recorded where the run reads it, as its last session ends."""
+    if _WORKER.recorder is None or _WORKER.follower is None:
+        return
+    _WORKER.sessions -= 1
+    if not _WORKER.sessions:
+        _WORKER.follower.stop()
+        _WORKER.recorder.write(_WORKER.output)
+        _WORKER.recorder = _WORKER.follower = None
+
+
+def _announced(root: Path, parts: Path) -> dict[str, str | None]:
+    """Tell the pytest processes this one starts to record themselves, and write to `parts`.
 
     Returns:
-      Whether any is new.
+      The environment variables that say so, as they were.
 
     """
-    new: bool = False
+    before: dict[str, str | None] = {name: os.environ.get(name) for name in (ENVIRONMENT, _PLUGINS)}
+    os.environ[ENVIRONMENT] = json.dumps([str(os.getpid()), str(root.resolve()), str(parts)])
+    os.environ[_PLUGINS] = f"{before[_PLUGINS]},{_PLUGIN}" if before[_PLUGINS] else _PLUGIN
+    return before
+
+
+def _gathered(parts: Path, before: Mapping[str, str | None]) -> list[Found]:
+    """Read what the processes this one started wrote to `parts`, the environment as it was `before`.
+
+    Returns:
+      Each one's trace: not one that can't be read (a process killed as it wrote).
+
+    """
     name: str
-    for name in names:
-        if name in values and name.isidentifier():  # not a compiler's or a test runner's own
-            text: str | None = spelled(values[name])
-            if text is not None and text not in held.setdefault(name, set()):
-                held[name].add(text)
-                new = True
-    return new
-
-
-def _digest(filename: str, digests: dict[str, str | None]) -> str | None:
-    """Hash the file `filename` as `--infer-from` will (kept in `digests`).
-
-    Returns:
-      Its SHA-256, or `None` for one that can't be read.
-
-    """
-    if filename not in digests:
+    value: str | None
+    for name, value in before.items():
+        if value is None:
+            del os.environ[name]
+        else:
+            os.environ[name] = value
+    found: list[Found] = []
+    path: Path
+    for path in sorted(parts.glob(_PARTS)):
         try:
-            digests[filename] = hashlib.sha256(Path(filename).read_bytes()).hexdigest()
-        except OSError:
-            digests[filename] = None
-    return digests[filename]
+            found.append(cast("Found", json.loads(path.read_text(encoding="utf-8"))))
+        except ValueError:
+            continue
+    return found
 
 
 def _split(args: Sequence[str]) -> tuple[list[str], list[str]]:
@@ -370,14 +361,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     name: str = target[module]
     sys.argv = [name, *target[module:][1:]]
     recorder: Recorder = Recorder(cast("Path", args.root))
-    threading.setprofile(recorder)
-    sys.setprofile(recorder)
-    try:
-        _run(name, module=bool(module))
-    finally:
-        sys.setprofile(None)
-        threading.setprofile(None)
-        recorder.write(cast("Path", args.output))
+    follower: Monitor | Tracer = following(recorder)
+    parts: str
+    with tempfile.TemporaryDirectory(prefix=f"{_TOOL}-trace-") as parts:
+        before: dict[str, str | None] = _announced(recorder.root, Path(parts))
+        follower.start()
+        try:
+            _run(name, module=bool(module))
+        finally:
+            follower.stop()
+            write(cast("Path", args.output), merged([recorder.found(), *_gathered(Path(parts), before)]))
     return 0
 
 

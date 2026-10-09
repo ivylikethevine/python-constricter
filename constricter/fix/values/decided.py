@@ -13,7 +13,7 @@ import ast
 from collections.abc import Callable, Mapping, Sequence
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix.core.known import Inference, Known
+from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.values.shapes import Infer, is_none, or_none, typed
 from constricter.fix.values.targets import dict_parts, iterator_call
 from constricter.rules.annotations import dotted
@@ -33,6 +33,7 @@ _ANY_LENGTH: Final = "..."  # a `tuple[T, ...]`'s second part
 _ENUMERATE: Final = "enumerate"
 _ZIP: Final = "zip"
 _ZIPPED: Final = 5  # the most iterables typeshed's `zip` overloads type part by part
+_ITERATOR: Final = "collections.abc.Iterator"  # what `iter` gives
 
 
 class _Call(NamedTuple):
@@ -43,6 +44,7 @@ class _Call(NamedTuple):
     keywords: Mapping[str, ast.expr]
     infer: Infer
     loop: Infer
+    plan: ImportPlan | None  # how the module names a library class, one it's still to import too
 
 
 _Rule: TypeAlias = Callable[[_Call], Inference | None]
@@ -306,12 +308,30 @@ def _iterating(call: _Call) -> Inference | None:
     return _made(call, f"{call.name}[{element.annotation}]", element)
 
 
+def _iter(call: _Call) -> Inference | None:
+    """Type `iter(xs)`: an `Iterator` of what a loop over `xs` binds.
+
+    Returns:
+      The inference, or `None`: with a sentinel, where a loop's target has no type, or where the
+      module can't name `Iterator`.
+
+    """
+    element: Inference | None = None if call.keywords or len(call.args) != 1 else call.loop(call.args[0])
+    spelled: str | None = None if element is None or call.plan is None else call.plan.spell(_ITERATOR)
+    return (
+        None
+        if element is None or spelled is None
+        else _made(call, f"{spelled}[{element.annotation}]", element)
+    )
+
+
 _CALLS: Final[Mapping[str, _Rule]] = {
     "abs": _abs,
     **dict.fromkeys(("enumerate", "map", "reversed", "zip"), _iterating),
     "dict": _dict,
     "dict.fromkeys": _fromkeys,
     "divmod": _divmod,
+    "iter": _iter,
     "max": _extreme,
     "min": _extreme,
     "next": _next,
@@ -351,7 +371,7 @@ def builtin(value: ast.expr, known: Known, infer: Infer, loop: Infer) -> Inferen
         ):
             named: dict[str, ast.expr] = {keyword.arg or "": keyword.value for keyword in keywords}
             name: str = ast.unparse(func)
-            return _CALLS[name](_Call(name, args, named, infer, loop))
+            return _CALLS[name](_Call(name, args, named, infer, loop, known.names.plan))
         case _:
             return None
 

@@ -7,7 +7,7 @@ return types the call where the file can write it (see `project.portable`). And 
 own classes that takes the method from such a base (`Sub.make()`): a `Self` return is that class.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Final
 
@@ -17,6 +17,7 @@ from constricter.fix.index.modules import SUFFIX, Index, Module, module_name
 
 _DOT: Final = "."
 _DEPTH: Final = 8  # how many of the file's own classes a line of bases is followed through
+_HOPS: Final = 5  # how many re-exports a call is followed through
 
 
 def calls(
@@ -111,3 +112,49 @@ def named(target: Module, spelled: str) -> Origin | None:
         return None
     path: list[str] = [origin[0], *([origin[1]] if origin[1] else []), *(rest.split(_DOT) if rest else [])]
     return _DOT.join(path[:-1]), path[-1]
+
+
+def called(
+    modules: Mapping[str, Module],
+    target: Module,
+    has: Callable[[Module, str], bool],
+) -> Iterator[tuple[str, tuple[Module, str]]]:
+    """Find the calls `target` makes to what another module defines, as `has` says of a module's name.
+
+    Through its imports, and the re-exports between the modules (`_HOPS` of them).
+
+    Yields:
+      Each call's name as written (`load`, `client.load`), and the module defining what it calls
+      and its name there.
+
+    """
+    spelled: str
+    for spelled in target.called:
+        origin: Origin | None = named(target, spelled)
+        defined: tuple[Module, str] | None = (
+            None if origin is None else _followed(modules, origin, has, _HOPS)
+        )
+        if defined is not None:
+            yield spelled, defined
+
+
+def _followed(
+    modules: Mapping[str, Module],
+    origin: Origin,
+    has: Callable[[Module, str], bool],
+    hops: int,
+) -> tuple[Module, str] | None:
+    """Follow `origin` (through re-exports) to the module that `has` it.
+
+    Returns:
+      That module and the name, or `None`.
+
+    """
+    module: Module | None = modules.get(origin[0])
+    name: str | None = origin[1]
+    if module is None or name is None or not hops:
+        return None
+    if has(module, name):
+        return module, name
+    onward: Origin | None = module.names.get(name)
+    return _followed(modules, onward, has, hops - 1) if onward and onward[0] != module.name else None

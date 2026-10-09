@@ -9,7 +9,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix.index import fixtures, linked, loose, project
+from constricter.fix.index import awaits, fixtures, linked, loose, managed, project
 from constricter.fix.index.project import Index
 
 _SUFFIX: Final = ".py"
@@ -52,6 +52,8 @@ def plan(catalog: Index, paths: Sequence[Path]) -> Plan:
             (
                 linked.needs(catalog, catalog.modules[name])
                 | loose.needs(catalog, catalog.modules[name])
+                | managed.needs(catalog, catalog.modules[name])
+                | awaits.needs(catalog, catalog.modules[name])
                 | fixtures.needed(catalog, name)
             )
             & unique.keys(),

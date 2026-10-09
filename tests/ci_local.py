@@ -46,6 +46,9 @@ _RUN: Final = "run"  # a step's shell command
 _EXPRESSION: Final = "${{"  # the start of a GitHub Actions expression
 _NPM_CI: Final = "npm ci --prefix .github"
 _LYCHEE: Final = '"$RUNNER_TEMP/bin/lychee"'
+_PYTEST: Final = "python -m pytest"
+# On every CPU here (pytest-xdist, a development dependency), the tests that start workers one at a time.
+_PARALLEL: Final = " -n auto --dist loadgroup"
 # The values a step's `${{ ... }}` environment takes here, by name (an unlisted one is empty).
 _LOCAL_ENV: Final = {"COVERAGE": "--cov"}
 _HOOK: Final = """\
@@ -198,6 +201,8 @@ def _adapted(command: str) -> str | None:
     if _LYCHEE in command:
         lychee: str | None = shutil.which("lychee")
         return None if lychee is None else command.replace(_LYCHEE, lychee)
+    if command.startswith(_PYTEST):
+        return command.replace(_PYTEST, _PYTEST + _PARALLEL, 1)
     return command
 
 

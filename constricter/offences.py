@@ -63,7 +63,7 @@ FIX_KINDS: dict[str, str] = {
     "returned": "an unannotated function's own `return`s (a method's: a guess)",
     "assigned": "an unannotated instance attribute's every `self.x = value` in its class (a guess)",
     "callers": "an unannotated parameter every call in the checked files passes one type (a guess)",
-    "member": "a plain class's variable, by its literal value in the class's body (a guess)",
+    "member": "a plain class's variable, by its value in the class's body (a guess)",
     "fixture": "a test's parameter, by its pytest fixture's value or its `parametrize` literals (a guess)",
     "alias": "a module's type alias, a subscript or a union of types: `TypeAlias`",
     "callable": "a function or a bound method bound to a name, by what its call gives",
@@ -76,7 +76,35 @@ FIX_KINDS: dict[str, str] = {
     "narrow": "LVA008's or LVA010's narrower annotation (a guess)",
     "comment": "LVA003: the loop's own `# type:` comment, as a declaration",
     "redundant": "LVA007: the repeated annotation, dropped",
+    "untyped-parameters": "what comes of a parameter no annotation types: `Any`, marked (`fix-widen`)",
+    "unions": "a name bound to values of two or three types: their union, marked (`fix-widen`; a guess)",
+    "vague": "a type vaguer than `vague` allows, written anyway, marked (`fix-widen`; a guess)",
+    "empty-containers": "an empty container nothing in sight fills: `list[Any]`, marked (`fix-widen`)",
+    "mixed-containers": "a display of mixed or unknown elements: `list[Any]`, marked (`fix-widen`)",
+    "untyped-calls": "a call of a checked file's function declaring no return: `Any`, marked (`fix-widen`)",
+    "unknown-calls": "any other call of no known type: `Any`, marked (`fix-widen`)",
 }
+UNTYPED_PARAMETERS: Final = "untyped-parameters"
+UNIONS: Final = "unions"
+VAGUE_KIND: Final = "vague"
+EMPTY_CONTAINERS: Final = "empty-containers"
+MIXED_CONTAINERS: Final = "mixed-containers"
+UNTYPED_CALLS: Final = "untyped-calls"
+UNKNOWN_CALLS: Final = "unknown-calls"
+# The kinds that write a wider type than the value's own, each offered only where `fix-widen` names it.
+WIDEN_KINDS: Final = frozenset(
+    {
+        UNTYPED_PARAMETERS,
+        UNIONS,
+        VAGUE_KIND,
+        EMPTY_CONTAINERS,
+        MIXED_CONTAINERS,
+        UNTYPED_CALLS,
+        UNKNOWN_CALLS,
+    },
+)
+# What ends a line a widening wrote: its annotation is `--fix`'s to replace, and isn't LVA005.
+MARK: Final = "# constricter: auto"
 CONSTRUCTOR: Final = "constructor"
 MEMBER: Final = "member"
 NARROW: Final = "narrow"
@@ -138,34 +166,44 @@ class Fix(NamedTuple):
     edit: Edit = Edit.ANNOTATE
     span: tuple[int, int] = (0, 0)  # see `Edit`; columns count UTF-8 bytes, as `ast`'s do
     kinds: frozenset[str] = frozenset()  # every `FIX_KINDS` mechanism that decided it
-    # With `Edit.DECLARE`: the columns to delete on the statement's line too (the type comment it replaces).
+    # The columns to delete too: with `Edit.DECLARE`, on the statement's line (the type comment it
+    # replaces); with `Edit.REPLACE`, on line `mark` (the `MARK` of the widening it replaces).
     drop: tuple[int, int] | None = None
     imports: tuple[str, ...] = ()  # statements the annotation needs added (`from io import BytesIO`)
     after: int = 0  # the line they go after (see `fix.core.imports.plan`)
     guarded: tuple[str, ...] = ()  # statements the annotation needs added under `if TYPE_CHECKING:`
     guard: str = ""  # how the module names `TYPE_CHECKING`, for a new such block
     block: tuple[int, int] = (0, 0)  # the first and last line of the body of one there is (see `ImportPlan`)
+    # The line whose end a widening's `MARK` goes at (see `WIDEN_KINDS`), or its replacement's is
+    # dropped from: its statement's last, where that isn't the offence's own (0).
+    mark: int = 0
 
 
 class FixPolicy(NamedTuple):
     """Which `FIX_KINDS` `--fix` offers (`select`, empty for all, less `ignore`), and which guesses it trusts.
 
     A guess is certain when every guessing mechanism it rests on (`constructor`, `narrow`, through
-    any guessed local it copies) is in `unsafe_select`, as ruff's `extend-safe-fixes` does.
+    any guessed local it copies) is in `unsafe_select`, as ruff's `extend-safe-fixes` does. A
+    widening (see `WIDEN_KINDS`) is offered only if it's in `widen`.
     """
 
     select: frozenset[str] = frozenset()
     ignore: frozenset[str] = frozenset()
     unsafe_select: frozenset[str] = frozenset()
+    widen: frozenset[str] = frozenset()
 
     def allows(self, kinds: frozenset[str]) -> bool:
         """Check whether a fix decided by `kinds` is offered.
 
         Returns:
-          Whether every one is selected and none ignored.
+          Whether every one is selected, none ignored, and each widening asked for.
 
         """
-        return (not self.select or kinds <= self.select) and not kinds & self.ignore
+        return (
+            (not self.select or kinds <= self.select)
+            and not kinds & self.ignore
+            and kinds & WIDEN_KINDS <= self.widen
+        )
 
     def trusts(self, origins: frozenset[str]) -> bool:
         """Check whether a guess resting on `origins` is promoted to certain.

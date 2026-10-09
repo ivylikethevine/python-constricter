@@ -2,6 +2,7 @@
 """`--infer-with`: the names a hint may use are classes and aliases the index knows, no generic one bare."""
 
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Final
 
@@ -135,7 +136,7 @@ def test_an_installed_packages_private_module_isnt_imported_from(tmp_path: Path)
     offered: Offered = Offered("Line", ("from pkg._plane import Line",))
     hints: tuple[Hints, ...] = (Hints("pyrefly", {_AT: "Line"}, {_AT: offered}),)
     assert offers.vetted(catalog, paths[-1], hints)[0].offered == {_AT: offered}  # a checked file's
-    catalog.modules["pkg._plane"] = catalog.modules["pkg._plane"]._replace(installed=True)
+    catalog.modules["pkg._plane"] = replace(catalog.modules["pkg._plane"], installed=True)
     assert offers.vetted(catalog, paths[-1], hints)[0].offered == {}
 
 

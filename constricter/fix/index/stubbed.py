@@ -123,12 +123,12 @@ def overloaded(catalog: Index, path: Path, guarded: dict[str, Guarded] | None = 
             continue
         if not defined[0].installed:
             # Read each time: what a checked file's parameters take rests on the checked files' classes.
-            read: tuple[ReadSignature, ...] = _signatures(modules, *defined)
+            read: tuple[ReadSignature, ...] = read_signatures(modules, *defined)
             found[key] = own_overloads.spelled(catalog, target, defined, read, guarded)
             continue
         where: tuple[str, str]
         if (where := (defined[0].name, defined[1])) not in memo:
-            memo[where] = _signatures(modules, *defined)
+            memo[where] = read_signatures(modules, *defined)
         found[key] = memo[where]
     return {key: read for key, read in found.items() if read}
 
@@ -278,7 +278,7 @@ def _callee(modules: Mapping[str, Module], target: Module, callee: str) -> Origi
     head: str
     parts: list[str]
     head, *parts = callee.split(".")
-    origin: Origin | None = target.names.get(head)
+    origin: Origin | None = classnames.as_module(modules, target.names.get(head))
     part: str
     for part in parts:
         if origin is None or origin[1] is not None:
@@ -288,7 +288,7 @@ def _callee(modules: Mapping[str, Module], target: Module, callee: str) -> Origi
     return origin
 
 
-def _signatures(modules: Mapping[str, Module], module: Module, name: str) -> tuple[ReadSignature, ...]:
+def read_signatures(modules: Mapping[str, Module], module: Module, name: str) -> tuple[ReadSignature, ...]:
     """Read an installed function's signatures as the tables hold theirs.
 
     Returns:
@@ -315,7 +315,7 @@ def _read_all(
       Them.
 
     """
-    declared: Declarations | None = module.declared  # none: a checked file's (see `_signatures`)
+    declared: Declarations | None = module.declared  # none: a checked file's (see `read_signatures`)
     shared: set[tuple[str, str, bool, str | None]] = set(written[0].params)
     signature: Signature
     for signature in written[1:]:
@@ -676,7 +676,7 @@ class _Reader:
             return None
         origin = project.canonical_origin(self.modules, origin)
         defining: Module | None = self.modules.get(origin[0])
-        if defining is None or not defining.installed:
+        if defining is None or not defining.reads(origin[1]):
             return Atom(CLASS, origin=origin)
         return self._declared(defining, origin)
 
@@ -806,8 +806,8 @@ class _Reader:
         yield f"{origin[0]}.{origin[1]}"
         module: Module = self.modules[origin[0]]
         klass: Class | None
-        # None: one its module defines twice, a branch each (attrs's `AttrsInstance_`).
-        if (klass := cast("Declarations", module.declared).classes.get(origin[1] or "")) is None:
+        # No class: a checked file's protocol, or one its module defines twice (attrs's `AttrsInstance_`).
+        if module.declared is None or (klass := module.declared.classes.get(origin[1] or "")) is None:
             yield _UNFOLLOWED
             return
         base: str
@@ -849,7 +849,7 @@ class _Reader:
 
     def _declared_of(self, origin: Origin) -> _Resolved | None:
         defining: Module | None = self.modules.get(origin[0])
-        return None if defining is None or not defining.installed else self._declared(defining, origin)
+        return None if defining is None or not defining.reads(origin[1]) else self._declared(defining, origin)
 
     @staticmethod
     def _declared(module: Module, origin: Origin) -> _Resolved | None:
@@ -860,7 +860,7 @@ class _Reader:
 
         """
         name: str = origin[1] or ""
-        declared: Declarations | None = module.declared
+        declared: Declarations | None = module.typing
         own: Scope = Scope(module, {}, module.name)
         if declared is not None and name in declared.aliases:
             return declared.aliases[name], own, origin
@@ -883,7 +883,7 @@ class _Reader:
 
         """
         if isinstance(expr, ast.Name):
-            declared: Declarations | None = module.declared
+            declared: Declarations | None = module.typing
             return (
                 ((module.name, expr.id) if declared is not None and expr.id in declared.aliases else None)
                 or module.names.get(expr.id)

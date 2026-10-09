@@ -159,3 +159,39 @@ def test_a_static_methods_self_is_not_the_instance() -> None:
             self.name = 1
     """
     assert _fixed(source=source) == {"a": (None, False)}
+
+
+def test_an_attribute_a_class_above_stores_too_is_typed_there() -> None:
+    """A checker types `self.name` by the base's assignment: the subclass's own says nothing of it."""
+    source: str = """
+    class Label:
+        def __init__(self, array) -> None:
+            self.name = array.name
+            self.size = 1
+
+    class Named(Label):
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.size = 2
+            self.own = name
+
+    class Deeper(Named):
+        def reset(self) -> None:
+            self.name = "x"
+            self.deep = 1
+
+    def use(named: Named, deeper: Deeper) -> None:
+        a = named.name
+        b = named.size
+        c = named.own
+        d = deeper.name
+        e = deeper.deep
+    """
+    found: list[Offence] = check_source(textwrap.dedent(source))
+    assert {o.name: (o.fix, o.unsafe) for o in found} == {
+        "a": (None, False),
+        "b": ("int", True),  # the base's own
+        "c": ("str", True),
+        "d": (None, False),
+        "e": ("int", True),
+    }

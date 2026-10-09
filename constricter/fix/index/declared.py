@@ -9,7 +9,7 @@ when a call needs them (`Module` keeps them, pickled into the installed modules'
 """
 
 import ast
-from collections.abc import Iterator, Mapping
+from collections.abc import Collection, Iterator, Mapping, Sequence
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.rules.annotations import defined_type_vars, node_name
@@ -97,17 +97,57 @@ class Declarations(NamedTuple):
 def overloads(tree: ast.Module) -> dict[str, tuple[Signature, ...]]:
     """Read a checked module's top-level functions defined with `@overload`, as `declarations` reads a stub's.
 
+    And its top-level classes' methods, each as `Class.method`, less its `self`: of a class
+    defined once.
+
     Returns:
       Each one's overloads' signatures, as written.
 
     """
+    found: dict[str, tuple[Signature, ...]] = _overloads(tree.body)
+    names: list[str] = [stmt.name for stmt in tree.body if isinstance(stmt, ast.ClassDef)]
+    stmt: ast.stmt
+    for stmt in tree.body:
+        if isinstance(stmt, ast.ClassDef) and names.count(stmt.name) == 1:
+            found.update(
+                (f"{stmt.name}.{name}", tuple(_unbound(each) for each in written))
+                for name, written in _overloads(stmt.body).items()
+                if all(each.params for each in written)
+            )
+    return found
+
+
+def _overloads(body: Sequence[ast.stmt]) -> dict[str, tuple[Signature, ...]]:
     signatures: dict[str, list[Signature]] = {}
     overloaded: set[str] = set()
     stmt: ast.stmt
-    for stmt in tree.body:
+    for stmt in body:
         if isinstance(stmt, ast.FunctionDef):
             _signature(stmt, signatures, overloaded, frozenset())
     return {name: tuple(signatures[name]) for name in sorted(overloaded)}
+
+
+def kinds(tree: ast.Module, aliases: Collection[str]) -> Declarations | None:
+    """Read what a checked module's names stand for in a signature: an alias, a type variable, a protocol.
+
+    `aliases`: the names it binds once as a type alias (see `modules`): no other assignment is one.
+
+    Returns:
+      Them, as `declarations` reads a stub's, and nothing else of its; `None` for a module with none.
+
+    """
+    found: dict[str, Alias] = {}
+    variables: dict[str, Variable] = {}
+    protocols: dict[str, Protocol] = {}
+    stmt: ast.stmt
+    for stmt in tree.body:
+        if isinstance(stmt, ast.ClassDef):
+            if any(node_name(base) == _PROTOCOL for base in _bases(stmt)):
+                protocols[stmt.name] = _protocol(stmt)
+        else:
+            _assignment(stmt, found, variables)
+    kept: dict[str, Alias] = {name: alias for name, alias in found.items() if name in aliases}
+    return Declarations({}, kept, variables, protocols) if kept or variables or protocols else None
 
 
 def declarations(tree: ast.Module) -> Declarations:

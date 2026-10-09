@@ -118,7 +118,7 @@ def test_at_most_the_limit_is_read(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     """Past `LIMIT` modules, the rest are left out; with none found, the index is as it was."""
     site: Path = _site(tmp_path, SITE)
     catalog: project.Index = project.indexed(
-        [project.Module("main", {}, {"typed": ("typed", None), "lone": ("lone", None)})],
+        [project.Module(name="main", returns={}, names={"typed": ("typed", None), "lone": ("lone", None)})],
     )
     monkeypatch.setattr(installed, "LIMIT", 1)
     assert sorted(installed.with_installed(catalog, (site,)).modules) == ["main", "typed"]

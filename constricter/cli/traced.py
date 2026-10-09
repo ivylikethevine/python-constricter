@@ -1,19 +1,20 @@
 # SPDX-License-Identifier: MIT
 """`--infer-from`: the types a traced run saw (`python -m constricter.trace`), as a type checker's hints are.
 
-A trace holds, for each file by its SHA-256, the types each function's locals held when it returned
-(see `constricter.trace`). `hints` turns a file's into `Hints`, which `--fix` judges as it does a
+A trace holds, for each file by its SHA-256, the types each binding of its functions' locals held
+(see `constricter.recording`). `hints` turns a file's into `Hints`, which `--fix` judges as it does a
 checker's (`constricter.fix.values.hinted`): each a guess, of kind `traced`. Only for a local no
-annotation types: one assigned a value rooted at a parameter its function leaves unannotated
-(`row = rows[0].load()`; not `self` or `cls`). Anything else a type checker may
-type wider than the run saw (an `X | None` that was never `None`, a base class, a `TypedDict`),
-which the narrower annotation would make an error. And only one its function binds once, outside any
-loop: the trace says what it held last, not where. Up to three types seen are their union, `None`
-last.
+annotation types: one an assignment or a `for` loop binds to a value rooted at a parameter no
+checker types (`row = rows[0].load()`, `for row in rows:`; see `_unannotated`), or at an attribute
+of `self` its class stores nothing else in (see `_undeclared`). Anything else a type
+checker may type wider than the run saw (an `X | None` that was never `None`, a base class, a
+`TypedDict`), which the narrower annotation would make an error. A name bound more than once has
+what all its bindings held, where each is such a binding the run reached. Up to three types seen
+are their union, `None` last.
 
-A class is shown bare, with the import that names it for type checking alone (`Offered`), unless
-the file defines it: `constricter.fix.index.offers` then takes only a class the index knows. One of
-a private module of the standard library has no hint.
+A class is shown bare (one defined in another as `Outer.Inner`), with the import that names it for
+type checking alone (`Offered`), unless the file defines it: `constricter.fix.index.offers` then
+takes only a class the index knows. One of a private module of the standard library has no hint.
 """
 
 import ast
@@ -21,41 +22,31 @@ import hashlib
 import json
 import re
 import sys
-from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from functools import cache
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter import trace
+from constricter import recording
 from constricter.fix.core.known import Hints, Offered
 from constricter.fix.values.hinted import TRACED
 
 _LABEL: Final = "a traced run"
 _SUFFIX: Final = ".py"
 _MEMBERS: Final = 3  # how many types seen make a union
-_CLASS: Final = re.compile(rf"([\w.]+){trace.SEPARATOR}(\w+)")
+_CLASS: Final = re.compile(rf"([\w.]+){recording.SEPARATOR}([\w.]+)")
 _STDLIB: Final = sys.stdlib_module_names
-_TYPED: Final = frozenset({"self", "cls"})  # the parameters a class types, unannotated
-_SCOPES: Final = (
-    ast.FunctionDef,
-    ast.AsyncFunctionDef,
-    ast.ClassDef,
-    ast.Lambda,
-    ast.ListComp,
-    ast.SetComp,
-    ast.DictComp,
-    ast.GeneratorExp,
-)
+_SELF: Final = "self"
+_TYPED: Final = frozenset({_SELF, "cls"})  # the parameters a class types, unannotated
 _Function: TypeAlias = ast.FunctionDef | ast.AsyncFunctionDef
-# Each function's locals' spellings, by name, by the function's first line.
-_Functions: TypeAlias = Mapping[int, Mapping[str, tuple[str, ...]]]
+# Each binding's spellings, by its name, by its line.
+_Bindings: TypeAlias = Mapping[int, Mapping[str, tuple[str, ...]]]
 
 
 class Trace(NamedTuple):
-    """A trace file: each file's functions by its SHA-256, and the file each module named in it is."""
+    """A trace file: each file's bindings by its SHA-256, and the file each module named in it is."""
 
-    files: Mapping[str, _Functions]
+    files: Mapping[str, _Bindings]
     modules: Mapping[str, str]
 
 
@@ -87,8 +78,8 @@ def _read(found: Mapping[str, object]) -> Trace:
       ValueError: It isn't a trace this version reads.
 
     """
-    if found.get("version") != trace.VERSION:
-        message: str = f"not a trace `python -m constricter.trace` version {trace.VERSION} wrote"
+    if found.get("version") != recording.VERSION:
+        message: str = f"not a trace `python -m constricter.trace` version {recording.VERSION} wrote"
         raise ValueError(message)
     return Trace(
         {
@@ -98,7 +89,7 @@ def _read(found: Mapping[str, object]) -> Trace:
                     for name, types in _table(held).items()
                     if isinstance(types, list)
                 }
-                for line, held in _table(_table(entry).get("functions")).items()
+                for line, held in _table(_table(entry).get("bindings")).items()
                 if line.isdecimal()
             }
             for digest, entry in _table(found.get("files")).items()
@@ -142,29 +133,33 @@ def hints(found: Trace, source: bytes) -> Hints | None:
 
     """
     digest: str = hashlib.sha256(source).hexdigest()
-    functions: _Functions = found.files.get(digest, {})
+    bindings: _Bindings = found.files.get(digest, {})
     try:
-        tree: ast.Module | None = ast.parse(source) if functions else None
+        tree: ast.Module | None = ast.parse(source) if bindings else None
     except (SyntaxError, ValueError):
         tree = None
     types: dict[tuple[int, int], str] = {}
     offered: dict[tuple[int, int], Offered] = {}
+    stored: dict[int, frozenset[str]] = {} if tree is None else _undeclared(tree)
     node: ast.AST
     for node in ast.walk(tree) if tree is not None else ():
-        if not isinstance(node, _Function):
-            continue
-        held: Mapping[str, tuple[str, ...]] = functions.get(
-            min([node.lineno, *(decorator.lineno for decorator in node.decorator_list)]),
-            {},
-        )
-        target: ast.Name
-        for target in _untyped(node) if held else ():
-            typed: Offered | None
-            if (typed := _typed(held.get(target.id, ()), found.modules, digest)) is not None:
-                where: tuple[int, int] = (target.lineno, target.end_col_offset or 0)
-                types[where] = typed.text
-                if typed.imports:
-                    offered[where] = typed
+        targets: list[ast.Name]
+        for targets in (
+            _untyped(node, stored.get(id(node), frozenset())).values() if isinstance(node, _Function) else ()
+        ):
+            # A binding the run never reached may hold anything.
+            seen: list[tuple[str, ...]] = [
+                bindings.get(target.lineno, {}).get(target.id, ()) for target in targets
+            ]
+            typed: Offered | None = (
+                _typed(sorted({spelling for each in seen for spelling in each}), found.modules, digest)
+                if all(seen)
+                else None
+            )
+            if typed is not None:
+                types.update({(target.lineno, target.end_col_offset or 0): typed.text for target in targets})
+            if typed is not None and typed.imports:
+                offered.update({(target.lineno, target.end_col_offset or 0): typed for target in targets})
     return Hints(_LABEL, types, offered, TRACED) if types else None
 
 
@@ -178,7 +173,7 @@ def _typed(spellings: Sequence[str], modules: Mapping[str, str], digest: str) ->
       two classes of one name, or one of a private module of the standard library.
 
     """
-    if not spellings or trace.UNKNOWN in spellings or len(spellings) > _MEMBERS:
+    if not spellings or recording.UNKNOWN in spellings or len(spellings) > _MEMBERS:
         return None
     origins: dict[str, str] = {}
     spelling: str
@@ -189,12 +184,13 @@ def _typed(spellings: Sequence[str], modules: Mapping[str, str], digest: str) ->
             private: bool = module.partition(".")[0] in _STDLIB and any(
                 part.startswith("_") for part in module.split(".")
             )
-            if private or origins.setdefault(name, module) != module:
+            # A class defined in another is imported by the outer one's name.
+            if private or origins.setdefault(name.partition(".")[0], module) != module:
                 return None
     return Offered(
         " | ".join(
             _CLASS.sub(r"\2", spelling)
-            for spelling in sorted(spellings, key=lambda text: (text == trace.NONE, text))
+            for spelling in sorted(spellings, key=lambda text: (text == recording.NONE, text))
         ),
         tuple(
             f"from {module} import {name}"
@@ -204,31 +200,132 @@ def _typed(spellings: Sequence[str], modules: Mapping[str, str], digest: str) ->
     )
 
 
-def _untyped(function: _Function) -> list[ast.Name]:
-    """Find the locals `function` binds once, outside any loop, to a value no annotation types.
+def _undeclared(tree: ast.Module) -> dict[int, frozenset[str]]:
+    """Find the attributes of `self` no type checker types, in each method of a class with no base.
 
-    One rooted at a parameter it leaves unannotated (`rows[0].load()`, `make(n)`; not `self` or
-    `cls`, which its class types): a type checker has no type for it either, so none to set against
-    what the run saw. Not one rooted at such a local, which a checker types by its new annotation.
+    Those the class's methods store only by a plain `self.x = value`, each value rooted at a
+    parameter its method leaves unannotated, and the class's body doesn't bind: a checker types
+    one by what's stored in it, so has no type for it.
 
     Returns:
-      Each such name's binding.
+      Them, by each such method's identity.
+
+    """
+    found: dict[int, frozenset[str]] = {}
+    node: ast.AST
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef) or node.bases or node.keywords:
+            continue
+        methods: list[_Function] = [
+            method
+            for method in node.body
+            if isinstance(method, _Function) and [arg.arg for arg in _params(method)][:1] == [_SELF]
+        ]
+        bound: set[str] = {
+            each.name if isinstance(each, ast.ClassDef | _Function) else each.id
+            for statement in node.body
+            for each in (statement, *_own(statement))
+            if isinstance(each, ast.ClassDef | _Function)
+            or (isinstance(each, ast.Name) and isinstance(each.ctx, ast.Store))
+        }
+        plain: dict[str, bool] = {}  # whether each attribute stored is only ever stored so
+        method: _Function
+        for method in methods:
+            rooted: set[str | None] = _unannotated(method)
+            taken: set[int] = {
+                id(statement.targets[0])
+                for statement in ast.walk(method)
+                if isinstance(statement, ast.Assign)
+                and len(statement.targets) == 1
+                and _root(statement.value)[0] in rooted
+            }
+            plain.update(
+                {
+                    store.attr: plain.get(store.attr, True) and id(store) in taken
+                    for store in ast.walk(method)
+                    if isinstance(store, ast.Attribute)
+                    and isinstance(store.ctx, ast.Store | ast.Del)
+                    and isinstance(store.value, ast.Name)
+                    and store.value.id == _SELF
+                },
+            )
+        attributes: frozenset[str] = frozenset(attr for attr, only in plain.items() if only) - bound
+        found.update({id(method): attributes for method in methods})
+    return found
+
+
+def _params(function: _Function) -> list[ast.arg]:
+    """List a function's parameters, in order.
+
+    Returns:
+      Them.
 
     """
     args: ast.arguments = function.args
-    params: list[ast.arg] = [
+    return [
         arg
-        for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg)
+        for arg in (*args.posonlyargs, *args.args, args.vararg, *args.kwonlyargs, args.kwarg)
         if arg is not None
     ]
-    others: set[str] = {arg.arg for arg in params}
-    rooted: set[str | None] = {arg.arg for arg in params if arg.annotation is None and arg.arg not in _TYPED}
-    stores: list[ast.Name] = []
-    looped: set[int] = set()  # the nodes a loop runs again
+
+
+def _unannotated(function: _Function) -> set[str | None]:
+    """Name the parameters of a function no type checker has a type for.
+
+    The unannotated ones (not `self` or `cls`, which its class types) it gives no default but
+    `None` (a checker types one by its default), doesn't bind again, and doesn't test by a call
+    (`isinstance(rows, list)`, a `TypeGuard`'s) or match, which narrows one.
+
+    Returns:
+      Them.
+
+    """
+    args: ast.arguments = function.args
+    last: list[ast.arg] = [*args.posonlyargs, *args.args][::-1][: len(args.defaults)][::-1]
+    defaults: list[tuple[ast.arg, ast.expr | None]] = [
+        *zip(last, args.defaults, strict=True),
+        *zip(args.kwonlyargs, args.kw_defaults, strict=True),
+    ]
+    typed: set[str] = {
+        arg.arg
+        for arg, default in defaults
+        if default is not None and not (isinstance(default, ast.Constant) and default.value is None)
+    }
     node: ast.AST
     for node in _own(function):
-        if isinstance(node, ast.For | ast.AsyncFor | ast.While):
-            looped.update(id(inside) for inside in _own(node))
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            typed.add(node.id)
+        elif isinstance(node, ast.Match) and isinstance(node.subject, ast.Name):
+            typed.add(node.subject.id)
+        elif isinstance(node, ast.If | ast.While | ast.IfExp | ast.Assert):
+            typed.update(
+                passed.id
+                for call in ast.walk(node.test)
+                if isinstance(call, ast.Call)
+                for passed in (*call.args, *(keyword.value for keyword in call.keywords))
+                if isinstance(passed, ast.Name)
+            )
+    return {arg.arg for arg in _params(function) if arg.annotation is None and arg.arg not in _TYPED | typed}
+
+
+def _untyped(function: _Function, stored: frozenset[str]) -> dict[str, list[ast.Name]]:
+    """Find the locals `function` binds only to values no annotation types.
+
+    Each by a plain assignment or as a `for` loop's target, to a value rooted at a parameter it
+    leaves unannotated (`rows[0].load()`, `make(n)`; not `self` or `cls`, which its class types),
+    or at one of the attributes of `self` its class has `stored` so (`self.rows[0]`): a type checker
+    has no type for it either, so none to set against what the run saw. Not one rooted at such a
+    local, which a checker types by its new annotation.
+
+    Returns:
+      Each such name's bindings.
+
+    """
+    others: set[str] = {arg.arg for arg in _params(function)}
+    rooted: set[str | None] = _unannotated(function)
+    stores: list[ast.Name] = []
+    node: ast.AST
+    for node in _own(function):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
             stores.append(node)
         elif isinstance(node, ast.Global | ast.Nonlocal):
@@ -239,40 +336,55 @@ def _untyped(function: _Function) -> list[ast.Name]:
             others.add(node.name)
         elif isinstance(node, ast.MatchMapping) and node.rest is not None:
             others.add(node.rest)
-    counts: Counter[str] = Counter(store.id for store in stores)
-    others.update(store.id for store in stores if id(store) in looped or counts[store.id] > 1)
-    return [
-        target for target, value in _assigned(function) if target.id not in others and _root(value) in rooted
+    targets: list[ast.Name] = [
+        target
+        for target, value in _assigned(function)
+        if _root(value)[0] in rooted or (_root(value)[0] == _SELF and _root(value)[1] in stored)
     ]
+    others.update(store.id for store in stores if all(store is not target for target in targets))
+    found: dict[str, list[ast.Name]] = {}
+    target: ast.Name
+    for target in targets:
+        if target.id not in others:
+            found.setdefault(target.id, []).append(target)
+    return found
 
 
 def _assigned(function: _Function) -> Iterator[tuple[ast.Name, ast.expr]]:
-    """Find the plain assignments of one name in a function's own scope, in order.
+    """Find what binds one name to one value in a function's own scope, in order.
 
     Yields:
-      Each one's name and value.
+      Each plain assignment's name and value, and each `for` loop's target and what it loops over.
 
     """
     node: ast.AST
     for node in _own(function):
+        target: ast.expr | None = None
         if isinstance(node, ast.Assign) and len(node.targets) == 1:
-            target: ast.expr = node.targets[0]
-            if isinstance(target, ast.Name):
-                yield target, node.value
+            target = node.targets[0]
+        elif isinstance(node, ast.For | ast.AsyncFor):
+            target = node.target
+        if isinstance(node, ast.Assign | ast.For | ast.AsyncFor) and isinstance(target, ast.Name):
+            yield target, node.value if isinstance(node, ast.Assign) else node.iter
 
 
-def _root(value: ast.expr) -> str | None:
+def _root(value: ast.expr, attr: str | None = None) -> tuple[str | None, str | None]:
     """Find the name a value is taken from: `rows` in `rows[0].load()`, `make` in `make(n)`.
 
+    `attr`: the attribute `value` is read for.
+
     Returns:
-      It, or `None` for a value that's computed some other way.
+      It (`None` for a value that's computed some other way), and the attribute read of the name
+      itself, if one is: `rows` in `self.rows[0].load()`.
 
     """
-    if isinstance(value, ast.Attribute | ast.Subscript | ast.Await):
+    if isinstance(value, ast.Attribute):
+        return _root(value.value, value.attr)
+    if isinstance(value, ast.Subscript | ast.Await):
         return _root(value.value)
     if isinstance(value, ast.Call):
         return _root(value.func)
-    return value.id if isinstance(value, ast.Name) else None
+    return (value.id if isinstance(value, ast.Name) else None, attr)
 
 
 def _own(node: ast.AST) -> Iterator[ast.AST]:
@@ -285,5 +397,5 @@ def _own(node: ast.AST) -> Iterator[ast.AST]:
     child: ast.AST
     for child in ast.iter_child_nodes(node):
         yield child
-        if not isinstance(child, _SCOPES):
+        if not isinstance(child, recording.SCOPES):
             yield from _own(child)

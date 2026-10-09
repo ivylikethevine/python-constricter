@@ -66,8 +66,8 @@ _HINTS_NOTE: Final = (
 )
 _TIMINGS_NOTE: Final = (
     "Seconds per step (and the CPUs its processes kept busy, on average), side by side; then the check "
-    "at `suffocate` alone with every CPU: its seconds, per file, the main process's CPU seconds (and "
-    "their share of the check's), and the second round's, of a profiled check:"
+    "at `suffocate`, two at a time with half the CPUs each: its seconds, per file, the main process's "
+    "CPU seconds (and their share of the check's), and the second round's, of a profiled check:"
 )
 
 
@@ -99,8 +99,9 @@ def _machine(run: Described) -> str:
     return (
         f"constricter {corpus_table.label(DEV)} (`{run.stamp}`), Python {platform.python_version()}, on "
         f"{processor} ({sized.cpus} CPUs{memory}, {platform.system()}): `--jobs={sized.jobs}`, "
-        f"{sized.workers} workers a suite, each step started once the CPUs it keeps busy are free, then "
-        f"each corpus's timed check alone with every CPU.{took} Timings don't compare across machines."
+        f"{sized.workers} workers a suite, each step started once the CPUs it keeps busy and the memory "
+        f"it holds are free, then the corpora's timed checks, two at a time with half the CPUs each.{took} "
+        f"Timings don't compare across machines."
     )
 
 

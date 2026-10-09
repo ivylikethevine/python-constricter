@@ -40,6 +40,7 @@ class Result(NamedTuple):
     level: Level
     source: str = ""  # the offending line, for `--format=full`
     replacements: tuple[Replacement, ...] = ()  # its fix as text edits, for SARIF and rdjson
+    fixed: bool = False  # `--fix` made its fix: listed with `--show-fixes`, on the line it was on
 
     @property
     def suggestions(self) -> tuple[Replacement, ...]:
@@ -208,6 +209,7 @@ def _json(results: Sequence[Result]) -> Iterator[str]:
                 "severity": r.severity,
                 "message": r.offence.message,
                 "cell": r.offence.cell,
+                "fixed": r.fixed,
                 "fix": None
                 if r.offence.fix is None
                 else {
@@ -360,11 +362,11 @@ def render(fmt: Format, results: Sequence[Result]) -> Iterator[str]:
 
 
 def fix_reasons(results: Sequence[Result]) -> Iterator[str]:
-    """List the annotation each fixable result would get, and how its value decided it.
+    """List the annotation each fixable result would get, or got, and how its value decided it.
 
     Yields:
-      A line each: where, the name, the annotation and its reason; a guess says it needs
-      `--unsafe-fixes`.
+      A line each: where, the name (`fixed`, for a fix `--fix` made), the annotation and its reason;
+      a guess left unmade says it needs `--unsafe-fixes`.
 
     """
     r: Result
@@ -372,11 +374,11 @@ def fix_reasons(results: Sequence[Result]) -> Iterator[str]:
         if r.offence.fix is not None:
             cell: str = "" if r.offence.cell is None else f"cell {r.offence.cell}:"
             where: str = f"{r.path}:{cell}{r.offence.line}:{r.offence.col + 1}"
-            guess: str = " (a guess: --unsafe-fixes)" if r.offence.unsafe else ""
+            guess: str = " (a guess: --unsafe-fixes)" if r.offence.unsafe and not r.fixed else ""
             kinds: str = ", ".join(sorted(r.offence.edit.kinds if r.offence.edit else ()))
             written: str = f"`{r.offence.fix}`" if r.offence.fix else "drop its annotation"
             decided: str = f"{written}, from {r.offence.reason} [{kinds}]"
-            yield f"{where}: fix {r.offence.name!r}: {decided}{guess}"
+            yield f"{where}: {'fixed' if r.fixed else 'fix'} {r.offence.name!r}: {decided}{guess}"
 
 
 def statistics(results: Sequence[Result]) -> Iterator[str]:

@@ -51,7 +51,9 @@ in a function or module body:
 - `enumerate(xs)`, `zip(xs, ys)`, `map(f, xs)` and `reversed(xs)` bound to a name, by what a loop
   over each binds: `enumerate[str]`, `zip[tuple[str, int]]`, `map[int]`, `reversed[str]` (`zip` of
   up to five iterables, as typeshed's overloads go). At module level, where an annotation is
-  evaluated, `zip`'s, `map`'s and `reversed`'s are quoted: no Python subscripts them at run time;
+  evaluated, `zip`'s, `map`'s and `reversed`'s are quoted: no Python subscripts them at run time.
+  `iter(xs)` is an `Iterator` of the same (`Iterator[str]`), imported from `collections.abc` where
+  the module doesn't name it, and left alone where the name is something else's;
 - a builtin its arguments decide, as typeshed has it: `abs(n)`, `round(x)` (an `int`; with digits,
   `x`'s type), `divmod(n, 2)` (a `tuple[int, int]`) and `sum(xs)` of builtin numbers; `min` and
   `max` of several values of one type (of an `int` and a `float`, a `float`), or of something's
@@ -92,20 +94,26 @@ in a function or module body:
   defines it, in Python's method resolution order, among the module's own classes (each defined
   once, not generic) and then a class another checked file defines (the CLI only), which ends the
   search with what it takes from its own file's classes, or a standard-library class the tables hold
-  whole, by its members there (`self.id()` in a `unittest.TestCase` is a `str`, `self.name` in a
-  `threading.Thread` a `str`), which another checked file's class is followed to as well, through
-  its own bases in any checked file or installed package that declares its types, one line of them
-  at most reaching a library class (a mixin beside it ends at none): what none of them binds is the
-  library class's (`self.id()` under a project's own `Case(unittest.TestCase)`), a method its
-  arguments decide included (`self.assertRaises(ValueError)`). A declared return is certain, and a
-  `Self` one is the receiver's class; `return`s are a guess, and not offered where their type names
-  the base (`return self` gives the receiver's class): another checked file's method's too (the CLI
-  only), a class there having those it takes from its own file's classes. Another checked file's
-  mixin, whose line of bases ends at no library class, doesn't end the search: what that line
-  doesn't bind is the next base's (`self.id()` under `class Tests(Mixin, unittest.TestCase)`).
-  Nothing for a name the class's body binds any other way, past a base out of sight (an installed
-  package's, a subscripted or computed one), or for another file's or the standard library's method
-  returning its own class, which may be its `Self` (`self.resolve()` under `Path`);
+  whole (past which the order goes on, for what it doesn't have, to a second one that shares no
+  ancestor with it: `class Both(threading.Thread, unittest.TestCase)`), by its members there
+  (`self.id()` in a `unittest.TestCase` is a `str`, `self.name` in a `threading.Thread` a `str`),
+  which another checked file's class is followed to as well, through its own bases in any checked
+  file or installed package (one that declares no types is read for its classes' bases alone:
+  `django.test.TestCase`), each line of them reaching a library class at most (a mixin beside it
+  ends at none; two lines reaching one each give both, in order, where they share no ancestor): what
+  none of them binds is the library class's (`self.id()` under a project's own
+  `Case(unittest.TestCase)`), a method its arguments decide included
+  (`self.assertRaises(ValueError)`). A declared return is certain, and a `Self` one is the
+  receiver's class; `return`s are a guess, and not offered where their type names the base
+  (`return self` gives the receiver's class): another checked file's method's too (the CLI only), a
+  class there having those it takes from its own file's classes. Another checked file's mixin, whose
+  line of bases ends at no library class, doesn't end the search: what that line doesn't bind is the
+  next base's (`self.id()` under `class Tests(Mixin, unittest.TestCase)`). A generic library base
+  given its arguments types what the class takes from it (`self.popitem()` under
+  `collections.OrderedDict[str, int]` is a `tuple[str, int]`; a subscript, a loop and `.items()`
+  too). Nothing for a name the class's body binds any other way, past a base out of sight (a
+  computed one, a generic one without its arguments), or for another file's or the standard
+  library's method returning its own class, which may be its `Self` (`self.resolve()` under `Path`);
 - an attribute a class doesn't declare, read of `self` or any value typed as the class: the base's
   that does (an annotation, a `self.x: T`, a `@property`), found as an inherited method is, among
   the module's own classes and then a class another checked file defines (the CLI only), with what
@@ -119,9 +127,16 @@ in a function or module body:
   `Callable` imported from `collections.abc` if it must be; a lambda too, by its body, where that
   rests on none of its parameters or its function's names (`first = lambda: 1` is a
   `Callable[[], int]`). Its parameters are left open: a `Callable[[A], R]` would refuse the keywords
-  and defaults a call through the name may use. Not a class, a callee typed only by its `return`s or
-  whose arguments decide its type, nor a name the function reads an attribute of
-  (`run.cache_clear()`);
+  and defaults a call through the name may use. They're listed (`Callable[[int, str], bytes]`) for a
+  function or method of the module's whose parameters are all positional, annotated and without a
+  default, where every call through the name in its function passes as many, none by keyword. Not a
+  class, a callee typed only by its `return`s or whose arguments decide its type, nor a name the
+  function reads an attribute of (`run.cache_clear()`). A lambda whose body rests on its parameters
+  is typed by what its calls pass them (`double = lambda x: x * 2`, called only as `double(3)`, is a
+  `Callable[..., int]`): every use of the name in its function a call, each parameter given one type
+  by position; a guess (`callers`). A module's name bound so is a `Callable` too
+  (`dump = json.dumps`, where the module reads no attribute of it), and a plain class's, as a guess
+  (`member`), a method of its own included (`length = size`);
 - what `with mock.patch(target) as m:` binds, and `patch.object`'s, given no `new` or
   `new_callable`: a `MagicMock | AsyncMock`, as typeshed declares it;
 - a `TypedDict`'s key read by a literal, on a value typed as the class: `movie["year"]` is the key's
@@ -227,24 +242,28 @@ in a function or module body:
   alone. One bound to an empty container (`self.items = []`) is typed by what the class's own
   methods, and those of the module's classes under it, add to it, as a function's is below
   (`self.items.append(row)` in another method: a `list[Row]`), with any other value it's assigned;
-  every read of it in the class counts as a use;
+  every read of it in the class counts as a use. One another checked file's class binds empty and
+  does no more with is typed, for a class under it, by that class's own methods' additions (the CLI
+  only);
 - with `--unsafe-fixes`, a plain class's variable (`limit = 3` in its body), bound once there to a
-  literal or a display of them, and what reads it (`self.limit`, `cls.limit`, or `limit` on any
-  value typed as the class or one inheriting it): the value's type. A plain class is defined once in
-  its module, with no decorator, metaclass or other keyword, every base `object`, a `unittest` test
-  case, `Generic[T]`, `abc.ABC` or another plain class, subscripted or not (`Box[int]`; another
-  checked file's too, with the CLI), and no class that isn't plain inheriting from it (a model's
-  mixin). A guess (`member`), since a subclass or outside code may bind it to another type; a
-  variable the module stores as anything else is left alone (`self.limit = size`; not
-  `self.limit = 5` or `self.limit += 1`, which keep an `int`), and so is every other class body,
-  where an annotation can be more than a type (a dataclass's, a `NamedTuple`'s or a model's field).
-  A builtin exception or value class is a base a plain class may have too (`ValueError`, `str`,
-  `dict`; not one the module binds itself), and so is a framework's that reads no annotation in a
-  class body: django's are built in (`per_page = 20` under `models.Model`, `paginate_by = 10` under
-  a `ListView`; not its `Choices`, enums whose members a type checker won't have annotated), and
-  `fix-plain-bases` lists more (`--fix-plain-bases BASES`): a class by its dotted path, or a package
-  for every class in it, `!` before one to leave it out. A listed base counts where a checked file
-  defines it too, decorated or under a metaclass as it may be (django's own files, checked);
+  literal or a display of them, or to what the standard library gives as the module names it
+  (`pattern = re.compile("x")`, `sep = os.sep`, `size = len(NAMES)`), and what reads it
+  (`self.limit`, `cls.limit`, or `limit` on any value typed as the class or one inheriting it): the
+  value's type. A plain class is defined once in its module, with no decorator, metaclass or other
+  keyword, every base `object`, a `unittest` test case, `Generic[T]`, `abc.ABC` or another plain
+  class, subscripted or not (`Box[int]`; another checked file's too, with the CLI), and no class
+  that isn't plain inheriting from it (a model's mixin). A guess (`member`), since a subclass or
+  outside code may bind it to another type; a variable the module stores as anything else is left
+  alone (`self.limit = size`; not `self.limit = 5` or `self.limit += 1`, which keep an `int`), and
+  so is every other class body, where an annotation can be more than a type (a dataclass's, a
+  `NamedTuple`'s or a model's field). A builtin exception or value class is a base a plain class may
+  have too (`ValueError`, `str`, `dict`; not one the module binds itself), and so is a framework's
+  that reads no annotation in a class body: django's are built in (`per_page = 20` under
+  `models.Model`, `paginate_by = 10` under a `ListView`; not its `Choices`, enums whose members a
+  type checker won't have annotated), and `fix-plain-bases` lists more (`--fix-plain-bases BASES`):
+  a class by its dotted path, or a package for every class in it, `!` before one to leave it out. A
+  listed base counts where a checked file defines it too, decorated or under a metaclass as it may
+  be (django's own files, checked);
 - a module's type alias, declared one: `Json = dict[str, "Json"]` becomes `Json: TypeAlias = ...`
   (fix kind `alias`). Only a value that can be nothing but a type made of others: a subscript of
   what `typing`, `typing_extensions` or `collections.abc` define (`Union[A, B]`, `Callable[..., R]`,
@@ -280,17 +299,24 @@ in a function or module body:
   a `str`: an attribute read off a call whose own type no file can name, pytest's private
   `CaptureResult`), and its `tmp_path`, a `Path`, anywhere. And one `@pytest.mark.parametrize` gives
   literals of one type (`"n, s"` with `[(1, "a"), (2, "b")]`): on the function itself, names and
-  cases written out. `def test_copy(float_frame)` types `result = float_frame.copy()`. A guess
+  cases written out, or on its class, for each method directly in it. A fixture's `request.param` is
+  typed the same way by its decorator's `params` (`@pytest.fixture(params=[1, 2])`: an `int`), and
+  so is the fixture's value where it returns that. A name bound to a call whose type no file can
+  name types what's read of it, until it's bound again (`both = capsys.readouterr()`, then
+  `both.out`). `def test_copy(float_frame)` types `result = float_frame.copy()`. A guess
   (`fixture`), since a plugin's fixture of the name, or a `conftest.py` out of the checked files,
   may be the one pytest takes; not a parameter the test annotates or binds again, nor any for a test
   file whose name another checked file has (a module's name says nothing of where it is);
 - with `--unsafe-fixes`, an empty container (`[]`, `{}`, `set()`, `list()`, `dict()`) the function
   then only adds to, every addition typed alike (`append`, `insert`, `add`, `setdefault`,
   `x[k] = v`; `extend` and `update` with one argument, by its elements, or a `dict`'s keys and
-  values): `list[T]`, `set[T]` or `dict[K, V]`. A guess, since something else could add to it; any
-  use that could (passing it to another function, a nested function) leaves it alone, as does a
-  local bound to it (`alias = names`) unless every use of that local only reads it, but not one that
-  only reads it (`x[0]`, `len(x)`, `sep.join(x)`, `x + more`, `[*x]`, `return x, n`);
+  values): `list[T]`, `set[T]` or `dict[K, V]`. One passed to a checked file's function, by position
+  or keyword, is what the parameter there declares, a builtin container of its kind
+  (`add(names, "a")`, where `def add(names: list[str], extra: str)`), with what's added to it where
+  that agrees. A guess, since something else could add to it; any use that could (passing it to
+  another function, a nested function) leaves it alone, as does a local bound to it
+  (`alias = names`) unless every use of that local only reads it, but not one that only reads it
+  (`x[0]`, `len(x)`, `sep.join(x)`, `x + more`, `[*x]`, `return x, n`);
 - a value computed from such: `a if c else b` when both sides agree, and `a if c else None` as
   `T | None` (not where `c` tests `a`, which it narrows); `a or b` and `a and b` with operands of
   one type, `or` dropping a `None` before its last operand (`name or "x"` is a `str` for a
@@ -316,10 +342,13 @@ in a function or module body:
   `await asyncio.start_server(...)` an `asyncio.Server`), or one its arguments decide
   (`await asyncio.wait_for(fetch(url), 5)`) or its generic class's receiver does
   (`await queue.get()` on an `asyncio.Queue[Item]`), or of anything typed a future or a task
-  (`await asyncio.gather(a(), b())` is a `tuple[A, B]`, as `await task` is what `task` holds). A
+  (`await asyncio.gather(a(), b())` is a `tuple[A, B]`, as `await task` is what `task` holds). An
+  `async def` declaring no return is typed by its `return`s, awaited, as a plain function's call is
+  (certain for a function, a guess for a method), in the module or another checked file. A
   coroutine's call passed where a parameter is an awaitable of a type variable binds it to what
   awaiting it gives: `asyncio.create_task(fetch(url))` is an `asyncio.Task[bytes]` where `fetch`
-  declares `bytes`, and `asyncio.run(main())` what `main` does.
+  declares `bytes`, and `asyncio.run(main())` what `main` does; `asyncio.ensure_future(fetch(url))`
+  too, and given a task or a future, that one's own type.
 
 A loop's target (LVA002) and an unpacking's names (LVA001) are declared instead, on a line of their
 own before the statement: `for k, v in ages.items():` with `ages: dict[str, int]` gets `k: str` and
@@ -332,13 +361,14 @@ agree (`for name in ("a", "b")`), an `Iterable[T]`, `Iterator[T]` or `Generator[
 generator function's call included), or a standard-library class's instance, by its `__iter__` in
 typeshed (its `__next__`, where that returns `Self`): `for line in open(path)` declares `line: str`,
 a loop over an `itertools.chain[int]` or a `collections.deque[int]` an `int`, over a
-`tarfile.TarFile` a `tarfile.TarInfo`; what's built from one too (`list(file)`, a comprehension). A
-loop over an `X | None` binds what one over the `X` does (`None` has no elements), and one over a
-name holding an `enumerate[T]`, `zip[T]`, `map[T]` or `reversed[T]` what that yields. `enumerate`
-and `zip` type each part of the target on its own: `for i, x in enumerate(xs)` declares `i: int`
-whatever `xs` is, and a guess about `xs` makes only `x`'s fix one. Keywords that don't change what
-they yield are allowed (`enumerate`'s `start=`, `zip`'s `strict=`, `sorted`'s `key=` and
-`reverse=`); a starred argument (`zip(*rows)`) isn't.
+`tarfile.TarFile` a `tarfile.TarInfo`, over `os.walk(top)` a `str` and two `list[str]`s where `top`
+is a `str` or a `pathlib` path (`bytes`, where it's a `bytes`); what's built from one too
+(`list(file)`, a comprehension). A loop over an `X | None` binds what one over the `X` does (`None`
+has no elements), and one over a name holding an `enumerate[T]`, `zip[T]`, `map[T]` or `reversed[T]`
+what that yields. `enumerate` and `zip` type each part of the target on its own:
+`for i, x in enumerate(xs)` declares `i: int` whatever `xs` is, and a guess about `xs` makes only
+`x`'s fix one. Keywords that don't change what they yield are allowed (`enumerate`'s `start=`,
+`zip`'s `strict=`, `sorted`'s `key=` and `reverse=`); a starred argument (`zip(*rows)`) isn't.
 
 An unpacking's names are typed one by one. A display of as many values gives each name its own
 value's type, as a plain assignment would (`a, b = x, 1` declares `b: int` whatever `x` is), every
@@ -378,21 +408,29 @@ that returns itself gives its own type, type arguments included: a `subprocess.P
 package's what its `__enter__` declares, and a call to one of the module's functions that
 `@contextmanager` makes a manager what it declares it yields (`Iterator[T]`'s `T`). A method of the
 module's classes that `@contextmanager` makes one types its call the same way, on a receiver whose
-type is known (`with self.defs.entry(key) as found:`). A target that unpacks is split as an
-unpacking's value is (`with defs.entry(key) as (ref, schema):`), a vague part's name left alone.
-`with open(path, "rb") as f:` declares `f: io.BufferedReader`, by its mode. An `async with`'s target
-is typed by a standard-library manager's `__aenter__` (`async with asyncio.TaskGroup() as group:`),
-where that has one declared return; no other manager's, and not split over an unpacking.
+type is known (`with self.defs.entry(key) as found:`). One declaring no return gives what its
+`yield`s do, each a statement of its own and all of one type (a method's as a guess). Another
+checked file's function is entered the same way (the CLI only), by what it declares or, once its
+file is checked, yields; and its class's `__enter__` returning `self` gives the class, as a guess. A
+target that unpacks is split as an unpacking's value is (`with defs.entry(key) as (ref, schema):`),
+a vague part's name left alone. `with open(path, "rb") as f:` declares `f: io.BufferedReader`, by
+its mode, as `os.fdopen(fd, "rb")` does; `tokenize.open` gives a `typing.TextIO`, and `gzip.open`,
+`bz2.open` and `lzma.open` an `io.TextIOWrapper` in a text mode; and `shelve.open` a
+`shelve.Shelf[Any]`, written from `vague` 0 (its keys are `str`s at any level). An `async with`'s
+target is typed by a standard-library manager's `__aenter__`
+(`async with asyncio.TaskGroup() as group:`), where that has one declared return; no other
+manager's, and not split over an unpacking.
 
 A standard-library manager its arguments decide is matched as any such call is: a constructor whose
 `__init__` overloads declare the instance (`subprocess.Popen(cmd, text=True)` is a
 `subprocess.Popen[str]`, `warnings.catch_warnings(record=True)` gives a
 `list[warnings.WarningMessage]`), and a test case's `self.assertRaises(ValueError)`, whose class
 argument binds what it catches: `cm: _AssertRaisesContext[ValueError]`, then `cm.exception` a
-`ValueError`. That class, `_AssertWarnsContext` and `tempfile.NamedTemporaryFile`'s
-`_TemporaryFileWrapper` are private in typeshed and at run time, with no public name: they're
-written as they are (imported from `unittest.case`, where the module doesn't import it), which a
-checker reporting private names' use will say. `tarfile.open` gives a `tarfile.TarFile`.
+`ValueError`; `self.assertLogs(...)` binds its `_LoggingWatcher`, whose `output` is a `list[str]`.
+Those classes, `_AssertWarnsContext` and `tempfile.NamedTemporaryFile`'s `_TemporaryFileWrapper` are
+private in typeshed and at run time, with no public name: they're written as they are (imported from
+`unittest.case` or `unittest._log`, where the module doesn't import it), which a checker reporting
+private names' use will say. `tarfile.open` gives a `tarfile.TarFile`.
 
 A type the module can't name yet gets an import. One it already has is reused (with `import io`,
 `io.BufferedReader`); otherwise `from io import BufferedReader` is added after the module's
@@ -421,10 +459,13 @@ one. What a parameter takes is read as below. One typed as nothing but checked f
 (`frame: DataFrame`), or as an iterable of them (`objs: Iterable[DataFrame]`, beside a mapping or
 `None`), takes an argument by its class's bases, through the checked files: `concat([df, df])` is a
 `DataFrame`, where another overload takes `Series`; a class under a base that can't be followed
-(another package's) decides nothing, as an alias or a type variable of a checked file's does. Each
-return is written as another checked file's type is: none of the function's calls is typed if one of
-its overloads declares no return, or returns a type variable or a generic class without its
-arguments.
+(another package's) decides nothing. An alias, a protocol or a type variable a checked file declares
+is read as an installed package's is (`axis: Axis`, by what `Axis` stands for). A class's methods
+defined with `@overload` are matched on a receiver typed as the class (`frame.get("k")`), and a
+function called through its module however that's imported (`shapes.concat(...)` after
+`from pkg import shapes`). Each return is written as another checked file's type is: none of the
+function's calls is typed if one of its overloads declares no return, or returns a type variable or
+a generic class without its arguments.
 
 An installed package's functions whose arguments decide their type (overloads, or a return naming a
 type variable) are matched as the standard library's are: `np.empty(n, dtype=np.float64)` is an
@@ -499,20 +540,44 @@ than the fix says, the fix is changed, made a guess, or not offered:
 
 - a variable in a class's body is held to what a class above it declares: annotated there as another
   type (`limit: int | None`, then `limit = 3` below), or a builtin base's own (`errno` under
-  `OSError`), it isn't typed by its value, across the checked files;
+  `OSError`), it isn't typed by its value, across the checked files; and one a `unittest` test case
+  declares itself is that type where its value is of it, `None` too (`maxDiff = 80` and
+  `maxDiff = None` are an `int | None`), under any base no checked file defines but a builtin one;
 - a name bound again later must take every value: `x = 1` then `x = None` declares `x: int | None`
   on a line of its own before the first binding (annotated there, mypy wouldn't narrow it to the
   `int` it's bound to), and `total = 0` then `total += 0.5` declares `total: float` (fix kind
   `rebound`); another type that doesn't fit (`x = 1` then `x = "a"`, a class and its base) leaves it
-  untyped. A later value whose type isn't known may be anything, which makes the fix a guess. A
-  class or alias the file spells two ways is one type (`CoreSchema` and `core_schema.CoreSchema`,
-  after importing the name and its module; the CLI only, whose index says where each is defined);
+  untyped. A later value whose type isn't known may be anything, which makes the fix a guess, and no
+  fix where it's bound in another arm of the first one's `if`, `try` or `match` (`dtype = "None"`,
+  `else: dtype = self.categories.dtype`): only one arm runs, and a checker that knows the other's
+  type holds it to the first's. A class or alias the file spells two ways is one type (`CoreSchema`
+  and `core_schema.CoreSchema`, after importing the name and its module; the CLI only, whose index
+  says where each is defined);
 - after it's bound again, a name is what it was bound to: certain where that's a member of its
   declared union (`int | None`, then `1`), which every checker narrows it to; a guess otherwise, and
-  where it was first bound to a value of no known type, which it may still hold
-  (`levels = index.multi()` under an `if`, `levels = ["a"]` under its `else`: `for lvl in levels`
-  declares `lvl: str` as a guess); bound again to a value whose type is a guess, it's that type from
-  there on, as a guess (`config = config or Config()`, then `config.limit`);
+  where it was first bound to a value of no known type (`levels = index.multi()`, then
+  `levels = ["a"]`: `for lvl in levels` declares `lvl: str` as a guess); bound again to a value
+  whose type is a guess, it's that type from there on, as a guess (`config = config or Config()`,
+  then `config.limit`). One of no known type before a branch that binds it to a known one (a
+  parameter, in `if flag: x = float(x)`) has none past the branch, where it may hold either; nor has
+  one an arm of an `if`, a `try` or a `match` leaves with no known type, whatever another arm binds
+  it to (`levels = index.multi()` under an `if`, `levels = ["a"]` under its `else`), unless that arm
+  leaves (`return`, `raise`, ...). A union bound to a value of no known type is narrowed to it: the
+  name has no type until its branch ends, and is the union again past it, as a guess;
+- a guess isn't offered where, once declared, it makes an error of what the function goes on to do
+  with the name, by an unannotated function's `return`s, which a checker took for anything: a union
+  of which an attribute or an item is taken where no test narrows it (`opt = registered(key)`, then
+  `opt.cb`), and a class of the module's by such `return`s of which an attribute it hasn't is taken
+  (`cfg.verbose`, of a class whose attributes are set from outside it; only a class whose attributes
+  are all in sight: undecorated, under the module's own classes alone, with no `__getattr__` or
+  `setattr`);
+- a union isn't split over several names (`for name, length in parts`, of `[["prefix", 24], ...]`, a
+  `list[list[str | int]]`): each is by position as often as not; a tuple of that many says which is
+  which, and is;
+- an unannotated function's `return` of a class its own body imports or defines types no call: no
+  caller can name it;
+- an instance attribute a class above also stores (`self.name = name` under a base's
+  `self.name = array.name`) is typed there, to a checker, not by the subclass's assignments;
 - a value typed the same whatever a guessed name in it is stays certain: `os.path.join(root, "x")`
   is a `str` by its literal, a guessed `root` or not; so does one typed whatever its parts are
   (`x.kind is None`, an f-string);
@@ -524,12 +589,17 @@ than the fix says, the fix is changed, made a guess, or not offered:
 - a copy, attribute or subscript of a union, or of anything the function tests (`isinstance(x, C)`,
   `x is None`, `is_c(x)`, an `assert`, a `match`), may be narrowed where it's read: a guess; so is a
   comprehension of a union with a condition (`[c for c in cs if isinstance(c, Column)]`). One of an
-  `X | None` (or a filtered comprehension over one) isn't offered at all: code nearly always checks
-  it for `None` first, and a checker then takes it for the `X`; nor is a bare `None`; nor is a read
-  where a test around it narrows it: in an `if`'s or `while`'s branch, a `match` case, or the rest
-  of a block after an `assert` or an `if` that always leaves (`return`, `raise`, ...), for a check
-  (`isinstance`, a `TypeGuard`, a `match`) whatever its type, and for a truth test or comparison
-  when it's a union;
+  `X | None` (or a filtered comprehension over one) isn't offered where its function tests or stores
+  what's read, or what that's read of (`self.conn`, for `self.conn.pool`), anywhere: code nearly
+  always checks it for `None` first, and a checker then takes it for the `X`. Where nothing does, it
+  has the type it's declared, a guess (`conn: Connection | None = self.conn`). Nor is a bare `None`
+  offered; nor is a read where a test around it narrows it: in an `if`'s or `while`'s branch, a
+  `match` case, or the rest of a block after an `assert` or an `if` that always leaves (`return`,
+  `raise`, ...), for a check (`isinstance`, a `TypeGuard`, a `match`) whatever its type, and for a
+  truth test or comparison when it's a union. A type alias of a union (`Key = Union[int, str]`,
+  `Maybe: TypeAlias = int | None`, the module's own or another checked file's, bound once at its top
+  level) is narrowed as the union it names, by a test or an assignment, and one of an `X | None`
+  isn't offered; a plain read of one stays certain, written as the alias;
 - an ALL_CAPS module-level name bound to a literal is a constant to pyright, which keeps its
   `Literal` type: `MODE = "r"`'s `str` would widen it. Passed to a call (where a parameter may take
   only some values), it's declared `MODE: Final = "r"`, which keeps the `Literal`: a guess, as
@@ -628,14 +698,18 @@ class's alias, or a class of a package that isn't checked, is left out.
 
 With several checkers, each name takes the first checker's hint, in the order they're named, that
 passes the checks above: one checker's `Unknown` falls back to the next's type. They're asked at the
-same time, each over its own servers. A checker that works one file at a time (basedpyright) gets up
-to four servers (more only repeat each other's work: SQLAlchemy's hints took 20s with one, 11s with
-four, 18s with sixteen), as `--jobs` allows, one per 32 files; one that works in parallel itself
-(`ty`, pyrefly) gets one. Free servers take the files a few at a time, the biggest first, each
-always with its next few asked before its last few are answered. Each server holds its own copy of
-the program it checks: about 1.2 GB for SQLAlchemy, 3.4 GB for pandas. `--infer-memory GB`
-(`infer-memory`) caps what a checker's servers use together: by default 8 GB, or half the memory
-available if that's less; set, never more than is available. One server a checker always gets.
+same time, each over its own servers. A checker gets up to four servers, as `--jobs` allows, one per
+32 files (more only repeat each other's work: SQLAlchemy's hints took 20s with one basedpyright
+server, 11s with four, 18s with sixteen). `ty` and pyrefly work in parallel themselves, and are
+still quicker shared out: a hinted check of pandas takes 36s with one `ty` server and 21s with four,
+132s with one of pyrefly's and 32s with four. Free servers take the files a few at a time, the
+biggest first, each always with its next few asked before its last few are answered. A server's
+memory is counted by its checker's own measure: each of basedpyright's holds its own copy of the
+program it checks (about 1.2 GB for SQLAlchemy, 3.4 GB for pandas), while `ty`'s and pyrefly's each
+hold what they're asked about (pandas: 1.2 GB in one `ty` server and 2.5 GB in four, 2.8 GB and 4.2
+GB for pyrefly). `--infer-memory GB` (`infer-memory`) caps what a checker's servers use together: by
+default 8 GB, or half the memory available if that's less; set, never more than is available. One
+server a checker always gets.
 
 Each server runs behind a small guard process, which passes its input and output through and kills
 it (and anything it started: a venv's `basedpyright-langserver` starts `node`) once constricter has
@@ -658,7 +732,9 @@ can't fix reported. The standard library and third-party packages are out of rea
 `--show-fixes` lists, after the report, each fix and how its value decided it (for `b = s.strip()`:
 `str`, from `str.strip`'s fixed return type), marking the guesses `--unsafe-fixes` would add;
 `--format=json` always carries the same as a `fix` object (`annotation`, `reason`, `unsafe`) on each
-result.
+result. With `--fix`, `--show-fixes` lists the fixes made too, after what's left: `fixed 'b'` as
+text, and in `--format=json` an entry whose `fixed` is true. Each is on the line it had before any
+fix, whichever round of `--fix` made it.
 
 The type hierarchy LVA008–LVA010 compare through is the numeric tower (`bool` < `int` < `float` <
 `complex`) plus the classes a module defines, under the bases they name.
@@ -677,15 +753,21 @@ constricter --fix --unsafe-fixes --infer-from constricter-trace.json .
 ```
 
 `python -m constricter.trace [--output FILE] [--root DIR] (-m MODULE | SCRIPT) [ARG ...]` runs the
-module or script as `python` would, and each time a function defined under DIR (default: the working
-directory; nothing installed there) returns or yields, notes the type of every local it holds: a
-builtin scalar, a builtin container or one of `collections`' by its first 20 elements' types (up to
-three, two levels deep), a tuple by its parts' one type or part by part (up to four), a class as
-`type[C]`, anything else by its class. A mock, a class defined in a function or in another class,
-and a container of more types or deeper have no spelling, and leave their name untyped; an empty
-container says nothing. A function that returns 20 times with nothing new is no longer looked at.
-Only the process itself is recorded, with the threads `threading` starts: not pytest-xdist's
-workers.
+module or script as `python` would, and each time a statement of a function defined under DIR
+(default: the working directory; nothing installed there) ends, notes the type of each name it binds
+(an assignment's, a loop's or a `with`'s targets, a `:=`'s): a builtin scalar, a builtin container
+or one of `collections`' by its first 20 elements' types (up to three, two levels deep), a tuple by
+its parts' one type or part by part (up to four), a class as `type[C]`, anything else by its class
+(`Outer.Inner`, for one defined in another). A generic class's instance has its arguments where it
+was made with them (`Box[int]()`), or where the class is a builtin container of its own type
+variables (`class Stack(list[T])`), by its elements; bare, it has no fix. A mock, a class defined in
+a function, and a container of more types or deeper have no spelling, and leave their name untyped;
+an empty container says nothing, nor does a statement an exception ends. A statement that ends 20
+times with nothing new is no longer looked at, nor a function that returns 20 times so. Lines are
+followed by `sys.monitoring`, or by `sys.settrace` before Python 3.12. A pytest process the run
+starts (pytest-xdist's workers, with `-n`) records itself the same way, and the run's trace has
+theirs: the run adds `constricter.trace` to `PYTEST_PLUGINS`, so constricter must be importable
+where such a process runs. No other child process is recorded.
 
 `--infer-from FILE` (`infer-from` in `[tool.constricter]`, relative to the `pyproject.toml`) takes
 those types as a type checker's hints are taken, after the checkers' own where `--infer-with` is
@@ -695,20 +777,30 @@ the file doesn't name is imported under `if TYPE_CHECKING:`, where the checked f
 package's public module define it. Up to three types seen for one name are their union, which is a
 fix only where the function tests the name, as a checker's union is.
 
-Only a local no annotation types gets one: a name assigned a value taken from a parameter its
-function leaves unannotated (`row = rows[0].load()`, `made = make(n)`; not `self` or `cls`, which
-the class types). Anything else a type checker may type wider than the run saw (an `X | None` that
-was never `None`, a base class, a `TypedDict` seen as a `dict[str, str]`), and the narrower
-annotation would be an error: hints for every local brought 32 new basedpyright errors with 127
-fixes on pydantic, and none with none under this rule. And only a name its function binds once,
-outside any loop: the trace says what it held when the function returned, not where. A file is
-matched by its SHA-256: one edited since the run has no types (`--fix`'s own second round, for one),
-and a copy of it has them all.
+Only a local no annotation types gets one: a name an assignment or a `for` loop binds to a value
+taken from a parameter no checker types (`row = rows[0].load()`, `made = make(n)`,
+`for row in rows:`): an unannotated one (not `self` or `cls`, which the class types) with no default
+but `None`, that its function doesn't bind again, test by a call (`isinstance(rows, list)`) or
+match. Or from an attribute of `self` that a class with no base stores nothing else in
+(`conn = self.conn`, where every store is a plain `self.conn = conn` of such a parameter and the
+class's body doesn't bind it: a checker types the attribute by what's stored). Anything else a type
+checker may type wider than the run saw (an `X | None` that was never `None`, a base class, a
+`TypedDict` seen as a `dict[str, str]`), and the narrower annotation would be an error: hints for
+every local brought 32 new basedpyright errors with 127 fixes on pydantic, and none with none under
+this rule. A name bound more than once, or in a loop, has every type its bindings held, where each
+is such a binding and the run reached it: one it never reached may hold anything. A file is matched
+by its SHA-256: one edited since the run has no types (`--fix`'s own second round, for one), and a
+copy of it has them all.
 
 What the run saw can still be narrower than what the code means (a subclass, an `int` where a
-`float` may come): a guess, like the rest. And a name typed at last is checked at last: on pandas's
-`tests/frame/methods`, traced, 128 more fixes (5%) and 29 new basedpyright errors, each at a later
-use of a rightly typed `DataFrame` (`df.join(other, how="foo")`, in a test of that error).
+`float` may come, a `dict[str, Series]` that later takes another value): a guess, like the rest. And
+a name typed at last is checked at last. With each package's tests traced
+(`tests/corpus/corpus_suite.py --types --trace`), its own type checkers find, past what
+`--fix --unsafe-fixes` alone brings: on SQLAlchemy 6 errors with 179 fixes, on pandas one with 1,443
+(an ignore no longer needed), on pydantic none with one; none where a traced name is bound, each at
+a later use of it (`index.table`, a `Table | None`, passed where a `FromClause` is declared). On
+pandas's `tests/frame/methods`, which its checkers pass over, basedpyright finds 33 with 148 fixes
+(7% more), the same way (`df.join(other, how="foo")`, in a test of that error).
 
 ## Fix levels
 
@@ -751,11 +843,13 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `filled`        | an empty container, then only what the function adds to it (a guess)                      |
 | `returned`      | an unannotated function's own `return`s, or a generator's `yield`s (a method's: a guess)  |
 | `assigned`      | an unannotated instance attribute's every `self.x = value` in its class (a guess)         |
-| `member`        | a plain class's variable, by its literal value in the class's body (a guess)              |
+| `member`        | a plain class's variable, by its value in the class's body (a guess)                      |
 | `alias`         | a module's type alias, a subscript or a union of types: `TypeAlias`                       |
 | `callable`      | a function or a bound method bound to a name, by what its call gives                      |
 | `callers`       | an unannotated parameter every call in the checked files passes one type (a guess)        |
 | `fixture`       | a test's parameter, by its pytest fixture's value or its `parametrize` literals (a guess) |
+
+The wider types `fix-widen` adds are kinds too: see [below](#wider-types-fix-widen).
 
 A project chooses which apply, in `[tool.constricter]` or on the command line:
 
@@ -775,3 +869,104 @@ fix-plain-bases = ["rest_framework"]  # its classes read no annotation in a clas
 
 None of them changes what's reported: an offence whose fix isn't offered is still reported, without
 a fix. The defaults (every mechanism, nothing trusted) are the plain certain/guess split.
+
+## Wider types (`fix-widen`)
+
+Where a value has no type `--fix` can work out, or none it may write, it writes none. `fix-widen`
+(`--fix-widen KINDS`) names the wider types it may write instead, each a fix kind of its own, off
+unless listed (`all`: every one), and answering to `fix-ignore` and `unsafe-fix-select` as any kind
+does:
+
+| Id                   | Writes                                                                         |         |
+| -------------------- | ------------------------------------------------------------------------------ | ------- |
+| `untyped-parameters` | `Any` for what comes of a parameter no annotation types                        | certain |
+| `empty-containers`   | `list[Any]`, `dict[Any, Any]`, `set[Any]` for an empty one nothing fills       | certain |
+| `mixed-containers`   | `list[Any]`, `tuple[Any, ...]`, `dict[str, Any]` for a display of mixed things | certain |
+| `unions`             | `int \| str` for a name bound to values of two or three types                  | a guess |
+| `vague`              | a type vaguer than `vague` allows (`dict[str, Any]`), written anyway           | a guess |
+| `untyped-calls`      | `Any` for a call of a checked file's function that declares no return          | certain |
+| `unknown-calls`      | `Any` for any other call of no known type                                      | certain |
+
+```toml
+[tool.constricter]
+fix-widen = ["untyped-parameters", "empty-containers"]
+```
+
+- `untyped-parameters`: `x = param` and `y = param.read()`, each on one line, where `param` has no
+  annotation and no default, isn't `self`, `cls`, `*args` or `**kwargs`, and is never bound again in
+  its function. `Any` there says what every checker takes the value for already; a parameter with a
+  default is one a checker types by it, and is left. Whatever the name is bound to later.
+- `empty-containers`: `[]`, `{}`, `list()`, `dict()` or `set()` bound to a function's name that
+  nothing in sight fills (what its function adds to one types it still, as `filled` does).
+- `mixed-containers`: a list, set, tuple or dict display whose elements' types differ or aren't
+  known. A dict's keys are `str` where each is a string; a tuple is `tuple[Any, ...]`, whatever its
+  length.
+- `unions`: a name bound to values of two or three types that fit no one of them (`x = 1`, then
+  `x = "a"`), declared their union on a line of its own before its first binding. Only of values
+  whose types are certain, and not for a name its function changes in place (`x += more`).
+- `vague`: a value whose type is known and vaguer than `vague` allows (a call declared to return a
+  `dict[str, Any]`), which `--fix` otherwise never writes.
+
+- `untyped-calls`: `x = helper()` or `x = self.load()`, awaited or not, where `--fix` has no type
+  for the call and its function declares no return: a top-level function of the module's, a method
+  its class or one of the class's bases in the module defines, called on `self` or `cls`, or a
+  function another checked file defines, called by its name or through its module (`u.helper()`).
+  `Any` there is what a checker that reads no body (mypy) takes the call for already; one that reads
+  its `return`s (pyright) loses what it inferred. Not a function that's decorated (but as a static
+  or class method) or defined twice, nor an `async def` called without `await`; another file's
+  `async def` is `unknown-calls`'.
+- `unknown-calls`: every other call `--fix` has no type for (`x = obj.method()`,
+  `x = module.func()`, an imported function's). The widest of the kinds: it hides whatever a checker
+  made of the call. Not a call `--fix` types and doesn't write (a `re.Match[str] | None` nothing
+  narrows): a checker knows that one.
+
+The containers and `unions` are for a function's names bound once (a union's, of course, more than
+once), by a statement of their own; the calls' are for a function's names first bound by one,
+whatever they're bound to later. The calls' and `vague` type what a loop, an unpacking or a `with`
+binds too, declared on a line of its own before the statement: each name of
+`for key, row in obj.rows():`, `a, b = helper()` or `with obj.open() as (f, g):` is `Any`, by the
+call's kind (`a, b = 1, helper()` types `b` by its own value), and a loop's target over a
+`list[dict[str, Any]]` is `vague`'s. Not a chained assignment's names, nor a `:=`'s.
+
+On SQLAlchemy 2.0.54, with `--unsafe-fixes`: 175 bindings by `untyped-parameters`, 196 by
+`empty-containers`, 98 by `mixed-containers`, 184 by `vague` and 9 by `unions`, 662 together (4.5%
+of its bindings); one pass leaves a second nothing. basedpyright then reports no error in a file
+under a rule it hadn't one for, and 22 errors fewer: an `Any` written hides what a checker had
+inferred, most of all in a display (13 of them by `mixed-containers`).
+
+On pydantic 2.13.5, `--fix` with the two kinds of call marks 519 of its 3,956 bindings (13.1%), all
+by `unknown-calls`: every function of pydantic's declares its return. 194 of them are a loop's, an
+unpacking's or a `with`'s. With `--unsafe-fixes` and every kind, 773 are widened, from 187 without
+the calls' (72 of them a loop's or an unpacking's by `vague`): 81.0% of its bindings typed or
+widened, from 66.2%. A second pass adds one union, of two values that were guesses until the first
+declared what they rest on. basedpyright reports two errors fewer, which the `Any`s hide, and four
+more. Two are of one statement and its copy in `pydantic.v1` (`name = name or parts.local_part`,
+`name` a `str | None`, `parts` from a package that isn't installed): assigned an explicit `Any`, a
+name keeps its declared type, where a value the checker couldn't type at all left it a `str`. Two
+are of one loop's target (`for base in reversed(cls.__mro__):`, then
+`if not dataclasses.is_dataclass(base): continue`): declared `Any`, it's narrowed to a dataclass or
+an instance of one, where the `type` the checker inferred was narrowed to the class.
+
+Every statement a widening writes ends with `# constricter: auto`, after any comment already there
+(on its last line, if it has several; a declaration before its statement, on its own):
+
+```python
+def load(reader, count):
+    text: Any = reader.read()  # constricter: auto
+    seen: list[Any] = []  # constricter: auto
+```
+
+A marked annotation is `--fix`'s own, not the author's:
+
+- LVA005 passes over it;
+- `--coverage` counts it apart: `3/4 typed (75.0%), 1 widened` (`widened` in `--format=json`), and
+  `--fail-under` reads the typed share alone;
+- it types nothing read of its name: what `--fix` infers from the name is what it was before the
+  widening;
+- once its value's type is known (the parameter annotated, say), it's reported as LVA005 with that
+  type as its fix: `--fix` writes it over the annotation and deletes the mark, a guess where the
+  type is one. A declaration on a line of its own, before a loop, an unpacking or a `with`, is
+  written over the same way once the statement types its name, if nothing binds the name again; a
+  union's is left.
+
+Take the mark off a line to keep its annotation as written.

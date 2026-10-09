@@ -93,6 +93,7 @@ jobs:
       - run: flake8 constricter stdlib_tables tests hatch_build.py
       - run: typos
       - run: validate-pyproject pyproject.toml
+      - run: lint-imports --cache-dir local/.import_linter_cache
       - run: uv lock --check
       - run: constricter --level=suffocate --all-scopes --format=github constricter stdlib_tables tests hatch_build.py
       - run: constricter --coverage --all-scopes --fail-under=100 constricter stdlib_tables tests hatch_build.py

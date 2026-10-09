@@ -19,16 +19,6 @@
     }
   },
   {
-    "name": "poetry",
-    "why": "a typed application",
-    "version": "2.5.1",
-    "where": "43/86/204ef622b09005c0290b4cb23cc8178b0fdd52d8d6b36ad6d78dab447035",
-    "archive": "poetry-2.5.1.tar.gz",
-    "sha256": "19fbd566efced512be58989a756aa1333cdc9b6aabb4fc84fd1ec9d29ee74874",
-    "package": "poetry-2.5.1/src/poetry",
-    "alone": "its CI installs it with Poetry itself"
-  },
-  {
     "name": "pdm",
     "why": "a typed application",
     "version": "2.29.2",
@@ -48,16 +38,6 @@
     }
   },
   {
-    "name": "hatch",
-    "why": "a typed application",
-    "version": "1.18.1",
-    "where": "91/81/a5a77aaa23df824562d50ad25eeb52ae6446924d0dc68c7c19ed6d8b171f",
-    "archive": "hatch-1.18.1.tar.gz",
-    "sha256": "222fff78e197cf12a39db7efe5318ca403f2614db213416fd106a6c3260ef221",
-    "package": "hatch-1.18.1/src/hatch",
-    "alone": "its tests run through its own environments"
-  },
-  {
     "name": "tox",
     "why": "a typed application",
     "version": "4.64.9",
@@ -73,44 +53,6 @@
         "pip -e .[completion] --group test"
       ],
       "tests": "",
-      "checks": []
-    }
-  },
-  {
-    "name": "nox",
-    "why": "a typed application",
-    "version": "2026.8.17",
-    "where": "be/65/4cef8ae8f6dbcb5753b202e46791277f1ea0b4a0650d1a6cb940c468b143",
-    "archive": "nox-2026.8.17.tar.gz",
-    "sha256": "8d9c69c9b996a59db1eb2c6968deaebc2edbc55317d205981bbc4a37351d3f2e",
-    "package": "nox-2026.8.17/nox",
-    "suite": {
-      "repository": "https://github.com/wntrblm/nox",
-      "tag": "2026.08.17",
-      "source": "nox",
-      "install": [
-        "pip -e .[tox-to-nox,pbs] --group test uv"
-      ],
-      "tests": "-n {workers} -m 'not conda'",
-      "checks": []
-    }
-  },
-  {
-    "name": "pre-commit",
-    "why": "a typed application",
-    "version": "4.6.2",
-    "where": "74/89/1f3e8e1fc3e97de0fa963495832f581f025f29471602a309e48808244292",
-    "archive": "pre_commit-4.6.2.tar.gz",
-    "sha256": "8f5d7bfb021ecdbcd9d49d89847082dd24172ccde534390081a679ad046e2441",
-    "package": "pre_commit-4.6.2/pre_commit",
-    "suite": {
-      "repository": "https://github.com/pre-commit/pre-commit",
-      "tag": "v4.6.2",
-      "source": "pre_commit",
-      "install": [
-        "pip -e . -r requirements-dev.txt"
-      ],
-      "tests": "tests --ignore=tests/languages",
       "checks": []
     }
   },
@@ -155,16 +97,6 @@
     }
   },
   {
-    "name": "pipx",
-    "why": "a typed application",
-    "version": "1.17.11",
-    "where": "e9/bf/2cbb3730d2420e39c31214873e37641acd656316cbe9ad94562fb35b21f2",
-    "archive": "pipx-1.17.11.tar.gz",
-    "sha256": "7e3d172161ab5c45275cfc04bebf7ce2367d9879d252cf3b29535c4f5e3f607f",
-    "package": "pipx-1.17.11/src/pipx",
-    "alone": "its tests download packages"
-  },
-  {
     "name": "streamlink",
     "why": "a typed application",
     "version": "8.6.1",
@@ -183,44 +115,6 @@
       "checks": [
         "mypy --no-incremental"
       ]
-    }
-  },
-  {
-    "name": "copier",
-    "why": "a typed application",
-    "version": "9.18.2",
-    "where": "f9/60/2fe1777b27f489450ed8ac5c75390caf91a175d647be05b4284bf515b413",
-    "archive": "copier-9.18.2.tar.gz",
-    "sha256": "0f97902fee79374551c9391fb1132f5a038079f3b497f4dad673295489fc032e",
-    "package": "copier-9.18.2/copier",
-    "suite": {
-      "repository": "https://github.com/copier-org/copier",
-      "tag": "v9.18.2",
-      "source": "copier",
-      "install": [
-        "sync --frozen"
-      ],
-      "tests": "",
-      "checks": []
-    }
-  },
-  {
-    "name": "flake8",
-    "why": "a typed application",
-    "version": "7.4.1",
-    "where": "c2/94/85870fc02dfe4ab0885c440e7e41f6a986b10e43eca6717e90f8ce1215cc",
-    "archive": "flake8-7.4.1.tar.gz",
-    "sha256": "84ea5afcaf344487b0ea5baaebb8100f4cfaebc01f755998f75876664029f587",
-    "package": "flake8-7.4.1/src/flake8",
-    "suite": {
-      "repository": "https://github.com/PyCQA/flake8",
-      "tag": "7.4.1",
-      "source": "src/flake8",
-      "install": [
-        "pip -e . pytest coverage covdefaults"
-      ],
-      "tests": "",
-      "checks": []
     }
   },
   {
@@ -372,27 +266,6 @@
     }
   },
   {
-    "name": "quart",
-    "why": "`asyncio` code",
-    "version": "0.23.1",
-    "where": "6b/81/34396f67e09e7a0609261f1ef0f43b26f5d67e8f2dc4d34b4953061560f2",
-    "archive": "quart-0.23.1.tar.gz",
-    "sha256": "1ca848415910bd2eb75e9d9b452388f892a37be222602a373622e6c633d1efbf",
-    "package": "quart-0.23.1/src/quart",
-    "suite": {
-      "repository": "https://github.com/pallets/quart",
-      "tag": "0.23.1",
-      "source": "src/quart",
-      "install": [
-        "sync --frozen --group tests --group typing"
-      ],
-      "tests": "",
-      "checks": [
-        "mypy"
-      ]
-    }
-  },
-  {
     "name": "aiohttp",
     "why": "`asyncio` code",
     "version": "3.14.4",
@@ -409,7 +282,8 @@
         "pip -e ."
       ],
       "tests": "-m 'not dev_mode and not autobahn'",
-      "checks": []
+      "checks": [],
+      "submodules": true
     },
     "environment": {
       "AIOHTTP_NO_EXTENSIONS": "1"
@@ -567,26 +441,6 @@
         "mypy src"
       ]
     }
-  },
-  {
-    "name": "urllib3",
-    "why": "a pytest-heavy test tree",
-    "version": "2.8.0",
-    "where": "e3/05/b17359e1cefb4f909b5e40b1b90a496d987258916dbbf88e842c729f510e",
-    "archive": "urllib3-2.8.0.tar.gz",
-    "sha256": "63bf2ead4c879426ebf22ef2a781eeb4aa3b4ae798a0435506f8687fd5bb9b63",
-    "package": "urllib3-2.8.0/src/urllib3",
-    "alone": "its test dependencies are a nox session's"
-  },
-  {
-    "name": "coverage",
-    "why": "a pytest-heavy test tree",
-    "version": "7.16.2",
-    "where": "2f/55/d1eaf3e73781174340a00dc1ba2aee8a65f82fadb18e2797b192b6b3925b",
-    "archive": "coverage-7.16.2.tar.gz",
-    "sha256": "ca64d9f1f384f151b9511bec01126072acd2f313439f8ed015a22d8790aab6fa",
-    "package": "coverage-7.16.2/coverage",
-    "alone": "its tests run through its own `igor.py`"
   },
   {
     "name": "xarray",
@@ -940,44 +794,6 @@
         "pip -e . pytest pytest-timeout numpy"
       ],
       "tests": "joblib --timeout=120",
-      "checks": []
-    }
-  },
-  {
-    "name": "mako",
-    "why": "untyped, for contrast",
-    "version": "1.4.3",
-    "where": "5a/09/e07c4b5579a79f4b16f8d4f29f6c54514ac787c4ad506b8c4f28a0e6b0bf",
-    "archive": "mako-1.4.3.tar.gz",
-    "sha256": "cd6537fe88d5fec315c55c2f8529bc4ce7a9a352ad7db3eeaa6a66e2dd4ec37a",
-    "package": "mako-1.4.3/mako",
-    "suite": {
-      "repository": "https://github.com/sqlalchemy/mako",
-      "tag": "rel_1_4_3",
-      "source": "mako",
-      "install": [
-        "pip -e . --group tests"
-      ],
-      "tests": "",
-      "checks": []
-    }
-  },
-  {
-    "name": "boltons",
-    "why": "untyped, for contrast",
-    "version": "26.2.0",
-    "where": "71/56/14c4a4931910a81ddeccfbe227925ea738e3c445d3e2af960f0bcbba1616",
-    "archive": "boltons-26.2.0.tar.gz",
-    "sha256": "d39cfd15c1a1c3bd4d705c82252fa9edb8e4f5e8cc039f8e39afac7b1b47e92c",
-    "package": "boltons-26.2.0/boltons",
-    "suite": {
-      "repository": "https://github.com/mahmoud/boltons",
-      "tag": "26.2.0",
-      "source": "boltons",
-      "install": [
-        "pip -e . --group dev"
-      ],
-      "tests": "--doctest-modules boltons tests",
       "checks": []
     }
   }

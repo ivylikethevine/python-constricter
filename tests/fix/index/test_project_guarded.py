@@ -13,6 +13,9 @@ from constricter.fix.core import fixes
 from constricter.fix.core.known import Guarded, Outside
 from constricter.fix.index import project
 
+# Each starts `--jobs` workers of its own: one at a time, where the tests run at once (`pytest -n`).
+JOBS: pytest.MarkDecorator = pytest.mark.xdist_group("jobs")
+
 HANDLES: Final = """
 from __future__ import annotations
 
@@ -302,6 +305,7 @@ def _package(root: Path) -> None:
     _ = _write(root / "pkg" / "again.py", AGAIN)
 
 
+@JOBS
 @pytest.mark.parametrize("jobs", ["1", "2"])
 def test_a_type_the_file_doesnt_import_is_imported_for_type_checking(tmp_path: Path, jobs: str) -> None:
     """A new `if TYPE_CHECKING:` block, spelled as the file imports `typing`; a module body's type quoted.
@@ -338,7 +342,7 @@ def test_a_name_the_file_binds_otherwise_isnt_imported(tmp_path: Path) -> None:
     }
     offences: list[Offence] = check_source(
         user.read_text(encoding="utf-8"),
-        outside=Outside(imported.calls, imported.classes, guarded=imported.guarded),
+        outside=Outside(calls=imported.calls, classes=imported.classes, guarded=imported.guarded),
     )
     assert {o.name: o.fix for o in offences} == {"a": None, "b": "Again"}
     assert not project.calls(catalog, user)
@@ -358,7 +362,7 @@ def test_a_type_is_written_as_the_file_can(tmp_path: Path, source: str, annotati
     imported: project.Imported = project.imported(project.index(sorted(tmp_path.rglob("*.py"))), user)
     offences: list[Offence] = check_source(
         user.read_text(encoding="utf-8"),
-        outside=Outside(imported.calls, guarded=imported.guarded),
+        outside=Outside(calls=imported.calls, guarded=imported.guarded),
     )
     assert [o.fix for o in offences] == [annotation]
 
@@ -412,7 +416,7 @@ def test_a_name_quoted_inside_a_type_is_read_as_the_name(tmp_path: Path) -> None
         imported: project.Imported = project.imported(project.index(sorted(tmp_path.rglob("*.py"))), user)
         offences: list[Offence] = check_source(
             user.read_text(encoding="utf-8"),
-            outside=Outside(imported.calls, guarded=imported.guarded),
+            outside=Outside(calls=imported.calls, guarded=imported.guarded),
         )
         fixes_by_import[extra] = [o.fix for o in offences]
         assert set(imported.guarded) == (set() if extra else {"Thing"})
@@ -534,7 +538,7 @@ def test_a_guarded_import_is_a_replacement_too(tmp_path: Path) -> None:
     text: list[str] = user.read_text(encoding="utf-8").splitlines(keepends=True)
     offences: list[Offence] = check_source(
         "".join(text),
-        outside=Outside(imported.calls, guarded=imported.guarded),
+        outside=Outside(calls=imported.calls, guarded=imported.guarded),
     )
     assert [edit.text for edit in fixes.replacements(text, offences[0])] == [
         ": Plain",

@@ -413,7 +413,7 @@ def test_a_member_of_an_optional_value_is_the_values_own() -> None:
         "e": ("int", False),
         "g": ("int", False),
         "h": (None, False),  # a union of two types has no one member
-        "i": (None, False),  # itself an `X | None`: narrowed before it's used
+        "i": ("str | None", True),  # itself an `X | None`, as declared: nothing narrows it here
         "j": ("str", False),
     }
 

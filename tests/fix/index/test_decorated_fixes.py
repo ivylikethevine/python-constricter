@@ -331,14 +331,14 @@ def test_another_modules_decorator_is_vouched_for_by_the_index(
     assert decorated.own(catalog, tmp_path / "notebook.ipynb") == {}
     inside: list[Offence] = check_source(
         api.read_text(encoding="utf-8"),
-        outside=Outside(decorated.own(catalog, api), type_vars=project.type_vars(catalog, api)),
+        outside=Outside(calls=decorated.own(catalog, api), type_vars=project.type_vars(catalog, api)),
     )
     # `echo` returns a type variable the module imports: its calls depend on their arguments.
     assert {o.name: o.fix for o in inside} == {"a": "Index", "b": "float", "c": None, "d": None}
     guarded: dict[str, Guarded] = {}
     outside: list[Offence] = check_source(
         main.read_text(encoding="utf-8"),
-        outside=Outside(project.calls(catalog, main, guarded), guarded=guarded),
+        outside=Outside(calls=project.calls(catalog, main, guarded), guarded=guarded),
     )
     assert {o.name: o.fix for o in outside} == {"a": "Index", "b": "float", "c": None}
 

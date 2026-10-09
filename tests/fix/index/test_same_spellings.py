@@ -96,11 +96,11 @@ def test_a_later_binding_spelled_otherwise_fits_the_fix() -> None:
         """,
     )
     calls: dict[str, str] = {"first": "Schema", "second": "core.Schema"}
-    found: list[Offence] = check_source(source, outside=Outside(calls, same=(_SCHEMAS,)))
+    found: list[Offence] = check_source(source, outside=Outside(calls=calls, same=(_SCHEMAS,)))
     assert [(o.name, o.fix, o.unsafe) for o in found] == [("schema", "Schema", False)]
-    assert [o.fix for o in check_source(source, outside=Outside(calls))] == [None]
+    assert [o.fix for o in check_source(source, outside=Outside(calls=calls))] == [None]
     clashing: Outside = Outside(
-        calls,
+        calls=calls,
         guarded={"Schema": Guarded(("pkg.core", "Schema"), "from pkg.core import Schema")},
         same=(_SCHEMAS,),
     )
@@ -125,3 +125,18 @@ def test_one_run_fixes_a_name_bound_to_both_spellings(tmp_path: Path) -> None:
             "schema = first",
             "schema: Schema = first",
         )
+
+
+def test_a_module_imported_for_type_checking_spells_its_types_too(tmp_path: Path) -> None:
+    """Its own import under `if TYPE_CHECKING:`, or one a fix adds there: `Row` and `core.Row` are one."""
+    paths: list[Path] = _package(tmp_path)
+    checking: Path = tmp_path / "checking.py"
+    source: str = "from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from pkg import core\n"
+    _ = checking.write_text(f"{source}    from pkg.core import Row\n", encoding="utf-8")
+    running: Path = tmp_path / "running.py"
+    _ = running.write_text("from pkg.core import Row\n", encoding="utf-8")
+    catalog: project.Index = project.index([*paths, checking, running])
+    assert linked.same(catalog, checking, {}) == (_ROWS,)
+    late: dict[str, Guarded] = {"core": Guarded(("pkg", "core"), "from pkg import core")}
+    assert linked.same(catalog, running, late) == (_ROWS,)
+    assert not linked.same(catalog, running, {})

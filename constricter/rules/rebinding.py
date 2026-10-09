@@ -13,7 +13,7 @@ from typing import Final, NamedTuple
 
 from constricter.fix.core.known import Inference
 from constricter.fix.values.hinted import KINDS as HINTED
-from constricter.offences import Edit, Fix, Offence
+from constricter.offences import UNIONS, Edit, Fix, Offence
 from constricter.rules.flow import Binding, Hierarchy, members
 
 _NONE: Final = "None"
@@ -22,6 +22,7 @@ _OPTIONAL: Final = "optional"  # the fix kind of a `None` added to a type
 REBOUND: Final = "rebound"  # the fix kind (and guessing mechanism) of a later binding's type
 # The types a later binding may widen a first one's to: the numeric tower's (`int`, then `float`).
 _NUMBERS: Final = frozenset({"bool", "int", "float", "complex"})
+_UNION: Final = 3  # the most types a widening's union names
 
 
 class Refit(NamedTuple):
@@ -47,11 +48,12 @@ def refit(
     fix: Fix,
     rest: list[Binding],
     hierarchy: Hierarchy,
-    self_type: str | None,
+    module: tuple[str | None, bool],
 ) -> Refit | Fix | None:
     """Refit `o`'s `fix` to the name's `rest` of bindings (see the module docstring).
 
-    `self_type`: how the module spells `Self`, if it imports it.
+    `module`: how the module spells `Self`, if it imports it; and whether values of two or three
+    types that fit no one of them are declared their union, a widening (`fix-widen`'s `unions`).
 
     Returns:
       `fix` itself, if it takes them all as it is; else its refit, to offer; or `None`, for no fix.
@@ -61,7 +63,7 @@ def refit(
     declared: frozenset[str] = members(fix.annotation) or frozenset({fix.annotation})
     later: _Later = _later(rest, declared, hierarchy)
     # A hint is one value's type alone: it says nothing of a later one's.
-    if (later.misfits or later.unknown) and (self_type in declared or HINTED & fix.kinds):
+    if (later.misfits or later.unknown) and (module[0] in declared or HINTED & fix.kinds):
         return None
     if not (later.misfits or later.unknown or later.origins):
         return fix
@@ -72,20 +74,43 @@ def refit(
     if not later.misfits:
         return Refit(Inference(fix.annotation, fix.reason, kinds), origins, unsafe, fix.edit, fix.span)
     atoms: frozenset[str] = declared | later.misfits
-    widest: str | None
-    if (widest := _widest(atoms - {_NONE}, hierarchy)) is None:
+    joined: tuple[str, frozenset[str]] | None
+    # A union only of what's certain: a guessed value's type is one a checker may see otherwise.
+    certain: bool = not (later.unknown or later.origins or fix.unsafe)
+    if (joined := _joined(atoms - {_NONE}, hierarchy, unions=module[1] and certain)) is None:
         return None
     return Refit(
         Inference(
-            widest + (" | None" if _NONE in atoms else ""),
+            joined[0] + (" | None" if _NONE in atoms else ""),
             f"{fix.reason}, and every value it's bound to later",
-            kinds | {_OPTIONAL if later.misfits == _ONLY_NONE else REBOUND},
+            kinds | {_OPTIONAL if later.misfits == _ONLY_NONE else REBOUND} | joined[1],
         ),
-        origins,
-        unsafe,
+        origins | joined[1],
+        unsafe or bool(joined[1]),
         Edit.DECLARE,
         fix.span if fix.edit is Edit.DECLARE else (o.line, o.col),
     )
+
+
+def _joined(
+    atoms: frozenset[str],
+    hierarchy: Hierarchy,
+    *,
+    unions: bool,
+) -> tuple[str, frozenset[str]] | None:
+    """Write the one type a name bound to values of types `atoms` is declared.
+
+    The one they all fit (see `_widest`); else, with `unions`, the union of two or three of them: a
+    widening, which a checker may hold a later use to.
+
+    Returns:
+      The type, and the widening's kind if it's one; `None` where there's neither.
+
+    """
+    widest: str | None
+    if (widest := _widest(atoms, hierarchy)) is not None:
+        return widest, frozenset()
+    return (" | ".join(sorted(atoms)), frozenset({UNIONS})) if unions and len(atoms) <= _UNION else None
 
 
 def _later(rest: list[Binding], declared: frozenset[str], hierarchy: Hierarchy) -> _Later:

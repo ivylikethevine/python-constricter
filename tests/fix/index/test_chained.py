@@ -65,7 +65,7 @@ def f(row: "u.Row") -> None:
 def test_a_methods_returns_attribute_is_a_signature_of_the_methods() -> None:
     """A class under `if TYPE_CHECKING:` is read; one signature, a class of its module, as many arguments."""
     tree: ast.Module = ast.parse(textwrap.dedent(_STUB))
-    module: modules.Module = modules.Module("stub", {}, {}, declared=declarations(tree))
+    module: modules.Module = modules.Module(name="stub", returns={}, names={}, declared=declarations(tree))
     assert module.declared is not None
     klass: Class = module.declared.classes["Fixture"]
     assert module.declared.classes["Result"].attributes == {"out": "AnyStr", "code": "int"}
@@ -88,6 +88,44 @@ def test_capsys_readouterr_out_is_a_str(tmp_path: Path) -> None:
     fixed: str = test.read_text(encoding="utf-8")
     assert _OUT in fixed
     assert _BOTH in fixed
+
+
+_HELD: Final = """
+import pytest
+
+
+def test_out(capsys, flag):
+    both = capsys.readouterr()
+    out = both.out
+    lines = both.err.splitlines()
+    both = flag
+    late = both.out
+    again = capsys.readouterr()
+    if flag:
+        again = capsys.readouterr()
+    left = again.out
+    other = flag.readouterr()
+    none = other.out
+"""
+_HELD_FIXED: Final = (
+    "    both = capsys.readouterr()\n",
+    "    out: str = both.out\n",
+    "    lines: list[str] = both.err.splitlines()\n",
+    "    late = both.out\n",  # bound again since
+    "    left = again.out\n",
+    "    none = other.out\n",  # a receiver of no known type
+)
+
+
+def test_a_name_bound_to_such_a_call_types_what_is_read_of_it(tmp_path: Path) -> None:
+    """`both = capsys.readouterr()`, then `both.out`: as off the call, until the name is bound again."""
+    test: Path = tmp_path / "test_held.py"
+    _ = test.write_text(_HELD, encoding="utf-8", newline="\n")
+    _ = cli.main(["--fix", "-q", "--jobs=1", str(tmp_path)])
+    assert test.read_text(encoding="utf-8") == _HELD  # guesses, as the fixture is
+    _ = cli.main(["--fix", "-q", "--unsafe-fixes", "--jobs=1", str(tmp_path)])
+    fixed: str = test.read_text(encoding="utf-8")
+    assert all(line in fixed for line in _HELD_FIXED), fixed
 
 
 def test_a_modules_members_are_found_by_the_names_the_file_writes(tmp_path: Path) -> None:

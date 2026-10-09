@@ -21,7 +21,7 @@ from constricter.cli.options import Mode, Options, Output
 from constricter.cli.paths import STDIN, python_files
 from constricter.cli.protocol import HintError
 from constricter.cli.report import Format, Result, fix_reasons, render, statistics
-from constricter.cli.runs import BaselineRun, CheckRun, CoverageRun, FileRun
+from constricter.cli.runs import Added, BaselineRun, CheckRun, CoverageRun, FileRun, merged
 from constricter.cli.workers import Workers, kept, started
 from constricter.fix.core import fixes
 from constricter.fix.core.known import Callee, Hints, Outside, Returns
@@ -127,6 +127,7 @@ def _placed(offence: Offence, where: list[notebook.Line]) -> Offence:
 
 
 # One changed part of a fixed file (the file, or a notebook's cell): its label, old and new lines.
+_Hinted: TypeAlias = dict[Path, tuple[Hints, ...]]  # each file's hints, a checker's each
 _Change: TypeAlias = tuple[str, list[str], list[str]]
 # One JSON value a coverage report holds, and one file's row of them.
 _Scalar: TypeAlias = str | int | float
@@ -308,7 +309,29 @@ def _handled(path: Path, text: tuple[str, Path], offences: list[Offence], option
         return CheckRun(results, baselined, error=f"{name}: error: {message}")
     if fixed:
         _ = parsed.take(raw)  # the tree of the text it had: no check will ask for it again
-    return CheckRun(left, baselined, fixed)
+    return CheckRun(
+        left,
+        baselined,
+        fixed,
+        made=[r._replace(replacements=(), fixed=True) for r in results if r.offence in fixing],
+        rounds=(_added(raw, name, fixing),),
+    )
+
+
+def _added(raw: str, name: Path, fixing: Sequence[Offence]) -> Added:
+    """Find the lines fixing `fixing` adds to `raw`, the text of `name` (see `fixes.inserted`).
+
+    Returns:
+      Each one's cell (`None` outside a notebook) and the line it goes before; a notebook's cells
+      get declarations alone.
+
+    """
+    if name.suffix != notebook.SUFFIX:
+        return tuple((None, line) for line in fixes.inserted(lines(raw), fixing))
+    declared: list[tuple[int, int]] = [
+        (o.cell or 0, o.edit.span[0]) for o in fixing if o.edit is not None and o.edit.edit is Edit.DECLARE
+    ]
+    return tuple(sorted(declared))
 
 
 def _baseline_path(path: Path, outside: Outside, options: Options) -> BaselineRun:
@@ -412,7 +435,7 @@ def _check_rounds(options: Options) -> tuple[list[Path], list[FileRun]]:
             index: int
             run: FileRun
             for index, run in zip(again, redone, strict=True):
-                runs[index] = _merged(runs[index], run)
+                runs[index] = merged(runs[index], run)
             again = [index for index, run in zip(again, redone, strict=True) if cast("CheckRun", run).fixed]
         checker: str
         path: Path
@@ -484,7 +507,7 @@ def _checked_more(
     at: int
     run: FileRun
     for at, run in zip(which, redone, strict=True):
-        runs[at] = _merged(runs[at], run) if how[1].mode is Mode.FIX else run
+        runs[at] = merged(runs[at], run) if how[1].mode is Mode.FIX else run
     return modules
 
 
@@ -520,7 +543,8 @@ def _checked_all(
       What each file found, and the index of every file's module.
 
     """
-    hinted: dict[Path, tuple[Hints, ...]] = {} if session is None else session.hints(_texts(paths))
+    # Before a worker starts: one forked while the servers' threads run could wait on a lock one holds.
+    hinted: _Hinted = {} if session is None else session.hints(_texts(paths))
     if options.input.trace is not None:
         hinted = traced.merged(hinted, traced.load(options.input.trace), paths)
     coverage: bool = options.mode is Mode.COVERAGE  # needs nothing from the other files
@@ -540,20 +564,8 @@ def _checked_all(
         check,
         pool,
         (modules, hinted),
-        _merged if options.mode is Mode.FIX else None,
+        merged if options.mode is Mode.FIX else None,
     )
-
-
-def _merged(before: FileRun, after: FileRun) -> FileRun:
-    """Join a file's two `--fix` rounds' `CheckRun`s: what's left is the later's, what's fixed is both's.
-
-    Returns:
-      The joined run.
-
-    """
-    first: CheckRun = cast("CheckRun", before)
-    later: CheckRun = cast("CheckRun", after)
-    return replace(later, fixed=first.fixed + later.fixed)
 
 
 def _texts(paths: Sequence[Path]) -> dict[Path, str]:
@@ -586,10 +598,16 @@ def _report(options: Options, runs: Sequence[FileRun], files: int) -> int:
     results: list[Result] = [result for run in checked for result in run.results]
     output: Output = options.output
     text: bool = output.fmt in {Format.TEXT, Format.FULL}
+    # With `--show-fixes`, the fixes `--fix` made too: after the rest, as text or JSON.
+    shown: list[Result] = [*results, *(made for run in checked if output.show_fixes for made in run.made)]
     line: str
-    for line in statistics(results) if text and output.statistics else render(output.fmt, results):
+    for line in (
+        statistics(results)
+        if text and output.statistics
+        else render(output.fmt, shown if output.fmt is Format.JSON else results)
+    ):
         _ = sys.stdout.write(f"{line}\n")
-    for line in fix_reasons(results) if text and output.show_fixes else ():
+    for line in fix_reasons(shown) if text and output.show_fixes else ():
         _ = sys.stdout.write(f"{line}\n")
     errors: int = sum(r.offence.is_error(r.level) for r in results)
     if text and not output.quiet:
@@ -618,28 +636,51 @@ def _coverage(options: Options, paths: Sequence[Path], runs: Sequence[FileRun]) 
     counted: list[tuple[Path, Coverage]] = [
         (path, run.coverage) for path, run in zip(paths, covered, strict=True) if run.coverage is not None
     ]
-    total: Coverage = Coverage(sum(c.typed for _, c in counted), sum(c.total for _, c in counted))
+    total: Coverage = Coverage(
+        sum(c.typed for _, c in counted),
+        sum(c.total for _, c in counted),
+        sum(c.widened for _, c in counted),
+    )
     if options.output.fmt is Format.JSON:
         report: dict[str, _Scalar | list[_Row]] = {
-            "typed": total.typed,
-            "total": total.total,
-            "percent": round(total.percent, 1),
-            "files": [
-                {"path": str(path), "typed": c.typed, "total": c.total, "percent": round(c.percent, 1)}
-                for path, c in counted
-            ],
+            **_counts(total),
+            "files": [{"path": str(path), **_counts(c)} for path, c in counted],
         }
         _ = sys.stdout.write(json.dumps(report, indent=2) + "\n")
     else:
         path: Path
         c: Coverage
         for path, c in counted:
-            _ = sys.stdout.write(f"{path}: {c.typed}/{c.total} typed ({c.percent:.1f}%)\n")
-        _ = sys.stdout.write(
-            f"Total: {total.typed}/{total.total} typed ({total.percent:.1f}%) in {len(counted)} file(s).\n",
-        )
+            _ = sys.stdout.write(f"{path}: {_typed(c)}\n")
+        _ = sys.stdout.write(f"Total: {_typed(total)} in {len(counted)} file(s).\n")
     threshold: float | None = options.output.fail_under
     return EXIT_FOUND if threshold is not None and total.percent < threshold else EXIT_CLEAN
+
+
+def _counts(found: Coverage) -> _Row:
+    """Name a coverage's counts, for `--format=json`.
+
+    Returns:
+      Them, by name.
+
+    """
+    return {
+        "typed": found.typed,
+        "total": found.total,
+        "widened": found.widened,
+        "percent": round(found.percent, 1),
+    }
+
+
+def _typed(found: Coverage) -> str:
+    """Write a coverage as text: `3/4 typed (75.0%)`, then what a widening annotated, if anything.
+
+    Returns:
+      It.
+
+    """
+    wider: str = f", {found.widened} widened" if found.widened else ""
+    return f"{found.typed}/{found.total} typed ({found.percent:.1f}%){wider}"
 
 
 def _run(options: Options) -> int:

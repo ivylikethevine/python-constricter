@@ -18,8 +18,8 @@ def _found(source: str, checks: Checks | None = None) -> dict[str, tuple[str | N
 def test_a_read_of_a_union_may_be_narrowed_where_it_is_so_is_a_guess() -> None:
     """A copy, attribute or subscript of a union, and a filtered comprehension of one, are guesses.
 
-    One of an `X | None` isn't offered at all: it's nearly always checked for `None` first. Nor is a
-    bare `None`.
+    One of an `X | None` too, where nothing in the function tests or stores what's read (see
+    `test_a_read_of_an_optional_is_offered_where_nothing_narrows_it`). A bare `None` isn't offered.
     """
     source: str = """
     class C:
@@ -50,9 +50,9 @@ def test_a_read_of_a_union_may_be_narrowed_where_it_is_so_is_a_guess() -> None:
         o = [p for p in plain if p]
     """
     assert _found(source) == {
-        "a": (None, False),
-        "b": (None, False),
-        "d": (None, False),
+        "a": ("int | None", True),
+        "b": ("int | None", True),
+        "d": ("int | None", True),
         "e": ("list[int]", True),  # what it's checked for
         "g": ("list[int | str]", False),  # no condition to narrow it
         "h": ("list[int | None]", False),  # a container of one isn't narrowed with it
@@ -371,6 +371,26 @@ def test_a_name_a_type_ignore_line_uses_has_no_fix() -> None:
     assert _found(_EXCUSED) == {"text": (None, False), "other": ("str", False)}
 
 
+_EXCUSED_MODULE: Final = """
+import asyncio
+import inspect
+
+if hasattr(inspect, "markcoroutinefunction"):
+    check = inspect.iscoroutinefunction
+else:
+    check = asyncio.iscoroutinefunction  # type: ignore[assignment]
+limit = 3
+"""
+
+
+def test_a_modules_name_a_type_ignore_line_uses_has_no_fix() -> None:
+    """A module's name, by any line of the file."""
+    assert _found(_EXCUSED_MODULE, Checks(all_scopes=True)) == {
+        "check": (None, False),
+        "limit": ("int", False),
+    }
+
+
 def test_what_a_test_leaves_out_isnt_in_the_type() -> None:
     """A comprehension keeping only what isn't `None` holds none; a narrowed read doesn't type a call."""
     source: str = """
@@ -414,4 +434,109 @@ def test_what_a_test_leaves_out_isnt_in_the_type() -> None:
         "k": ("list[Trial]", True),
         "m": (None, False),  # a display of what's narrowed there
         "n": ("list[Trial | None]", False),
+    }
+
+
+def test_an_alias_of_a_union_is_read_as_the_union() -> None:
+    """Where a checker narrows it: a copy of one a test around it narrows has no fix.
+
+    Nor one of a name since bound to a value of no known type, which a checker narrows it to.
+    """
+    source: str = """
+    from typing import Optional, TypeAlias, Union
+
+    Key = Union[int, str]
+    Either: TypeAlias = "int | bytes"
+    Maybe = Optional[int]
+    Plain = int
+    Twice = int | str
+    Twice = int | bytes
+
+    def made(key):
+        return key
+
+    def f(key: Key, either: Either, maybe: Maybe, plain: Plain, twice: Twice, again: Key, flag: bool) -> None:
+        tested: Key = key
+        a = key
+        b = either
+        c = maybe
+        d = plain
+        e = twice
+        if tested:
+            g = tested
+        again = made(again)
+        h = again
+        if flag:
+            either = made(either)
+            i = either
+        j = either
+    """
+    assert _found(source) == {
+        "a": ("Key", False),
+        "b": ("Either", False),
+        "c": ("Maybe", False),
+        "d": ("Plain", False),
+        "e": ("Twice", False),  # a variable, to a checker: whatever it's declared as
+        "g": (None, False),
+        "h": (None, False),
+        "i": (None, False),
+        "j": ("Either", True),  # past the branch, either
+    }
+
+
+def test_a_read_of_an_optional_is_offered_where_nothing_narrows_it() -> None:
+    """Its declared type, a guess: not where its function tests or stores it, or what it's read of."""
+    source: str = """
+    class Pool:
+        size: int | None
+
+    class Conn:
+        pool: Pool | None
+
+    class Holder:
+        conn: Conn | None
+        sizes: dict[str, int | None]
+
+        def plain(self, other: Conn | None) -> None:
+            a = self.conn
+            b = other
+            c = self.sizes["a"]
+            if a is not None:
+                pass
+
+        def tested(self) -> None:
+            if self.conn is None:
+                return
+            d = self.conn
+
+        def stored(self) -> None:
+            self.conn = Conn()
+            e = self.conn
+
+        def deeper(self, pool: Pool) -> None:
+            assert pool
+            g = pool.size
+
+        def later(self) -> None:
+            h = self.conn
+            while self.conn:
+                pass
+
+        def inside(self) -> None:
+            i = self.conn
+
+            def check() -> bool:
+                if self.conn is None:
+                    return True
+                return False
+    """
+    assert {name: fix for name, fix in _found(source).items() if len(name) == 1} == {
+        "a": ("Conn | None", True),
+        "b": ("Conn | None", True),
+        "c": ("int | None", True),
+        "d": (None, False),
+        "e": (None, False),
+        "g": (None, False),  # of what's tested
+        "h": (None, False),  # tested after it too
+        "i": (None, False),  # by a function inside
     }
