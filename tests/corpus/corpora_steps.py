@@ -8,6 +8,9 @@
   a copy, from this checkout's root, whose settings point the checker at its environment;
 - `tests` and `types`, for a package with a suite (`corpus_suite.Suite`): its own tests and type
   checks as released and after each fix, each new error traced to its fix;
+- `traced`, where the run asks for it and the suite's tests can be traced
+  (`corpus_suite.traceable`): their trace, then `--fix --unsafe-fixes --infer-from` it, and the
+  package's type checks after, or its tests where it has no checks;
 - `check`: one check at `suffocate`, in the step's own process, timed, with each fix's mechanisms,
   the main process's share of it, and what the second round (the files whose callers type their
   parameters) costs, read from a second, profiled check.
@@ -52,6 +55,8 @@ CENSUS: Final = "census"
 CHECK: Final = "check"
 TESTS: Final = "tests"
 TYPES: Final = "types"
+TRACED: Final = "traced"
+SUITED: Final = frozenset({TESTS, TYPES, TRACED})  # the steps of a package's suite
 INFER: Final = "infer-"
 JOBS_VARIABLE: Final = "CORPUS_JOBS"
 WORKERS_VARIABLE: Final = "CORPUS_SUITE_WORKERS"
@@ -127,13 +132,27 @@ class Typechecked(NamedTuple):
     fixed: list[tuple[str, corpus_suite.Compared]]
 
 
+class Traced(NamedTuple):
+    """A package's tests' trace, and what `--fix --unsafe-fixes --infer-from` it did to its source.
+
+    `compared`: its type checks after, beside the released source's; `tested`, for a package with
+    no checks: its tests' outcome as released and after.
+    """
+
+    summary: str  # the traced tests'
+    resting: int  # the fixes that rest on the trace
+    change: str  # the fix's size, as `git diff --shortstat` puts it
+    compared: corpus_suite.Compared | None = None
+    tested: tuple[corpus_suite.Outcome, corpus_suite.Outcome] | None = None
+
+
 class Unset(NamedTuple):
     """A suite that couldn't be set up here: why (the clone's or an install command's failure)."""
 
     reason: str
 
 
-Value: TypeAlias = Measured | Census | Checked | Inferred | Tested | Typechecked | Unset
+Value: TypeAlias = Measured | Census | Checked | Inferred | Tested | Typechecked | Traced | Unset
 _Modes: TypeAlias = list[tuple[str, tuple[str, ...]]]  # each fixed run's label, and its options
 
 
@@ -372,6 +391,39 @@ def types_step(corpus: Corpus, suite: corpus_suite.Suite) -> Typechecked:
     )
 
 
+def traced_step(corpus: Corpus, suite: corpus_suite.Suite) -> Traced:
+    """Trace the corpus package's tests, fix its source with their trace, and check what that did.
+
+    By its own type checks, beside the released source's errors; by its tests, where it has none.
+
+    Returns:
+      The trace's summary, the fixes resting on it, and the checks' or the tests' outcome.
+
+    Raises:
+      RuntimeError: nothing runs the suite's tests traced.
+
+    """
+    root: Path = corpus_suite.checkout(corpus.name, suite)
+    summary: str | None
+    if (summary := corpus_suite.traced(root, suite)) is None:
+        message: str = f"nothing runs {corpus.name}'s tests traced"
+        raise RuntimeError(message)
+    options: tuple[str, ...] = corpus_suite.TRACE_MODE[1]
+    if suite.checks:
+        released: list[corpus_suite.Complaint] = corpus_suite.complaints(root, suite)
+        found: corpus_suite.Compared = corpus_suite.compared(root, suite, lambda: released, options)
+        corpus_suite.reset(root, suite)
+        return Traced(summary, found.traced, found.change, found)
+    kept: Path = corpus_suite.WORK / "outputs" / root.name
+    before: corpus_suite.Outcome = corpus_suite.tested(root, suite, kept / "traced-released.txt")
+    fixes: dict[str, list[corpus_suite.Fix]]
+    change: str
+    fixes, change = corpus_suite.fixed_and_listed(root, suite, *options)
+    after: corpus_suite.Outcome = corpus_suite.tested(root, suite, kept / "traced-fixed.txt")
+    corpus_suite.reset(root, suite)
+    return Traced(summary, corpus_suite.resting(fixes), change, None, (before, after))
+
+
 def cpu(who: int) -> float:
     """Read the CPU seconds this process (`RUSAGE_SELF`) or its finished children have used.
 
@@ -481,8 +533,12 @@ def check_step(corpus: Corpus) -> Checked:
     )
 
 
-def _suited(name: str, corpus: Corpus, suite: corpus_suite.Suite | None) -> Tested | Typechecked | Unset:
-    """Run a suite's step, `TESTS` or `TYPES`.
+def _suited(
+    name: str,
+    corpus: Corpus,
+    suite: corpus_suite.Suite | None,
+) -> Tested | Typechecked | Traced | Unset:
+    """Run a suite's step: one of `SUITED`.
 
     Returns:
       What it gave, or why the suite couldn't be set up.
@@ -494,8 +550,13 @@ def _suited(name: str, corpus: Corpus, suite: corpus_suite.Suite | None) -> Test
     if suite is None:
         message: str = f"{corpus.name} has no suite"
         raise ValueError(message)
+    steps: dict[str, Callable[[Corpus, corpus_suite.Suite], Tested | Typechecked | Traced]] = {
+        TESTS: tests_step,
+        TYPES: types_step,
+        TRACED: traced_step,
+    }
     try:
-        return tests_step(corpus, suite) if name == TESTS else types_step(corpus, suite)
+        return steps[name](corpus, suite)
     except (RuntimeError, OSError) as failure:  # `corpus_suite.checkout`'s: no clone, or no install
         return Unset(str(failure).strip().rsplit("\n", 1)[-1])
 
@@ -509,7 +570,7 @@ def _given(name: str, corpus: Corpus, suite: corpus_suite.Suite | None) -> Value
     """
     if name.startswith(INFER):
         return infer_step(corpus, name.removeprefix(INFER))
-    if name in {TESTS, TYPES}:
+    if name in SUITED:
         return _suited(name, corpus, suite)
     alone: dict[str, Callable[[Corpus], Value]] = {TABLE: table_step, CENSUS: census_step, CHECK: check_step}
     return alone[name](corpus)

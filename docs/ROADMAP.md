@@ -175,9 +175,10 @@
   guesses of kind `traced`, for a local an assignment or a `for` loop binds to a value taken from a
   parameter no checker types, or from an attribute of `self` its class stores only such parameters
   in (what no checker types wider than the run saw), bound again or in a loop too, a class the file
-  doesn't name imported under `if TYPE_CHECKING:`. With their suites traced: 1,443 fixes on pandas
-  and 179 on SQLAlchemy, none bringing an error where the traced name is bound; pandas's traced
-  tests take 99s on 14 workers, as they do untraced.
+  doesn't name imported under `if TYPE_CHECKING:`. With their suites traced: 1,443 fixes on pandas,
+  462 on Django and 179 on SQLAlchemy, none bringing an error where the traced name is bound, and
+  Django's tests the same after; pandas's traced tests take 99s on 14 workers, as they do untraced,
+  Django's 20 minutes in one process.
 - **Wider types, chosen** (`fix-widen`, [FIXES.md](FIXES.md#wider-types-fix-widen)): each a fix kind
   of its own, off unless listed (`all`: every one). A statement one writes ends with
   `# constricter: auto`: LVA005 passes over it, `--coverage` counts it apart (typed, widened), it
@@ -201,8 +202,14 @@
   bindings widened from 187, 81.0% typed or widened from 66.2%, 514 by `unknown-calls` (its
   functions all declare their returns); basedpyright finds two errors fewer and four more (a name
   declared `str | None`, assigned an explicit `Any`, keeps that type; a loop's target declared
-  `Any`, which a `TypeIs` narrows otherwise than the `type` it was). None of the kinds is counted on
-  the seven corpora, nor run through the packages' suites.
+  `Any`, which a `TypeIs` narrows otherwise than the `type` it was). On the seven corpora, with
+  `--unsafe-fixes` and every kind, a check offers a widening for 79,791 of the 250,958 offences
+  (31.8%), the bindings with no fix going from 139,714 to 59,923, and a fix leaves 76.7% of the
+  bindings typed or widened (45.6% typed, from 2.2%), no file broken: `unknown-calls` 56,419,
+  `untyped-calls` 12,187, `empty-containers` 3,812, `untyped-parameters` 3,173, `mixed-containers`
+  2,543, `vague` 1,186, `unions` 471. With `untyped-calls` beside the guesses, sqlalchemy's mypy
+  finds nothing new (299 such fixes) and pandas's checkers the one error they find without it (812);
+  pydantic has no such call.
 - **Each checker's servers, by its own measure**: every checker gets up to four, and a server's
   memory is its checker's (`Server.fitting`). basedpyright's each hold the whole program (0.6 GB and
   130 bytes for each byte of the files); `ty`'s and pyrefly's each hold their share, so the files
@@ -537,15 +544,12 @@ fix.
    `overloads.py`). Done when the tables come out byte for byte the same with `stubs.py` a layer
    over it. About 5 hours; coverage unchanged.
 
-8. **Wider: a call's value, counted.** `untyped-calls` and `unknown-calls` write `Any` for what a
-   plain assignment, a loop, an unpacking or a `with` binds to a call of no known type in a function
-   ([Done](#--fix)): of the 56,540 bindings with no fix that are a call on what has no type. Left: a
-   count, since neither kind is measured on the seven corpora, and no package's own checker has run
-   after `untyped-calls` (pydantic has no such call); and a second pass of every kind that adds
-   nothing: on pydantic it adds one union, of two values that are guesses until the first pass
-   declares what they rest on (`unions` joins certain types alone). Done when each kind is counted
-   on the corpora, and `untyped-calls` brings mypy nothing new on the corpus packages. About 2
-   hours, for up to 22% of the offences with what's done, none of it a type.
+8. **Wider: a second pass that adds nothing.** With every `fix-widen` kind, a second
+   `--fix --unsafe-fixes` pass still fixes 11 bindings on the seven corpora (pandas 7, the standard
+   library 3, pydantic 1): each a union of values that are guesses until the first pass declares
+   what they rest on (`unions` joins certain types alone). And no package's suite has run after a
+   widening. Done when a second pass leaves nothing on the seven, and the four suites' tests are the
+   same after `--fix --unsafe-fixes` with every kind. About 2 hours; coverage unchanged.
 
 ### Large: more than 8 hours
 
@@ -575,11 +579,14 @@ fix.
          SQLAlchemy 179 fixes and 6 new errors, on pandas 1,443 and one, on pydantic one and none,
          past what `--fix --unsafe-fixes` brings; none at a traced binding, once a parameter the
          function tests, binds again or gives a default isn't taken for untyped (3 of pandas's
-         were). Django's tests aren't traced: pytest doesn't run them.
+         were).
+   - [x] **Django's tests, by their script**: `runtests.py` in one process (`Suite.script`), 20
+         minutes traced. 462 fixes rest on the trace, and its tests are the same after; it has no
+         type checker.
+   - [ ] **The four in one run**: `super_corpora.py` has a `traced` step for each suite, never run.
 
    Done: a traced suite types a loop's target, with no new error at a traced binding itself on the
-   three corpora traced. Left to count: Django (a trace of `runtests.py`, in one process), and the
-   seven in one run (`super_corpora.py` has no traced step).
+   three corpora traced and type-checked. Left: a super corpora run with the step.
 
 2. **Class bodies of plain classes, past literals.** An annotation in a class body makes a
    dataclass's or a model's variable a field, so `--fix` annotates only a plain class's variable
@@ -679,18 +686,23 @@ fix.
 
 ## Ongoing
 
-- **zuban as an `--infer-with` checker** once its server holds a project (last checked 2026-09-30:
+- **zuban as an `--infer-with` checker** once its server holds a project (last checked 2026-10-09:
   0.10.0 overflows its stack with pydantic's or django's files open and says nothing for two minutes
   on sqlalchemy's; a server per file types 15.3% of pydantic's bindings with no fix, below the
   others). It refuses a hint range ending past the last line, and is AGPL-3.0. About 4 hours then.
-- **The Type Server Protocol** once a second checker serves it and it reaches 1.0 (last checked
-  2026-09-30: 0.4.1, `pyrefly tsp` alone). `typeServer/getComputedType` gives a type as a structure
-  with each class's declaring file, where an inlay hint's is text to parse. About 10 hours then.
-- **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+ (last checked 2026-09-22:
+- **The Type Server Protocol** once it reaches 1.0 (last checked 2026-10-09: 0.4.1, served by
+  `pyrefly tsp` and Pyright's `pyright-typeserver`, an npm package of its own; basedpyright and ty
+  decline it). `typeServer/getComputedType` gives a type as a structure with each class's declaring
+  file, where an inlay hint's is text to parse. Measured on pydantic with pyrefly 1.3.2, its answers
+  taken as hints for the 1,442 bindings its hints leave with no fix: 791 are `Any` or nothing, and
+  21 are fixes, 8 of them right by eye (each a loop's target, a `str`, where pyrefly shows no hint)
+  and 13 wrong (a type alias typed as what it names, a class as its instance); none is a hint
+  dropped for a class the file can't name. About 10 hours then.
+- **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+ (last checked 2026-10-09:
   6.2.0 still has only a CPython 3.10 one). Under an hour then.
 - **Test on PyPy 8** once hypothesis ships wheels for its ABI (`pp80`): CI's PyPy entry is pinned to
-  7.3 (`pypy: v7.3.x`), since hypothesis has no pure-Python wheel (last checked 2026-09-30: 6.168.3
-  has `pp73` wheels alone). Under an hour then.
+  7.3 (`pypy: v7.3.x`), since hypothesis has no pure-Python wheel (last checked 2026-10-09: PyPy
+  8.0.0 is released, and 6.168.5 has `pp73` wheels alone). Under an hour then.
 - **Revisit the [disabled rules](CONTRIBUTING.md#disabled-rules)** as tools change (last checked
   2026-09-22: COM812, one-line DOC201/DOC402 and `max-args` came back on; the rest can't go yet).
   About an hour a pass.

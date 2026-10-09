@@ -8,13 +8,15 @@
 
 The corpora are `tests/corpus/corpus_table.py`'s, and each one's steps `tests/corpus/corpora_steps.py`'s:
 the table, the census, `--infer-with` each installed checker, its package's own tests and type
-checks where `corpus_suite.SUITES` has it, and a timed check.
+checks where `corpus_suite.SUITES` has it, a fix by its tests' trace where they can be traced, and
+a timed check.
 
 The machine sizes the run. Every step of every corpus starts once the CPUs it's expected to keep
-busy are free (`Slots`): each works on a copy of its own, but a suite's type checks, which wait
-for its tests on their checkout unless the plan gives them checkouts of their own (`Plan.apart`:
-pandas's, whose checks take the longest), and the tests of suites that bind one port, one at a
-time (`Plan.ports`). A step is expected to keep busy what it did in the last
+busy are free (`Slots`): each works on a copy of its own, but a suite's traced step and its type
+checks, which wait for its tests on their checkout (the type checks unless the plan gives them
+checkouts of their own: `Plan.apart`, pandas's, whose checks take the longest), and the tests of
+suites that bind one port, one at a time (`Plan.ports`).
+A step is expected to keep busy what it did in the last
 run that measured it (the CPU seconds of every process under it, over its seconds: see
 `corpora_cpu`); else its suite's workers for its tests
 (`corpus_suite.workers`), and `_STEP_CPUS` for any other: one of constricter's checks in bursts
@@ -42,7 +44,8 @@ Each step is a process of its own, its result kept in `local/super-corpora/<vers
 it lacks, and a change to the code starts a new one. The section it writes, `## Super corpora`,
 names the machine: timings don't compare across machines. It exits 1 on anything a fix broke (a
 file that no longer compiles, a second pass with more to fix, a test's outcome changed, a type
-error a certain fix or a guess added) or a step that failed, each listed on standard error. Run
+error a certain fix or a guess added, a test's outcome changed by the trace's fixes) or a step
+that failed, each listed on standard error. Run
 it outside a sandbox: it starts worker processes, and the suites need the network once.
 """
 
@@ -92,6 +95,7 @@ _JOB_MEMORY: Final = _GIB + _GIB // 4
 _WORKER_MEMORY: Final = _GIB // 2
 _CHECKS_BESIDE: Final = 2  # the timed checks run at a time, the CPUs split among them
 _UNSIZED_SHARE: Final = 3  # the unmeasured steps starting the type checkers that the memory is split among
+_TESTING: Final = frozenset({corpora_steps.TESTS, corpora_steps.TRACED})  # the steps that run a suite's tests
 _STEP_FLAG: Final = "--step"
 _FRESH_FLAG: Final = "--fresh"
 _PRINT_FLAG: Final = "--print"
@@ -113,6 +117,7 @@ class Plan(NamedTuple):
     apart: frozenset[str] = frozenset()  # the corpora whose type checks get checkouts of their own
     # The port a corpus's tests bind, by its name: those of one port run one at a time.
     ports: Mapping[str, str] = {}
+    traced: bool = False  # whether each suite's tests are traced, and its source fixed by the trace
 
 
 SUPER: Final = Plan(
@@ -123,6 +128,7 @@ SUPER: Final = Plan(
     corpus_table.corpora,
     corpus_suite.SUITES,
     frozenset(_FIRST),
+    traced=True,
 )
 
 
@@ -268,6 +274,8 @@ def steps(corpus: Corpus, plan: Plan) -> list[str]:
         found.append(corpora_steps.TESTS)
         if suite.checks:
             found.append(corpora_steps.TYPES)
+        if plan.traced and corpus_suite.traceable(suite):
+            found.append(corpora_steps.TRACED)
     return found
 
 
@@ -387,7 +395,7 @@ class _Running(NamedTuple):
         if (known := self.before.get((corpus.name.replace(" ", "-"), name))) is not None:
             return math.ceil(known[0])
         suite: corpus_suite.Suite | None = self.plan.suites.get(corpus.name)
-        if name == corpora_steps.TESTS and suite is not None:
+        if name in _TESTING and suite is not None:
             return min(corpus_suite.workers(suite), self.sized.workers)
         return _APART_CPUS if name == corpora_steps.TYPES and corpus.name in self.plan.apart else _STEP_CPUS
 
@@ -406,7 +414,7 @@ class _Running(NamedTuple):
         jobs: int = self.sized.jobs * (_FIRST_JOBS if corpus.name in _FIRST else 1)
         if name == CHECK:
             jobs = self.sized.cpus // _CHECKS_BESIDE
-        workers: int = self.sized.workers if name == corpora_steps.TESTS else 0
+        workers: int = self.sized.workers if name in _TESTING else 0
         return max(jobs * _JOB_MEMORY, workers * _WORKER_MEMORY)
 
     def process(self, corpus: Corpus, name: str, out: Path, jobs: int) -> int:
@@ -463,7 +471,7 @@ class _Running(NamedTuple):
         wanted: int = self.expected(corpus, name) if cpus is None else cpus
         # Its tests' port first, if they bind one: waited for holding no CPUs.
         port: threading.Lock | None = (
-            self.bound.get(self.plan.ports.get(corpus.name, "")) if name == corpora_steps.TESTS else None
+            self.bound.get(self.plan.ports.get(corpus.name, "")) if name in _TESTING else None
         )
         stack: contextlib.ExitStack
         with contextlib.ExitStack() as stack:
@@ -515,13 +523,16 @@ def _said(done: Step | None, seconds: float) -> str:
 
 
 def _groups(corpus: Corpus, plan: Plan) -> list[list[str]]:
-    """Group a corpus's steps by what must run one after another: its tests and type checks, on one checkout.
+    """Group a corpus's steps by what must run one after another: its suite's, on one checkout.
+
+    But its type checks, where the plan gives them checkouts of their own.
 
     Returns:
       Each group's steps; every other step alone.
 
     """
-    shared: set[str] = set() if corpus.name in plan.apart else {corpora_steps.TESTS, corpora_steps.TYPES}
+    apart: set[str] = {corpora_steps.TYPES} if corpus.name in plan.apart else set()
+    shared: set[str] = set(corpora_steps.SUITED) - apart
     names: list[str] = steps(corpus, plan)
     alone: list[list[str]] = [[name] for name in names if name not in shared]
     return [*alone, *([[name for name in names if name in shared]] if shared & set(names) else [])]

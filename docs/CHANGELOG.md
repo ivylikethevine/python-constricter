@@ -6,6 +6,14 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `corpus_suite.py --trace` traces a suite pytest doesn't run by the script it names, in one process
+  (`Suite.script`: Django's `tests/runtests.py --parallel=1`), and `super_corpora.py` has a `traced`
+  step for each suite: its tests' trace, the fixes resting on it, and its type checks after, or its
+  tests where it has none. On Django: 462 fixes, its tests the same.
+- `--fix` writes an annotation after the whole of a name the source spells unnormalised: a
+  full-width `ｗｗｗ = 1`, `www` to Python, was written `ｗ: intｗｗ = 1`, which compiles and binds
+  another name. A name of other such characters had no fix. Four bindings in the standard library's
+  tests.
 - A guess by an unannotated function's `return`s, or a checker's hint, isn't offered where its
   function uses the name as the type doesn't allow: a comparison of it used as more than a `bool`
   (`(start == index).any()`), a `bytes` formatted into a string (`f"{raw}"`), or the name, or an

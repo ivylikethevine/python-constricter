@@ -79,8 +79,9 @@ after `--fix`, and after `--fix --unsafe-fixes`, and exits 1 if either differs; 
 runs the package's own type checker (as its CI does) the same three times instead, traces each new
 error to the fix mechanism behind it, and exits 1 if there are any; `--infer-with CHECKERS` adds a
 run fixed with those checkers' hints too, and `--trace` one fixed with the trace of the package's
-tests (`python -m constricter.trace`, where pytest runs them). It needs `git`, `uv`, a C compiler,
-Rust (a default toolchain: `rustup default stable`) and the network.
+tests (`python -m constricter.trace`, where pytest runs them, or a script the suite names does in
+one process: Django's `runtests.py`). It needs `git`, `uv`, a C compiler, Rust (a default toolchain:
+`rustup default stable`) and the network.
 
 `tests/corpus/corpus_table.py` measures every corpus with released constricter versions and this
 checkout (each isolated in its own environment), at every level, checked and fixed, and records a
@@ -95,9 +96,9 @@ beside the base branch's (`tests/corpus/corpus_coverage.py`), and edits the comm
 
 `local/.venv/bin/python -m tests.corpus.super_corpora` runs all of these on every corpus at once,
 for a machine with many cores: the table, the census, each installed checker's `--infer-with`, each
-package's suite and type checks, and a timed check, the corpora side by side and each step kept so a
-stopped run resumes. It writes [RUNS.md](RUNS.md)'s `Super corpora` section, with the machine it ran
-on, and exits 1 on anything a fix broke.
+package's suite and type checks, a fix by its tests' trace, and a timed check, the corpora side by
+side and each step kept so a stopped run resumes. It writes [RUNS.md](RUNS.md)'s `Super corpora`
+section, with the machine it ran on, and exits 1 on anything a fix broke.
 
 `local/.venv/bin/python -m tests.corpus.corpus_untyped` counts what `--fix` still can't type on the
 same corpora, and why: each untyped binding by the statement that binds it and the shape of its

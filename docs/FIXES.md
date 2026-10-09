@@ -810,9 +810,11 @@ a name typed at last is checked at last. With each package's tests traced
 (`tests/corpus/corpus_suite.py --types --trace`), its own type checkers find, past what
 `--fix --unsafe-fixes` alone brings: on SQLAlchemy 6 errors with 179 fixes, on pandas one with 1,443
 (an ignore no longer needed), on pydantic none with one; none where a traced name is bound, each at
-a later use of it (`index.table`, a `Table | None`, passed where a `FromClause` is declared). On
-pandas's `tests/frame/methods`, which its checkers pass over, basedpyright finds 33 with 148 fixes
-(7% more), the same way (`df.join(other, how="foo")`, in a test of that error).
+a later use of it (`index.table`, a `Table | None`, passed where a `FromClause` is declared).
+Django, which has no type checker, is traced through `tests/runtests.py --parallel=1`: 462 fixes,
+and its tests the same after. On pandas's `tests/frame/methods`, which its checkers pass over,
+basedpyright finds 33 with 148 fixes (7% more), the same way (`df.join(other, how="foo")`, in a test
+of that error).
 
 ## Fix levels
 

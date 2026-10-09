@@ -22,6 +22,7 @@ from tests.corpus.corpora_steps import (
     NONE,
     TABLE,
     TESTS,
+    TRACED,
     TYPES,
     Census,
     Checked,
@@ -30,6 +31,7 @@ from tests.corpus.corpora_steps import (
     Step,
     Steps,
     Tested,
+    Traced,
     Typechecked,
     Unset,
     Value,
@@ -58,7 +60,10 @@ _CENSUS_NOTE: Final = (
 _SUITES_NOTE: Final = (
     "Each package's own tests and type checks, as released and after fixing its source "
     "(`corpus_suite.py`): the tests' outcome, and the type errors a fixed run has that the "
-    "released one hasn't, by the mechanisms of the fixes they're traced to:"
+    "released one hasn't, by the mechanisms of the fixes they're traced to; then each package's "
+    "tests traced (`python -m constricter.trace`) and its source fixed with "
+    "`--fix --unsafe-fixes --infer-from` their trace: the fixes resting on it, and the new type "
+    "errors after, or the tests' outcome where the package has no checks:"
 )
 _HINTS_NOTE: Final = (
     "`--fix --unsafe-fixes --infer-with` each checker, on a copy: what it fixed (and how many "
@@ -210,6 +215,33 @@ def _typechecked(found: Steps) -> Typechecked | None:
     return value if isinstance(value, Typechecked) else None
 
 
+def _traced(found: Steps) -> Traced | None:
+    value: Value | None = _value(found, TRACED)
+    return value if isinstance(value, Traced) else None
+
+
+def _trace_rows(names: Sequence[str], found: dict[str, Steps]) -> list[list[str]]:
+    """Tabulate each package's traced tests, and what the fix by their trace did.
+
+    Returns:
+      The table's rows, its header first; the header alone where no trace was taken.
+
+    """
+    rows: list[list[str]] = [["Package", "Traced tests", "Fixes resting on the trace", "After"]]
+    name: str
+    for name in names:
+        traced: Traced | None
+        if (traced := _traced(found[name])) is None:
+            continue
+        after: str = NONE
+        if traced.compared is not None:
+            after = f"{len(traced.compared.new):,} new type errors"
+        elif traced.tested is not None:
+            after = f"tests {_after(*traced.tested, traced.change)}"
+        rows.append([name, traced.summary, f"{traced.resting:,}", after])
+    return rows
+
+
 def _listed(start: str, items: Sequence[str]) -> list[str]:
     """Lay a list item's comma-separated `items` out after `start`, as Prettier fills a paragraph.
 
@@ -240,7 +272,7 @@ def _unset(names: Sequence[str], found: dict[str, Steps]) -> list[str]:
     name: str
     for name in names:
         step: str
-        for step in (TESTS, TYPES):
+        for step in (TESTS, TYPES, TRACED):
             value: Value | None = _value(found[name], step)
             if isinstance(value, Unset):
                 said: str = f"- {name}: its `{step}` couldn't be set up ({value.reason})"
@@ -297,6 +329,7 @@ def _suites(names: Sequence[str], found: dict[str, Steps]) -> list[str]:
                     listed += [f"and {more} of other mechanisms"] if more else []
                     traced.extend(_listed(f"- {name}, `{label}`:", listed))
     unset: list[str] = _unset(names, found)
+    trace_rows: list[list[str]] = _trace_rows(names, found)
     if len(tests) == 1:
         return ["None of these corpora's suites ran.", "", *unset]
     return [
@@ -305,6 +338,9 @@ def _suites(names: Sequence[str], found: dict[str, Steps]) -> list[str]:
         *(corpus_table.table(types, right=2) if types else []),
         "",
         *traced,
+        "",
+        *(corpus_table.table(trace_rows, right=2) if len(trace_rows) > 1 else []),
+        "",
         *unset,
     ]
 
@@ -472,4 +508,11 @@ def broken(found: dict[str, Steps]) -> list[str]:
                 for label, compared in checked.fixed[: len(corpus_suite.MODES)]
                 if compared.new
             ]
+        traced: Traced | None
+        if (traced := _traced(chain)) is not None and traced.tested is not None:
+            before: corpus_suite.Outcome
+            after: corpus_suite.Outcome
+            before, after = traced.tested
+            if after != before:
+                lines.append(f"{name}: tests differ after the trace's fixes")
     return lines

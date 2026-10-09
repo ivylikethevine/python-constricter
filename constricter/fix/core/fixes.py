@@ -3,6 +3,7 @@
 
 import contextlib
 import re
+import unicodedata
 from collections.abc import Sequence
 from operator import itemgetter
 from typing import Final, NamedTuple, TypeAlias
@@ -14,6 +15,8 @@ _HEADER: Final = 2  # a file's shebang and coding lines come first, if it has th
 _Present: TypeAlias = tuple[Sequence[str], int, frozenset[str]]
 _PRESENT: Final[dict[str | None, _Present]] = {}
 _HEADER_LINE: Final = re.compile(r"#!|#.*coding[:=]")
+_IDENTIFIER: Final = re.compile(r"\w+")
+_NORMAL: Final = "NFKC"  # how Python normalises an identifier: `ast` has a full-width `w` as `w`
 # Lines to insert, and the number of lines before them.
 _Run: TypeAlias = tuple[int, list[str]]
 # What orders the edits: a line, what's made there first (`_IMPORTS`, then an edit in the line,
@@ -74,11 +77,33 @@ def replacement(lines: Sequence[str], offence: Offence) -> Replacement | None:
             mark: str = f"  {MARK}" if fix.kinds & WIDEN_KINDS else ""
             return Replacement(fix.span[0], "", "", f"{indent}{offence.name}: {fix.annotation}{mark}{ending}")
         raw: bytes = lines[offence.line - 1].encode()
-        start: int = fix.span[0] if fix.edit is Edit.REPLACE else offence.col + len(offence.name.encode())
+        start: int = fix.span[0] if fix.edit is Edit.REPLACE else _name_end(raw, offence)
         end: int = fix.span[1] if fix.edit is Edit.REPLACE else start
         written: str = fix.annotation if fix.edit is Edit.REPLACE else f": {fix.annotation}"
         return Replacement(offence.line, raw[:start].decode(), raw[start:end].decode(), written)
     return None
+
+
+def _name_end(raw: bytes, offence: Offence) -> int:
+    """Find where the offence's name ends in its line `raw`, as the source spells it.
+
+    The source may spell it longer than `ast` has it, which normalises an identifier (a full-width
+    `w` is `w`).
+
+    Returns:
+      The column after it.
+
+    Raises:
+      IndexError: The line doesn't have the name there.
+
+    """
+    rest: str = raw[offence.col :].decode()
+    if rest.startswith(offence.name):
+        return offence.col + len(offence.name.encode())
+    spelled: re.Match[str] | None = _IDENTIFIER.match(rest)
+    if spelled is None or unicodedata.normalize(_NORMAL, spelled.group()) != offence.name:
+        raise IndexError(offence.col)
+    return offence.col + len(spelled.group().encode())
 
 
 def dropped(lines: Sequence[str], offence: Offence) -> Replacement | None:
