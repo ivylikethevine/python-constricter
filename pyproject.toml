@@ -107,19 +107,13 @@ packages = ["constricter"]
 # The generator too: a wheel built from the sdist checks the tables it carries are current.
 only-include = ["constricter", "stdlib_tables", "hatch_build.py", "README.md", "LICENSE.md"]
 
-[tool.constricter]
-# Drafts for other projects (Trunk, conda-forge); Trunk's `basic.in.py` is untyped on purpose. The
-# directory name skips it in a walk; the path glob, where a file's named (pre-commit names each).
-exclude = ["upstream", "upstream/*"]
-
 [tool.ruff]
 line-length = 110
 indent-width = 4
 target-version = "py311"
 cache-dir = "local/.ruff_cache"
-# Drafts for other projects (Trunk, conda-forge), in their own formats; `basic.in.py` is untyped on purpose.
 # `.claude/worktrees/`: other checkouts of this repository, made by Claude Code's agents.
-extend-exclude = ["upstream", ".claude"]
+extend-exclude = [".claude"]
 
 [tool.ruff.lint]
 select = ["ALL"]

@@ -444,40 +444,6 @@ current, its finer counts are as first measured. Where an item cites a sample, i
 of the standard library, pandas, django and sqlalchemy, each checked alone: 28,931 bindings with no
 fix.
 
-### Small: under 4 hours
-
-1. **pandas's check, as fast as at 0.3.3.** With `--jobs=1` on 16 CPUs the standard library checks
-   in 55s (67s at 0.3.3), pandas in 60s (55s): the command no longer waits on the interpreter's
-   exit. pandas's 5s are in the check itself (21s in `checker.checked_tree`, from 16s) and in the
-   installed classes' methods a file may call (`stubbed.methods`, 4s from 2s), timed without a
-   profiler: `cProfile` put the cost elsewhere, in what's called most. Time `checked_tree`'s parts
-   the same way (a wrapper around each, at both tags, from a copy of each: a script beside the
-   checkout imports the installed one). Done when pandas checks no slower than at 0.3.3, or each
-   second is accounted for by a fix it buys. About 3 hours; coverage unchanged.
-2. **A run of the seven, under 20 minutes.** It takes 23, from 29: a file basedpyright's server
-   hangs on is remembered, not waited for twice in each hinted fix of pandas. Its longest step is
-   pandas's type checks (916s), then the standard library's `--infer-with basedpyright` (763s). Each
-   is waiting on a checker's server on one core, and this machine's 16 CPUs are 8 cores: sharing out
-   10 or 12 of them (`CORPUS_SLOTS`) made each step a quarter faster (pandas's type checks 668s, the
-   standard library's hinted fix 520s) and the run no shorter (25 and 24 minutes), since pandas's
-   steps hold more than that between them and the other corpora's then start late, though the
-   longest waiting step now goes first. What's left to try: pandas's steps counted against the
-   share, not let through it; and the items below that shorten a hinted fix. Done when a run takes
-   under 20 minutes with the same counts. About 3 hours; coverage unchanged.
-3. **Wider: `None`, then a value of no known type.** `x = None`, bound later to what `--fix` can't
-   type: 3,519 bindings. `Any | None`, marked, a kind of `fix-widen`. Drawback: a checker reads it
-   as `Any`, so it says only that `None` is possible, which the first line already did; and where
-   the later value is one a checker can type, the `Any` hides it. Recommended: last of these, if at
-   all. Done when the checkers find nothing new after it. About 2 hours, for about 1.4% (3,519
-   widened).
-4. **Wider: `Any` for whatever is left.** An attribute, a subscript or arithmetic on what has no
-   type: the rest of the bindings with no fix. `Any`, marked: every binding is then annotated.
-   Drawback: the same as for a call's (see the Medium item), with less to say for it: pyright reads
-   types through attributes and operators that `--fix` doesn't, and loses each one written over.
-   Recommended: not by default, and only for a project checked by mypy alone. Done when `--coverage`
-   reads 100% typed or widened on a corpus with it on. About 2 hours; the rest of the offences, none
-   of it a type.
-
 ### Medium: 4 to 8 hours
 
 1. **What a guess breaks, by its cause.** After `--fix --unsafe-fixes` the packages' own type
@@ -668,18 +634,3 @@ fix.
 - **Revisit the [disabled rules](CONTRIBUTING.md#disabled-rules)** as tools change (last checked
   2026-09-22: COM812, one-line DOC201/DOC402 and `max-args` came back on; the rest can't go yet).
   About an hour a pass.
-
-## Waiting on a step outside this repository
-
-1. **The GitHub Action on the Marketplace.** It already works from any tag, and `action.yml` has the
-   name, description and branding a listing needs: tick "Publish this Action to the GitHub
-   Marketplace" when publishing a release. No agent hours.
-2. **Trunk and MegaLinter plugin definitions**, submitted upstream. MegaLinter's is
-   `mega-linter-plugin-constricter/constricter.megalinter-descriptor.yml` (usable now through
-   `PLUGINS`); what's left is a pull request adding it to `.automation/plugins.yml` in
-   oxsecurity/megalinter. Trunk's is drafted in `upstream/trunk/linters/constricter/`, for a pull
-   request to trunk-io/plugins with the snapshot its test harness generates. About 2 hours.
-3. **A conda-forge recipe**, submitted to conda-forge/staged-recipes: drafted in
-   `upstream/conda-forge/recipes/python-constricter/`, built from the sdist, which carries the
-   tables. It built and passed its tests with rattler-build against flit-core; the build backend is
-   hatchling now (`>=1.27`), which its host requirements name, not yet rebuilt. About 2 hours.
