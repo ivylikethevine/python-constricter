@@ -458,7 +458,10 @@ fix.
    attribute its class hasn't, a name typed in a branch and read past it, two arms of an `if` of
    which one's type isn't known, a union split over an unpacking's names (see the changelog); and,
    not counted again since, what's read past such arms (`for lvl in levels`, 2 of pandas's 7) and a
-   copy of a union's alias bound again before it (sqlalchemy's 2). What's left:
+   copy of a union's alias bound again before it (sqlalchemy's 2). Fixed on the mega corpora's, one
+   error each, and not counted again since: a display of a bare `Final` name (litestar),
+   `copy.copy(self)` returned as `Self` (strawberry-graphql), a tested name added in a tuple
+   (click), and a `dict` comprehension an `isinstance` filters (optuna). What's left:
    - A type from a package the suite's own checker can't follow (`etree.Element`, of `lxml`): 14 of
      mypy's. Its environment's, as pydantic's are; listed, not fixed.
    - A stub that says less than what runs (`Timestamp == index` is a `bool`, then `.any()`), and a
@@ -468,6 +471,8 @@ fix.
      taken from it is checked (`oindex._values`). One of pandas's.
    - A name first an `X | None`, tested for `None` and bound again (`code = error.get("code")`, then
      `if code is None: code = SYNTAX`): typed by its first value. Three of mypy's.
+   - A display of a base's subclasses, declared their union and passed where a `dict` of the base is
+     taken (`dict[str, A | B]` for a `dict[str, Base]`). One of optuna's.
 
    Done when each package's errors left are its environment's, or under one for each hundred of its
    guesses: so on the seven; a mega corpora run says whether on its packages. About 2 hours;

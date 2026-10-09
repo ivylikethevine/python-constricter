@@ -56,7 +56,8 @@ from constricter.rules.annotations import (
     vague_fits,
 )
 from constricter.rules.flow import Finding, Hierarchy, Lifetime, findings, members
-from constricter.rules.quoted import quote, written
+from constricter.rules.quoted import parsed as unquoted
+from constricter.rules.quoted import quote, unqualified
 from constricter.rules.rebinding import REBOUND
 from constricter.rules.syntax import FunctionDef, Start
 
@@ -185,12 +186,16 @@ class Inferred:
         """
         return members(self.unions.get(annotation, annotation)) or frozenset()
 
-    def declare(self, name: str, annotation: ast.expr) -> None:
-        """Record the type `name` is annotated with: its own from here on, or an alias's declaration."""
+    def declare(self, name: str, annotation: ast.expr, held: str | None = None) -> None:
+        """Record the type `name` is annotated with: its own from here on, or an alias's declaration.
+
+        A `Final[T]`'s or a `ClassVar[T]`'s is `T`, and a bare one's its value's (`held`, if known).
+        """
+        text: str | None = unqualified(unquoted(annotation)) or held
         if aliased.declares(annotation):
             self.aliases.add(name)
-        else:
-            _ = self.types.setdefault(name, written(annotation))
+        elif text:
+            _ = self.types.setdefault(name, text)
 
     def learn(
         self,
@@ -353,7 +358,7 @@ class Scope:
         )
         fix, unsafe, origins = self.valued(value, target.lineno, constant=constant)
         if fix is not None and constant and origins == _LITERAL_DOUBT:
-            fix = self._constant(fix)
+            fix = self._constant(name, fix)
         # Value flow's type is `--fix`'s own, if certain: worked out once, here, for both.
         certain: str | None = certain_type(self, value, (None if fix is None else fix.annotation, unsafe))
         if self.kind.owner is not None:
@@ -546,12 +551,12 @@ class Scope:
             for read in (*fix.reads, *held)
         )
 
-    def _constant(self, fix: Inference) -> Inference | None:
+    def _constant(self, name: str, fix: Inference) -> Inference | None:
         """Declare an ALL_CAPS constant passed to a call `Final`, which keeps its literal's `Literal` type.
 
         `str` would widen it, where a parameter may take only some values (see `doubts`). A guess
         still (a name bound again is left alone, see `rebinds`), and only where the module can name
-        `Final`.
+        `Final`. What's read of `name` has its literal's type, `fix`'s.
 
         Returns:
           The `Final` inference, or `None`.
@@ -559,6 +564,7 @@ class Scope:
         """
         plan: ImportPlan | None = self.settings.known.names.plan
         spelled: str | None = None if plan is None else plan.spell(_TYPING_FINAL)
+        self.inferred.learn(name, fix.annotation, _LITERAL_DOUBT)
         return (
             None
             if spelled is None

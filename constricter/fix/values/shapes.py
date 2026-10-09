@@ -13,7 +13,7 @@ whose type is a union of two types or more isn't taken at all.
 
 import ast
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Final, TypeAlias
 
 from constricter.fix.core.known import ImportPlan, Inference, Known, Partial
@@ -23,6 +23,7 @@ from constricter.rules.annotations import dotted
 from constricter.rules.flow import members
 
 Infer: TypeAlias = Callable[[ast.expr], Inference | None]
+Comprehension: TypeAlias = ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp
 _NONE: Final = "None"
 # The builtin classes an `isinstance` check names that say all there is of a value so checked.
 _SCALARS: Final = frozenset({"bool", "bytes", "complex", "float", "int", "str"})
@@ -108,41 +109,102 @@ def optional(value: ast.IfExp, infer: Infer) -> Inference | None:
     )
 
 
-def sifted(value: ast.ListComp | ast.SetComp | ast.GeneratorExp, element: Inference) -> Inference | None:
-    """Type the elements a comprehension keeps of a name it filters, by `is not None` or `isinstance`.
+def sifted(value: Comprehension, part: ast.expr, element: Inference) -> Inference | None:
+    """Type what a comprehension keeps of a name it filters, by `is not None` or `isinstance`.
+
+    `part`: its element, or a `dict`'s key or value, typed `element`. A test narrows where it must
+    hold for the part to be kept: a condition itself, or an operand of its `and`.
 
     Returns:
-      The element's inference: less `None`, or as the one class it's checked for; `None` where
-      that leaves nothing, or it's checked for anything but a class named there.
+      The part's inference: less `None`, or as the one class it's checked for; `None` where that
+      leaves nothing, it's checked for anything but a class named there or checked any other way
+      (`not isinstance(x, C)`), or it's a display holding a name so narrowed (`(key, x)`).
 
     """
     tests: list[ast.expr] = [test for each in value.generators for test in each.ifs]
-    name: str = value.elt.id if isinstance(value.elt, ast.Name) else ""
-    classes: list[ast.expr] = [found for test in tests for found in _instance_of(test, name)]
+    if not isinstance(part, ast.Name):
+        return None if any(_narrowed(tests, held.id) for held in displayed(part)) else element
+    name: str = part.id
+    classes: list[ast.expr] = _instance_of(tests, name)
     named: list[str] = [
         ast.unparse(found) for found in classes if isinstance(found, ast.Name | ast.Attribute)
     ]
-    if classes:
-        kept: bool = len(classes) == len(named) == 1 and (named[0][:1].isupper() or named[0] in _SCALARS)
+    if classes or _instance_checked(tests, name):
+        kept: bool = len(classes) == len(named) == _instance_checked(tests, name) == 1 and (
+            named[0][:1].isupper() or named[0] in _SCALARS
+        )
         return element._replace(annotation=named[0]) if kept else None
     types: frozenset[str] = members(element.annotation) or frozenset()
-    if not (name and _NONE in types and any(_not_none(test) == name for test in tests)):
+    if not (_NONE in types and name in _not_none(tests)):
         return element
     rest: list[str] = sorted(types - {_NONE})
     return element._replace(annotation=" | ".join(rest)) if rest else None
 
 
-def _not_none(test: ast.expr) -> str:  # the `x` of `x is not None`, else nothing
-    name: str
-    match test:
-        case ast.Compare(left=ast.Name(id=name), ops=[ast.IsNot()], comparators=[ast.Constant(value=None)]):
-            return name
+def displayed(node: ast.expr | None) -> Iterator[ast.Name]:
+    """List the bare names a value is, or a display holds, however deep: `(key, d)`'s `key` and `d`.
+
+    Yields:
+      Each name.
+
+    """
+    parts: list[ast.expr]
+    keys: list[ast.expr | None]
+    part: ast.expr | None
+    inner: ast.expr
+    match node:
+        case ast.Name():
+            yield node
+        case ast.Tuple(elts=parts) | ast.List(elts=parts) | ast.Set(elts=parts):
+            for part in parts:
+                yield from displayed(part)
+        case ast.Dict(keys=keys, values=parts):
+            for part in (*keys, *parts):
+                yield from displayed(part)
+        case ast.Starred(value=inner):
+            yield from displayed(inner)
         case _:
-            return ""
+            pass
 
 
-def _instance_of(test: ast.expr, name: str) -> list[ast.expr]:
-    """Find what `isinstance(name, C)` checks `name` for, anywhere in a test.
+def _narrowed(tests: list[ast.expr], name: str) -> bool:  # whether the conditions narrow `name`
+    return bool(_instance_checked(tests, name)) or name in _not_none(tests)
+
+
+def _held(tests: list[ast.expr]) -> Iterator[ast.expr]:
+    """List the tests that hold wherever all of `tests` do: each, or the operands of its `and`.
+
+    Yields:
+      Each test.
+
+    """
+    test: ast.expr
+    for test in tests:
+        if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.And):
+            yield from _held(test.values)
+        else:
+            yield test
+
+
+def _not_none(tests: list[ast.expr]) -> frozenset[str]:  # each `x` of an `x is not None` that holds
+    name: str
+    test: ast.expr
+    found: set[str] = set()
+    for test in _held(tests):
+        match test:
+            case ast.Compare(
+                left=ast.Name(id=name),
+                ops=[ast.IsNot()],
+                comparators=[ast.Constant(value=None)],
+            ):
+                found.add(name)
+            case _:
+                pass
+    return frozenset(found)
+
+
+def _instance_of(tests: list[ast.expr], name: str) -> list[ast.expr]:
+    """Find what an `isinstance(name, C)` that holds checks `name` for.
 
     Returns:
       Each `C`.
@@ -151,16 +213,39 @@ def _instance_of(test: ast.expr, name: str) -> list[ast.expr]:
     checked: str
     found: ast.expr
     classes: list[ast.expr] = []
-    node: ast.AST
-    for node in ast.walk(test):
-        match node:
+    test: ast.expr
+    for test in _held(tests):
+        match test:
             case ast.Call(func=ast.Name(id="isinstance"), args=[ast.Name(id=checked), found]) if (
-                name and checked == name
+                checked == name
             ):
                 classes.append(found)
             case _:
                 pass
     return classes
+
+
+def _instance_checked(tests: list[ast.expr], name: str) -> int:
+    """Count the `isinstance` checks of `name` anywhere in `tests`: under a `not` or an `or` too.
+
+    Returns:
+      How many.
+
+    """
+    checked: str
+    count: int = 0
+    test: ast.expr
+    node: ast.AST
+    for test in tests:
+        for node in ast.walk(test):
+            match node:
+                case ast.Call(func=ast.Name(id="isinstance"), args=[ast.Name(id=checked), *_]) if (
+                    checked == name
+                ):
+                    count += 1
+                case _:
+                    pass
+    return count
 
 
 def boolean(value: ast.BoolOp, infer: Infer) -> Inference | None:

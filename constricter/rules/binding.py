@@ -566,11 +566,12 @@ def annotated(scope: Scope, stmt: ast.AnnAssign, target: ast.Name) -> None:
     scope.annotation(name, annotation, marked=marked)
     if fresh and marked and _rewidened(scope, stmt, target):
         return
+    held: str | None = None if stmt.value is None else certain_type(scope, stmt.value)
     if not marked:  # a widening's type says nothing of the value: what's read of the name has none
-        scope.inferred.declare(name, annotation)
+        scope.inferred.declare(name, annotation, held)
     scope.lifetime(name).declare(ast.unparse(annotation), at(target), _span(annotation, target))
     if stmt.value is not None:
-        scope.lifetime(name).bind(at(target), certain_type(scope, stmt.value))
+        scope.lifetime(name).bind(at(target), held)
         scope.assigned(name, at(target))
 
 

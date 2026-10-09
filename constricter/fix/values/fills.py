@@ -22,6 +22,7 @@ from typing import Final, NamedTuple
 
 from constricter.fix.core.known import Inference, Known, Takers
 from constricter.fix.values.inference import inference, looped
+from constricter.fix.values.shapes import displayed
 from constricter.fix.values.targets import dict_parts
 from constricter.rules.annotations import dotted, is_vague
 from constricter.rules.syntax import NESTED_SCOPES, own_nodes
@@ -237,8 +238,8 @@ def _taken(given: Given, kind: str, known: Known, declared: Mapping[str, str]) -
 def added_names(found: Uses, name: str, kind: str) -> frozenset[str]:
     """Name what the body (`found`) adds to container `name` that is a bare name: `d`, in `xs.append(d)`.
 
-    Where the function tests one (`isinstance(d, C)`), what's added is narrowed there: its
-    declared type isn't the elements'.
+    One in a display added too (`xs.append((key, d))`). Where the function tests one
+    (`isinstance(d, C)`), what's added is narrowed there: its declared type isn't the elements'.
 
     Returns:
       The names.
@@ -250,7 +251,7 @@ def added_names(found: Uses, name: str, kind: str) -> frozenset[str]:
         if isinstance(fill, Fill) and not fill.spread
     ]
     return frozenset(
-        part.id for fill in fills for part in (fill.key, fill.value) if isinstance(part, ast.Name)
+        part.id for fill in fills for given in (fill.key, fill.value) for part in displayed(given)
     )
 
 

@@ -6,6 +6,17 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- Four fixes a package's own type checker found an error after, each a guess but the first, are
+  right now or not offered. A module's name annotated with a bare `Final` is its value's type to the
+  module's own body, as it was to its functions (`names: dict[str, str | Final]` was written for a
+  display of one), and a copy of one is declared its type, not `Final`. `copy.copy(self)` and
+  `copy.deepcopy(self)` are `Self` in a method whose signature says `Self`. An empty container isn't
+  typed by a tuple added to it that holds a name its function tests (`commands.append((name, cmd))`
+  after `if cmd is None: continue`). And a comprehension's `isinstance` narrows a `dict`'s key or
+  value as it does a list's element, only where it must hold (a condition, or an operand of its
+  `and`: `not isinstance(x, C)` typed `list[C]`), with no fix for a display holding what's narrowed
+  (`[(name, x) for ... if isinstance(x, C)]`). On pydantic: one guess fewer (a name bound to its
+  class, then to `copy(self)`), no other fix changed.
 - `python -m constricter.trace` records a type for each binding, not each function: what a name
   holds as the statement binding it ends, followed line by line (`sys.monitoring`; `sys.settrace`
   before Python 3.12). `--infer-from` so types a `for` loop's target, a name bound in a loop and one

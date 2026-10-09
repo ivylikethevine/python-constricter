@@ -248,6 +248,35 @@ def test_a_self_takes_nothing_else() -> None:
     assert (found["a"], found["b"]) == ((None, False), ("Self", False))
 
 
+def test_a_library_call_given_self_that_returns_its_class_is_self() -> None:
+    """`copy.copy(self)` is the class only by the type variable `self` binds: `Self`, where it's one."""
+    source: str = """
+    import copy
+    from typing import Self
+
+    class Node:
+        def clone(self) -> Self:
+            a = copy.copy(self)
+            b = copy.deepcopy(self, {})
+            return a
+
+        def plain(self, other: "Node") -> "Node":
+            c = copy.copy(self)
+            return c
+
+        def of(self, other: "Node") -> Self:
+            d = copy.copy(other)
+            return self
+    """
+    found: dict[str, tuple[str | None, bool]] = _found(source)
+    assert {name: fix for name, (fix, _) in found.items()} == {
+        "a": "Self",
+        "b": "Self",
+        "c": "Node",  # a signature without `Self`
+        "d": "Node",  # not `self`
+    }
+
+
 def test_a_generic_class_is_never_written_bare() -> None:
     """`[self]` in a generic class would be `list[Box]`, missing its type arguments: nothing is offered."""
     source: str = """
@@ -434,6 +463,36 @@ def test_what_a_test_leaves_out_isnt_in_the_type() -> None:
         "k": ("list[Trial]", True),
         "m": (None, False),  # a display of what's narrowed there
         "n": ("list[Trial | None]", False),
+    }
+
+
+def test_a_comprehension_is_narrowed_only_by_a_test_that_holds() -> None:
+    """A condition, or an operand of its `and`; a `dict`'s key and value too, and no display of one."""
+    source: str = """
+    class Base:
+        name: str = ""
+
+    class Sub(Base): ...
+
+    def f(space: dict[str, Base], maybe: dict[str, Base | None]) -> None:
+        a = {name: each for name, each in space.items() if isinstance(each, Sub)}
+        b = {each: name for name, each in space.items() if name and isinstance(each, Sub)}
+        c = [each for each in space.values() if not isinstance(each, Sub)]
+        d = [each for each in space.values() if isinstance(each, Sub) or each.name]
+        e = [(name, each) for name, each in space.items() if isinstance(each, Sub)]
+        g = [(name, each) for name, each in space.items() if name]
+        h = {name: each for name, each in maybe.items() if each is not None}
+        i = [(name, each) for name, each in maybe.items() if each is not None]
+    """
+    assert _found(source) == {
+        "a": ("dict[str, Sub]", True),
+        "b": ("dict[Sub, str]", True),
+        "c": (None, False),  # whatever isn't a `Sub`
+        "d": (None, False),  # a `Sub`, or not
+        "e": (None, False),  # a tuple of what's narrowed
+        "g": ("list[tuple[str, Base]]", False),
+        "h": ("dict[str, Base]", False),
+        "i": (None, False),
     }
 
 

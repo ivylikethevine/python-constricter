@@ -140,3 +140,30 @@ def test_a_name_bound_to_what_a_function_returns_is_read_in_the_same_run() -> No
         b = TWICE
     """
     assert _fixed(source) == {"a": ("int", False), "b": ("int", False)}
+
+
+def test_a_module_body_reads_a_qualified_name_as_the_type_it_wraps() -> None:
+    """A `Final[T]`'s is `T`, and a bare `Final`'s its value's: `Final` is no type to copy or hold."""
+    source: str = """
+    import typing
+    from typing import Final
+
+    A = "a"
+    B: Final = "b"
+    C: Final[str] = "c"
+    D: typing.Final = 4
+    E: Final = unknown()
+    copied = B
+    wrapped = C
+    names = {"A": A, "B": B}
+    mixed = (B, D)
+    odd = E
+    """
+    found: list[Offence] = check_source(textwrap.dedent(source), checks=Checks(all_scopes=True))
+    assert {o.name: o.fix for o in found if o.name.islower()} == {
+        "copied": "str",
+        "wrapped": "str",
+        "names": "dict[str, str]",
+        "mixed": "tuple[str, int]",
+        "odd": None,
+    }

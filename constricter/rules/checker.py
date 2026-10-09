@@ -26,8 +26,6 @@ from constricter.fix.core.known import (
 from constricter.fix.libraries import stdlib
 from constricter.fix.values import callables, classvars, entered, fills, ordered, returned
 from constricter.fix.values.doubts import facts, says_self
-from constricter.fix.values.inference import inferred
-from constricter.fix.values.members import parsed as parsed_annotation
 from constricter.jsonc import as_text
 from constricter.offences import (
     DEFAULT_CHECKS,
@@ -70,7 +68,6 @@ from constricter.rules.syntax import (
     owners,
     python2_compatible,
     target_names,
-    top_level,
 )
 from constricter.rules.tables import Tables, module_tables
 from constricter.rules.walked import classes, of_type
@@ -85,7 +82,6 @@ _ENUM_MODULES: Final = frozenset({"enum"})
 # The conventional name of an instance method's first parameter: typed as its class, for `--fix`.
 _SELF: Final = "self"
 _TYPE_CHECKING: Final = "TYPE_CHECKING"
-_QUALIFIERS: Final = frozenset({"Final", "ClassVar"})  # what wraps a name's type, or stands for its value's
 
 
 def check_source(
@@ -496,49 +492,11 @@ def _module_names(tree: ast.Module, settings: Settings) -> dict[str, Passed]:
     """
     scope: Scope = _body_scope(tree.body, settings, Kind(UNANNOTATED_MEMBER, fixable=True))
     rebound: Mapping[str, list[Start]] = imports.rebound_names(tree)
-    values: dict[str, ast.expr] = {}
-    stmt: ast.stmt
-    target: ast.expr
-    value: ast.expr
-    for stmt in top_level(tree.body):
-        match stmt:
-            case (
-                ast.AnnAssign(target=ast.Name() as target, value=ast.expr() as value)
-                | ast.Assign(targets=[ast.Name() as target], value=value)
-            ):
-                values[target.id] = value
-            case _:
-                pass
-    found: dict[str, Passed] = {}
-    name: str
-    annotation: str
-    for name, annotation in scope.inferred.types.items():
-        held: str | None = _held(annotation, values.get(name), scope)
-        if name not in rebound and held is not None:
-            found[name] = (held, scope.inferred.origins.get(name, frozenset()))
-    return found
-
-
-def _held(annotation: str, value: ast.expr | None, scope: "Scope") -> str | None:
-    """Read the type of what a module's name holds from its annotation there.
-
-    Returns:
-      The annotation; a `Final[T]`'s or a `ClassVar[T]`'s `T`; a bare `Final`'s value's type, if
-      it's known; `None` for one that isn't its value's type (`TypeAlias`).
-
-    """
-    inner: ast.expr
-    head: ast.Name | ast.Attribute
-    match parsed_annotation(annotation):
-        case ast.Subscript(value=ast.Name() | ast.Attribute() as head, slice=inner) if (
-            node_name(head) in _QUALIFIERS
-        ):
-            return ast.unparse(inner)
-        case ast.Name() | ast.Attribute() as head if node_name(head) in _QUALIFIERS | {_TYPE_ALIAS}:
-            bare: bool = value is not None and node_name(head) in _QUALIFIERS
-            return inferred(value, scope.settings.known, scope.inferred.types) if bare and value else None
-        case _:
-            return annotation
+    return {
+        name: (held, scope.inferred.origins.get(name, frozenset()))
+        for name, held in scope.inferred.types.items()
+        if name not in rebound
+    }
 
 
 def _scopes(tree: ast.Module, settings: Settings, table: returned.Table | None = None) -> list["Scope"]:

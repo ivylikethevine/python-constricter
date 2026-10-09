@@ -67,8 +67,9 @@ in a function or module body:
 - a name the module binds once, anywhere in it, at its top level, read in a function as it's typed
   there: `LIMIT = 10` is an `int` in every function, and `for name in NAMES` loops over what
   `NAMES = ["a", "b"]` holds. By its annotation (a `Final[T]`'s or a `ClassVar[T]`'s `T`; a bare
-  `Final`'s value's type), or its one value's type, a guess where that's one; a name bound to what
-  an unannotated function returns is typed in the same run. Not a name bound again anywhere (a
+  `Final`'s value's type, in the module's own body too: `[A, B]` of a `B: Final = "b"` is a
+  `list[str]`), or its one value's type, a guess where that's one; a name bound to what an
+  unannotated function returns is typed in the same run. Not a name bound again anywhere (a
   parameter or a local of that name in any function, a `global` statement's), a type alias, nor one
   first `None`. A module's own `__file__` and `__name__` are `str`s;
 - a member of any value whose type is known, a local or anything else here (`self.index`, `f()`,
@@ -316,7 +317,9 @@ in a function or module body:
   that agrees. A guess, since something else could add to it; any use that could (passing it to
   another function, a nested function) leaves it alone, as does a local bound to it
   (`alias = names`) unless every use of that local only reads it, but not one that only reads it
-  (`x[0]`, `len(x)`, `sep.join(x)`, `x + more`, `[*x]`, `return x, n`);
+  (`x[0]`, `len(x)`, `sep.join(x)`, `x + more`, `[*x]`, `return x, n`). Not where a name added, or
+  one in a display added (`rows.append((key, cmd))`), is one the function tests: it's narrowed
+  there;
 - a value computed from such: `a if c else b` when both sides agree, and `a if c else None` as
   `T | None` (not where `c` tests `a`, which it narrows); `a or b` and `a and b` with operands of
   one type, `or` dropping a `None` before its last operand (`name or "x"` is a `str` for a
@@ -588,15 +591,18 @@ than the fix says, the fix is changed, made a guess, or not offered:
   mean that variable there: not offered (`text: str = ""` under a parameter `str`);
 - a copy, attribute or subscript of a union, or of anything the function tests (`isinstance(x, C)`,
   `x is None`, `is_c(x)`, an `assert`, a `match`), may be narrowed where it's read: a guess; so is a
-  comprehension of a union with a condition (`[c for c in cs if isinstance(c, Column)]`). One of an
-  `X | None` (or a filtered comprehension over one) isn't offered where its function tests or stores
-  what's read, or what that's read of (`self.conn`, for `self.conn.pool`), anywhere: code nearly
-  always checks it for `None` first, and a checker then takes it for the `X`. Where nothing does, it
-  has the type it's declared, a guess (`conn: Connection | None = self.conn`). Nor is a bare `None`
-  offered; nor is a read where a test around it narrows it: in an `if`'s or `while`'s branch, a
-  `match` case, or the rest of a block after an `assert` or an `if` that always leaves (`return`,
-  `raise`, ...), for a check (`isinstance`, a `TypeGuard`, a `match`) whatever its type, and for a
-  truth test or comparison when it's a union. A type alias of a union (`Key = Union[int, str]`,
+  comprehension of a union with a condition (`[c for c in cs if isinstance(c, Column)]`), whose
+  element, or a `dict`'s key or value, is the class a condition (or an operand of its `and`) checks
+  it for, with no fix where it's checked any other way (`not isinstance(c, Column)`, under an `or`)
+  or kept in a display (`(name, c)`). One of an `X | None` (or a filtered comprehension over one)
+  isn't offered where its function tests or stores what's read, or what that's read of (`self.conn`,
+  for `self.conn.pool`), anywhere: code nearly always checks it for `None` first, and a checker then
+  takes it for the `X`. Where nothing does, it has the type it's declared, a guess
+  (`conn: Connection | None = self.conn`). Nor is a bare `None` offered; nor is a read where a test
+  around it narrows it: in an `if`'s or `while`'s branch, a `match` case, or the rest of a block
+  after an `assert` or an `if` that always leaves (`return`, `raise`, ...), for a check
+  (`isinstance`, a `TypeGuard`, a `match`) whatever its type, and for a truth test or comparison
+  when it's a union. A type alias of a union (`Key = Union[int, str]`,
   `Maybe: TypeAlias = int | None`, the module's own or another checked file's, bound once at its top
   level) is narrowed as the union it names, by a test or an assignment, and one of an `X | None`
   isn't offered; a plain read of one stays certain, written as the alias;
@@ -606,9 +612,10 @@ than the fix says, the fix is changed, made a guess, or not offered:
   something may rebind it, and not offered where the module binds it again;
 - `self`, and a method declared to return `Self` called on `self` or `cls`, is `Self`, not its class
   (in a subclass, the class isn't `Self`), as is what `cls()`, `type(self)()` or `cls.__new__(cls)`
-  constructs, and `type(self)` there a `type[Self]`: written as the module already imports `Self`
-  (`typing.Self` is Python 3.11's, so no import is added), and not offered without one; a `Self`
-  later bound to anything else isn't offered either;
+  constructs, and a standard-library function's call given `self` that returns its class
+  (`copy.copy(self)`), and `type(self)` there a `type[Self]`: written as the module already imports
+  `Self` (`typing.Self` is Python 3.11's, so no import is added), and not offered without one; a
+  `Self` later bound to anything else isn't offered either;
 - a generic class is never written bare (`list[Box]`, as `[self]` in `Box` would be; `Box()` guessed
   to construct one): the module's own, another checked file's, or the standard library's
   (`logging.StreamHandler()`), unless every type parameter it has has a default

@@ -610,7 +610,9 @@ def _comprehension(
     match value:
         case ast.DictComp():
             key: Inference | None = inference(value.key, known, inside)
+            key = key and shapes.sifted(value, value.key, key)
             item: Inference | None = inference(value.value, known, inside)
+            item = item and shapes.sifted(value, value.value, item)
             return (
                 Inference(
                     f"dict[{key.annotation}, {item.annotation}]",
@@ -622,7 +624,7 @@ def _comprehension(
             )
         case _:
             element: Inference | None = inference(value.elt, known, inside)
-            element = element and shapes.sifted(value, element)
+            element = element and shapes.sifted(value, value.elt, element)
             kind: str = "list" if isinstance(value, ast.ListComp) else "set"
             return (
                 Inference(
@@ -926,7 +928,7 @@ def _generated(value: ast.GeneratorExp, known: Known, declared: Mapping[str, str
 
     """
     found: Inference | None = inference(value.elt, known, comprehended(value, known, declared))
-    found = found and shapes.sifted(value, found)
+    found = found and shapes.sifted(value, value.elt, found)
     filtered: bool = any(generator.ifs for generator in value.generators)
     if found is None or (filtered and _UNION.search(found.annotation)):
         return None
