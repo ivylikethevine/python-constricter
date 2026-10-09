@@ -6,6 +6,36 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `python -m constricter.trace` records a type for each binding, not each function: what a name
+  holds as the statement binding it ends, followed line by line (`sys.monitoring`; `sys.settrace`
+  before Python 3.12). `--infer-from` so types a `for` loop's target, a name bound in a loop and one
+  bound again, and a local taken from an attribute of `self` that a class with no base stores only
+  unannotated parameters in. A parameter the function gives a default (but `None`), binds again,
+  tests by a call or matches is no longer taken for untyped: a checker types what's read of it. The
+  trace file's format changes (version 2: each file's `bindings`, by line and name): trace again. A
+  class defined in another is spelled (`Outer.Inner`), and a generic class's instance has its
+  arguments where it was made with them (`Box[int]()`) or is a builtin container of its own type
+  variables (`class Stack(list[T])`); no value's own code runs to spell it (a `__getattr__`, a
+  property). A pytest process the run starts is recorded too (pytest-xdist's workers:
+  `python -m constricter.trace -m pytest -n auto`), by a plugin the run names in `PYTEST_PLUGINS`.
+  The recorder is `constricter.recording`. On pandas's `tests/frame/methods`: 148 fixes from 128,
+  the traced tests taking 12.8s from 26.8s (9.4s untraced); with their whole suites traced
+  (`corpus_suite.py --types --trace`), 1,443 fixes on pandas and 179 on SQLAlchemy.
+- A class variable a `unittest` test case declares itself has that type, not its value's:
+  `maxDiff = 80` under a test case (or a framework's base, which may be one) is declared
+  `int | None`, which a type checker holds it to, and `maxDiff = None` is too, where it had no fix.
+  And a plain class's variable is typed by what the standard library gives its value, as the module
+  names it (`pattern = re.compile("x")`, `sep = os.sep`, `size = len(NAMES)`): a guess (`member`),
+  as one bound to a literal is; another file reading it writes the type by its own imports, or one
+  added for type checking. On Django: 40 more variables, and 12 more of what reads them.
+- A read of an `X | None` has a fix where nothing in its function narrows it: neither a test nor a
+  store of what's read, or of what that's read of. Its declared type, a guess
+  (`conn: Connection | None = self.conn`): what a type checker takes it for there. One the function
+  tests or stores still has none.
+- A loop over `os.walk(top)` is typed by `top`: `root: str`, `dirs: list[str]`, `files: list[str]`
+  where it's a `str` or a `pathlib` path, `bytes` where it's a `bytes`. And `iter(xs)` bound to a
+  name is an `Iterator` of what a loop over `xs` binds (`it: Iterator[str] = iter(names)`), imported
+  from `collections.abc` where the module doesn't name it.
 - `--fix` types more of what earlier items left (all in [FIXES.md](FIXES.md)): what's read of a name
   bound to `capsys.readouterr()`, a class's `parametrize` and a fixture's `params`; a `with` target
   of another checked file's `@contextmanager` function (by what it declares or yields) or class, of

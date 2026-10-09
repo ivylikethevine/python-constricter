@@ -338,6 +338,21 @@ def members(path: str) -> frozenset[str]:
     return frozenset(own).union(*(members(ancestor) for ancestor in _ancestors(path)))
 
 
+def attributes(path: str) -> dict[str, str]:
+    """Type the attributes the tables hold of the class at `path`, its public ancestors' included.
+
+    Returns:
+      Each one's type, by name: the class's own, where an ancestor has one of its name.
+
+    """
+    found: dict[str, str] = {}
+    ancestor: str
+    for ancestor in _ancestors(path):
+        found = attributes(ancestor) | found
+    own: Mapping[str, str | None] = _ATTRIBUTES.get(path, {})
+    return found | {name: typed for name, typed in own.items() if typed is not None}
+
+
 def lines(path: str) -> frozenset[str]:
     """Name the class at `path` and every public ancestor the tables give it.
 

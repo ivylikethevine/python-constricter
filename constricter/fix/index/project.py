@@ -36,7 +36,8 @@ from constricter.fix.index.modules import (
     takes,
     written_under,
 )
-from constricter.rules.annotations import node_name, roots
+from constricter.fix.index.strings import quoted
+from constricter.rules.annotations import roots
 
 __all__ = [
     "Imported",
@@ -51,12 +52,12 @@ __all__ = [
 _BUILTINS: Final = frozenset(dir(builtins))
 _STDLIB: Final = sys.stdlib_module_names
 _BUILTINS_MODULE: Final = "builtins"
+NO_TYPE: Final = ""  # a class variable's type the file reading it can't write
 _HOPS: Final = 5  # how many re-exports (`from .util import f` in an `__init__`) to follow
 _DOT: Final = "."
 _UNDERSCORE: Final = "_"
 _FUNCTION: Final = "function"
 DECORATOR: Final = "decorator"  # a function that gives back the one it decorates
-_LITERAL: Final = "Literal"
 CLASS: Final = "class"
 ALIAS: Final = "alias"  # a type alias (see `modules.Module.aliases`)
 _TYPES: Final = frozenset({CLASS, ALIAS})  # the kinds a fix may write a name of that the file doesn't
@@ -382,7 +383,7 @@ def _refused(modules: Mapping[str, Module], target: Module, defined: Module, ann
         )
         or _bare(modules, defined, annotation)
         # A name in a string left inside it stays as it is: no import is added for it, and it isn't renamed.
-        or any(not _same(target, defined, root) for root in _quoted(annotation))
+        or any(not _same(target, defined, root) for root in quoted(annotation))
     )
 
 
@@ -401,42 +402,6 @@ def _import_for(target: Module, origin: Origin, name: str, known: Mapping[str, G
     if _DOT in name or name in target.names:
         return None
     return known.get(name) or Guarded(origin, _statement(origin, name))
-
-
-@lru_cache(maxsize=4096)
-def _quoted(annotation: str) -> frozenset[str]:
-    """Find the names in the strings left inside an annotation: `meta` in `Annotated[int, 'meta']`.
-
-    A quoted type is read as its text before it gets here (see `annotations.written`). Not a
-    `Literal`'s strings, nor a whole annotation's own quotes (see `roots`).
-
-    Returns:
-      The names.
-
-    """
-    tree: ast.expr = ast.parse(annotation, mode="eval").body
-    found: set[str] = set()
-    waiting: list[ast.AST | None] = [None, tree]  # `None` at its bottom ends it
-    node: ast.AST
-    for node in iter(waiting.pop, None):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node is not tree:
-            found.update(_names_in(node.value))
-        elif not (isinstance(node, ast.Subscript) and node_name(node.value) == _LITERAL):
-            waiting.extend(ast.iter_child_nodes(node))
-    return frozenset(found)
-
-
-def _names_in(text: str) -> set[str]:
-    """Read the names a quoted part of an annotation is written with.
-
-    Returns:
-      Them; none if it isn't an expression.
-
-    """
-    try:
-        return {node.id for node in ast.walk(ast.parse(text, mode="eval")) if isinstance(node, ast.Name)}
-    except SyntaxError:
-        return set()
 
 
 def _is_rebound(modules: Mapping[str, Module], defined: Module, name: str) -> bool:
@@ -818,7 +783,7 @@ def _take(catalog: Index, target: Module, named: _Named, taken: _Taken, guarded:
         if defined[1] in defined[0].generics:
             taken.generics.add(key)
         if defined[1] in defined[0].plain and defined[1] in defined[0].members:
-            taken.members[key] = defined[0].members[defined[1]]
+            taken.members[key] = _variables(catalog.modules, (target, defined), key, guarded)
         if _declared_members(catalog, defined).isdisjoint(target.attributes):
             # Most classes it can name: it takes none of their members.
             taken.attributes[key], taken.methods[key], taken.partial[key] = {}, {}, {}
@@ -827,6 +792,25 @@ def _take(catalog: Index, target: Module, named: _Named, taken: _Taken, guarded:
             _used(catalog.modules, (target, defined), key, table.get(defined[1]), guarded)
             for table in (defined[0].classes, defined[0].methods, defined[0].partial_methods)
         )
+
+
+def _variables(
+    modules: Mapping[str, Module],
+    where: tuple[Module, tuple[Module, str]],
+    key: str,
+    guarded: dict[str, Guarded],
+) -> dict[str, str]:
+    """Write a plain class's variables' types as the file (`where[0]`) can (see `portable`).
+
+    Returns:
+      Each one's type: its own, made of builtins alone; one naming anything else, as the file
+      spells it, or `NO_TYPE` where it can't, which still holds a class under it to no other.
+
+    """
+    typed: Mapping[str, str] = where[1][0].members[where[1][1]]
+    named: dict[str, str] = {name: text for name, text in typed.items() if not roots(text) <= _BUILTINS}
+    written: dict[str, str] = portable(modules, where, key, named, guarded) if named else {}
+    return {name: written.get(name, NO_TYPE) if name in named else text for name, text in typed.items()}
 
 
 def _declared_members(catalog: Index, defined: tuple[Module, str]) -> frozenset[str]:

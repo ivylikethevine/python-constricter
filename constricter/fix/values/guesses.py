@@ -6,7 +6,7 @@ from collections.abc import Iterator, Mapping
 from typing import Final
 
 from constricter.fix.core.known import PARAM, Known, stood
-from constricter.fix.libraries import stdlib
+from constricter.fix.libraries import stdlib, walks
 from constricter.fix.libraries.library import installed_method, library_class
 from constricter.fix.libraries.opened import opened, opened_path
 from constricter.fix.values import called, decided, displays, shapes
@@ -323,6 +323,7 @@ def _is_guess(
             or stdlib.resolved(func, known.names.stdlib) in stdlib.KNOWN
             or dotted(func) in known.names.installed
             or opened(node, known) is not None
+            or walks.walked(node, known, lambda arg: inference(arg, known, declared)) is not None
             or certain_method(node, known, declared)
             or _overloaded_method(node, known, declared)
             or called.result(node, known, declared, lambda arg: inference(arg, known, declared)) is not None

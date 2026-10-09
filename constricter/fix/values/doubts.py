@@ -210,8 +210,8 @@ def narrowed_first(value: ast.expr, found: Inference) -> bool:
 
     A copy, attribute or subscript of an `X | None`, and a filtered comprehension over one, is nearly
     always checked for `None` before it's used (an `assert`, an early `return`, a walrus), and a
-    checker then takes it for the `X` it's narrowed to: declaring the union breaks that. A bare
-    `None` (a copy of a name only ever `None`) says nothing.
+    checker then takes it for the `X` it's narrowed to: declaring the union breaks that (but see
+    `as_declared`). A bare `None` (a copy of a name only ever `None`) says nothing.
 
     Returns:
       Whether it is.
@@ -222,6 +222,40 @@ def narrowed_first(value: ast.expr, found: Inference) -> bool:
     optional: bool = _NONE in (members(found.annotation) or ())
     filtered: bool = isinstance(value, _COMPREHENSIONS) and any(g.ifs for g in value.generators)
     return (isinstance(value, tuple(_READS)) and optional) or (filtered and _has_none(found.annotation))
+
+
+def as_declared(value: ast.expr, function: FunctionDef | None, found: Tests) -> bool:
+    """Check whether a read (`x`, `self.x`, `d[k]`) has, to a type checker, the type it's declared.
+
+    Nothing in its function narrows it: no test of it or of what it's read of (`self.conn`, in
+    `self.conn.pool`), and no store of either, which narrows as a test does.
+
+    Returns:
+      Whether it has; not for a module's or a class body's read.
+
+    """
+    if function is None or not isinstance(value, tuple(_READS)):
+        return False
+    text: str = ast.unparse(value)
+    return not any(
+        text == each or text.startswith((f"{each}.", f"{each}["))
+        for each in tested(function, found) | _stored(function)
+    )
+
+
+@lru_cache(maxsize=64)  # asked of each read of an `X | None` in the function's scope
+def _stored(function: FunctionDef) -> frozenset[str]:
+    """List what a function stores, the functions inside it too: `x`, `self.x`, `d[k]`.
+
+    Returns:
+      Each, as source text.
+
+    """
+    return frozenset(
+        ast.unparse(node)
+        for node in walk(function)
+        if isinstance(node, ast.Name | ast.Attribute | ast.Subscript) and not isinstance(node.ctx, ast.Load)
+    )
 
 
 def _sifted(value: _Comprehension) -> bool:

@@ -63,7 +63,7 @@ FIX_KINDS: dict[str, str] = {
     "returned": "an unannotated function's own `return`s (a method's: a guess)",
     "assigned": "an unannotated instance attribute's every `self.x = value` in its class (a guess)",
     "callers": "an unannotated parameter every call in the checked files passes one type (a guess)",
-    "member": "a plain class's variable, by its literal value in the class's body (a guess)",
+    "member": "a plain class's variable, by its value in the class's body (a guess)",
     "fixture": "a test's parameter, by its pytest fixture's value or its `parametrize` literals (a guess)",
     "alias": "a module's type alias, a subscript or a union of types: `TypeAlias`",
     "callable": "a function or a bound method bound to a name, by what its call gives",

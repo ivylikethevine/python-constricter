@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
 from constricter.fix.core import asked
 from constricter.fix.core.known import PARAM, ImportPlan, Inference, Known, stood
-from constricter.fix.libraries import overloads, stdlib
+from constricter.fix.libraries import overloads, stdlib, walks
 from constricter.fix.libraries.library import (
     installed_call,
     installed_chain,
@@ -864,7 +864,8 @@ def looped(iterable: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
     its keys, values and pairs; and anything else
     whose type is inferred, its elements: a `list`, `set`, `frozenset` or `tuple[T, ...]`'s `T`, a
     tuple's parts where they agree, a `dict`'s keys, a `str`'s `str`s and a `bytes`'s `int`s, and a
-    standard-library class's by its `__iter__` (a file's lines).
+    standard-library class's by its `__iter__` (a file's lines). `os.walk(top)` gives a directory's
+    path, with its directories' names and its files', as `top` is typed (see `walks.walked`).
 
     Returns:
       The element's annotation as source text and its reason, or `None` if it isn't known.
@@ -883,7 +884,7 @@ def looped(iterable: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
         case _:
             found: Inference | None
             if (found := inference(iterable, known, declared)) is None:
-                return None
+                return walks.walked(iterable, known, lambda top: inference(top, known, declared))
             kinds: frozenset[str] = _kinds(found, kind="loop")
             # Of an `X | None`, the `X`'s: `None` has none. A builtin container's or an
             # `Iterable[T]`'s, else a standard-library class's own.

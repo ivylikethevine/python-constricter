@@ -15,6 +15,7 @@ from constricter.fix.values import aliased, callables, fills, hinted
 from constricter.fix.values.doubts import (
     Facts,
     Owner,
+    as_declared,
     bare,
     corrected,
     doubts,
@@ -60,6 +61,7 @@ from constricter.rules.rebinding import REBOUND
 from constricter.rules.syntax import FunctionDef, Start
 
 _SELF: Final = "self"
+_NONE: Final = "None"
 _CLASSMETHOD: Final = "classmethod"
 _STATICMETHOD: Final = "staticmethod"
 FINAL_KIND: Final = "final"  # the fix kind of LVA012's `Final`
@@ -355,7 +357,7 @@ class Scope:
         # Value flow's type is `--fix`'s own, if certain: worked out once, here, for both.
         certain: str | None = certain_type(self, value, (None if fix is None else fix.annotation, unsafe))
         if self.kind.owner is not None:
-            fix, unsafe, origins = self._member(name, fix)
+            fix, unsafe, origins = self._member(name, fix, value)
         if fix is None or not self.writable(fix):
             fix, unsafe, origins = self._unvalued(
                 target,
@@ -446,8 +448,13 @@ class Scope:
             found = hint, True, hint.kinds
         return found or vague
 
-    def _member(self, name: str, fix: Inference | None) -> tuple[Inference | None, bool, frozenset[str]]:
-        """Offer a class body's fix only for a plain class's variable typed by its value: a guess.
+    def _member(
+        self,
+        name: str,
+        fix: Inference | None,
+        value: ast.expr,
+    ) -> tuple[Inference | None, bool, frozenset[str]]:
+        """Offer a class body's fix only for a plain class's variable typed by its `value`: a guess.
 
         Returns:
           The inference, whether it's a guess, and what it rests on, as `valued` does; none for any
@@ -455,9 +462,13 @@ class Scope:
 
         """
         typed: str | None = self.settings.known.class_side.variables.get(self.kind.owner or "", {}).get(name)
-        if fix is None or typed is None or fix.annotation != typed:
+        # The variable's type is its value's, or what a base holds it to (`maxDiff`, an `int | None`).
+        held: frozenset[str] = frozenset() if typed is None else self.inferred.members(typed)
+        if fix is None and _NONE in held and isinstance(value, ast.Constant) and value.value is None:
+            fix = Inference(_NONE, "what a class above it declares it", frozenset())
+        if fix is None or typed is None or fix.annotation not in held:
             return None, False, frozenset()
-        return fix._replace(kinds=fix.kinds | {MEMBER}), True, frozenset({MEMBER})
+        return fix._replace(annotation=typed, kinds=fix.kinds | {MEMBER}), True, frozenset({MEMBER})
 
     def valued(
         self,
@@ -487,7 +498,10 @@ class Scope:
             else fix._replace(annotation=self.inferred.unions.get(fix.annotation, fix.annotation))
         )
         if named is not None and (
-            narrowed_first(value, named)
+            (
+                narrowed_first(value, named)
+                and not (named.annotation != _NONE and as_declared(value, function, facts.tests))
+            )
             or narrowed_at(facts.narrowed, value, line, union=len(members(named.annotation) or ()) > 1)
             or self._takes_narrowed(value, named, line)
         ):
@@ -949,7 +963,7 @@ def certain_type(
 
     """
     if isinstance(value, ast.Constant) and value.value is None:
-        return "None"
+        return _NONE
     annotation: str | None
     unsafe: bool
     annotation, unsafe = worked_out or (

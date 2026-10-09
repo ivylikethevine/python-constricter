@@ -12,29 +12,35 @@ isn't plain may inherit from it (a mixin of a model's). What the module alone se
 (see `constricter.fix.index.project`).
 
 A variable counts when it's bound once, by a plain `name = value` directly in the body, to a value
-whose type its own text decides (a literal, or a display of them), and nothing in the module stores
+whose type its own text decides (a literal, or a display of them) or the standard library does, by
+the module's imports (`re.compile("x")`, `os.sep`, `len(NAMES)`), and nothing in the module stores
 the attribute as anything else (`self.limit = 5` and `self.limit += 1` keep an `int`;
 `self.limit = size` may not), nor is it one a builtin base has itself (`errno` under `OSError`) or a
 class above it annotates as another type (`limit: int | None`): a type checker holds a variable to
 what its base declares. Its type is that value's, whatever the module
 declares: the same read from the file alone, so the files reading the attribute (`self.limit`,
-`cls.limit`) are typed in the same run as the class is fixed. A guess (`member`): a subclass, or
-code elsewhere, may bind it to another type.
+`cls.limit`) are typed in the same run as the class is fixed. But one a test case declares itself
+(`maxDiff`, an `int | None`) is that type, under any base no checked file defines but a builtin
+one, where its value is of it (see `HELD`). A guess (`member`): a subclass, or code elsewhere, may
+bind it to another type.
 """
 
 import ast
 import builtins
+import re
 from collections.abc import Callable, Mapping, Sequence
 from typing import Final, TypeAlias, cast
 from weakref import WeakKeyDictionary
 
-from constricter.fix.core.imports import taken_names
-from constricter.fix.core.known import Inference, Known, Outside
+from constricter.fix.core.imports import plan, taken_names
+from constricter.fix.core.known import Inference, Known, LibraryNames, Outside
+from constricter.fix.libraries import stdlib
 from constricter.fix.values.inference import inference
 from constricter.fix.values.operated import operated
 from constricter.offences import MAX_LENGTH
 from constricter.rules.annotations import classes as annotated
 from constricter.rules.annotations import dotted
+from constricter.rules.flow import members as union
 from constricter.rules.syntax import import_bindings
 from constricter.rules.walked import classes, of_type
 
@@ -62,9 +68,25 @@ _Bases: TypeAlias = dict[str, tuple[str, ...]]
 _Members: TypeAlias = dict[str, dict[str, str]]
 _BASES: Final[WeakKeyDictionary[ast.Module, _Bases]] = WeakKeyDictionary()
 _MEMBERS: Final[WeakKeyDictionary[ast.Module, _Members]] = WeakKeyDictionary()
-# What decides a value's type from its own text: nothing the module declares.
-_OWN_KINDS: Final = frozenset({"literal", "container", "arithmetic", "compare"})
-_NOTHING: Final = Known({}, frozenset(), {}, {})
+# What decides a value's type from its own text, with what the module imports of the standard
+# library: nothing the module declares.
+_OWN_KINDS: Final = frozenset(
+    {
+        "literal",
+        "container",
+        "arithmetic",
+        "compare",
+        "stdlib",
+        "builtin",
+        "builder",
+        "loop",
+        "method",
+        "conditional",
+        "boolean",
+        "comprehension",
+        "open",
+    },
+)
 _NONE: Final = "None"
 _NOT: Final = "!"  # an entry that leaves a base out (see `listed`)
 _DEFINITIONS: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
@@ -97,19 +119,41 @@ def _is_base(name: str, value: object) -> bool:
 
 
 BUILTIN_BASES: Final = _builtin_bases()
+_WORD: Final = re.compile(r"[A-Za-z_][\w.]*")
+# What a test case declares of itself, where builtins alone spell it: a subclass's variable of the
+# name has that type, to a type checker, whatever its value's is.
+HELD: Final = {
+    name: typed
+    for name, typed in stdlib.attributes("unittest.TestCase").items()
+    if all(word == _NONE or hasattr(builtins, word) for word in cast("list[str]", _WORD.findall(typed)))
+}
 
 
-def member_type(value: ast.expr) -> str | None:
+def member_type(value: ast.expr, known: Known) -> str | None:
     """Type a class variable's value by its own text: a literal, or a display of them.
 
+    Or, `known` naming the standard library as the module does (see `library`), by what it gives:
+    a function's or a class's with a fixed type, an attribute, a builtin's.
+
     Returns:
-      The annotation, or `None` for a value that names anything (a call, a copy), or `None` itself.
+      The annotation, or `None` for a value that names anything else (a class, a copy), or `None`
+      itself.
 
     """
-    found: Inference | None = inference(value, _NOTHING, {})
+    found: Inference | None = inference(value, known, {})
     if found is None or found.annotation == _NONE or not found.kinds <= _OWN_KINDS:
         return None
     return found.annotation
+
+
+def library(tree: ast.Module) -> Known:
+    """Know what a module names of the standard library, and nothing it declares itself.
+
+    Returns:
+      What `member_type` types a value by, the same for every file that reads the module.
+
+    """
+    return Known({}, frozenset(), {}, {}, names=LibraryNames(frozenset(), stdlib.origins(tree), plan(tree)))
 
 
 def bases(tree: ast.Module) -> dict[str, tuple[str, ...]]:
@@ -326,10 +370,19 @@ def members(tree: ast.Module) -> dict[str, dict[str, str]]:
 
 
 def _read_members(tree: ast.Module) -> dict[str, dict[str, str]]:
+    single: dict[str, tuple[str, ...]]
+    if not (single := bases(tree)):
+        return {}
     stored: dict[str, list[_Store | None]] = _stores(tree)
-    single: dict[str, tuple[str, ...]] = bases(tree)
+    origins: dict[str, str] = imported(tree)
+    known: Known = library(tree)
     typed: dict[str, dict[str, str]] = {
-        node.name: _typed(node.body, reserved(node.name, single), stored)
+        node.name: _typed(
+            node.body,
+            reserved(node.name, single),
+            stored,
+            (HELD if _may_test(node.name, single, origins) else {}, known),
+        )
         for node in classes(tree)
         if node.name in single
     }
@@ -341,6 +394,22 @@ def _read_members(tree: ast.Module) -> dict[str, dict[str, str]]:
         for name, each in typed.items()
     }
     return {name: each for name, each in kept.items() if each}
+
+
+def _may_test(name: str, found: Bases, origins: Mapping[str, str]) -> bool:
+    """Check whether a class may be a test case: it has a base no class of the module, nor a builtin, is.
+
+    A test case's own, or a framework's (which this file can't see the bases of).
+
+    Returns:
+      Whether it may.
+
+    """
+    return any(
+        base not in found and _resolved(base, origins) not in BUILTIN_BASES.keys() | PASSED_OVER
+        for owner in (name, *ancestors(name, found))
+        for base in found[owner]
+    )
 
 
 def agreeing(typed: Mapping[str, str], declared: Sequence[Mapping[str, str]]) -> dict[str, str]:
@@ -384,16 +453,17 @@ def _stores(tree: ast.Module) -> dict[str, list[_Store | None]]:
     return found
 
 
-def _keeps(store: _Store | None, annotation: str) -> bool:
+def _keeps(store: _Store | None, annotation: str, known: Known) -> bool:
     """Check whether a store of an attribute keeps it the type `annotation`.
 
     Returns:
-      Whether its value's own text types it so, or (augmented) the operator gives that type back.
+      Whether its value's own text types it so (see `member_type`), or (augmented) the operator
+      gives that type back.
 
     """
     if store is None:
         return False
-    own: str | None = member_type(store[1])
+    own: str | None = _of(store[1], annotation, known)
     if store[0] is None:
         return own == annotation
     given: ast.BinOp = ast.BinOp(store[1], store[0], store[1])
@@ -404,11 +474,14 @@ def _typed(
     body: Sequence[ast.stmt],
     kept: frozenset[str],
     stored: Mapping[str, Sequence[_Store | None]],
+    typing: tuple[Mapping[str, str], Known],
 ) -> dict[str, str]:
     """Type a class body's variables: each bound once there, to a value its text types.
 
     `kept`: the names left alone (a builtin base's own); `stored`: how the module stores each
-    attribute (see `_stores`), which leaves one alone unless every store keeps its type.
+    attribute (see `_stores`), which leaves one alone unless every store keeps its type; `typing`:
+    the types a base declares some names (see `HELD`), each its variable's where the value is of
+    it, and what the module names of the standard library (see `library`).
 
     Returns:
       Their types, by name.
@@ -428,13 +501,28 @@ def _typed(
             case ast.Assign(targets=[ast.Name(id=name)], value=value) if (
                 bound[name] == 1
                 and name not in kept
-                and (annotation := member_type(value)) is not None
-                and all(_keeps(store, annotation) for store in stored.get(name, ()))
+                and (annotation := _of(value, typing[0].get(name), typing[1])) is not None
+                and all(_keeps(store, annotation, typing[1]) for store in stored.get(name, ()))
             ):
                 found[name] = annotation
             case _:
                 pass
     return found
+
+
+def _of(value: ast.expr, held: str | None, known: Known) -> str | None:
+    """Type a variable by its `value`, under a base that declares it `held` (`None`: none does).
+
+    Returns:
+      `held`, where its value is of it, `None` too (`maxDiff = None`); its value's own type (see
+      `member_type`) where no base declares it; else `None`.
+
+    """
+    none: bool = isinstance(value, ast.Constant) and value.value is None
+    own: str | None = _NONE if none and held is not None else member_type(value, known)
+    if own is None or held is None:
+        return own
+    return held if own in (union(held) or ()) else None
 
 
 def _bound(stmt: ast.stmt) -> list[str]:

@@ -128,6 +128,14 @@ _SIGNATURE: str = (
         ("sorted(name for name in names if name)", "list[str]"),
         ("set(other for name in names)", None),
         ("list(m for m in [maybe] if m)", None),
+        ("iter(names)", "Iterator[str]"),
+        ("iter(ages)", "Iterator[str]"),
+        ("iter(ages.items())", "Iterator[tuple[str, int]]"),
+        ("iter(lines)", "Iterator[bytes]"),
+        ("iter(other)", None),
+        ("iter(input, '')", None),  # a sentinel's: what `input` returns
+        ("iter(names, key=n)", None),
+        ("iter()", None),
     ],
 )
 def test_a_builtin_is_typed_by_its_arguments(value: str, fix: str | None) -> None:
@@ -135,6 +143,21 @@ def test_a_builtin_is_typed_by_its_arguments(value: str, fix: str | None) -> Non
     source: str = f"{_SIGNATURE}    {NAME} = {value}\n"
     offences: list[Offence] = [o for o in check_source(source) if o.name == NAME]
     assert [(o.fix, o.unsafe) for o in offences] == [(fix, False)]
+
+
+def test_iter_is_typed_where_the_module_can_name_an_iterator() -> None:
+    """By an import it has, or one added; not where the name is something else's."""
+    body: str = "\n\n\ndef f(names: list[str]) -> None:\n    x_ = iter(names)\n"
+    named: dict[str, str | None] = {
+        "": "Iterator[str]",
+        "from collections.abc import Iterator as Each": "Each[str]",
+        "import collections.abc as abc": "abc.Iterator[str]",
+        "from typing import Iterator": None,
+        "Iterator = 1": None,
+    }
+    assert {header: [o.fix for o in check_source(header + body) if o.name == NAME] for header in named} == {
+        header: [fix] for header, fix in named.items()
+    }
 
 
 def test_a_builtin_the_module_rebinds_is_left_alone() -> None:

@@ -24,6 +24,7 @@ from constricter.offences import COMMENT_TYPED_TARGET as COMMENT_TYPED
 from constricter.offences import Edit, Fix, Offence
 
 _NOTHING_KNOWN: Known = Known({}, frozenset(), {}, {})
+_TYPED: Final = ": "  # in a line that declares a name
 # A notebook cell as written, and as read back (only its `source` is looked at).
 _Cell: TypeAlias = dict[str, str | list[str] | dict[str, str]]
 _Sources: TypeAlias = dict[str, list[str]]
@@ -488,3 +489,38 @@ def test_a_late_fix_for_a_chained_name_is_declared_before_its_first_binding(tmp_
     _ = path.write_text(CHAINED_LATE, encoding="utf-8", newline="\n")
     _ = cli.main(["--fix", "-q", str(path)])
     assert path.read_text(encoding="utf-8") == CHAINED_LATE_FIXED
+
+
+def test_a_loop_over_os_walk_is_typed_by_where_it_starts() -> None:
+    """A `str` path's or a `pathlib` one's gives `str`s, a `bytes` one's `bytes`; any other, nothing."""
+    source: str = """
+        import os
+        from os import walk
+        from pathlib import Path
+
+
+        def f(top: str, where: Path, raw: bytes, other, count: int) -> None:
+            for root, dirs, files in os.walk(top):
+                pass
+            for entry in walk(where, topdown=False):
+                pass
+            for broot, _, bfiles in os.walk(raw):
+                pass
+            for unknown in os.walk(other):
+                pass
+            for counted in os.walk(count):
+                pass
+            for none in os.walk():
+                pass
+            walked = list(os.walk("."))
+    """
+    fixed: list[str] = [line.strip() for line in _fixed(source).splitlines()]
+    assert [line for line in fixed if _TYPED in line and not line.startswith(("def ", "for "))] == [
+        "root: str",
+        "dirs: list[str]",
+        "files: list[str]",
+        "entry: tuple[str, list[str], list[str]]",
+        "broot: bytes",
+        "bfiles: list[bytes]",
+        'walked: list[tuple[str, list[str], list[str]]] = list(os.walk("."))',
+    ]

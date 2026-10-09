@@ -38,8 +38,11 @@ def f(key: Key, maybe: shapes.Maybe, plain: Plain, tested: Key) -> None:
         d = tested
 """
 
-# `maybe` is nearly always checked for `None` first, and `tested` is narrowed under its test.
-_FIXED: Final = "    a: Key = key\n    b = maybe\n    c: Plain = plain\n    if tested:\n        d = tested\n"
+# `tested` is narrowed under its test.
+_FIXED: Final = (
+    "    a: Key = key\n    b: shapes.Maybe = maybe\n    c: Plain = plain\n"
+    "    if tested:\n        d = tested\n"
+)
 
 
 def test_another_files_alias_of_a_union_is_read_as_the_union(tmp_path: Path) -> None:

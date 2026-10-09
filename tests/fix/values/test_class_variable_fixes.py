@@ -144,7 +144,7 @@ def test_a_plain_class_variable_is_typed_by_its_literal_value() -> None:
         "pair": ("tuple[int, str]", True),
         "ratio": ("float", True),
         "extra": ("float", True),  # under a plain class
-        "maxDiff": ("int", True),  # under a test case
+        "maxDiff": ("int | None", True),  # under a test case, which declares it so
         "verbose": ("bool", True),  # under both
     }
     # A call (`made`), a copy (`copied`), `None`, a name bound twice (`twice`), an attribute
@@ -726,3 +726,197 @@ def test_a_variable_the_module_stores_as_the_same_type_is_typed() -> None:
         "gone",
         "typed",
     }
+
+
+HELD: Final = """
+import unittest
+
+from framework import Case
+
+
+class Tests(unittest.IsolatedAsyncioTestCase):
+    maxDiff = 80
+    longMessage = False
+    retries = 2
+
+    def tune(self) -> None:
+        self.maxDiff = 100
+
+
+class Wrong(unittest.TestCase):
+    maxDiff = "all"
+
+
+class Framed(Case):
+    maxDiff = 1
+
+
+class Whole(unittest.TestCase):
+    maxDiff = None
+    longMessage = None
+
+
+class Under(Framed):
+    maxDiff = 2
+
+
+class Free:
+    maxDiff = 3
+
+
+class Failed(ValueError):
+    maxDiff = 4
+"""
+
+
+def test_a_variable_a_test_case_declares_has_that_type() -> None:
+    """Under one, or a base that may be one: `maxDiff` is an `int | None` to a type checker."""
+    found: list[Offence] = check_source(
+        textwrap.dedent(HELD),
+        checks=Checks(all_scopes=True, plain_bases=("framework",)),
+    )
+    fixes: list[tuple[str, int, str | None]] = [(o.name, o.line, o.fix) for o in found]
+    lines: list[str] = textwrap.dedent(HELD).splitlines()
+    assert {(name, lines[line - 1].strip()): fix for name, line, fix in fixes} == {
+        ("maxDiff", "maxDiff = 80"): "int | None",  # and a store of an `int` keeps it
+        ("longMessage", "longMessage = False"): "bool",
+        ("retries", "retries = 2"): "int",
+        ("maxDiff", 'maxDiff = "all"'): None,  # not of the type declared
+        ("maxDiff", "maxDiff = 1"): "int | None",  # a framework's base may be a test case
+        ("maxDiff", "maxDiff = 2"): "int | None",
+        ("maxDiff", "maxDiff = None"): "int | None",
+        ("longMessage", "longMessage = None"): None,  # a `bool`
+        ("maxDiff", "maxDiff = 3"): "int",  # its own
+        ("maxDiff", "maxDiff = 4"): "int",
+    }
+    assert classvars.HELD == {"longMessage": "bool", "maxDiff": "int | None"}
+    assert stdlib.attributes("unittest.IsolatedAsyncioTestCase") == stdlib.attributes("unittest.TestCase")
+
+
+LIBRARY: Final = """
+import datetime as dt
+import os
+import re
+from decimal import Decimal
+from pathlib import Path
+from re import compile as build
+
+import other
+
+
+class Config:
+    pattern = re.compile("x")
+    built = build("y")
+    sep = os.sep
+    root = Path("a")
+    zero = Decimal("0")
+    day = dt.timedelta(days=1)
+    size = len("abc")
+    names = sorted(["b", "a"])
+    upper = "a".upper()
+    env = os.environ.get("X")
+    made = Thing()
+    theirs = other.make()
+    lock = other.Lock()
+
+    def read(self) -> None:
+        a = self.pattern
+        b = self.day
+"""
+
+
+def test_a_variable_is_typed_by_what_the_standard_library_gives() -> None:
+    """A function's or a class's of its own, an attribute, a builtin: as the module names them."""
+    fixed: _Fixed = _fixed(LIBRARY)
+    assert {name: fix[0] for name, fix in fixed.items() if fix[0]} == {
+        "pattern": "re.Pattern[str]",
+        "built": "re.Pattern[str]",
+        "sep": "str",
+        "root": "Path",
+        "zero": "Decimal",
+        "day": "dt.timedelta",
+        "size": "int",
+        "names": "list[str]",
+        "upper": "str",
+        "a": "re.Pattern[str]",  # and what reads one
+        "b": "dt.timedelta",
+    }
+    # A union (which a read of isn't offered), a class the module doesn't define, another module's.
+    assert {name for name, fix in fixed.items() if not fix[0]} == {"env", "made", "theirs", "lock"}
+
+
+SHAPES: Final = """
+import datetime as dt
+import re
+from decimal import Decimal
+
+
+class Config:
+    pattern = re.compile("x")
+    day = dt.timedelta(days=1)
+    rate = Decimal("1")
+    limit = 3
+"""
+READING: Final = """
+import re
+
+from pkg.shapes import Config
+
+
+def read(config: Config) -> None:
+    a = config.pattern
+    b = config.day
+    c = config.rate
+    d = config.limit
+"""
+READ: Final = """
+import re
+
+from pkg.shapes import Config
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from decimal import Decimal
+    import datetime as dt
+
+
+def read(config: Config) -> None:
+    a: re.Pattern[str] = config.pattern
+    b: dt.timedelta = config.day
+    c: Decimal = config.rate
+    d: int = config.limit
+"""
+CLASHING: Final = """
+from pkg import shapes
+
+dt: int = 1
+Decimal: int = 2
+
+
+def read(config: shapes.Config) -> None:
+    b = config.day
+    c = config.rate
+    d = config.limit
+"""
+
+
+def test_another_file_reads_a_library_type_as_it_can_write_it(tmp_path: Path) -> None:
+    """By its own imports, or one added for type checking; not where the name means something else."""
+    files: dict[str, str] = {
+        "pkg/__init__.py": "",
+        "pkg/shapes.py": SHAPES,
+        "reading.py": READING,
+        "clashing.py": CLASHING,
+    }
+    name: str
+    source: str
+    for name, source in files.items():
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        _ = (tmp_path / name).write_text(source, encoding="utf-8")
+    arguments: list[str] = ["--fix", "--unsafe-fixes", "--all-scopes", "-q", "--jobs=1", str(tmp_path)]
+    for _ in range(2):
+        assert cli.main(arguments) == cli.EXIT_FOUND
+        assert (tmp_path / "reading.py").read_text(encoding="utf-8") == READ
+        assert (tmp_path / "clashing.py").read_text(encoding="utf-8") == CLASHING.replace(
+            "d = config.limit",
+            "d: int = config.limit",
+        )

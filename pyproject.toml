@@ -137,6 +137,8 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 "tests/corpus/corpus_table.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # `--infer-with`'s tests start its guard and a fake server, and a constricter to kill.
 "tests/cli/test_hints.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
+# The trace's tests run a traced pytest, whose pytest-xdist workers are processes of its own.
+"tests/test_trace.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The profile and the timings run the check under `py-spy` and `hyperfine`.
 "tests/corpus/corpus_profile.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 "tests/corpus/corpus_timing.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
@@ -265,7 +267,7 @@ layers = [
 name = "the rules and the fixes import neither the command nor the plugins"
 type = "forbidden"
 source_modules = ["constricter.rules", "constricter.fix", "constricter.offences"]
-forbidden_modules = ["constricter.cli", "constricter.plugins", "constricter.trace"]
+forbidden_modules = ["constricter.cli", "constricter.plugins", "constricter.recording", "constricter.trace"]
 
 [[tool.importlinter.contracts]]
 name = "constricter.rules.walked imports nothing of constricter's"
