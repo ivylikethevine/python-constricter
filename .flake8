@@ -1,3 +1,5 @@
 [flake8]
 max-line-length = 110
 indent-size = 4
+# `ruff format` puts a space before a slice's `:` after an expression.
+extend-ignore = E203

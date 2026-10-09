@@ -6,6 +6,8 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--infer-with` reports a checker that can't be restarted after it hung: shutting the stopped
+  server down again raised `ValueError: write to closed file` in its place.
 - `corpus_suite.py --trace` traces a suite pytest doesn't run by the script it names, in one process
   (`Suite.script`: Django's `tests/runtests.py --parallel=1`), and `super_corpora.py` has a `traced`
   step for each suite: its tests' trace, the fixes resting on it, and its type checks after, or its
