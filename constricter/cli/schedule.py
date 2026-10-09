@@ -25,13 +25,16 @@ from constricter.fix.index import (
     fixtures,
     linked,
     loose,
+    managed,
     offers,
     order,
+    own_methods,
     own_types,
     plain,
     project,
     sides,
     stubbed,
+    taken,
     tuples,
 )
 from constricter.fix.index.modules import Memo
@@ -65,12 +68,21 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         classes=imported.classes,
         hints=hints,
         type_vars=project.type_vars(modules, path),
-        returned=loose.returned(modules, path, guarded, imported.returned),
+        returned=awaits.returned(
+            modules,
+            path,
+            guarded,
+            loose.returned(modules, path, guarded, imported.returned),
+        ),
         guarded=guarded,
         generics=imported.generics | own.generics,
         callees=callers.callees(modules, path),
         parameters=callers.own_parameters(modules, path),
-        overloaded={**stubbed.overloaded(modules, path, guarded), **methods.signatures},
+        overloaded={
+            **stubbed.overloaded(modules, path, guarded),
+            **methods.signatures,
+            **own_methods.overloaded(modules, path, guarded),
+        },
         installed_classes=stubbed.classes(modules, path),
         installed_parameters=methods.parameters,
         installed_lineage={**own_types.lineages(modules, path, guarded), **methods.lineage},
@@ -87,6 +99,9 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         values=linked.values(modules, path),
         untyped=linked.untyped(modules, path),
         unions=tuples.unions(modules, path, guarded),
+        managers=managed.calls(modules, path, guarded),
+        takers=taken.calls(modules, path, guarded),
+        emptied=beyond.emptied(modules, path),
     )
 
 

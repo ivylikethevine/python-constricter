@@ -142,6 +142,7 @@ _RUNTIME: Final = frozenset(
 # binds), and a private function code calls all the same.
 _PRIVATE: Final = {
     "unittest.case": ("_AssertRaisesContext", "_AssertWarnsContext"),
+    "unittest._log": ("_AssertLogsContext", "_LoggingWatcher"),
     "tempfile": ("_TemporaryFileWrapper",),
     "sys": ("_getframe",),
 }
@@ -208,11 +209,13 @@ def _paths(stubs: Stubs, config: Config) -> dict[str, Found]:
     space: Namespace | None
     target: Found | None
     for module in sorted(modules):
-        skipped: bool = private(module) or module.split(".")[0] in _SKIPPED_MODULES
+        skipped: bool = module.split(".")[0] in _SKIPPED_MODULES or (
+            private(module) and module not in _PRIVATE
+        )
         if skipped or (space := stubs.namespace(module, config)) is None:
             continue
         name: str
-        for name in sorted(space.public):
+        for name in () if private(module) else sorted(space.public):
             path: str = f"{module}.{name}"
             if not private(name) and path not in modules and (target := stubs.lookup(module, name, config)):
                 found[path] = target

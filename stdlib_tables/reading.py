@@ -116,6 +116,7 @@ _STR_ONLY: Final[frozenset[Form | None]] = frozenset({Text(_STR)})
 _SELF: Final = "Self"
 # `typing`'s names an annotation may use: a `LiteralString` is a `str`; `Self` is the class it's on.
 ANY: Final = "Any"  # `typing.Any`, as a function's whole return (see `Reading.returns_any`)
+_FUTURES: Final = frozenset({"Future", "Task"})  # what a coroutine isn't (see `Reading.future_bound`)
 _TYPING_FORMS: Final[dict[str, Form | None]] = {"LiteralString": Text(_STR), "AnyStr": ANY_STR, _SELF: None}
 Table: TypeAlias = dict[str, str]  # each entry's annotation, or a class's dotted path, by name
 Defs: TypeAlias = Sequence[ast.FunctionDef | ast.AsyncFunctionDef]  # a function's overloads
@@ -487,6 +488,20 @@ class Reading:
         if first is None or any(form != first for form in forms):
             return None
         return None if first == ANY_STR and not _mentions(defs, "AnyStr") else first
+
+    def future_bound(self, annotation: ast.expr | None, module: str) -> bool:
+        """Check whether a parameter is a type variable bounded by a future (`_FT`, a `Future[Any]`).
+
+        Returns:
+          Whether it is: a coroutine's call isn't one, though awaiting it gives something.
+
+        """
+        found: Found | None = None if annotation is None else self.ref(annotation, module)
+        bound: ast.expr | None = (
+            found.binding.bound if found is not None and isinstance(found.binding, TypeVariable) else None
+        )
+        head: ast.expr | None = bound.value if isinstance(bound, ast.Subscript) else bound
+        return head is not None and ast.unparse(head).rpartition(".")[2] in _FUTURES
 
     def returns_any(self, defs: Defs, module: str) -> bool:
         """Check whether a function (each of its overloads) is declared to return `typing.Any` alone.

@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: MIT
 """What `--fix` knows: a module's declarations it infers from (`Known`), and what it infers (`Inference`)."""
 
+import ast
 import builtins
+import copy
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, NamedTuple, TypeAlias
+from typing import TYPE_CHECKING, Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.core.inherited import Beyond, Lineage
 from constricter.fix.core.signatures import Expansion, ReadSignature
@@ -35,13 +37,20 @@ Origin: TypeAlias = tuple[str, str | None]
 # How a return template starts that's the type itself, as the module calling it writes it: a
 # checked file's overload's (see `constricter.fix.index.stubbed.overloaded`).
 SPELLED: Final = "="
+# After a fixture's `request` parameter's name: the key its `request.param` is typed under (see `Typed`).
+PARAM: Final = ".param"
 
 
 # A `dict` itself, not a `UserDict`: every inference reads it, as fast as a `dict` is read.
 class Typed(dict[str, str]):  # ruff: ignore[subclass-builtin]
-    """A scope's names' types so far, counting each change: what's inferred of a value holds till then."""
+    """A scope's names' types so far, counting each change: what's inferred of a value holds till then.
+
+    `held`: the names bound to a call whose type no annotation can write (pytest's `CaptureResult`),
+    each with the call, which an attribute read of the name is typed by (see `stood`).
+    """
 
     version: int = 0
+    held: Mapping[str, ast.expr] = MappingProxyType({})
 
     @override
     def __setitem__(self, name: str, annotation: str) -> None:
@@ -69,6 +78,44 @@ class Typed(dict[str, str]):  # ruff: ignore[subclass-builtin]
         """Leave `name` with no type, and count it."""
         self.version += 1
         _ = super().pop(name, None)
+
+    def hold(self, name: str, call: ast.expr | None) -> None:
+        """Take `name` to stand for `call`, whose type no annotation can write; for nothing, with `None`."""
+        if call is None and name not in self.held:
+            return
+        self.version += 1
+        kept: dict[str, ast.expr] = {key: value for key, value in self.held.items() if key != name}
+        self.held = kept if call is None else {**kept, name: call}
+
+
+def _held(node: ast.AST, held: Mapping[str, ast.expr]) -> ast.expr | None:
+    name: str
+    match node:
+        case ast.Attribute(value=ast.Name(id=name)) if name in held:
+            return held[name]
+        case _:
+            return None
+
+
+def stood(value: ast.expr, declared: Mapping[str, str]) -> ast.expr:
+    """Write `value` with the call each name `declared` holds stands for, where it reads an attribute of one.
+
+    `both.out` as `capsys.readouterr().out`, after `both = capsys.readouterr()` (see `Typed.held`).
+
+    Returns:
+      It: `value` itself where it reads none (most values), else a copy.
+
+    """
+    held: Mapping[str, ast.expr] = declared.held if isinstance(declared, Typed) else {}
+    if not held or all(_held(node, held) is None for node in ast.walk(value)):
+        return value
+    copied: ast.expr = copy.deepcopy(value)
+    node: ast.AST
+    for node in ast.walk(copied):
+        call: ast.expr | None
+        if (call := _held(node, held)) is not None:
+            cast("ast.Attribute", node).value = call
+    return copied
 
 
 class Guarded(NamedTuple):
@@ -286,6 +333,12 @@ class Partial(NamedTuple):
     methods: Mapping[str, Mapping[str, str]] = {}
 
 
+# A function's parameters declared a builtin container (`names: list[str]`), by name: each one's
+# position (`None`: keyword only), whether a keyword can pass it, and its type as the calling module
+# writes it. What an empty container passed to one is taken as (see `constricter.fix.values.fills`).
+Takers: TypeAlias = Mapping[str, tuple[int | None, bool, str]]
+
+
 class Indirect(NamedTuple):
     """Declared returns that type something other than a plain call.
 
@@ -294,13 +347,15 @@ class Indirect(NamedTuple):
     files' too. `tuples`: the named tuples the module names, its own and other checked files', each
     with the tuple unpacking one gives (see `targets.named_tuples`). `unions`: the type aliases of a
     union it names, its own and other checked files', each with the union as its module writes it
-    (see `targets.aliased_unions`).
+    (see `targets.aliased_unions`). `takers`: the functions it calls that declare a parameter a
+    builtin container, its own and other checked files', each with those parameters (see `Takers`).
     """
 
     awaits: Mapping[str, str] = MappingProxyType({})
     partial: Partial = Partial()
     tuples: Mapping[str, str] = MappingProxyType({})
     unions: Mapping[str, str] = MappingProxyType({})
+    takers: Mapping[str, Takers] = MappingProxyType({})
 
 
 class ClassSide(NamedTuple):
@@ -308,13 +363,15 @@ class ClassSide(NamedTuple):
 
     On the class itself: `class_attributes`, `class_methods`. From its bases: `lineage`, which base
     an instance takes a method from (see `Lineage`). In its body: `variables`, the plain classes'
-    typed by their values, the module's own and those it imports (see `constricter.fix.values.classvars`).
+    typed by their values, the module's own and those it imports (see `constricter.fix.values.classvars`);
+    `plain`: which of its own classes are plain.
     """
 
     attributes: Mapping[str, Mapping[str, str]]
     methods: Mapping[str, Mapping[str, str]]
     lineage: Lineage = Lineage()
     variables: Mapping[str, Mapping[str, str]] = MappingProxyType({})
+    plain: frozenset[str] = frozenset()
 
 
 class Limits(NamedTuple):
@@ -510,6 +567,12 @@ class Outside:  # pylint: disable=too-many-instance-attributes
     values: frozenset[str] = frozenset()
     unions: Mapping[str, str] = field(default_factory=dict[str, str])
     untyped: frozenset[str] = frozenset()
+    # The attributes its classes take bound to an empty container from their bases (see `beyond.emptied`).
+    emptied: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
+    # Their functions it calls that declare a parameter a builtin container (see `Indirect.takers`).
+    takers: Mapping[str, Takers] = field(default_factory=dict[str, Takers])
+    # What `with` gives of each call it makes to their `@contextmanager` functions (see `index.managed`).
+    managers: Mapping[str, Passed] = field(default_factory=dict[str, Passed])
 
     def usable(self, taken: frozenset[str], present: frozenset[str]) -> "Outside":
         """Drop what other files offer whose type needs a name imported that the module binds already.
@@ -576,6 +639,12 @@ class Outside:  # pylint: disable=too-many-instance-attributes
             values=self.values,
             unions=self.unions,
             untyped=self.untyped,
+            managers={name: typed for name, typed in self.managers.items() if not roots(typed[0]) & clashing},
+            emptied=self.emptied,
+            takers={
+                name: {param: taken for param, taken in takers.items() if not roots(taken[2]) & clashing}
+                for name, takers in self.takers.items()
+            },
         )
 
 

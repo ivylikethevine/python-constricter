@@ -2,10 +2,12 @@
 """`--fix` for calls to unannotated functions: their own `return` statements decide their type.
 
 A function (or method) counts when it's plain (a `def` directly in the module or a class body, not
-`async`, decorated or redefined), declares no return type, every `return` it has gives a value whose
-type `--fix` is sure of, all the same, and it can't fall off its end (which returns `None`). A
-generator counts by its `yield`s instead, all of one type `T`: a `Generator[T, None, None]` (see
-`constricter.rules.recorded`). A module function's type is certain; a method's is a guess, since a
+decorated or redefined), declares no return type, every `return` it has gives a value whose type
+`--fix` is sure of, all the same, and it can't fall off its end (which returns `None`). A generator
+counts by its `yield`s instead, all of one type `T`: a `Generator[T, None, None]` (see
+`constricter.rules.recorded`). An `async def`'s `return`s type what awaiting its call gives, under
+`AWAIT` before its name; a function `@contextmanager` makes a manager, what `with` gives of it,
+under `entered.ENTERED`. A module function's type is certain; a method's is a guess, since a
 subclass may override it. Each value is typed as the checker sees it there, with the function's own
 locals.
 """
@@ -14,17 +16,20 @@ import ast
 import operator
 from collections.abc import Collection, Iterator, Mapping, Sequence
 from functools import lru_cache
-from typing import Final, NamedTuple, TypeAlias, cast
+from typing import Final, NamedTuple, TypeAlias
+from weakref import WeakKeyDictionary
 
 from constricter.fix.core.imports import bound_within
 from constricter.fix.core.inherited import Lineage
 from constricter.fix.core.known import Inference, Returned, Returns
+from constricter.fix.core.signatures import AWAIT
 from constricter.fix.values import entered, fills
+from constricter.fix.values.bodies import is_generator, terminates
 from constricter.fix.values.inference import ASSIGNED, RETURNED
 from constricter.rules.annotations import roots
 from constricter.rules.decorators import FIXTURES, spelled
 from constricter.rules.flow import members
-from constricter.rules.syntax import FunctionDef, Start, has_within, own_nodes, within
+from constricter.rules.syntax import FunctionDef, Start, within
 from constricter.rules.walked import classes, of_type
 
 # A `return` statement as the checker saw it: its value's inference (`None`: none, or unknown), and
@@ -48,15 +53,15 @@ _NONE: Final = "None"
 _NOT_METHODS: Final = frozenset({"staticmethod", "classmethod"})
 _NUMBERS: Final = ("bool", "int", "float", "complex")  # narrowest first: an attribute takes the widest
 _FUNCTIONS: Final = (ast.FunctionDef, ast.AsyncFunctionDef)
+# The attributes each of a module's classes takes from another file's base that binds them to an
+# empty container and does no more with them: each one's kind, by class (see `hand`).
+_Handed: TypeAlias = Mapping[str, Mapping[str, str]]
+_HANDED: Final[WeakKeyDictionary[ast.Module, _Handed]] = WeakKeyDictionary()
 # What a call calls: a name (`f()`), or an attribute (`x.m()`), the other `None`.
 _Callee: TypeAlias = tuple[str | None, str | None]
 _Call: TypeAlias = tuple[tuple[int, int], _Callee]  # where a call starts (line, column), and what it calls
 _Uses: TypeAlias = tuple[list[Start], list[str]]  # attributes used: where each starts, and its name
 _Listed: TypeAlias = list[tuple[Start, str]]  # attributes used, each where it starts and its name
-# The functions by name: the module's (`[False]`), then the classes' methods (`[True]`).
-_Named: TypeAlias = tuple[dict[str, list[FunctionDef]], dict[str, list[FunctionDef]]]
-# One function to put in call order, and its callees still to put in before it.
-_Visit: TypeAlias = tuple[FunctionDef, Iterator[FunctionDef]]
 
 
 def returned(
@@ -146,6 +151,42 @@ def exported(own: Returned, lineage: Lineage) -> Returns:
     return Returns(dict(own.calls), guesses, methods=methods)
 
 
+def hand(tree: ast.Module, emptied: Mapping[str, Mapping[str, str]]) -> None:
+    """Tell which attributes `tree`'s classes take bound empty from another file's base (see `_HANDED`).
+
+    Before the module is checked: its classes' methods' fills of one then type it for them, as
+    their own empty container's do.
+    """
+    _HANDED[tree] = emptied
+
+
+def untouched(tree: ast.Module) -> dict[str, dict[str, str]]:
+    """Find the attributes each class binds to an empty container and does no more with, in the module.
+
+    Neither it nor a class of the module's under it reads or stores one again: what fills it is
+    another file's to say.
+
+    Returns:
+      Each such attribute's kind, by class; a class with none is left out.
+
+    """
+    found: dict[str, dict[str, str]] = {}
+    node: ast.ClassDef
+    for node in classes(tree):
+        stored: list[str] = _uses(tree)[2][1][within(_uses(tree)[2][0], node)]
+        kinds: dict[str, str] = {
+            attr: kind
+            for attr, (kind, count) in _emptied(tree, node).items()
+            if _class_names(tree)[node.name] == 1
+            and stored.count(attr) == count
+            and not any(_read(tree, each, attr) for each in (node, *_family(tree, node)))
+            and not any(attr in _emptied(tree, each) for each in _family(tree, node))
+        }
+        if kinds:
+            found[node.name] = kinds
+    return found
+
+
 def unannotated(body: Sequence[ast.stmt]) -> frozenset[str]:
     """Name the functions in `body` whose `return`s could type their calls (see `_return_type`).
 
@@ -153,7 +194,11 @@ def unannotated(body: Sequence[ast.stmt]) -> frozenset[str]:
       Each plain function's name that has no decorator or declared return.
 
     """
-    return frozenset(func.name for func in _plain(body) if not _decorated(func) and func.returns is None)
+    return frozenset(
+        func.name
+        for func in _plain(body)
+        if isinstance(func, ast.FunctionDef) and not _decorated(func) and func.returns is None
+    )
 
 
 @lru_cache(maxsize=4)  # asked once per round, of the same module
@@ -195,6 +240,7 @@ def _attributes(
     values: dict[str, list[Recorded]]
     uses: dict[str, list[Added]]
     values, uses = _stored(node, seen)
+    yield from _handed(tree, node, uses, seen)
     if not values:
         return
     starts: list[Start]
@@ -228,6 +274,34 @@ def _attributes(
             and (widest := _widest(types)) is not None
         ):
             yield attr, widest, frozenset({ASSIGNED}).union(*(origins for _, origins in found))
+
+
+def _handed(
+    tree: ast.Module,
+    node: ast.ClassDef,
+    uses: Mapping[str, Sequence[Added]],
+    seen: tuple[Mapping[int, Sequence[Assigned]], Mapping[int, Sequence[Used]]],
+) -> Iterator[tuple[str, str, frozenset[str]]]:
+    """Type the attributes the class takes bound empty from another file's base, by its own methods' fills.
+
+    And those of the module's classes under it, as `_filled_under` gathers them (see `_HANDED`).
+
+    Yields:
+      Each one's name, type, and what that rests on.
+
+    """
+    attr: str
+    kind: str
+    for attr, kind in sorted(_HANDED.get(tree, {}).get(node.name, {}).items()):
+        more: _Under | None = _under(tree, _family(tree, node), attr, seen)
+        own: Sequence[Added] = uses.get(attr, ())
+        filled: tuple[str, frozenset[str]] | None = (
+            None
+            if more is None or more[0] or len(own) != _read(tree, node, attr) or attr in _class_bound(node)
+            else _filled((kind, 0), [], [*own, *more[1]])
+        )
+        if filled is not None and _uses(tree)[2][1][within(_uses(tree)[2][0], node)].count(attr) == 0:
+            yield attr, *filled
 
 
 def _filled_under(
@@ -436,7 +510,11 @@ def _class_empties(module: ast.Module, node: ast.ClassDef) -> Mapping[str, str]:
     """
     # Its own, and those of the module's classes it's under: their fills are its own too.
     above: list[ast.ClassDef] = [each for each in classes(module) if node in _family(module, each)]
-    return {attr: kind for each in (*above, node) for attr, (kind, _) in _emptied(module, each).items()}
+    handed: Mapping[str, Mapping[str, str]] = _HANDED.get(module, {})
+    return {
+        **{attr: kind for each in (*above, node) for attr, kind in handed.get(each.name, {}).items()},
+        **{attr: kind for each in (*above, node) for attr, (kind, _) in _emptied(module, each).items()},
+    }
 
 
 def _read(module: ast.Module, node: ast.ClassDef, attr: str) -> int:
@@ -536,8 +614,13 @@ def called(module: ast.Module, node: ast.AST, found: Returned) -> bool:
       Whether it does: otherwise checking it again would change nothing.
 
     """
-    methods: set[str] = {name for methods in found.methods.values() for name in methods}
-    return any(name in found.calls or attr in methods for name, attr in _callees_in(module, node))
+    methods: set[str] = {_called(name) for methods in found.methods.values() for name in methods}
+    calls: set[str] = {_called(name) for name in found.calls}
+    return any(name in calls or attr in methods for name, attr in callees_in(module, node))
+
+
+def _called(key: str) -> str:  # a table's entry's function's name (see `_key`)
+    return key.removeprefix(entered.ENTERED).removeprefix(AWAIT)
 
 
 def reads(module: ast.Module, node: ast.AST, attributes: Collection[str], *, anywhere: bool = False) -> bool:
@@ -589,7 +672,7 @@ def retyped(before: Returned, after: Returned) -> set[str]:
     }
 
 
-def _callees_in(module: ast.Module, node: ast.AST) -> Sequence[_Callee]:
+def callees_in(module: ast.Module, node: ast.AST) -> Sequence[_Callee]:
     """Find what `node` (the module, a function, or a statement in it) calls, by its span of the source.
 
     Returns:
@@ -654,10 +737,22 @@ def slots(module: ast.Module) -> dict[int, Slot]:
 
     """
     return {
-        id(func): Slot(owner, func.name)
+        id(func): Slot(owner, _key(func))
         for owner, body in ((None, module.body), *((node.name, node.body) for node in classes(module)))
         for func in _plain(body)
     }
+
+
+def _key(func: FunctionDef) -> str:
+    """Name a function's entry in the tables: its name, after what says how its call is read.
+
+    Returns:
+      It: after `AWAIT` for an `async def`, `entered.ENTERED` for a manager (see the module docstring).
+
+    """
+    if isinstance(func, ast.AsyncFunctionDef):
+        return f"{AWAIT}{func.name}"
+    return f"{entered.ENTERED}{func.name}" if entered.is_manager(func) else func.name
 
 
 def _decorated(func: FunctionDef) -> bool:
@@ -672,8 +767,8 @@ def _decorated(func: FunctionDef) -> bool:
     return bool(func.decorator_list) and not all(spelled(each) in FIXTURES for each in func.decorator_list)
 
 
-def _plain(body: Sequence[ast.stmt]) -> list[ast.FunctionDef]:
-    """Find the plain functions directly in `body`: a `def` (not `async`) no other there shares a name with.
+def _plain(body: Sequence[ast.stmt]) -> list[FunctionDef]:
+    """Find the plain functions directly in `body`: a `def` or `async def` no other there shares a name with.
 
     Returns:
       Them, in source order.
@@ -684,67 +779,7 @@ def _plain(body: Sequence[ast.stmt]) -> list[ast.FunctionDef]:
     for stmt in body:
         if isinstance(stmt, _FUNCTIONS):
             counts[stmt.name] = counts.get(stmt.name, 0) + 1
-    return [stmt for stmt in body if isinstance(stmt, ast.FunctionDef) and counts[stmt.name] == 1]
-
-
-def in_call_order(module: ast.Module, functions: Sequence[FunctionDef]) -> list[FunctionDef]:
-    """Order `functions` so that each comes after the functions it calls (a cycle's, in any order).
-
-    Its callees: the module's functions it calls by name, and every method named as it calls one
-    (`x.m()`: any class's `m`), as `called` counts them.
-
-    Returns:
-      Them, callees first; otherwise in their own order.
-
-    """
-    named: _Named = ({}, {})
-    func: FunctionDef
-    for func in functions:
-        slot: Slot | None
-        if (slot := slots(module).get(id(func))) is not None:
-            named[slot.owner is not None].setdefault(slot.name, []).append(func)
-    ordered: list[FunctionDef] = []
-    seen: set[int] = set()
-    for func in functions:
-        if id(func) not in seen:
-            seen.add(id(func))
-            _after_callees(module, func, named, (ordered, seen))
-    return ordered
-
-
-def _after_callees(
-    module: ast.Module,
-    func: FunctionDef,
-    named: "_Named",
-    into: tuple[list[FunctionDef], set[int]],
-) -> None:
-    """Put `func` in the order after its callees, depth first, with a stack: a call chain can be long."""
-    ordered: list[FunctionDef]
-    seen: set[int]
-    ordered, seen = into
-    # Each entry: a function, and its callees still to put in before it; `None` at the bottom ends it.
-    waiting: list[_Visit | None] = [None, (func, _callees(module, func, named))]
-    entry: _Visit
-    for entry in iter(waiting.pop, None):
-        callee: FunctionDef | None
-        if (callee := next((one for one in entry[1] if id(one) not in seen), None)) is None:
-            ordered.append(entry[0])
-        else:
-            seen.add(id(callee))
-            waiting.extend([entry, (callee, _callees(module, callee, named))])
-
-
-def _callees(module: ast.Module, func: FunctionDef, named: "_Named") -> Iterator[FunctionDef]:
-    """Find the functions of `named` that `func` calls: the module's by name, methods by attribute.
-
-    Yields:
-      Each, in the order of its calls.
-
-    """
-    name: str | None
-    attr: str | None
-    for name, attr in _callees_in(module, func):
-        yield from named[False].get(name, []) if name is not None else named[True].get(attr or "", [])
+    return [stmt for stmt in body if isinstance(stmt, _FUNCTIONS) and counts[stmt.name] == 1]
 
 
 class _Tables(NamedTuple):
@@ -795,11 +830,7 @@ class Table:
         self._completed(func)
         slot: Slot | None = slots(self.module).get(id(func))
         found: tuple[str, frozenset[str]] | None
-        if (
-            slot is None
-            or not isinstance(func, ast.FunctionDef)
-            or (found := _return_type(self.module, func, returns)) is None
-        ):
+        if slot is None or (found := _return_type(self.module, func, returns)) is None:
             return
         annotation: str
         origins: frozenset[str]
@@ -893,16 +924,16 @@ def _typed(
       Each one's name, return type, and what that rests on if it's a guess.
 
     """
-    func: ast.FunctionDef
+    func: FunctionDef
     for func in _plain(body):
         found: tuple[str, frozenset[str]] | None
         if (found := _return_type(module, func, recorded.get(id(func), ()))) is not None:
-            yield func.name, *found
+            yield _key(func), *found
 
 
 def _return_type(
     module: ast.Module,
-    func: ast.FunctionDef,
+    func: FunctionDef,
     returns: Sequence[Recorded],
 ) -> tuple[str, frozenset[str]] | None:
     """Type a plain function from its recorded `return`s.
@@ -910,17 +941,19 @@ def _return_type(
     Returns:
       The one type they all give, and what it rests on if any is a guess; or `None` if it's
       decorated or annotated (by a `# type:` comment too), can fall off its end (but for a
-      generator, recorded as its type), or has a `return` without a value or of an unknown or
-      different type.
+      generator, recorded as its type; not an `async` one), or has a `return` without a value or
+      of an unknown or different type.
 
     """
-    if (
-        _decorated(func)
-        or func.returns is not None
-        or func.type_comment
-        or not returns
-        or not (is_generator(module, func) or terminates(func.body))
-    ):
+    manager: bool = entered.is_manager(func)
+    declared: bool = func.returns is not None or bool(func.type_comment)
+    # A generator's type is its `yield`s' (not an `async` one's); any other must end by a `return`.
+    decided: bool = (
+        isinstance(func, ast.FunctionDef)
+        if is_generator(module, func)
+        else terminates(func.body) and not manager
+    )
+    if (_decorated(func) and not manager) or declared or not returns or not decided:
         return None
     types: set[str | None] = {None if found is None else found.annotation for found, _ in returns}
     found: str | None
@@ -932,69 +965,3 @@ def _return_type(
     # and what its callers do with it unchecked for `None` is an error only once it's declared.
     doubted: frozenset[str] = frozenset({RETURNED}) if _NONE in (members(found) or ()) else frozenset()
     return found, doubted.union(*(origins for _, origins in returns))
-
-
-def is_generator(module: ast.Module, func: ast.FunctionDef) -> bool:
-    """Check whether `func`, in `module`, is a generator: a `yield` in its own body (not a nested function's).
-
-    Most functions have no `yield` anywhere in them (see `_yields`): only one with some is walked.
-
-    Returns:
-      Whether it is.
-
-    """
-    return has_within(_yields(module), func) and yields_itself(func)
-
-
-# By the function alone, not its module too: a cache holding modules keeps checked trees alive, and
-# the garbage collector then looks through them again and again (the standard library's check took
-# 10% longer).
-@lru_cache(maxsize=4096)  # asked of the same functions once per round
-def yields_itself(func: ast.FunctionDef) -> bool:
-    """Check whether a `yield` is in `func`'s own body, not a nested function's.
-
-    Returns:
-      Whether one is.
-
-    """
-    return any(isinstance(node, ast.Yield | ast.YieldFrom) for node in own_nodes(func.body))
-
-
-@lru_cache(maxsize=4)  # asked of the same module's functions, each round
-def _yields(module: ast.Module) -> list[Start]:
-    """Find where each of the module's `yield`s starts.
-
-    Returns:
-      Them, in source order.
-
-    """
-    return sorted(
-        (node.lineno, node.col_offset)
-        for node in cast("list[ast.expr]", of_type(module, ast.Yield, ast.YieldFrom))
-    )
-
-
-def terminates(body: Sequence[ast.stmt]) -> bool:
-    """Check that running `body` can't reach its end: it always returns or raises first.
-
-    Its last statement returns or raises, or is an `if` or `try` whose every way through does (a
-    `try`'s body with its `else`, and each handler), or a `with` whose body does.
-
-    Returns:
-      Whether it can't.
-
-    """
-    if not body:
-        return False
-    last: ast.stmt = body[-1]
-    match last:
-        case ast.Return() | ast.Raise():
-            return True
-        case ast.If():
-            return terminates(last.body) and terminates(last.orelse)
-        case ast.With() | ast.AsyncWith():
-            return terminates(last.body)
-        case ast.Try() | ast.TryStar():
-            return terminates(last.orelse or last.body) and all(terminates(h.body) for h in last.handlers)
-        case _:
-            return False

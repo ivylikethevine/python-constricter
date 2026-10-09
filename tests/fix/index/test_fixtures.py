@@ -66,6 +66,16 @@ def shadowed() -> int:
 @pytest.fixture
 def hidden() -> int:
     return 1
+
+
+@pytest.fixture(params=[1, 2])
+def varied(request):
+    return request.param
+
+
+@pytest.fixture(params=["a", "b"])
+def each(request: pytest.FixtureRequest):
+    yield request.param
 """
 NEAR_CONFTEST: Final = """
 import pytest
@@ -101,10 +111,12 @@ def test_copy(float_frame, made, opened, lazy, odd, unknown, request):
     r = request
 
 
-def test_nearest(shadowed, hidden, own):
+def test_nearest(shadowed, hidden, own, varied, each):
     s = shadowed
     h = hidden
     b = own
+    v = varied
+    w = each
 
 
 @pytest.fixture
@@ -124,6 +136,8 @@ FIXED: Final = (
     "    s: str = shadowed\n",  # the nearer `conftest.py`'s
     "    b: bytes = own\n",  # the module's own
     "    d: str = shadowed\n",  # a fixture takes fixtures too
+    "    v: int = varied\n",  # its `request.param`: its `params`
+    "    w: str = each\n",
 )
 UNFIXED: Final = (
     "    o = odd\n",  # a generator declaring something else
@@ -461,6 +475,109 @@ def test_parametrize_types_a_name_it_gives_literals_of_one_type() -> None:
         ("e", None),  # `None` alone says nothing
         ("f", "int"),  # by its own `again = 0`
         ("g", "int"),
+    ]
+
+
+def test_parametrize_on_a_class_types_its_methods_names() -> None:
+    """Each method directly in it; a method's own `parametrize` of the name is the one it takes."""
+    source: str = """
+    import pytest
+
+
+    @pytest.mark.parametrize("n", [1, 2])
+    class TestCases:
+        @pytest.mark.parametrize("n, s", [(1.5, "a")])
+        def test_both(self, n, s):
+            a = n
+            b = s
+
+        async def test_one(self, n):
+            c = n
+
+        def helper(self, n):
+            d = n
+
+        limit = 3
+
+        class Inner:
+            def test_inner(self, n):
+                e = n
+
+
+    @pytest.mark.slow
+    class TestPlain:
+        def test_none(self, n):
+            f = n
+    """
+    assert _fixes(source) == [
+        ("a", "float"),
+        ("b", "str"),
+        ("c", "int"),
+        ("d", None),  # not a test
+        ("e", None),  # another class's
+        ("f", None),
+    ]
+
+
+def test_a_fixtures_params_type_its_request_param() -> None:
+    """Literals of one type, written out; not for a `request` the fixture binds again, nor in a test."""
+    source: str = """
+    import pytest
+
+
+    @pytest.fixture(params=[1, 2])
+    def number(request):
+        n = request.param
+        twice = request.param * 2
+        o = request.node
+
+
+    @pytest.fixture(scope="module", params=["a", 1])
+    def mixed(request, tmp_path):
+        m = request.param
+
+
+    @pytest.fixture(params=CASES)
+    def named(request):
+        k = request.param
+
+
+    @pytest.fixture(params=[1])
+    def rebound(request):
+        request = other()
+        r = request.param
+
+
+    @pytest.fixture
+    def bare(request):
+        b = request.param
+
+
+    @pytest.fixture(params=[None])
+    def nothing(request):
+        z = request.param
+
+
+    @pytest.fixture(params=[1])
+    def indirect(asked):
+        i = asked.param
+
+
+    @pytest.mark.parametrize("request", [1])
+    def test_it(request):
+        p = request.param
+    """
+    assert _fixes(source) == [
+        ("n", "int"),
+        ("twice", "int"),
+        ("o", None),
+        ("m", None),
+        ("k", None),
+        ("r", None),
+        ("b", None),
+        ("z", None),
+        ("i", None),
+        ("p", None),
     ]
 
 

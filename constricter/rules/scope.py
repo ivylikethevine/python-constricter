@@ -2,13 +2,15 @@
 """One scope being checked: what it binds and reports, what `--fix` knows of it, and its late fixes."""
 
 import ast
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from typing import Final, NamedTuple, TypeAlias
 
+from constricter.fix.core.imports import guarded_imports, imports_of
 from constricter.fix.core.known import Hints, ImportPlan, Inference, Known, Passed, Typed
 from constricter.fix.libraries import stdlib
+from constricter.fix.libraries.library import chains
 from constricter.fix.values import aliased, callables, fills, hinted
 from constricter.fix.values.doubts import (
     Facts,
@@ -53,7 +55,7 @@ from constricter.rules.annotations import (
     vague_fits,
 )
 from constricter.rules.flow import Finding, Hierarchy, Lifetime, findings, members
-from constricter.rules.quoted import written
+from constricter.rules.quoted import quote, written
 from constricter.rules.rebinding import REBOUND
 from constricter.rules.syntax import FunctionDef, Start
 
@@ -92,12 +94,14 @@ class Seeded(NamedTuple):
     `callers`: what every call passes each parameter of its top-level functions, by `id()` (see
     `constricter.fix.index.callers`); `fixtures`: the pytest fixtures its tests can take, each one's
     value's type (see `constricter.fix.index.fixtures`). And `module`: the names the module binds
-    once, at its top level, each with its type there, which every function reads it as.
+    once, at its top level, each with its type there, which every function reads it as. `marked`:
+    what a class's `parametrize` gives each of its methods, by `id()` (see `calls.marked`).
     """
 
     callers: Mapping[int, Mapping[str, Passed]] = {}
     fixtures: Mapping[str, Passed] = {}
     module: Mapping[str, Passed] = {}
+    marked: Mapping[int, Mapping[str, Passed]] = {}
 
 
 class Kind(NamedTuple):
@@ -224,6 +228,7 @@ class Inferred:
         branch ends.
         """
         current: str | None = self.types.get(name)
+        self.types.hold(name, None)
         if current is None or typed == current:
             return
         if typed is None and guess is not None:
@@ -381,6 +386,11 @@ class Scope:
             self.inferred.aliases.add(name)  # `TypeAlias` isn't its value's type
         elif fix is not None:
             self.inferred.learn(name, fix.annotation, origins if unsafe else None, again=again)
+        # A call of no type to write still types what's read of the name (`both.out`), bound once.
+        self.inferred.types.hold(
+            name,
+            value if fix is None and not again and chains(value, self.settings.known) else None,
+        )
 
     def _unvalued(
         self,
@@ -411,19 +421,25 @@ class Scope:
             else None
         )
         function: FunctionDef | None = self.kind.function
+        owner: str | None = self.kind.owner
         types: Typed = self.inferred.types
+        facts: Facts = self.settings.facts
+        # In a function; or a module's or a plain class's body, for a name first bound there.
+        body: bool = alias and (owner is None or owner in self.settings.known.class_side.plain)
         called: tuple[Inference, ast.expr] | None = (
             None
-            if found is not None or function is None or vague[0] is not None
+            if found is not None or vague[0] is not None or not (function is not None or body)
             else callables.aliased(
                 target,
                 value,
-                function,
+                callables.Site(function, owner, facts.attributed, facts.positional),
                 self.settings.known,
                 (types, lambda arg: inference(arg, self.settings.known, types)),
             )
         )
-        if called is not None:
+        if called is not None and owner is not None:  # a class's variable: a guess (see `_member`)
+            found = called[0]._replace(kinds=called[0].kinds | {MEMBER}), True, frozenset({MEMBER})
+        elif called is not None:
             found = called[0], *guesses_in(self, [called[1]])
         hint: Inference | None
         if found is None and (hint := self.hint(target, value)) is not None:
@@ -675,7 +691,7 @@ class Scope:
             return None
         certain: bool = not unsafe or policy.trusts(origins)
         plan: ImportPlan = self.settings.known.names.plan or ImportPlan({}, frozenset(), 0)
-        guarded: tuple[str, ...] = _guarded_imports(fix.annotation, plan)
+        guarded: tuple[str, ...] = guarded_imports(fix.annotation, plan)
         guard: str | None = ""
         if guarded and plan.checking.block == (0, 0) and (guard := plan.spell(_TYPE_CHECKING)) is None:
             return None  # nothing can be `TYPE_CHECKING` to import them under
@@ -819,7 +835,7 @@ class Scope:
         )
         if not unbound and stdlib.evaluable(fix.annotation, self.settings.known):
             return offence
-        return replace(offence, edit=fix._replace(annotation=_quoted(fix.annotation)))
+        return replace(offence, edit=fix._replace(annotation=quote(fix.annotation)))
 
     def _covered(self, name: str) -> bool:
         """Check whether the rules cover `name` here.
@@ -962,38 +978,3 @@ def guessed_type(scope: Scope, value: ast.expr) -> Late | None:
     if not unsafe or annotation is None or not vague_fits(parsed(annotation), scope.settings.checks.vague):
         return None
     return annotation, origins
-
-
-def imports_of(annotation: str, plan: ImportPlan) -> tuple[str, ...]:
-    """Find the imports `annotation` needs: those `plan` added for a name it's written with.
-
-    Returns:
-      Their statements, sorted.
-
-    """
-    # `annotation` is always `ast.unparse`'s own output (or a name `plan` spelled), so it parses.
-    return tuple(sorted({plan.added[root] for root in roots(annotation) if root in plan.added}))
-
-
-def _guarded_imports(annotation: str, plan: ImportPlan) -> tuple[str, ...]:
-    """Find the imports under `if TYPE_CHECKING:` `annotation` needs (see `Guarded`).
-
-    Returns:
-      Their statements, sorted.
-
-    """
-    statements: Iterator[str | None] = (
-        plan.guarded[root].statement for root in roots(annotation) if root in plan.guarded
-    )
-    return tuple(sorted({statement for statement in statements if statement is not None}))
-
-
-def _quoted(annotation: str) -> str:
-    """Quote an annotation: in double quotes, unless it has one or a backslash (a `Literal`'s string).
-
-    Returns:
-      It, as a string literal.
-
-    """
-    plain: bool = not {'"', "\\"} & set(annotation)
-    return f'"{annotation}"' if plain else ast.unparse(ast.Constant(annotation))

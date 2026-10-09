@@ -24,7 +24,7 @@ from constricter.fix.core.known import (
     Returns,
 )
 from constricter.fix.libraries import stdlib
-from constricter.fix.values import classvars, entered, returned
+from constricter.fix.values import callables, classvars, entered, fills, ordered, returned
 from constricter.fix.values.doubts import facts, says_self
 from constricter.fix.values.inference import inferred
 from constricter.fix.values.members import parsed as parsed_annotation
@@ -51,7 +51,7 @@ from constricter.rules.annotations import (
     node_name,
     self_returns,
 )
-from constricter.rules.calls import keyed, observed, seed_parameters, unshadowed
+from constricter.rules.calls import keyed, marked, observed, seed_parameters, unshadowed
 from constricter.rules.flow import Finding, Hierarchy
 from constricter.rules.narrowing import flow_offences, module_flow, module_names
 from constricter.rules.quoted import written
@@ -148,11 +148,18 @@ def _settings(
     own: Tables,
     outside: Outside | None = None,
 ) -> Settings:
+    returned.hand(tree, {} if outside is None else outside.emptied)
     # The functions' declared returns: other checked files' (see `Outside`), then the module's own.
     calls: dict[str, str] = {**({} if outside is None else outside.calls), **own.returns, **own.side_calls}
     imported: Classes | None = None if outside is None else outside.classes
     # The bases whose members are known whole: the standard library's, and other checked files' below.
-    bases: frozenset[str] = stdlib.bases(tree, stdlib.origins(tree))
+    bases: dict[str, str] = stdlib.bases(tree, stdlib.origins(tree))
+    beyond: Mapping[str, inherited.Beyond] = {} if outside is None else outside.beyond
+    library: dict[str, inherited.Library] = {
+        text: (stdlib.members(path), stdlib.lines(path))
+        for text, path in (*bases.items(), *((end, end) for end in inherited.several(beyond)))
+        if path
+    }
     # The file's own types that mention a type variable it imports (`--fix` sees only its own).
     free: frozenset[str] = frozenset() if outside is None else outside.type_vars
     selfish: dict[str, frozenset[str]] = self_returns(tree)
@@ -169,6 +176,7 @@ def _settings(
                 _partial(own, free, outside),
                 {**({} if outside is None else outside.tuples), **free_of(own.tuples, free)},
                 {**({} if outside is None else outside.unions), **own.unions},
+                {**({} if outside is None else outside.takers), **fills.takers(tree)},
             ),
             ClassSide(
                 free_of_all(own.order.flattened(class_attributes(tree)), free),
@@ -176,10 +184,13 @@ def _settings(
                 inherited.lineage(
                     tree,
                     selfish,
-                    bases.union(imported.methods if imported else ()),
-                    {} if outside is None else outside.beyond,
+                    # A base whose line the index followed is in sight too, another package's included.
+                    frozenset(bases).union(imported.methods if imported else (), beyond),
+                    beyond,
+                    library,
                 ),
                 classvars.variables(tree, classvars.imported(tree), outside, checks.plain_bases),
+                classvars.own_plain(tree, classvars.imported(tree), outside, checks.plain_bases),
             ),
             LibraryNames(
                 casts(tree),
@@ -215,12 +226,24 @@ def _settings(
             tree,
             selfish,
             stdlib.generics(stdlib.origins(tree)) | (outside.generics if outside else frozenset[str]()),
-            entered.managers(tree),
+            {
+                **({} if outside is None else outside.managers),
+                **{name: (yielded, frozenset[str]()) for name, yielded in entered.managers(tree).items()},
+            },
             defined_type_vars(tree) | free,
-        )._replace(untyped=frozenset() if outside is None else outside.untyped),
+        )._replace(
+            untyped=frozenset() if outside is None else outside.untyped,
+            attributed=frozenset(
+                node.value.id
+                for node in cast("list[ast.Attribute]", of_type(tree, ast.Attribute))
+                if isinstance(node.value, ast.Name)
+            ),
+            positional=callables.signatures(tree),
+        ),
         Seeded(
             keyed(tree, {} if outside is None else outside.parameters),
             {} if outside is None else outside.fixtures,
+            marked=marked(tree),
         ),
     )
 
@@ -531,7 +554,7 @@ def _scopes(tree: ast.Module, settings: Settings, table: returned.Table | None =
     functions: list[FunctionDef] = []
     collect_functions(tree.body, functions)
     if table is not None:
-        functions = returned.in_call_order(tree, functions)
+        functions = ordered.in_call_order(tree, functions)
     scopes: list[Scope] = _function_scopes(functions, settings, table)
     if settings.checks.all_scopes:
         scopes += _body_scopes(tree, settings)
@@ -942,6 +965,7 @@ def _finished(tree: ast.Module, scopes: Sequence[Scope]) -> None:
         late.optionals(scope)
         late.rebinds(scope)
         late.fills(scope)
+        late.lambdas(scope)
         late.widens(scope, tree)
         binding.redeclared(scope)
         late.shadowed(scope)

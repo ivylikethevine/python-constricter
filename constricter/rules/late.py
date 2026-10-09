@@ -14,9 +14,10 @@ from dataclasses import replace
 from functools import lru_cache
 from typing import Final, TypeAlias
 
+from constricter.fix.core.imports import imports_of
 from constricter.fix.core.known import ImportPlan, Inference
+from constricter.fix.values import callables, hinted
 from constricter.fix.values import fills as filling
-from constricter.fix.values import hinted
 from constricter.fix.values import unchecked as misused
 from constricter.fix.values.doubts import contains_inner, narrowing, spelled_self
 from constricter.fix.values.inference import RETURNED
@@ -41,7 +42,7 @@ from constricter.rules import widened
 from constricter.rules.annotations import node_name, roots
 from constricter.rules.flow import Binding, Lifetime, members
 from constricter.rules.rebinding import Refit, refit
-from constricter.rules.scope import FINAL_KIND, Late, Plain, Scope, imports_of
+from constricter.rules.scope import FINAL_KIND, Late, Plain, Scope, guesses_in
 from constricter.rules.syntax import FunctionDef
 from constricter.rules.walked import children
 
@@ -49,6 +50,7 @@ _DISCARD: Final = "_"
 _OPTIONAL: Final = "optional"  # the fix kind of a `None` default rebound to one type
 _DECLARING: Final = frozenset({UNANNOTATED, UNTYPED_TARGET})  # the codes whose fix declares a name's type
 _FILLED: Final = "filled"  # the fix kind (and guessing mechanism) of an empty container filled later
+_CALLERS: Final = "callers"  # and of a parameter typed by what every call passes it
 _NONE: Final = "None"
 _FINAL: Final = "Final"
 _TYPING_FINAL: Final = "typing.Final"
@@ -217,6 +219,42 @@ def fills(scope: Scope) -> None:
         scope.offences[index] = replace(o, edit=fix)
         # What the scope infers from it (its `return`s) knows its type, a guess.
         scope.inferred.late[o.name] = (found.annotation, frozenset({_FILLED}))
+
+
+def lambdas(scope: Scope) -> None:
+    """Offer a lambda bound once to a name, whose body rests on its parameters, a `Callable[..., R]`.
+
+    By what every call of it in its function passes them (see `callables.called`): a guess, resting
+    on `callers`. Not where a call passes a local bound more than once, whose type there isn't known.
+    """
+    function: FunctionDef | None = scope.kind.function
+    index: int
+    o: Offence
+    body: filling.Uses | None = None  # read once, for the first lambda to judge
+    for index, o in enumerate(scope.offences):
+        bound: Plain | None = scope.assignments.plain.get(o.name)
+        lifetime: Lifetime | None = scope.flow.get(o.name)
+        if function is None or _fixed(o) or bound is None or not isinstance(bound[1], ast.Lambda):
+            continue
+        if lifetime is None or lifetime.escaped or len(lifetime.bindings) != 1:
+            continue
+        body = body or filling.uses(function.body)
+        found: tuple[Inference, list[ast.expr]] | None = callables.called(
+            bound[1],
+            o.name,
+            body,
+            scope.settings.known,
+            scope.inferred.types,
+        )
+        if found is None or any(
+            isinstance(node, ast.Name) and len(scope.lifetime(node.id).bindings) > 1
+            for arg in found[1]
+            for node in ast.walk(arg)
+        ):
+            continue
+        origins: frozenset[str] = frozenset({_CALLERS}) | guesses_in(scope, found[1])[1]
+        scope.offences[index] = replace(o, edit=scope.placed(o.name, found[0], origins, unsafe=True))
+        scope.inferred.late[o.name] = (found[0].annotation, origins)
 
 
 def widens(scope: Scope, tree: ast.Module) -> None:

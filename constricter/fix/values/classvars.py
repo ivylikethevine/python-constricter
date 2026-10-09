@@ -286,13 +286,28 @@ def variables(
       Each class's variables' types, as the module spells the class.
 
     """
-    indexed: frozenset[str] | None = None if outside is None else outside.plain
-    own: frozenset[str] = plain(tree, origins, entries) if indexed is None else indexed
+    own: frozenset[str] = own_plain(tree, origins, outside, entries)
     typed: dict[str, dict[str, str]] = members(tree) if own else {}
     return {
         **({} if outside is None else outside.members),
         **{name: each for name, each in typed.items() if name in own},
     }
+
+
+def own_plain(
+    tree: ast.Module,
+    origins: Mapping[str, str],
+    outside: Outside | None,
+    entries: Sequence[str] = (),
+) -> frozenset[str]:
+    """Name the module's own plain classes: the index's to say (`Outside.plain`), or else the module's alone.
+
+    Returns:
+      Them.
+
+    """
+    indexed: frozenset[str] | None = None if outside is None else outside.plain
+    return plain(tree, origins, entries) if indexed is None else indexed
 
 
 def members(tree: ast.Module) -> dict[str, dict[str, str]]:

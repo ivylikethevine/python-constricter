@@ -292,23 +292,55 @@ def awaited_value(annotation: str, known: Known) -> str | None:
     return ast.unparse(args[-1]) if path in _AWAITABLE and args else None
 
 
-def bases(tree: ast.Module, bound: Mapping[str, str]) -> frozenset[str]:
+def bases(tree: ast.Module, bound: Mapping[str, str]) -> dict[str, str]:
     """Spell the standard-library classes the module's classes inherit from (`unittest.TestCase`).
 
-    Those the tables hold whole: not a generic one, whose members' types its arguments decide.
+    Those the tables hold whole; and a generic one given all its arguments
+    (`collections.OrderedDict[str, int]`), which decide its members' types.
 
     Returns:
-      Each, as the module's imports (`bound`, see `origins`) name it where it's a base.
+      Each, as the module's imports (`bound`, see `origins`) name it where it's a base, with its
+      path in the tables (`""`: a generic one's, whose members its arguments type).
 
     """
-    spelled: dict[str, str | None] = {
-        ast.unparse(base): resolved(base, bound) for node in classes(tree) for base in node.bases
-    }
-    return frozenset(
-        text
-        for text, path in spelled.items()
-        if path is not None and CLASSES.get(_ALIASES.get(path, path)) == _ALIASES.get(path, path)
-    )
+    found: dict[str, str] = {}
+    base: ast.expr
+    for base in (base for node in classes(tree) for base in node.bases):
+        head: ast.expr = base.value if isinstance(base, ast.Subscript) else base
+        path: str = resolved(head, bound) or ""
+        path = _ALIASES.get(path, path)
+        given: int = 0
+        if isinstance(base, ast.Subscript):
+            given = len(base.slice.elts) if isinstance(base.slice, ast.Tuple) else 1
+        if given and len(_TYPE_PARAMETERS.get(path, "").split(",")) == given and path in _TYPE_PARAMETERS:
+            found[ast.unparse(base)] = ""
+        if not given and CLASSES.get(path) == path:
+            found[ast.unparse(base)] = path
+    return found
+
+
+def members(path: str) -> frozenset[str]:
+    """Name every member the tables hold of the class at `path`, its public ancestors' included.
+
+    Returns:
+      Them.
+
+    """
+    own: set[str] = set()
+    table: _Own
+    for table in (_METHODS, _ATTRIBUTES, _METHOD_OVERLOADS, _GENERIC_ATTRIBUTES):
+        own.update(table.get(path, {}))
+    return frozenset(own).union(*(members(ancestor) for ancestor in _ancestors(path)))
+
+
+def lines(path: str) -> frozenset[str]:
+    """Name the class at `path` and every public ancestor the tables give it.
+
+    Returns:
+      Their paths: two classes sharing one have an order between them the tables don't say.
+
+    """
+    return frozenset({path}).union(*(lines(ancestor) for ancestor in _ancestors(path)))
 
 
 def enters_itself(receiver: str, known: Known) -> bool:

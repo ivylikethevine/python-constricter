@@ -105,3 +105,20 @@ def declares(modules: Mapping[str, Module], origin: Origin, *, aliases: bool = F
     module: Module | None = modules.get(origin[0])
     declared: Declarations | None = None if module is None or not module.installed else module.declared
     return declared is not None and origin[1] in (declared.aliases if aliases else declared.classes)
+
+
+def as_module(modules: Mapping[str, Module], origin: Origin | None) -> Origin | None:
+    """Take a name imported from a package that is its submodule (`from pkg import util`) as that module.
+
+    Unless the package itself binds the name another way.
+
+    Returns:
+      The module (`(name, None)`), or `origin` as it is.
+
+    """
+    if origin is None or origin[1] is None:
+        return origin
+    submodule: str = f"{origin[0]}.{origin[1]}"
+    package: Module | None = modules.get(origin[0])
+    bound: bool = package is not None and package.names.get(origin[1], (submodule, None)) != (submodule, None)
+    return (submodule, None) if submodule in modules and not bound else origin

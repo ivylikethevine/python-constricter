@@ -77,7 +77,17 @@
   class of several bases, one line reaching a library class; an empty container of `self` filled by
   the module's classes under its own; a checked file's overload picked by the checked files' classes
   (`concat([df, df])`); an attribute read off an installed method's call whose return no file can
-  name (`capsys.readouterr().out`).
+  name (`capsys.readouterr().out`), and off a name bound to that call; a class's `parametrize`, and
+  a fixture's `params` for its `request.param`. A `with` target of another checked file's manager
+  (`@contextmanager`, declared or by its `yield`s; an `__enter__` returning `self`), of `os.fdopen`,
+  `tokenize.open`, `shelve.open` and `assertLogs`; `asyncio.ensure_future`, and an `await` of an
+  undeclared `async def`; a lambda by what its calls pass it, a module's or a plain class's callable
+  alias, and a `Callable`'s parameters where its function's are positional; a base in a package that
+  declares no types (django's `TestCase`), behind two library classes, or a generic library one
+  given its arguments (`collections.OrderedDict[str, int]`); an empty container by the parameter
+  it's passed to, or filled under another file's class; an overload's parameter typed as a checked
+  file's alias, protocol or type variable, a method's overloads, and a function called through its
+  module. None of these is counted on the corpora yet.
 - **The standard library, from typeshed**: tables generated from the stubs basedpyright bundles when
   the package is built (`stdlib_tables/`, see [Project](#project)), read as Linux, macOS and Windows
   and Python 3.11 to 3.14 see them, into `constricter/fix/tables/` (one JSON file a table, an entry
@@ -559,18 +569,6 @@ fix.
    declares what they rest on (`unions` joins certain types alone). Done when each kind is counted
    on the corpora, and `untyped-calls` brings mypy nothing new on the corpus packages. About 2
    hours, for up to 22% of the offences with what's done, none of it a type.
-
-What the finished items left, each under 3 hours and under 0.1%: a fixture's value bound to a name
-before its attribute is read (`both = capsys.readouterr()`, then `both.out`), a `parametrize` on a
-test's class, and a fixture returning `request.param`; a `with` target of `test.support`'s, of an
-`open` that isn't the builtin's, of `shelve.open` or `assertLogs`; `asyncio.ensure_future`, and an
-`await` of an undeclared return; a lambda whose body rests on its parameters, a module's or a class
-body's callable alias, and a `Callable`'s parameters; a base in a package that declares no types
-(django's `TestCase`) or behind two library classes, and a generic library base
-(`collections.OrderedDict`); an empty container passed by keyword or to a function, or one another
-file's methods fill; an overload's parameter typed as an alias, a protocol or a type variable of the
-checked files', a method's overloads, and a function called through its module
-(`frame.concat(...)`).
 
 ### Large: more than 8 hours
 

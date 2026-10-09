@@ -437,7 +437,7 @@ def exported_names(
     }
 
 
-def bound_within(func: ast.FunctionDef) -> frozenset[str]:
+def bound_within(func: FunctionDef) -> frozenset[str]:
     """Name what a function's own body imports or defines as a class, at any depth.
 
     Returns:
@@ -452,3 +452,27 @@ def bound_within(func: ast.FunctionDef) -> frozenset[str]:
         elif isinstance(node, ast.Import | ast.ImportFrom):
             found.update((alias.asname or alias.name).split(".")[0] for alias in node.names)
     return frozenset(found)
+
+
+def imports_of(annotation: str, planned: ImportPlan) -> tuple[str, ...]:
+    """Find the imports `annotation` needs: those `planned` added for a name it's written with.
+
+    Returns:
+      Their statements, sorted.
+
+    """
+    # `annotation` is always `ast.unparse`'s own output (or a name `plan` spelled), so it parses.
+    return tuple(sorted({planned.added[root] for root in roots(annotation) if root in planned.added}))
+
+
+def guarded_imports(annotation: str, planned: ImportPlan) -> tuple[str, ...]:
+    """Find the imports under `if TYPE_CHECKING:` `annotation` needs (see `Guarded`).
+
+    Returns:
+      Their statements, sorted.
+
+    """
+    statements: Iterator[str | None] = (
+        planned.guarded[root].statement for root in roots(annotation) if root in planned.guarded
+    )
+    return tuple(sorted({statement for statement in statements if statement is not None}))

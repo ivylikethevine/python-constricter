@@ -3,19 +3,20 @@
 
 A file's class under another file's (`django.test.TestCase`) can't see what that one inherits from:
 the index can. `library_bases` follows each of a file's classes' bases through the checked files
-and the installed packages that declare their types, to the one standard-library class its
-lines of bases end at (`unittest.TestCase`), with the names the classes on the way bind: any
-other member is the library class's, as `constricter.fix.core.inherited.Lineage.definer` then
-says.
+and the installed packages, to the standard-library class its lines of bases end at
+(`unittest.TestCase`), with the names the classes on the way bind: any other member is the
+library class's, as `constricter.fix.core.inherited.Lineage.definer` then says. A package that
+declares no types is read for its classes' bases alone (`installed.unseen`). Two lines each ending
+at a library class give both, in order, where they share no ancestor.
 """
 
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
-from constricter.fix.core.inherited import Beyond
-from constricter.fix.index import plain
-from constricter.fix.index.modules import SUFFIX, Index, Module, module_name
+from constricter.fix.core.inherited import SEVERAL, Beyond
+from constricter.fix.index import installed, plain
+from constricter.fix.index.modules import SUFFIX, Index, Module, module_name, takes
 from constricter.fix.libraries import stdlib
 from constricter.fix.values import classvars
 
@@ -63,21 +64,28 @@ def _end(modules: Mapping[str, Module], defined: str) -> Beyond | None:
 
 
 def _line(modules: Mapping[str, Module], defined: str, depth: int) -> Beyond | None:
-    """Follow a class's bases to where they end: one library class at most, any mixins beside it.
+    """Follow a class's bases to where they end: at a library class, any mixins beside it.
 
-    A class of several bases ends where the one that reaches a library class does, the others
-    (each ending at none) binding what they bind before it.
+    A class of several bases ends where those that reach a library class do, the others (each
+    ending at none) binding what they bind before them. An installed package that declares no
+    types is read for its classes' bases (see `installed.unseen`).
 
     Returns:
-      The standard-library class (the tables hold whole; `""`: none) and the names bound on the
-      way; `None` for a base out of sight, two lines reaching a library class, or one too deep.
+      The standard-library class (the tables hold whole; `""`: none; several, `SEVERAL` between
+      them) and the names bound on the way; `None` for a base out of sight, two lines reaching
+      library classes that share an ancestor, or one too deep.
 
     """
-    module: Module | None = modules.get(defined.rpartition(_DOT)[0])
     name: str = defined.rpartition(_DOT)[2]
+    module: Module | None = modules.get(defined.rpartition(_DOT)[0])
+    library: str | None = stdlib.held_whole(defined)
+    if module is None and library is None:
+        module = installed.unseen(defined.rpartition(_DOT)[0])
     bases: list[str] | None = None if module is None else _bases(module, name)
+    if module is not None and bases is None and depth and takes(module, name):  # a re-export: followed
+        onward: tuple[str, str | None] = module.names[name]
+        return _line(modules, _DOT.join(part for part in onward if part), depth - 1)
     if module is None or bases is None:
-        library: str | None = stdlib.held_whole(defined)
         return None if library is None else (library, frozenset())
     hidden: frozenset[str] = module.bound[name] | {name}
     ends: list[Beyond | None] = [
@@ -91,9 +99,10 @@ def _line(modules: Mapping[str, Module], defined: str, depth: int) -> Beyond | N
         for base in bases
     ]
     reached: list[str] = [end[0] for end in ends if end is not None and end[0]]
-    if None in ends or len(reached) > 1:
+    lines: list[frozenset[str]] = [stdlib.lines(path) for each in reached for path in each.split(SEVERAL)]
+    if None in ends or len(frozenset[str]().union(*lines)) != sum(len(line) for line in lines):
         return None
-    return (reached[0] if reached else "", hidden.union(*(end[1] for end in ends if end is not None)))
+    return (SEVERAL.join(reached), hidden.union(*(end[1] for end in ends if end is not None)))
 
 
 def _bases(module: Module, name: str) -> list[str] | None:
@@ -108,3 +117,32 @@ def _bases(module: Module, name: str) -> list[str] | None:
     declared: Class | None = None if module.declared is None else module.declared.classes.get(name)
     written: Sequence[str] = module.bases.get(name, ()) if declared is None else declared.bases
     return [base for base in written if base not in {classvars.SPECIAL, _OBJECT}]
+
+
+def emptied(catalog: Index, path: Path) -> dict[str, Mapping[str, str]]:
+    """Find the attributes the file at `path`'s classes take bound to an empty container from another file's.
+
+    A base another checked file defines, which binds one so and does no more with it (see
+    `Module.emptied`): what the file's own classes' methods add to it types it for them.
+
+    Returns:
+      Each such class's attributes' kinds, by its name; none for a file `catalog` doesn't have.
+
+    """
+    target: Module | None
+    if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
+        return {}
+    found: dict[str, Mapping[str, str]] = {}
+    name: str
+    bases: tuple[str, ...]
+    for name, bases in target.bases.items():
+        kinds: dict[str, str] = {}
+        base: str
+        for base in bases:
+            defined: str = "" if base in target.bases else plain.resolved(catalog.modules, target, base)
+            module: Module | None = catalog.modules.get(defined.rpartition(_DOT)[0])
+            if module is not None and not module.installed:
+                kinds.update(module.emptied.get(defined.rpartition(_DOT)[2], {}))
+        if kinds:
+            found[name] = kinds
+    return found

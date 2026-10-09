@@ -4,8 +4,10 @@
 A guess (`--unsafe-fixes`): only this function's own uses are seen, and something else could still
 add to it. So every use of the name must be one of a few that can't: a fill whose value's type is
 known (`append`, `insert`, `add`, `setdefault`, `x[k] = v`; `extend` and `update`, by their one
-argument's elements), a read (`x[k]`, `x.get(k)`, iterating it, `len(x)`, `", ".join(x)`,
-`x + more`, `[*x]`, returning it, alone or in a tuple), one that only shrinks or reorders it
+argument's elements), a pass to a checked file's function whose parameter declares the container
+it takes (`add(names, "a")`, `collect(into=names)`: that type), a read (`x[k]`, `x.get(k)`,
+iterating it, `len(x)`, `", ".join(x)`, `x + more`, `[*x]`, returning it, alone or in a tuple),
+one that only shrinks or reorders it
 (`pop`, `sort`, `clear`), or a local bound to it (`alias = x`) whose own uses all only read it.
 Anything else (passing it to another function, a nested function that sees it) leaves it alone.
 
@@ -14,12 +16,14 @@ class's methods a use (`stored`): `constricter.fix.values.returned` types it fro
 """
 
 import ast
+from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from typing import Final, NamedTuple
 
-from constricter.fix.core.known import Inference, Known
+from constricter.fix.core.known import Inference, Known, Takers
 from constricter.fix.values.inference import inference, looped
 from constricter.fix.values.targets import dict_parts
+from constricter.rules.annotations import dotted, is_vague
 from constricter.rules.syntax import NESTED_SCOPES, own_nodes
 from constricter.rules.walked import walk
 
@@ -58,6 +62,67 @@ class Fill(NamedTuple):
     key: ast.expr | None
     value: ast.expr
     spread: bool = False
+
+
+class Given(NamedTuple):
+    """One pass of the container to a call, as an argument of its own: at a position, or by a keyword."""
+
+    call: ast.Call
+    at: int | str
+
+
+def takers(tree: ast.Module) -> dict[str, Takers]:
+    """Find the module's top-level functions that declare a parameter a builtin container (`list[str]`).
+
+    A plain `def` or `async def`, defined once and undecorated, without `*args`: an argument's
+    place is its parameter's.
+
+    Returns:
+      Each one's such parameters (see `Takers`), by its name; none for a function with none.
+
+    """
+    counts: Counter[str] = Counter(
+        stmt.name
+        for stmt in tree.body
+        if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+    )
+    found: dict[str, Takers] = {}
+    stmt: ast.stmt
+    for stmt in tree.body:
+        if (
+            not isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef)
+            or counts[stmt.name] != 1
+            or stmt.decorator_list
+            or stmt.args.vararg is not None
+        ):
+            continue
+        positional: list[ast.arg] = [*stmt.args.posonlyargs, *stmt.args.args]
+        taken: dict[str, tuple[int | None, bool, str]] = {}
+        at: int
+        arg: ast.arg
+        for at, arg in enumerate([*positional, *stmt.args.kwonlyargs]):
+            text: str | None
+            if (text := _container(arg.annotation)) is not None:
+                place: int | None = at if at < len(positional) else None
+                taken[arg.arg] = (place, at >= len(stmt.args.posonlyargs), text)
+        if taken:
+            found[stmt.name] = taken
+    return found
+
+
+def _container(annotation: ast.expr | None) -> str | None:
+    """Read a parameter's annotation that is a builtin container of known elements: `list[str]`.
+
+    Returns:
+      It as text, or `None` for any other annotation, a vague one, or none.
+
+    """
+    head: str
+    match annotation:
+        case ast.Subscript(value=ast.Name(id=head)) if head in _ADDERS and not is_vague(annotation):
+            return ast.unparse(annotation)
+        case _:
+            return None
 
 
 def empty(value: ast.expr) -> str | None:
@@ -128,14 +193,45 @@ def filled(
     if name in found.nested:
         return None
     fills: list[Fill] = []
+    taken: list[str | None] = []
     node: ast.Name
     for node in found.names.get(name, []):
-        fill: Fill | bool
+        fill: Fill | Given | bool
         if (fill := _use(node, kind, found.parents)) is False and not _only_read(node, kind, found):
             return None
         if isinstance(fill, Fill):
             fills.append(fill)
-    return _typed(fills, kind, known, declared) if fills else None
+        elif isinstance(fill, Given):
+            taken.append(_taken(fill, kind, known, declared))
+    typed: Inference | None = _typed(fills, kind, known, declared) if fills else None
+    if (fills and typed is None) or None in taken or not (fills or taken):
+        return None
+    types: set[str | None] = {*taken, *([] if typed is None else [typed.annotation])}
+    passed: Inference = Inference(str(next(iter(types))), "what it's passed as", frozenset({"filled"}))
+    return None if len(types) != 1 else typed or passed
+
+
+def _taken(given: Given, kind: str, known: Known, declared: Mapping[str, str]) -> str | None:
+    """Type the container by the parameter a call it's passed to takes it as (see `Indirect.takers`).
+
+    Returns:
+      The parameter's declared type, a container of its kind; `None` for a callee that declares
+      none there, one the scope binds itself, or a call that unpacks arguments before it.
+
+    """
+    callee: str = dotted(given.call.func) or ""
+    unpacked: bool = any(isinstance(arg, ast.Starred) for arg in given.call.args)
+    if unpacked or callee.partition(".")[0] in declared:
+        return None
+    text: str | None = next(
+        (
+            text
+            for name, (position, named, text) in known.indirect.takers.get(callee, {}).items()
+            if (position == given.at) or (named and name == given.at)
+        ),
+        None,
+    )
+    return text if text is not None and text.partition("[")[0] == kind else None
 
 
 def added_names(found: Uses, name: str, kind: str) -> frozenset[str]:
@@ -175,7 +271,8 @@ def stored(body: Sequence[ast.stmt], kinds: Mapping[str, str]) -> Iterator[tuple
     for node in own_nodes(body, parents):
         match node:
             case ast.Attribute(value=ast.Name(id="self"), attr=attr, ctx=ast.Load()) if attr in kinds:
-                use: Fill | bool = _use(node, kinds[attr], parents)
+                judged: Fill | Given | bool = _use(node, kinds[attr], parents)
+                use: Fill | bool = False if isinstance(judged, Given) else judged  # passed on: unseen
                 if use is False and isinstance(parents.get(id(node)), ast.Assign):
                     found = found or uses(body)
                     use = _only_read(node, kinds[attr], found._replace(parents={**found.parents, **parents}))
@@ -202,24 +299,31 @@ def _only_read(node: ast.expr, kind: str, found: Uses) -> bool:
             return False
 
 
-def _use(node: ast.expr, kind: str, parents: Mapping[int, ast.AST]) -> Fill | bool:
+def _use(node: ast.expr, kind: str, parents: Mapping[int, ast.AST]) -> Fill | Given | bool:
     """Judge one read of the container.
 
     Returns:
-      A fill (what it adds), `True` for a use that adds nothing, `False` for one that might add
-      something unseen.
+      A fill (what it adds), a pass to a call (whose parameter may say what it takes), `True` for
+      a use that adds nothing, `False` for one that might add something unseen.
 
     """
     parent: ast.AST | None = parents.get(id(node))
     grandparent: ast.AST | None = None if parent is None else parents.get(id(parent))
     attr: str
+    keyword: str
     match parent:
         case ast.Attribute(attr=attr) if isinstance(grandparent, ast.Call) and grandparent.func is parent:
             return _method(attr, grandparent, kind)
         case ast.Subscript(ctx=ast.Store()):
             return _stored(parent, grandparent, kind)
+        case _ if _reads(parent, grandparent):
+            return True
+        case ast.Call() if any(arg is node for arg in parent.args):
+            return Given(parent, next(at for at, arg in enumerate(parent.args) if arg is node))
+        case ast.keyword(arg=str() as keyword) if isinstance(grandparent, ast.Call):
+            return Given(grandparent, keyword)
         case _:
-            return _reads(parent, grandparent)
+            return False
 
 
 def _reads(parent: ast.AST | None, grandparent: ast.AST | None) -> bool:

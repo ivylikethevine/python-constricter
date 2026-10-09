@@ -5,6 +5,8 @@ Their signatures are read as an installed package's are (see `constricter.fix.in
 for what each returns: a type the calling file writes as it would any other checked file's.
 """
 
+import ast
+
 from constricter.fix.core.known import SPELLED, Guarded
 from constricter.fix.core.signatures import ReadSignature
 from constricter.fix.index import project
@@ -47,7 +49,7 @@ def spelled(
         text: str | None = (
             None
             if signature.returns is None
-            else project.spelled_in(catalog, target, defined[0], signature.returns, names)
+            else project.spelled_in(catalog, target, defined[0], _unquoted(signature.returns), names)
         )
         if text is None:
             return ()
@@ -55,3 +57,14 @@ def spelled(
     if guarded is not None:
         guarded.update(names)
     return tuple(found)
+
+
+def _unquoted(returns: str) -> str:
+    """Read a return written in quotes (`-> "Frame"`) as the type it names.
+
+    Returns:
+      Its text; any other return as it is.
+
+    """
+    node: ast.expr = ast.parse(returns, mode="eval").body
+    return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else returns

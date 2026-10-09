@@ -7,7 +7,7 @@ from typing import Final, TypeAlias
 
 import pytest
 
-from constricter import Offence, check_source
+from constricter import DEFAULT_CHECKS, Checks, Offence, check_source
 from constricter.fix.core import fixes
 from constricter.fix.values import entered
 
@@ -364,7 +364,8 @@ def test_a_project_managers_target_is_what_it_declares() -> None:
         "yielded": ("Node", False),
         "count": ("int", False),
         "names": ("list[str]", False),
-        **dict.fromkeys("abcdeghi", (None, False)),
+        **dict.fromkeys("abceghi", (None, False)),
+        "d": ("int", False),  # nothing declared: by its `yield`
         "counted": ("int", False),
         "local": (None, False),  # a local of that name isn't the function
         "later": (None, False),  # `__aenter__`'s return is awaited: not read
@@ -437,3 +438,201 @@ class Archive:
 def test_a_manager_defined_after_its_with_is_entered_by_its_returns() -> None:
     """The `with` calls `__enter__`: its function is checked again once that method's `return`s are read."""
     assert _fixes(_LATER) == {"archive": ("Archive", True)}
+
+
+_YIELDED: Final = """
+import contextlib
+import os
+from collections.abc import Iterator
+from contextlib import contextmanager
+
+
+@contextmanager
+def cwd(path):
+    yield os.getcwd()
+
+
+@contextmanager
+def nested(path):
+    with cwd(path) as here:
+        yield here
+
+
+@contextmanager
+def either(flag):
+    if flag:
+        yield 1
+    else:
+        yield 2
+
+
+@contextmanager
+def mixed(flag):
+    if flag:
+        yield 1
+    else:
+        yield "a"
+
+
+@contextmanager
+def silent():
+    yield
+
+
+@contextmanager
+def sent():
+    got = yield 1
+
+
+@contextmanager
+def made():
+    yield Box()
+
+
+@contextlib.contextmanager
+def ended():
+    return 1
+
+
+@contextmanager
+def commented():
+    # type: () -> int
+    yield 1
+
+
+class Box:
+    @contextmanager
+    def opened(self):
+        yield 1.5
+
+    @contextmanager
+    def declared(self) -> Iterator[bytes]:
+        yield b""
+
+    def plain(self):
+        return 1
+
+
+class Sub(Box):
+    pass
+
+
+def f(box: Box, sub: Sub, unknown) -> None:
+    with cwd("p") as a, nested("p") as b, either(True) as c:
+        pass
+    with mixed(True) as d, silent() as e, sent() as g, ended() as h, commented() as i:
+        pass
+    with made() as j:
+        pass
+    with box.opened() as k, sub.opened() as m, box.declared() as n:
+        pass
+    with unknown.opened() as o, box.plain() as p, box.missing() as q:
+        pass
+    r = cwd("p")
+"""
+
+
+def test_a_manager_declaring_nothing_is_typed_by_its_yields() -> None:
+    """Each a statement of its own, all of one type; a method's is a guess, as its `return`s are."""
+    assert _fixes(_YIELDED) == {
+        "here": ("str", False),
+        "got": (None, False),
+        "a": ("str", False),
+        "b": ("str", False),
+        "c": ("int", False),
+        **dict.fromkeys("deghi", (None, False)),
+        "j": ("Box", True),  # what its `yield` rests on
+        "k": ("float", True),
+        "m": ("float", True),  # its base's
+        "n": ("bytes", False),
+        **dict.fromkeys("opq", (None, False)),
+        "r": (None, False),  # the manager itself: nothing writes its type
+    }
+
+
+_OPENERS: Final = """
+import bz2
+import gzip
+import io
+import lzma
+import os
+import shelve
+import tokenize
+from os import fdopen
+
+
+def f(p: str, fd: int, mode: str) -> None:
+    with os.fdopen(fd) as a, fdopen(fd, "rb") as b, io.open(p, "w+b") as c:
+        pass
+    with os.fdopen(fd, "rb", 0) as d, os.fdopen(fd, mode) as e, os.fdopen(fd, opener=None) as g:
+        pass
+    with tokenize.open(p) as h, gzip.open(p, "rt") as i, bz2.open(p, mode="wt") as j:
+        pass
+    with lzma.open(p, "rb") as k, gzip.open(p, mode) as m, gzip.open(p, "tt") as n, lzma.open(p) as o:
+        pass
+    q = os.fdopen(fd, "w")
+    with shelve.open(p) as shelf:
+        for key in shelf:
+            pass
+    kept = shelve.open(p)
+"""
+
+
+def test_other_library_openers_give_a_file_by_their_mode() -> None:
+    """`os.fdopen` as `open`; `tokenize.open`, always text; a compressed file's `open`, in a text mode."""
+    assert _fixes(_OPENERS) == {
+        "a": ("io.TextIOWrapper", False),
+        "b": ("io.BufferedReader", False),
+        "c": ("io.BufferedRandom", False),
+        "d": ("io.FileIO", False),  # unbuffered: the tables'
+        "e": (None, False),
+        "g": (None, False),
+        "h": ("io.TextIOWrapper", False),
+        "i": ("io.TextIOWrapper", False),
+        "j": ("io.TextIOWrapper", False),
+        "k": ("lzma.LZMAFile", False),  # a binary mode's: the tables'
+        "m": (None, False),
+        "n": (None, False),
+        "o": ("lzma.LZMAFile", False),
+        "q": ("io.TextIOWrapper", False),
+        "shelf": (None, False),
+        "key": ("str", False),  # a shelf's keys, whatever it holds
+        "kept": (None, False),
+    }
+
+
+def test_a_shelf_is_written_where_vague_allows_one_any() -> None:
+    """`shelve.open`'s `Shelf[Any]`: `Any` imported, and no fix where the module can't name both."""
+    checks: Checks = DEFAULT_CHECKS._replace(vague=0)
+    source: str = "import shelve\ndef f(p: str) -> None:\n    with shelve.open(p) as shelf:\n        pass\n"
+    found: list[Offence] = check_source(source, checks=checks)
+    assert [(o.name, o.fix) for o in found] == [("shelf", "shelve.Shelf[Any]")]
+    fixed: str = "".join(fixes.apply(source.splitlines(keepends=True), found))
+    assert fixed.startswith("import shelve\nfrom typing import Any\n")
+    taken: str = source.replace("p: str", "p: str, Any: int, typing: int")
+    assert [o.fix for o in check_source(taken, checks=checks)] == [None]
+
+
+_LOGS: Final = """
+import unittest
+
+
+class Case(unittest.TestCase):
+    def test(self) -> None:
+        with self.assertLogs("app", level="INFO") as logs:
+            pass
+        with self.assertNoLogs("app") as nothing:
+            pass
+        lines = logs.output
+        first = logs.records[0]
+"""
+
+
+def test_assert_logs_binds_its_watcher() -> None:
+    """Private in typeshed and at run time, as `assertRaises`'s context; `assertNoLogs` enters as `None`."""
+    assert _fixes(_LOGS) == {
+        "logs": ("_LoggingWatcher", False),
+        "nothing": (None, False),
+        "lines": ("list[str]", False),
+        "first": ("LogRecord", False),
+    }

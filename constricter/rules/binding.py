@@ -17,7 +17,7 @@ from constricter.fix.core.known import Inference, Known
 from constricter.fix.libraries.opened import opened
 from constricter.fix.values import shapes
 from constricter.fix.values.doubts import bare
-from constricter.fix.values.entered import entered, entered_async, entering
+from constricter.fix.values.entered import Entered, entered, entered_async, entering
 from constricter.fix.values.inference import LoopPart, inference, looped, looped_parts
 from constricter.fix.values.targets import iterated, unpacked
 from constricter.offences import COMMENT_TYPED_TARGET, UNTYPED_TARGET, VAGUE_TYPE, Edit, Fix, Offence, at
@@ -500,14 +500,17 @@ def _entered(scope: Scope, manager: ast.expr, *, asynchronous: bool = False) -> 
     file: Inference | None
     if not asynchronous and (file := opened(manager, known)) is not None:
         return file, False, frozenset()
-    found: tuple[Inference, list[ast.expr]] | None = (
+    found: Entered | None = (
         entered_async(manager, known, scope.inferred.types)
         if asynchronous
         else entered(manager, known, scope.inferred.types, scope.settings.facts.managers)
     )
     if found is None or bare(found[0].annotation, scope.settings.facts.generics):
         return None, False, frozenset()
-    return (found[0], *guesses_in(scope, found[1]))
+    unsafe: bool
+    origins: frozenset[str]
+    unsafe, origins = guesses_in(scope, found[1])
+    return found[0], unsafe or bool(found[2]), origins | found[2]
 
 
 def _bind_targets(scope: Scope, targets: list[ast.expr], code: str | None) -> None:

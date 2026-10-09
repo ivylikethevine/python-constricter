@@ -12,6 +12,7 @@ from collections.abc import Iterator, Mapping
 from pathlib import Path
 
 from constricter.fix.core.known import Guarded, Returns
+from constricter.fix.core.signatures import AWAIT
 from constricter.fix.index import project
 from constricter.fix.index.modules import SUFFIX, Index, Module, module_name
 
@@ -26,8 +27,18 @@ def _classes(catalog: Index, target: Module) -> Iterator[tuple[str, tuple[Module
     key: str
     defined: tuple[Module, str]
     for key, defined in project.spelled_classes(catalog, target, (target.names, target.attributes), set()):
-        if defined[0].name != target.name and defined[0].loose & target.method_calls:
+        if defined[0].name != target.name and defined[0].loose & _called(target):
             yield key, defined
+
+
+def _called(target: Module) -> frozenset[str]:
+    """Name the methods `target` calls on anything, and (after `AWAIT`) those it awaits a call of.
+
+    Returns:
+      Them, as `Module.loose` names a class's.
+
+    """
+    return target.method_calls | {name for name in target.attributes if name.startswith(AWAIT)}
 
 
 def needs(catalog: Index, module: Module) -> set[str]:
@@ -65,7 +76,7 @@ def returned(
     defined: tuple[Module, str]
     for key, defined in _classes(catalog, target):
         typed: Mapping[str, str] = defined[0].returned.methods.get(defined[1], {})
-        wanted: dict[str, str] = {name: each for name, each in typed.items() if name in target.method_calls}
+        wanted: dict[str, str] = {name: each for name, each in typed.items() if name in _called(target)}
         kept: dict[str, str] = (
             project.portable(
                 catalog.modules,

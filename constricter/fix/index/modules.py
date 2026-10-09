@@ -19,11 +19,12 @@ from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.core.imports import taken_names
-from constricter.fix.core.known import Origin, Passed, Returns
+from constricter.fix.core.known import Origin, Passed, Returns, Takers
 from constricter.fix.core.signatures import AWAIT
-from constricter.fix.index.declared import Declarations, Signature, declarations, overloads
-from constricter.fix.values import classvars
-from constricter.fix.values.returned import unannotated, yields_itself
+from constricter.fix.index.declared import Declarations, Signature, declarations, kinds, overloads
+from constricter.fix.values import classvars, entered, fills
+from constricter.fix.values.bodies import yields_itself
+from constricter.fix.values.returned import unannotated, untouched
 from constricter.rules import parsed
 from constricter.rules.annotations import (
     awaited_returns,
@@ -41,6 +42,7 @@ from constricter.rules.walked import classes as walked_classes
 from constricter.rules.walked import of_type
 
 _PACKAGE: Final = "__init__"
+_DOT: Final = "."
 _TYPE_ALIAS: Final = "TypeAlias"  # the annotation, and the node class of `type X = ...` (Python 3.12+)
 # What a type checker decides an `if` by, taking one arm alone: `sys.version_info`, `TYPE_CHECKING`.
 _DECIDED: Final = frozenset({"version_info", "platform", "TYPE_CHECKING"})
@@ -142,6 +144,35 @@ class Module:  # pylint: disable=too-many-instance-attributes
     # The dotted names a checked file writes (`u.helper`, `pkg.m.Row`, in a string too), by their
     # First name: of all a module it imports has, what it can mean (see `written_under`).
     written: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
+    # Its top-level functions `@contextmanager` makes managers: what each declares it yields, `""`
+    # For one declaring nothing, which its `yield`s may type (see `constricter.fix.values.entered`).
+    managers: Mapping[str, str] = field(default_factory=dict[str, str])
+    # Its top-level `async def`s declaring no return, which their `return`s may type (see `returned`).
+    unawaited: frozenset[str] = frozenset()
+    # Its functions that declare a parameter a builtin container (see `constricter.fix.values.fills.takers`).
+    takers: Mapping[str, Takers] = field(default_factory=dict[str, Takers])
+    # A checked file's type aliases, type variables and protocols, read as a stub's (see `declared.kinds`).
+    kinds: Declarations | None = None
+    # The attributes its classes bind to an empty container and do no more with (see `returned.untouched`).
+    emptied: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
+
+    @property
+    def typing(self) -> Declarations | None:
+        """What its names stand for in a signature: an installed module's declarations, or its `kinds`."""
+        return self.declared or self.kinds
+
+    def reads(self, name: str | None) -> bool:
+        """Check whether a signature's name is read by what the module declares it: an alias, a type variable.
+
+        Returns:
+          Whether it is: any of an installed module's; a checked file's alias, type variable or protocol.
+
+        """
+        found: Declarations | None = self.kinds
+        return self.installed or (
+            found is not None
+            and any(name in each for each in (found.aliases, found.variables, found.protocols))
+        )
 
 
 # The classes a module names by its own imports: each one's spelling, its module and its name
@@ -364,7 +395,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         unannotated=unannotated(tree.body),
         called=_called(tree, names),
         generics=generic_classes(tree),
-        loose=frozenset[str]().union(*(unannotated(node.body) for node in walked_classes(tree))),
+        loose=frozenset[str]().union(*(_loose(node.body) for node in walked_classes(tree))),
         selfish=dict(own.order.selfish),
         awaits=awaited_returns(tree),
         written={} if name is not None else _written(tree),
@@ -392,7 +423,44 @@ def read(path: Path, name: str | None = None) -> Module | None:
         fixtures=_fixtures(tree),
         overloads={} if name is not None else overloads(tree),
         folder="" if name is not None else str(path.resolve().parent),
+        managers={} if name is not None else _managers(tree),
+        takers={} if name is not None else fills.takers(tree),
+        emptied={} if name is not None else untouched(tree),
+        kinds=None if name is not None else kinds(tree, _aliases(tree).keys() - rebound),
+        unawaited=frozenset(
+            stmt.name
+            for stmt in tree.body
+            if name is None and isinstance(stmt, ast.AsyncFunctionDef) and stmt.returns is None
+        ),
     )
+
+
+def _loose(body: Sequence[ast.stmt]) -> frozenset[str]:
+    """Name a class's methods whose `return`s could type their calls, as the files calling them name them.
+
+    Returns:
+      Each one's name, an `async def`'s after `AWAIT` (see `_attributes`).
+
+    """
+    return unannotated(body) | {
+        f"{AWAIT}{stmt.name}"
+        for stmt in body
+        if isinstance(stmt, ast.AsyncFunctionDef) and stmt.returns is None
+    }
+
+
+def _managers(tree: ast.Module) -> dict[str, str]:
+    """Find a module's top-level functions `@contextmanager` makes context managers.
+
+    Returns:
+      Each one's name, and what it declares it yields (`""`: nothing, see `entered.undeclared`).
+
+    """
+    declared: dict[str, str] = entered.managers(tree)
+    return {
+        **dict.fromkeys(entered.undeclared(tree), ""),
+        **{name: yielded for name, yielded in declared.items() if _DOT not in name},
+    }
 
 
 def _written(tree: ast.Module) -> dict[str, tuple[str, ...]]:
@@ -681,17 +749,22 @@ def _passed(tree: ast.Module, names: Mapping[str, Origin]) -> frozenset[str]:
 
 
 def _method_calls(tree: ast.Module) -> frozenset[str]:
-    """Name the methods the module calls on anything: `astype` in `a.astype(x)`.
+    """Name the methods the module calls on anything: `astype` in `a.astype(x)`, and a `with`'s `__enter__`.
 
     Returns:
       Them.
 
     """
+    entering: bool = any(
+        item.optional_vars is not None
+        for node in cast("list[ast.With]", of_type(tree, ast.With))
+        for item in node.items
+    )
     return frozenset(
         node.func.attr
         for node in cast("list[ast.Call]", of_type(tree, ast.Call))
         if isinstance(node.func, ast.Attribute)
-    )
+    ) | (frozenset({entered.ENTER}) if entering else frozenset[str]())
 
 
 def _attributes(tree: ast.Module) -> frozenset[str]:

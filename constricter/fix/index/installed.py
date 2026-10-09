@@ -283,6 +283,36 @@ def locate(name: str, search: tuple[Path, ...]) -> Path | None:
     return None
 
 
+def unseen(name: str) -> Module | None:
+    """Read an installed module that declares no types, for its classes' bases alone.
+
+    Never part of the index: nothing it declares types a call, as no type checker reads it. What
+    its classes inherit from still says where a class under one ends (see `constricter.fix.index.beyond`).
+
+    Returns:
+      Its module, read from its source as `cached` reads one; `None` for the standard library's, or
+      one that isn't installed.
+
+    """
+    if not name or name.partition(".")[0] in _STDLIB:
+        return None
+    return _unseen(name, _searched(tuple(sys.path), os.environ.get(_VIRTUAL_ENV)))
+
+
+@lru_cache(maxsize=4)
+def _searched(_path: tuple[str, ...], _active: str | None) -> tuple[Path, ...]:  # `search_path`, for both
+    return search_path()
+
+
+@lru_cache(maxsize=1024)  # asked for each class under one of its classes
+def _unseen(name: str, search: tuple[Path, ...]) -> Module | None:
+    paths: Iterable[Path | None] = (
+        _module_file(directory.joinpath(*name.split("."))) for directory in search
+    )
+    path: Path | None = next((path for path in paths if path is not None), None)
+    return None if path is None else cached(path, name)
+
+
 @lru_cache(maxsize=4096)  # asked for each of a package's modules: the same answer for them all
 def _package(directory: Path, top: str) -> tuple[Path | None, bool, bool]:
     """Find what `directory` has of the top-level package or module `top`.

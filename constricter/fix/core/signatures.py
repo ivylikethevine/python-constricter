@@ -22,6 +22,7 @@ ELEMENT_VERDICTS: Final = "be"
 CONTAINER_BINDS: Final = "bc"
 OWN: Final = "own"
 OWN_ELEMENTS: Final = "own_e"
+FUTURE_BINDS: Final = "f"
 
 Constant: TypeAlias = bool | int | float | complex | str | bytes | None  # a literal's value
 
@@ -45,7 +46,9 @@ class Accepts(TypedDict, total=False):
     is bounded: a builtin class may be outside its bound, and another signature's to take. `b`: a
     verdict per builtin container argument (`tuple`), and `be`, where the parameter says what its
     elements must be, a verdict per `SCALARS` type for them; `bc`: the bounded type variable a
-    container argument it takes binds.
+    container argument it takes binds. `f`: the type variable the parameter is, bounded by a future
+    (`asyncio.ensure_future`'s `_FT`), which a future or a task binds to its type, and no
+    coroutine's call does.
     `own`: for a checked file's parameter that takes nothing but checked files' classes, their paths,
     which an argument's class is matched against by its lineage; `own_e`: those a builtin sequence's
     or set's elements must be, for one that takes iterables of them (see `index.own_types`).
@@ -66,6 +69,7 @@ class Accepts(TypedDict, total=False):
     b: dict[str, str]
     be: dict[str, str]
     bc: str
+    f: str
     own: list[str]
     own_e: list[str]
 

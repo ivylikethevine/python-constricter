@@ -7,7 +7,7 @@ from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
 from constricter.fix.core import asked
-from constricter.fix.core.known import ImportPlan, Inference, Known
+from constricter.fix.core.known import PARAM, ImportPlan, Inference, Known, stood
 from constricter.fix.libraries import overloads, stdlib
 from constricter.fix.libraries.library import (
     installed_call,
@@ -99,6 +99,7 @@ RETURNED: Final = "returned"  # the fix kind of an unannotated function's `retur
 ASSIGNED: Final = "assigned"  # the fix kind of an instance attribute typed by its assignments
 _SUBSCRIPT: Final = "subscript"  # the fix kind of a subscript
 _GET_ITEM: Final = "__getitem__"  # what types one of a class's instance
+_GENERIC: Final = "["  # in a type's text: its arguments
 COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 _UNION: Final = re.compile(r"\||\b(?:None|Optional|Union)\b")  # an annotation with a union in it
 _Comprehension: TypeAlias = ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp
@@ -177,6 +178,8 @@ def _from_local(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
     match value:
         case ast.Name(id=name) if name in declared:
             return Inference(declared[name], f"a copy of `{name}`", frozenset({"copy"}))
+        case ast.Attribute(value=ast.Name(id=name), attr="param") if f"{name}{PARAM}" in declared:
+            return Inference(declared[f"{name}{PARAM}"], "its fixture's `params`", frozenset({"copy"}))
         case (
             ast.Attribute(value=receiver, attr=attr) | ast.Call(func=ast.Attribute(value=receiver, attr=attr))
         ):
@@ -187,11 +190,31 @@ def _from_local(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
             return None
     typed: Inference | None
     if (typed := inference(receiver, known, declared)) is None:
-        return installed_chain(value, known, lambda arg: inference(arg, known, declared))
-    found: Inference | None
-    if (found := _member_of(value, present(typed.annotation, attr), attr, known, declared)) is None:
+        return installed_chain(stood(value, declared), known, lambda arg: inference(arg, known, declared))
+    held: str = present(typed.annotation, attr)
+    found: Inference | None = _member_of(
+        value,
+        held if attr else rebased(held, _GET_ITEM, known),
+        attr,
+        known,
+        declared,
+    )
+    if found is None:
         return None
     return found if isinstance(receiver, ast.Name) else found._replace(kinds=found.kinds | typed.kinds)
+
+
+def rebased(receiver: str, name: str, known: Known) -> str:
+    """Read a class of the module's as the generic library class it takes `name` from, given its arguments.
+
+    `Rows`, under `collections.deque[Row]`, as that: what its instance's subscript, loop or view gives.
+
+    Returns:
+      The base as the class writes it; `receiver` itself for any other.
+
+    """
+    base: str | None = known.class_side.lineage.definer(receiver, name)
+    return base if base is not None and _GENERIC in base and _GENERIC not in receiver else receiver
 
 
 def _member_of(
@@ -229,6 +252,7 @@ def _member_of(
                 (method := stdlib.overloaded_method(receiver, attr, known)) is not None
                 or (method := stdlib.overloaded_method(base, attr, known)) is not None
                 or (method := installed_method(receiver, attr, known)) is not None
+                or (method := installed_method(base, attr, known)) is not None
             ):
                 found = overloads.chosen(
                     method.entry,
@@ -365,7 +389,7 @@ def _from_call(value: ast.Call, known: Known, declared: Mapping[str, str]) -> In
             lambda arg: inference(arg, known, declared),
             lambda arg: looped(arg, known, declared),
         )
-        or _cast(value, known.names.casts)
+        or shapes.cast(value, known.names.casts)
         or opened(value, known)
         or library_class(value, known)
         or library_call(value, known, lambda arg: inference(arg, known, declared))
@@ -399,32 +423,6 @@ def _returns(value: ast.expr, known: Known) -> Inference | None:
             )
         case _:
             return None
-
-
-def _cast(value: ast.expr, spellings: frozenset[str]) -> Inference | None:
-    """Infer `typing.cast(T, x)`: `T` as written, or a string's contents.
-
-    Returns:
-      The inference, or `None` if `value` isn't such a call, or `T` isn't an expression.
-
-    """
-    func: ast.expr
-    target: ast.expr
-    match value:
-        case ast.Call(func=func, args=[target, _], keywords=[]) if dotted(func) in spellings:
-            pass
-        case _:
-            return None
-    text: str = (
-        target.value.strip()
-        if isinstance(target, ast.Constant) and isinstance(target.value, str)
-        else ast.unparse(target)
-    )
-    try:
-        parsed: ast.expr = ast.parse(text, mode="eval").body
-    except SyntaxError:
-        return None
-    return Inference(ast.unparse(parsed), "`cast`'s target type", frozenset({"cast"}))
 
 
 def _computed(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inference | None:
@@ -889,7 +887,7 @@ def looped(iterable: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
             kinds: frozenset[str] = _kinds(found, kind="loop")
             # Of an `X | None`, the `X`'s: `None` has none. A builtin container's or an
             # `Iterable[T]`'s, else a standard-library class's own.
-            held: str = present(found.annotation, "")
+            held: str = rebased(present(found.annotation, ""), "__iter__", known)
             element: Inference | None = overloads.library_element(held, known)
             return element_type(held, f"the elements of {found.reason}", kinds) or (
                 None if element is None else element._replace(kinds=kinds | element.kinds)
@@ -985,7 +983,7 @@ def dict_view(receiver: ast.expr, view: str, known: Known, declared: Mapping[str
     """
     found: Inference | None = inference(receiver, known, declared)
     types: tuple[str, str] | None
-    if (types := None if found is None else dict_parts(found.annotation)) is None:
+    if (types := None if found is None else dict_parts(rebased(found.annotation, view, known))) is None:
         return None
     by_view: dict[str, str] = {
         "keys": types[0],

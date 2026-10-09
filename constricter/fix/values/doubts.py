@@ -23,7 +23,7 @@ from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.core.imports import checking, inner_imports, rebound_names
-from constricter.fix.core.known import ImportPlan, Inference
+from constricter.fix.core.known import ImportPlan, Inference, Passed
 from constricter.fix.values.narrowed import Regions, regions
 from constricter.rules.annotations import generic_classes, node_name, roots
 from constricter.rules.flow import members
@@ -79,8 +79,9 @@ class Facts(NamedTuple):
     tests: Tests = Tests()  # what its tests read (see `tests`)
     narrowed: Regions = MappingProxyType({})  # where each value is narrowed (see `narrowed.regions`)
     inner: tuple[int, ...] = ()  # the lines functions and lambdas start on, sorted (see `inner_starts`)
-    # Its functions `@contextmanager` makes context managers: what `with` gives of each (see `entered`).
-    managers: Mapping[str, str] = MappingProxyType({})
+    # The functions `@contextmanager` makes context managers, its own and those it imports: what
+    # `with` gives of each, and what that rests on if it's a guess (see `entered`).
+    managers: Mapping[str, Passed] = MappingProxyType({})
     type_vars: frozenset[str] = frozenset()  # its type variables, its own and those it imports
     # Those each class's bases name (`class Row(Generic[_TP])`), bound in its methods.
     bound: Mapping[str, frozenset[str]] = MappingProxyType({})
@@ -91,19 +92,23 @@ class Facts(NamedTuple):
     lazy: Sequence[Start] | None = None
     # The other checked files' functions it calls that declare no return (see `Outside.untyped`).
     untyped: frozenset[str] = frozenset()
+    # The names it reads an attribute of (`run`, in `run.cache_clear()`), anywhere in it.
+    attributed: frozenset[str] = frozenset()
+    # Its functions' parameters' types, where a `Callable` can list them (see `callables.signatures`).
+    positional: Mapping[str, tuple[str, ...]] = MappingProxyType({})
 
 
 def facts(
     tree: ast.Module,
     selfish: Mapping[str, frozenset[str]],
     generics: frozenset[str],
-    managers: Mapping[str, str],
+    managers: Mapping[str, Passed],
     type_vars: frozenset[str],
 ) -> Facts:
     """Read a module's `Facts`.
 
     `selfish`: its `self_returns`; `generics`: the generic classes it names that others define;
-    `managers`: its `entered.managers`; `type_vars`: its type variables.
+    `managers`: its `entered.managers`, and those it imports; `type_vars`: its type variables.
 
     Returns:
       Them.

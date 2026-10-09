@@ -5,7 +5,7 @@ import ast
 from collections.abc import Iterator, Mapping
 from typing import Final
 
-from constricter.fix.core.known import Known
+from constricter.fix.core.known import PARAM, Known, stood
 from constricter.fix.libraries import stdlib
 from constricter.fix.libraries.library import installed_method, library_class
 from constricter.fix.libraries.opened import opened, opened_path
@@ -24,6 +24,7 @@ from constricter.fix.values.inference import (
 from constricter.fix.values.members import (
     assigned_owner,
     awaited,
+    awaited_origins,
     class_variable,
     member,
     partial_method,
@@ -132,7 +133,7 @@ def guessing(
 
     """
     # One walk, for both: the comprehensions whose targets the rest may use, then each node.
-    walked: list[ast.AST] = list(_deciding(value, known, declared))
+    walked: list[ast.AST] = list(_deciding(stood(value, declared), known, declared))
     inside: Mapping[str, str] = targets_typed(
         [node for node in walked if isinstance(node, COMPREHENSIONS)],
         known,
@@ -153,8 +154,7 @@ def guessing(
                 found.update(_guessed_by(node, known, inside))
             elif isinstance(node, ast.Attribute):
                 found.update(_assigned_origins(node, known, inside) or ())
-        if isinstance(node, ast.Name) and node.id in origins:
-            found.update(origins[node.id])
+        found.update(origins.get(_read(node), ()))
     if not unsafe or (named and not _rests(value, known, guesses, declared)):
         return False, frozenset()
     return True, frozenset(found)
@@ -230,6 +230,7 @@ def _overloaded_method(call: ast.Call, known: Known, declared: Mapping[str, str]
                 stdlib.overloaded_method(typed, method, known) is not None
                 or stdlib.overloaded_method(base, method, known) is not None  # a library base's
                 or installed_method(typed, method, known) is not None
+                or installed_method(base, method, known) is not None
                 or shapes.defaulted(typed, call, lambda arg: inference(arg, known, declared), known)
                 is not None
                 or opened_path(typed, call, known) is not None
@@ -252,7 +253,10 @@ def _guessed_by(call: ast.Call, known: Known, declared: Mapping[str, str]) -> fr
     method: str
     typed: str | None
     defined: tuple[str, str] | None
+    rests: frozenset[str] | None
     match call:
+        case _ if rests := awaited_origins(call, known, lambda arg: inference(arg, known, declared)):
+            return rests
         case ast.Call(func=ast.Name() | ast.Attribute() as func) if (
             callee := dotted(func)
         ) in known.returned.guesses:
@@ -307,7 +311,12 @@ def _is_guess(
             name in _CERTAIN_BUILTINS and known.is_builtin(name)
         ) or name in known.indirect.awaits:
             return False
-        case ast.Call(func=func) if (
+        # But an `async def`'s call typed by `return`s that are guesses, awaited: as they are.
+        case ast.Call(func=func) if not awaited_origins(
+            node,
+            known,
+            lambda arg: inference(arg, known, declared),
+        ) and (
             _returned_certainly(func, known)
             or decided.decides(func, known)
             or dotted(func) in known.names.casts
@@ -327,9 +336,26 @@ def _is_guess(
         case ast.Name(id=name):
             return name in guesses
         case ast.Attribute():
-            return _assigned_origins(node, known, declared) is not None
+            return _read(node) in guesses or _assigned_origins(node, known, declared) is not None
         case _:
             return False
+
+
+def _read(node: ast.AST) -> str:
+    """Name what a node reads that a scope types by name: a local, or a fixture's `request.param`.
+
+    Returns:
+      The key its type is under (see `Typed`); `""` for any other node.
+
+    """
+    name: str
+    match node:
+        case ast.Name(id=name):
+            return name
+        case ast.Attribute(value=ast.Name(id=name), attr="param"):
+            return f"{name}{PARAM}"
+        case _:
+            return ""
 
 
 def _returned_certainly(func: ast.expr, known: Known) -> bool:

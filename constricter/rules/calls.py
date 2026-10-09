@@ -17,6 +17,7 @@ from dataclasses import replace
 from typing import Final, cast
 
 from constricter.fix.core.known import (
+    PARAM,
     Call,
     Callee,
     ImportPlan,
@@ -32,16 +33,19 @@ from constricter.fix.libraries import stdlib
 from constricter.fix.values.guesses import guessing
 from constricter.fix.values.inference import inference, scalar
 from constricter.rules.annotations import dotted
-from constricter.rules.decorators import is_fixture
+from constricter.rules.decorators import FIXTURES, is_fixture
+from constricter.rules.decorators import spelled as decorated_as
 from constricter.rules.flow import members
 from constricter.rules.scope import Scope, Seeded, Settings, guesses_in
 from constricter.rules.syntax import FunctionDef, Start, has_within, own_nodes
-from constricter.rules.walked import of_type
+from constricter.rules.walked import classes, of_type
 
 _BUILTINS: Final = frozenset(dir(builtins))
 _TEST: Final = "test"  # how pytest's test functions' names start
 _NONE: Final = "None"  # says nothing of what the parameter's other callers pass, nor what it's for
 _DEFINED: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)  # what binds a name, inside
+_REQUEST: Final = "request"  # the parameter pytest gives a fixture its request by
+_PARAMS: Final = "params"  # `pytest.fixture`'s keyword: the values `request.param` takes in turn
 
 
 def observed(
@@ -240,7 +244,8 @@ def seed_parameters(scope: Scope, func: FunctionDef, named: Sequence[ast.arg]) -
     seeded: Seeded = scope.settings.parameters or Seeded()
     typed: Mapping[str, Passed] = seeded.callers.get(id(func), {})
     injected: Mapping[str, Passed] = _injected(seeded, func, scope.settings.known)
-    if not (typed or injected):
+    varied: Passed | None = _varied(func)
+    if not (typed or injected or varied):
         return
     rebound: set[str] = {
         node.id
@@ -250,6 +255,8 @@ def seed_parameters(scope: Scope, func: FunctionDef, named: Sequence[ast.arg]) -
     arg: ast.arg
     for arg in named:
         given: Passed | None = typed.get(arg.arg)
+        if varied is not None and arg.arg == _REQUEST and arg.arg not in rebound:
+            scope.inferred.learn(f"{arg.arg}{PARAM}", *varied)
         if arg.annotation is not None or arg.arg in rebound:
             continue
         if arg.arg in injected:
@@ -263,7 +270,8 @@ def _injected(seeded: Seeded, func: FunctionDef, known: Known) -> Mapping[str, P
 
     A fixture the module's tests can take (see `fix.index.fixtures`), by its name, or else one of
     pytest's own (`tmp_path`, a `Path`: see `fixtures.STDLIB_OWN`); and, before them, a name
-    `@pytest.mark.parametrize` gives literals of one type. Guesses (`fixture`).
+    `@pytest.mark.parametrize` gives literals of one type, on the function or (`Seeded.marked`) its
+    class. Guesses (`fixture`).
 
     Returns:
       Each such parameter's type and what it rests on; nothing for any other function.
@@ -271,7 +279,8 @@ def _injected(seeded: Seeded, func: FunctionDef, known: Known) -> Mapping[str, P
     """
     if not (func.name.startswith(_TEST) or is_fixture(func)):
         return {}
-    return {**_own(func, known), **seeded.fixtures, **_parametrized(func)}
+    classed: Mapping[str, Passed] = seeded.marked.get(id(func), {})
+    return {**_own(func, known), **seeded.fixtures, **classed, **_parametrized(func.decorator_list)}
 
 
 def _own(func: FunctionDef, known: Known) -> dict[str, Passed]:
@@ -293,8 +302,49 @@ def _own(func: FunctionDef, known: Known) -> dict[str, Passed]:
     return found
 
 
-def _parametrized(func: FunctionDef) -> dict[str, Passed]:
-    """Type the names `@pytest.mark.parametrize` gives a function literals of one type each.
+def marked(tree: ast.Module) -> dict[int, Mapping[str, Passed]]:
+    """Type the names `@pytest.mark.parametrize` on a class gives each of its methods (see `_parametrized`).
+
+    Returns:
+      Each such method's, by its `id()`: those directly in a class decorated so.
+
+    """
+    found: dict[int, Mapping[str, Passed]] = {}
+    node: ast.ClassDef
+    for node in classes(tree):
+        typed: dict[str, Passed]
+        if typed := _parametrized(node.decorator_list):
+            found.update(
+                (id(stmt), typed)
+                for stmt in node.body
+                if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef)
+            )
+    return found
+
+
+def _varied(func: FunctionDef) -> Passed | None:
+    """Type what a fixture's `request.param` gives: its decorator's `params`, literals of one type.
+
+    Returns:
+      The type, a guess resting on `fixture` (a test's indirect `parametrize` may give another); or
+      `None` for any other function, or `params` not written out so.
+
+    """
+    params: list[ast.expr] = [
+        keyword.value
+        for decorator in func.decorator_list
+        if isinstance(decorator, ast.Call) and decorated_as(decorator) in FIXTURES
+        for keyword in decorator.keywords
+        if keyword.arg == _PARAMS
+    ]
+    cases: list[ast.expr] = list(params[0].elts) if params and isinstance(params[0], ast.List) else []
+    types: set[str | None] = {scalar(case) for case in cases}
+    only: str | None = types.pop() if len(types) == 1 else None
+    return None if only is None or only == _NONE else (only, frozenset({fixtures.KIND}))
+
+
+def _parametrized(decorators: Sequence[ast.expr]) -> dict[str, Passed]:
+    """Type the names `@pytest.mark.parametrize` decorators give a function literals of one type each.
 
     `"n"` with `[1, 2]`, or `"n, s"` (or `("n", "s")`) with `[(1, "a"), (2, "b")]`.
 
@@ -304,7 +354,7 @@ def _parametrized(func: FunctionDef) -> dict[str, Passed]:
     """
     found: dict[str, Passed] = {}
     decorator: ast.expr
-    for decorator in func.decorator_list:
+    for decorator in decorators:
         names: list[str]
         rows: list[list[ast.expr]]
         names, rows = _cases(decorator)

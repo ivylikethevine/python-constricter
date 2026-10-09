@@ -6,6 +6,19 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types more of what earlier items left (all in [FIXES.md](FIXES.md)): what's read of a name
+  bound to `capsys.readouterr()`, a class's `parametrize` and a fixture's `params`; a `with` target
+  of another checked file's `@contextmanager` function (by what it declares or yields) or class, of
+  `os.fdopen`, `tokenize.open`, `shelve.open` (from `vague` 0) and `assertLogs`;
+  `asyncio.ensure_future`, and `await` of an `async def` declaring no return, by its `return`s; a
+  lambda by what its calls pass it, a module's or a plain class's callable alias, and
+  `Callable[[A, B], R]` where a function's parameters are positional and every call passes them so;
+  a class under a package that declares no types (django's `TestCase`), under two library classes,
+  or under a generic library class given its arguments; an empty container by the parameter it's
+  passed to, or filled under another file's class; and a checked file's overloads through its
+  aliases, protocols and type variables, on its methods, and called through its module. On pydantic:
+  one more certain fix, none lost. The standard-library tables change (`assertLogs`'s private
+  classes, `ensure_future`'s future-bounded parameter): regenerate them.
 - `--fix --show-fixes` lists the fixes it made, after what it left: `fixed 'x': ...` as text, and in
   `--format=json` (where every entry now says whether it's `fixed`) one entry for each, on the line
   it had before any fix. Without `--show-fixes` a `--fix` run's JSON lists what's left, as it did.

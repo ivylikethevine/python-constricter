@@ -92,20 +92,26 @@ in a function or module body:
   defines it, in Python's method resolution order, among the module's own classes (each defined
   once, not generic) and then a class another checked file defines (the CLI only), which ends the
   search with what it takes from its own file's classes, or a standard-library class the tables hold
-  whole, by its members there (`self.id()` in a `unittest.TestCase` is a `str`, `self.name` in a
-  `threading.Thread` a `str`), which another checked file's class is followed to as well, through
-  its own bases in any checked file or installed package that declares its types, one line of them
-  at most reaching a library class (a mixin beside it ends at none): what none of them binds is the
-  library class's (`self.id()` under a project's own `Case(unittest.TestCase)`), a method its
-  arguments decide included (`self.assertRaises(ValueError)`). A declared return is certain, and a
-  `Self` one is the receiver's class; `return`s are a guess, and not offered where their type names
-  the base (`return self` gives the receiver's class): another checked file's method's too (the CLI
-  only), a class there having those it takes from its own file's classes. Another checked file's
-  mixin, whose line of bases ends at no library class, doesn't end the search: what that line
-  doesn't bind is the next base's (`self.id()` under `class Tests(Mixin, unittest.TestCase)`).
-  Nothing for a name the class's body binds any other way, past a base out of sight (an installed
-  package's, a subscripted or computed one), or for another file's or the standard library's method
-  returning its own class, which may be its `Self` (`self.resolve()` under `Path`);
+  whole (past which the order goes on, for what it doesn't have, to a second one that shares no
+  ancestor with it: `class Both(threading.Thread, unittest.TestCase)`), by its members there
+  (`self.id()` in a `unittest.TestCase` is a `str`, `self.name` in a `threading.Thread` a `str`),
+  which another checked file's class is followed to as well, through its own bases in any checked
+  file or installed package (one that declares no types is read for its classes' bases alone:
+  `django.test.TestCase`), each line of them reaching a library class at most (a mixin beside it
+  ends at none; two lines reaching one each give both, in order, where they share no ancestor): what
+  none of them binds is the library class's (`self.id()` under a project's own
+  `Case(unittest.TestCase)`), a method its arguments decide included
+  (`self.assertRaises(ValueError)`). A declared return is certain, and a `Self` one is the
+  receiver's class; `return`s are a guess, and not offered where their type names the base
+  (`return self` gives the receiver's class): another checked file's method's too (the CLI only), a
+  class there having those it takes from its own file's classes. Another checked file's mixin, whose
+  line of bases ends at no library class, doesn't end the search: what that line doesn't bind is the
+  next base's (`self.id()` under `class Tests(Mixin, unittest.TestCase)`). A generic library base
+  given its arguments types what the class takes from it (`self.popitem()` under
+  `collections.OrderedDict[str, int]` is a `tuple[str, int]`; a subscript, a loop and `.items()`
+  too). Nothing for a name the class's body binds any other way, past a base out of sight (a
+  computed one, a generic one without its arguments), or for another file's or the standard
+  library's method returning its own class, which may be its `Self` (`self.resolve()` under `Path`);
 - an attribute a class doesn't declare, read of `self` or any value typed as the class: the base's
   that does (an annotation, a `self.x: T`, a `@property`), found as an inherited method is, among
   the module's own classes and then a class another checked file defines (the CLI only), with what
@@ -119,9 +125,16 @@ in a function or module body:
   `Callable` imported from `collections.abc` if it must be; a lambda too, by its body, where that
   rests on none of its parameters or its function's names (`first = lambda: 1` is a
   `Callable[[], int]`). Its parameters are left open: a `Callable[[A], R]` would refuse the keywords
-  and defaults a call through the name may use. Not a class, a callee typed only by its `return`s or
-  whose arguments decide its type, nor a name the function reads an attribute of
-  (`run.cache_clear()`);
+  and defaults a call through the name may use. They're listed (`Callable[[int, str], bytes]`) for a
+  function or method of the module's whose parameters are all positional, annotated and without a
+  default, where every call through the name in its function passes as many, none by keyword. Not a
+  class, a callee typed only by its `return`s or whose arguments decide its type, nor a name the
+  function reads an attribute of (`run.cache_clear()`). A lambda whose body rests on its parameters
+  is typed by what its calls pass them (`double = lambda x: x * 2`, called only as `double(3)`, is a
+  `Callable[..., int]`): every use of the name in its function a call, each parameter given one type
+  by position; a guess (`callers`). A module's name bound so is a `Callable` too
+  (`dump = json.dumps`, where the module reads no attribute of it), and a plain class's, as a guess
+  (`member`), a method of its own included (`length = size`);
 - what `with mock.patch(target) as m:` binds, and `patch.object`'s, given no `new` or
   `new_callable`: a `MagicMock | AsyncMock`, as typeshed declares it;
 - a `TypedDict`'s key read by a literal, on a value typed as the class: `movie["year"]` is the key's
@@ -227,7 +240,9 @@ in a function or module body:
   alone. One bound to an empty container (`self.items = []`) is typed by what the class's own
   methods, and those of the module's classes under it, add to it, as a function's is below
   (`self.items.append(row)` in another method: a `list[Row]`), with any other value it's assigned;
-  every read of it in the class counts as a use;
+  every read of it in the class counts as a use. One another checked file's class binds empty and
+  does no more with is typed, for a class under it, by that class's own methods' additions (the CLI
+  only);
 - with `--unsafe-fixes`, a plain class's variable (`limit = 3` in its body), bound once there to a
   literal or a display of them, and what reads it (`self.limit`, `cls.limit`, or `limit` on any
   value typed as the class or one inheriting it): the value's type. A plain class is defined once in
@@ -280,17 +295,24 @@ in a function or module body:
   a `str`: an attribute read off a call whose own type no file can name, pytest's private
   `CaptureResult`), and its `tmp_path`, a `Path`, anywhere. And one `@pytest.mark.parametrize` gives
   literals of one type (`"n, s"` with `[(1, "a"), (2, "b")]`): on the function itself, names and
-  cases written out. `def test_copy(float_frame)` types `result = float_frame.copy()`. A guess
+  cases written out, or on its class, for each method directly in it. A fixture's `request.param` is
+  typed the same way by its decorator's `params` (`@pytest.fixture(params=[1, 2])`: an `int`), and
+  so is the fixture's value where it returns that. A name bound to a call whose type no file can
+  name types what's read of it, until it's bound again (`both = capsys.readouterr()`, then
+  `both.out`). `def test_copy(float_frame)` types `result = float_frame.copy()`. A guess
   (`fixture`), since a plugin's fixture of the name, or a `conftest.py` out of the checked files,
   may be the one pytest takes; not a parameter the test annotates or binds again, nor any for a test
   file whose name another checked file has (a module's name says nothing of where it is);
 - with `--unsafe-fixes`, an empty container (`[]`, `{}`, `set()`, `list()`, `dict()`) the function
   then only adds to, every addition typed alike (`append`, `insert`, `add`, `setdefault`,
   `x[k] = v`; `extend` and `update` with one argument, by its elements, or a `dict`'s keys and
-  values): `list[T]`, `set[T]` or `dict[K, V]`. A guess, since something else could add to it; any
-  use that could (passing it to another function, a nested function) leaves it alone, as does a
-  local bound to it (`alias = names`) unless every use of that local only reads it, but not one that
-  only reads it (`x[0]`, `len(x)`, `sep.join(x)`, `x + more`, `[*x]`, `return x, n`);
+  values): `list[T]`, `set[T]` or `dict[K, V]`. One passed to a checked file's function, by position
+  or keyword, is what the parameter there declares, a builtin container of its kind
+  (`add(names, "a")`, where `def add(names: list[str], extra: str)`), with what's added to it where
+  that agrees. A guess, since something else could add to it; any use that could (passing it to
+  another function, a nested function) leaves it alone, as does a local bound to it
+  (`alias = names`) unless every use of that local only reads it, but not one that only reads it
+  (`x[0]`, `len(x)`, `sep.join(x)`, `x + more`, `[*x]`, `return x, n`);
 - a value computed from such: `a if c else b` when both sides agree, and `a if c else None` as
   `T | None` (not where `c` tests `a`, which it narrows); `a or b` and `a and b` with operands of
   one type, `or` dropping a `None` before its last operand (`name or "x"` is a `str` for a
@@ -316,10 +338,13 @@ in a function or module body:
   `await asyncio.start_server(...)` an `asyncio.Server`), or one its arguments decide
   (`await asyncio.wait_for(fetch(url), 5)`) or its generic class's receiver does
   (`await queue.get()` on an `asyncio.Queue[Item]`), or of anything typed a future or a task
-  (`await asyncio.gather(a(), b())` is a `tuple[A, B]`, as `await task` is what `task` holds). A
+  (`await asyncio.gather(a(), b())` is a `tuple[A, B]`, as `await task` is what `task` holds). An
+  `async def` declaring no return is typed by its `return`s, awaited, as a plain function's call is
+  (certain for a function, a guess for a method), in the module or another checked file. A
   coroutine's call passed where a parameter is an awaitable of a type variable binds it to what
   awaiting it gives: `asyncio.create_task(fetch(url))` is an `asyncio.Task[bytes]` where `fetch`
-  declares `bytes`, and `asyncio.run(main())` what `main` does.
+  declares `bytes`, and `asyncio.run(main())` what `main` does; `asyncio.ensure_future(fetch(url))`
+  too, and given a task or a future, that one's own type.
 
 A loop's target (LVA002) and an unpacking's names (LVA001) are declared instead, on a line of their
 own before the statement: `for k, v in ages.items():` with `ages: dict[str, int]` gets `k: str` and
@@ -378,21 +403,28 @@ that returns itself gives its own type, type arguments included: a `subprocess.P
 package's what its `__enter__` declares, and a call to one of the module's functions that
 `@contextmanager` makes a manager what it declares it yields (`Iterator[T]`'s `T`). A method of the
 module's classes that `@contextmanager` makes one types its call the same way, on a receiver whose
-type is known (`with self.defs.entry(key) as found:`). A target that unpacks is split as an
-unpacking's value is (`with defs.entry(key) as (ref, schema):`), a vague part's name left alone.
-`with open(path, "rb") as f:` declares `f: io.BufferedReader`, by its mode. An `async with`'s target
-is typed by a standard-library manager's `__aenter__` (`async with asyncio.TaskGroup() as group:`),
-where that has one declared return; no other manager's, and not split over an unpacking.
+type is known (`with self.defs.entry(key) as found:`). One declaring no return gives what its
+`yield`s do, each a statement of its own and all of one type (a method's as a guess). Another
+checked file's function is entered the same way (the CLI only), by what it declares or, once its
+file is checked, yields; and its class's `__enter__` returning `self` gives the class, as a guess. A
+target that unpacks is split as an unpacking's value is (`with defs.entry(key) as (ref, schema):`),
+a vague part's name left alone. `with open(path, "rb") as f:` declares `f: io.BufferedReader`, by
+its mode, as `os.fdopen(fd, "rb")` does; `tokenize.open` gives an `io.TextIOWrapper`, as
+`gzip.open`, `bz2.open` and `lzma.open` do in a text mode; and `shelve.open` a `shelve.Shelf[Any]`,
+written from `vague` 0 (its keys are `str`s at any level). An `async with`'s target is typed by a
+standard-library manager's `__aenter__` (`async with asyncio.TaskGroup() as group:`), where that has
+one declared return; no other manager's, and not split over an unpacking.
 
 A standard-library manager its arguments decide is matched as any such call is: a constructor whose
 `__init__` overloads declare the instance (`subprocess.Popen(cmd, text=True)` is a
 `subprocess.Popen[str]`, `warnings.catch_warnings(record=True)` gives a
 `list[warnings.WarningMessage]`), and a test case's `self.assertRaises(ValueError)`, whose class
 argument binds what it catches: `cm: _AssertRaisesContext[ValueError]`, then `cm.exception` a
-`ValueError`. That class, `_AssertWarnsContext` and `tempfile.NamedTemporaryFile`'s
-`_TemporaryFileWrapper` are private in typeshed and at run time, with no public name: they're
-written as they are (imported from `unittest.case`, where the module doesn't import it), which a
-checker reporting private names' use will say. `tarfile.open` gives a `tarfile.TarFile`.
+`ValueError`; `self.assertLogs(...)` binds its `_LoggingWatcher`, whose `output` is a `list[str]`.
+Those classes, `_AssertWarnsContext` and `tempfile.NamedTemporaryFile`'s `_TemporaryFileWrapper` are
+private in typeshed and at run time, with no public name: they're written as they are (imported from
+`unittest.case` or `unittest._log`, where the module doesn't import it), which a checker reporting
+private names' use will say. `tarfile.open` gives a `tarfile.TarFile`.
 
 A type the module can't name yet gets an import. One it already has is reused (with `import io`,
 `io.BufferedReader`); otherwise `from io import BufferedReader` is added after the module's
@@ -421,10 +453,13 @@ one. What a parameter takes is read as below. One typed as nothing but checked f
 (`frame: DataFrame`), or as an iterable of them (`objs: Iterable[DataFrame]`, beside a mapping or
 `None`), takes an argument by its class's bases, through the checked files: `concat([df, df])` is a
 `DataFrame`, where another overload takes `Series`; a class under a base that can't be followed
-(another package's) decides nothing, as an alias or a type variable of a checked file's does. Each
-return is written as another checked file's type is: none of the function's calls is typed if one of
-its overloads declares no return, or returns a type variable or a generic class without its
-arguments.
+(another package's) decides nothing. An alias, a protocol or a type variable a checked file declares
+is read as an installed package's is (`axis: Axis`, by what `Axis` stands for). A class's methods
+defined with `@overload` are matched on a receiver typed as the class (`frame.get("k")`), and a
+function called through its module however that's imported (`shapes.concat(...)` after
+`from pkg import shapes`). Each return is written as another checked file's type is: none of the
+function's calls is typed if one of its overloads declares no return, or returns a type variable or
+a generic class without its arguments.
 
 An installed package's functions whose arguments decide their type (overloads, or a return naming a
 type variable) are matched as the standard library's are: `np.empty(n, dtype=np.float64)` is an

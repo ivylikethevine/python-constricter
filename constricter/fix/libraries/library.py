@@ -232,6 +232,21 @@ def installed_chain(
             return None
 
 
+def chains(value: ast.expr, known: Known) -> bool:
+    """Check whether `value` calls a method the index wrote its return's attribute of (see `installed_chain`).
+
+    Returns:
+      Whether it may: a method of that name has one, whatever its receiver is.
+
+    """
+    name: str
+    match value:
+        case ast.Call(func=ast.Attribute(attr=name)):
+            return any(f".{name}()." in entry for entry in known.names.installed)
+        case _:
+            return False
+
+
 def _any(text: str, known: Known, found: Inference) -> Inference | None:
     """Spell a table's bare `Any` (`json.loads`'s) as the module can, where `vague` lets it be written.
 

@@ -143,7 +143,7 @@ def free_variables(value: str, scope: Scope) -> tuple[str, ...]:
       Them.
 
     """
-    declared: Declarations | None = scope.module.declared
+    declared: Declarations | None = scope.module.typing
     variables: Mapping[str, Variable] = {} if declared is None else declared.variables
     return tuple(
         dict.fromkeys(
@@ -225,7 +225,7 @@ def class_takes(atom: Atom, scalar: str) -> str:
     path: str = atom_path(atom)
     if atom.module is None:
         return external_takes(path, scalar)
-    declared: Declarations | None = atom.module.declared
+    declared: Declarations | None = atom.module.typing
     protocol: Protocol | None = None if declared is None else declared.protocols.get(path.rpartition(".")[2])
     members: frozenset[str] | None = stdlib.scalar_members(scalar)
     if protocol is None or (members is not None and not protocol.members <= members):
@@ -325,7 +325,7 @@ def class_takes_class(atom: Atom) -> str:
         return YES
     if atom.module is None:
         return NO if origin[0] == BUILTINS_MODULE else MAYBE
-    declared: Declarations | None = atom.module.declared
+    declared: Declarations | None = atom.module.typing
     protocol: Protocol | None = None if declared is None else declared.protocols.get(origin[1] or "")
     return NO if protocol is None or protocol.properties else MAYBE
 
