@@ -46,7 +46,7 @@ def main(names: list[str]) -> int:
         tested = newest(name, "tests")
         checked = newest(name, "types")
         traced = newest(name, "traced")
-        if not isinstance(tested, Tested) or not tested.fixes:
+        if not isinstance(tested, Tested) or not isinstance(tested.fixes, dict) or not tested.fixes:
             print(f"{name}: no fixes kept")
             continue
         errors: dict[tuple[str, int, str], int] = {}

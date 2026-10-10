@@ -29,7 +29,8 @@ def rows() -> list[dict]:
     found = []
     for path in sorted(OUT.glob("*.jsonl")):
         with open(path, encoding="utf-8") as file:
-            found.extend(json.loads(line) for line in file)
+            # A file an older census wrote has no verdicts: its package's newest run kept no fixes.
+            found.extend(row for row in map(json.loads, file) if "verdict" in row)
     return found
 
 

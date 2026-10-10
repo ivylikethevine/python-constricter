@@ -313,16 +313,17 @@
 - **`tests/corpus/mega_corpora.py`**, the same on 40 more packages `mega_packages.json` pins (38
   with a suite read from their own CI): typed applications, `asyncio` code, pytest-heavy test trees,
   scientific packages on numpy's types, `TypedDict`s and overloads of their own, and untyped ones.
-  54 minutes. A suite's tests are stopped after 15 minutes, suites binding one port run one at a
-  time, a fixed run that differs is fixed and run again (and where the released tests' own failures
-  differ from run to run, as nibabel's do, only what a fixed run fails both times and no released
-  run did is the fix's), a failed step's output is kept, and a changed `install` command reinstalls
-  its checkout. The two scripts' first runs found a crash, four packages a second pass still changed
-  and 17 type errors after `--fix`, each fixed since: after `--fix` no corpus's or package's own
-  checker finds a new error but one of werkzeug's (`winreg`, another platform's: pydantic's 9 were
-  Pyright reading this project's settings, not its own); and closed two items that waited on a run:
-  django's suite is the same after `fix-plain-bases`' guesses, and one `--fix --unsafe-fixes` pass
-  leaves a second nothing on any of the seven.
+  54 minutes, 74 with every traceable suite's tests traced once more. A suite's tests are stopped
+  after 15 minutes, suites binding one port run one at a time, a fixed run that differs is fixed and
+  run again (and where the released tests' own failures differ from run to run, as nibabel's do,
+  only what a fixed run fails both times and no released run did is the fix's), a failed step's
+  output is kept, and a changed `install` command reinstalls its checkout. The two scripts' first
+  runs found a crash, four packages a second pass still changed and 17 type errors after `--fix`,
+  each fixed since: after `--fix` no corpus's or package's own checker finds a new error but one of
+  werkzeug's (`winreg`, another platform's: pydantic's 9 were Pyright reading this project's
+  settings, not its own); and closed two items that waited on a run: django's suite is the same
+  after `fix-plain-bases`' guesses, and one `--fix --unsafe-fixes` pass leaves a second nothing on
+  any of the seven.
 - **Profiles and timings that can be trusted**: **`tests/corpus/corpus_profile.py`** runs the check
   under `py-spy`, which samples it from outside, its workers too (`--jobs N`), and prints each
   module's and function's own and whole time; **`tests/corpus/corpus_timing.py OTHER`** times the
@@ -458,13 +459,17 @@ fix.
 
 ### Small: under 4 hours
 
-1. **The likely sets, chosen again.** [LIKELY.md](LIKELY.md)'s 22 sets were chosen by a match of
-   class names, on four packages' traced tests; the corpora runs now hold every traced suite's fixes
-   to their annotations, and keep each fix with its tier, its blamed errors and its verdict. After a
-   super and a mega corpora run, `scratch/guess_report.py --likely` lists the sets that pass the
-   bars (20 guesses told of, over 95% of them held, under 0.1 blamed in each 100 a checker read):
-   write `offences.LIKELY` and LIKELY.md's tables from it. Done when LIKELY.md's tables are those
-   runs'. About 2 hours after the runs; coverage unchanged, what `--likely` applies moves.
+1. **The likely sets, widened.** A super and a mega corpora run measured every guess on 42 packages
+   against the bars ([LIKELY.md](LIKELY.md)): the 22 sets of `offences.LIKELY` each pass, and 39
+   more do, 2,779 guesses (`assigned` 307, `copy+filled` 227, `assigned+method` 212, `attribute`
+   211, `call+rebound` 208, `assigned+loop` 145), which would take `--likely` from 74.0% of the
+   guesses to 80.1%. Add them to `LIKELY`, after reading what differed in the largest: a set that
+   passes still holds wrong guesses (`actual_key: tuple[str, int]`, a `list` each of 233 times, in
+   dask's `_expr.py`: `copy+loop`, likely now). `returned` (786) misses by its share, 93.6%: 21 of
+   its 39 that differed are Django's, and three of dask's are a test's `HighLevelGraph` that is a
+   `dict`. Done when `LIKELY` is the sets `scratch/guess_report.py --likely` lists and LIKELY.md
+   has one table of them. About 2 hours and a mega corpora run; coverage unchanged, what `--likely`
+   applies up by 2,779 guesses on the 42.
 2. **A function taken for a class.** `counter = multiprocessing.Value("i", 0)` is guessed a
    `multiprocessing.Value` (`constructor`, a likely set): a capitalised name the standard library's
    stubs declare as a variable, not a class, and that the `functions` table hasn't. Done when no
@@ -473,8 +478,10 @@ fix.
 3. **A second `--likely` pass that adds nothing.** `--fix --likely` leaves a second pass 2 lines on
    pydantic: a guess resting on a likely one, of a set that isn't likely itself, is certain once the
    first is written. Count a guess likely where every guess it rests on is, or the table's
-   `Left, likely` stays above 0. Done when it's 0 on the seven corpora. About 3 hours; coverage
-   unchanged.
+   `Left, likely` stays above 0: 388 bindings on 26 of the mega corpora (networkx 49, dask 45, mypy
+   and sphinx 40 each, mkdocs 30, textual 25, pdm 23), where a second pass with every guess leaves
+   10 (websockets 8, mypy 2). Done when it's 0 on the seven corpora and the mega corpora. About 3
+   hours; coverage unchanged.
 4. **One tier, decided once.** `Offence.likely`, `cli.options.Guesses.applies` and
    `corpora_steps.fix_tier` each decide whether a fix is certain, likely or another guess. Give
    `Offence` a `tier` the three read. Done when one function names a fix's tier. About an hour;
@@ -490,7 +497,13 @@ fix.
 7. **A suite's own differences, named.** black's `test_piping` asserts its own source is as black
    formats it, and fails after any fix: so a mega corpora run always exits 1, and its status doesn't
    say whether anything else differs. Let `mega_packages.json` name the tests a fix may change, each
-   with why, and a run report them apart. Done when a run whose only differences are named exits 0.
+   with why, and a run report them apart. Two more a run reports that no fix is shown to cause:
+   nibabel, whose failures vary, differs after each of the three fixes by tests that aren't the
+   same from one to the next (`test_multiload`, a `test_inverse_1` case, a `test_euler_mat_2`
+   case) and by five released failures gone; litestar fails
+   `test_request_body_logging_middleware` after `--fix --unsafe-fixes` and not after
+   `--fix --likely`, in a suite not marked as varying whose traced run failed 7 to the released 5.
+   Read litestar's before naming it. Done when a run whose only differences are named exits 0.
    About 2 hours; coverage unchanged.
 8. **A traced step that differs, run again.** A suite's `tests` step runs the released tests again
    where a fixed run differs (`corpora_steps._settled`); its `traced` step doesn't, for a package
@@ -506,6 +519,19 @@ fix.
     alone, certain or guessed, from the `check` step; a guess is likely by its whole set. Count the
     sets, and each one's likely guesses. Done when the table's rows are LIKELY.md's sets. About 2
     hours; coverage unchanged.
+11. **celery's suite, in the memory a run has.** celery's tests held 24.8 GB at half a CPU, and
+    28.0 GB traced: more than a 16 GB machine has, and of the 46 GB the mega run shared out. Every
+    `traced` step but narwhals's was counted as 5.0 GB, unmeasured: celery's held five times that,
+    mypy's 6.7 GB, optuna's 6.6 GB, altair's 6.2 GB. What celery's tests hold is unread (28,808
+    subtests). Size an unmeasured `traced` step by its suite's `tests` step, and run celery's suite
+    in parts or with what it keeps let go. Done when no step of a run holds over 8 GB unless it
+    runs alone. About 3 hours; coverage unchanged.
+12. **A traced suite's time.** The mega run takes 74 minutes with the `traced` steps, from 54. A
+    `traced` step to its suite's `tests` step, which runs the tests at least twice: pygments 436s
+    to 45s, pint 411s to 91s, tox 576s to 300s, anyio 371s to 225s, joblib 516s to 315s, celery
+    582s to 374s, aiohttp 335s to 169s. zarr's are the run's longest, 1,508s and 1,020s at 0.7
+    CPUs. Profile pygments's traced tests (`corpus_profile.py`) before changing anything. Done when
+    the witness's share of a traced run is known. About 2 hours; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -513,7 +539,9 @@ fix.
    checkers find one new error on pandas (from 42), and none on sqlalchemy or pydantic; of the mega
    corpora's 38, 17 on mypy, 10 on pint, 2 on mcp and one on each of narwhals and optuna. By the
    fixes' sets of mechanisms ([LIKELY.md](LIKELY.md)), those with `rebound` are blamed for an error
-   0.30 times in each 100 guesses a checker read, a `constructor` 0.07 times. What's left:
+   0.30 times in each 100 guesses a checker read, a `constructor` 0.06 times; on the mega corpora's
+   suites and pydantic alone, 0.70 (6 of 853) and 0.31 (14 of 4,517, each mypy's `lxml`), and
+   every error but narwhals's, optuna's and those 14 is a `rebound` guess's. What's left:
    - A name typed by its first values and bound again to what `--fix` can't type (`rebound`):
      `units_overlay: bool`, then a `dict`; `factor: float | None`, then `factor *= other`; a
      `re.Match[str]`, then its `groupdict()`. pint's 10 (3 bindings), mcp's 2, 3 of mypy's
@@ -640,7 +668,10 @@ fix.
     annotation as its package's traced tests bind it (`tests/corpus/witness`): an instance of the
     class, not of its arguments (`list[int]` is held to `list`), and a test's own stand-in differs
     (`FakeProcess`, passed where a `ServerProcess` is declared: mcp's one certain fix that differed,
-    narwhals's too). Hold a builtin container's first elements to its arguments, and count a value
+    narwhals's too). On the mega corpora's suites 16 of the 20 `constructor` guesses that differed
+    are a class the trace couldn't name, one a function or a test defines again at each call
+    (networkx's `StackFrame`, 95 of 100 values; seaborn's `CatScale`, 126 of 132). Hold a builtin
+    container's first elements to its arguments, and count a value
     whose class a test module defines apart from one that differs. Done when a certain fix that
     differs on the corpora is a declaration its package's tests contradict (pydantic's
     `multiple_of: Decimal | None`, bound to an `int`). About 5 hours; coverage unchanged.
@@ -682,10 +713,16 @@ fix.
    - [ ] **No new error at a traced binding**: after the trace's fixes SQLAlchemy's mypy finds 6 new
          errors and pandas's checkers 3, three of them traced to a traced fix (`fk: ForeignKey`,
          passed where a `ForeignKeyConstraint` is taken; `index: Index`; `loc: int`, then iterated):
-         a local whose value a parameter gives, typed narrower than its function uses it.
+         a local whose value a parameter gives, typed narrower than its function uses it. On the
+         mega corpora's suites the trace's fixes bring 4 errors past the guesses' own: 3 of pint's
+         (`quantity: Quantity`, a traced fix in `numpy_func.py`: "Class definition for "Quantity"
+         depends on itself", on its line and two a `builtin` fix shares) and one of altair's,
+         blamed on a certain `call` fix (`normalized_engine: str`, `mimebundle.py`) that brings
+         none without the trace. Most fixes rest on a trace in networkx (434), dask (339) and
+         botocore (299), with no new error and the same tests.
 
-   Done: a traced suite types a loop's target. Left: the three traced fixes above not offered, and
-   none like them on the mega corpora's suites.
+   Done: a traced suite types a loop's target. Left: the three traced fixes above not offered,
+   pint's and altair's read, and none like them on the mega corpora's suites.
 
 2. **Class bodies of plain classes, past literals.** An annotation in a class body makes a
    dataclass's or a model's variable a field, so `--fix` annotates only a plain class's variable
