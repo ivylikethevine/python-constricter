@@ -3,6 +3,7 @@
 
 import ast
 import bisect
+import sys
 from collections.abc import Iterator, Mapping, Sequence
 from itertools import accumulate
 from typing import Final, TypeAlias, cast
@@ -11,9 +12,10 @@ from weakref import WeakKeyDictionary
 from constricter.fix.core.known import Checking, Guarded, ImportPlan, Origin, Returns
 from constricter.rules.annotations import roots
 from constricter.rules.syntax import FunctionDef, Start, import_bindings
-from constricter.rules.walked import of_type
+from constricter.rules.walked import classes, of_type
 
 _TYPE_CHECKING: Final = "TYPE_CHECKING"
+_STDLIB: Final = sys.stdlib_module_names
 _FUTURE: Final = "__future__"
 _ANNOTATIONS: Final = "annotations"  # `from __future__ import annotations` postpones them all
 # Each module's names, for as long as its tree lives: the index reads them, then the check.
@@ -52,11 +54,12 @@ def plan(tree: ast.Module) -> ImportPlan:
     values: frozenset[str]
     taken, values = taken_names(tree)
     bound: dict[str, str] = _bound(tree)
+    defined: dict[str, int] = _defined(tree)
     return ImportPlan(
         bound,
         taken,
         _after(tree),
-        _defined(tree),
+        defined,
         checking=Checking(
             _block(tree),
             _lazy(tree, bound),
@@ -69,6 +72,52 @@ def plan(tree: ast.Module) -> ImportPlan:
         ),
         postponed=_postponed(tree),
         values=values,
+    )
+
+
+def nested_classes(tree: ast.Module) -> frozenset[str]:
+    """Name the classes defined in another class's body: bare, names of that body alone.
+
+    Returns:
+      Them.
+
+    """
+    return frozenset(
+        stmt.name for node in classes(tree) for stmt in node.body if isinstance(stmt, ast.ClassDef)
+    )
+
+
+def _private(statement: str) -> bool:
+    """Check whether an import to add takes a name its module keeps to itself (`from m import _T`).
+
+    Not the standard library's, whose stubs name such classes in what they declare
+    (`unittest.case._AssertRaisesContext`).
+
+    Returns:
+      Whether it does: one underscore before it, not a dunder's two.
+
+    """
+    module: str
+    name: str
+    module, _, name = statement.removeprefix("from ").rpartition(" import ")
+    return name.startswith("_") and not name.startswith("__") and module.partition(".")[0] not in _STDLIB
+
+
+def unwritable(annotation: str, planned: ImportPlan, nested: frozenset[str]) -> bool:
+    """Check whether the module can't write `annotation`, whatever it imports.
+
+    It names a class of `nested` (see `nested_classes`) the module binds nowhere else, which no
+    function names bare; or an import it needs would take another module's private name.
+
+    Returns:
+      Whether it can't.
+
+    """
+    if roots(annotation) & nested - planned.bound.keys() - planned.defined.keys():
+        return True
+    return any(
+        _private(statement)
+        for statement in (*guarded_imports(annotation, planned), *imports_of(annotation, planned))
     )
 
 

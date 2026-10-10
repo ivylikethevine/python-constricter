@@ -18,6 +18,7 @@ _ALIAS: Final = "TypeAlias"
 _TABLE: Final = "Table"
 _ALL: Final = Checks(all_scopes=True)
 _MODERN: Final = Checks(all_scopes=True, min_python=(3, 10))
+_OLDER: Final = Checks(all_scopes=True, min_python=(3, 9))
 _ADDED: Final = ("from typing import TypeAlias",)
 _IMPORT: Final = "from typing import TypeAlias\n"
 SOURCE: Final = """
@@ -109,7 +110,10 @@ def test_a_type_made_of_others_is_declared_an_alias() -> None:
         ("import typing\n", _MODERN, "typing.TypeAlias", (), False),
         ("", _ALL, "TypeAlias", _ADDED, True),
         ("", _MODERN, "TypeAlias", _ADDED, False),
-        ("", Checks(all_scopes=True, min_python=(3, 9)), "TypeAlias", _ADDED, True),
+        ("", _OLDER, None, (), False),  # its import would fail there
+        ("import typing\n", _OLDER, None, (), False),
+        ("import typing\nimport typing_extensions\n", _OLDER, None, (), False),  # named by `typing`'s
+        ("from typing_extensions import TypeAlias\n", _OLDER, "TypeAlias", (), False),
         ("TypeAlias = typing = 1\n", _MODERN, None, (), False),  # no name is free to import it by
     ],
 )
@@ -124,7 +128,7 @@ def test_an_alias_is_certain_where_every_python_has_typealias(
     """`TypeAlias` is named as the module can, else imported from `typing`, which has it from 3.10.
 
     Certain where the module imports the name already, or `min-python` says every Python has it; a
-    guess otherwise.
+    guess where it isn't known, and no fix where it says one lacks it.
     """
     found: list[Offence] = check_source(f"{imports}Table = dict[str, int]\n", checks=checks)
     table: Offence = next(o for o in found if o.name == _TABLE)

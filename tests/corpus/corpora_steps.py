@@ -7,7 +7,8 @@
 - `infer-CHECKER`, for each type checker installed: `--fix --unsafe-fixes --infer-with CHECKER` on
   a copy, from this checkout's root, whose settings point the checker at its environment;
 - `tests` and `types`, for a package with a suite (`corpus_suite.Suite`): its own tests and type
-  checks as released and after each fix, each new error traced to its fix;
+  checks as released and after `--fix --unsafe-fixes`, each new error traced to its fix and that
+  fix's tier, and after the runs under it where that one doesn't say whose fixes a difference is;
 - `traced`, where the run asks for it and the suite's tests can be traced
   (`corpus_suite.traceable`): their trace, then `--fix --unsafe-fixes --infer-from` it, and the
   package's type checks after, or its tests where it has no checks;
@@ -17,7 +18,8 @@
 
 `CORPUS_JOBS` and `CORPUS_SUITE_WORKERS` size constricter's and a suite's processes; with
 `CORPUS_TYPES_APART` set, a suite's type checks run on checkouts of their own, one for each fixed
-run, at once and beside its tests.
+run, at once and beside its tests; with `CORPUS_ASSURE` set, they run after `--fix` alone too,
+whatever the first run found.
 """
 
 import cProfile
@@ -61,6 +63,13 @@ INFER: Final = "infer-"
 JOBS_VARIABLE: Final = "CORPUS_JOBS"
 WORKERS_VARIABLE: Final = "CORPUS_SUITE_WORKERS"
 APART_VARIABLE: Final = "CORPUS_TYPES_APART"  # set: a suite's type checks get checkouts of their own
+ASSURE_VARIABLE: Final = "CORPUS_ASSURE"  # set: a suite's type checks run after `--fix` alone too
+# What a new type error is traced to: a certain fix, a likely guess, another guess, or nothing.
+CERTAIN: Final = "certain"
+LIKELY: Final = "likely"
+GUESS: Final = "guess"
+UNTRACED: Final = "untraced"
+TIERS: Final = (CERTAIN, LIKELY, GUESS, UNTRACED)
 _EVERYWHERE: Final = ("--level=suffocate", "--all-scopes")
 _FIXED: Final = re.compile(r"fixed (\d+)")
 _TYPED: Final = re.compile(r"^Total: (\d+)/(\d+) typed", re.MULTILINE)  # `--coverage`'s summary
@@ -172,6 +181,65 @@ class Step(NamedTuple):
 Steps: TypeAlias = dict[str, Step]  # a corpus's steps' results, by their names
 
 
+def tier(blamed: corpus_suite.Blamed) -> str:
+    """Name what a new error is traced to.
+
+    Returns:
+      One of `TIERS`.
+
+    """
+    if blamed.fix is None:
+        return UNTRACED
+    if not blamed.fix.unsafe:
+        return CERTAIN
+    return LIKELY if blamed.fix.likely else GUESS
+
+
+def lower(
+    found: corpus_suite.Compared,
+    check: Callable[[tuple[str, tuple[str, ...]]], corpus_suite.Compared],
+    *,
+    assure: bool,
+) -> list[tuple[str, corpus_suite.Compared]]:
+    """Type-check the runs under `corpus_suite.ALL` that its comparison `found` calls for.
+
+    A trace is by line, not by cause, and an untraced error is no tier's. So after `--fix --likely`
+    where a new error is untraced, or traced to a certain or a likely fix; then after `--fix` where
+    that run has one untraced or traced to a certain fix, or `assure` asks for it whatever was
+    found. `check` fixes with a run's options and compares.
+
+    Returns:
+      Each run made: its label and comparison.
+
+    """
+    likely: tuple[str, tuple[str, ...]]
+    certain: tuple[str, tuple[str, ...]]
+    likely, certain = corpus_suite.LOWER
+    runs: list[tuple[str, corpus_suite.Compared]] = []
+    doubted: bool = False
+    if {tier(each) for each in found.new} - {GUESS}:
+        below: corpus_suite.Compared = check(likely)
+        runs.append((likely[0], below))
+        doubted = bool({tier(each) for each in below.new} & {CERTAIN, UNTRACED})
+    if assure or doubted:
+        runs.append((certain[0], check(certain)))
+    return runs
+
+
+def assured(kept: Step | None) -> bool:
+    """Check whether a kept `types` step has the `--fix` run `ASSURE_VARIABLE` asks for.
+
+    Returns:
+      Whether it has.
+
+    """
+    return (
+        kept is not None
+        and isinstance(kept.value, Typechecked)
+        and corpus_suite.LOWER[1][0] in dict(kept.value.fixed)
+    )
+
+
 def checkers() -> list[str]:
     """Find the type checkers `--infer-with` can start here: on `PATH`, or beside this Python.
 
@@ -257,13 +325,14 @@ def infer_step(corpus: Corpus, checker: str) -> Inferred:
 
 
 def tests_step(corpus: Corpus, suite: corpus_suite.Suite) -> Tested:
-    """Run the corpus package's own tests as released, and after each fix.
+    """Run the corpus package's own tests as released, and after `--fix --unsafe-fixes`.
 
-    Each run's output is kept in `corpus_suite.WORK`'s `outputs/`. Where a fixed run's outcome
+    Each run's output is kept in `corpus_suite.WORK`'s `outputs/`. Where the fixed run's outcome
     differs from the released one's, the released tests are run again, and that run stands for
     them: a first run after a clone has differed from every later one, fixed or not. A fixed run
     that still differs is fixed and run again too, and its second outcome stands: a test that fails
-    one run in some isn't the fix's (see `_settled`).
+    one run in some isn't the fix's (see `_settled`). One that differs even so is followed by the
+    runs under it (`corpus_suite.LOWER`), down to the first that's the same as released.
 
     Returns:
       Their outcomes.
@@ -277,10 +346,9 @@ def tests_step(corpus: Corpus, suite: corpus_suite.Suite) -> Tested:
     seconds: float = time.perf_counter() - start
     fixed: list[_Run] = []
     label: str
-    options: tuple[str, ...]
     # One stopped as released (waiting on a server no one started) would be after each fix too.
-    for label, options in () if corpus_suite.stopped(released) else corpus_suite.MODES:
-        change: str = corpus_suite.fixed(root, suite, *options)
+    for label in () if corpus_suite.stopped(released) else [mode[0] for mode in corpus_suite.MODES]:
+        change: str = corpus_suite.fixed(root, suite, *corpus_suite.OPTIONS[label])
         start = time.perf_counter()
         outcome: corpus_suite.Outcome = corpus_suite.tested(
             root,
@@ -293,7 +361,39 @@ def tests_step(corpus: Corpus, suite: corpus_suite.Suite) -> Tested:
         return Tested(suite.tag, released, seconds, fixed)
     varies: bool
     released, varies = _settled((root, kept), suite, released, fixed)
+    if fixed[0][2] != released:
+        fixed += _lowered((root, kept), suite, released)
     return Tested(suite.tag, released, seconds, fixed, again=True, varies=varies)
+
+
+def _lowered(
+    where: tuple[Path, Path],
+    suite: corpus_suite.Suite,
+    released: corpus_suite.Outcome,
+) -> list[_Run]:
+    """Run the tests after each fix under `corpus_suite.ALL`'s, down to the first the same as `released`.
+
+    `where`: the checkout and where its outputs are kept.
+
+    Returns:
+      Each run made.
+
+    """
+    runs: list[_Run] = []
+    label: str
+    for label in (mode[0] for mode in corpus_suite.LOWER):
+        change: str = corpus_suite.fixed(where[0], suite, *corpus_suite.OPTIONS[label])
+        start: float = time.perf_counter()
+        outcome: corpus_suite.Outcome = corpus_suite.tested(
+            where[0],
+            suite,
+            where[1] / f"{label.replace(' ', '')}.txt",
+        )
+        runs.append((label, change, outcome, time.perf_counter() - start))
+        corpus_suite.reset(where[0], suite)
+        if outcome == released:
+            break
+    return runs
 
 
 def _settled(
@@ -321,7 +421,7 @@ def _settled(
     outcome: corpus_suite.Outcome
     for at, (label, _, outcome, _) in enumerate(fixed):
         if outcome != released:
-            change: str = corpus_suite.fixed(root, suite, *dict(corpus_suite.MODES)[label])
+            change: str = corpus_suite.fixed(root, suite, *corpus_suite.OPTIONS[label])
             start: float = time.perf_counter()
             second: corpus_suite.Outcome = corpus_suite.tested(
                 root,
@@ -349,7 +449,9 @@ def _settled(
 
 
 def types_step(corpus: Corpus, suite: corpus_suite.Suite) -> Typechecked:
-    """Run the corpus package's own type checks as released, and after each fix (the checkers' hints' too).
+    """Run the corpus package's own type checks as released, and after every fix (the checkers' hints' too).
+
+    Then after the runs under that one its errors call for (see `lower`), on its checkout.
 
     Returns:
       Their errors, each new one traced to its fix.
@@ -382,12 +484,20 @@ def types_step(corpus: Corpus, suite: corpus_suite.Suite) -> Typechecked:
             )
             for each, (_, options) in zip(roots, modes, strict=True)
         ]
+    under: list[tuple[str, corpus_suite.Compared]] = lower(
+        comparing[0].result(),
+        lambda mode: corpus_suite.compared(roots[0], suite, released.result, mode[1]),
+        assure=bool(os.environ.get(ASSURE_VARIABLE)),
+    )
     for root in dict.fromkeys(roots):
         corpus_suite.reset(root, suite)
+    found: list[tuple[str, corpus_suite.Compared]] = [
+        (label, each.result()) for (label, _), each in zip(modes, comparing, strict=True)
+    ]
     return Typechecked(
         "; ".join(" ".join(check) for check in suite.checks),
         len(released.result()),
-        [(label, found.result()) for (label, _), found in zip(modes, comparing, strict=True)],
+        [found[0], *under, *found[1:]],
     )
 
 

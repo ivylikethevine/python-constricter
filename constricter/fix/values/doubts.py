@@ -22,7 +22,7 @@ from functools import lru_cache
 from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter.fix.core.imports import checking, inner_imports, rebound_names
+from constricter.fix.core.imports import checking, inner_imports, nested_classes, rebound_names
 from constricter.fix.core.known import ImportPlan, Inference, Passed
 from constricter.fix.values.narrowed import Regions, regions
 from constricter.rules.annotations import generic_classes, node_name, roots
@@ -97,6 +97,9 @@ class Facts(NamedTuple):
     attributed: frozenset[str] = frozenset()
     # Its functions' parameters' types, where a `Callable` can list them (see `callables.signatures`).
     positional: Mapping[str, tuple[str, ...]] = MappingProxyType({})
+    nested: frozenset[str] = (
+        frozenset()
+    )  # the classes defined in a class's body (see `imports.nested_classes`)
 
 
 def facts(
@@ -128,6 +131,7 @@ def facts(
         _bound_vars(tree, type_vars),
         rebound_names(tree),
         [(stmt.lineno, stmt.col_offset) for stmt in inner_imports(tree)],
+        nested=nested_classes(tree),
     )
 
 

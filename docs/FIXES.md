@@ -1,8 +1,9 @@
 # What `--fix` infers
 
 The [README](../README.md#use) has the options (`--fix`, `--diff` to preview, `--unsafe-fixes`,
-`--show-fixes`). `--fix` adds the annotation where the value decides it, for a plain `name = value`
-in a function or module body:
+`--likely`, `--show-fixes`). A guess below is applied with `--unsafe-fixes`; `--likely` applies
+those whose mechanisms [LIKELY.md](LIKELY.md) measured to hold. `--fix` adds the annotation where
+the value decides it, for a plain `name = value` in a function or module body:
 
 - a literal: `count = 0` becomes `count: int = 0`; and `not x`, or a comparison by `in`, `not in`,
   `is` and `is not` alone (`"r" in mode`), always a `bool` whatever it compares (`==` and `<` may
@@ -276,7 +277,8 @@ in a function or module body:
   nor a function's or a class body's. `TypeAlias` is named as the module's imports can (`TypeAlias`,
   `t.TypeAlias`, where bound before the alias), else imported from `typing`, which has it from
   Python 3.10: certain where the module imports the name already (or `typing_extensions`), or
-  `min-python` is 3.10 or later; a guess otherwise;
+  `min-python` is 3.10 or later; a guess where `min-python` isn't known, and no fix where it's older
+  (the import would fail there);
 - an attribute, property or method of a class another checked file defines, its type imported as a
   declared return's is (the CLI only: the plugins see one file at a time);
 - with `--unsafe-fixes` (the CLI only), what's computed from an unannotated parameter of a plain
@@ -402,7 +404,9 @@ An annotation in quotes, or a quoted part of one, is read as its text: `xs: "lis
 metadata, which are values. In a module body, where an annotation is evaluated, a fix naming what
 the module binds only further down, or imports under an `if` on a flag (`if TYPE_CHECKING:`,
 `if MYPY_CHECK_RUNNING:`), is quoted (`first: "Node" = xs[0]`), unless the module has
-`from __future__ import annotations`.
+`from __future__ import annotations`. In any scope of such a module, a fix the project's oldest
+Python (`min-python`) doesn't read as a type is quoted too: a union by `|` before 3.10
+(`found: "re.Match[str] | None"`), a subscript before 3.9 (`names: "list[str]"`).
 
 A `with` statement's target is declared before it too, as what the context manager's `__enter__`
 returns: `with zipfile.ZipFile(path) as z:` gets `z: zipfile.ZipFile` (a standard-library manager
@@ -441,8 +445,9 @@ docstring and its leading imports (below a shebang or coding line when it has ne
 `import io` if `BufferedReader` is a name the module binds. A type the module imports under a
 top-level `if TYPE_CHECKING:` is named by that import (quoted in a module body, as above). A
 standard-library type's import goes under `if TYPE_CHECKING:` only for a module nothing but the
-module's functions import (`import pwd` in a function's body): it may not be there to import when
-the module is.
+module's functions import (`import decimal` in a function's body): it may not be there to import
+when the module is. A class of a module only some platforms have, imported that way (`import pwd`,
+`import winreg`), is no fix: a type checker on another platform finds no such class.
 
 An installed package that declares its types (a `py.typed` package, its stubs first; a stub package,
 `pkg-stubs`; a lone `mod.pyi`) is read the same way for the calls into it, and never fixed: found on
@@ -742,11 +747,11 @@ It touches no class body but a plain class's (a dataclass would gain a field), a
 can't fix reported. The standard library and third-party packages are out of reach.
 
 `--show-fixes` lists, after the report, each fix and how its value decided it (for `b = s.strip()`:
-`str`, from `str.strip`'s fixed return type), marking the guesses `--unsafe-fixes` would add;
-`--format=json` always carries the same as a `fix` object (`annotation`, `reason`, `unsafe`) on each
-result. With `--fix`, `--show-fixes` lists the fixes made too, after what's left: `fixed 'b'` as
-text, and in `--format=json` an entry whose `fixed` is true. Each is on the line it had before any
-fix, whichever round of `--fix` made it.
+`str`, from `str.strip`'s fixed return type), marking the guesses `--unsafe-fixes` would add, or
+`--likely`; `--format=json` always carries the same as a `fix` object (`annotation`, `reason`,
+`unsafe`, `likely`) on each result. With `--fix`, `--show-fixes` lists the fixes made too, after
+what's left: `fixed 'b'` as text, and in `--format=json` an entry whose `fixed` is true. Each is on
+the line it had before any fix, whichever round of `--fix` made it.
 
 The type hierarchy LVA008–LVA010 compare through is the numeric tower (`bool` < `int` < `float` <
 `complex`) plus the classes a module defines, under the bases they name.

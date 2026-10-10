@@ -412,8 +412,8 @@
   (`cli/hints.py`, `fix/index/stubbed.py` and `project.py`, `fix/libraries/overloads.py`,
   `fix/values/inference.py`, and `rules/annotations.py`, `checker.py` and `scope.py`); the
   standard-library tables in `constricter/fix/tables/`, their generator in `stdlib_tables/`; docs in
-  `docs/` (changelog, contributing, security, integrations, fixes, runs), release notes grouped by
-  `.github/release.yml`, issue and PR templates, CODEOWNERS.
+  `docs/` (changelog, contributing, security, integrations, fixes, likely, runs), release notes
+  grouped by `.github/release.yml`, issue and PR templates, CODEOWNERS.
 - **`Module` and `Outside`, by name**: frozen dataclasses with slots, every field given by keyword
   (they were tuples of 25 to 40 fields built by position). A check is no slower: the standard
   library's 48.3s in one process and 13.0s on 16 CPUs (48.5s and 13.0s before), pandas's 51.6s and
@@ -686,20 +686,6 @@ fix.
 
 ## Ongoing
 
-- **zuban as an `--infer-with` checker** once its server holds a project (last checked 2026-10-09:
-  0.10.0 overflows its stack with pydantic's or django's files open and says nothing for two minutes
-  on sqlalchemy's; a server per file types 15.3% of pydantic's bindings with no fix, below the
-  others). It refuses a hint range ending past the last line, and is AGPL-3.0. About 4 hours then.
-- **The Type Server Protocol** once it reaches 1.0 (last checked 2026-10-09: 0.4.1, served by
-  `pyrefly tsp` and Pyright's `pyright-typeserver`, an npm package of its own; basedpyright and ty
-  decline it). `typeServer/getComputedType` gives a type as a structure with each class's declaring
-  file, where an inlay hint's is text to parse. Measured on pydantic with pyrefly 1.3.2, its answers
-  taken as hints for the 1,442 bindings its hints leave with no fix: 791 are `Any` or nothing, and
-  21 are fixes, 8 of them right by eye (each a loop's target, a `str`, where pyrefly shows no hint)
-  and 13 wrong (a type alias typed as what it names, a class as its instance); none is a hint
-  dropped for a class the file can't name. About 10 hours then.
-- **Restore `reuse lint`** once `reuse` ships a wheel for Python 3.11+ (last checked 2026-10-09:
-  6.2.0 still has only a CPython 3.10 one). Under an hour then.
 - **Test on PyPy 8** once hypothesis ships wheels for its ABI (`pp80`): CI's PyPy entry is pinned to
   7.3 (`pypy: v7.3.x`), since hypothesis has no pure-Python wheel (last checked 2026-10-09: PyPy
   8.0.0 is released, and 6.168.5 has `pp73` wheels alone). Under an hour then.

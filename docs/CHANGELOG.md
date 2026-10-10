@@ -6,6 +6,49 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A call isn't taken to construct a generic class an installed package re-exports for type checking
+  alone (`from pydantic import TypeAdapter`, which `pydantic/__init__.py` imports under
+  `if TYPE_CHECKING:` and on demand): `adapter: TypeAdapter` was written, bare, where the class's
+  arguments aren't known. Such a class is generic to the file by either name (`TypeAdapter`,
+  `pydantic.TypeAdapter`), as one imported to run already was. Pyright found 3 errors after
+  `--fix --likely` on mcp by it.
+- The corpora runs fix each suite once, with every fix (`--fix --unsafe-fixes`), where they fixed it
+  twice (`--fix`, then with guesses): each new type error is laid to a tier by the fix it's traced
+  to (certain, likely, another guess, or untraced), which RUNS.md's table gives a column each. A run
+  under that one, `--fix --likely` then `--fix`, is made only where the first doesn't say whose
+  fixes a difference is: a suite's tests differ, or an error is untraced or traced to a certain or a
+  likely fix. `super_corpora.py --assure` and `mega_corpora.py --assure` run every suite's type
+  checks after `--fix` alone too, for a release; `corpus_suite.py --types --assure` does for the
+  suites named.
+- `--likely`, with `--fix` or `--diff`: applies the guesses measured to hold as often as a certain
+  fix does, and no other. A guess is likely by its mechanisms, the whole set of them:
+  [LIKELY.md](LIKELY.md) lists the 22 sets, 74% of the guesses on 42 packages, each reached by its
+  package's traced tests 20 times or more, fitting what they saw more than 88% of the time (certain
+  fixes fit 88.4%, by name), and blamed by a type checker for under one guess in a thousand.
+  `--show-fixes` names the flag a guess needs, `--format=json` gives each fix a `likely`, and
+  `--fix`'s summary counts them. `--fix --likely --unsafe-fixes` is `--fix --unsafe-fixes`.
+- `--fix` imports `TYPE_CHECKING` to run where only a function of the module imports `typing`: a new
+  `if TYPE_CHECKING:` block was written with no import of its name, and the module raised
+  `NameError` when imported. SQLAlchemy's `testing/requirements.py` with `fix-widen`, whose `Any` is
+  the first name the module takes from `typing`.
+- `--fix` writes no annotation naming a class defined in another class's body: its bare name is that
+  body's alone, and a method's local declared by it (`names: _Names`, by the class's
+  `_sessions: dict[str, _Names]`) was an undefined name to a type checker. What's read of such a
+  value is typed as before. Of the 8 errors Pyright found on mcp after `--fix`, 7 were that.
+- Three certain fixes a package's own type checker found an error after aren't offered. One that
+  would import another module's private name (`from m import _Plan`, which Pyright's
+  `reportPrivateUsage` reports: mcp). One naming a class of a standard-library module only some
+  platforms have, where only a function imports the module (`rk: HKEYType`, by `import winreg` under
+  a platform test: a checker on Linux finds no such class; werkzeug). And one naming what another
+  checked file imports two ways under a top-level `if` or `try`
+  (`from duckdb import sqltypes as duckdb_dtypes`, else `from duckdb import typing as ...`), which
+  was imported as the last of them (narwhals).
+- `--fix` writes for the project's oldest Python (`min-python`, by default `requires-python`'s lower
+  bound): a union by `|` is quoted where that's before 3.10 and a subscript where it's before 3.9,
+  unless the module postpones its annotations; and a module's type alias has no fix where it's
+  before 3.10 and the module imports no `TypeAlias` (it was a guess, whose import from `typing`
+  fails there). A module-level `names: dict[str, str]` raised on Python 3.8, and litestar's Pyright,
+  set to 3.8, found 7 new errors after `--fix` and 219 after `--fix --unsafe-fixes`.
 - `--infer-with` reports a checker that can't be restarted after it hung: shutting the stopped
   server down again raised `ValueError: write to closed file` in its place.
 - `corpus_suite.py --trace` traces a suite pytest doesn't run by the script it names, in one process

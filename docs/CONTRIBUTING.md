@@ -74,13 +74,15 @@ modules with Python 2 `__future__` imports), hash-pinned sdists `tests/corpus/co
 fetches, since neither installs as a dependency.
 
 `tests/corpus/corpus_suite.py` runs a Python 3 corpus package's own test suite (cloned at its pinned
-tag, with its test dependencies as its CI installs them, in `local/corpus-suites/`) as released,
-after `--fix`, and after `--fix --unsafe-fixes`, and exits 1 if either differs; with `--types` it
-runs the package's own type checker (as its CI does) the same three times instead, traces each new
-error to the fix mechanism behind it, and exits 1 if there are any; `--infer-with CHECKERS` adds a
-run fixed with those checkers' hints too, and `--trace` one fixed with the trace of the package's
-tests (`python -m constricter.trace`, where pytest runs them, or a script the suite names does in
-one process: Django's `runtests.py`). It needs `git`, `uv`, a C compiler, Rust (a default toolchain:
+tag, with its test dependencies as its CI installs them, in `local/corpus-suites/`) as released and
+after `--fix --unsafe-fixes`, and exits 1 if that differs; with `--types` it runs the package's own
+type checker (as its CI does) the same two times instead, traces each new error to the fix behind
+it, a certain one, a likely guess or another guess, and exits 1 if there are any. One fixed run has
+every fix, so each difference is laid to a tier by the fix it's traced to; `--assure` adds a run
+fixed with `--fix` alone, which measures what certain fixes do. `--infer-with CHECKERS` adds a run
+fixed with those checkers' hints too, and `--trace` one fixed with the trace of the package's tests
+(`python -m constricter.trace`, where pytest runs them, or a script the suite names does in one
+process: Django's `runtests.py`). It needs `git`, `uv`, a C compiler, Rust (a default toolchain:
 `rustup default stable`) and the network.
 
 `tests/corpus/corpus_table.py` measures every corpus with released constricter versions and this
@@ -98,7 +100,11 @@ beside the base branch's (`tests/corpus/corpus_coverage.py`), and edits the comm
 for a machine with many cores: the table, the census, each installed checker's `--infer-with`, each
 package's suite and type checks, a fix by its tests' trace, and a timed check, the corpora side by
 side and each step kept so a stopped run resumes. It writes [RUNS.md](RUNS.md)'s `Super corpora`
-section, with the machine it ran on, and exits 1 on anything a fix broke.
+section, with the machine it ran on, and exits 1 on anything a fix broke. Where a suite's one fixed
+run doesn't say whose fixes a difference is (its tests differ; a type error is untraced, or traced
+to a certain or a likely fix), it runs again after `--fix --likely`, then after `--fix`. Before a
+release, run it and `tests.corpus.mega_corpora` with `--assure`: every suite's type checks after
+`--fix` alone too.
 
 `local/.venv/bin/python -m tests.corpus.corpus_untyped` counts what `--fix` still can't type on the
 same corpora, and why: each untyped binding by the statement that binds it and the shape of its

@@ -171,3 +171,66 @@ def test_the_cache_is_the_platforms(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     assert installed.cache_directory() == tmp_path / "constricter" / "installed"
     monkeypatch.delenv("LOCALAPPDATA")
     assert installed.cache_directory() == Path.home() / ".cache" / "constricter" / "installed"
+
+
+# A package that imports its names only when asked for one, and for type checking: pydantic's layout.
+_LAZY: Final = {
+    "lazy/py.typed": "",
+    "lazy/__init__.py": """
+        from typing import TYPE_CHECKING
+
+        if TYPE_CHECKING:
+            from lazy.boxes import Box, Plain
+
+
+        def __getattr__(name: str) -> object:
+            raise AttributeError(name)
+    """,
+    "lazy/boxes.py": """
+        from typing import Generic, TypeVar
+
+        T = TypeVar("T")
+
+
+        class Box(Generic[T]):
+            def __init__(self, held: T) -> None:
+                self.held = held
+
+
+        class Plain:
+            pass
+    """,
+}
+_BOXED: Final = """
+import lazy
+from lazy import Box, Plain
+
+
+def run() -> None:
+    a = Box(1)
+    b = lazy.Box(1)
+    c = Plain()
+"""
+_BOXED_FIXED: Final = """
+import lazy
+from lazy import Box, Plain
+
+
+def run() -> None:
+    a = Box(1)
+    b = lazy.Box(1)
+    c: Plain = Plain()
+"""
+
+
+def test_a_generic_class_reexported_for_type_checking_isnt_written_bare(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A call taken to construct one has no fix, by either name: its class's arguments aren't known."""
+    monkeypatch.setattr(sys, "path", [str(_site(tmp_path, _LAZY)), *sys.path])
+    main: Path = tmp_path / "project" / "main.py"
+    main.parent.mkdir()
+    _ = main.write_text(textwrap.dedent(_BOXED), encoding="utf-8", newline="\n")
+    assert cli.main(["--fix", "--unsafe-fixes", "-q", str(main)]) == cli.EXIT_FOUND
+    assert main.read_text(encoding="utf-8") == textwrap.dedent(_BOXED_FIXED)

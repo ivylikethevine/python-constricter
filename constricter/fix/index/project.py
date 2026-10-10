@@ -910,6 +910,7 @@ def _spelled_classes(
         spelled: list[tuple[str, Origin]] = []
         if origin[1] is not None and origin[0] != target.name:
             spelled = [(local, origin)]
+            generics.update([local] * _is_generic(catalog.modules, origin))
         elif origin[1] is None:
             package: Module | None = catalog.modules.get(origin[0])
             spelled = [
@@ -934,7 +935,8 @@ def _spelled_classes(
 def _reexported_generics(modules: Mapping[str, Module], local: str, name: str) -> Iterator[str]:
     """Spell the generic classes module `name` re-exports (`from ._c import OrderedSet`) as `local.C`.
 
-    Only its own names, not its submodules': a package's `__init__` is where they're re-exported.
+    Only its own names, not its submodules': a package's `__init__` is where they're re-exported,
+    for type checking alone too, where it imports them only when they're asked for (pydantic's).
 
     Yields:
       Each spelling.
@@ -943,14 +945,8 @@ def _reexported_generics(modules: Mapping[str, Module], local: str, name: str) -
     module: Module | None = modules.get(name)
     reexported: str
     origin: Origin
-    for reexported, origin in ({} if module is None else module.names).items():
-        defined: tuple[Module, str] | None
-        if (
-            origin[1] is not None
-            and origin[0] != name
-            and (defined := definition(modules, origin, CLASS)) is not None
-            and defined[1] in defined[0].generics
-        ):
+    for reexported, origin in ({} if module is None else {**module.guarded, **module.names}).items():
+        if origin[1] is not None and origin[0] != name and _is_generic(modules, origin):
             yield f"{local}.{reexported}"
 
 

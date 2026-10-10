@@ -31,6 +31,30 @@ else:
 
 _BUILTINS: Final = frozenset(dir(builtins))
 _DOT: Final = "."
+# The standard library's modules only some platforms have: a checker on another finds nothing in one.
+_PLATFORM: Final = frozenset(
+    {
+        "_winapi",
+        "crypt",
+        "fcntl",
+        "grp",
+        "msvcrt",
+        "nis",
+        "nt",
+        "ossaudiodev",
+        "posix",
+        "pty",
+        "pwd",
+        "readline",
+        "resource",
+        "spwd",
+        "syslog",
+        "termios",
+        "tty",
+        "winreg",
+        "winsound",
+    },
+)
 _NAME: Final = re.compile(r"[A-Za-z_]\w*")  # each name in a return's template
 # What a name refers to: a module and an attribute of it (`None`: the module itself).
 Origin: TypeAlias = tuple[str, str | None]
@@ -177,26 +201,39 @@ class ImportPlan:
     postponed: bool = False
     values: frozenset[str] = frozenset()  # names it binds as values somewhere (see `imports.taken_names`)
 
-    def spell(self, qualified: str) -> str | None:
+    def type_checking(self) -> str | None:
+        """Name `typing.TYPE_CHECKING` for a new block, by an import that runs: the module reads it.
+
+        Returns:
+          The name, or `None` if every way to write it is taken.
+
+        """
+        return self.spell("typing.TYPE_CHECKING", runs=True)
+
+    def spell(self, qualified: str, *, runs: bool = False) -> str | None:
         """Name `qualified` (`io.BufferedReader`) in this module, adding an import if it has to.
 
         Through an import it has (see `named`), for type checking alone too (`checking`, or one
         `guarded` already), else a new `from io import BufferedReader`, else a new `import io`, but
         only binding a name nothing in the module binds. Under `if TYPE_CHECKING:` for a module in
-        `checking.lazy`.
+        `checking.lazy`, and not at all for one only some platforms have. With `runs`, only through
+        an import that runs: the name is read as the module is imported (`TYPE_CHECKING` itself).
 
         Returns:
           The name, or `None` if every way to write it is taken.
 
         """
         found: str | None
-        if (found := self.named(qualified) or self._checked(qualified)) is not None:
+        if (found := self.named(qualified) or (None if runs else self._checked(qualified))) is not None:
             return found
         module: str
         name: str
         module, _, name = qualified.rpartition(".")
         statement: str = f"from {module} import {name}"
-        if module.partition(_DOT)[0] in self.checking.lazy:
+        top: str = module.partition(_DOT)[0]
+        if not runs and top in self.checking.lazy:
+            if top in _PLATFORM:
+                return None
             return name if self.guard(name, (module, name), statement) else None
         if self._free(name, statement):
             self.added[name] = statement

@@ -11,7 +11,8 @@ binds again, which is a variable to a type checker.
 
 `TypeAlias` is named as the module's imports can, else imported from `typing`, which has it from
 Python 3.10: certain where every Python the module runs on has it there (`min-python`), or the
-module imports the name already; else a guess.
+module imports the name already; a guess where `min-python` isn't known, and no fix where it says
+some Python lacks it.
 """
 
 import ast
@@ -111,6 +112,9 @@ def declared(
     aliases: frozenset[str]
     min_python: tuple[int, int] | None
     aliases, min_python = scope
+    older: bool = min_python is not None and min_python < _SINCE
+    if older and not _ALWAYS.intersection(plan.bound.values()):
+        return None
     copied: bool = isinstance(value, ast.Name) and value.id in aliases
     named: str | None = (
         hinted.type_alias(known, target.lineno)
@@ -119,9 +123,10 @@ def declared(
     )
     if named is None:
         return None
-    certain: bool = (min_python is not None and min_python >= _SINCE) or (
-        plan.bound.get(named.partition(".")[0]) in _ALWAYS
-    )
+    always: bool = plan.bound.get(named.partition(".")[0]) in _ALWAYS
+    if older and not always:
+        return None
+    certain: bool = min_python is not None or always
     return (
         Inference(named, _REASON, frozenset({KIND})),
         not certain,

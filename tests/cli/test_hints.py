@@ -927,7 +927,7 @@ def test_max_fix_fixes_everything_with_every_checker_that_runs(monkeypatch: pyte
 
     monkeypatch.setattr("constricter.cli.options.runs", runs)
     options: Options = Options.parse(["--max-fix", "x.py"])
-    assert (options.mode.name, options.unsafe_fixes, options.infer_with) == ("FIX", True, (_TY,))
+    assert (options.mode.name, options.guesses.name, options.infer_with) == ("FIX", "ALL", (_TY,))
     assert options.checks.all_scopes
     assert Options.parse(["--max-fix", "--infer-with=ty,basedpyright", "x.py"]).infer_with == (
         "ty",

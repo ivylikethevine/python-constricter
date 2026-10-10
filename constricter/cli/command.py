@@ -288,9 +288,8 @@ def _handled(path: Path, text: tuple[str, Path], offences: list[Offence], option
     baselined: int
     offences, baselined = options.filter.unbaselined(name, offences)
     results: list[Result] = _results(raw, name, offences, options)
-    unsafe: bool = options.unsafe_fixes
     fixing: list[Offence] = [
-        r.offence for r in results if r.offence.edit is not None and (unsafe or not r.offence.unsafe)
+        r.offence for r in results if r.offence.edit is not None and options.guesses.applies(r.offence)
     ]
     if options.mode is Mode.DIFF:
         return CheckRun(text=_diff(raw, name, fixing))
@@ -618,7 +617,10 @@ def _report(options: Options, runs: Sequence[FileRun], files: int) -> int:
             parts.append(f"fixed {sum(run.fixed for run in checked)}")
             guesses: int
             if guesses := sum(r.offence.unsafe for r in results):
-                parts.append(f"{guesses} more with --unsafe-fixes")
+                likely: int = sum(r.offence.likely for r in results)
+                parts.append(
+                    f"{guesses} more with --unsafe-fixes" + f" ({likely} with --likely)" * bool(likely),
+                )
         if options.filter.baseline_file is not None:
             parts.append(f"{sum(run.baselined for run in checked)} baselined")
         _ = sys.stdout.write("; ".join(parts) + ".\n")

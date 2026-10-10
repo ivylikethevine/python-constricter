@@ -5,6 +5,8 @@ import ast
 from functools import lru_cache
 from typing import Final
 
+from constricter.offences import BUILTIN_GENERICS, UNION_SYNTAX
+
 _LITERAL: Final = "Literal"  # its strings are values, not quoted types
 _ANNOTATED: Final = "Annotated"  # its first argument alone is a type
 _QUOTES: Final = frozenset("'\"")
@@ -118,3 +120,22 @@ def quote(annotation: str) -> str:
     """
     plain: bool = not {'"', "\\"} & set(annotation)
     return f'"{annotation}"' if plain else ast.unparse(ast.Constant(annotation))
+
+
+@lru_cache(maxsize=4096)  # a module's fixes are a few types, each asked again and again
+def newer(annotation: str, oldest: tuple[int, int] | None) -> bool:
+    """Check whether `annotation` is written as Pythons from `oldest` on don't all read a type.
+
+    A union by `|` before 3.10, any subscript before 3.9 (a builtin or standard-library class's).
+
+    Returns:
+      Whether it is; never where `oldest` isn't known, or the annotation is quoted already.
+
+    """
+    if oldest is None or oldest >= UNION_SYNTAX or annotation.startswith(('"', "'")):
+        return False
+    return any(
+        (isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr))
+        or (oldest < BUILTIN_GENERICS and isinstance(node, ast.Subscript))
+        for node in ast.walk(ast.parse(annotation, mode="eval"))
+    )

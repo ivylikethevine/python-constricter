@@ -333,6 +333,11 @@ def _parser() -> argparse.ArgumentParser:
         help="with --fix or --diff: also apply guesses (a call to a class that may be generic)",
     )
     _ = parser.add_argument(
+        "--likely",
+        action="store_true",
+        help="with --fix or --diff: also apply the guesses measured to hold (see docs/LIKELY.md)",
+    )
+    _ = parser.add_argument(
         "--fix-select",
         type=_fix_kinds,
         default=[],
@@ -563,13 +568,40 @@ class Output:
     output_file: Path | None = None
 
 
+class Guesses(Enum):
+    """Which guesses `--fix` and `--diff` apply: none, `--likely`'s, or every one (`--unsafe-fixes`)."""
+
+    NONE = "none"
+    LIKELY = "likely"
+    ALL = "all"
+
+    @classmethod
+    def of(cls, *, unsafe: bool, likely: bool) -> "Guesses":
+        """Read the two flags.
+
+        Returns:
+          `ALL` with `--unsafe-fixes`, whatever `--likely` says.
+
+        """
+        return cls.ALL if unsafe else cls.LIKELY if likely else cls.NONE
+
+    def applies(self, offence: Offence) -> bool:
+        """Check whether `offence`'s fix is one to apply.
+
+        Returns:
+          Whether it is: a certain one always.
+
+        """
+        return self is Guesses.ALL or not offence.unsafe or (self is Guesses.LIKELY and offence.likely)
+
+
 @dataclass(frozen=True)
 class Options:
     """The command's parsed options."""
 
     input: Input
     checks: Checks
-    unsafe_fixes: bool
+    guesses: Guesses
     filter: Filter
     output: Output
     mode: Mode
@@ -626,7 +658,7 @@ class Options:
                 min_python=cast("tuple[int, int] | None", args.min_python),
                 plain_bases=(*PLAIN_BASES, *cast("list[str]", args.fix_plain_bases)),
             ),
-            unsafe_fixes=cast("bool", args.unsafe_fixes),
+            guesses=Guesses.of(unsafe=cast("bool", args.unsafe_fixes), likely=cast("bool", args.likely)),
             filter=_filter(parser, args, mode),
             output=Output(
                 fmt=cast("Format", args.format),

@@ -22,6 +22,7 @@ from tests.corpus.corpora_steps import (
     NONE,
     TABLE,
     TESTS,
+    TIERS,
     TRACED,
     TYPES,
     Census,
@@ -36,6 +37,7 @@ from tests.corpus.corpora_steps import (
     Unset,
     Value,
     checkers,
+    tier,
 )
 from tests.corpus.corpus_table import DEV, Measured
 
@@ -49,6 +51,7 @@ _TOP_TRACED: Final = 8  # the mechanisms named for a fixed run's new type errors
 _PROSE_WIDTH: Final = 100  # .prettierrc.yaml's printWidth
 _WORD: Final = re.compile(r"(?:`[^`]*`|[^\s`])+")  # what Prettier keeps on one line
 _FAILED: Final = "failed"
+_EVERY: Final = corpus_suite.ALL[0]  # the one fixed run every suite gets
 _MECHANISMS_NOTE: Final = (
     "Fixes per mechanism (`--format=json`'s `kinds`), certain / guessed: a fix resting on several "
     "counts for each."
@@ -58,9 +61,12 @@ _CENSUS_NOTE: Final = (
     "nothing for, and the commonest shapes of the values with no fix:"
 )
 _SUITES_NOTE: Final = (
-    "Each package's own tests and type checks, as released and after fixing its source "
-    "(`corpus_suite.py`): the tests' outcome, and the type errors a fixed run has that the "
-    "released one hasn't, by the mechanisms of the fixes they're traced to; then each package's "
+    "Each package's own tests and type checks, as released and after `--fix --unsafe-fixes` "
+    "(`corpus_suite.py`): the tests' outcome, and the type errors the fixed run has that the "
+    "released one hasn't, by the tier of the fix each is traced to (a certain fix, a likely "
+    "guess, another guess, or none) and by its mechanisms. A run under that one (`--fix --likely`, "
+    "`--fix`) is made only where it doesn't say whose fixes a difference is, or to assure a "
+    "release. Then each package's "
     "tests traced (`python -m constricter.trace`) and its source fixed with "
     "`--fix --unsafe-fixes --infer-from` their trace: the fixes resting on it, and the new type "
     "errors after, or the tests' outcome where the package has no checks:"
@@ -280,15 +286,49 @@ def _unset(names: Sequence[str], found: dict[str, Steps]) -> list[str]:
     return lines
 
 
+def _types_row(name: str, checked: Typechecked) -> list[str]:
+    """Lay out a package's type checks: its new errors after every fix, by tier, and after each other run.
+
+    Returns:
+      The row's cells.
+
+    """
+    runs: dict[str, corpus_suite.Compared] = dict(checked.fixed)
+    every: corpus_suite.Compared = runs[_EVERY]
+    tiers: Counter[str] = Counter(tier(blamed) for blamed in every.new)
+    hinted: list[str] = [
+        f"{len(compared.new):,}" for label, compared in checked.fixed if label not in corpus_suite.OPTIONS
+    ]
+    return [
+        name,
+        f"`{checked.checks}`",
+        f"{checked.released:,}",
+        f"{len(every.new):,}",
+        *(f"{tiers[each]:,}" for each in TIERS),
+        *(f"{len(runs[label].new):,}" if label in runs else NONE for label, _ in corpus_suite.LOWER),
+        hinted[0] if hinted else NONE,
+    ]
+
+
 def _suites(names: Sequence[str], found: dict[str, Steps]) -> list[str]:
-    """Tabulate the packages' own tests and type checks, as released and after each fix.
+    """Tabulate the packages' own tests and type checks, as released and after every fix.
 
     Returns:
       The two tables' lines, and each new type error's mechanism counts.
 
     """
-    tests: list[list[str]] = [["Package", "Tag", "Released", "After `--fix`", "After `--fix --unsafe-fixes`"]]
-    types: list[list[str]] = []
+    tests: list[list[str]] = [["Package", "Tag", "Released", f"After `{_EVERY}`", "Under it"]]
+    types: list[list[str]] = [
+        [
+            "Package",
+            "Checks",
+            "Released errors",
+            f"New: `{_EVERY}`",
+            *(f"By: {each}" for each in TIERS),
+            *(f"New: `{label}`" for label, _ in corpus_suite.LOWER),
+            "New: with hints",
+        ],
+    ]
     traced: list[str] = []
     name: str
     for name in names:
@@ -299,24 +339,18 @@ def _suites(names: Sequence[str], found: dict[str, Steps]) -> list[str]:
                     name,
                     tested.tag,
                     _counts(tested.released) + _rerun(tested),
-                    *(_after(tested.released, outcome, change) for _, change, outcome, _ in tested.fixed),
-                    *([NONE] * (len(corpus_suite.MODES) - len(tested.fixed))),
+                    *(_after(tested.released, outcome, change) for _, change, outcome, _ in tested.fixed[:1]),
+                    *([NONE] * (not tested.fixed)),
+                    "; ".join(
+                        f"`{label}`: {_after(tested.released, outcome, change)}"
+                        for label, change, outcome, _ in tested.fixed[1:]
+                    )
+                    or NONE,
                 ],
             )
         checked: Typechecked | None
         if (checked := _typechecked(found[name])) is not None:
-            if not types:
-                types.append(
-                    ["Package", "Checks", "Released errors", *(f"New: `{m}`" for m, _ in checked.fixed)],
-                )
-            types.append(
-                [
-                    name,
-                    f"`{checked.checks}`",
-                    f"{checked.released:,}",
-                    *(f"{len(compared.new):,}" for _, compared in checked.fixed),
-                ],
-            )
+            types.append(_types_row(name, checked))
             label: str
             compared: corpus_suite.Compared
             for label, compared in checked.fixed:
@@ -335,7 +369,7 @@ def _suites(names: Sequence[str], found: dict[str, Steps]) -> list[str]:
     return [
         *corpus_table.table(tests, right=5),
         "",
-        *(corpus_table.table(types, right=2) if types else []),
+        *(corpus_table.table(types, right=2) if len(types) > 1 else []),
         "",
         *traced,
         "",
@@ -412,6 +446,11 @@ def _timings(names: Sequence[str], found: dict[str, Steps]) -> list[str]:
             ]
         rows.append([name, timed[0], *(_seconds(found[name], step) for step in beside), *timed[1:]])
     return corpus_table.table(rows, right=1)
+
+
+def _split(compared: corpus_suite.Compared) -> str:  # a run's new errors, counted by their tier
+    tiers: Counter[str] = Counter(tier(blamed) for blamed in compared.new)
+    return ", ".join(f"{tiers[each]} {each}" for each in TIERS if tiers[each])
 
 
 def _fill(text: str) -> str:
@@ -504,9 +543,9 @@ def broken(found: dict[str, Steps]) -> list[str]:
         checked: Typechecked | None
         if (checked := _typechecked(chain)) is not None:
             lines += [
-                f"{name}: {len(compared.new)} new type errors after {label}"
-                for label, compared in checked.fixed[: len(corpus_suite.MODES)]
-                if compared.new
+                f"{name}: {len(compared.new)} new type errors after {label}: {_split(compared)}"
+                for label, compared in checked.fixed
+                if label in corpus_suite.OPTIONS and compared.new
             ]
         traced: Traced | None
         if (traced := _traced(chain)) is not None and traced.tested is not None:

@@ -5,6 +5,7 @@
   local/.venv/bin/python -m tests.corpus.super_corpora --fresh    # forget what a stopped run finished
   local/.venv/bin/python -m tests.corpus.super_corpora --print    # print the section, don't record it
   local/.venv/bin/python -m tests.corpus.super_corpora NAME ...   # only these corpora, printed
+  local/.venv/bin/python -m tests.corpus.super_corpora --assure   # and every suite's checks after `--fix`
 
 The corpora are `tests/corpus/corpus_table.py`'s, and each one's steps `tests/corpus/corpora_steps.py`'s:
 the table, the census, `--infer-with` each installed checker, its package's own tests and type
@@ -47,6 +48,12 @@ file that no longer compiles, a second pass with more to fix, a test's outcome c
 error a certain fix or a guess added, a test's outcome changed by the trace's fixes) or a step
 that failed, each listed on standard error. Run
 it outside a sandbox: it starts worker processes, and the suites need the network once.
+
+A suite's tests and type checks run once fixed, with every fix (`--fix --unsafe-fixes`), and each
+difference is laid to a tier of fixes by the fix it's traced to; a run under that one is made only
+where that doesn't settle whose it is (see `corpus_suite`). `--assure` has every suite's type
+checks run after `--fix` alone too, so what certain fixes do is measured and not inferred: for a
+release. It runs again the `types` steps a resumed run kept without that.
 """
 
 import contextlib
@@ -99,6 +106,7 @@ _TESTING: Final = frozenset({corpora_steps.TESTS, corpora_steps.TRACED})  # the 
 _STEP_FLAG: Final = "--step"
 _FRESH_FLAG: Final = "--fresh"
 _PRINT_FLAG: Final = "--print"
+_ASSURE_FLAG: Final = "--assure"
 _KEPT: Final = ".pickle"
 _CHECKERS: Final = "checkers"  # a run's file naming the type checkers installed when it started
 # What an unreadable kept result raises: one an earlier version of these scripts wrote.
@@ -571,6 +579,16 @@ def measured(running: _Running, chosen: Sequence[Corpus]) -> dict[str, Steps]:
     return found
 
 
+def _assuring(run: Path, chosen: Sequence[Corpus]) -> None:
+    """Have the suites' type checks run after `--fix` alone too, those a resumed run kept without it again."""
+    os.environ[corpora_steps.ASSURE_VARIABLE] = "1"
+    each: Corpus
+    for each in chosen:
+        kept: Path = _kept(run, each.name, corpora_steps.TYPES)
+        if kept.exists() and not corpora_steps.assured(_read(kept)):
+            kept.unlink()
+
+
 def main(argv: Sequence[str], plan: Plan = SUPER) -> int:
     """Run every step of every corpus (or one step, for `--step`), and record or print the section.
 
@@ -586,6 +604,8 @@ def main(argv: Sequence[str], plan: Plan = SUPER) -> int:
     run: Path = plan.work / f"{__version__}-{marked}"
     if _FRESH_FLAG in argv:
         shutil.rmtree(run, ignore_errors=True)
+    if _ASSURE_FLAG in argv:
+        _assuring(run, chosen)
     resumed: bool = any(run.glob(f"*/*{_KEPT}"))
     run.mkdir(parents=True, exist_ok=True)
     _ = (run / _CHECKERS).write_text(_installed(), encoding="utf-8")

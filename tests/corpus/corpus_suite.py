@@ -1,31 +1,36 @@
 # SPDX-License-Identifier: MIT
-"""Run a corpus package's own tests or type checks before and after `--fix`, and `--fix --unsafe-fixes`.
+"""Run a corpus package's own tests or type checks as released and after `--fix --unsafe-fixes`.
 
   local/.venv/bin/python tests/corpus/corpus_suite.py                    # every suite's tests
   local/.venv/bin/python tests/corpus/corpus_suite.py NAME ...           # just these
   local/.venv/bin/python tests/corpus/corpus_suite.py --types [NAME ...] # their type checks instead
+  local/.venv/bin/python tests/corpus/corpus_suite.py --types --assure [NAME ...]
   local/.venv/bin/python tests/corpus/corpus_suite.py --types --infer-with basedpyright,ty [NAME ...]
   local/.venv/bin/python tests/corpus/corpus_suite.py --types --trace [NAME ...]
 
 Each package's source is cloned at its pinned tag into `local/corpus-suites/`, installed there with
 its test dependencies as its CI installs them (its own `uv.lock` where it has one, its pins or
-requirements where it hasn't), and its tests run three times: as released, after `--fix`, and after
+requirements where it hasn't), and its tests run twice: as released, and after
 `--fix --unsafe-fixes` (the source reset in between), at `suffocate` with `all-scopes`, as
-`tests/corpus/corpus_fix.py` fixes. Each run's outcome is its summary counts and the tests that
-failed; the command exits 1 if a fixed run's differs from the released one's. It needs `git`, `uv`,
-a C compiler and Rust (pandas, SQLAlchemy and pydantic-core are built) and the network; CI doesn't
-run it.
+`tests/corpus/corpus_fix.py` fixes. That one fixed run has every fix, certain, likely (`--likely`'s)
+and guessed. Each run's outcome is its summary counts and the tests that failed; the command exits
+1 if a fixed run's differs from the released one's. It needs `git`, `uv`, a C compiler and Rust
+(pandas, SQLAlchemy and pydantic-core are built) and the network; CI doesn't run it.
 
 A local variable's annotation is never evaluated at runtime (PEP 526), so these runs catch a fix
 that breaks the code itself (a declaration, a dropped comment or annotation, a module's
 `__annotations__`), not a wrong type: that's a type checker's job, and `--types` runs each package's
-own, as its CI does, the same three times. An error a fixed run has that the released one hasn't
+own, as its CI does, the same two times. An error the fixed run has that the released one hasn't
 is new (of a file's alike errors, those on a line a fix wrote first); each new one is traced to the
 fix whose annotation it's about (the fix on its line, else the nearest one before it in its scope,
 else the module's, of a name on its line or in its message), and counted by the mechanisms that
-decided that fix (`--format=json`'s `kinds`); the command exits 1 if a fixed run has a new error.
+decided that fix (`--format=json`'s `kinds`), a guess's marked `(likely)` or `(guess)`; the command
+exits 1 if a fixed run has a new error. A trace is by line, not by cause: a certain fix can be
+blamed for what a guess beside it brought. `--assure` adds a run fixed with `--fix` alone, which
+says what certain fixes do by themselves; `super_corpora.py` makes the runs under the first one
+only where it doesn't say whose fixes a difference is (`corpora_steps.lower`).
 
-`--infer-with CHECKERS` adds a third fixed run, `--fix --unsafe-fixes --infer-with CHECKERS`: the
+`--infer-with CHECKERS` adds another fixed run, `--fix --unsafe-fixes --infer-with CHECKERS`: the
 checkers' servers (on `PATH`, or beside this Python) see the checkout's own environment and settings,
 as its type checks do (a checkout with no settings for Pyright or pyrefly is given empty ones, or
 their servers read this project's, above it). Each fixed run lists the fixes it makes itself
@@ -102,6 +107,7 @@ class Fix(NamedTuple):
     annotation: str
     kinds: str  # its mechanisms, joined by `+`
     unsafe: bool
+    likely: bool = False  # a guess `--likely` applies
 
 
 WORK: Final = Path(__file__).resolve().parents[2] / "local" / "corpus-suites"
@@ -257,9 +263,15 @@ _CONSTRICTER: Final = Path(sys.executable).with_name("constricter")
 _INSERTED: Final = "insert"  # difflib's opcode for lines only the fixed file has
 _EQUAL: Final = "equal"  # and for lines both have
 _Fixes: TypeAlias = dict[str, list[Fix]]  # those `--fix` makes, per file
-_Mode: TypeAlias = tuple[str, tuple[str, ...]]  # a fixed run's label, and its options beyond `--fix`
-MODES: Final[tuple[_Mode, ...]] = (("--fix", ()), ("--fix --unsafe-fixes", ("--unsafe-fixes",)))
+_Options: TypeAlias = tuple[str, ...]
+_Mode: TypeAlias = tuple[str, _Options]  # a fixed run's label, and its options beyond `--fix`
+ALL: Final[_Mode] = ("--fix --unsafe-fixes", ("--unsafe-fixes",))
+# The runs under it, widest first, made where `ALL`'s doesn't say whose fixes a difference is.
+LOWER: Final[tuple[_Mode, _Mode]] = (("--fix --likely", ("--likely",)), ("--fix", ()))
+MODES: Final[tuple[_Mode, ...]] = (ALL,)
+OPTIONS: Final[dict[str, _Options]] = dict((ALL, *LOWER))  # each such run's options, by its label
 _TYPES: Final = "--types"
+_ASSURE: Final = "--assure"
 _INFER_WITH: Final = "--infer-with"
 _TRACE: Final = "--trace"
 _INFER_FROM: Final = "--infer-from"
@@ -653,6 +665,7 @@ def fixed_and_listed(root: Path, suite: Suite, *extra: str) -> tuple[dict[str, l
                     str(fix["annotation"]),
                     "+".join(cast("list[str]", fix["kinds"])),
                     bool(fix["unsafe"]),
+                    bool(fix.get("likely")),
                 ),
             )
     return fixes, _output(["git", "diff", "--shortstat"], root).strip()
@@ -806,7 +819,7 @@ class Blamed(NamedTuple):
 
     complaint: Complaint
     fix: Fix | None
-    kind: str  # `fix.kinds`, with ` (guess)` for a guess's; `(untraced)`
+    kind: str  # `fix.kinds`, with ` (likely)` or ` (guess)` for a guess's; `(untraced)`
 
 
 class Compared(NamedTuple):
@@ -844,8 +857,8 @@ def compared(
     for complaint in _new(root, after, now - before, files):
         file: _Fixed = _file(root, files, complaint.path)
         fix: Fix | None = _blamed(complaint, file, made[0].get(complaint.path, []))
-        kind: str = "(untraced)" if fix is None else fix.kinds + (" (guess)" if fix.unsafe else "")
-        new.append(Blamed(complaint, fix, kind))
+        guess: str = " (likely)" if fix and fix.likely else " (guess)" if fix and fix.unsafe else ""
+        new.append(Blamed(complaint, fix, "(untraced)" if fix is None else fix.kinds + guess))
     return Compared(made[1], len(after), (before - now).total(), new, resting(made[0]))
 
 
@@ -922,7 +935,7 @@ def check_types(names: Sequence[str], modes: Sequence[_Mode] = MODES) -> int:
 def _arguments(argv: Sequence[str]) -> tuple[list[str], list[_Mode]]:
     """Read the options out of the arguments: `--infer-with CHECKERS` adds a fixed run with their hints.
 
-    And `--trace` one with the tests' trace.
+    `--trace` one with the tests' trace, and `--assure` one with `--fix` alone.
 
     Returns:
       The other arguments, and the fixed runs to make.
@@ -939,11 +952,14 @@ def _arguments(argv: Sequence[str]) -> tuple[list[str], list[_Mode]]:
     if _TRACE in rest:
         rest.remove(_TRACE)
         modes.append(TRACE_MODE)
+    if _ASSURE in rest:
+        rest.remove(_ASSURE)
+        modes.append(LOWER[1])
     return rest, modes
 
 
 def main(argv: Sequence[str]) -> int:
-    """Run each suite named (default: all) as released, fixed, and fixed with guesses (and hints).
+    """Run each suite named (default: all) as released and with every fix (and with hints).
 
     Returns:
       0 if every fixed run's outcome matches its released one, else 1.
