@@ -816,6 +816,6 @@ class Connection:
                     cast("IO[bytes]", self.process.stdin),
                     f"Content-Length: {len(body)}\r\n\r\n".encode() + body,
                 )
-            except OSError as error:
+            except (OSError, ValueError) as error:  # it has gone, or its input was closed to stop it
                 failure: str = f"{self.name} exited: {error}"
                 raise HintError(failure) from error

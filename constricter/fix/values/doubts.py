@@ -22,7 +22,7 @@ from functools import lru_cache
 from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter.fix.core.imports import checking, inner_imports, rebound_names
+from constricter.fix.core.imports import checking, inner_imports, nested_classes, rebound_names
 from constricter.fix.core.known import ImportPlan, Inference, Passed
 from constricter.fix.values.narrowed import Regions, regions
 from constricter.rules.annotations import generic_classes, node_name, roots
@@ -41,6 +41,7 @@ _READS: Final[dict[_Read, str]] = {
 # Where a function tests a value, a type checker may narrow it (`isinstance`, `is None`, a `TypeGuard`).
 _TESTS: Final = (ast.If, ast.While, ast.Assert, ast.IfExp, ast.comprehension, ast.Match)
 _SELF: Final = "Self"
+_STDLIB: Final = "stdlib"  # the fix kind of what typeshed declares
 _COMPREHENSION: Final = "comprehension"
 _LITERAL: Final = "literal"
 _NONE: Final = "None"
@@ -96,6 +97,9 @@ class Facts(NamedTuple):
     attributed: frozenset[str] = frozenset()
     # Its functions' parameters' types, where a `Callable` can list them (see `callables.signatures`).
     positional: Mapping[str, tuple[str, ...]] = MappingProxyType({})
+    nested: frozenset[str] = (
+        frozenset()
+    )  # the classes defined in a class's body (see `imports.nested_classes`)
 
 
 def facts(
@@ -127,6 +131,7 @@ def facts(
         _bound_vars(tree, type_vars),
         rebound_names(tree),
         [(stmt.lineno, stmt.col_offset) for stmt in inner_imports(tree)],
+        nested=nested_classes(tree),
     )
 
 
@@ -524,8 +529,8 @@ def _selfish(value: ast.expr, found: Inference, owner: Owner) -> str | None:
 
     `self`, or a `Self` method called on `self`, `cls` or `type(self)`; `type(self)` or
     `self.__class__`, a `type[Self]`; what `cls()`, either of those called, or `__new__` given one
-    constructs; and a
-    conditional of two of them (`self if inplace else self.copy()`).
+    constructs; a standard-library function's call given `self` that returns its class
+    (`copy.copy(self)`); and a conditional of two of them (`self if inplace else self.copy()`).
 
     Returns:
       Its annotation, `{}` standing for `Self`; or `None` if it isn't one.
@@ -534,6 +539,7 @@ def _selfish(value: ast.expr, found: Inference, owner: Owner) -> str | None:
     receiver: ast.expr
     method: str
     func: ast.expr
+    args: list[ast.expr]
     template: str | None = None
     match value:
         case ast.Name() | ast.Call(func=ast.Name()) | ast.Attribute() if (
@@ -546,6 +552,11 @@ def _selfish(value: ast.expr, found: Inference, owner: Owner) -> str | None:
             template = _SELF_ITSELF
         case ast.Call(func=ast.Attribute(value=receiver, attr=method)) if (
             method in owner.selfish and _own(receiver, owner.first) is not None
+        ):
+            template = _SELF_ITSELF
+        # The class only by a type variable its argument binds: the standard library names no other's.
+        case ast.Call(args=[*args]) if _STDLIB in found.kinds and any(
+            _own(arg, owner.first) == _SELF_ITSELF for arg in args
         ):
             template = _SELF_ITSELF
         case ast.IfExp() if {_selfish(side, found, owner) for side in (value.body, value.orelse)} == {

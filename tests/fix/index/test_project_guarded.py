@@ -634,3 +634,64 @@ def test_a_name_another_file_binds_by_assignment_constructs_nothing(tmp_path: Pa
     )
     _ = cli.main(["--fix", "-q", "--unsafe-fixes", "--jobs=1", *_SELECT, str(tmp_path)])
     assert user.read_text(encoding="utf-8").endswith(_VALUE_CALLED)
+
+
+_OWN: Final = """
+from typing import TYPE_CHECKING
+
+from pkg.other import Thing
+
+if TYPE_CHECKING or Thing:
+    from pkg import other as kinds
+else:
+    from pkg import older as kinds
+
+
+class _Plan:
+    pass
+
+
+def plans() -> dict[str, _Plan]:
+    return {}
+
+
+def kind() -> kinds.Kind:
+    raise ValueError
+
+
+def thing() -> Thing:
+    return Thing()
+"""
+_OWN_USER: Final = """
+from pkg.own import kind, plans, thing
+
+
+def f() -> None:
+    a = plans()
+    b = kind()
+    c = thing()
+"""
+_OWN_FIXED: Final = """
+from pkg.own import kind, plans, thing
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from pkg.other import Thing
+
+
+def f() -> None:
+    a = plans()
+    b = kind()
+    c: Thing = thing()
+"""
+
+
+def test_a_name_another_file_keeps_to_itself_or_imports_two_ways_isnt_imported(tmp_path: Path) -> None:
+    """Neither its private class, nor what one import or another binds under an `if`: no fix names them."""
+    _ = _write(tmp_path / "pkg" / "__init__.py", "")
+    _ = _write(tmp_path / "pkg" / "other.py", OTHER)
+    _ = _write(tmp_path / "pkg" / "older.py", OTHER)
+    _ = _write(tmp_path / "pkg" / "own.py", _OWN)
+    user: Path = _write(tmp_path / "pkg" / "user.py", _OWN_USER)
+    for _ in range(2):
+        _ = cli.main(["--fix", "-q", "--jobs=1", "--select=LVA001", str(tmp_path)])
+        assert user.read_text(encoding="utf-8") == textwrap.dedent(_OWN_FIXED)

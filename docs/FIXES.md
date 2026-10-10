@@ -1,8 +1,9 @@
 # What `--fix` infers
 
 The [README](../README.md#use) has the options (`--fix`, `--diff` to preview, `--unsafe-fixes`,
-`--show-fixes`). `--fix` adds the annotation where the value decides it, for a plain `name = value`
-in a function or module body:
+`--likely`, `--show-fixes`). A guess below is applied with `--unsafe-fixes`; `--likely` applies
+those whose mechanisms [LIKELY.md](LIKELY.md) measured to hold. `--fix` adds the annotation where
+the value decides it, for a plain `name = value` in a function or module body:
 
 - a literal: `count = 0` becomes `count: int = 0`; and `not x`, or a comparison by `in`, `not in`,
   `is` and `is not` alone (`"r" in mode`), always a `bool` whatever it compares (`==` and `<` may
@@ -67,8 +68,9 @@ in a function or module body:
 - a name the module binds once, anywhere in it, at its top level, read in a function as it's typed
   there: `LIMIT = 10` is an `int` in every function, and `for name in NAMES` loops over what
   `NAMES = ["a", "b"]` holds. By its annotation (a `Final[T]`'s or a `ClassVar[T]`'s `T`; a bare
-  `Final`'s value's type), or its one value's type, a guess where that's one; a name bound to what
-  an unannotated function returns is typed in the same run. Not a name bound again anywhere (a
+  `Final`'s value's type, in the module's own body too: `[A, B]` of a `B: Final = "b"` is a
+  `list[str]`), or its one value's type, a guess where that's one; a name bound to what an
+  unannotated function returns is typed in the same run. Not a name bound again anywhere (a
   parameter or a local of that name in any function, a `global` statement's), a type alias, nor one
   first `None`. A module's own `__file__` and `__name__` are `str`s;
 - a member of any value whose type is known, a local or anything else here (`self.index`, `f()`,
@@ -275,7 +277,8 @@ in a function or module body:
   nor a function's or a class body's. `TypeAlias` is named as the module's imports can (`TypeAlias`,
   `t.TypeAlias`, where bound before the alias), else imported from `typing`, which has it from
   Python 3.10: certain where the module imports the name already (or `typing_extensions`), or
-  `min-python` is 3.10 or later; a guess otherwise;
+  `min-python` is 3.10 or later; a guess where `min-python` isn't known, and no fix where it's older
+  (the import would fail there);
 - an attribute, property or method of a class another checked file defines, its type imported as a
   declared return's is (the CLI only: the plugins see one file at a time);
 - with `--unsafe-fixes` (the CLI only), what's computed from an unannotated parameter of a plain
@@ -316,7 +319,9 @@ in a function or module body:
   that agrees. A guess, since something else could add to it; any use that could (passing it to
   another function, a nested function) leaves it alone, as does a local bound to it
   (`alias = names`) unless every use of that local only reads it, but not one that only reads it
-  (`x[0]`, `len(x)`, `sep.join(x)`, `x + more`, `[*x]`, `return x, n`);
+  (`x[0]`, `len(x)`, `sep.join(x)`, `x + more`, `[*x]`, `return x, n`). Not where a name added, or
+  one in a display added (`rows.append((key, cmd))`), is one the function tests: it's narrowed
+  there;
 - a value computed from such: `a if c else b` when both sides agree, and `a if c else None` as
   `T | None` (not where `c` tests `a`, which it narrows); `a or b` and `a and b` with operands of
   one type, `or` dropping a `None` before its last operand (`name or "x"` is a `str` for a
@@ -399,7 +404,9 @@ An annotation in quotes, or a quoted part of one, is read as its text: `xs: "lis
 metadata, which are values. In a module body, where an annotation is evaluated, a fix naming what
 the module binds only further down, or imports under an `if` on a flag (`if TYPE_CHECKING:`,
 `if MYPY_CHECK_RUNNING:`), is quoted (`first: "Node" = xs[0]`), unless the module has
-`from __future__ import annotations`.
+`from __future__ import annotations`. In any scope of such a module, a fix the project's oldest
+Python (`min-python`) doesn't read as a type is quoted too: a union by `|` before 3.10
+(`found: "re.Match[str] | None"`), a subscript before 3.9 (`names: "list[str]"`).
 
 A `with` statement's target is declared before it too, as what the context manager's `__enter__`
 returns: `with zipfile.ZipFile(path) as z:` gets `z: zipfile.ZipFile` (a standard-library manager
@@ -438,8 +445,9 @@ docstring and its leading imports (below a shebang or coding line when it has ne
 `import io` if `BufferedReader` is a name the module binds. A type the module imports under a
 top-level `if TYPE_CHECKING:` is named by that import (quoted in a module body, as above). A
 standard-library type's import goes under `if TYPE_CHECKING:` only for a module nothing but the
-module's functions import (`import pwd` in a function's body): it may not be there to import when
-the module is.
+module's functions import (`import decimal` in a function's body): it may not be there to import
+when the module is. A class of a module only some platforms have, imported that way (`import pwd`,
+`import winreg`), is no fix: a type checker on another platform finds no such class.
 
 An installed package that declares its types (a `py.typed` package, its stubs first; a stub package,
 `pkg-stubs`; a lone `mod.pyi`) is read the same way for the calls into it, and never fixed: found on
@@ -570,7 +578,12 @@ than the fix says, the fix is changed, made a guess, or not offered:
   `opt.cb`), and a class of the module's by such `return`s of which an attribute it hasn't is taken
   (`cfg.verbose`, of a class whose attributes are set from outside it; only a class whose attributes
   are all in sight: undecorated, under the module's own classes alone, with no `__getattr__` or
-  `setattr`);
+  `setattr`); a name whose comparison is used as more than a `bool` (`(when == index).any()`, an
+  operand of `&`, `|`, `^` or `~`: its class compares element by element, whatever its stubs say); a
+  `bytes` formatted into a string (`f"{raw}"`, `"{}".format(raw)`, `"%s" % raw`, which mypy reports;
+  not `f"{raw!r}"`); and a name stored, or an item of it, in an attribute the function stores
+  something else in too (`self.proc = buf[0:n]`, then `self.proc = decode(self.proc)`: the attribute
+  then has the name's type);
 - a union isn't split over several names (`for name, length in parts`, of `[["prefix", 24], ...]`, a
   `list[list[str | int]]`): each is by position as often as not; a tuple of that many says which is
   which, and is;
@@ -588,15 +601,18 @@ than the fix says, the fix is changed, made a guess, or not offered:
   mean that variable there: not offered (`text: str = ""` under a parameter `str`);
 - a copy, attribute or subscript of a union, or of anything the function tests (`isinstance(x, C)`,
   `x is None`, `is_c(x)`, an `assert`, a `match`), may be narrowed where it's read: a guess; so is a
-  comprehension of a union with a condition (`[c for c in cs if isinstance(c, Column)]`). One of an
-  `X | None` (or a filtered comprehension over one) isn't offered where its function tests or stores
-  what's read, or what that's read of (`self.conn`, for `self.conn.pool`), anywhere: code nearly
-  always checks it for `None` first, and a checker then takes it for the `X`. Where nothing does, it
-  has the type it's declared, a guess (`conn: Connection | None = self.conn`). Nor is a bare `None`
-  offered; nor is a read where a test around it narrows it: in an `if`'s or `while`'s branch, a
-  `match` case, or the rest of a block after an `assert` or an `if` that always leaves (`return`,
-  `raise`, ...), for a check (`isinstance`, a `TypeGuard`, a `match`) whatever its type, and for a
-  truth test or comparison when it's a union. A type alias of a union (`Key = Union[int, str]`,
+  comprehension of a union with a condition (`[c for c in cs if isinstance(c, Column)]`), whose
+  element, or a `dict`'s key or value, is the class a condition (or an operand of its `and`) checks
+  it for, with no fix where it's checked any other way (`not isinstance(c, Column)`, under an `or`)
+  or kept in a display (`(name, c)`). One of an `X | None` (or a filtered comprehension over one)
+  isn't offered where its function tests or stores what's read, or what that's read of (`self.conn`,
+  for `self.conn.pool`), anywhere: code nearly always checks it for `None` first, and a checker then
+  takes it for the `X`. Where nothing does, it has the type it's declared, a guess
+  (`conn: Connection | None = self.conn`). Nor is a bare `None` offered; nor is a read where a test
+  around it narrows it: in an `if`'s or `while`'s branch, a `match` case, or the rest of a block
+  after an `assert` or an `if` that always leaves (`return`, `raise`, ...), for a check
+  (`isinstance`, a `TypeGuard`, a `match`) whatever its type, and for a truth test or comparison
+  when it's a union. A type alias of a union (`Key = Union[int, str]`,
   `Maybe: TypeAlias = int | None`, the module's own or another checked file's, bound once at its top
   level) is narrowed as the union it names, by a test or an assignment, and one of an `X | None`
   isn't offered; a plain read of one stays certain, written as the alias;
@@ -606,9 +622,10 @@ than the fix says, the fix is changed, made a guess, or not offered:
   something may rebind it, and not offered where the module binds it again;
 - `self`, and a method declared to return `Self` called on `self` or `cls`, is `Self`, not its class
   (in a subclass, the class isn't `Self`), as is what `cls()`, `type(self)()` or `cls.__new__(cls)`
-  constructs, and `type(self)` there a `type[Self]`: written as the module already imports `Self`
-  (`typing.Self` is Python 3.11's, so no import is added), and not offered without one; a `Self`
-  later bound to anything else isn't offered either;
+  constructs, and a standard-library function's call given `self` that returns its class
+  (`copy.copy(self)`), and `type(self)` there a `type[Self]`: written as the module already imports
+  `Self` (`typing.Self` is Python 3.11's, so no import is added), and not offered without one; a
+  `Self` later bound to anything else isn't offered either;
 - a generic class is never written bare (`list[Box]`, as `[self]` in `Box` would be; `Box()` guessed
   to construct one): the module's own, another checked file's, or the standard library's
   (`logging.StreamHandler()`), unless every type parameter it has has a default
@@ -730,11 +747,12 @@ It touches no class body but a plain class's (a dataclass would gain a field), a
 can't fix reported. The standard library and third-party packages are out of reach.
 
 `--show-fixes` lists, after the report, each fix and how its value decided it (for `b = s.strip()`:
-`str`, from `str.strip`'s fixed return type), marking the guesses `--unsafe-fixes` would add;
-`--format=json` always carries the same as a `fix` object (`annotation`, `reason`, `unsafe`) on each
-result. With `--fix`, `--show-fixes` lists the fixes made too, after what's left: `fixed 'b'` as
-text, and in `--format=json` an entry whose `fixed` is true. Each is on the line it had before any
-fix, whichever round of `--fix` made it.
+`str`, from `str.strip`'s fixed return type), marking the guesses `--unsafe-fixes` would add, or
+`--likely`; `--format=json` always carries the same as a `fix` object (`annotation`, `reason`,
+`unsafe`, `likely`, and `imports`: the import statements the fix adds, those for type checking alone
+too) on each result. With `--fix`, `--show-fixes` lists the fixes made too, after what's left:
+`fixed 'b'` as text, and in `--format=json` an entry whose `fixed` is true. Each is on the line it
+had before any fix, whichever round of `--fix` made it.
 
 The type hierarchy LVA008–LVA010 compare through is the numeric tower (`bool` < `int` < `float` <
 `complex`) plus the classes a module defines, under the bases they name.
@@ -798,9 +816,11 @@ a name typed at last is checked at last. With each package's tests traced
 (`tests/corpus/corpus_suite.py --types --trace`), its own type checkers find, past what
 `--fix --unsafe-fixes` alone brings: on SQLAlchemy 6 errors with 179 fixes, on pandas one with 1,443
 (an ignore no longer needed), on pydantic none with one; none where a traced name is bound, each at
-a later use of it (`index.table`, a `Table | None`, passed where a `FromClause` is declared). On
-pandas's `tests/frame/methods`, which its checkers pass over, basedpyright finds 33 with 148 fixes
-(7% more), the same way (`df.join(other, how="foo")`, in a test of that error).
+a later use of it (`index.table`, a `Table | None`, passed where a `FromClause` is declared).
+Django, which has no type checker, is traced through `tests/runtests.py --parallel=1`: 462 fixes,
+and its tests the same after. On pandas's `tests/frame/methods`, which its checkers pass over,
+basedpyright finds 33 with 148 fixes (7% more), the same way (`df.join(other, how="foo")`, in a test
+of that error).
 
 ## Fix levels
 

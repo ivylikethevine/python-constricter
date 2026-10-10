@@ -158,7 +158,7 @@ Options:
 | vague            | `--vague LEVEL` (LVA005, and the fixes offered): -1 none (the default), 0 one `Any` inside a type that says the rest (`tuple[str, Any]`), N from 1 N + 1, or one alone                                                                                                                                                     | `vague`                                         | `--constricter-vague`           | `constricter-vague`               |
 | min python       | `--min-python VERSION` (the oldest Python the code runs on, whose syntax `--fix` writes; default: `requires-python`'s)                                                                                                                                                                                                     | `min-python`                                    | -                               | -                                 |
 | type hierarchy   | -                                                                                                                                                                                                                                                                                                                          | `narrower` (a table)                            | `--constricter-narrower`        | `constricter-narrower`            |
-| fix              | `--fix` (`--unsafe-fixes` for guesses), `--diff` to preview                                                                                                                                                                                                                                                                | -                                               | -                               | -                                 |
+| fix              | `--fix` (`--unsafe-fixes` for guesses, `--likely` for those measured to hold), `--diff` to preview                                                                                                                                                                                                                         | -                                               | -                               | -                                 |
 | infer with       | `--infer-with CHECKERS` (`basedpyright`, `ty`, `pyrefly`, several: inferred types, as guesses)                                                                                                                                                                                                                             | `infer-with`                                    | -                               | -                                 |
 | infer from       | `--infer-from FILE` (the types `python -m constricter.trace -m pytest` recorded from a run, as guesses)                                                                                                                                                                                                                    | `infer-from`                                    | -                               | -                                 |
 | show fixes       | `--show-fixes` (each fix and how it was decided; with `--fix`, those made too)                                                                                                                                                                                                                                             | -                                               | -                               | -                                 |
@@ -218,8 +218,10 @@ ignore = ["LVA003"]
 `count: int = 0`), a container whose elements agree, a constructor or a function that declares its
 return type or whose `return`s agree (in another checked file too), a copy, subscript, attribute or
 method call of a local whose type is known, and values computed from those; a loop's target or an
-unpacking's names get a declaration on the line before. `--unsafe-fixes` adds guesses, and
-`--show-fixes` lists each fix and how its value decided it, and after `--fix` each one made.
+unpacking's names get a declaration on the line before. `--unsafe-fixes` adds guesses, `--likely`
+only those measured to hold as often as a certain fix
+([docs/LIKELY.md](https://github.com/ivylikethevine/python-constricter/blob/main/docs/LIKELY.md)),
+and `--show-fixes` lists each fix and how its value decided it, and after `--fix` each one made.
 `--infer-with basedpyright` (or `ty`, or `pyrefly`, or several: `basedpyright,ty`; each installed
 alongside) asks those type checkers for what `--fix` can't type itself, as guesses;
 `--infer-from FILE` takes the types a run bound each name to, recorded by
@@ -249,7 +251,7 @@ pre-commit, after ruff's hooks (or `constricter-fix`, which runs `--fix` first):
 
 ```yaml
 - repo: https://github.com/ivylikethevine/python-constricter
-  rev: v0.3.5
+  rev: v0.3.6
   hooks:
     - id: constricter
 ```

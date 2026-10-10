@@ -13,6 +13,7 @@ from constricter.cli.report import Result
 from constricter.cli.runs import CheckRun, merged
 from constricter.offences import Level, Offence
 
+_LITERAL: Final = {"kinds": ["literal"], "imports": list[str]()}  # a literal's fix: no import
 # One JSON result, and its `fix` object.
 _Fix: TypeAlias = dict[str, str | bool | list[str]]
 _Entry: TypeAlias = dict[str, str | int | _Fix | None]
@@ -71,7 +72,7 @@ def test_show_fixes_lists_each_fix_after_the_report(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """One line per fixable offence, after the report; a guess says it needs `--unsafe-fixes`."""
+    """One line per fixable offence, after the report; a guess says which flag applies it."""
     path: Path = tmp_path / "demo.py"
     _ = path.write_text("def f() -> None:\n    a = 1\n    b = Box()\n    c = g()\n", encoding="utf-8")
     assert cli.main(["-q", "--show-fixes", str(path)]) == cli.EXIT_FOUND
@@ -80,7 +81,7 @@ def test_show_fixes_lists_each_fix_after_the_report(
         f"{path}:2:5: fix 'a': `int`, from a literal [literal]",
         (
             f"{path}:3:5: fix 'b': `Box`, from a call to `Box`, taken to construct one [constructor]"
-            " (a guess: --unsafe-fixes)"
+            " (a guess: --likely)"
         ),
     ]
 
@@ -92,7 +93,7 @@ def test_json_carries_each_fix_and_its_reason(tmp_path: Path, capsys: pytest.Cap
     assert cli.main(["--format=json", str(path)]) == cli.EXIT_FOUND
     report: list[_Entry] = cast("list[_Entry]", json.loads(capsys.readouterr().out))
     assert [entry["fix"] for entry in report] == [
-        {"annotation": "int", "reason": "a literal", "unsafe": False, "kinds": ["literal"]},
+        {"annotation": "int", "reason": "a literal", "unsafe": False, "likely": False, **_LITERAL},
         None,
     ]
 
@@ -106,7 +107,7 @@ def f(rows: list[str]) -> None:
     d = Box()
 """
 _GUESS: Final = (
-    "fix 'd': `Box`, from a call to `Box`, taken to construct one [constructor] (a guess: --unsafe-fixes)"
+    "fix 'd': `Box`, from a call to `Box`, taken to construct one [constructor] (a guess: --likely)"
 )
 
 
@@ -185,3 +186,50 @@ def test_a_later_rounds_fixes_are_placed_where_they_were_before_the_first() -> N
     cells: CheckRun = CheckRun(rounds=(((1, 2),),))
     in_cells: CheckRun = cast("CheckRun", merged(cells, CheckRun(made=[_made(3, 1), _made(3, 2)])))
     assert [made.offence.line for made in in_cells.made] == [2, 3]
+
+
+_GUESSED: Final = """\
+def f() -> None:
+    a = Box()
+    b = []
+    b.append(1)
+    c = 1
+    c = g()
+    d = a
+"""
+_LIKELY: Final = """\
+def f() -> None:
+    a: Box = Box()
+    b = []
+    b.append(1)
+    c = 1
+    c = g()
+    d: Box = a
+"""
+
+
+def test_likely_applies_the_guesses_measured_to_hold(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Those whose mechanisms are a set of `LIKELY`; with `--unsafe-fixes` too, every guess as without it."""
+    path: Path = tmp_path / "demo.py"
+    _ = path.write_text(_GUESSED, encoding="utf-8")
+    assert cli.main(["--format=json", str(path)]) == cli.EXIT_FOUND
+    report: list[_Entry] = cast("list[_Entry]", json.loads(capsys.readouterr().out))
+    fixes: list[_Fix] = [cast("_Fix", entry["fix"]) for entry in report]
+    assert [(fix["unsafe"], fix["likely"], fix["kinds"]) for fix in fixes] == [
+        (True, True, ["constructor"]),
+        (True, False, ["filled", "literal"]),
+        (True, False, ["literal", "rebound"]),
+        (True, True, ["copy"]),
+    ]
+    assert cli.main(["--fix", "--likely", str(path)]) == cli.EXIT_FOUND
+    assert path.read_text(encoding="utf-8") == _LIKELY
+    assert capsys.readouterr().out.endswith("; fixed 2; 2 more with --unsafe-fixes.\n")
+    _ = path.write_text(_GUESSED, encoding="utf-8")
+    assert cli.main(["--fix", "--unsafe-fixes", "-q", str(path)]) == cli.EXIT_CLEAN
+    guessed: str = path.read_text(encoding="utf-8")
+    _ = path.write_text(_GUESSED, encoding="utf-8")
+    assert cli.main(["--fix", "--likely", "--unsafe-fixes", "-q", str(path)]) == cli.EXIT_CLEAN
+    assert path.read_text(encoding="utf-8") == guessed != _LIKELY

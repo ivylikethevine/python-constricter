@@ -6,6 +6,109 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A corpora run's section keeps a code span on one line, as Prettier does: a note broken inside
+  `python -m constricter.trace` failed CI's `prettier --check` on RUNS.md.
+- The corpora runs hold each fix to what its package's tests bound: the traced step's tests run
+  under a witness told every fix of `--fix --unsafe-fixes`
+  (`tests/corpus/witness/constricter_witness.py`), which evaluates a fix's annotation where its
+  statement is and asks whether the value is an instance of it, as the statement ends. RUNS.md's
+  fixes by tier give those a test could tell of, those that held and those that differed, where they
+  gave a match of class names that a subclass or an alias failed (61% of pydantic's certain fixes
+  fit by it; 99.0% hold). `--format=json`'s `fix` object has `imports`, the statements a fix adds,
+  which the witness runs to name what the annotation does.
+- The corpus scripts share what they each had a copy of: the flags every run passes
+  (`corpus_table.EVERYWHERE`), the reading of a fix's count and of the typed share, one function
+  that fixes a copy of a corpus (`corpus_table.fixed_copy`: certain, likely, guessed and with a
+  checker's hints) and one that fixes a suite and runs its tests.
+- `python -m constricter.trace` no longer fails the tests it traces where they forbid a blocking
+  call in an event loop (blockbuster): the first call of a file's function read the file there, and
+  what that raised reached the test (413 of mcp's tests failed traced). A file is read as its module
+  runs, and one that can't be read where it's asked for is asked for again at its next function.
+- A corpora run's kept steps are of the corpus scripts too: a changed script starts a new run, where
+  it read the steps another version of it kept.
+- CI's Lint job warns of each module past 900 lines, and never fails by it: pylint fails one past
+  1,000, and a split is easier before that. `tests/ci_local.py` lists the warnings after its report.
+- The corpora runs keep and show more. Each suite's fixed run keeps every fix it made, with its
+  tier, and its traced step what each binding held as the tests ran: RUNS.md has each package's
+  fixes by tier, with those a traced test reached and those every type seen fits
+  (`tests/corpus/corpus_guesses.py`), which `scratch/guess_census.py` reads where it fixed every
+  checkout again. `mega_corpora.py` traces its suites' tests too, as `super_corpora.py` does. The
+  table has `--fix --likely`'s guesses, the typed share after it and what a second pass of it still
+  fixes. And each suite's type checkers' versions are recorded beside their errors.
+- A call isn't taken to construct a generic class an installed package re-exports for type checking
+  alone (`from pydantic import TypeAdapter`, which `pydantic/__init__.py` imports under
+  `if TYPE_CHECKING:` and on demand): `adapter: TypeAdapter` was written, bare, where the class's
+  arguments aren't known. Such a class is generic to the file by either name (`TypeAdapter`,
+  `pydantic.TypeAdapter`), as one imported to run already was. Pyright found 3 errors after
+  `--fix --likely` on mcp by it.
+- The corpora runs fix each suite once, with every fix (`--fix --unsafe-fixes`), where they fixed it
+  twice (`--fix`, then with guesses): each new type error is laid to a tier by the fix it's traced
+  to (certain, likely, another guess, or untraced), which RUNS.md's table gives a column each. A run
+  under that one, `--fix --likely` then `--fix`, is made only where the first doesn't say whose
+  fixes a difference is: a suite's tests differ, or an error is untraced or traced to a certain or a
+  likely fix. `super_corpora.py --assure` and `mega_corpora.py --assure` run every suite's type
+  checks after `--fix` alone too, for a release; `corpus_suite.py --types --assure` does for the
+  suites named.
+- `--likely`, with `--fix` or `--diff`: applies the guesses measured to hold as often as a certain
+  fix does, and no other. A guess is likely by its mechanisms, the whole set of them:
+  [LIKELY.md](LIKELY.md) lists the sets, 74% of the guesses on 42 packages, and the bars a set
+  passes: 20 of its guesses or more told of by their packages' traced tests, more than 95% of those
+  holding, and under one guess in a thousand blamed by a type checker. `--show-fixes` names the flag
+  a guess needs, `--format=json` gives each fix a `likely`, and `--fix`'s summary counts them.
+  `--fix --likely --unsafe-fixes` is `--fix --unsafe-fixes`.
+- `--fix` imports `TYPE_CHECKING` to run where only a function of the module imports `typing`: a new
+  `if TYPE_CHECKING:` block was written with no import of its name, and the module raised
+  `NameError` when imported. SQLAlchemy's `testing/requirements.py` with `fix-widen`, whose `Any` is
+  the first name the module takes from `typing`.
+- `--fix` writes no annotation naming a class defined in another class's body: its bare name is that
+  body's alone, and a method's local declared by it (`names: _Names`, by the class's
+  `_sessions: dict[str, _Names]`) was an undefined name to a type checker. What's read of such a
+  value is typed as before. Of the 8 errors Pyright found on mcp after `--fix`, 7 were that.
+- Three certain fixes a package's own type checker found an error after aren't offered. One that
+  would import another module's private name (`from m import _Plan`, which Pyright's
+  `reportPrivateUsage` reports: mcp). One naming a class of a standard-library module only some
+  platforms have, where only a function imports the module (`rk: HKEYType`, by `import winreg` under
+  a platform test: a checker on Linux finds no such class; werkzeug). And one naming what another
+  checked file imports two ways under a top-level `if` or `try`
+  (`from duckdb import sqltypes as duckdb_dtypes`, else `from duckdb import typing as ...`), which
+  was imported as the last of them (narwhals).
+- `--fix` writes for the project's oldest Python (`min-python`, by default `requires-python`'s lower
+  bound): a union by `|` is quoted where that's before 3.10 and a subscript where it's before 3.9,
+  unless the module postpones its annotations; and a module's type alias has no fix where it's
+  before 3.10 and the module imports no `TypeAlias` (it was a guess, whose import from `typing`
+  fails there). A module-level `names: dict[str, str]` raised on Python 3.8, and litestar's Pyright,
+  set to 3.8, found 7 new errors after `--fix` and 219 after `--fix --unsafe-fixes`.
+- `--infer-with` reports a checker that can't be restarted after it hung: shutting the stopped
+  server down again raised `ValueError: write to closed file` in its place.
+- `corpus_suite.py --trace` traces a suite pytest doesn't run by the script it names, in one process
+  (`Suite.script`: Django's `tests/runtests.py --parallel=1`), and `super_corpora.py` has a `traced`
+  step for each suite: its tests' trace, the fixes resting on it, and its type checks after, or its
+  tests where it has none. On Django: 462 fixes, its tests the same.
+- `--fix` writes an annotation after the whole of a name the source spells unnormalised: a
+  full-width `ｗｗｗ = 1`, `www` to Python, was written `ｗ: intｗｗ = 1`, which compiles and binds
+  another name. A name of other such characters had no fix. Four bindings in the standard library's
+  tests.
+- A guess by an unannotated function's `return`s, or a checker's hint, isn't offered where its
+  function uses the name as the type doesn't allow: a comparison of it used as more than a `bool`
+  (`(start == index).any()`), a `bytes` formatted into a string (`f"{raw}"`), or the name, or an
+  item of it, stored in an attribute the function stores something else in too. On pandas: four
+  guesses fewer, and its own type checkers find one new error after `--fix --unsafe-fixes`, from 5;
+  on pydantic no fix changed.
+- `corpus_suite.py --types` runs Pyright with the checkout's own settings (`--project .`): it read
+  this project's `pyrightconfig.json`, above the checkout, before the checkout's `pyproject.toml`.
+  pydantic's 191 released errors and the 9 new after `--fix` were that: with its own settings it has
+  none of either.
+- Four fixes a package's own type checker found an error after, each a guess but the first, are
+  right now or not offered. A module's name annotated with a bare `Final` is its value's type to the
+  module's own body, as it was to its functions (`names: dict[str, str | Final]` was written for a
+  display of one), and a copy of one is declared its type, not `Final`. `copy.copy(self)` and
+  `copy.deepcopy(self)` are `Self` in a method whose signature says `Self`. An empty container isn't
+  typed by a tuple added to it that holds a name its function tests (`commands.append((name, cmd))`
+  after `if cmd is None: continue`). And a comprehension's `isinstance` narrows a `dict`'s key or
+  value as it does a list's element, only where it must hold (a condition, or an operand of its
+  `and`: `not isinstance(x, C)` typed `list[C]`), with no fix for a display holding what's narrowed
+  (`[(name, x) for ... if isinstance(x, C)]`). On pydantic: one guess fewer (a name bound to its
+  class, then to `copy(self)`), no other fix changed.
 - `python -m constricter.trace` records a type for each binding, not each function: what a name
   holds as the statement binding it ends, followed line by line (`sys.monitoring`; `sys.settrace`
   before Python 3.12). `--infer-from` so types a `for` loop's target, a name bound in a loop and one

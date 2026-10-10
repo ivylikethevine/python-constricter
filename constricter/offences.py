@@ -112,6 +112,35 @@ NESTING: Final = 3  # LVA006's default depth
 MAX_LENGTH: Final = 4  # LVA011's default: the longest fixed-length tuple an annotation may list
 VAGUE: Final = -1  # LVA005's default level: no vague part at all (see `annotations.vague_fits`)
 STARRED_SUBSCRIPTS: Final = (3, 11)  # the first Python to parse `tuple[int, *Ts]`
+# The guesses `--likely` applies: each a whole set of mechanisms, measured (see docs/LIKELY.md).
+LIKELY: Final = frozenset(
+    {
+        frozenset({"arithmetic", "copy", "literal"}),
+        frozenset({"call"}),
+        frozenset({"call", "constructor"}),
+        frozenset({"call", "constructor", "container", "copy"}),
+        frozenset({"call", "constructor", "container", "literal"}),
+        frozenset({"call", "container", "copy"}),
+        frozenset({"call", "container", "literal"}),
+        frozenset({"call", "copy"}),
+        frozenset({"constructor"}),
+        frozenset({"constructor", "container"}),
+        frozenset({"constructor", "container", "literal"}),
+        frozenset({"constructor", "fixture"}),
+        frozenset({"constructor", "joined"}),
+        frozenset({"constructor", "method"}),
+        frozenset({"constructor", "rebound"}),
+        frozenset({"container", "copy", "literal"}),
+        frozenset({"container", "copy", "loop"}),
+        frozenset({"container", "joined", "literal"}),
+        frozenset({"container", "literal", "rebound"}),
+        frozenset({"copy"}),
+        frozenset({"copy", "loop"}),
+        frozenset({"method"}),
+    },
+)
+UNION_SYNTAX: Final = (3, 10)  # the first Python where `int | None` is a type
+BUILTIN_GENERICS: Final = (3, 9)  # and where `list[int]` is
 
 
 class Level(IntEnum):
@@ -237,8 +266,13 @@ class Offence:
 
     @property
     def unsafe(self) -> bool:
-        """Whether the fix is a guess, applied only with `--unsafe-fixes`."""
+        """Whether the fix is a guess, applied only with `--unsafe-fixes` (or `--likely`, if `likely`)."""
         return self.edit is not None and self.edit.unsafe
+
+    @property
+    def likely(self) -> bool:
+        """Whether the fix is a guess `--likely` applies: one whose mechanisms are a set of `LIKELY`."""
+        return self.edit is not None and self.edit.unsafe and self.edit.kinds in LIKELY
 
     @property
     def reason(self) -> str:

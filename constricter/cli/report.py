@@ -216,7 +216,9 @@ def _json(results: Sequence[Result]) -> Iterator[str]:
                     "annotation": r.offence.fix,
                     "reason": r.offence.reason,
                     "unsafe": r.offence.unsafe,
+                    "likely": r.offence.likely,
                     "kinds": sorted(r.offence.edit.kinds if r.offence.edit else ()),
+                    "imports": [*r.offence.edit.imports, *r.offence.edit.guarded] if r.offence.edit else [],
                 },
             }
             for r in results
@@ -366,7 +368,7 @@ def fix_reasons(results: Sequence[Result]) -> Iterator[str]:
 
     Yields:
       A line each: where, the name (`fixed`, for a fix `--fix` made), the annotation and its reason;
-      a guess left unmade says it needs `--unsafe-fixes`.
+      a guess left unmade says it needs `--unsafe-fixes`, or `--likely` where that applies it.
 
     """
     r: Result
@@ -374,7 +376,8 @@ def fix_reasons(results: Sequence[Result]) -> Iterator[str]:
         if r.offence.fix is not None:
             cell: str = "" if r.offence.cell is None else f"cell {r.offence.cell}:"
             where: str = f"{r.path}:{cell}{r.offence.line}:{r.offence.col + 1}"
-            guess: str = " (a guess: --unsafe-fixes)" if r.offence.unsafe and not r.fixed else ""
+            flag: str = "--likely" if r.offence.likely else "--unsafe-fixes"
+            guess: str = f" (a guess: {flag})" if r.offence.unsafe and not r.fixed else ""
             kinds: str = ", ".join(sorted(r.offence.edit.kinds if r.offence.edit else ()))
             written: str = f"`{r.offence.fix}`" if r.offence.fix else "drop its annotation"
             decided: str = f"{written}, from {r.offence.reason} [{kinds}]"

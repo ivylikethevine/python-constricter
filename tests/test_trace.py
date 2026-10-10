@@ -626,6 +626,52 @@ def test_a_value_that_cant_be_read_ends_its_functions_recording(run: _Run) -> No
     assert not _files(run.recorder.found())
 
 
+class _BlockedError(Exception):
+    """What a program that forbids reading a file where it's read raises."""
+
+
+_IMPORTED: Final = "tell()\n\n\ndef kept(tell, leave):\n    held = (tell(), 1)[1]\n    leave()\n"
+
+
+def test_a_file_that_cant_be_read_yet_is_asked_for_again(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """What reading it raises doesn't reach the program; the next function of the file has it read."""
+    recorder: recording.Recorder = recording.Recorder(tmp_path)
+    hooks: _Hooks = _direct(recorder)
+    functions: _Functions = _steps(tmp_path / "steps.py")
+    blocked: list[type[Exception]] = [_BlockedError]
+    reading: Callable[[Path], bytes] = Path.read_bytes
+
+    def read(path: Path) -> bytes:
+        if blocked:
+            raise blocked.pop()
+        return reading(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read, raising=True)
+    _ = functions["bound"](hooks.tell, hooks.leave, 1)
+    assert not _files(recorder.found())
+    _ = functions["spun"](hooks.tell, hooks.leave, [1])
+    assert list(_files(recorder.found())) == [_digest(_STEPS)]
+
+
+def test_a_file_is_read_as_its_module_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Before any call of its functions, which may come where it can't be read."""
+    recorder: recording.Recorder = recording.Recorder(tmp_path)
+    hooks: _Hooks = _direct(recorder)
+    path: Path = tmp_path / "imported.py"
+    _ = path.write_text(_IMPORTED, encoding="utf-8", newline="\n")
+    functions: _Functions = cast("_Functions", runpy.run_path(str(path), {"tell": hooks.tell}))
+
+    def read(_path: Path) -> bytes:
+        raise _BlockedError
+
+    monkeypatch.setattr(Path, "read_bytes", read)
+    _ = functions["kept"](hooks.tell, hooks.leave)
+    assert list(_files(recorder.found())) == [_digest(_IMPORTED)]
+
+
 def test_an_empty_container_isnt_written(run: _Run) -> None:
     """Its binding has no type yet."""
     _ = run.functions["bound"](run.hooks.tell, run.hooks.leave, [])

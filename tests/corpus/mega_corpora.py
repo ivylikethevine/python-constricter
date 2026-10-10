@@ -20,12 +20,13 @@ for theirs forever, where another suite has it). They're typed applications, `as
 pytest-heavy test trees, scientific packages on numpy's types, packages with `TypedDict`s and
 overloads of their own, and untyped ones for contrast.
 
-It runs as `tests/corpus/super_corpora.py` does, with the same steps, and writes `## Mega corpora`
-in docs/RUNS.md. A package with no suite is checked and fixed alone; one whose suite can't be
-cloned or installed is too, and the section lists it with the reason. A suite's commands are its
-CI's as far as `uv` and pytest can stand for them: what fails as released fails the same after a
-fix, and only a difference counts. The packages' dependencies aren't in this checkout's
-environment, so `--fix` reads no installed types for them but numpy's and the corpus group's.
+It runs as `tests/corpus/super_corpora.py` does, with the same steps, the suites' tests traced too
+where they can be, and writes `## Mega corpora` in docs/RUNS.md. A package with no suite is checked
+and fixed alone; one whose suite can't be cloned or installed is too, and the section lists it with
+the reason. A suite's commands are its CI's as far as `uv` and pytest can stand for them: what
+fails as released fails the same after a fix, and only a difference counts. The packages'
+dependencies aren't in this checkout's environment, so `--fix` reads no installed types for them
+but numpy's and the corpus group's.
 """
 
 import json
@@ -169,6 +170,7 @@ MEGA: Final = super_corpora.Plan(
     corpora,
     {name: package.suite for name, package in PACKAGES.items() if package.suite is not None},
     ports={name: package.port for name, package in PACKAGES.items() if package.port},
+    traced=True,
 )
 
 

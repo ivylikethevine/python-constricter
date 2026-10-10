@@ -193,7 +193,14 @@ def test_json_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
         "message": PLAIN,
         "cell": None,
         "fixed": False,
-        "fix": {"annotation": "int", "reason": "a literal", "unsafe": False, "kinds": ["literal"]},
+        "fix": {
+            "annotation": "int",
+            "reason": "a literal",
+            "unsafe": False,
+            "likely": False,
+            "kinds": ["literal"],
+            "imports": [],
+        },
     }
     assert [(r["code"], r["severity"]) for r in results] == [
         ("LVA001", "error"),
@@ -397,7 +404,10 @@ def test_a_bad_pyproject_exits_2(
 
 
 def test_fix_adds_the_annotations_values_decide(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """`--fix` annotates what's certain in place (keeping line endings); `--unsafe-fixes` adds guesses."""
+    """`--fix` annotates what's certain in place (keeping line endings); `--unsafe-fixes` adds guesses.
+
+    And `--likely` those of them measured to hold: a call taken to construct its class.
+    """
     source: bytes = (
         b"def f() -> None:\r\n  a = 1; b = 'x'\r\n  c = []\r\n  d = 2  # noqa: LVA001\r\n  e = Path()\r\n"
     )
@@ -407,9 +417,9 @@ def test_fix_adds_the_annotations_values_decide(tmp_path: Path, capsys: pytest.C
     assert path.read_bytes() == source.replace(b"a = 1; b = 'x'", b"a: int = 1; b: str = 'x'")
     out: str = capsys.readouterr().out
     assert out.startswith(f"{path}:3:3: error: LVA001 local variable 'c'")
-    assert out.endswith(
-        "Found 2 error(s) and 0 warning(s) in 1 file(s); fixed 2; 1 more with --unsafe-fixes.\n",
-    )
+    assert out.endswith(" in 1 file(s); fixed 2; 1 more with --unsafe-fixes (1 with --likely).\n")
+    assert cli.main(["--diff", "--likely", str(path)]) == cli.EXIT_FOUND
+    assert capsys.readouterr().out.rstrip().endswith("+  e: Path = Path()")
     assert cli.main(["--fix", "--unsafe-fixes", "-q", str(path)]) == cli.EXIT_FOUND
     assert path.read_bytes().endswith(b"  e: Path = Path()\r\n")
     _ = capsys.readouterr()

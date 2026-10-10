@@ -1,27 +1,33 @@
 # SPDX-License-Identifier: MIT
 """The steps `tests/corpus/super_corpora.py` runs on a corpus, each in its own process, and what they give.
 
-- `table`: the check at every level, `--fix` and `--fix --unsafe-fixes` on copies, and the typed
-  share after each (`corpus_table.measure`);
+- `table`: the check at every level, `--fix`, `--fix --likely` and `--fix --unsafe-fixes` on copies,
+  and the typed share after each (`corpus_table.measure`);
 - `census`: every untyped binding, and why those with no fix have none (`corpus_untyped.census`);
 - `infer-CHECKER`, for each type checker installed: `--fix --unsafe-fixes --infer-with CHECKER` on
   a copy, from this checkout's root, whose settings point the checker at its environment;
 - `tests` and `types`, for a package with a suite (`corpus_suite.Suite`): its own tests and type
-  checks as released and after each fix, each new error traced to its fix;
+  checks as released and after `--fix --unsafe-fixes`, each new error traced to its fix and that
+  fix's tier, and after the runs under it where that one doesn't say whose fixes a difference is;
+- `traced`, where the run asks for it and the suite's tests can be traced
+  (`corpus_suite.traceable`): their trace, taken by a witness told every fix of
+  `--fix --unsafe-fixes`, which holds each fixed binding's value to its annotation as the tests run
+  (`corpus_guesses`); then `--fix --unsafe-fixes --infer-from` the trace, and the package's type
+  checks after, or its tests where it has no checks;
 - `check`: one check at `suffocate`, in the step's own process, timed, with each fix's mechanisms,
   the main process's share of it, and what the second round (the files whose callers type their
   parameters) costs, read from a second, profiled check.
 
 `CORPUS_JOBS` and `CORPUS_SUITE_WORKERS` size constricter's and a suite's processes; with
 `CORPUS_TYPES_APART` set, a suite's type checks run on checkouts of their own, one for each fixed
-run, at once and beside its tests.
+run, at once and beside its tests; with `CORPUS_ASSURE` set, they run after `--fix` alone too,
+whatever the first run found.
 """
 
 import cProfile
 import json
 import os
 import pstats
-import re
 import resource
 import shutil
 import subprocess  # runs this checkout's constricter
@@ -29,14 +35,14 @@ import sys
 import tempfile
 import time
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.cli import command as cli
 from constricter.cli import paths
-from tests.corpus import corpus_suite, corpus_table, corpus_untyped
+from tests.corpus import corpus_guesses, corpus_suite, corpus_table, corpus_untyped
 from tests.corpus.corpus_table import DEV, Corpus, Measured, Typed
 
 _Json: TypeAlias = "str | int | bool | list[_Json] | dict[str, _Json] | None"
@@ -52,16 +58,22 @@ CENSUS: Final = "census"
 CHECK: Final = "check"
 TESTS: Final = "tests"
 TYPES: Final = "types"
+TRACED: Final = "traced"
+SUITED: Final = frozenset({TESTS, TYPES, TRACED})  # the steps of a package's suite
 INFER: Final = "infer-"
 JOBS_VARIABLE: Final = "CORPUS_JOBS"
 WORKERS_VARIABLE: Final = "CORPUS_SUITE_WORKERS"
 APART_VARIABLE: Final = "CORPUS_TYPES_APART"  # set: a suite's type checks get checkouts of their own
-_EVERYWHERE: Final = ("--level=suffocate", "--all-scopes")
-_FIXED: Final = re.compile(r"fixed (\d+)")
-_TYPED: Final = re.compile(r"^Total: (\d+)/(\d+) typed", re.MULTILINE)  # `--coverage`'s summary
+ASSURE_VARIABLE: Final = "CORPUS_ASSURE"  # set: a suite's type checks run after `--fix` alone too
+# What a new type error is traced to: a certain fix, a likely guess, another guess, or nothing.
+CERTAIN: Final = "certain"
+LIKELY: Final = "likely"
+GUESS: Final = "guess"
+UNTRACED: Final = "untraced"
+TIERS: Final = (CERTAIN, LIKELY, GUESS, UNTRACED)
 _SECOND_ROUND: Final = "_called_again"  # `cli.command`'s function that checks files again
 _WHOLE: Final = "_check_all"  # and the one that checks them all, that round included
-NONE: Final = "-"
+NONE: Final = corpus_table.NONE
 
 
 class Sizes(NamedTuple):
@@ -106,6 +118,7 @@ class Inferred(NamedTuple):
 
 # A fixed run of a suite's tests: its label, the fix's size, its outcome and its seconds.
 _Run: TypeAlias = tuple[str, str, corpus_suite.Outcome, float]
+_Fixes: TypeAlias = Mapping[str, Sequence[corpus_suite.Fix]]  # a run's fixes, per file
 
 
 class Tested(NamedTuple):
@@ -115,6 +128,7 @@ class Tested(NamedTuple):
     released: corpus_suite.Outcome
     seconds: float
     fixed: list[_Run]
+    fixes: _Fixes  # every fix the first fixed run made, per file: each with its tier
     again: bool = False  # whether `released` is a second run's, a fixed run having differed from the first
     varies: bool = False  # whether the released tests' failures differ from run to run
 
@@ -125,6 +139,23 @@ class Typechecked(NamedTuple):
     checks: str
     released: int
     fixed: list[tuple[str, corpus_suite.Compared]]
+    versions: str = ""  # each checker's own, as it says it (see `_versions`)
+
+
+class Traced(NamedTuple):
+    """A package's tests' trace, and what `--fix --unsafe-fixes --infer-from` it did to its source.
+
+    `compared`: its type checks after, beside the released source's; `tested`, for a package with
+    no checks: its tests' outcome as released and after.
+    """
+
+    summary: str  # the traced tests'
+    resting: int  # the fixes that rest on the trace
+    change: str  # the fix's size, as `git diff --shortstat` puts it
+    seen: corpus_guesses.Seen  # the types each binding held as the traced tests ran
+    verdicts: corpus_guesses.Verdicts  # how each fixed binding's values stood to its fix's annotation
+    compared: corpus_suite.Compared | None = None
+    tested: tuple[corpus_suite.Outcome, corpus_suite.Outcome] | None = None
 
 
 class Unset(NamedTuple):
@@ -133,7 +164,7 @@ class Unset(NamedTuple):
     reason: str
 
 
-Value: TypeAlias = Measured | Census | Checked | Inferred | Tested | Typechecked | Unset
+Value: TypeAlias = Measured | Census | Checked | Inferred | Tested | Typechecked | Traced | Unset
 _Modes: TypeAlias = list[tuple[str, tuple[str, ...]]]  # each fixed run's label, and its options
 
 
@@ -151,6 +182,73 @@ class Step(NamedTuple):
 
 
 Steps: TypeAlias = dict[str, Step]  # a corpus's steps' results, by their names
+
+
+def tier(blamed: corpus_suite.Blamed) -> str:
+    """Name what a new error is traced to.
+
+    Returns:
+      One of `TIERS`.
+
+    """
+    return UNTRACED if blamed.fix is None else fix_tier(blamed.fix)
+
+
+def fix_tier(fix: corpus_suite.Fix) -> str:
+    """Name a fix's tier.
+
+    Returns:
+      `CERTAIN`, `LIKELY` or `GUESS`.
+
+    """
+    if not fix.unsafe:
+        return CERTAIN
+    return LIKELY if fix.likely else GUESS
+
+
+def lower(
+    found: corpus_suite.Compared,
+    check: Callable[[tuple[str, tuple[str, ...]]], corpus_suite.Compared],
+    *,
+    assure: bool,
+) -> list[tuple[str, corpus_suite.Compared]]:
+    """Type-check the runs under `corpus_suite.ALL` that its comparison `found` calls for.
+
+    A trace is by line, not by cause, and an untraced error is no tier's. So after `--fix --likely`
+    where a new error is untraced, or traced to a certain or a likely fix; then after `--fix` where
+    that run has one untraced or traced to a certain fix, or `assure` asks for it whatever was
+    found. `check` fixes with a run's options and compares.
+
+    Returns:
+      Each run made: its label and comparison.
+
+    """
+    likely: tuple[str, tuple[str, ...]]
+    certain: tuple[str, tuple[str, ...]]
+    likely, certain = corpus_suite.LOWER
+    runs: list[tuple[str, corpus_suite.Compared]] = []
+    doubted: bool = False
+    if {tier(each) for each in found.new} - {GUESS}:
+        below: corpus_suite.Compared = check(likely)
+        runs.append((likely[0], below))
+        doubted = bool({tier(each) for each in below.new} & {CERTAIN, UNTRACED})
+    if assure or doubted:
+        runs.append((certain[0], check(certain)))
+    return runs
+
+
+def assured(kept: Step | None) -> bool:
+    """Check whether a kept `types` step has the `--fix` run `ASSURE_VARIABLE` asks for.
+
+    Returns:
+      Whether it has.
+
+    """
+    return (
+        kept is not None
+        and isinstance(kept.value, Typechecked)
+        and corpus_suite.LOWER[1][0] in dict(kept.value.fixed)
+    )
 
 
 def checkers() -> list[str]:
@@ -223,28 +321,25 @@ def infer_step(corpus: Corpus, checker: str) -> Inferred:
       What that did.
 
     """
-    root: Path
-    valid: list[Path]
-    root, valid = corpus_table.copied(corpus, f"{INFER}{checker}")
-    jobs: str = f"--jobs={os.environ.get(JOBS_VARIABLE, '0')}"
-    fixing: list[str] = ["--fix", "--unsafe-fixes", f"--infer-with={checker}", *_EVERYWHERE, jobs, str(root)]
-    fixed: re.Match[str] | None = _FIXED.search(_constricter(fixing).strip().rsplit("\n", 1)[-1])
-    typed: re.Match[str] | None = _TYPED.search(_constricter(["--coverage", "--all-scopes", jobs, str(root)]))
-    return Inferred(
-        None if fixed is None else int(fixed[1]),
-        sum(not corpus_table.compiles(path) for path in valid),
-        Typed(int(typed[1]), int(typed[2])) if typed else Typed(0, 0),
+    found: corpus_table.Fixed = corpus_table.fixed_copy(
+        corpus,
+        f"{INFER}{checker}",
+        ("--unsafe-fixes", f"--infer-with={checker}"),
+        _constricter,
+        second=False,
     )
+    return Inferred(found.fixed, found.broken, found.typed or Typed(0, 0))
 
 
 def tests_step(corpus: Corpus, suite: corpus_suite.Suite) -> Tested:
-    """Run the corpus package's own tests as released, and after each fix.
+    """Run the corpus package's own tests as released, and after `--fix --unsafe-fixes`.
 
-    Each run's output is kept in `corpus_suite.WORK`'s `outputs/`. Where a fixed run's outcome
+    Each run's output is kept in `corpus_suite.WORK`'s `outputs/`. Where the fixed run's outcome
     differs from the released one's, the released tests are run again, and that run stands for
     them: a first run after a clone has differed from every later one, fixed or not. A fixed run
     that still differs is fixed and run again too, and its second outcome stands: a test that fails
-    one run in some isn't the fix's (see `_settled`).
+    one run in some isn't the fix's (see `_settled`). One that differs even so is followed by the
+    runs under it (`corpus_suite.LOWER`), down to the first that's the same as released.
 
     Returns:
       Their outcomes.
@@ -257,24 +352,70 @@ def tests_step(corpus: Corpus, suite: corpus_suite.Suite) -> Tested:
     released: corpus_suite.Outcome = corpus_suite.tested(root, suite, kept / "released.txt")
     seconds: float = time.perf_counter() - start
     fixed: list[_Run] = []
+    fixes: _Fixes = {}
     label: str
-    options: tuple[str, ...]
     # One stopped as released (waiting on a server no one started) would be after each fix too.
-    for label, options in () if corpus_suite.stopped(released) else corpus_suite.MODES:
-        change: str = corpus_suite.fixed(root, suite, *options)
-        start = time.perf_counter()
-        outcome: corpus_suite.Outcome = corpus_suite.tested(
-            root,
-            suite,
-            kept / f"{label.replace(' ', '')}.txt",
-        )
-        fixed.append((label, change, outcome, time.perf_counter() - start))
+    for label in () if corpus_suite.stopped(released) else [mode[0] for mode in corpus_suite.MODES]:
+        ran: _Run
+        ran, fixes = _fixed_run((root, kept), suite, label)
+        fixed.append(ran)
     corpus_suite.reset(root, suite)
     if all(outcome == released for _, _, outcome, _ in fixed):
-        return Tested(suite.tag, released, seconds, fixed)
+        return Tested(suite.tag, released, seconds, fixed, fixes)
     varies: bool
     released, varies = _settled((root, kept), suite, released, fixed)
-    return Tested(suite.tag, released, seconds, fixed, again=True, varies=varies)
+    if fixed[0][2] != released:
+        fixed += _lowered((root, kept), suite, released)
+    return Tested(suite.tag, released, seconds, fixed, fixes, again=True, varies=varies)
+
+
+def _fixed_run(
+    where: tuple[Path, Path],
+    suite: corpus_suite.Suite,
+    label: str,
+    kept: str = "",
+) -> tuple[_Run, _Fixes]:
+    """Fix the checkout's source as the run of `label` does (see `corpus_suite.OPTIONS`), and run its tests.
+
+    `where`: the checkout and where its outputs are kept, this run's under its label and `kept`.
+
+    Returns:
+      The run, and the fixes it made.
+
+    """
+    fixes: _Fixes
+    change: str
+    fixes, change = corpus_suite.fixed_and_listed(where[0], suite, *corpus_suite.OPTIONS[label])
+    start: float = time.perf_counter()
+    outcome: corpus_suite.Outcome = corpus_suite.tested(
+        where[0],
+        suite,
+        where[1] / f"{label.replace(' ', '')}{kept}.txt",
+    )
+    return (label, change, outcome, time.perf_counter() - start), fixes
+
+
+def _lowered(
+    where: tuple[Path, Path],
+    suite: corpus_suite.Suite,
+    released: corpus_suite.Outcome,
+) -> list[_Run]:
+    """Run the tests after each fix under `corpus_suite.ALL`'s, down to the first the same as `released`.
+
+    `where`: the checkout and where its outputs are kept.
+
+    Returns:
+      Each run made.
+
+    """
+    runs: list[_Run] = []
+    label: str
+    for label in (mode[0] for mode in corpus_suite.LOWER):
+        runs.append(_fixed_run(where, suite, label)[0])
+        corpus_suite.reset(where[0], suite)
+        if runs[-1][2] == released:
+            break
+    return runs
 
 
 def _settled(
@@ -302,14 +443,8 @@ def _settled(
     outcome: corpus_suite.Outcome
     for at, (label, _, outcome, _) in enumerate(fixed):
         if outcome != released:
-            change: str = corpus_suite.fixed(root, suite, *dict(corpus_suite.MODES)[label])
-            start: float = time.perf_counter()
-            second: corpus_suite.Outcome = corpus_suite.tested(
-                root,
-                suite,
-                where[1] / f"{label.replace(' ', '')}-again.txt",
-            )
-            fixed[at] = (label, change, second, time.perf_counter() - start)
+            fixed[at] = _fixed_run(where, suite, label, "-again")[0]
+            second: corpus_suite.Outcome = fixed[at][2]
             both[label] = outcome.failed & second.failed
             corpus_suite.reset(root, suite)
     if all(outcome == released for _, _, outcome, _ in fixed):
@@ -330,7 +465,9 @@ def _settled(
 
 
 def types_step(corpus: Corpus, suite: corpus_suite.Suite) -> Typechecked:
-    """Run the corpus package's own type checks as released, and after each fix (the checkers' hints' too).
+    """Run the corpus package's own type checks as released, and after every fix (the checkers' hints' too).
+
+    Then after the runs under that one its errors call for (see `lower`), on its checkout.
 
     Returns:
       Their errors, each new one traced to its fix.
@@ -363,13 +500,93 @@ def types_step(corpus: Corpus, suite: corpus_suite.Suite) -> Typechecked:
             )
             for each, (_, options) in zip(roots, modes, strict=True)
         ]
+    under: list[tuple[str, corpus_suite.Compared]] = lower(
+        comparing[0].result(),
+        lambda mode: corpus_suite.compared(roots[0], suite, released.result, mode[1]),
+        assure=bool(os.environ.get(ASSURE_VARIABLE)),
+    )
     for root in dict.fromkeys(roots):
         corpus_suite.reset(root, suite)
+    found: list[tuple[str, corpus_suite.Compared]] = [
+        (label, each.result()) for (label, _), each in zip(modes, comparing, strict=True)
+    ]
     return Typechecked(
         "; ".join(" ".join(check) for check in suite.checks),
         len(released.result()),
-        [(label, found.result()) for (label, _), found in zip(modes, comparing, strict=True)],
+        [found[0], *under, *found[1:]],
+        _versions(roots[0], suite),
     )
+
+
+def _versions(root: Path, suite: corpus_suite.Suite) -> str:
+    """Ask each of the suite's type checkers its version, in the checkout's environment.
+
+    Returns:
+      What each says (`mypy 1.18.2 (compiled: yes)`), `; ` between them; `?` for one that doesn't.
+
+    """
+    said: list[str] = []
+    check: tuple[str, ...]
+    for check in suite.checks:
+        module: bool = tuple(check[:2]) == ("python", "-m")
+        command: list[str] = [
+            str(root / ".venv" / "bin" / check[0]),
+            *check[1 : 3 if module else 1],
+            "--version",
+        ]
+        done: subprocess.CompletedProcess[str] = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+            cwd=root,
+        )
+        said.append((done.stdout.strip() or "?").splitlines()[0])
+    return "; ".join(dict.fromkeys(said))
+
+
+def traced_step(corpus: Corpus, suite: corpus_suite.Suite) -> Traced:
+    """Trace the corpus package's tests, fix its source with their trace, and check what that did.
+
+    The tests are traced by the witness (`corpus_guesses.WITNESS`), told the fixes of
+    `--fix --unsafe-fixes`: its verdict on each binding it saw bound is kept.
+
+    By its own type checks, beside the released source's errors; by its tests, where it has none.
+
+    Returns:
+      The trace's summary, the fixes resting on it, and the checks' or the tests' outcome.
+
+    Raises:
+      RuntimeError: nothing runs the suite's tests traced.
+
+    """
+    root: Path = corpus_suite.checkout(corpus.name, suite)
+    os.environ[corpus_suite.TRACER_VARIABLE] = corpus_guesses.TRACER
+    os.environ[corpus_guesses.WITNESS_VARIABLE] = corpus_guesses.expected(
+        root,
+        corpus_suite.fixed_and_listed(root, suite, *corpus_suite.ALL[1])[0],
+    )
+    summary: str | None
+    if (summary := corpus_suite.traced(root, suite)) is None:
+        message: str = f"nothing runs {corpus.name}'s tests traced"
+        raise RuntimeError(message)
+    judged: corpus_guesses.Verdicts = corpus_guesses.verdicts(root)
+    options: tuple[str, ...] = corpus_suite.TRACE_MODE[1]
+    seen: corpus_guesses.Seen = corpus_guesses.seen(root, corpus_suite.TRACE_FILE)
+    if suite.checks:
+        released: list[corpus_suite.Complaint] = corpus_suite.complaints(root, suite)
+        found: corpus_suite.Compared = corpus_suite.compared(root, suite, lambda: released, options)
+        corpus_suite.reset(root, suite)
+        return Traced(summary, corpus_suite.resting(found.fixes), found.change, seen, judged, found)
+    kept: Path = corpus_suite.WORK / "outputs" / root.name
+    before: corpus_suite.Outcome = corpus_suite.tested(root, suite, kept / "traced-released.txt")
+    fixes: dict[str, list[corpus_suite.Fix]]
+    change: str
+    fixes, change = corpus_suite.fixed_and_listed(root, suite, *options)
+    after: corpus_suite.Outcome = corpus_suite.tested(root, suite, kept / "traced-fixed.txt")
+    corpus_suite.reset(root, suite)
+    return Traced(summary, corpus_suite.resting(fixes), change, seen, judged, None, (before, after))
 
 
 def cpu(who: int) -> float:
@@ -460,9 +677,8 @@ def check_step(corpus: Corpus) -> Checked:
     scratch: str
     with tempfile.TemporaryDirectory() as scratch:
         out: Path = Path(scratch) / "results.json"
-        jobs: str = f"--jobs={os.environ.get(JOBS_VARIABLE, '0')}"
         output: list[str] = ["--format=json", "--exit-zero", "--output-file", str(out)]
-        args: list[str] = [*output, *_EVERYWHERE, jobs, str(corpus.root)]
+        args: list[str] = [*output, *corpus_table.EVERYWHERE, str(corpus.root)]
         timed: _Timed = _timed(args, out)
         profile.enable()
         try:
@@ -481,8 +697,12 @@ def check_step(corpus: Corpus) -> Checked:
     )
 
 
-def _suited(name: str, corpus: Corpus, suite: corpus_suite.Suite | None) -> Tested | Typechecked | Unset:
-    """Run a suite's step, `TESTS` or `TYPES`.
+def _suited(
+    name: str,
+    corpus: Corpus,
+    suite: corpus_suite.Suite | None,
+) -> Tested | Typechecked | Traced | Unset:
+    """Run a suite's step: one of `SUITED`.
 
     Returns:
       What it gave, or why the suite couldn't be set up.
@@ -494,8 +714,13 @@ def _suited(name: str, corpus: Corpus, suite: corpus_suite.Suite | None) -> Test
     if suite is None:
         message: str = f"{corpus.name} has no suite"
         raise ValueError(message)
+    steps: dict[str, Callable[[Corpus, corpus_suite.Suite], Tested | Typechecked | Traced]] = {
+        TESTS: tests_step,
+        TYPES: types_step,
+        TRACED: traced_step,
+    }
     try:
-        return tests_step(corpus, suite) if name == TESTS else types_step(corpus, suite)
+        return steps[name](corpus, suite)
     except (RuntimeError, OSError) as failure:  # `corpus_suite.checkout`'s: no clone, or no install
         return Unset(str(failure).strip().rsplit("\n", 1)[-1])
 
@@ -509,7 +734,7 @@ def _given(name: str, corpus: Corpus, suite: corpus_suite.Suite | None) -> Value
     """
     if name.startswith(INFER):
         return infer_step(corpus, name.removeprefix(INFER))
-    if name in {TESTS, TYPES}:
+    if name in SUITED:
         return _suited(name, corpus, suite)
     alone: dict[str, Callable[[Corpus], Value]] = {TABLE: table_step, CENSUS: census_step, CHECK: check_step}
     return alone[name](corpus)

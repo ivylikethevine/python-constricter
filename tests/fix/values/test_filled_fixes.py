@@ -112,18 +112,21 @@ def test_what_the_function_narrows_isnt_the_elements_type() -> None:
         kept = []
         whole = []
         seen = []
+        paired = []
         for item in items:
             whole.append(len(items))
             if isinstance(item, int):
                 kept.append(item)
+                paired.append((len(items), item))
         for flag in flags:
             seen.append(flag)
     """
     found: list[Offence] = check_source(textwrap.dedent(source))
-    assert {o.name: o.fix for o in found if o.name in {"kept", "whole", "seen"}} == {
+    assert {o.name: o.fix for o in found if o.name in {"kept", "whole", "seen", "paired"}} == {
         "kept": None,
         "whole": "list[int]",
         "seen": "list[bool]",
+        "paired": None,  # in a display added, too
     }
 
 

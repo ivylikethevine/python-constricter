@@ -5,16 +5,19 @@
   local/.venv/bin/python -m tests.corpus.super_corpora --fresh    # forget what a stopped run finished
   local/.venv/bin/python -m tests.corpus.super_corpora --print    # print the section, don't record it
   local/.venv/bin/python -m tests.corpus.super_corpora NAME ...   # only these corpora, printed
+  local/.venv/bin/python -m tests.corpus.super_corpora --assure   # and every suite's checks after `--fix`
 
 The corpora are `tests/corpus/corpus_table.py`'s, and each one's steps `tests/corpus/corpora_steps.py`'s:
 the table, the census, `--infer-with` each installed checker, its package's own tests and type
-checks where `corpus_suite.SUITES` has it, and a timed check.
+checks where `corpus_suite.SUITES` has it, a fix by its tests' trace where they can be traced, and
+a timed check.
 
 The machine sizes the run. Every step of every corpus starts once the CPUs it's expected to keep
-busy are free (`Slots`): each works on a copy of its own, but a suite's type checks, which wait
-for its tests on their checkout unless the plan gives them checkouts of their own (`Plan.apart`:
-pandas's, whose checks take the longest), and the tests of suites that bind one port, one at a
-time (`Plan.ports`). A step is expected to keep busy what it did in the last
+busy are free (`Slots`): each works on a copy of its own, but a suite's traced step and its type
+checks, which wait for its tests on their checkout (the type checks unless the plan gives them
+checkouts of their own: `Plan.apart`, pandas's, whose checks take the longest), and the tests of
+suites that bind one port, one at a time (`Plan.ports`).
+A step is expected to keep busy what it did in the last
 run that measured it (the CPU seconds of every process under it, over its seconds: see
 `corpora_cpu`); else its suite's workers for its tests
 (`corpus_suite.workers`), and `_STEP_CPUS` for any other: one of constricter's checks in bursts
@@ -37,13 +40,20 @@ The corpora of `_FIRST` (pandas, whose chain is the longest) start
 first, never wait for CPUs (for memory they do), and take `_FIRST_JOBS` times the others' `--jobs`:
 the run ends when the longest chain does.
 
-Each step is a process of its own, its result kept in `local/super-corpora/<version>-<stamp>/`
-(the stamp: a hash of `constricter/`'s sources): a run that stopped starts again from the steps
-it lacks, and a change to the code starts a new one. The section it writes, `## Super corpora`,
-names the machine: timings don't compare across machines. It exits 1 on anything a fix broke (a
-file that no longer compiles, a second pass with more to fix, a test's outcome changed, a type
-error a certain fix or a guess added) or a step that failed, each listed on standard error. Run
-it outside a sandbox: it starts worker processes, and the suites need the network once.
+Each step is a process of its own, its result kept in `local/super-corpora/<version>-<stamp>/` (the
+stamp: a hash of `constricter/`'s sources and these scripts'): a run that stopped starts again from
+the steps it lacks, and a change to the code or to a script starts a new one. The section it writes,
+`## Super corpora`, names the machine: timings don't compare across machines. It exits 1 on anything
+a fix broke (a file that no longer compiles, a second pass with more to fix, a test's outcome
+changed, a type error a certain fix or a guess added, a test's outcome changed by the trace's fixes)
+or a step that failed, each listed on standard error. Run it outside a sandbox: it starts worker
+processes, and the suites need the network once.
+
+A suite's tests and type checks run once fixed, with every fix (`--fix --unsafe-fixes`), and each
+difference is laid to a tier of fixes by the fix it's traced to; a run under that one is made only
+where that doesn't settle whose it is (see `corpus_suite`). `--assure` has every suite's type
+checks run after `--fix` alone too, so what certain fixes do is measured and not inferred: for a
+release. It runs again the `types` steps a resumed run kept without that.
 """
 
 import contextlib
@@ -92,9 +102,11 @@ _JOB_MEMORY: Final = _GIB + _GIB // 4
 _WORKER_MEMORY: Final = _GIB // 2
 _CHECKS_BESIDE: Final = 2  # the timed checks run at a time, the CPUs split among them
 _UNSIZED_SHARE: Final = 3  # the unmeasured steps starting the type checkers that the memory is split among
+_TESTING: Final = frozenset({corpora_steps.TESTS, corpora_steps.TRACED})  # the steps that run a suite's tests
 _STEP_FLAG: Final = "--step"
 _FRESH_FLAG: Final = "--fresh"
 _PRINT_FLAG: Final = "--print"
+_ASSURE_FLAG: Final = "--assure"
 _KEPT: Final = ".pickle"
 _CHECKERS: Final = "checkers"  # a run's file naming the type checkers installed when it started
 # What an unreadable kept result raises: one an earlier version of these scripts wrote.
@@ -113,6 +125,7 @@ class Plan(NamedTuple):
     apart: frozenset[str] = frozenset()  # the corpora whose type checks get checkouts of their own
     # The port a corpus's tests bind, by its name: those of one port run one at a time.
     ports: Mapping[str, str] = {}
+    traced: bool = False  # whether each suite's tests are traced, and its source fixed by the trace
 
 
 SUPER: Final = Plan(
@@ -123,6 +136,7 @@ SUPER: Final = Plan(
     corpus_table.corpora,
     corpus_suite.SUITES,
     frozenset(_FIRST),
+    traced=True,
 )
 
 
@@ -237,7 +251,9 @@ def sizes() -> Sizes:
 
 
 def stamp() -> str:
-    """Hash this checkout's `constricter/` sources: what a kept step's result is of.
+    """Hash this checkout's `constricter/` sources and these scripts': what a kept step's result is of.
+
+    A step kept by other scripts may not be what these would keep, or read as these read it.
 
     Returns:
       The hash's first hex digits.
@@ -245,7 +261,11 @@ def stamp() -> str:
     """
     sources: list[bytes] = [
         part
-        for path in sorted((_ROOT / "constricter").rglob("*.py"))
+        for path in sorted(
+            path
+            for folder in (_ROOT / "constricter", Path(__file__).parent)
+            for path in (*folder.rglob("*.py"), *folder.glob("*.json"))
+        )
         for part in (path.relative_to(_ROOT).as_posix().encode(), path.read_bytes())
     ]
     return hashlib.sha256(b"\0".join(sources)).hexdigest()[:12]
@@ -268,6 +288,8 @@ def steps(corpus: Corpus, plan: Plan) -> list[str]:
         found.append(corpora_steps.TESTS)
         if suite.checks:
             found.append(corpora_steps.TYPES)
+        if plan.traced and corpus_suite.traceable(suite):
+            found.append(corpora_steps.TRACED)
     return found
 
 
@@ -387,7 +409,7 @@ class _Running(NamedTuple):
         if (known := self.before.get((corpus.name.replace(" ", "-"), name))) is not None:
             return math.ceil(known[0])
         suite: corpus_suite.Suite | None = self.plan.suites.get(corpus.name)
-        if name == corpora_steps.TESTS and suite is not None:
+        if name in _TESTING and suite is not None:
             return min(corpus_suite.workers(suite), self.sized.workers)
         return _APART_CPUS if name == corpora_steps.TYPES and corpus.name in self.plan.apart else _STEP_CPUS
 
@@ -406,7 +428,7 @@ class _Running(NamedTuple):
         jobs: int = self.sized.jobs * (_FIRST_JOBS if corpus.name in _FIRST else 1)
         if name == CHECK:
             jobs = self.sized.cpus // _CHECKS_BESIDE
-        workers: int = self.sized.workers if name == corpora_steps.TESTS else 0
+        workers: int = self.sized.workers if name in _TESTING else 0
         return max(jobs * _JOB_MEMORY, workers * _WORKER_MEMORY)
 
     def process(self, corpus: Corpus, name: str, out: Path, jobs: int) -> int:
@@ -463,7 +485,7 @@ class _Running(NamedTuple):
         wanted: int = self.expected(corpus, name) if cpus is None else cpus
         # Its tests' port first, if they bind one: waited for holding no CPUs.
         port: threading.Lock | None = (
-            self.bound.get(self.plan.ports.get(corpus.name, "")) if name == corpora_steps.TESTS else None
+            self.bound.get(self.plan.ports.get(corpus.name, "")) if name in _TESTING else None
         )
         stack: contextlib.ExitStack
         with contextlib.ExitStack() as stack:
@@ -515,13 +537,16 @@ def _said(done: Step | None, seconds: float) -> str:
 
 
 def _groups(corpus: Corpus, plan: Plan) -> list[list[str]]:
-    """Group a corpus's steps by what must run one after another: its tests and type checks, on one checkout.
+    """Group a corpus's steps by what must run one after another: its suite's, on one checkout.
+
+    But its type checks, where the plan gives them checkouts of their own.
 
     Returns:
       Each group's steps; every other step alone.
 
     """
-    shared: set[str] = set() if corpus.name in plan.apart else {corpora_steps.TESTS, corpora_steps.TYPES}
+    apart: set[str] = {corpora_steps.TYPES} if corpus.name in plan.apart else set()
+    shared: set[str] = set(corpora_steps.SUITED) - apart
     names: list[str] = steps(corpus, plan)
     alone: list[list[str]] = [[name] for name in names if name not in shared]
     return [*alone, *([[name for name in names if name in shared]] if shared & set(names) else [])]
@@ -560,6 +585,16 @@ def measured(running: _Running, chosen: Sequence[Corpus]) -> dict[str, Steps]:
     return found
 
 
+def _assuring(run: Path, chosen: Sequence[Corpus]) -> None:
+    """Have the suites' type checks run after `--fix` alone too, those a resumed run kept without it again."""
+    os.environ[corpora_steps.ASSURE_VARIABLE] = "1"
+    each: Corpus
+    for each in chosen:
+        kept: Path = _kept(run, each.name, corpora_steps.TYPES)
+        if kept.exists() and not corpora_steps.assured(_read(kept)):
+            kept.unlink()
+
+
 def main(argv: Sequence[str], plan: Plan = SUPER) -> int:
     """Run every step of every corpus (or one step, for `--step`), and record or print the section.
 
@@ -575,6 +610,8 @@ def main(argv: Sequence[str], plan: Plan = SUPER) -> int:
     run: Path = plan.work / f"{__version__}-{marked}"
     if _FRESH_FLAG in argv:
         shutil.rmtree(run, ignore_errors=True)
+    if _ASSURE_FLAG in argv:
+        _assuring(run, chosen)
     resumed: bool = any(run.glob(f"*/*{_KEPT}"))
     run.mkdir(parents=True, exist_ok=True)
     _ = (run / _CHECKERS).write_text(_installed(), encoding="utf-8")

@@ -32,6 +32,7 @@ _FAKE: Final = Path(__file__).with_name("fake_server.py")
 _Found: TypeAlias = dict[Path, tuple[Hints, ...]]
 _Asks: TypeAlias = Callable[[hints.Session, Mapping[Path, str]], _Found]
 _CHECKER: Final = "basedpyright"
+_IMPATIENT: Final = 2.0  # seconds a hang is waited out: a server on a slow machine still starts within it
 _STATUS: Final = 3  # a server's exit status, passed on
 _TY: Final = "ty"
 _WINDOWS: Final = "win32"
@@ -138,7 +139,7 @@ def test_a_failing_server_stops_the_run(
 ) -> None:
     """An error, an exit or no answer at all is an error: silently hinting nothing would mislead."""
     _fake(monkeypatch, behaviour)
-    monkeypatch.setattr(hints, "_TIMEOUT", 0.5)
+    monkeypatch.setattr(hints, "_TIMEOUT", _IMPATIENT)
     with pytest.raises(protocol.HintError, match=message):
         _ = _session_hints(tmp_path, "x = 1  # hint: int\n")
 
@@ -153,7 +154,7 @@ def test_a_file_a_restarted_server_hangs_on_again_has_no_hints(
     the restarted server answers.
     """
     _fake(monkeypatch)
-    monkeypatch.setattr(hints, "_TIMEOUT", 0.5)
+    monkeypatch.setattr(hints, "_TIMEOUT", _IMPATIENT)
     monkeypatch.setenv("FAKE_SERVER_HUNG", str(tmp_path / "hung"))
     hung: Path = tmp_path / "hung.py"
     once: Path = tmp_path / "once.py"
@@ -208,7 +209,7 @@ def test_a_checker_that_hangs_on_too_many_files_stops_the_run(
 ) -> None:
     """A server that hangs on every file, each alone, is broken: the run stops."""
     _fake(monkeypatch, "silent")
-    monkeypatch.setattr(hints, "_TIMEOUT", 0.5)
+    monkeypatch.setattr(hints, "_TIMEOUT", _IMPATIENT)
     monkeypatch.setattr(hints, "_MOST_ABANDONED", 1)
     files: dict[Path, str] = {tmp_path / f"m{n}.py": "x = 1  # hint: int\n" for n in range(2)}
     session: hints.Session
@@ -246,8 +247,16 @@ def test_a_hint_without_edits_says_where_its_classes_are_defined(
 def test_a_server_that_wont_stop_is_killed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """A server ignoring `shutdown` is killed once it's had time to answer."""
     _fake(monkeypatch, "stubborn")
-    monkeypatch.setattr(hints, "_TIMEOUT", 0.5)
+    monkeypatch.setattr(hints, "_TIMEOUT", _IMPATIENT)
     assert _session_hints(tmp_path, "x = 1  # hint: int\n").types == {(1, 1): "int"}
+
+
+def test_a_stopped_server_is_shut_down_quietly(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A server stopped for a restart that failed is still the session's: shutting it down is no error."""
+    _fake(monkeypatch)
+    server: hints.Connection = hints.Connection(hints.command(_CHECKER), tmp_path)
+    server.close(graceful=False)
+    server.close()
 
 
 def test_a_server_that_cant_start_is_an_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -487,7 +496,7 @@ def test_a_file_the_checker_hung_on_is_the_commands_warning(
 ) -> None:
     """A file left without hints is named on standard error; the run goes on, its status the check's."""
     _fake(monkeypatch)
-    monkeypatch.setattr(hints, "_TIMEOUT", 0.5)
+    monkeypatch.setattr(hints, "_TIMEOUT", _IMPATIENT)
     path: Path = tmp_path / "module.py"
     _ = path.write_text("x: int = 1\n# hang\n", encoding="utf-8")
     assert cli.main(["--infer-with", _CHECKER, str(path)]) == cli.EXIT_CLEAN
@@ -814,8 +823,12 @@ def test_a_server_already_gone_is_not_an_error() -> None:
 def test_a_server_reporting_progress_is_waited_for(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """A server that takes longer than the timeout to answer, but reports its progress, isn't hung."""
     _fake(monkeypatch, "slow")
-    monkeypatch.setattr(hints, "_TIMEOUT", 0.3)
-    assert _session_hints(tmp_path, "x = 1  # hint: int\n").types == {(1, 1): "int"}
+    path: Path = tmp_path / "hinted.py"
+    session: hints.Session
+    with hints.Session([_CHECKER], tmp_path) as session:
+        _ = session.hints({path: "x = 1  # hint: int\n"})  # started: starting isn't what's timed
+        monkeypatch.setattr(hints, "_TIMEOUT", 0.5)
+        assert session.hints({path: "x = 2  # hint: str\n"})[path][0].types == {(1, 1): "str"}
 
 
 def test_infer_memory_is_an_option_and_a_setting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -914,7 +927,7 @@ def test_max_fix_fixes_everything_with_every_checker_that_runs(monkeypatch: pyte
 
     monkeypatch.setattr("constricter.cli.options.runs", runs)
     options: Options = Options.parse(["--max-fix", "x.py"])
-    assert (options.mode.name, options.unsafe_fixes, options.infer_with) == ("FIX", True, (_TY,))
+    assert (options.mode.name, options.guesses.name, options.infer_with) == ("FIX", "ALL", (_TY,))
     assert options.checks.all_scopes
     assert Options.parse(["--max-fix", "--infer-with=ty,basedpyright", "x.py"]).infer_with == (
         "ty",

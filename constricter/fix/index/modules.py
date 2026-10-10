@@ -291,20 +291,26 @@ def _guarded(tree: ast.Module, name: str, *, is_package: bool) -> dict[str, Orig
     """Map the names module `name` imports under a top-level `if` or `try` (`if TYPE_CHECKING:`).
 
     Not what it binds at run time (`_names`): a type variable imported only for the checker is a type
-    variable all the same.
+    variable all the same. Not a name two of them bind to different things (one in each branch of an
+    `if`): which it is, another file can't say.
 
     Returns:
       What each refers to.
 
     """
-    return {
-        bound: origin
-        for stmt in tree.body
-        if isinstance(stmt, ast.If | ast.Try | ast.TryStar)
-        for node in ast.walk(stmt)
-        if isinstance(node, ast.Import | ast.ImportFrom)
-        for bound, origin in _imported(node, name, is_package=is_package).items()
-    }
+    found: dict[str, Origin] = {}
+    either: set[str] = set()
+    node: ast.AST
+    bound: str
+    origin: Origin
+    for node in (
+        n for stmt in tree.body if isinstance(stmt, ast.If | ast.Try | ast.TryStar) for n in ast.walk(stmt)
+    ):
+        if isinstance(node, ast.Import | ast.ImportFrom):
+            for bound, origin in _imported(node, name, is_package=is_package).items():
+                if found.setdefault(bound, origin) != origin:
+                    either.add(bound)
+    return {bound: origin for bound, origin in found.items() if bound not in either}
 
 
 def _bound(stmt: ast.stmt) -> Iterator[str]:

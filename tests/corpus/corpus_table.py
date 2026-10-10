@@ -36,13 +36,13 @@ import shutil
 import subprocess  # runs each version under test
 import sys
 import sysconfig
-import textwrap
 import threading
 import time
 import warnings
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
+from functools import partial
 from importlib import metadata
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
@@ -72,7 +72,11 @@ _AT_ONCE: Final = threading.BoundedSemaphore(
     max(1, (os.cpu_count() or 1) // int(os.environ.get("CORPUS_JOBS") or (os.cpu_count() or 1))),
 )
 _GUESSED: Final = "-guessed"  # after a version, names the copy its guesses fix
-_EVERYWHERE: Final = ("--all-scopes", JOBS)
+_LIKELY: Final = "-likely"  # and the one `--likely`'s do
+# What every run of the corpus scripts passes: every scope and its processes; and with those, the
+# level that reports every code, for a fix.
+ALL_SCOPES: Final = ("--all-scopes", JOBS)
+EVERYWHERE: Final = ("--level=suffocate", *ALL_SCOPES)
 _FIXED: Final = re.compile(r"fixed (\d+)")
 _TYPED: Final = re.compile(r"^Total: (\d+)/(\d+) typed", re.MULTILINE)  # `--coverage`'s summary
 _SECTION: Final = "## constricter "
@@ -84,15 +88,19 @@ _WRITE_FLAG: Final = "--write"
 _REPLACE_FLAG: Final = "--replace"
 _LABEL_FLAG: Final = "--label"
 _PROSE_WIDTH: Final = 100  # .prettierrc.yaml's printWidth
+NONE: Final = "-"  # a cell with nothing to say
+_WORD: Final = re.compile(r"(?:`[^`]*`|[^\s`])+")  # what Prettier keeps on one line
 _TYPED_NOTE: Final = (
     "Annotation coverage (`--coverage` with `all-scopes`, counted by this checkout for every version): "
-    "the share of bindings typed as released, after `--fix`, and after `--fix --unsafe-fixes`, and "
-    "how much each raised it: in percentage points, and as a share of the bindings that were untyped:"
+    "the share of bindings typed as released, after `--fix`, after `--fix --likely` and after "
+    "`--fix --unsafe-fixes`, and how much the first and the last raised it: in percentage points, "
+    "and as a share of the bindings that were untyped:"
 )
 _LEVELS_NOTE: Final = (
-    "Errors / warnings at each level, by the version's own rules and defaults; what `--fix` fixed and "
-    "what `--unsafe-fixes` guessed on top (each also as a share of the offences at `suffocate`), files "
-    "a fix broke, and what a second pass would still fix:"
+    "Errors / warnings at each level, by the version's own rules and defaults; what `--fix` fixed, "
+    "what `--likely` guessed on top and what `--unsafe-fixes` did (each also as a share of the "
+    "offences at `suffocate`; the likely guesses are among the guessed), files a fix broke, and what "
+    "a second pass would still fix, with every guess and with the likely ones:"
 )
 _RUNS_HEADER: Final = """# Corpus runs
 
@@ -118,6 +126,14 @@ class Typed(NamedTuple):
     total: int
 
 
+class Likely(NamedTuple):
+    """What `--fix --likely` did to a copy of a corpus (nothing, for a version without the flag)."""
+
+    fixed: int | None = None  # with the certain fixes; `None`: the version has no `--likely`, or crashed
+    left: int = 0  # what a second `--fix --likely` pass would still fix
+    typed: Typed | None = None
+
+
 class Measured(NamedTuple):
     """What one constricter version gave on one corpus."""
 
@@ -133,6 +149,7 @@ class Measured(NamedTuple):
     typed_fixed: Typed | None  # after `--fix`; `None`: it crashed
     typed_guessed: Typed | None  # after `--fix --unsafe-fixes`
     typed: Typed  # as released
+    likely: Likely = Likely()
 
 
 def corpora() -> list[Corpus]:
@@ -252,18 +269,18 @@ def compiles(path: Path) -> bool:
     return True
 
 
-def _fixed_count(output: str) -> int | None:
-    """Read how many offences a `--fix` run fixed, from its summary line.
+def fixed_count(output: str) -> int | None:
+    """Read how many offences a `--fix` run fixed, from its summary: its output's last line.
 
     Returns:
       The count, or `None` if it printed none: it crashed (0.2.2's does on a file that isn't UTF-8).
 
     """
-    found: re.Match[str] | None = _FIXED.search(output)
+    found: re.Match[str] | None = _FIXED.search(output.strip().rsplit("\n", 1)[-1])
     return int(found.group(1)) if found else None
 
 
-def _typed(root: Path) -> Typed:
+def typed_in(root: Path) -> Typed:
     """Count the bindings under `root` that are typed, with this checkout's `--coverage`.
 
     Every version's corpus is counted the same way, whether or not that version has `--coverage`.
@@ -273,7 +290,7 @@ def _typed(root: Path) -> Typed:
 
     """
     found: re.Match[str] | None = _TYPED.search(
-        _run(interpreter(DEV), ["--coverage", *_EVERYWHERE, str(root)]),
+        _run(interpreter(DEV), ["--coverage", *ALL_SCOPES, str(root)]),
     )
     return Typed(int(found.group(1)), int(found.group(2))) if found else Typed(0, 0)
 
@@ -314,7 +331,7 @@ def _checked(python: str, root: Path) -> _Levels:
     levels: dict[Level, tuple[int, int]] = {}
 
     def at(each: Level) -> str:
-        return _run(python, ["--format=json", f"--level={each.name.lower()}", *_EVERYWHERE, str(root)])
+        return _run(python, ["--format=json", f"--level={each.name.lower()}", *ALL_SCOPES, str(root)])
 
     pool: ThreadPoolExecutor
     with ThreadPoolExecutor(len(Level)) as pool:
@@ -327,6 +344,43 @@ def _checked(python: str, root: Path) -> _Levels:
         levels[level] = (errors, len(results) - errors)
         codes = Counter(str(r["code"]) for r in results)  # the last level's is `suffocate`'s
     return codes, levels
+
+
+class Fixed(NamedTuple):
+    """What fixing a copy of a corpus did."""
+
+    fixed: int | None  # `None`: the fix crashed, or the version hasn't its options
+    broken: int  # files that compiled before it and don't after
+    left: int  # what a second pass with the same options would still fix (0 if it wasn't asked)
+    typed: Typed | None  # after it; `None` with no `fixed`
+
+
+def fixed_copy(
+    corpus: Corpus,
+    under: str,
+    options: Sequence[str],
+    run: Callable[[Sequence[str]], str],
+    *,
+    second: bool = True,
+) -> Fixed:
+    """Copy `corpus` under `WORK/<under>` and fix the copy with `--fix` and `options`, everywhere.
+
+    `run` runs a constricter with arguments and gives its standard output; `second`: whether a
+    second pass is asked what it would still fix.
+
+    Returns:
+      What the fix did.
+
+    """
+    root: Path
+    valid: list[Path]
+    root, valid = copied(corpus, under)
+    fixing: list[str] = [*options, *EVERYWHERE, str(root)]
+    fixed: int | None
+    if (fixed := fixed_count(run(["--fix", *fixing]))) is None:
+        return Fixed(None, 0, 0, None)
+    broken: int = sum(not compiles(path) for path in valid)
+    return Fixed(fixed, broken, run(["--diff", *fixing]).count("\n+") if second else 0, typed_in(root))
 
 
 class _Fixing(NamedTuple):
@@ -348,36 +402,38 @@ def _fixes(python: str, corpus: Corpus, version: str) -> _Fixing:
       would still fix, and how much of the copy was typed after each.
 
     """
-    fixing: list[str] = ["--level=suffocate", *_EVERYWHERE]
-
-    def certain() -> tuple[int | None, Typed | None]:
-        root: Path = copied(corpus, version)[0]
-        fixed: int | None = _fixed_count(_run(python, ["--fix", *fixing, str(root)]))
-        return fixed, None if fixed is None else _typed(root)
-
-    def guessed() -> tuple[int | None, int, int, Typed | None]:
-        root: Path
-        valid: list[Path]
-        root, valid = copied(corpus, f"{version}{_GUESSED}")
-        both: int | None = _fixed_count(_run(python, ["--fix", "--unsafe-fixes", *fixing, str(root)]))
-        broken: int = sum(not compiles(path) for path in valid)
-        left: int = _run(python, ["--diff", "--unsafe-fixes", *fixing, str(root)]).count("\n+")
-        return both, broken, left, None if both is None else _typed(root)
-
+    run: Callable[[Sequence[str]], str] = partial(_run, python)
     pool: ThreadPoolExecutor
     with ThreadPoolExecutor(2) as pool:
-        first: Future[tuple[int | None, Typed | None]] = pool.submit(certain)
-        second: Future[tuple[int | None, int, int, Typed | None]] = pool.submit(guessed)
-    fixed: int | None = first.result()[0]
-    both: int | None = second.result()[0]
+        first: Future[Fixed] = pool.submit(fixed_copy, corpus, version, (), run, second=False)
+        second: Future[Fixed] = pool.submit(
+            fixed_copy,
+            corpus,
+            f"{version}{_GUESSED}",
+            ("--unsafe-fixes",),
+            run,
+        )
+    certain: Fixed = first.result()
+    both: Fixed = second.result()
     return _Fixing(
-        fixed,
-        None if fixed is None or both is None else both - fixed,
-        second.result()[1],
-        second.result()[2],
-        first.result()[1],
-        second.result()[3],
+        certain.fixed,
+        None if certain.fixed is None or both.fixed is None else both.fixed - certain.fixed,
+        both.broken,
+        both.left,
+        certain.typed,
+        both.typed,
     )
+
+
+def _likely(python: str, corpus: Corpus, version: str) -> Likely:
+    """Fix a copy of `corpus` with `--fix --likely`.
+
+    Returns:
+      What that did.
+
+    """
+    found: Fixed = fixed_copy(corpus, f"{version}{_LIKELY}", ("--likely",), partial(_run, python))
+    return Likely(found.fixed, found.left, found.typed)
 
 
 def coverage(python: str, corpus: Corpus, version: str) -> tuple[Typed, Typed | None, Typed | None]:
@@ -391,7 +447,7 @@ def coverage(python: str, corpus: Corpus, version: str) -> tuple[Typed, Typed | 
 
     """
     fixes: _Fixing = _fixes(python, corpus, version)
-    return _typed(corpus.root), fixes.typed_fixed, fixes.typed_guessed
+    return typed_in(corpus.root), fixes.typed_fixed, fixes.typed_guessed
 
 
 def measure(corpus: Corpus, version: str, name: str = __version__) -> Measured:
@@ -405,16 +461,46 @@ def measure(corpus: Corpus, version: str, name: str = __version__) -> Measured:
     python: str = interpreter(version)
     files: int = sum(1 for _ in paths.python_files([corpus.root]))
     pool: ThreadPoolExecutor
-    with ThreadPoolExecutor(3) as pool:
+    with ThreadPoolExecutor(4) as pool:
         checking: Future[_Levels] = pool.submit(_checked, python, corpus.root)
         fixing: Future[_Fixing] = pool.submit(_fixes, python, corpus, version)
-        typing: Future[Typed] = pool.submit(_typed, corpus.root)
+        typing: Future[Typed] = pool.submit(typed_in, corpus.root)
+        likely: Future[Likely] = pool.submit(_likely, python, corpus, version)
     seconds: float = time.perf_counter() - start
     _ = sys.stderr.write(f"{version} on {corpus.name}: {files} files in {seconds:.1f}s\n")
     codes: Counter[str]
     levels: dict[Level, tuple[int, int]]
     codes, levels = checking.result()
-    return Measured(corpus, label(version, name), files, codes, levels, *fixing.result(), typing.result())
+    return Measured(
+        corpus,
+        label(version, name),
+        files,
+        codes,
+        levels,
+        *fixing.result(),
+        typing.result(),
+        likely.result(),
+    )
+
+
+def filled(text: str, indent: str = "") -> list[str]:
+    """Fill a paragraph as Prettier does, so CI's `prettier --check` passes on what this writes.
+
+    To `_PROSE_WIDTH` columns, broken at any space but one in a code span (`--fix --likely` stays on
+    one line), the lines after the first under `indent`.
+
+    Returns:
+      Its lines.
+
+    """
+    lines: list[str] = []
+    word: str
+    for word in cast("list[str]", _WORD.findall(text)):
+        if lines and len(lines[-1]) + 1 + len(word) <= _PROSE_WIDTH:
+            lines[-1] = f"{lines[-1]} {word}"
+        else:
+            lines.append(f"{indent}{word}" if lines else word)
+    return lines
 
 
 def table(rows: Sequence[Sequence[object]], right: int) -> list[str]:
@@ -526,12 +612,22 @@ def _level_rows(rows: Sequence[Measured]) -> list[list[str]]:
                 for level in levels
             ),
             _share(_sum(one.fixed for one in m), offences),
+            _share(_sum(_more(one) for one in m), offences) if _has_likely(m) else NONE,
             _share(_sum(one.guessed for one in m), offences),
             _number(sum(one.broken for one in m)),
             _number(sum(one.left for one in m)),
+            _number(sum(one.likely.left for one in m)) if _has_likely(m) else NONE,
         ]
 
     return [*(row(m.corpus.name, [m]) for m in rows), row("**Total**", rows)]
+
+
+def _has_likely(rows: Sequence[Measured]) -> bool:  # whether every row's version has `--likely`
+    return all(one.likely.fixed is not None and one.fixed is not None for one in rows)
+
+
+def _more(m: Measured) -> int | None:  # the guesses `--likely` applied: its fixes beyond the certain ones
+    return None if m.likely.fixed is None or m.fixed is None else m.likely.fixed - m.fixed
 
 
 def _percent(typed: Typed | None) -> str:
@@ -590,6 +686,7 @@ def _typed_rows(rows: Sequence[Measured]) -> list[list[str]]:
             m[0].version,
             _percent(before),
             _percent(fixed),
+            _percent(_added(one.likely.typed for one in m)) if _has_likely(m) else NONE,
             _percent(guessed),
             _raised(before, fixed),
             _raised(before, guessed),
@@ -626,9 +723,11 @@ def tables(measured: Sequence[Measured]) -> str:
                 "constricter",
                 *(f"`{level.name.lower()}`" for level in Level),
                 "Fixed",
+                "Likely",
                 "Guessed",
                 "Broken",
                 "Left",
+                "Left, likely",
             ],
             *(row for rows in versions for row in _level_rows(rows)),
         ],
@@ -641,6 +740,7 @@ def tables(measured: Sequence[Measured]) -> str:
                 "constricter",
                 "Typed as released",
                 "After `--fix`",
+                "After `--likely`",
                 "After `--unsafe-fixes`",
                 "Raised by `--fix`",
                 "Raised with guesses",
@@ -651,27 +751,19 @@ def tables(measured: Sequence[Measured]) -> str:
     )
     python: str = sys.version.split()[0]
     # Filled to 100 columns, as Prettier fills a paragraph, so CI's `prettier --check` passes.
-    codes_note: str = textwrap.fill(
-        " ".join(
-            [
-                f"Offences per code at `suffocate`, with `all-scopes` (Python {python});",
-                "the total row gives each code's share of them:",
-            ],
-        ),
-        width=_PROSE_WIDTH,
-    )
-    levels_note: str = textwrap.fill(_LEVELS_NOTE, width=_PROSE_WIDTH)
+    counted: str = f"Offences per code at `suffocate`, with `all-scopes` (Python {python});"
+    codes_note: list[str] = filled(f"{counted} the total row gives each code's share of them:")
     return "\n".join(
         [
-            codes_note,
+            *codes_note,
             "",
             *first,
             "",
-            levels_note,
+            *filled(_LEVELS_NOTE),
             "",
             *second,
             "",
-            textwrap.fill(_TYPED_NOTE, width=_PROSE_WIDTH),
+            *filled(_TYPED_NOTE),
             "",
             *third,
         ],

@@ -19,7 +19,7 @@ from constricter.fix.libraries import overloads, stdlib
 from constricter.fix.libraries.library import library_awaited
 from constricter.fix.values.returns import METHOD_RETURNS, element_method, uniform_method
 from constricter.fix.values.targets import sole
-from constricter.rules.annotations import dotted, node_name, roots
+from constricter.rules.annotations import dotted, node_name, roots, vague_fits
 from constricter.rules.keys import key, optional
 from constricter.rules.quoted import unqualified
 
@@ -53,6 +53,17 @@ def parsed(annotation: str) -> ast.expr:
 
     """
     return ast.parse(annotation, mode="eval").body
+
+
+@lru_cache(maxsize=4096)  # a module's fixes are a few types, each asked again and again
+def fits(annotation: str, level: int) -> bool:
+    """Check that a type, as text, is no vaguer than `level` allows (see `vague_fits`).
+
+    Returns:
+      Whether it is.
+
+    """
+    return vague_fits(parsed(annotation), level)
 
 
 def class_of(receiver: str) -> str | None:

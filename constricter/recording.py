@@ -57,6 +57,7 @@ _MEMBERS: Final = 3  # how many types a container's elements may have
 _LENGTH: Final = 4  # the longest tuple spelled part by part
 _IDLE: Final = 20  # how many times with nothing new end a statement's recording, or a function's
 _INSTALLED: Final = "site-packages"
+_MODULE: Final = "<module>"  # the name of a module body's code
 # A function that returns to its caller more than once, each a `return` to `sys.settrace`: `inspect`'s
 # `CO_GENERATOR`, `CO_COROUTINE`, `CO_ITERABLE_COROUTINE` and `CO_ASYNC_GENERATOR`.
 _SUSPENDS: Final = 0x20 | 0x80 | 0x100 | 0x200
@@ -441,6 +442,8 @@ class Recorder:
         code: CodeType = frame.f_code
         if id(code) not in self.functions:
             self.codes[id(code)] = code
+            if code.co_name == _MODULE:
+                _ = self._file(code.co_filename)  # read as it's imported: its functions' calls needn't
             file: _File | None = None if code.co_name.startswith("<") else self._file(code.co_filename)
             lines: dict[int, _Statement] = {} if file is None else file.plans.get(code.co_firstlineno, {})
             self.functions[id(code)] = _Function(file, lines) if file is not None and lines else None
@@ -454,14 +457,23 @@ class Recorder:
 
         Returns:
           It, or `None` for a file elsewhere than under the root, installed there (`site-packages`),
-          or that can't be read or parsed.
+          or that can't be read or parsed; or that can't be read now, and is asked for again: the
+          program may forbid reading a file where this is called (blockbuster, in an event loop),
+          and what it raises then mustn't reach it.
 
         """
         if filename not in self.files:
-            path: Path = Path(filename).resolve()
-            under: Path | None = path.relative_to(self.root) if path.is_relative_to(self.root) else None
-            self.files[filename] = None if under is None or _INSTALLED in under.parts else _read(path, under)
+            try:
+                self.files[filename] = self._under(filename)
+            except Exception:  # ruff: ignore[blind-except]  # pylint: disable=broad-exception-caught
+                return None
         return self.files[filename]
+
+    def _under(self, filename: str) -> _File | None:
+        # `_file`, read from disk: whatever the program raises of that.
+        path: Path = Path(filename).resolve()
+        under: Path | None = path.relative_to(self.root) if path.is_relative_to(self.root) else None
+        return None if under is None or _INSTALLED in under.parts else _read(path, under)
 
     def found(self) -> Found:
         """Gather what was recorded, as the file holds it.

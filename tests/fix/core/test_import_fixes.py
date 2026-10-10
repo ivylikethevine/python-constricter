@@ -21,6 +21,7 @@ _Sources: TypeAlias = dict[str, list[str]]
 _DEFAULT: Final = Checks()
 _FINAL: Final = Checks(final=True)
 _Cell: TypeAlias = dict[str, str | list[str] | dict[str, str]]
+_UNQUOTED: Final = '    found: re.Match[str] | None = re.match("x", text)'
 
 
 def _fixed(source: str, checks: Checks = _DEFAULT, *, unsafe: bool = False) -> str:
@@ -107,15 +108,100 @@ def test_a_plan_spells_a_class_as_the_module_can(
 
 def test_a_type_of_a_module_only_a_function_imports_is_imported_for_type_checking() -> None:
     """A module only a function imports may not be there when the module is imported: no import that runs."""
-    plan: ImportPlan = _plan("import io\n\ndef f():\n  import pwd\n  import io\n  from sys import path\n")
-    assert plan.checking.lazy == {"pwd", "sys"}
-    assert [plan.spell("pwd.struct_passwd"), plan.spell("io.BytesIO")] == ["struct_passwd", "io.BytesIO"]
+    plan: ImportPlan = _plan("import io\n\ndef f():\n  import decimal\n  import io\n  from sys import path\n")
+    assert plan.checking.lazy == {"decimal", "sys"}
+    assert [plan.spell("decimal.Decimal"), plan.spell("io.BytesIO")] == ["Decimal", "io.BytesIO"]
     assert not plan.added
     assert {name: guarded.statement for name, guarded in plan.guarded.items()} == {
-        "struct_passwd": "from pwd import struct_passwd",
+        "Decimal": "from decimal import Decimal",
     }
-    taken: ImportPlan = _plan("struct_passwd = 1\n\ndef f():\n  import pwd\n")
-    assert taken.spell("pwd.struct_passwd") is None
+    taken: ImportPlan = _plan("Decimal = 1\n\ndef f():\n  import decimal\n")
+    assert taken.spell("decimal.Decimal") is None
+
+
+def test_a_type_of_another_platforms_module_is_not_imported() -> None:
+    """A checker on a platform without the module finds no such class in it: no fix names one."""
+    plan: ImportPlan = _plan("def f():\n  import winreg\n  import pwd\n")
+    assert [plan.spell("winreg.HKEYType"), plan.spell("pwd.struct_passwd")] == [None, None]
+    assert not plan.added
+    assert not plan.guarded
+    unfixed: str = "def f():\n    import pwd\n    entry = pwd.getpwuid(0)\n"
+    assert _twice(unfixed) == unfixed
+
+
+def test_the_guard_of_a_new_block_is_imported_to_run() -> None:
+    """`TYPE_CHECKING` is read as the module is imported: imported there, whatever only a function imports."""
+    plan: ImportPlan = _plan("def f():\n  import typing\n")
+    assert plan.type_checking() in plan.added
+    assert plan.added == {"TYPE_CHECKING": "from typing import TYPE_CHECKING"}
+    assert not plan.guarded
+    source: str = """
+        def f():
+            import decimal
+            import typing
+            entry = decimal.Decimal(1)
+            return entry, typing
+    """
+    assert _twice(source).splitlines()[:4] == [
+        "from typing import TYPE_CHECKING",
+        "if TYPE_CHECKING:",
+        "    from decimal import Decimal",
+        "def f():",
+    ]
+
+
+def test_a_class_of_a_class_body_is_written_in_no_function() -> None:
+    """Its bare name is the class body's alone: what's read of it is typed, a name bound to it isn't."""
+    source: str = """
+        class Group:
+            class _Names:
+                prompts: set[str]
+
+            _sessions: dict[str, _Names]
+
+            def drop(self, key: str) -> None:
+                names = self._sessions.pop(key)
+                for name in names.prompts:
+                    print(name)
+    """
+    assert imports.nested_classes(ast.parse(textwrap.dedent(source))) == {"_Names"}
+    fixed: list[str] = _twice(source).splitlines()
+    assert fixed[-4:-2] == ["        names = self._sessions.pop(key)", "        name: str"]
+    both: str = "class _Names: ...\n" + textwrap.dedent(source)  # the module's too: a name any scope has
+    assert _twice(both).splitlines()[-4:-2] == ["        names: _Names = self._sessions.pop(key)", fixed[-3]]
+
+
+@pytest.mark.parametrize(
+    ("oldest", "table", "found", "count"),
+    [
+        ((3, 8), '"dict[str, str]"', '"re.Match[str] | None"', "int"),
+        ((3, 9), "dict[str, str]", '"re.Match[str] | None"', "int"),
+        ((3, 10), "dict[str, str]", "re.Match[str] | None", "int"),
+        (None, "dict[str, str]", "re.Match[str] | None", "int"),
+    ],
+)
+def test_a_type_the_oldest_python_does_not_read_is_quoted(
+    oldest: tuple[int, int] | None,
+    table: str,
+    found: str,
+    count: str,
+) -> None:
+    """A union by `|` is quoted before 3.10, a subscript before 3.9, in a function too; none postponed is."""
+    source: str = """
+        import re
+        TABLE = {"a": "b"}
+        def f(text: str):
+            found = re.match("x", text)
+            count = 1
+            return found, count
+    """
+    checks: Checks = Checks(all_scopes=True, min_python=oldest)
+    fixed: list[str] = _twice(source, checks).splitlines()
+    assert fixed[1] == f'TABLE: {table} = {{"a": "b"}}'
+    assert fixed[3:5] == [f'    found: {found} = re.match("x", text)', f"    count: {count} = 1"]
+    late: str = f"from __future__ import annotations\n{textwrap.dedent(source).lstrip()}"
+    postponed: list[str] = _twice(late, checks).splitlines()
+    assert postponed[2:5:2] == [fixed[1].replace('"dict[str, str]"', "dict[str, str]"), _UNQUOTED]
 
 
 def test_a_plan_spells_a_class_by_the_import_it_guards() -> None:

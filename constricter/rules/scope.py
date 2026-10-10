@@ -4,10 +4,9 @@
 import ast
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from functools import lru_cache
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix.core.imports import guarded_imports, imports_of
+from constricter.fix.core.imports import guarded_imports, imports_of, unwritable
 from constricter.fix.core.known import Hints, ImportPlan, Inference, Known, Passed, Typed
 from constricter.fix.libraries import stdlib
 from constricter.fix.libraries.library import chains
@@ -28,7 +27,7 @@ from constricter.fix.values.doubts import (
 )
 from constricter.fix.values.guesses import guessed, guessing
 from constricter.fix.values.inference import inference, inferred
-from constricter.fix.values.members import parsed
+from constricter.fix.values.members import fits, parsed
 from constricter.fix.values.narrowed import narrowed_at, read_narrowed
 from constricter.offences import (
     LONG_TUPLE,
@@ -56,7 +55,8 @@ from constricter.rules.annotations import (
     vague_fits,
 )
 from constricter.rules.flow import Finding, Hierarchy, Lifetime, findings, members
-from constricter.rules.quoted import quote, written
+from constricter.rules.quoted import newer, quote, unqualified
+from constricter.rules.quoted import parsed as unquoted
 from constricter.rules.rebinding import REBOUND
 from constricter.rules.syntax import FunctionDef, Start
 
@@ -67,7 +67,6 @@ _STATICMETHOD: Final = "staticmethod"
 FINAL_KIND: Final = "final"  # the fix kind of LVA012's `Final`
 _TYPING_FINAL: Final = "typing.Final"
 _LITERAL_DOUBT: Final = frozenset({"literal"})  # a constant's literal, which `doubts` makes a guess
-_TYPE_CHECKING: Final = "typing.TYPE_CHECKING"
 _READS: Final = (ast.Name, ast.Attribute, ast.Subscript)  # a read of a value a type checker may narrow
 
 
@@ -185,12 +184,16 @@ class Inferred:
         """
         return members(self.unions.get(annotation, annotation)) or frozenset()
 
-    def declare(self, name: str, annotation: ast.expr) -> None:
-        """Record the type `name` is annotated with: its own from here on, or an alias's declaration."""
+    def declare(self, name: str, annotation: ast.expr, held: str | None = None) -> None:
+        """Record the type `name` is annotated with: its own from here on, or an alias's declaration.
+
+        A `Final[T]`'s or a `ClassVar[T]`'s is `T`, and a bare one's its value's (`held`, if known).
+        """
+        text: str | None = unqualified(unquoted(annotation)) or held
         if aliased.declares(annotation):
             self.aliases.add(name)
-        else:
-            _ = self.types.setdefault(name, written(annotation))
+        elif text:
+            _ = self.types.setdefault(name, text)
 
     def learn(
         self,
@@ -353,7 +356,7 @@ class Scope:
         )
         fix, unsafe, origins = self.valued(value, target.lineno, constant=constant)
         if fix is not None and constant and origins == _LITERAL_DOUBT:
-            fix = self._constant(fix)
+            fix = self._constant(name, fix)
         # Value flow's type is `--fix`'s own, if certain: worked out once, here, for both.
         certain: str | None = certain_type(self, value, (None if fix is None else fix.annotation, unsafe))
         if self.kind.owner is not None:
@@ -546,12 +549,12 @@ class Scope:
             for read in (*fix.reads, *held)
         )
 
-    def _constant(self, fix: Inference) -> Inference | None:
+    def _constant(self, name: str, fix: Inference) -> Inference | None:
         """Declare an ALL_CAPS constant passed to a call `Final`, which keeps its literal's `Literal` type.
 
         `str` would widen it, where a parameter may take only some values (see `doubts`). A guess
         still (a name bound again is left alone, see `rebinds`), and only where the module can name
-        `Final`.
+        `Final`. What's read of `name` has its literal's type, `fix`'s.
 
         Returns:
           The `Final` inference, or `None`.
@@ -559,6 +562,7 @@ class Scope:
         """
         plan: ImportPlan | None = self.settings.known.names.plan
         spelled: str | None = None if plan is None else plan.spell(_TYPING_FINAL)
+        self.inferred.learn(name, fix.annotation, _LITERAL_DOUBT)
         return (
             None
             if spelled is None
@@ -705,9 +709,11 @@ class Scope:
             return None
         certain: bool = not unsafe or policy.trusts(origins)
         plan: ImportPlan = self.settings.known.names.plan or ImportPlan({}, frozenset(), 0)
+        if unwritable(fix.annotation, plan, self.settings.facts.nested):
+            return None
         guarded: tuple[str, ...] = guarded_imports(fix.annotation, plan)
         guard: str | None = ""
-        if guarded and plan.checking.block == (0, 0) and (guard := plan.spell(_TYPE_CHECKING)) is None:
+        if guarded and plan.checking.block == (0, 0) and (guard := plan.type_checking()) is None:
             return None  # nothing can be `TYPE_CHECKING` to import them under
         return Fix(
             fix.annotation,
@@ -762,7 +768,7 @@ class Scope:
           Whether it is.
 
         """
-        return _fits(fix.annotation, self.settings.checks.vague)
+        return fits(fix.annotation, self.settings.checks.vague)
 
     def _first(
         self,
@@ -832,7 +838,9 @@ class Scope:
         One whose type names what the module imports for type checking alone (under an `if` on a
         flag), or binds only further down (both unbound then, as a quoted annotation's or a
         `# type:` comment's names may be), or subscripts a
-        standard-library class that can't be at run time (`itertools.count[int]`).
+        standard-library class that can't be at run time (`itertools.count[int]`). And any scope's
+        written as the project's oldest Python (`min-python`) doesn't read a type: `int | None`
+        before 3.10, `list[int]` before 3.9.
 
         Returns:
           The offence, its fix quoted if it must be.
@@ -840,7 +848,11 @@ class Scope:
         """
         plan: ImportPlan | None = self.settings.known.names.plan
         fix: Fix | None = offence.edit
-        if fix is None or plan is None or plan.postponed or self.kind.function is not None:
+        if fix is None or plan is None or plan.postponed:
+            return offence
+        if newer(fix.annotation, self.settings.checks.min_python):
+            return replace(offence, edit=fix._replace(annotation=quote(fix.annotation)))
+        if self.kind.function is not None:
             return offence
         line: int = fix.span[0] if fix.edit is Edit.DECLARE else offence.line
         names: frozenset[str] = roots(fix.annotation)
@@ -907,17 +919,6 @@ class Scope:
         return (
             None if type_comment is not None and self.settings.checks.type_comments else self.kind.unannotated
         )
-
-
-@lru_cache(maxsize=4096)  # a module's fixes are a few types, each asked again and again
-def _fits(annotation: str, level: int) -> bool:
-    """Check that a type, as text, is no vaguer than `level` allows (see `vague_fits`).
-
-    Returns:
-      Whether it is.
-
-    """
-    return vague_fits(parsed(annotation), level)
 
 
 def guesses_in(scope: Scope, values: Iterable[ast.expr]) -> tuple[bool, frozenset[str]]:

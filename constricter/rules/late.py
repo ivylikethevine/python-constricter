@@ -350,9 +350,10 @@ def unchecked(scope: Scope, tree: ast.Module) -> None:
     """Drop each guess that makes an error of what its function does with the name (see `misused`).
 
     By an unannotated function's `return`s or a hint, which a checker held to nothing: a union,
-    bound once, of which an attribute or an item is taken where no test narrows it; and a class of
-    the module's of which an attribute it hasn't is taken. A certain fix too: a guess is one once
-    a first pass has declared what it rested on.
+    bound once, of which an attribute or an item is taken where no test narrows it; a class of
+    the module's of which an attribute it hasn't is taken; and a name compared, formatted or stored
+    as its type doesn't allow. A certain fix too: a guess is one once a first pass has declared
+    what it rested on.
     """
     function: FunctionDef | None
     if (function := scope.kind.function) is None:
@@ -366,8 +367,14 @@ def unchecked(scope: Scope, tree: ast.Module) -> None:
         lifetime: Lifetime | None = scope.flow.get(o.name)
         union: frozenset[str] = members(fix.annotation) or frozenset()
         once: bool = lifetime is not None and len(lifetime.bindings) == 1
-        if misused.lacks(tree, function, o.name, fix.annotation) or (
-            once and len(union) > 1 and misused.unnarrowed(function, o.name, scope.settings.facts.narrowed)
+        if (
+            misused.lacks(tree, function, o.name, fix.annotation)
+            or misused.misused(function, o.name, fix.annotation)
+            or (
+                once
+                and len(union) > 1
+                and misused.unnarrowed(function, o.name, scope.settings.facts.narrowed)
+            )
         ):
             scope.offences[index] = replace(o, edit=None)
 
