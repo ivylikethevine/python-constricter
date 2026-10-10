@@ -49,9 +49,8 @@ fix of the 42,073 it read, 14 likely guesses of 27,820 (0.05 in each 100) and 8 
 
 ## The likely sets
 
-22 sets, 33,998 of the 45,922 guesses (74.0%): each passes the three bars. Checked: the guesses in
-a package with a type checker; blamed: those of them an error was traced to. Told and held: as
-above.
+22 sets, 33,998 of the 45,922 guesses (74.0%): each passes the three bars. Checked: the guesses in a
+package with a type checker; blamed: those of them an error was traced to. Told and held: as above.
 
 | Mechanisms                           | Guesses | Packages | Checked | Blamed |   Told |   Held |  Share |
 | ------------------------------------ | ------: | -------: | ------: | -----: | -----: | -----: | -----: |
@@ -78,11 +77,11 @@ above.
 | `container+copy+loop`                |      45 |        7 |      32 |      0 |     35 |     34 |  97.1% |
 | `call+constructor+container+copy`    |      20 |        1 |      20 |      0 |     20 |     20 | 100.0% |
 
-`constructor` (a call taken to construct its class) is 62% of all guesses. Its 14 blamed are
-mypy's own, typed by `lxml`'s classes, which its checker's environment doesn't follow. Of the 33
-that differed, 21 are a class the trace couldn't name (one a function or a test defines again at
-each call), 9 a pandas scalar whose constructor gave `NaT` (`Timestamp("NaT")`), and 3 a class of
-the same name as the value's.
+`constructor` (a call taken to construct its class) is 62% of all guesses. Its 14 blamed are mypy's
+own, typed by `lxml`'s classes, which its checker's environment doesn't follow. Of the 33 that
+differed, 21 are a class the trace couldn't name (one a function or a test defines again at each
+call), 9 a pandas scalar whose constructor gave `NaT` (`Timestamp("NaT")`), and 3 a class of the
+same name as the value's.
 
 ## Passing the bars, not in `LIKELY` yet
 
