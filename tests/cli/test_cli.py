@@ -199,6 +199,7 @@ def test_json_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
             "unsafe": False,
             "likely": False,
             "kinds": ["literal"],
+            "imports": [],
         },
     }
     assert [(r["code"], r["severity"]) for r in results] == [

@@ -6,6 +6,35 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A corpora run's section keeps a code span on one line, as Prettier does: a note broken inside
+  `python -m constricter.trace` failed CI's `prettier --check` on RUNS.md.
+- The corpora runs hold each fix to what its package's tests bound: the traced step's tests run
+  under a witness told every fix of `--fix --unsafe-fixes`
+  (`tests/corpus/witness/constricter_witness.py`), which evaluates a fix's annotation where its
+  statement is and asks whether the value is an instance of it, as the statement ends. RUNS.md's
+  fixes by tier give those a test could tell of, those that held and those that differed, where they
+  gave a match of class names that a subclass or an alias failed (61% of pydantic's certain fixes
+  fit by it; 99.0% hold). `--format=json`'s `fix` object has `imports`, the statements a fix adds,
+  which the witness runs to name what the annotation does.
+- The corpus scripts share what they each had a copy of: the flags every run passes
+  (`corpus_table.EVERYWHERE`), the reading of a fix's count and of the typed share, one function
+  that fixes a copy of a corpus (`corpus_table.fixed_copy`: certain, likely, guessed and with a
+  checker's hints) and one that fixes a suite and runs its tests.
+- `python -m constricter.trace` no longer fails the tests it traces where they forbid a blocking
+  call in an event loop (blockbuster): the first call of a file's function read the file there, and
+  what that raised reached the test (413 of mcp's tests failed traced). A file is read as its module
+  runs, and one that can't be read where it's asked for is asked for again at its next function.
+- A corpora run's kept steps are of the corpus scripts too: a changed script starts a new run, where
+  it read the steps another version of it kept.
+- CI's Lint job warns of each module past 900 lines, and never fails by it: pylint fails one past
+  1,000, and a split is easier before that. `tests/ci_local.py` lists the warnings after its report.
+- The corpora runs keep and show more. Each suite's fixed run keeps every fix it made, with its
+  tier, and its traced step what each binding held as the tests ran: RUNS.md has each package's
+  fixes by tier, with those a traced test reached and those every type seen fits
+  (`tests/corpus/corpus_guesses.py`), which `scratch/guess_census.py` reads where it fixed every
+  checkout again. `mega_corpora.py` traces its suites' tests too, as `super_corpora.py` does. The
+  table has `--fix --likely`'s guesses, the typed share after it and what a second pass of it still
+  fixes. And each suite's type checkers' versions are recorded beside their errors.
 - A call isn't taken to construct a generic class an installed package re-exports for type checking
   alone (`from pydantic import TypeAdapter`, which `pydantic/__init__.py` imports under
   `if TYPE_CHECKING:` and on demand): `adapter: TypeAdapter` was written, bare, where the class's
@@ -22,11 +51,11 @@ Notable changes, newest first. Each release's full notes are generated from its 
   suites named.
 - `--likely`, with `--fix` or `--diff`: applies the guesses measured to hold as often as a certain
   fix does, and no other. A guess is likely by its mechanisms, the whole set of them:
-  [LIKELY.md](LIKELY.md) lists the 22 sets, 74% of the guesses on 42 packages, each reached by its
-  package's traced tests 20 times or more, fitting what they saw more than 88% of the time (certain
-  fixes fit 88.4%, by name), and blamed by a type checker for under one guess in a thousand.
-  `--show-fixes` names the flag a guess needs, `--format=json` gives each fix a `likely`, and
-  `--fix`'s summary counts them. `--fix --likely --unsafe-fixes` is `--fix --unsafe-fixes`.
+  [LIKELY.md](LIKELY.md) lists the sets, 74% of the guesses on 42 packages, and the bars a set
+  passes: 20 of its guesses or more told of by their packages' traced tests, more than 95% of those
+  holding, and under one guess in a thousand blamed by a type checker. `--show-fixes` names the flag
+  a guess needs, `--format=json` gives each fix a `likely`, and `--fix`'s summary counts them.
+  `--fix --likely --unsafe-fixes` is `--fix --unsafe-fixes`.
 - `--fix` imports `TYPE_CHECKING` to run where only a function of the module imports `typing`: a new
   `if TYPE_CHECKING:` block was written with no import of its name, and the module raised
   `NameError` when imported. SQLAlchemy's `testing/requirements.py` with `fix-widen`, whose `Any` is

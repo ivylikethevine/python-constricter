@@ -10,9 +10,7 @@ import sys
 
 from tests.corpus import corpus_suite
 
-corpus_suite.MODES = (
-    ("--fix --unsafe-fixes --fix-widen=all", ("--unsafe-fixes", "--fix-widen=all")),
-)
+corpus_suite.MODES = (("--fix --unsafe-fixes --fix-widen=all", ("--unsafe-fixes", "--fix-widen=all")),)
 
 if __name__ == "__main__":
     sys.exit(corpus_suite.main(sys.argv[1:]))

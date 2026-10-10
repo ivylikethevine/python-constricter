@@ -13,6 +13,7 @@ from constricter.cli.report import Result
 from constricter.cli.runs import CheckRun, merged
 from constricter.offences import Level, Offence
 
+_LITERAL: Final = {"kinds": ["literal"], "imports": list[str]()}  # a literal's fix: no import
 # One JSON result, and its `fix` object.
 _Fix: TypeAlias = dict[str, str | bool | list[str]]
 _Entry: TypeAlias = dict[str, str | int | _Fix | None]
@@ -92,7 +93,7 @@ def test_json_carries_each_fix_and_its_reason(tmp_path: Path, capsys: pytest.Cap
     assert cli.main(["--format=json", str(path)]) == cli.EXIT_FOUND
     report: list[_Entry] = cast("list[_Entry]", json.loads(capsys.readouterr().out))
     assert [entry["fix"] for entry in report] == [
-        {"annotation": "int", "reason": "a literal", "unsafe": False, "likely": False, "kinds": ["literal"]},
+        {"annotation": "int", "reason": "a literal", "unsafe": False, "likely": False, **_LITERAL},
         None,
     ]
 

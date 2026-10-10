@@ -26,7 +26,8 @@ uv pip install --python local/.venv --no-deps --no-build-isolation -e .
 
 Checks (as CI runs them), on `constricter stdlib_tables tests hatch_build.py` where they take paths:
 `ruff check .` (every rule, preview included), `ruff format --check .`, `basedpyright` (all), `mypy`
-(strict), `pylint` (every extension), `flake8`, `typos`, `validate-pyproject pyproject.toml`,
+(strict), `pylint` (every extension, and again for a warning on each module past 900 lines, 100
+short of the limit it fails one at), `flake8`, `typos`, `validate-pyproject pyproject.toml`,
 `lint-imports` (the layers `pyproject.toml` states), `uv lock --check`,
 `constricter --level=suffocate --all-scopes`,
 `constricter --coverage --all-scopes --fail-under=100`, `pytest --cov` (100% branch coverage; with

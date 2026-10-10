@@ -190,10 +190,10 @@ for, and the commonest shapes of the values with no fix:
 
 Each package's own tests and type checks, as released and after fixing its source
 (`corpus_suite.py`): the tests' outcome, and the type errors a fixed run has that the released one
-hasn't, by the mechanisms of the fixes they're traced to; then each package's tests traced (`python
--m constricter.trace`) and its source fixed with `--fix --unsafe-fixes --infer-from` their trace:
-the fixes resting on it, and the new type errors after, or the tests' outcome where the package has
-no checks:
+hasn't, by the mechanisms of the fixes they're traced to; then each package's tests traced
+(`python -m constricter.trace`) and its source fixed with `--fix --unsafe-fixes --infer-from` their
+trace: the fixes resting on it, and the new type errors after, or the tests' outcome where the
+package has no checks:
 
 | Package    | Tag        | Released                                                   | After `--fix`                                                          | After `--fix --unsafe-fixes`                                           |
 | ---------- | ---------- | ---------------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------- |
@@ -509,10 +509,10 @@ for, and the commonest shapes of the values with no fix:
 
 Each package's own tests and type checks, as released and after fixing its source
 (`corpus_suite.py`): the tests' outcome, and the type errors a fixed run has that the released one
-hasn't, by the mechanisms of the fixes they're traced to; then each package's tests traced (`python
--m constricter.trace`) and its source fixed with `--fix --unsafe-fixes --infer-from` their trace:
-the fixes resting on it, and the new type errors after, or the tests' outcome where the package has
-no checks:
+hasn't, by the mechanisms of the fixes they're traced to; then each package's tests traced
+(`python -m constricter.trace`) and its source fixed with `--fix --unsafe-fixes --infer-from` their
+trace: the fixes resting on it, and the new type errors after, or the tests' outcome where the
+package has no checks:
 
 | Package            | Tag          | Released                                                                                        | After `--fix`                                                                                      | After `--fix --unsafe-fixes`                                                                       |
 | ------------------ | ------------ | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |

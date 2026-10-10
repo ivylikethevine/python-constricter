@@ -20,7 +20,7 @@ def main(name: str) -> int:
     suite = corpus_suite.SUITES[name]
     root = corpus_suite.checkout(name, suite)
     corpus_suite.reset(root, suite)
-    change = corpus_suite.fixed(root, suite, "--unsafe-fixes", "--fix-widen=all")
+    change = corpus_suite.fixed_and_listed(root, suite, "--unsafe-fixes", "--fix-widen=all")[1]
     diff = subprocess.run(["git", "diff"], cwd=root, capture_output=True, text=True, check=False).stdout
     (OUT / f"{name}-suite.diff").write_text(diff, encoding="utf-8")
     outcome = corpus_suite.tested(root, suite, OUT / f"{name}-widened.txt")

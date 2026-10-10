@@ -218,6 +218,7 @@ def _json(results: Sequence[Result]) -> Iterator[str]:
                     "unsafe": r.offence.unsafe,
                     "likely": r.offence.likely,
                     "kinds": sorted(r.offence.edit.kinds if r.offence.edit else ()),
+                    "imports": [*r.offence.edit.imports, *r.offence.edit.guarded] if r.offence.edit else [],
                 },
             }
             for r in results

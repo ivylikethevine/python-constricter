@@ -26,21 +26,28 @@ beside 61,034 certain fixes. Two things are held against each:
 
 - **Its package's own type checker**, run after `--fix --unsafe-fixes` as the corpora runs do: each
   new error is traced to the fix on the line that brought it. 41 of the packages have one.
-- **Its tests**, traced (`python -m constricter.trace`) on pandas, SQLAlchemy, pydantic and Django:
-  the types each binding held, each time a test reached it. A guess fits where every type seen is
-  one its annotation names, by the class's last name (a `pandas.core.frame:DataFrame` fits
-  `DataFrame`), allowing a builtin its subclass or protocol (`bool` for `int`, a `list` for a
-  `Sequence`).
-
-Fitting by name undercounts: a subclass (`DatetimeIndex` for an `Index`) and an alias (`ArrayLike`
-for an `ndarray`) don't fit. Certain fixes, which are right, fit 88.4% of the time (13,914 of the
-15,739 a test reached). That share is the bar.
+- **Its tests**, traced: as a statement that binds a fixed name ends, its value is held to the fix's
+  annotation, evaluated where the statement is: an instance of the class it names, or of one of a
+  union's (a subscripted class is held to the class alone, not its arguments). A fix a test could
+  tell of held where every such value was one, and differed where one wasn't. The corpora runs do
+  this for every suite whose tests they can trace, and RUNS.md gives each package's fixes by tier
+  with those told, held and differing.
 
 A set of mechanisms is likely where all three hold:
 
-1. its guesses' bindings were reached by a traced test at least 20 times;
-2. more than 88% of those fit;
+1. a traced test could tell of at least 20 of its guesses;
+2. more than 95% of those held;
 3. fewer than 0.1 of each 100 of its guesses a type checker read were blamed for an error.
+
+95% and not the certain fixes' own share, which is higher: another corpus brings classes and test
+doubles these packages don't have, and a set is to stay likely on it.
+
+The tables below were measured before the tests' values were held to the annotations themselves: on
+pandas, SQLAlchemy, pydantic and Django, by the name of each value's class against the names in the
+annotation, which a subclass (`DatetimeIndex` for an `Index`) or an alias (`ArrayLike` for an
+`ndarray`) doesn't fit. Certain fixes, which are right, fit 88.4% of the time by it (13,914 of the
+15,739 a test reached), and the sets below are those whose share by it was over that of the certain
+fixes. The next corpora runs replace them with the sets that pass the bars above.
 
 ## The likely sets
 
@@ -114,7 +121,9 @@ traced type (`--infer-from`) weren't measured: neither is likely.
 
 ## Measuring again
 
-`scratch/guess_census.py` lists every guess with its blamed errors and what a test saw of it, after
-a super and a mega corpora run whose type checks and traces it reads; `scratch/guess_report.py`
-prints these tables, and `--likely` the sets that pass, as `LIKELY` is written. A set joins or
-leaves `LIKELY` by that listing alone.
+A super and a mega corpora run keep, for each suite, every fix of its one fixed run with its tier,
+the type errors traced to each, and what its traced tests saw of each binding; RUNS.md's sections
+give each package's fixes by tier with those seen and those that fit. `scratch/guess_census.py`
+lists every fix from what the runs kept, and `scratch/guess_report.py` prints these tables, and with
+`--likely` the sets that pass, as `LIKELY` is written. A set joins or leaves `LIKELY` by that
+listing alone.

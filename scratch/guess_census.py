@@ -1,115 +1,86 @@
 # SPDX-License-Identifier: MIT
-"""List every guess `--fix --unsafe-fixes` makes on each suite's checkout, with what blames or bears it out.
+"""List every fix the last super and mega corpora runs made on each suite, with what blames or bears it out.
 
-For each package: its fixes (certain and guessed) as `corpus_suite.fixed_and_listed` lists them, the
-type errors its last kept run blamed on a fix, and, where its tests' trace is kept, what each fixed
-binding held at run time. Written as JSON lines, one fix a line, in `local/scratch/guesses/`.
-
-  local/.venv/bin/python -m scratch.guess_census            # every suite, about 15 minutes
+  local/.venv/bin/python -m scratch.guess_census            # every suite the runs kept
   local/.venv/bin/python -m scratch.guess_census NAME ...   # only these
 
-Outside a sandbox, and with no corpora run going: it fixes each checkout in place, then resets it.
-The blamed errors are those of the package's last kept super or mega corpora run, the trace the one
-its last `traced` step left in the checkout. `scratch.guess_report` reads what this writes.
+It reads what the runs kept in `local/super-corpora/` and `local/mega-corpora/` (each package's
+newest `tests`, `types` and `traced` steps) and runs nothing: the fixes of the one fixed run
+(`--fix --unsafe-fixes`), the type errors that run's check traced to each, and how each fixed
+binding's values stood to its annotation as the traced tests ran (`verdict`: how many fit, didn't,
+and couldn't be told), with the types the trace spells for them (`seen`). Written as JSON lines,
+one fix a line, in `local/scratch/guesses/`, which `scratch.guess_report` reads.
 """
 
-import glob
-import hashlib
 import json
 import pickle
 import sys
 from pathlib import Path
 
-from tests.corpus import corpus_suite, mega_corpora
+from tests.corpus import corpus_guesses, corpus_suite
+from tests.corpus.corpora_steps import Tested, Traced, Typechecked
 
 REPO = Path(__file__).resolve().parents[1]
 OUT = REPO / "local" / "scratch" / "guesses"
-TRACE = ".venv/corpus-suite-trace.json"
 
 
-def suites() -> dict[str, corpus_suite.Suite]:
-    found = dict(corpus_suite.SUITES)
-    for name, package in mega_corpora.packages().items():
-        if package.suite is not None:
-            found[name] = package.suite
-    return found
-
-
-def blamed(name: str) -> tuple[dict[tuple[str, int, str], int], int, bool]:
-    """The errors of the package's last kept `--fix --unsafe-fixes` type check, by the fix blamed."""
+def newest(name: str, step: str) -> object:
+    """A package's newest kept step, or None."""
     kept = sorted(
-        glob.glob(str(REPO / "local" / "*-corpora" / "0.3.6-*" / name.replace(" ", "-") / "types.pickle")),
-        key=lambda path: Path(path).stat().st_mtime,
+        (REPO / "local").glob(f"*-corpora/*/{name.replace(' ', '-')}/{step}.pickle"),
+        key=lambda path: path.stat().st_mtime,
     )
     if not kept:
-        return {}, 0, False
+        return None
     with open(kept[-1], "rb") as file:
-        value = pickle.load(file).value
-    errors: dict[tuple[str, int, str], int] = {}
-    untraced = 0
-    for label, compared in value.fixed:
-        if label != "--fix --unsafe-fixes":
-            continue
-        for each in compared.new:
-            if each.fix is None:
-                untraced += 1
-            else:
-                key = (each.fix.path, each.fix.line, each.fix.name)
-                errors[key] = errors.get(key, 0) + 1
-    return errors, untraced, True
+        return pickle.load(file).value
 
 
-def seen(root: Path) -> dict[str, dict[str, dict[str, list[str]]]]:
-    """The trace's bindings, by the file's path: only files whose text is what was traced."""
-    path = root / TRACE
-    if not path.exists():
-        return {}
-    found = {}
-    for digest, each in json.loads(path.read_text(encoding="utf-8"))["files"].items():
-        file = root / each["path"]
-        if file.exists() and hashlib.sha256(file.read_bytes()).hexdigest() == digest:
-            found[each["path"]] = each["bindings"]
-    return found
+def packages() -> list[str]:
+    return sorted({path.parent.name for path in (REPO / "local").glob("*-corpora/*/*/tests.pickle")})
 
 
 def main(names: list[str]) -> int:
     OUT.mkdir(parents=True, exist_ok=True)
-    every = suites()
-    for name in names or every:
-        suite = every[name]
-        root = corpus_suite.checkout(name, suite)
-        corpus_suite.reset(root, suite)
-        traced = seen(root)
-        errors, untraced, checked = blamed(name)
-        try:
-            fixes, change = corpus_suite.fixed_and_listed(root, suite, "--unsafe-fixes")
-        finally:
-            corpus_suite.reset(root, suite)
-        rows = []
-        for path, listed in fixes.items():
-            bindings = traced.get(path, {})
-            for fix in listed:
-                rows.append(
-                    {
-                        "package": name,
-                        "path": fix.path,
-                        "line": fix.line,
-                        "name": fix.name,
-                        "annotation": fix.annotation,
-                        "kinds": fix.kinds,
-                        "unsafe": fix.unsafe,
-                        "errors": errors.get((fix.path, fix.line, fix.name), 0),
-                        "checked": checked,
-                        "seen": bindings.get(str(fix.line), {}).get(fix.name),
-                    },
-                )
+    for name in names or packages():
+        tested = newest(name, "tests")
+        checked = newest(name, "types")
+        traced = newest(name, "traced")
+        if not isinstance(tested, Tested) or not tested.fixes:
+            print(f"{name}: no fixes kept")
+            continue
+        errors: dict[tuple[str, int, str], int] = {}
+        if isinstance(checked, Typechecked):
+            for each in dict(checked.fixed)[corpus_suite.ALL[0]].new:
+                if each.fix is not None:
+                    key = (each.fix.path, each.fix.line, each.fix.name)
+                    errors[key] = errors.get(key, 0) + 1
+        seen = traced.seen if isinstance(traced, Traced) else {}
+        judged = traced.verdicts if isinstance(traced, Traced) else {}
+        rows = [
+            {
+                "package": name,
+                "path": fix.path,
+                "line": fix.line,
+                "name": fix.name,
+                "annotation": fix.annotation,
+                "kinds": fix.kinds,
+                "unsafe": fix.unsafe,
+                "likely": fix.likely,
+                "errors": errors.get((fix.path, fix.line, fix.name), 0),
+                "checked": isinstance(checked, Typechecked),
+                "seen": list(corpus_guesses.held(seen, fix.path, fix.line, fix.name)) or None,
+                "verdict": list(corpus_guesses.verdict(judged, fix.path, fix.line, fix.name)),
+            }
+            for fixes in tested.fixes.values()
+            for fix in fixes
+        ]
         with open(OUT / f"{name}.jsonl", "w", encoding="utf-8") as file:
             for row in rows:
                 file.write(json.dumps(row) + "\n")
-        guesses = sum(row["unsafe"] for row in rows)
         print(
-            f"{name}: {len(rows)} fixes, {guesses} guesses, {sum(errors.values())} blamed errors "
-            f"({untraced} untraced), {sum(row['seen'] is not None for row in rows)} seen at run time; {change}",
+            f"{name}: {len(rows)} fixes, {sum(row['unsafe'] for row in rows)} guesses, "
+            f"{sum(errors.values())} blamed errors, {sum(any(row['verdict'][:2]) for row in rows)} told at run time",
             flush=True,
         )
     return 0

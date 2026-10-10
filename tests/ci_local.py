@@ -9,9 +9,10 @@
 Each job's `run:` steps are taken from the workflow, so the list can't drift from CI's, and run in
 parallel with `local/.venv/bin` first on `PATH`. A step fails by its exit status, never its output
 (pylint still rates a run with one finding 10.00/10), and every failing step's output is printed
-in full at the end; the command exits 1 if any failed. What only makes sense on a runner is
-adapted: `npm ci` runs only when `.github/node_modules` is missing, lychee is the one on `PATH`
-(the step is skipped without it), and the Test job's `COVERAGE` is `--cov`.
+in full at the end; the command exits 1 if any failed. A passing step's warnings (the `::warning`
+commands it prints for the runner: a module past 900 lines) are listed after. What only makes
+sense on a runner is adapted: `npm ci` runs only when `.github/node_modules` is missing, lychee is
+the one on `PATH` (the step is skipped without it), and the Test job's `COVERAGE` is `--cov`.
 
 `interpreters` runs the tests on each Python in the Test job's matrix (PyPy and free-threaded builds
 included) but the one `local/.venv` has: each in its own `local/.venv-<python>`, with the dependency
@@ -51,6 +52,8 @@ _PYTEST: Final = "python -m pytest"
 _PARALLEL: Final = " -n auto --dist loadgroup"
 # The values a step's `${{ ... }}` environment takes here, by name (an unlisted one is empty).
 _LOCAL_ENV: Final = {"COVERAGE": "--cov"}
+# A warning a step prints for the runner to annotate: the file it names, and what it says.
+_WARNING: Final = re.compile(r"^::warning file=([^,]+),[^\n]*?::(.*)$", re.MULTILINE)
 _HOOK: Final = """\
 #!/bin/sh
 # Installed by tests/ci_local.py: CI's Lint, Docs and Test checks, on every Python, before every push.
@@ -232,12 +235,15 @@ def _run(step: Step) -> Outcome:
 def run(jobs: Sequence[str]) -> int:
     """Run every step of `jobs` at once, reporting each as it finishes and each failure in full.
 
+    Then each warning a passing step gave.
+
     Returns:
       The exit status: 1 if any step failed, else 0.
 
     """
     selected: list[Step] = steps(jobs)
     failed: list[Outcome] = []
+    warned: list[str] = []
     pool: ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=len(selected)) as pool:
         futures: list[Future[Outcome]] = [pool.submit(_run, step) for step in selected]
@@ -253,8 +259,11 @@ def run(jobs: Sequence[str]) -> int:
                 _say(f"FAIL {outcome.seconds:6.1f}s {label} (exit {outcome.status})")
             else:
                 _say(f"ok   {outcome.seconds:6.1f}s {label}")
+                found: list[tuple[str, str]] = cast("list[tuple[str, str]]", _WARNING.findall(outcome.output))
+                warned += [f"warn {where}: {said}" for where, said in found]
     for outcome in failed:
         _say(f"\n===== {outcome.step.job}: {outcome.step.command} (exit {outcome.status})\n{outcome.output}")
+    _say("\n".join(["", *sorted(warned)]) if warned else "")
     _say(f"\n{len(failed)} of {len(selected)} steps failed." if failed else f"\nAll {len(selected)} passed.")
     return 1 if failed else 0
 

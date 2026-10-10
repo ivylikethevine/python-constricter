@@ -90,6 +90,12 @@ jobs:
       - run: basedpyright
       - run: mypy
       - run: pylint constricter stdlib_tables tests hatch_build.py
+      # A warning for each module past 900 lines, which never fails: pylint's own limit, 1,000, does
+      # (`too-many-lines`), and a module is easier to split before it's there.
+      - run: >-
+          pylint --disable=all --enable=too-many-lines --max-module-lines=900 --exit-zero
+          --msg-template='::warning file={path},line=1,title=Long module::{msg}'
+          constricter stdlib_tables tests hatch_build.py
       - run: flake8 constricter stdlib_tables tests hatch_build.py
       - run: typos
       - run: validate-pyproject pyproject.toml

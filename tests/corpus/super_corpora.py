@@ -40,14 +40,14 @@ The corpora of `_FIRST` (pandas, whose chain is the longest) start
 first, never wait for CPUs (for memory they do), and take `_FIRST_JOBS` times the others' `--jobs`:
 the run ends when the longest chain does.
 
-Each step is a process of its own, its result kept in `local/super-corpora/<version>-<stamp>/`
-(the stamp: a hash of `constricter/`'s sources): a run that stopped starts again from the steps
-it lacks, and a change to the code starts a new one. The section it writes, `## Super corpora`,
-names the machine: timings don't compare across machines. It exits 1 on anything a fix broke (a
-file that no longer compiles, a second pass with more to fix, a test's outcome changed, a type
-error a certain fix or a guess added, a test's outcome changed by the trace's fixes) or a step
-that failed, each listed on standard error. Run
-it outside a sandbox: it starts worker processes, and the suites need the network once.
+Each step is a process of its own, its result kept in `local/super-corpora/<version>-<stamp>/` (the
+stamp: a hash of `constricter/`'s sources and these scripts'): a run that stopped starts again from
+the steps it lacks, and a change to the code or to a script starts a new one. The section it writes,
+`## Super corpora`, names the machine: timings don't compare across machines. It exits 1 on anything
+a fix broke (a file that no longer compiles, a second pass with more to fix, a test's outcome
+changed, a type error a certain fix or a guess added, a test's outcome changed by the trace's fixes)
+or a step that failed, each listed on standard error. Run it outside a sandbox: it starts worker
+processes, and the suites need the network once.
 
 A suite's tests and type checks run once fixed, with every fix (`--fix --unsafe-fixes`), and each
 difference is laid to a tier of fixes by the fix it's traced to; a run under that one is made only
@@ -251,7 +251,9 @@ def sizes() -> Sizes:
 
 
 def stamp() -> str:
-    """Hash this checkout's `constricter/` sources: what a kept step's result is of.
+    """Hash this checkout's `constricter/` sources and these scripts': what a kept step's result is of.
+
+    A step kept by other scripts may not be what these would keep, or read as these read it.
 
     Returns:
       The hash's first hex digits.
@@ -259,7 +261,11 @@ def stamp() -> str:
     """
     sources: list[bytes] = [
         part
-        for path in sorted((_ROOT / "constricter").rglob("*.py"))
+        for path in sorted(
+            path
+            for folder in (_ROOT / "constricter", Path(__file__).parent)
+            for path in (*folder.rglob("*.py"), *folder.glob("*.json"))
+        )
         for part in (path.relative_to(_ROOT).as_posix().encode(), path.read_bytes())
     ]
     return hashlib.sha256(b"\0".join(sources)).hexdigest()[:12]

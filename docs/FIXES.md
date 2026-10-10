@@ -749,9 +749,10 @@ can't fix reported. The standard library and third-party packages are out of rea
 `--show-fixes` lists, after the report, each fix and how its value decided it (for `b = s.strip()`:
 `str`, from `str.strip`'s fixed return type), marking the guesses `--unsafe-fixes` would add, or
 `--likely`; `--format=json` always carries the same as a `fix` object (`annotation`, `reason`,
-`unsafe`, `likely`) on each result. With `--fix`, `--show-fixes` lists the fixes made too, after
-what's left: `fixed 'b'` as text, and in `--format=json` an entry whose `fixed` is true. Each is on
-the line it had before any fix, whichever round of `--fix` made it.
+`unsafe`, `likely`, and `imports`: the import statements the fix adds, those for type checking alone
+too) on each result. With `--fix`, `--show-fixes` lists the fixes made too, after what's left:
+`fixed 'b'` as text, and in `--format=json` an entry whose `fixed` is true. Each is on the line it
+had before any fix, whichever round of `--fix` made it.
 
 The type hierarchy LVA008–LVA010 compare through is the numeric tower (`bool` < `int` < `float` <
 `complex`) plus the classes a module defines, under the bases they name.
