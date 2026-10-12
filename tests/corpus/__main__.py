@@ -4,6 +4,8 @@
     local/.venv/bin/python -m tests.corpus RUN.toml                   # a new folder, named by label and time
     local/.venv/bin/python -m tests.corpus RUN.toml --resume FOLDER   # carry on a stopped run in its folder
     local/.venv/bin/python -m tests.corpus RUN.toml --only NAME       # on that corpus or set alone
+    local/.venv/bin/python -m tests.corpus RUN.toml --label NAME      # under that label
+    local/.venv/bin/python -m tests.corpus RUN.toml --at-once N --jobs M   # sized for this machine
 
 The run file (`run_config`) names the corpora (`corpora.toml`'s), the constricter versions, the
 steps and the formats. Each execution writes `<output>/<label>-<month>-<day>-<year>-<time>/`:
@@ -19,6 +21,7 @@ tests and checks in a process of their own. Every step starts constricter one wa
 on one tree a corpus (`trees.Tree`), so a count in one table is the count in another.
 """
 
+import contextlib
 import itertools
 import os
 import platform
@@ -26,20 +29,24 @@ import shutil
 import subprocess  # asks git for the commit
 import sys
 import threading
-from collections.abc import Sequence
+from collections.abc import Generator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import IO, Final, TypeAlias, cast
+from typing import IO, Final, NamedTuple, TypeAlias, cast
 
 from constricter import __version__
 from tests.corpus import catalog, pipeline, render, suite_steps, trees
 from tests.corpus.pipeline import Record
 from tests.corpus.run_config import Run, read
 
+_Held: TypeAlias = contextlib.AbstractContextManager[bool | None]  # a lock, or nothing to hold
 _Measured: TypeAlias = tuple[trees.Tree | None, list[str]]  # a corpus's tree, and its steps that failed
 _RESUME: Final = "--resume"
+_AT_ONCE: Final = "--at-once"  # then how many corpora are measured side by side, whatever the file says
+_JOBS: Final = "--jobs"  # and constricter's worker processes
+_LABEL: Final = "--label"  # then the run's label, whatever its file says
 _SAID: Final = 2000  # the characters kept of why a corpus couldn't be had: the end of its build's output
 _ONLY: Final = "--only"  # then a corpus or a set: the run file's, on that alone
 _STEP: Final = "--step"  # then a run's folder, a corpus and a version: that corpus's suite steps
@@ -79,6 +86,8 @@ def _facts(run: Run, started: datetime) -> Record:
         "timing": run.steps.timing,
         "profile": run.steps.profile,
         "install": run.install,
+        "suite-seconds": run.suite_seconds,
+        "suite-workers": run.suite_workers,
         "constricter": __version__,
         "commit": commit,
         "python": platform.python_version(),
@@ -109,17 +118,56 @@ def _toml(facts: Record) -> str:
     return "".join(f"{key} = {value(each)}\n" for key, each in facts.items())
 
 
+class Turns(NamedTuple):
+    """Whose suite's steps run now: those of one port one at a time, and a heavy suite's alone."""
+
+    at_once: int
+    free: threading.Semaphore  # `at_once` turns
+    heavy: threading.Lock  # one heavy suite gathers the turns at a time
+    ports: dict[str, threading.Lock]
+
+    @contextlib.contextmanager
+    def of(self, entry: catalog.Entry) -> Generator[None]:
+        """Hold `entry`'s turn while its suite's steps run: its port's, and one of the run's.
+
+        Every one of the run's, for a heavy suite.
+
+        Yields:
+          Once the turn is its own.
+
+        """
+        taken: int = self.at_once if entry.heavy else 1
+        port: _Held = self.ports.get(entry.port) or contextlib.nullcontext()  # no port: no one to wait for
+        with port, self.heavy if entry.heavy else contextlib.nullcontext():
+            for _ in range(taken):
+                _ = self.free.acquire()
+            try:
+                yield
+            finally:
+                self.free.release(taken)
+
+
+def _suited(run: Run) -> dict[str, str]:
+    """Say what a suite's steps read of the run in their environment (`corpus_suite`).
+
+    Returns:
+      How long its tests may run, and the most processes they take, where the run says.
+
+    """
+    said: dict[str, str] = {"CORPUS_SUITE_SECONDS": str(run.suite_seconds)}
+    return said | ({"CORPUS_SUITE_WORKERS": str(run.suite_workers)} if run.suite_workers else {})
+
+
 def _measured(
     run: Run,
     store: pipeline.Store,
-    ports: dict[str, threading.Lock],
+    turns: Turns,
     entry: catalog.Entry,
 ) -> _Measured:
     """Measure one corpus with each of the run's versions.
 
     Its suite's steps run in a process of their own (`--step`): they set what the suite's commands
-    need in the environment, and corpora are measured side by side. Suites whose tests bind one
-    port run one at a time (`ports`' locks).
+    need in the environment, and corpora are measured side by side. Each waits its turn (`turns`).
 
     Returns:
       The corpus's tree, and the steps that failed: each has its traceback in its log, and no record.
@@ -139,13 +187,14 @@ def _measured(
             log: Path = store.root / "logs" / tree.name.replace(" ", "-") / job.recorded / "suite.log"
             log.parent.mkdir(parents=True, exist_ok=True)
             file: IO[str]
-            with ports[entry.port], log.open("a", encoding="utf-8") as file:
+            with turns.of(entry), log.open("a", encoding="utf-8") as file:
                 done: subprocess.CompletedProcess[bytes] = subprocess.run(
                     [sys.executable, "-m", "tests.corpus", _STEP, str(store.root), entry.name, version],
                     stdout=file,
                     stderr=subprocess.STDOUT,
                     check=False,
                     cwd=_ROOT,
+                    env=os.environ | _suited(run),
                 )
             if done.returncode:
                 failed.append(f"{entry.name}, {job.recorded}: its suite's steps ({log})")
@@ -177,6 +226,12 @@ def main(argv: Sequence[str]) -> int:
     run: Run = read(Path(argv[0]))
     if _ONLY in argv:
         run = run._replace(include=(argv[argv.index(_ONLY) + 1],))
+    if _LABEL in argv:
+        run = run._replace(label=argv[argv.index(_LABEL) + 1])
+    if _AT_ONCE in argv:
+        run = run._replace(at_once=int(argv[argv.index(_AT_ONCE) + 1]))
+    if _JOBS in argv:
+        run = run._replace(jobs=int(argv[argv.index(_JOBS) + 1]))
     facts: Record = _facts(run, datetime.now().astimezone())
     folder: Path = _folder(argv, run, facts)
     store: pipeline.Store = pipeline.Store(folder)
@@ -224,10 +279,11 @@ def _all(run: Run, store: pipeline.Store) -> list[_Measured]:
     """
     known: catalog.Catalog = catalog.load()
     entries: list[catalog.Entry] = [known.entry(name) for name in known.names(list(run.include))]
-    ports: dict[str, threading.Lock] = {entry.port: threading.Lock() for entry in entries}
+    ports: dict[str, threading.Lock] = {entry.port: threading.Lock() for entry in entries if entry.port}
+    turns: Turns = Turns(run.at_once, threading.Semaphore(run.at_once), threading.Lock(), ports)
     pool: ThreadPoolExecutor
     with ThreadPoolExecutor(run.at_once) as pool:
-        return list(pool.map(partial(_measured, run, store, ports), entries))
+        return list(pool.map(partial(_measured, run, store, turns), entries))
 
 
 if __name__ == "__main__":

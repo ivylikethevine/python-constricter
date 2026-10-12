@@ -9,6 +9,8 @@
     formats = ["json", "markdown", "csv"]
     jobs = 0                         # constricter's worker processes: 0 is every CPU
     at-once = 1                      # the corpora measured side by side (give `jobs` a share of the CPUs)
+    suite-seconds = 1800             # how long a suite's tests may run before they're stopped
+    suite-workers = 0                # the most processes a suite's tests take: 0 is half the CPUs
 
     [corpora]
     include = ["seven"]              # corpora or sets of `corpora.toml`, or directories
@@ -54,7 +56,7 @@ UNSAFE: Final = "unsafe"
 FIXES: Final = {CERTAIN: (), LIKELY: ("--likely",), UNSAFE: ("--unsafe-fixes",)}
 CHECKERS: Final = ("basedpyright", "ty", "pyrefly")  # what `--infer-with` can start
 _KEYS: Final = {
-    "run": {"label", "output", "versions", "formats", "jobs", "at-once"},
+    "run": {"label", "output", "versions", "formats", "jobs", "at-once", "suite-seconds", "suite-workers"},
     "corpora": {"include", "install"},
     "publish": {"runs-md", "replace"},
     "steps": {
@@ -110,6 +112,8 @@ class Run(NamedTuple):
     at_once: int = 1  # the corpora measured side by side
     publish: Publish = Publish()
     install: bool = True  # a suite's corpus installed with its tests' dependencies, not cloned alone
+    suite_seconds: int = 1800  # how long a suite's tests may run before they're stopped
+    suite_workers: int = 0  # the most processes a suite's tests take: 0 is half the CPUs
 
     def folder(self, now: datetime) -> Path:
         """Name the folder an execution started at `now` writes.
@@ -196,6 +200,8 @@ def parse(data: _Table) -> Run:
             bool(publish.get("replace")),
         ),
         bool(cast("_Table", data.get("corpora", {})).get("install", default.install)),
+        cast("int", run.get("suite-seconds", default.suite_seconds)),
+        cast("int", run.get("suite-workers", default.suite_workers)),
     )
 
 

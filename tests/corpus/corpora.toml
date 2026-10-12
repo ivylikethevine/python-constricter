@@ -3,7 +3,8 @@
 # [corpus.NAME]         `why` it's here, and its `version`; `kind = "stdlib"` for the running Python's
 #                       standard library. `environment`: what its commands need set. `port`: the port
 #                       its tests' own server binds (those of one port run one at a time). `alone`:
-#                       why it has no suite here.
+#                       why it has no suite here. `heavy`: its suite's tests hold more memory than a
+#                       run's corpora can share, so no other suite runs beside them.
 # [corpus.NAME.sdist]   its sdist on PyPI's file host, hash-pinned: `where` (the directory under
 #                       https://files.pythonhosted.org/packages), `archive`, `sha256`, and `package`,
 #                       the directory checked in it.
@@ -824,6 +825,7 @@ checks = []
 [corpus.celery]
 why = "untyped, for contrast"
 version = "5.6.3"
+heavy = true # its tests held 24.8 GB, and 28.0 GB traced
 
 [corpus.celery.sdist]
 where = "e8/b4/a1233943ab5c8ea05fb877a88a0a0622bf47444b99e4991a8045ac37ea1d"

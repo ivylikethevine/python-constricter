@@ -3,6 +3,7 @@
 
 import csv
 import json
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO, Final, TypeAlias, cast
@@ -10,6 +11,7 @@ from typing import IO, Final, TypeAlias, cast
 import pytest
 
 from tests.corpus import catalog, pipeline, render
+from tests.corpus.__main__ import Turns
 from tests.corpus.pipeline import Record, Store
 from tests.corpus.run_config import CERTAIN, CSV, DEV, JSON, LIKELY, MARKDOWN, Run, Steps, parse
 from tests.corpus.trees import Tree
@@ -74,6 +76,25 @@ _TIMED: Final[Record] = {
     "median one": 3.0,
     "median every": 1.0,
 }
+_SHAPE: Final = "empty list"  # an unfixed binding's value, as the census names it
+_BINDING: Final = json.dumps(
+    {
+        "corpus": "standard library",
+        "path": "a.py",
+        "line": 1,
+        "name": "x",
+        "code": "LVA001",
+        "fixed": False,
+        "unsafe": False,
+        "scope": "function",
+        "annotated": True,
+        "binding": "assign",
+        "shape": _SHAPE,
+        "dotted": "",
+        "origin": "",
+        "source": "[]",
+    },
+)
 _CHECKED: Final[Record] = {
     "files": 2,
     "codes": {"LVA001": 5, "LVA004": 1},
@@ -141,6 +162,22 @@ def test_a_run_file_is_read_with_defaults_for_what_it_leaves_out() -> None:
         _ = parse({"steps": {"fix": ["all"]}})
 
 
+def test_a_heavy_suite_takes_every_turn() -> None:
+    """Its steps wait for the suites running, and none starts beside them; one port's take turns."""
+    known: catalog.Catalog = catalog.load()
+    turns: Turns = Turns(2, threading.Semaphore(2), threading.Lock(), {"8000": threading.Lock()})
+    assert known.entries["celery"].heavy
+    with turns.of(known.entries["celery"]):
+        assert not turns.free.acquire(blocking=False)
+    with turns.of(known.entries["pip"]), turns.of(known.entries["twisted"]):  # no port: side by side
+        assert not turns.free.acquire(blocking=False)
+    with turns.of(known.entries["httpx"]):
+        assert turns.ports[known.entries["httpx"].port].locked()
+        assert turns.free.acquire(blocking=False)
+        turns.free.release()
+    assert parse({"run": {"suite-seconds": 900, "suite-workers": 4}})[-2:] == (900, 4)
+
+
 def test_each_execution_has_a_folder_named_by_its_label_and_time() -> None:
     """`<output>/<label>-<month>-<day>-<year>-<hour><minute>`."""
     run: Run = parse({"run": {"label": "0.3.6-rc.1", "output": "data"}})
@@ -185,6 +222,7 @@ def _recorded(root: Path) -> tuple[Store, Tree]:
     store.write(tree.name, "rc+dev", pipeline.COVERAGE, {"typed": [4, 10]})
     store.write(tree.name, "rc+dev", "infer-ty", _fixed(5, {"certain": 2, "likely": 1, "guess": 2}))
     store.write(tree.name, "rc+dev", pipeline.CENSUS, _COUNTED)
+    _ = store.path(tree.name, "rc+dev", pipeline.CENSUS, ".rows.jsonl").write_text(_BINDING, encoding="utf-8")
     store.write(tree.name, "rc+dev", pipeline.TESTS, _TESTED)
     store.write(tree.name, "rc+dev", pipeline.TYPES, _TYPED)
     store.write(tree.name, "rc+dev", pipeline.TRACED, _TRACED)
@@ -208,6 +246,7 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
     assert [path.name for path in written] == [
         "report.json",
         "report.md",
+        "census.md",
         "offences.csv",
         "levels.csv",
         "fixes.csv",
@@ -231,7 +270,8 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
     assert _FIXES in text
     tables: dict[str, _Rows] = {}
     path: Path
-    for path in written[2:]:
+    assert f"| assign: {_SHAPE} |     1 | 100.0% |" in written[2].read_text(encoding="utf-8")
+    for path in written[3:]:
         file: IO[str]
         with path.open(encoding="utf-8", newline="") as file:
             tables[path.stem] = list(csv.reader(file))
@@ -308,6 +348,50 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
         "standard library, rc+dev, fix-unsafe: 1 file(s) no longer compile",
         "standard library, rc+dev, fix-unsafe: a second pass would still fix 2",
     ]
+
+
+def test_each_judged_fix_is_listed_with_what_blames_it_and_bears_it_out(tmp_path: Path) -> None:
+    """A suite's corpus: its `fix-unsafe` fixes, the type errors traced to each, and the witness's verdict."""
+    tree: Tree = Tree("pkg", "1.0", tmp_path / "src" / "pkg", tmp_path)
+    store: Store = Store(tmp_path)
+    listed: _Rows = [["a.py", "certain"], ["b.py", "guess"]]
+    fixes: list[Record] = [
+        {
+            "path": path,
+            "line": 2,
+            "name": "x",
+            "annotation": "int",
+            "tier": tier,
+            "kinds": ["copy"],
+            "imports": [],
+        }
+        for path, tier in listed
+    ]
+    blamed: Record = _NEW | {"path": "src/pkg/b.py"}
+    store.write(
+        tree.name,
+        "rc+dev",
+        pipeline.TYPES,
+        {"released": 0, "fixed": {"fix-unsafe": {"new": [blamed]}}},
+    )
+    _ = store.path(tree.name, "rc+dev", "fix-unsafe", ".fixes.jsonl").write_text(
+        "".join(f"{json.dumps(fix)}\n" for fix in fixes),
+        encoding="utf-8",
+    )
+    told: Record = {"path": "src/pkg/a.py", "line": 2, "name": "x", "verdict": [3, 0, 0], "seen": ["int"]}
+    _ = store.path(tree.name, "rc+dev", pipeline.TRACED, ".verdicts.jsonl").write_text(
+        f"{json.dumps(told)}\n",
+        encoding="utf-8",
+    )
+    run: Run = parse({"run": {"label": "rc", "formats": [JSON]}})
+    found: list[Record] = render.guesses(render.gathered(run, store, [tree]), store)
+    assert [
+        (each["path"], each["unsafe"], each["errors"], each["verdict"], each["seen"]) for each in found
+    ] == [
+        ("src/pkg/a.py", False, 0, [3, 0, 0], ["int"]),
+        ("src/pkg/b.py", True, 1, [0, 0, 0], None),
+    ]
+    assert render.write(render.gathered(run, store, [tree]), tmp_path, {})[1] == tmp_path / "guesses.jsonl"
 
 
 def test_a_run_publishes_a_section_a_version(tmp_path: Path) -> None:

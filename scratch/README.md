@@ -5,7 +5,8 @@ or tested; delete any freely. Each says in its docstring what it does and how to
 repository's root with `local/.venv/bin/python -m scratch.NAME`, outside a sandbox. What they write
 goes under `local/scratch/`.
 
-- `guess_census.py`, then `guess_report.py`: every guess the last super and mega corpora runs made
+- `guess_census.py`, then `guess_report.py` (or `guess_report.py --from FOLDER`, a corpus run's folder with
+  its `guesses.jsonl`): every guess the last super and mega corpora runs made
   on the suites, by mechanism, with the type errors blamed on it and what its binding held at run
   time. `guess_report.py --likely` lists the sets that pass `docs/LIKELY.md`'s bars.
 - `widen_pass.py`: what a second pass still fixes on each corpus after every `fix-widen` kind.

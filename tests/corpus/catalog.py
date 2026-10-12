@@ -62,6 +62,7 @@ class Entry(NamedTuple):
     port: str  # the port its tests bind, or ""
     stdlib: bool = False
     path: str = ""  # a directory a run names itself: no corpus of the catalog
+    heavy: bool = False  # its suite's tests hold more memory than a machine has to share: they run alone
 
 
 def _installing(commands: list[str]) -> tuple[tuple[str, ...], ...]:
@@ -193,5 +194,6 @@ def load() -> Catalog:
             cast("dict[str, str]", pinned.get("environment", {})),
             cast("str", pinned.get("port", "")),
             stdlib=pinned.get("kind") == _STDLIB,
+            heavy=bool(pinned.get("heavy")),
         )
     return Catalog(entries, cast("dict[str, list[str]]", data["sets"]))

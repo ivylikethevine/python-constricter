@@ -1,0 +1,11 @@
+# What a version's section of docs/RUNS.md records: the seven corpora with this checkout, checked at
+# every level and fixed, under this checkout's version (or `--label 0.4.0-rc.1`, a checkpoint).
+
+[run]
+versions = ["dev"]
+
+[corpora]
+include = ["seven"]
+
+[publish]
+runs-md = "docs/RUNS.md"

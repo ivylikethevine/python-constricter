@@ -2,7 +2,9 @@
 """A run's outputs, each made from its records alone (`pipeline.Store`), so no two can disagree.
 
 - `json`: `report.json`, every record under its corpus, version and step, with the run's own facts;
-- `markdown`: `report.md`, the tables docs/RUNS.md has a section of for each version;
+  and `guesses.jsonl`, every fix a suite's type checks or traced tests could judge, a line each;
+- `markdown`: `report.md`, the tables docs/RUNS.md has a section of for each version, and
+  `census.md`, what `--fix` can't type and why, where the run took the census;
 - `csv`: `tables/offences.csv`, `levels.csv`, `fixes.csv`, `census.csv`, `traced.csv`, `tests.csv`,
   `types.csv`, `type-errors.csv` and `coverage.csv`, a row a measurement.
 """
@@ -16,7 +18,7 @@ from pathlib import Path
 from typing import IO, Final, NamedTuple, TypeAlias, cast
 
 from constricter import Level
-from tests.corpus import corpus_table
+from tests.corpus import corpus_table, corpus_untyped
 from tests.corpus.corpus_table import Corpus, Likely, Measured, Typed
 from tests.corpus.pipeline import (
     CENSUS,
@@ -38,6 +40,7 @@ from tests.corpus.trees import Tree
 
 _Row: TypeAlias = list[object]  # a table's cells, as `csv` writes them
 _Rows: TypeAlias = list[_Row]
+_Key: TypeAlias = tuple[str, int, str]  # a fix's file, line and name
 _NO_RECORD: Final[Record] = {}
 _SHAPE: Final = "shape"  # the census table's column for an unfixed binding's value
 _CONSTRICTER: Final = "constricter"  # a table's second column: the version
@@ -298,6 +301,101 @@ def _timing(records: Records) -> _Rows:
     return rows
 
 
+def census_report(records: Records, store: Store) -> str:
+    """Write the census as `corpus_untyped.report` lays it out, a section a version, from the bindings kept.
+
+    Returns:
+      The Markdown; nothing where the run took no census.
+
+    """
+    parts: list[str] = []
+    version: str
+    for version in records.versions:
+        bindings: list[corpus_untyped.Binding] = []
+        seen: list[str] = []
+        tree: Tree
+        for tree in records.trees:
+            rows: Path = store.path(tree.name, version, CENSUS, ".rows.jsonl")
+            if rows.exists():
+                seen.append(tree.name)
+                bindings += [
+                    corpus_untyped.Binding(**json.loads(line))
+                    for line in rows.read_text(encoding="utf-8").splitlines()
+                ]
+        if seen:
+            parts += [f"# What constricter {version} can't type", "", corpus_untyped.report(bindings, seen)]
+    return "\n".join(parts)
+
+
+def _lines(path: Path) -> list[Record]:
+    text: str = path.read_text(encoding="utf-8") if path.exists() else ""
+    return [json.loads(line) for line in text.splitlines()]
+
+
+def _key(path: object, about: Record) -> _Key:
+    return str(path), cast("int", about["line"]), str(about["name"])
+
+
+def _blames(checked: Record) -> Counter[_Key]:
+    """Count the new type errors of a fixed run's record that are traced to each fix.
+
+    Returns:
+      The count, by the fix's file, line and name.
+
+    """
+    new: list[Record] = cast("list[Record]", checked.get("new", []))
+    return Counter(_key(each["path"], cast("Record", each["fix"])) for each in new if each["fix"])
+
+
+def guesses(records: Records, store: Store) -> list[Record]:
+    """Gather every fix of each corpus's `fix-unsafe` step, with what blames it or bears it out.
+
+    The new type errors its suite's checks traced to it (`errors`; `checked`: whether the suite has
+    checks that ran), and how its binding's values stood to its annotation as the traced tests ran
+    (`verdict`: how many fit, didn't, and couldn't be told; `seen`: the types the trace spells).
+    What a set of mechanisms is measured by, to be likely (docs/LIKELY.md).
+
+    Returns:
+      Them, a record a fix; none of a corpus whose suite ran neither its checks nor its tests traced.
+
+    """
+    found: list[Record] = []
+    step: str = f"{FIX}{UNSAFE}"
+    tree: Tree
+    version: str
+    for tree, version in itertools.product(records.trees, records.versions):
+        fixed: Record = cast("Record", records.of(tree, version, TYPES).get("fixed", {}))
+        checked: Record = cast("Record", fixed.get(step, {}))
+        judged: list[Record] = _lines(store.path(tree.name, version, TRACED, ".verdicts.jsonl"))
+        if tree.base is None or not (checked or judged):
+            continue
+        source: str = tree.root.relative_to(tree.base).as_posix()
+        errors: Counter[_Key] = _blames(checked)
+        told: dict[_Key, Record] = {_key(each["path"], each): each for each in judged}
+        fix: Record
+        for fix in _lines(store.path(tree.name, version, step, ".fixes.jsonl")):
+            key: _Key = _key(f"{source}/{fix['path']}", fix)
+            verdict: Record = told.get(key, {})
+            found.append(
+                {
+                    "package": tree.name,
+                    "constricter": version,
+                    "path": key[0],
+                    "line": key[1],
+                    "name": key[2],
+                    "annotation": fix["annotation"],
+                    "kinds": "+".join(cast("list[str]", fix["kinds"])),
+                    "unsafe": fix["tier"] != CERTAIN,
+                    "likely": fix["tier"] == LIKELY,
+                    "errors": errors[key],
+                    "checked": bool(checked),
+                    "seen": verdict.get("seen") or None,
+                    "verdict": verdict.get("verdict", [0, 0, 0]),
+                },
+            )
+    return found
+
+
 def publish(records: Records, root: Path) -> None:
     """Record the run's per-version tables where its run file says: a section a version of RUNS.md.
 
@@ -468,9 +566,17 @@ def write(records: Records, folder: Path, facts: Record) -> list[Path]:
     if JSON in records.run.formats:
         written.append(folder / "report.json")
         _ = written[-1].write_text(json.dumps(report(records, facts), indent=2) + "\n", encoding="utf-8")
+        guessed: list[Record]
+        if guessed := guesses(records, Store(folder)):
+            written.append(folder / "guesses.jsonl")
+            _ = written[-1].write_text("".join(f"{json.dumps(each)}\n" for each in guessed), encoding="utf-8")
     if MARKDOWN in records.run.formats:
         written.append(folder / "report.md")
         _ = written[-1].write_text(markdown(records), encoding="utf-8")
+        counted: str
+        if counted := census_report(records, Store(folder)):
+            written.append(folder / "census.md")
+            _ = written[-1].write_text(counted, encoding="utf-8")
     if CSV in records.run.formats:
         (folder / "tables").mkdir(exist_ok=True)
         name: str

@@ -638,15 +638,16 @@ fix.
    its suite's, 1,081 and 1,490 with guesses, where the table has 1,158 and 1,567). On pydantic it
    gives what RUNS.md has: 6,439 tests the same after each fix, no new type error, the change's size
    to the line, one fix resting on the trace, and 99.0% of the certain fixes a test told of holding.
-   Left: steps sized to the CPUs and the memory they take, as `super_corpora.py` sizes them
-   (`at-once` and `jobs` are the run file's to say); a suite whose own failures vary, its fixed runs
-   settled as `corpora_steps` settles them; RUNS.md's super and mega sections written from a run's
-   folder (`[publish]` writes a version's own); the pull request's coverage comment
-   (`corpus_coverage.py`) as a run of two versions, this checkout and the base's by its Python; and
-   the scripts it replaces deleted (`corpus.py`, `corpus_fix.py` and `corpus_timing.py` are: CI's
+   `runs/super.toml` and `runs/mega.toml` ask every step of the seven and of the 40. Left: steps
+   sized to the CPUs and the memory they take, as `super_corpora.py` sizes them (`at-once`, `jobs`
+   and `suite-workers` are the run file's to say, and a suite marked `heavy` runs its tests alone);
+   RUNS.md's super and mega sections written from a run's folder (`[publish]` writes a version's
+   own); and the scripts it replaces deleted (`corpus.py`, `corpus_fix.py`, `corpus_timing.py` and
+   `corpus_coverage.py` are, and `corpus_table.py` and `corpus_untyped.py` have no command line
+   left; `corpus_suite.py`'s, `super_corpora.py` and `mega_corpora.py` wait for those sections: CI's
    Corpus and Profile jobs are run files, a suite's corpus cloned alone there). Done when no other
    script starts constricter on a corpus. A step that fails leaves its traceback in its log and the
-   run exits 1, the others' records kept. About 4 hours left; coverage unchanged.
+   run exits 1, the others' records kept. About 3 hours left; coverage unchanged.
 
 10. **One way to follow a re-export.** `project.definition` follows a name through the imports a
     module runs; `project._canonical` through those it makes for type checking alone too

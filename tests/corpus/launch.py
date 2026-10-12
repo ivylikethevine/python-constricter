@@ -17,14 +17,14 @@ import time
 from collections.abc import Sequence
 from functools import cache
 from pathlib import Path
-from typing import Final, NamedTuple
+from typing import Final, NamedTuple, cast
 
 from constricter.cli import paths
 from tests.corpus import corpus_table
 from tests.corpus.run_config import DEV, NAMED
 from tests.corpus.trees import Tree
 
-_SETTINGS: str = "pyproject.toml"
+_SETTINGS: Final = ("pyproject.toml", "pyrightconfig.json", "pyrefly.toml")
 _INSTALLING: Final = threading.Lock()
 _ROOT: Final = Path(__file__).resolve().parents[2]
 _PROBE: Final = "def f():\n    a = 1\n"
@@ -62,7 +62,8 @@ def place(tree: Tree, neutral: Path) -> Place:
 def copied(tree: Tree, to: Path) -> tuple[Place, list[Path]]:
     """Copy `tree`'s Python files under `to`, fresh, laid out as they are under its checkout.
 
-    With the checkout's `pyproject.toml`, so the copy is checked under the tree's settings.
+    With the checkout's settings (`pyproject.toml`, and the type checkers' own files, which
+    `--infer-with` starts them under), so the copy is checked as the tree is.
 
     Returns:
       The copy's place, and each copied file that compiles.
@@ -79,8 +80,10 @@ def copied(tree: Tree, to: Path) -> tuple[Place, list[Path]]:
         if corpus_table.compiles(copy):
             valid.append(copy)
     to.mkdir(parents=True, exist_ok=True)
-    if tree.base and (tree.base / _SETTINGS).is_file():
-        _ = shutil.copyfile(tree.base / _SETTINGS, to / _SETTINGS)
+    name: str
+    for name in _SETTINGS if tree.base else ():
+        if (cast("Path", tree.base) / name).is_file():
+            _ = shutil.copyfile(cast("Path", tree.base) / name, to / name)
     return Place(to, target, tree.environment), valid
 
 

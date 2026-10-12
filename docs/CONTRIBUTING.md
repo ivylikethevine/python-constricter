@@ -8,10 +8,9 @@ every one must pass, coverage stays at 100%, and the project's own code passes
 behaviour, and note user-facing changes in [CHANGELOG.md](CHANGELOG.md).
 
 When bumping the version for a release, record it in [RUNS.md](RUNS.md): run
-`tests/corpus/corpus_table.py --versions dev --write` (with the `corpus` group installed), which
-appends this checkout's results under the new version, and commit it with the bump. Between
-releases, `--label 0.2.4-rc.1` records a checkpoint under a pseudo-version instead, without bumping
-it.
+`local/.venv/bin/python -m tests.corpus tests/corpus/runs/release.toml`, which appends this
+checkout's results under the new version, and commit it with the bump. Between releases,
+`--label 0.2.4-rc.1` records a checkpoint under a pseudo-version instead, without bumping it.
 
 ## Development
 
@@ -66,13 +65,15 @@ versions (releases, this checkout, or another checkout's by its Python), and its
 every level, each fix on a copy (every file still compiling, and nothing left for a second pass),
 the census, coverage, a check timed in one process and with every CPU, and one that `py-spy` samples
 from outside, with constricter's slowest modules and functions. `--only NAME` keeps a run to one
-corpus. CI runs the check, the fix and the profile, each in its own job (the profile's never fails
-the run), against the standard library and the clones, at their pinned tags, of `django`,
-`sqlalchemy`, `pydantic` and `pandas` (a web framework, an ORM, a runtime-validation library and a
-data library; their dependencies' types come from the pinned `corpus` dependency group), and against
-pure Python 2 (Twisted 12.3.0) and pip 20.3.4 (2/3-era code whose `# type:` comments sit in modules
-with Python 2 `__future__` imports), hash-pinned sdists `tests/corpus/corpus_sources.py` fetches,
-since neither installs as a dependency.
+corpus. `tests/corpus/runs/super.toml` and `mega.toml` ask every step of the seven corpora and of
+the 40 more packages, a suite's own tests, type checks and traced tests after each fix too: sized
+for a laptop, and `--at-once N --jobs M` say otherwise. CI runs the check, the fix and the profile,
+each in its own job (the profile's never fails the run), against the standard library and the
+clones, at their pinned tags, of `django`, `sqlalchemy`, `pydantic` and `pandas` (a web framework,
+an ORM, a runtime-validation library and a data library; their dependencies' types come from the
+pinned `corpus` dependency group), and against pure Python 2 (Twisted 12.3.0) and pip 20.3.4
+(2/3-era code whose `# type:` comments sit in modules with Python 2 `__future__` imports),
+hash-pinned sdists `tests/corpus/corpus_sources.py` fetches, since neither installs as a dependency.
 
 `tests/corpus/corpus_suite.py` runs a Python 3 corpus package's own test suite (cloned at its pinned
 tag, with its test dependencies as its CI installs them, in `local/corpus-suites/`) as released and
@@ -86,16 +87,15 @@ fixed with those checkers' hints too, and `--trace` one fixed with the trace of 
 process: Django's `runtests.py`). It needs `git`, `uv`, a C compiler, Rust (a default toolchain:
 `rustup default stable`) and the network.
 
-`tests/corpus/corpus_table.py` measures every corpus with released constricter versions and this
-checkout (each isolated in its own environment), at every level, checked and fixed, and records a
-section per version in [`docs/RUNS.md`](RUNS.md): offences per code, errors and warnings at each
-level, fixes, guesses, anything a fix broke, and the share of bindings typed before and after fixing
-(by this checkout's `--coverage`). It needs the `corpus` group
-(`uv sync --group dev --group corpus`) and `uv`; see its docstring for the options.
+A run file with a `[publish]` table records a section per version in [`docs/RUNS.md`](RUNS.md):
+offences per code, errors and warnings at each level, fixes, guesses, anything a fix broke, and the
+share of bindings typed before and after fixing (by this checkout's `--coverage`). Its `versions`
+may name releases too, each installed in an environment of its own.
 
 On a pull request that touches what `--fix` does, the Corpus coverage workflow comments with
 pydantic's share of bindings typed as released, after `--fix`, and after `--fix --unsafe-fixes`,
-beside the base branch's (`tests/corpus/corpus_coverage.py`), and edits the comment on each push.
+beside the base branch's (a run of `tests/corpus/runs/coverage.toml`, with both), and edits the
+comment on each push.
 
 `local/.venv/bin/python -m tests.corpus.super_corpora` runs all of these on every corpus at once,
 for a machine with many cores: the table, the census, each installed checker's `--infer-with`, each

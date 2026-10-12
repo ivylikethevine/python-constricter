@@ -105,7 +105,7 @@ def main(argv: Sequence[str]) -> int:
     """Fetch each source named (default: all) and print its package directory.
 
     With `--describe`, each line is its name, version and directory, tab-separated (for
-    tests/corpus/corpus_table.py, which runs this rather than import it: it runs as a script, not from
+    `corpus_table.corpora`, which runs this rather than import it: it's read as a script too, not from
     the `tests` package).
 
     Returns:

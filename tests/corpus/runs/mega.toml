@@ -1,0 +1,25 @@
+# The 40 packages the seven don't stand for, every way: every step, a suite's own tests, type checks and traced tests
+# after each fix. Sized for a laptop (two corpora at a time, four processes each): `--at-once N --jobs M`
+# and `suite-workers` say otherwise for a larger machine. A stopped run carries on with `--resume FOLDER`.
+
+[run]
+label = "mega"
+versions = ["dev"]
+jobs = 4
+at-once = 2
+suite-workers = 4
+suite-seconds = 900 # the longest suite's tests took 6 minutes a run
+
+[corpora]
+include = ["mega"]
+
+[steps]
+check = true
+fix = ["certain", "likely", "unsafe"]
+infer-with = ["basedpyright", "ty", "pyrefly"]
+census = true
+coverage = true
+timing = 1
+tests = true
+types = true
+traced = true

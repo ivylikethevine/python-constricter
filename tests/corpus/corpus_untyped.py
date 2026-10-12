@@ -1,11 +1,9 @@
 # SPDX-License-Identifier: MIT
-"""Count what `--fix` still can't type in each corpus, and why: the numbers docs/ROADMAP.md quotes.
+"""Count what `--fix` still can't type in a corpus, and why: the numbers docs/ROADMAP.md quotes.
 
-  local/.venv/bin/python -m tests.corpus.corpus_untyped                    # every corpus, as Markdown
-  local/.venv/bin/python -m tests.corpus.corpus_untyped --top 60           # more categories per table
-  local/.venv/bin/python -m tests.corpus.corpus_untyped --rows rows.jsonl  # and every binding, one a line
+The corpus runner's `census` step takes it (`python -m tests.corpus`, with `census = true`), and
+writes its report as `census.md` in the run's folder. A corpus is checked at `suffocate`
 
-The corpora are `tests/corpus/corpus_table.py`'s. Each is checked by this checkout at `suffocate`
 with `all-scopes` (`--format=json`), and every untyped binding it reports (LVA001, LVA002, LVA004)
 is classified from the source: the statement that binds it (`assign`, `unpack`, `loop`, `with`,
 `walrus`, ...), the shape of its value (`call: self.method()`, `attr: chained`, `empty list`, ...),
@@ -14,14 +12,13 @@ when its file does), whether `--fix` offers a fix (and whether only as a guess),
 attribute reached through an import, what it resolves to (`os.path.join`) and where that comes
 from: the standard library, the corpus's own package, or a third-party one.
 
-It prints, as Markdown: each corpus's untyped bindings, those with no fix at all, and how many of
-those are in functions with no annotations; the commonest shapes with no fix in annotated
+`report` writes, as Markdown: each corpus's untyped bindings, those with no fix at all, and how many
+of those are in functions with no annotations; the commonest shapes with no fix in annotated
 functions, in unannotated ones, and at module level; the groups the roadmap's items are sized by;
-and calls through an import, by where it comes from. Files that don't parse as
-Python 3 (Twisted's Python 2) are left out, their count on standard error.
+and calls through an import, by where it comes from. Files that don't parse as Python 3 (Twisted's
+Python 2) are left out, and counted.
 """
 
-import argparse
 import ast
 import json
 import re
@@ -34,7 +31,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Final, NamedTuple, TextIO, TypeAlias, cast
 
-from tests.corpus.corpus_table import ALL_SCOPES, WORK, Corpus, corpora
+from tests.corpus.corpus_table import ALL_SCOPES, WORK, Corpus
 from tests.corpus.untyped_shapes import Module, Names, binding_of, declares, names_in, origin_of, shape
 
 _Json: TypeAlias = "str | int | bool | list[_Json] | dict[str, _Json] | None"
@@ -470,38 +467,3 @@ def report(bindings: Sequence[Binding], corpora_seen: Sequence[str], top: int = 
         ("Calls with no fix through an import, by where it comes from", _imports(missed, top)),
     ]
     return "\n".join(f"## {heading}\n\n" + "\n".join(lines) + "\n" for heading, lines in sections)
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    """Take the census of every corpus and print it (writing every binding, with `--rows`).
-
-    Returns:
-      0.
-
-    """
-    parser: argparse.ArgumentParser = argparse.ArgumentParser(description="What `--fix` can't type, and why.")
-    _ = parser.add_argument("--top", type=int, default=_TOP, help="categories per table (30)")
-    _ = parser.add_argument("--rows", type=Path, help="also write every binding to this file, as JSON lines")
-    options: argparse.Namespace = parser.parse_args(argv)
-    WORK.mkdir(parents=True, exist_ok=True)
-    bindings: list[Binding] = []
-    seen: list[str] = []
-    corpus: Corpus
-    for corpus in corpora():
-        found: list[Binding]
-        unparsed: int
-        found, unparsed = census(corpus)
-        bindings.extend(found)
-        seen.append(corpus.name)
-        _ = sys.stderr.write(
-            f"{corpus.name}: {len(found):,} untyped ({unparsed:,} in files that don't parse)\n",
-        )
-    rows: Path | None
-    if (rows := cast("Path | None", options.rows)) is not None:
-        _ = rows.write_text("".join(json.dumps(b._asdict()) + "\n" for b in bindings), encoding="utf-8")
-    _ = sys.stdout.write(report(bindings, seen, cast("int", options.top)))
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
