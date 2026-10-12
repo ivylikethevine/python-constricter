@@ -36,7 +36,7 @@ from tests.corpus import catalog, pipeline, render, suite_steps, trees
 from tests.corpus.pipeline import Record
 from tests.corpus.run_config import Run, read
 
-_Measured: TypeAlias = "tuple[trees.Tree, list[str]]"  # a corpus's tree, and its steps that failed
+_Measured: TypeAlias = tuple[trees.Tree, list[str]]  # a corpus's tree, and its steps that failed
 _RESUME: Final = "--resume"
 _STEP: Final = "--step"  # then a run's folder, a corpus and a version: that corpus's suite steps
 _ROOT: Final = Path(__file__).resolve().parents[2]

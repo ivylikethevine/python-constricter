@@ -44,9 +44,9 @@ from tests.corpus import corpus_table, corpus_untyped, launch
 from tests.corpus.run_config import CERTAIN, DEV, FIXES, LIKELY, Run
 from tests.corpus.trees import Tree
 
-Record: TypeAlias = "dict[str, object]"
-_Entry: TypeAlias = "dict[str, object]"
-_Listed: TypeAlias = "list[_Entry] | _Entry | None"  # what `--format=json` may print
+Record: TypeAlias = dict[str, object]
+_Entry: TypeAlias = dict[str, object]
+_Listed: TypeAlias = list[_Entry] | _Entry | None  # what `--format=json` may print
 CHECK: Final = "check"
 COVERAGE: Final = "coverage"
 FIX: Final = "fix-"

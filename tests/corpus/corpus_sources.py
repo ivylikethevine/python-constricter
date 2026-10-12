@@ -34,7 +34,7 @@ WORK: Final = Path(__file__).resolve().parents[2] / "local" / "corpus-sources"
 CATALOG: Final = Path(__file__).with_name("corpora.toml")
 FILES: Final = "https://files.pythonhosted.org/packages"  # PyPI's file host, which a `where` is under
 _SDIST: Final = "sdist"
-_Table: TypeAlias = "dict[str, object]"  # a table of the catalog, as `tomllib` reads it
+_Table: TypeAlias = dict[str, object]  # a table of the catalog, as `tomllib` reads it
 
 
 def pinned(among: str | None = None) -> dict[str, Source]:

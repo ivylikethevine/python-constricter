@@ -26,7 +26,7 @@ _SUITE: Final = "suite"  # an entry's table
 _STDLIB: Final = "stdlib"  # the `kind` of the entry that is the running Python's standard library
 _RAW: Final = "!"  # before a test command that isn't pytest's
 _MOST: Final = 8  # the most processes a suite is given where its entry doesn't say
-_Table: TypeAlias = "dict[str, object]"  # a table of the catalog, as `tomllib` reads it
+_Table: TypeAlias = dict[str, object]  # a table of the catalog, as `tomllib` reads it
 
 
 class Suite(NamedTuple):

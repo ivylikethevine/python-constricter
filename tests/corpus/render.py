@@ -36,8 +36,8 @@ from tests.corpus.pipeline import (
 from tests.corpus.run_config import CERTAIN, CSV, JSON, LIKELY, MARKDOWN, UNSAFE, Run
 from tests.corpus.trees import Tree
 
-_Row: TypeAlias = "list[object]"  # a table's cells, as `csv` writes them
-_Rows: TypeAlias = "list[_Row]"
+_Row: TypeAlias = list[object]  # a table's cells, as `csv` writes them
+_Rows: TypeAlias = list[_Row]
 _NO_RECORD: Final[Record] = {}
 _VERDICTS: Final = ("told", "held", "differed")  # a traced record's counts, each by tier
 _COUNTS: Final = ("untyped", "guessed", "unfixed", "unparsed")  # a census record's counts
@@ -379,7 +379,7 @@ def _coverage(records: Records) -> _Rows:
     return rows
 
 
-_Table: TypeAlias = "Callable[[Records], _Rows]"
+_Table: TypeAlias = Callable[[Records], _Rows]
 _TABLES: Final[dict[str, _Table]] = {
     "offences": _offences,
     "levels": _levels,

@@ -14,8 +14,8 @@ from tests.corpus.pipeline import Record, Store
 from tests.corpus.run_config import CERTAIN, CSV, DEV, JSON, LIKELY, MARKDOWN, Run, Steps, parse
 from tests.corpus.trees import Tree
 
-_Nested: TypeAlias = "dict[str, dict[str, dict[str, Record]]]"  # corpus, version, step
-_Rows: TypeAlias = "list[list[str]]"  # a CSV table, read back
+_Nested: TypeAlias = dict[str, dict[str, dict[str, Record]]]  # corpus, version, step
+_Rows: TypeAlias = list[list[str]]  # a CSV table, read back
 _WARNING: Final = "a warning\n"
 _PUBLISHED: Final = "\n## constricter rc\n"  # in RUNS.md: `dev` under the run's label
 _SECTION: Final = "## constricter rc+dev"
