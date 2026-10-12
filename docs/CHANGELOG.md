@@ -51,7 +51,7 @@ Notable changes, newest first. Each release's full notes are generated from its 
   suites named.
 - `--likely`, with `--fix` or `--diff`: applies the guesses measured to hold as often as a certain
   fix does, and no other. A guess is likely by its mechanisms, the whole set of them:
-  [LIKELY.md](LIKELY.md) lists the sets, 74% of the guesses on 42 packages, and the bars a set
+  [LIKELY.md](LIKELY.md) lists the sets, 80% of the guesses on 42 packages, and the bars a set
   passes: 20 of its guesses or more told of by their packages' traced tests, more than 95% of those
   holding, and under one guess in a thousand blamed by a type checker. `--show-fixes` names the flag
   a guess needs, `--format=json` gives each fix a `likely`, and `--fix`'s summary counts them.

@@ -146,6 +146,10 @@
   `tmp_path`) or its `parametrize` literals (`fixture`), and what rests on any of these. **Fix
   levels**: every mechanism has a stable id (`--show-fixes`, JSON), and `fix-select`, `fix-ignore`
   and `unsafe-fix-select` choose which apply.
+- **Likely guesses** (`--likely`, [LIKELY.md](LIKELY.md)): the guesses measured to hold as often as
+  a certain fix does, by their whole set of mechanisms (`offences.LIKELY`). Every guess on 42
+  packages is held to its package's type checker and to what its traced tests bound: 61 sets pass
+  the bars, 36,777 of the 45,922 guesses (80.1%).
 - **Type-checker-backed inference** (`--infer-with basedpyright,ty,pyrefly`): the checkers' inlay
   hints type what `--fix` can't, as guesses, widened, checked and imported; with basedpyright it
   about doubles what `--fix --unsafe-fixes` types on the annotated corpora. A hint naming a class
@@ -459,42 +463,31 @@ fix.
 
 ### Small: under 4 hours
 
-1. **The likely sets, widened.** A super and a mega corpora run measured every guess on 42 packages
-   against the bars ([LIKELY.md](LIKELY.md)): the 22 sets of `offences.LIKELY` each pass, and 39
-   more do, 2,779 guesses (`assigned` 307, `copy+filled` 227, `assigned+method` 212, `attribute`
-   211, `call+rebound` 208, `assigned+loop` 145), which would take `--likely` from 74.0% of the
-   guesses to 80.1%. Add them to `LIKELY`, after reading what differed in the largest: a set that
-   passes still holds wrong guesses (`actual_key: tuple[str, int]`, a `list` each of 233 times, in
-   dask's `_expr.py`: `copy+loop`, likely now). `returned` (786) misses by its share, 93.6%: 21 of
-   its 39 that differed are Django's, and three of dask's are a test's `HighLevelGraph` that is a
-   `dict`. Done when `LIKELY` is the sets `scratch/guess_report.py --likely` lists and LIKELY.md has
-   one table of them. About 2 hours and a mega corpora run; coverage unchanged, what `--likely`
-   applies up by 2,779 guesses on the 42.
-2. **A function taken for a class.** `counter = multiprocessing.Value("i", 0)` is guessed a
+1. **A function taken for a class.** `counter = multiprocessing.Value("i", 0)` is guessed a
    `multiprocessing.Value` (`constructor`, a likely set): a capitalised name the standard library's
    stubs declare as a variable, not a class, and that the `functions` table hasn't. Done when no
    `constructor` guess names what typeshed declares otherwise than a class. About 2 hours; coverage
    down by those guesses (one on Django).
-3. **A second `--likely` pass that adds nothing.** `--fix --likely` leaves a second pass 2 lines on
+2. **A second `--likely` pass that adds nothing.** `--fix --likely` leaves a second pass 2 lines on
    pydantic: a guess resting on a likely one, of a set that isn't likely itself, is certain once the
    first is written. Count a guess likely where every guess it rests on is, or the table's
    `Left, likely` stays above 0: 388 bindings on 26 of the mega corpora (networkx 49, dask 45, mypy
    and sphinx 40 each, mkdocs 30, textual 25, pdm 23), where a second pass with every guess leaves
    10 (websockets 8, mypy 2). Done when it's 0 on the seven corpora and the mega corpora. About 3
    hours; coverage unchanged.
-4. **One tier, decided once.** `Offence.likely`, `cli.options.Guesses.applies` and
+3. **One tier, decided once.** `Offence.likely`, `cli.options.Guesses.applies` and
    `corpora_steps.fix_tier` each decide whether a fix is certain, likely or another guess. Give
    `Offence` a `tier` the three read. Done when one function names a fix's tier. About an hour;
    coverage unchanged.
-5. **Platform-only modules, from typeshed.** A class of a standard-library module only some
+4. **Platform-only modules, from typeshed.** A class of a standard-library module only some
    platforms have is no fix where a function alone imports the module, by a list of 19 written by
    hand (`fix.core.known._PLATFORM`). `stdlib_tables` reads each stub as Linux, macOS and Windows
    see it: have it write the modules one of them finds nothing in. Done when the list is a generated
    table. About 3 hours; coverage unchanged.
-6. **A class of a class's body, named through it.** `names: _Names` has no fix where `_Names` is
+5. **A class of a class's body, named through it.** `names: _Names` has no fix where `_Names` is
    defined in the method's class: `Group._Names` names it anywhere. Done when such a fix is written
    through its class, quoted where the class isn't bound yet. About 3 hours; a handful of fixes.
-7. **A suite's own differences, named.** black's `test_piping` asserts its own source is as black
+6. **A suite's own differences, named.** black's `test_piping` asserts its own source is as black
    formats it, and fails after any fix: so a mega corpora run always exits 1, and its status doesn't
    say whether anything else differs. Let `mega_packages.json` name the tests a fix may change, each
    with why, and a run report them apart. Two more a run reports that no fix is shown to cause:
@@ -504,28 +497,28 @@ fix.
    `--fix --unsafe-fixes` and not after `--fix --likely`, in a suite not marked as varying whose
    traced run failed 7 to the released 5. Read litestar's before naming it. Done when a run whose
    only differences are named exits 0. About 2 hours; coverage unchanged.
-8. **A traced step that differs, run again.** A suite's `tests` step runs the released tests again
+7. **A traced step that differs, run again.** A suite's `tests` step runs the released tests again
    where a fixed run differs (`corpora_steps._settled`); its `traced` step doesn't, for a package
    with no type checks: Django's `test_media_root_pathlib` failed once as released and the step said
    the trace's fixes changed its tests. Done when the `traced` step settles a difference as the
    `tests` step does. About 2 hours; coverage unchanged.
-9. **A traced run's path.** A suite's tests are traced with this checkout's root on their path, for
+8. **A traced run's path.** A suite's tests are traced with this checkout's root on their path, for
    `constricter`: its `tests` package is there too, under the suite's own only because pytest puts
    its root directory first. Give the traced run a directory that has `constricter` alone. Done when
    no module of this checkout's `tests` can be imported in a traced suite. About 2 hours; coverage
    unchanged.
-10. **Fixes per mechanism, by set and tier.** RUNS.md's fixes per mechanism count each mechanism
-    alone, certain or guessed, from the `check` step; a guess is likely by its whole set. Count the
-    sets, and each one's likely guesses. Done when the table's rows are LIKELY.md's sets. About 2
-    hours; coverage unchanged.
-11. **celery's suite, in the memory a run has.** celery's tests held 24.8 GB at half a CPU, and 28.0
+9. **Fixes per mechanism, by set and tier.** RUNS.md's fixes per mechanism count each mechanism
+   alone, certain or guessed, from the `check` step; a guess is likely by its whole set. Count the
+   sets, and each one's likely guesses. Done when the table's rows are LIKELY.md's sets. About 2
+   hours; coverage unchanged.
+10. **celery's suite, in the memory a run has.** celery's tests held 24.8 GB at half a CPU, and 28.0
     GB traced: more than a 16 GB machine has, and of the 46 GB the mega run shared out. Every
     `traced` step but narwhals's was counted as 5.0 GB, unmeasured: celery's held five times that,
     mypy's 6.7 GB, optuna's 6.6 GB, altair's 6.2 GB. What celery's tests hold is unread (28,808
     subtests). Size an unmeasured `traced` step by its suite's `tests` step, and run celery's suite
     in parts or with what it keeps let go. Done when no step of a run holds over 8 GB unless it runs
     alone. About 3 hours; coverage unchanged.
-12. **A traced suite's time.** The mega run takes 74 minutes with the `traced` steps, from 54. A
+11. **A traced suite's time.** The mega run takes 74 minutes with the `traced` steps, from 54. A
     `traced` step to its suite's `tests` step, which runs the tests at least twice: pygments 436s to
     45s, pint 411s to 91s, tox 576s to 300s, anyio 371s to 225s, joblib 516s to 315s, celery 582s to
     374s, aiohttp 335s to 169s. zarr's are the run's longest, 1,508s and 1,020s at 0.7 CPUs. Profile
