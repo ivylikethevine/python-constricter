@@ -163,6 +163,9 @@ notice-rgx = "SPDX-License-Identifier: MIT"
     "suspicious-pickle-usage",
 ]
 "tests/corpus/corpora_steps.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
+# The corpus runner starts each constricter version under test (`launch`), and asks git for the commit.
+"tests/corpus/launch.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
+"tests/corpus/__main__.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
 # The local CI runner runs the workflow's own steps (and git) as subprocesses.
 "tests/ci_local.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
 # Installed modules' reads are cached as pickles, written and read by constricter alone in the

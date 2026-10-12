@@ -1,0 +1,8 @@
+# pydantic alone, with this checkout: the quick before-and-after of a change to `--fix`.
+
+[run]
+label = "pydantic"
+versions = ["dev"]
+
+[corpora]
+include = ["pydantic"]

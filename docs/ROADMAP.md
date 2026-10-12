@@ -395,7 +395,8 @@
 - **Security** (`security.yml`, weekly too): CodeQL, zizmor (pedantic), actionlint, pip-audit,
   dependency review, and gitleaks over the whole history; OpenSSF Scorecard; lychee on links.
 - **Pinning**: actions by SHA, Python dependencies by hash (`uv.lock`, checked in CI), npm by
-  lockfile, uv and actionlint by version; Dependabot updates them weekly.
+  lockfile, uv and actionlint by version. `tool-versions.yml` keeps one issue open while any of them
+  is behind a release at least a week old; Dependabot opens no version-update pull request.
 - **harden-runner** blocks egress to all but the observed hosts in every Linux job, the release jobs
   included; rulesets require every check on `main` and protect `v*` tags.
 - **Releases** (`release.yml` on `v*` tags): CI, a reusable build workflow that checks the tag
@@ -620,18 +621,20 @@ fix.
    every kind (`scratch/widen_suites.py`); no corpora run widens. Done when a second pass leaves
    nothing on the seven (`scratch/widen_pass.py`). About 2 hours; coverage unchanged.
 
-9. **One way to run a corpus.** constricter is started three ways across the corpus scripts, on
-   three trees: in this process on a path (`corpus.py`, `corpus_fix.py`); as
-   `python -I -m constricter` from `local/corpus-table`, on the copy installed in `local/.venv` or a
-   package's sdist, with no project settings and this environment's types (`corpus_table.py`,
-   `corpus_untyped.py`, `corpus_coverage.py`); and as the `constricter` script from a clone at the
-   pinned tag, with that checkout's `pyproject.toml` and its own environment (`corpus_suite.py`). So
-   a package's table and its suite don't count the same thing (pydantic: 1,568 fixes and guesses in
-   the one, 1,490 in the other), and `min-python`, read from `requires-python`, never reaches the
-   table. Have the table and the census read the suite's checkout, with its settings and its
-   environment, where a corpus has a suite, through one function that starts constricter. It moves
-   every corpus's counts once: RUNS.md's version sections before it stay as they were measured. Done
-   when a suite's `tests` step and its `table` step list the same fixes. About 6 hours; coverage
+9. **One corpus runner.** `python -m tests.corpus RUN.toml` reads a run file (the corpora, the
+   constricter versions, the steps, the formats) and writes a folder of that execution's own
+   (`<output>/<label>-<month>-<day>-<year>-<time>/`): a record for each corpus, version and step,
+   and `report.json`, `report.md` and `tables/*.csv`, each made from the records alone. Every step
+   starts constricter one way (`launch.run`), on one tree a corpus (`catalog.Tree`): a suite's
+   checkout at its pinned tag, with its settings and environment, where a corpus has one. Built: the
+   `check`, `fix` and `coverage` steps, which give what `corpus_table.py` does (pip's counts, whose
+   tree is the same, are its own: 2,253 fixes, 414 likely and 1,133 guesses on top; pydantic's are
+   its suite's, 1,081 and 1,490 with guesses, where the table has 1,158 and 1,567). Left: the
+   census, `--infer-with` and the suites' tests, type checks and traces as steps, under the
+   scheduler `super_corpora.py` has; the suites and the mega corpora's packages in `corpora.toml`
+   (they're in `corpus_suite.SUITES` and `mega_packages.json`); timing and profiling; RUNS.md's
+   sections written from a run's folder; CI's jobs as run files; and the scripts it replaces
+   deleted. Done when no other script starts constricter on a corpus. About 12 hours left; coverage
    unchanged.
 
 10. **One way to follow a re-export.** `project.definition` follows a name through the imports a

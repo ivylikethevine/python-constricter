@@ -52,8 +52,10 @@ what only one interpreter breaks fails before CI. Name jobs to run only those
 (`tests/ci_local.py lint docs interpreters`), and add `--install-hook` once to run it before every
 `git push`.
 
-After editing a dependency group, run `uv lock` (CI fails until you do). Dependabot updates
-`uv.lock`, the npm lock and the actions weekly.
+After editing a dependency group, run `uv lock` (CI fails until you do). Nothing bumps a pin for
+you: `tool-versions.yml` lists `uv.lock`'s direct dependencies, the npm pins, the actions and the
+tools pinned by URL that are behind upstream in one tracking issue, and each bump is a hand edit
+(`.github/scripts/check_tool_versions.sh` prints the same report locally).
 
 Fuzzing (`tests/test_fuzz.py`) runs with the tests: hypothesmith generates valid Python, which must
 never crash the checker and must stay valid after `--fix`. For a large real codebase, run
@@ -106,6 +108,14 @@ run doesn't say whose fixes a difference is (its tests differ; a type error is u
 to a certain or a likely fix), it runs again after `--fix --likely`, then after `--fix`. Before a
 release, run it and `tests.corpus.mega_corpora` with `--assure`: every suite's type checks after
 `--fix` alone too.
+
+`local/.venv/bin/python -m tests.corpus RUN.toml` is the runner these scripts are moving into: a run
+file names the corpora ([`corpora.toml`](../tests/corpus/corpora.toml)'s), the constricter versions,
+the steps and the formats (`tests/corpus/run_config.py` lists the keys; `tests/corpus/runs/` has run
+files), and each execution writes a folder of its own under `local/corpus-runs/`, named by the run's
+label and the time: a record for each corpus, version and step, and `report.json`, `report.md` and
+`tables/*.csv` made from them. `--resume FOLDER` carries on a stopped run. So far it checks, fixes
+and counts coverage, as `corpus_table.py` does.
 
 `local/.venv/bin/python -m tests.corpus.corpus_untyped` counts what `--fix` still can't type on the
 same corpora, and why: each untyped binding by the statement that binds it and the shape of its

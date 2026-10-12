@@ -6,6 +6,13 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A corpus runner, `python -m tests.corpus RUN.toml`: a run file names the corpora, the constricter
+  versions, the steps and the formats, and each execution writes a folder of its own
+  (`local/corpus-runs/<label>-<month>-<day>-<year>-<time>/`) with a record for each corpus, version
+  and step, and `report.json`, `report.md` and `tables/*.csv` made from those records alone. Every
+  step starts constricter one way, on one tree a corpus: a suite's checkout, with its settings and
+  environment, where it has one. It checks, fixes and counts coverage so far; the other corpus
+  scripts still run what it doesn't. A suite's install ignores the user's uv settings.
 - A corpora run's section keeps a code span on one line, as Prettier does: a note broken inside
   `python -m constricter.trace` failed CI's `prettier --check` on RUNS.md.
 - The corpora runs hold each fix to what its package's tests bound: the traced step's tests run

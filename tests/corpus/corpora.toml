@@ -1,0 +1,35 @@
+# The corpora a run file can name (`python -m tests.corpus RUN.toml`), and the sets of them.
+#
+# kind = "stdlib": the running Python's standard library.
+# kind = "suite":  a package cloned at its pinned tag and installed with its tests' dependencies
+#                  (`corpus_suite.SUITES`); what's checked is that checkout's source, with its own
+#                  settings and environment.
+# kind = "sdist":  a hash-pinned sdist, unpacked (`corpus_sources.SOURCES`): Python 2 code.
+
+[sets]
+seven = ["standard library", "django", "sqlalchemy", "pydantic", "pandas", "twisted", "pip"]
+
+[corpus."standard library"]
+kind = "stdlib"
+
+[corpus.django]
+kind = "suite"
+version = "5.2.17"
+
+[corpus.sqlalchemy]
+kind = "suite"
+version = "2.0.54"
+
+[corpus.pydantic]
+kind = "suite"
+version = "2.13.5"
+
+[corpus.pandas]
+kind = "suite"
+version = "3.0.6"
+
+[corpus.twisted]
+kind = "sdist"
+
+[corpus.pip]
+kind = "sdist"
