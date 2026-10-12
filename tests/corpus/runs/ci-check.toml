@@ -1,0 +1,17 @@
+# What CI's Corpus job asks of each corpus (`--only`), a suite's corpus its clone alone: nothing
+# is installed. Its check task: a check at every level, which a crash fails.
+
+[run]
+label = "ci-check"
+versions = ["dev"]
+formats = ["json", "markdown"]
+
+[corpora]
+include = ["seven"]
+install = false
+
+[steps]
+check = true
+fix = []
+census = false
+coverage = false

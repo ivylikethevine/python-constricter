@@ -4,13 +4,15 @@
     [run]
     label = "0.3.6-rc.1"             # names the run's folder, and `dev` in its tables
     output = "local/corpus-runs"     # each execution writes a folder of its own under it
-    versions = ["0.3.1", "dev"]      # releases from PyPI, and `dev`: this checkout
+    versions = ["0.3.1", "dev"]      # releases from PyPI, and `dev`: this checkout; or `NAME=PATH`,
+                                     # the constricter the Python at PATH runs (another checkout's)
     formats = ["json", "markdown", "csv"]
     jobs = 0                         # constricter's worker processes: 0 is every CPU
     at-once = 1                      # the corpora measured side by side (give `jobs` a share of the CPUs)
 
     [corpora]
-    include = ["seven"]              # corpora or sets of `corpora.toml`
+    include = ["seven"]              # corpora or sets of `corpora.toml`, or directories
+    install = true                   # false: a suite's corpus is cloned alone, with no environment
 
     [steps]
     check = true                     # offences per code, and errors and warnings at each level
@@ -21,6 +23,9 @@
     tests = true                     # a suite's own tests, as released and after each fix
     types = true                     # its own type checks, each new error traced to its fix
     traced = true                    # its tests traced: each fix held to what they bind; a fix by the trace
+
+    timing = 3                       # a check timed that many times, in one process and with `jobs`
+    profile = true                   # a check in one process `py-spy` samples
 
     [publish]
     runs-md = "docs/RUNS.md"         # and a section a version there, of the per-version tables
@@ -37,6 +42,7 @@ from typing import IO, Final, NamedTuple, TypeAlias, cast
 from constricter import __version__
 
 DEV: Final = "dev"
+NAMED: Final = "="  # in a version: after its name, the Python that runs it
 JSON: Final = "json"
 MARKDOWN: Final = "markdown"
 CSV: Final = "csv"
@@ -49,9 +55,20 @@ FIXES: Final = {CERTAIN: (), LIKELY: ("--likely",), UNSAFE: ("--unsafe-fixes",)}
 CHECKERS: Final = ("basedpyright", "ty", "pyrefly")  # what `--infer-with` can start
 _KEYS: Final = {
     "run": {"label", "output", "versions", "formats", "jobs", "at-once"},
-    "corpora": {"include"},
+    "corpora": {"include", "install"},
     "publish": {"runs-md", "replace"},
-    "steps": {"check", "fix", "infer-with", "census", "coverage", "tests", "types", "traced"},
+    "steps": {
+        "check",
+        "fix",
+        "infer-with",
+        "census",
+        "coverage",
+        "tests",
+        "types",
+        "traced",
+        "timing",
+        "profile",
+    },
 }
 _RUNS_MD: Final = "runs-md"
 _STAMP: Final = "%m-%d-%Y-%H%M"  # a run's folder: its label, then the month, day, year and time it started
@@ -69,6 +86,8 @@ class Steps(NamedTuple):
     tests: bool = False  # a suite's own tests take minutes: asked for
     types: bool = False  # and its own type checks
     traced: bool = False  # and its tests once more, traced (it needs `fix`'s `unsafe`)
+    timing: int = 0  # how many times a check is timed, each way: 0 is not at all
+    profile: bool = False
 
 
 class Publish(NamedTuple):
@@ -90,6 +109,7 @@ class Run(NamedTuple):
     steps: Steps = Steps()
     at_once: int = 1  # the corpora measured side by side
     publish: Publish = Publish()
+    install: bool = True  # a suite's corpus installed with its tests' dependencies, not cloned alone
 
     def folder(self, now: datetime) -> Path:
         """Name the folder an execution started at `now` writes.
@@ -103,11 +123,13 @@ class Run(NamedTuple):
     def recorded(self, version: str) -> str:
         """Name a version as the run's tables do: a release as itself, `dev` as `<label>+dev`.
 
+        And one written `NAME=PATH`, another Python's constricter, as `NAME`.
+
         Returns:
           The name.
 
         """
-        return f"{self.label}+{DEV}" if version == DEV else version
+        return f"{self.label}+{DEV}" if version == DEV else version.partition(NAMED)[0]
 
 
 def _among(given: object, known: tuple[str, ...], what: str) -> tuple[str, ...]:
@@ -165,12 +187,15 @@ def parse(data: _Table) -> Run:
             bool(steps.get("tests", default.steps.tests)),
             bool(steps.get("types", default.steps.types)),
             bool(steps.get("traced", default.steps.traced)),
+            cast("int", steps.get("timing", default.steps.timing)),
+            bool(steps.get("profile", default.steps.profile)),
         ),
         cast("int", run.get("at-once", default.at_once)),
         Publish(
             Path(str(publish[_RUNS_MD])) if _RUNS_MD in publish else None,
             bool(publish.get("replace")),
         ),
+        bool(cast("_Table", data.get("corpora", {})).get("install", default.install)),
     )
 
 

@@ -10,6 +10,7 @@ import shlex
 import sys
 import tomllib
 from functools import cache
+from pathlib import Path
 from typing import IO, Final, NamedTuple, TypeAlias, cast
 
 from tests.corpus import corpus_sources
@@ -60,6 +61,7 @@ class Entry(NamedTuple):
     environment: dict[str, str]  # what its commands need set
     port: str  # the port its tests bind, or ""
     stdlib: bool = False
+    path: str = ""  # a directory a run names itself: no corpus of the catalog
 
 
 def _installing(commands: list[str]) -> tuple[tuple[str, ...], ...]:
@@ -113,24 +115,42 @@ class Catalog(NamedTuple):
     sets: dict[str, list[str]]
 
     def names(self, include: list[str]) -> list[str]:
-        """Expand `include`, a run's corpora: a set's name stands for its corpora.
+        """Expand `include`, a run's corpora: a set's name stands for its corpora, a directory for itself.
 
         Returns:
           The corpora's names, each once, in the order given.
 
         Raises:
-          ValueError: one is neither a corpus nor a set.
+          ValueError: one is neither a corpus, a set, nor a directory.
 
         """
         found: dict[str, None] = {}
         name: str
         for name in include:
-            if name not in self.sets and name not in self.entries:
+            if name not in self.sets and name not in self.entries and not Path(name).is_dir():
                 known: str = ", ".join((*self.sets, *self.entries))
-                message: str = f"{name!r} is no corpus or set of {CATALOG.name}: {known}"
+                message: str = f"{name!r} is no directory, and no corpus or set of {CATALOG.name}: {known}"
                 raise ValueError(message)
             found.update(dict.fromkeys(self.sets.get(name, [name])))
         return list(found)
+
+    def entry(self, name: str) -> Entry:
+        """Find the entry of the corpus `name`: the catalog's, or one made for a directory.
+
+        Returns:
+          The entry.
+
+        """
+        return self.entries.get(name) or Entry(
+            Path(name).resolve().name,
+            "",
+            "",
+            None,
+            None,
+            {},
+            "",
+            path=name,
+        )
 
     def suites(self, among: str) -> dict[str, Suite]:
         """Find the suites of the set `among`.

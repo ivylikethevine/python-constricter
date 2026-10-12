@@ -26,8 +26,11 @@ class Tree(NamedTuple):
     variables: dict[str, str] | None = None  # what the suite's commands need set
 
 
-def found(entry: Entry) -> Tree:
+def found(entry: Entry, *, install: bool = True) -> Tree:
     """Find a corpus on disk, cloning and installing its suite or fetching its sdist the first time.
+
+    Without `install`, a suite is cloned alone: its source and settings, with no environment to read
+    installed packages' types from, and no suite to run.
 
     Returns:
       Its tree.
@@ -36,12 +39,16 @@ def found(entry: Entry) -> Tree:
       ValueError: the entry has neither a suite nor an sdist, and isn't the standard library.
 
     """
+    if entry.path:
+        return Tree(entry.name, "", Path(entry.path).resolve())
     if entry.stdlib:
         return Tree(entry.name, sysconfig.get_python_version(), Path(sysconfig.get_paths()["stdlib"]))
     if entry.suite is not None:
-        base: Path = corpus_suite.checkout(entry.name, entry.suite)
+        base: Path = corpus_suite.checkout(entry.name, entry.suite, install=install)
         corpus_suite.reset(base, entry.suite)
         source: Path = base / entry.suite.source
+        if not install:
+            return Tree(entry.name, entry.version, source, base)
         return Tree(entry.name, entry.version, source, base, base / ".venv", entry.suite, entry.environment)
     if entry.source is not None:
         sources: dict[str, corpus_sources.Source] = {entry.name: entry.source}

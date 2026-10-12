@@ -13,12 +13,16 @@ Notable changes, newest first. Each release's full notes are generated from its 
   step starts constricter one way, on one tree a corpus: a suite's checkout, with its settings and
   environment, where it has one. It checks, fixes (by tier, and with each type checker's hints),
   takes the census, counts coverage, and runs a suite's own tests, type checks and traced tests
-  after each fix so far, corpora side by side (`at-once`), and writes a version's section of RUNS.md
-  where the run file says (`[publish]`), with the run file copied into the folder; the other corpus
-  scripts still run what it doesn't. A suite's install ignores the user's uv settings. Every corpus,
-  its pinned sdist and its suite are in `tests/corpus/corpora.toml` (the seven's, and the mega
-  corpora's 40 that `mega_packages.json` held), which each corpus script reads;
-  `corpus_untyped.py`'s shapes are a module of their own (`untyped_shapes.py`).
+  after each fix so far, corpora side by side (`at-once`), times a check and profiles it under
+  `py-spy`, and writes a version's section of RUNS.md where the run file says (`[publish]`); a
+  corpus may be any directory, and a version another checkout's constricter, by its Python. It exits
+  1 on a step that failed, a file a fix broke, what a second pass still fixes, or a suite's tests
+  that differ. CI's Corpus and Profile jobs are run files of it (`tests/corpus/runs/`), and
+  `corpus.py`, `corpus_fix.py` and `corpus_timing.py` are gone; with the run file copied into the
+  folder; the other corpus scripts still run what it doesn't. A suite's install ignores the user's
+  uv settings. Every corpus, its pinned sdist and its suite are in `tests/corpus/corpora.toml` (the
+  seven's, and the mega corpora's 40 that `mega_packages.json` held), which each corpus script
+  reads; `corpus_untyped.py`'s shapes are a module of their own (`untyped_shapes.py`).
 - A corpora run's section keeps a code span on one line, as Prettier does: a note broken inside
   `python -m constricter.trace` failed CI's `prettier --check` on RUNS.md.
 - The corpora runs hold each fix to what its package's tests bound: the traced step's tests run

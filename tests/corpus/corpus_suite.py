@@ -12,7 +12,7 @@ Each package's source is cloned at its pinned tag into `local/corpus-suites/`, i
 its test dependencies as its CI installs them (its own `uv.lock` where it has one, its pins or
 requirements where it hasn't), and its tests run twice: as released, and after
 `--fix --unsafe-fixes` (the source reset in between), at `suffocate` with `all-scopes`, as
-`tests/corpus/corpus_fix.py` fixes. That one fixed run has every fix, certain, likely (`--likely`'s)
+the corpus runner fixes. That one fixed run has every fix, certain, likely (`--likely`'s)
 and guessed. Each run's outcome is its summary counts and the tests that failed; the command exits
 1 if a fixed run's differs from the released one's. It needs `git`, `uv`, a C compiler and Rust
 (pandas, SQLAlchemy and pydantic-core are built) and the network; CI doesn't run it.
@@ -304,10 +304,11 @@ def _settled(root: Path) -> None:
             _ = stream.write(f"/{name}\n")
 
 
-def checkout(name: str, suite: Suite, apart: str = "") -> Path:
+def checkout(name: str, suite: Suite, apart: str = "", *, install: bool = True) -> Path:
     """Clone (once) `suite` at its tag and install it and its test dependencies (once for its commands).
 
     `apart`: names another checkout of it, for what's to run beside its tests (its type checks).
+    Without `install`, the clone alone: its source, with no environment.
 
     Returns:
       The checkout.
@@ -325,6 +326,8 @@ def checkout(name: str, suite: Suite, apart: str = "") -> Path:
             WORK,
         )
     _settled(root)
+    if not install:
+        return root
     marker: Path = root / _INSTALLED
     wanted: str = hashlib.sha256(repr(suite.install).encode()).hexdigest()
     done: str | None = marker.read_text(encoding="utf-8") if marker.exists() else None

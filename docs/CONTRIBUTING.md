@@ -58,23 +58,21 @@ tools pinned by URL that are behind upstream in one tracking issue, and each bum
 (`.github/scripts/check_tool_versions.sh` prints the same report locally).
 
 Fuzzing (`tests/test_fuzz.py`) runs with the tests: hypothesmith generates valid Python, which must
-never crash the checker and must stay valid after `--fix`. For a large real codebase, run
-`local/.venv/bin/python tests/corpus/corpus.py [PATH]` by hand: it checks PATH (default: this
-Python's standard library, about 730 files in a few seconds) at `suffocate` and prints the time, the
-offences per code, and any crash. `local/.venv/bin/python tests/corpus/corpus_fix.py [PATH]` runs
-`--fix --unsafe-fixes` on a copy of it (in `local/corpus-fix/`) and checks every file still compiles
-and a second pass has nothing left to fix.
-`local/.venv/bin/python tests/corpus/corpus_profile.py [PATH]` checks it in a process `py-spy`
-samples from outside (its workers too, with `--jobs N`), and prints (as Markdown) constricter's
-slowest modules and functions, and where the rest of the time went; the samples are saved to
-`local/profile/`. `local/.venv/bin/python tests/corpus/corpus_timing.py OTHER` times a check of the
-standard library and pandas with this checkout and another (`hyperfine` has to be installed). CI
-runs all three, each in its own job (the profile's never fails the run), against the standard
-library and, from the pinned `corpus` dependency group (`django`, `sqlalchemy`, `pydantic`, `pandas`
-— a web framework, an ORM, a runtime-validation library and a data library), the same way, and
-against pure Python 2 (Twisted 12.3.0) and pip 20.3.4 (2/3-era code whose `# type:` comments sit in
-modules with Python 2 `__future__` imports), hash-pinned sdists `tests/corpus/corpus_sources.py`
-fetches, since neither installs as a dependency.
+never crash the checker and must stay valid after `--fix`. For a large real codebase, the corpus
+runner measures it as a run file says: `local/.venv/bin/python -m tests.corpus RUN.toml`
+(`tests/corpus/run_config.py` lists a run file's keys, `tests/corpus/runs/` has some). A run names
+its corpora ([`corpora.toml`](../tests/corpus/corpora.toml)'s, or any directory), the constricter
+versions (releases, this checkout, or another checkout's by its Python), and its steps: a check at
+every level, each fix on a copy (every file still compiling, and nothing left for a second pass),
+the census, coverage, a check timed in one process and with every CPU, and one that `py-spy` samples
+from outside, with constricter's slowest modules and functions. `--only NAME` keeps a run to one
+corpus. CI runs the check, the fix and the profile, each in its own job (the profile's never fails
+the run), against the standard library and the clones, at their pinned tags, of `django`,
+`sqlalchemy`, `pydantic` and `pandas` (a web framework, an ORM, a runtime-validation library and a
+data library; their dependencies' types come from the pinned `corpus` dependency group), and against
+pure Python 2 (Twisted 12.3.0) and pip 20.3.4 (2/3-era code whose `# type:` comments sit in modules
+with Python 2 `__future__` imports), hash-pinned sdists `tests/corpus/corpus_sources.py` fetches,
+since neither installs as a dependency.
 
 `tests/corpus/corpus_suite.py` runs a Python 3 corpus package's own test suite (cloned at its pinned
 tag, with its test dependencies as its CI installs them, in `local/corpus-suites/`) as released and

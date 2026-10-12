@@ -13,7 +13,9 @@ run again, so a stopped run resumes.
 - `infer-CHECKER`: the same with `--unsafe-fixes --infer-with CHECKER`, a type checker's hints;
 - `census`: every untyped binding a check at `suffocate` reports, classified
   (`corpus_untyped.census`): those with no fix, and their values' shapes;
-- `coverage`: the bindings typed as released.
+- `coverage`: the bindings typed as released;
+- `timing`: a check at `suffocate`, timed in one process and with the run's `jobs`, several times;
+- `profile`: the same check in one process `py-spy` samples: where constricter's own time goes.
 
 `suite_steps` has the steps that run a corpus package's own suite, after these.
 
@@ -28,6 +30,8 @@ import json
 import os
 import re
 import shutil
+import statistics
+import subprocess  # runs a check under `py-spy`
 import sys
 import time
 import traceback
@@ -40,7 +44,7 @@ from typing import IO, Final, NamedTuple, TypeAlias, cast
 
 from constricter import Level
 from constricter.cli import paths
-from tests.corpus import corpus_table, corpus_untyped, launch
+from tests.corpus import corpus_profile, corpus_table, corpus_untyped, launch
 from tests.corpus.run_config import CERTAIN, DEV, FIXES, LIKELY, Run
 from tests.corpus.trees import Tree
 
@@ -52,6 +56,11 @@ COVERAGE: Final = "coverage"
 FIX: Final = "fix-"
 INFER: Final = "infer-"
 CENSUS: Final = "census"
+TIMING: Final = "timing"
+PROFILE: Final = "profile"
+_PY_SPY: Final = "py-spy"
+_RATE: Final = 100  # samples a second
+_TOP: Final = 25  # the functions a profile's report and record list
 TESTS: Final = "tests"
 TYPES: Final = "types"
 TRACED: Final = "traced"
@@ -169,6 +178,9 @@ def check(job: Job) -> Record:
     Returns:
       The step's record.
 
+    Raises:
+      RuntimeError: a check printed no report: it crashed.
+
     """
     where: launch.Place = launch.place(job.tree, job.work(CHECK))
 
@@ -189,7 +201,11 @@ def check(job: Job) -> Record:
     ran: launch.Ran
     for level, ran in zip(Level, runs, strict=True):
         job.store.log(job.tree.name, job.recorded, CHECK, ran.errors)
-        entries = _entries(ran.output) or []  # the last level's are `suffocate`'s: every code
+        listed: list[_Entry] | None
+        if (listed := _entries(ran.output)) is None:
+            message: str = f"the check at {level.name.lower()} crashed ({ran.status}): {ran.errors[-2000:]}"
+            raise RuntimeError(message)
+        entries = listed  # the last level's are `suffocate`'s: every code
         errors: int = sum(entry["severity"] == _ERROR for entry in entries)
         levels[level.name.lower()] = [errors, len(entries) - errors]
     fixes: list[_Entry] = [cast("_Entry", entry["fix"]) for entry in entries if entry.get("fix")]
@@ -370,6 +386,78 @@ def fixing(run: Run) -> list[str]:
     return [*tiers, *hinted, *([f"{INFER}{TRACE}"] if run.steps.traced else [])]
 
 
+def timing(job: Job) -> Record:
+    """Time a check of the corpus at `suffocate`, in one process and with the run's `jobs`, several times.
+
+    Returns:
+      The step's record: each way's seconds, a run each, and their medians.
+
+    """
+    where: launch.Place = launch.place(job.tree, job.work(TIMING))
+    options: list[str] = [_SUFFOCATE, "--exit-zero", "-q", "--output-file", os.devnull]
+    one: list[float] = []
+    every: list[float] = []
+    for _ in range(job.run.steps.timing):  # the two ways in turn: what else the machine does falls on both
+        one.append(round(launch.run(job.version, where, options, 1).seconds, 2))
+        every.append(round(launch.run(job.version, where, options, job.run.jobs).seconds, 2))
+    return {
+        "jobs": job.run.jobs,
+        "one": one,
+        "every": every,
+        "median one": round(statistics.median(one), 2),
+        "median every": round(statistics.median(every), 2),
+    }
+
+
+def profile(job: Job) -> Record:
+    """Check the corpus at `suffocate` in one process that `py-spy` samples from outside.
+
+    The samples are kept beside the record (`profile.txt`: a line a stack, `flamegraph.pl`'s input
+    and speedscope's), with `corpus_profile`'s report of them (`profile.md`).
+
+    Returns:
+      The step's record: the check's seconds, sampled, and constricter's slowest functions by
+      their own time.
+
+    Raises:
+      RuntimeError: `py-spy` isn't installed, or wrote no samples.
+
+    """
+    where: launch.Place = launch.place(job.tree, job.work(PROFILE))
+    spy: str | None
+    if (spy := shutil.which(_PY_SPY, path=launch.environment(where)["PATH"])) is None:
+        missing: str = f"{_PY_SPY} isn't installed: uv sync --group dev --group corpus"
+        raise RuntimeError(missing)
+    samples: Path = job.store.path(job.tree.name, job.recorded, PROFILE, ".txt")
+    samples.unlink(missing_ok=True)
+    recording: list[str] = [spy, "record", "--format", "raw", "--function", "--full-filenames"]
+    recording += ["--subprocesses", "--rate", str(_RATE), "--output", str(samples), "--"]
+    checking: list[str] = [_SUFFOCATE, "--exit-zero", "-q", "--output-file", os.devnull]
+    start: float = time.perf_counter()
+    done: subprocess.CompletedProcess[str] = subprocess.run(
+        [*recording, *launch.command(job.version, where, checking, 1)],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=where.cwd,
+        env=launch.environment(where),
+    )
+    seconds: float = time.perf_counter() - start
+    if not samples.exists():  # it exits non-zero for a worker it lost track of, with the samples written
+        failed: str = f"{_PY_SPY} wrote no samples ({done.returncode}): {done.stderr[-2000:]}"
+        raise RuntimeError(failed)
+    found: list[corpus_profile.Row] = corpus_profile.rows(samples)
+    _ = job.store.path(job.tree.name, job.recorded, PROFILE, ".md").write_text(
+        corpus_profile.report(job.tree.name, seconds, found, _TOP),
+        encoding="utf-8",
+    )
+    ours: list[corpus_profile.Row] = sorted((row for row in found if row.ours), key=lambda row: -row.own)
+    return {
+        "seconds": round(seconds, 1),
+        "slowest": [[row.where, round(row.own, 2), round(row.whole, 2)] for row in ours[:_TOP]],
+    }
+
+
 def steps(run: Run) -> dict[str, Callable[[Job], Record]]:
     """List the steps `run` asks for.
 
@@ -394,6 +482,10 @@ def steps(run: Run) -> dict[str, Callable[[Job], Record]]:
         found[CENSUS] = census
     if run.steps.coverage:
         found[COVERAGE] = coverage
+    if run.steps.timing:
+        found[TIMING] = timing
+    if run.steps.profile:
+        found[PROFILE] = profile
     return found
 
 

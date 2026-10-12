@@ -24,8 +24,8 @@ from tests.corpus.pipeline import (
     COVERAGE,
     FIX,
     GUESS,
-    INFER,
     TESTS,
+    TIMING,
     TRACED,
     TYPES,
     Record,
@@ -39,15 +39,14 @@ from tests.corpus.trees import Tree
 _Row: TypeAlias = list[object]  # a table's cells, as `csv` writes them
 _Rows: TypeAlias = list[_Row]
 _NO_RECORD: Final[Record] = {}
+_SHAPE: Final = "shape"  # the census table's column for an unfixed binding's value
+_CONSTRICTER: Final = "constricter"  # a table's second column: the version
+_ERROR: Final = "error"  # in a fixed run's record: why its patch didn't apply
+_SUITE: Final = frozenset({TESTS, TYPES})  # the steps whose records have a fixed run for each fix
 _VERDICTS: Final = ("told", "held", "differed")  # a traced record's counts, each by tier
 _COUNTS: Final = ("untyped", "guessed", "unfixed", "unparsed")  # a census record's counts
-_INFERRED: Final = "`--fix --unsafe-fixes --infer-with` each type checker, on a copy:"
-_COUNTED: Final = "The untyped bindings, by the fix they have:"
-_TESTED: Final = "Each package's own tests, as released and after each fix:"
-_TOLD: Final = "The fixes a traced test could tell of, those whose every value fit, and those one didn't:"
-_CHECKED: Final = (
-    "Each package's own type checks: its errors as released, and those new and gone after each fix:"
-)
+# The fix steps a second pass of which is to leave nothing: `--likely`'s is known to leave some.
+_CONVERGING: Final = frozenset({f"{FIX}{CERTAIN}", f"{FIX}{UNSAFE}"})
 
 
 class Records(NamedTuple):
@@ -75,7 +74,7 @@ def _every(run: Run) -> list[str]:
       Their names, each once.
 
     """
-    return list(dict.fromkeys([*steps(run), *fixing(run), TRACED, TESTS, TYPES]))
+    return list(dict.fromkeys([*steps(run), *fixing(run), TRACED, TESTS, TYPES, TIMING]))
 
 
 def gathered(run: Run, store: Store, trees: Sequence[Tree]) -> Records:
@@ -228,43 +227,75 @@ def _tests(records: Records) -> _Rows:
 
 
 def _more(records: Records, version: str) -> list[str]:
-    """Write what the tables of `corpus_table` haven't: the type checkers' fixes, and the census.
+    """Write what the tables of `corpus_table` haven't, each as the CSV table of it is, for one version.
 
     Returns:
-      The Markdown's lines, for one version.
+      The Markdown's lines.
 
     """
-    inferred: _Rows = [["Corpus", "Checker", "Fixed", "Broken", "Left", "Typed after"]]
-    counted: _Rows = [["Corpus", "Untyped", "A guess only", "No fix", "In files that don't parse"]]
-    tree: Tree
-    record: Record
-    for tree in records.trees:
-        step: str
-        for step in fixing(records.run):
-            if step.startswith(INFER) and (record := records.of(tree, version, step)):
-                typed: Typed | None = _typed(record)
-                share: str = (
-                    f"{typed.typed / typed.total:.1%}" if typed and typed.total else corpus_table.NONE
-                )
-                counts: list[str] = [f"{record.get(key) or 0:,}" for key in ("fixed", "broken", "left")]
-                inferred.append([tree.name, step.removeprefix(INFER), *counts, share])
-        if record := records.of(tree, version, CENSUS):
-            counted.append([tree.name, *(f"{record[key]:,}" for key in _COUNTS)])
     lines: list[str] = []
-    if len(inferred) > 1:
-        lines += [_INFERRED, "", *corpus_table.table(inferred, right=2), ""]
-    if len(counted) > 1:
-        lines += [_COUNTED, "", *corpus_table.table(counted, right=1), ""]
-    tested: _Rows = [row[:1] + row[2:] for row in _tests(records) if row[1] in {version, "constricter"}]
-    if len(tested) > 1:
-        lines += [_TESTED, "", *corpus_table.table(tested, right=4), ""]
-    told: _Rows = [row[:1] + row[2:] for row in _traced(records) if row[1] in {version, "constricter"}]
-    if len(told) > 1:
-        lines += [_TOLD, "", *corpus_table.table(told, right=2), ""]
-    checked: _Rows = [row[:1] + row[2:] for row in _types(records) if row[1] in {version, "constricter"}]
-    if len(checked) > 1:
-        lines += [_CHECKED, "", *corpus_table.table(checked, right=2), ""]
+    note: str
+    table: _Table
+    right: int
+    for note, table, right in _SECTIONS:
+        rows: _Rows = [
+            [f"{cell:,}" if isinstance(cell, int) and not isinstance(cell, bool) else cell for cell in row]
+            for row in table(records)
+            if row[1] in {version, _CONSTRICTER}
+        ]
+        if len(rows) > 1:
+            lines += [note, "", *corpus_table.table([row[:1] + row[2:] for row in rows], right=right - 1), ""]
     return lines
+
+
+def _counted(records: Records) -> _Rows:
+    return [row[:-2] for row in _census(records) if row[-2] in {"", _SHAPE}]
+
+
+def problems(records: Records) -> list[str]:
+    """List what the run's fixes broke: what a run exits 1 for, beside a step that failed.
+
+    A file that compiled before a fix and doesn't after; what a second pass of the certain fixes
+    or of every guess would still fix; a fix whose patch a suite's checkout refuses; and a suite's
+    tests that differ after a fix, unless they differ from one released run to the next.
+
+    Returns:
+      Each, a line.
+
+    """
+    found: list[str] = []
+    key: tuple[str, str, str]
+    record: Record
+    for key, record in records.found.items():
+        where: str = f"{key[0]}, {key[1]}, {key[2]}"
+        if key[2].startswith(FIX) and record.get("broken"):
+            found.append(f"{where}: {record['broken']} file(s) no longer compile")
+        if key[2] in _CONVERGING and record.get("left"):
+            found.append(f"{where}: a second pass would still fix {record['left']}")
+        step: str
+        ran: Record
+        fixed: dict[str, Record] = cast("dict[str, Record]", record["fixed"] if key[2] in _SUITE else {})
+        for step, ran in fixed.items():
+            if _ERROR in ran:
+                found.append(f"{where}: {step}'s patch didn't apply: {ran[_ERROR]}")
+            elif ran.get("same") is False and not record.get("varies"):
+                new: int = len(cast("list[str]", ran["new"]))
+                found.append(f"{where}: the tests differ after {step}: {new} new")
+    return found
+
+
+def _timing(records: Records) -> _Rows:
+    rows: _Rows = [["corpus", "constricter", "jobs", "one process", "with jobs", "runs"]]
+    tree: Tree
+    for tree in records.trees:
+        version: str
+        for version in records.versions:
+            record: Record
+            if record := records.of(tree, version, TIMING):
+                medians: _Row = [record["median one"], record["median every"]]
+                runs: int = len(cast("list[float]", record["one"]))
+                rows.append([tree.name, version, record["jobs"], *medians, runs])
+    return rows
 
 
 def publish(records: Records, root: Path) -> None:
@@ -353,7 +384,7 @@ def _fixes(records: Records) -> _Rows:
 
 
 def _census(records: Records) -> _Rows:
-    rows: _Rows = [["corpus", "constricter", *_COUNTS, "shape", "bindings"]]
+    rows: _Rows = [["corpus", "constricter", *_COUNTS, _SHAPE, "bindings"]]
     tree: Tree
     for tree in records.trees:
         version: str
@@ -380,6 +411,16 @@ def _coverage(records: Records) -> _Rows:
 
 
 _Table: TypeAlias = Callable[[Records], _Rows]
+# What `report.md` has under each version's tables: a note, the table, and its columns of words.
+_Section: TypeAlias = tuple[str, _Table, int]
+_SECTIONS: Final[tuple[_Section, ...]] = (
+    ("Each fix on a copy: by tier, and with `--infer-with` each type checker or a trace:", _fixes, 3),
+    ("The untyped bindings: with only a guess, with no fix, and in files that don't parse:", _counted, 2),
+    ("A check at `suffocate`: the median seconds of its runs, in one process and with `jobs`:", _timing, 2),
+    ("The fixes a traced test could tell of, those whose every value fit, and those one didn't:", _traced, 3),
+    ("Each package's own tests, as released and after each fix:", _tests, 5),
+    ("Each package's own type checks: its errors as released, then those new and gone:", _types, 3),
+)
 _TABLES: Final[dict[str, _Table]] = {
     "offences": _offences,
     "levels": _levels,
@@ -390,6 +431,7 @@ _TABLES: Final[dict[str, _Table]] = {
     "types": _types,
     "type-errors": _type_errors,
     "coverage": _coverage,
+    "timing": _timing,
 }
 
 
@@ -411,6 +453,7 @@ def report(records: Records, facts: Record) -> Record:
         "run": facts,
         "corpora": {tree.name: {"version": tree.version, "root": str(tree.root)} for tree in records.trees},
         "records": nested,
+        "problems": problems(records),
     }
 
 
@@ -433,8 +476,10 @@ def write(records: Records, folder: Path, facts: Record) -> list[Path]:
         name: str
         rows: Callable[[Records], _Rows]
         for name, rows in _TABLES.items():
-            written.append(folder / "tables" / f"{name}.csv")
-            file: IO[str]
-            with written[-1].open("w", encoding="utf-8", newline="") as file:
-                csv.writer(file).writerows(rows(records))
+            table: _Rows = rows(records)
+            if len(table) > 1:  # a step the run didn't ask for has no table
+                written.append(folder / "tables" / f"{name}.csv")
+                file: IO[str]
+                with written[-1].open("w", encoding="utf-8", newline="") as file:
+                    csv.writer(file).writerows(table)
     return written

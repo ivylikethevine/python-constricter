@@ -21,11 +21,12 @@ from typing import Final, NamedTuple
 
 from constricter.cli import paths
 from tests.corpus import corpus_table
-from tests.corpus.run_config import DEV
+from tests.corpus.run_config import DEV, NAMED
 from tests.corpus.trees import Tree
 
 _SETTINGS: str = "pyproject.toml"
 _INSTALLING: Final = threading.Lock()
+_ROOT: Final = Path(__file__).resolve().parents[2]
 _PROBE: Final = "def f():\n    a = 1\n"
 _FIXED: Final = '"fixed":'  # in `--fix --format=json`'s output, where it says what it fixed
 
@@ -86,12 +87,47 @@ def copied(tree: Tree, to: Path) -> tuple[Place, list[Path]]:
 def _python(version: str) -> str:
     """Find the Python that runs `version`, one caller at a time: a release is installed the first time.
 
+    A version written `NAME=PATH` is the constricter the Python at `PATH` runs (from this checkout's
+    root, if it's relative).
+
     Returns:
       Its path.
 
     """
+    if NAMED in version:  # another checkout's, say: `base=../base/local/.venv/bin/python`
+        # A venv's Python as it's named, not the interpreter it links to.
+        return os.path.normpath(_ROOT / version.partition(NAMED)[2])
     with _INSTALLING:
         return corpus_table.interpreter(version)
+
+
+def command(version: str, where: Place, options: Sequence[str], jobs: int) -> list[str]:
+    """Write the command `run` runs, from `where`'s directory in `environment(where)`.
+
+    Returns:
+      Its words.
+
+    """
+    return [
+        _python(version),
+        *("-I", "-W", "ignore", "-m", "constricter"),
+        *options,
+        "--all-scopes",
+        f"--jobs={jobs}",
+        os.path.relpath(where.target, where.cwd),
+    ]
+
+
+def environment(where: Place) -> dict[str, str]:
+    """Return the environment a constricter runs in at `where`.
+
+    Returns:
+      This one, with the place's environment as its `VIRTUAL_ENV`, and this Python's directory on
+      the path: `--infer-with`'s type checkers are found beside it.
+
+    """
+    path: str = os.pathsep.join((str(Path(sys.executable).parent), os.environ.get("PATH", os.defpath)))
+    return {**os.environ, "VIRTUAL_ENV": str(where.environment or sys.prefix), "PATH": path}
 
 
 def run(version: str, where: Place, options: Sequence[str], jobs: int) -> Ran:
@@ -103,25 +139,13 @@ def run(version: str, where: Place, options: Sequence[str], jobs: int) -> Ran:
     """
     start: float = time.perf_counter()
     done: subprocess.CompletedProcess[str] = subprocess.run(
-        [
-            _python(version),
-            *("-I", "-W", "ignore", "-m", "constricter"),
-            *options,
-            "--all-scopes",
-            f"--jobs={jobs}",
-            os.path.relpath(where.target, where.cwd),
-        ],
+        command(version, where, options, jobs),
         capture_output=True,
         text=True,
         encoding="utf-8",
         check=False,
         cwd=where.cwd,
-        env={
-            **os.environ,
-            "VIRTUAL_ENV": str(where.environment or sys.prefix),
-            # `--infer-with`'s type checkers are found beside this Python.
-            "PATH": os.pathsep.join((str(Path(sys.executable).parent), os.environ.get("PATH", os.defpath))),
-        },
+        env=environment(where),
     )
     return Ran(done.stdout, done.stderr, done.returncode, time.perf_counter() - start)
 

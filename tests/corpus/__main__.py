@@ -3,6 +3,7 @@
 
     local/.venv/bin/python -m tests.corpus RUN.toml                   # a new folder, named by label and time
     local/.venv/bin/python -m tests.corpus RUN.toml --resume FOLDER   # carry on a stopped run in its folder
+    local/.venv/bin/python -m tests.corpus RUN.toml --only NAME       # on that corpus or set alone
 
 The run file (`run_config`) names the corpora (`corpora.toml`'s), the constricter versions, the
 steps and the formats. Each execution writes `<output>/<label>-<month>-<day>-<year>-<time>/`:
@@ -18,6 +19,7 @@ tests and checks in a process of their own. Every step starts constricter one wa
 on one tree a corpus (`trees.Tree`), so a count in one table is the count in another.
 """
 
+import itertools
 import os
 import platform
 import shutil
@@ -36,8 +38,10 @@ from tests.corpus import catalog, pipeline, render, suite_steps, trees
 from tests.corpus.pipeline import Record
 from tests.corpus.run_config import Run, read
 
-_Measured: TypeAlias = tuple[trees.Tree, list[str]]  # a corpus's tree, and its steps that failed
+_Measured: TypeAlias = tuple[trees.Tree | None, list[str]]  # a corpus's tree, and its steps that failed
 _RESUME: Final = "--resume"
+_SAID: Final = 2000  # the characters kept of why a corpus couldn't be had: the end of its build's output
+_ONLY: Final = "--only"  # then a corpus or a set: the run file's, on that alone
 _STEP: Final = "--step"  # then a run's folder, a corpus and a version: that corpus's suite steps
 _ROOT: Final = Path(__file__).resolve().parents[2]
 
@@ -72,6 +76,9 @@ def _facts(run: Run, started: datetime) -> Record:
         "tests": run.steps.tests,
         "types": run.steps.types,
         "traced": run.steps.traced,
+        "timing": run.steps.timing,
+        "profile": run.steps.profile,
+        "install": run.install,
         "constricter": __version__,
         "commit": commit,
         "python": platform.python_version(),
@@ -116,9 +123,13 @@ def _measured(
 
     Returns:
       The corpus's tree, and the steps that failed: each has its traceback in its log, and no record.
+      No tree, and why, for a corpus that isn't to be had: the run goes on without it.
 
     """
-    tree: trees.Tree = trees.found(entry)
+    try:
+        tree: trees.Tree = trees.found(entry, install=run.install)
+    except (OSError, RuntimeError, ValueError) as failure:  # it can't be cloned, installed or fetched
+        return None, [f"{entry.name}: not found: {str(failure)[-_SAID:]}"]
     failed: list[str] = []
     version: str
     for version in run.versions:
@@ -149,7 +160,7 @@ def _step(folder: Path, name: str, version: str) -> int:
 
     """
     run: Run = read(folder / "run.toml")
-    tree: trees.Tree = trees.found(catalog.load().entries[name])
+    tree: trees.Tree = trees.found(catalog.load().entry(name), install=run.install)
     return int(bool(suite_steps.measure(pipeline.Job(run, pipeline.Store(folder), tree, version))))
 
 
@@ -157,23 +168,27 @@ def main(argv: Sequence[str]) -> int:
     """Run the run file named, write its folder, and say where it is.
 
     Returns:
-      1 if a step failed (the outputs have the rest; `--resume` makes it again), else 0.
+      1 if a step failed (the outputs have the rest; `--resume` makes it again) or a fix broke
+      something (`render.problems`), else 0.
 
     """
     if argv[:1] == [_STEP]:
         return _step(Path(argv[1]), argv[2], argv[3])
     run: Run = read(Path(argv[0]))
+    if _ONLY in argv:
+        run = run._replace(include=(argv[argv.index(_ONLY) + 1],))
     facts: Record = _facts(run, datetime.now().astimezone())
     folder: Path = _folder(argv, run, facts)
     store: pipeline.Store = pipeline.Store(folder)
     measured: list[_Measured] = _all(run, store)
     shutil.rmtree(folder / "work", ignore_errors=True)  # the copies its fixes worked on
-    records: render.Records = render.gathered(run, store, [tree for tree, _ in measured])
+    records: render.Records = render.gathered(run, store, [tree for tree, _ in measured if tree])
     written: list[Path] = render.write(records, folder, facts)
     render.publish(records, _ROOT)
     _ = sys.stdout.write("".join(f"{path}\n" for path in written))
-    failed: list[str] = [each for _, failures in measured for each in failures]
-    _ = sys.stderr.write("".join(f"failed: {each}\n" for each in failed))
+    failed: list[str] = [f"failed: {each}" for _, failures in measured for each in failures]
+    failed += [f"problem: {each}" for each in render.problems(records)]
+    _ = sys.stderr.write("".join(f"{each}\n" for each in failed))
     return int(bool(failed))
 
 
@@ -187,6 +202,12 @@ def _folder(argv: Sequence[str], run: Run, facts: Record) -> Path:
     resumed: Path | None = Path(argv[argv.index(_RESUME) + 1]) if _RESUME in argv else None
     started: datetime = datetime.fromisoformat(str(facts["started"]))
     folder: Path = (resumed or _ROOT / run.folder(started)).resolve()
+    named: str = folder.name
+    again: int
+    for again in itertools.count(2):  # past another execution of the label, started that minute
+        if resumed is not None or not folder.exists():
+            break
+        folder = folder.with_name(f"{named}-{again}")
     folder.mkdir(parents=True, exist_ok=True)
     if not (resumed and (folder / "run.toml").exists()):
         _ = shutil.copyfile(argv[0], folder / "run.toml")
@@ -202,7 +223,7 @@ def _all(run: Run, store: pipeline.Store) -> list[_Measured]:
 
     """
     known: catalog.Catalog = catalog.load()
-    entries: list[catalog.Entry] = [known.entries[name] for name in known.names(list(run.include))]
+    entries: list[catalog.Entry] = [known.entry(name) for name in known.names(list(run.include))]
     ports: dict[str, threading.Lock] = {entry.port: threading.Lock() for entry in entries}
     pool: ThreadPoolExecutor
     with ThreadPoolExecutor(run.at_once) as pool:

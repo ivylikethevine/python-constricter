@@ -18,14 +18,15 @@ _Nested: TypeAlias = dict[str, dict[str, dict[str, Record]]]  # corpus, version,
 _Rows: TypeAlias = list[list[str]]  # a CSV table, read back
 _WARNING: Final = "a warning\n"
 _PUBLISHED: Final = "\n## constricter rc\n"  # in RUNS.md: `dev` under the run's label
+_BASE: Final = "base"  # a version that names another Python
 _SECTION: Final = "## constricter rc+dev"
 # The Markdown's cells for what was fixed, likely and guessed on top, broken, and left by each second pass.
 _FIXES: Final = "| 2 (33.3%) | 1 (16.7%) | 2 (33.3%) |      0 |    0 |            1 |"
 _COUNTED: Final[Record] = {"untyped": 6, "guessed": 2, "unfixed": 2, "unparsed": 0, "shapes": {"call": 2}}
-_INFERRED: Final = "| standard library | ty      |     5 |      0 |    0 |       90.0% |"
+_INFERRED: Final = "| standard library | infer-ty |     5 |       2 |      1 |     2 |      0 |    0 |"
 _TESTED_ROW: Final = "| fix-unsafe | False            | 1 failed, 8 passed  |            1 |"
 _TYPED_ROW: Final = "| standard library | fix-unsafe |      8 |   1 |    0 |      1 file changed |"
-_COUNTED_ROW: Final = "| standard library |       6 |            2 |      2 |                         0 |"
+_COUNTED_ROW: Final = "| standard library |       6 |       2 |       2 |        0 |"
 _FAILED: Final = "tests/test_a.py::test_a"
 _TESTED: Final[Record] = {
     "released": {"counts": {"passed": 9, "skipped": 1}, "failed": []},
@@ -65,6 +66,13 @@ _TRACED: Final[Record] = {
     "told": {"certain": 2, "guess": 1},
     "held": {"certain": 2},
     "differed": {"guess": 1},
+}
+_TIMED: Final[Record] = {
+    "jobs": 0,
+    "one": [2.0, 4.0],
+    "every": [1.0, 1.0],
+    "median one": 3.0,
+    "median every": 1.0,
 }
 _CHECKED: Final[Record] = {
     "files": 2,
@@ -120,8 +128,9 @@ def test_a_run_file_is_read_with_defaults_for_what_it_leaves_out() -> None:
         at_once=2,
     )
     assert [run.recorded(version) for version in run.versions] == ["0.3.1", "0.3.6-rc.1+dev"]
-    with pytest.raises(ValueError, match=r"\[steps\] profile"):
-        _ = parse({"steps": {"profile": True}})
+    assert run.recorded(f"{_BASE}=local/base/bin/python") == _BASE
+    with pytest.raises(ValueError, match=r"\[steps\] lint"):
+        _ = parse({"steps": {"lint": True}})
     with pytest.raises(ValueError, match="checker 'mypy'"):
         _ = parse({"steps": {"infer-with": ["mypy"]}})
     with pytest.raises(ValueError, match=r"\[publish\] where"):
@@ -145,7 +154,10 @@ def test_the_catalog_expands_sets_and_refuses_a_name_it_hasnt() -> None:
     assert known.names(["pydantic", "seven"])[:2] == ["pydantic", "standard library"]
     assert len(known.names(["seven", "pip"])) == len(known.sets["seven"])
     assert all(name in known.entries for name in known.sets["seven"])
-    with pytest.raises(ValueError, match="'numpy' is no corpus or set"):
+    here: catalog.Entry = known.entry(str(Path(__file__).parent))
+    assert (here.name, here.suite, known.names([here.path])) == ("corpus", None, [here.path])
+    assert known.entry("pip") is known.entries["pip"]
+    with pytest.raises(ValueError, match="'numpy' is no directory, and no corpus or set"):
         _ = known.names(["numpy"])
 
 
@@ -176,6 +188,7 @@ def _recorded(root: Path) -> tuple[Store, Tree]:
     store.write(tree.name, "rc+dev", pipeline.TESTS, _TESTED)
     store.write(tree.name, "rc+dev", pipeline.TYPES, _TYPED)
     store.write(tree.name, "rc+dev", pipeline.TRACED, _TRACED)
+    store.write(tree.name, "rc+dev", pipeline.TIMING, _TIMED)
     return store, tree
 
 
@@ -204,6 +217,7 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
         "types.csv",
         "type-errors.csv",
         "coverage.csv",
+        "timing.csv",
     ]
     report: dict[str, _Nested] = cast(
         "dict[str, _Nested]",
@@ -283,6 +297,17 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
         tmp_path / "report.json",
     ]
     assert MARKDOWN not in parse({"run": {"formats": [JSON]}}).formats
+    assert tables["timing"][1] == ["standard library", "rc+dev", "0", "3.0", "1.0", "2"]
+    assert render.problems(records) == [
+        "standard library, rc+dev, tests: the tests differ after fix-unsafe: 1 new",
+        "standard library, rc+dev, tests: infer-ty's patch didn't apply: error: patch failed",
+        "standard library, rc+dev, types: infer-ty's patch didn't apply: error: patch failed",
+    ]
+    store.write(tree.name, "rc+dev", "fix-unsafe", _fixed(4, {}, left=2) | {"broken": 1})
+    assert render.problems(render.gathered(run, store, [tree]))[:2] == [
+        "standard library, rc+dev, fix-unsafe: 1 file(s) no longer compile",
+        "standard library, rc+dev, fix-unsafe: a second pass would still fix 2",
+    ]
 
 
 def test_a_run_publishes_a_section_a_version(tmp_path: Path) -> None:
