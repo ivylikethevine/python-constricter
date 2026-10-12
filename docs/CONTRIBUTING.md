@@ -114,8 +114,11 @@ file names the corpora ([`corpora.toml`](../tests/corpus/corpora.toml)'s), the c
 the steps and the formats (`tests/corpus/run_config.py` lists the keys; `tests/corpus/runs/` has run
 files), and each execution writes a folder of its own under `local/corpus-runs/`, named by the run's
 label and the time: a record for each corpus, version and step, and `report.json`, `report.md` and
-`tables/*.csv` made from them. `--resume FOLDER` carries on a stopped run. So far it checks, fixes
-and counts coverage, as `corpus_table.py` does.
+`tables/*.csv` made from them. `--resume FOLDER` carries on a stopped run. The run file is copied
+into the folder. So far it checks, fixes (`--infer-with` too), takes the census, counts coverage,
+and runs a suite's own tests, type checks and traced tests after each fix (`tests`, `types` and
+`traced`), corpora side by side (`at-once`); `[publish] runs-md` records a version's section of
+RUNS.md. A step that fails leaves its traceback under `logs/` and the run exits 1.
 
 `local/.venv/bin/python -m tests.corpus.corpus_untyped` counts what `--fix` still can't type on the
 same corpora, and why: each untyped binding by the statement that binds it and the shape of its

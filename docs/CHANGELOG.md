@@ -11,8 +11,14 @@ Notable changes, newest first. Each release's full notes are generated from its 
   (`local/corpus-runs/<label>-<month>-<day>-<year>-<time>/`) with a record for each corpus, version
   and step, and `report.json`, `report.md` and `tables/*.csv` made from those records alone. Every
   step starts constricter one way, on one tree a corpus: a suite's checkout, with its settings and
-  environment, where it has one. It checks, fixes and counts coverage so far; the other corpus
-  scripts still run what it doesn't. A suite's install ignores the user's uv settings.
+  environment, where it has one. It checks, fixes (by tier, and with each type checker's hints),
+  takes the census, counts coverage, and runs a suite's own tests, type checks and traced tests
+  after each fix so far, corpora side by side (`at-once`), and writes a version's section of RUNS.md
+  where the run file says (`[publish]`), with the run file copied into the folder; the other corpus
+  scripts still run what it doesn't. A suite's install ignores the user's uv settings. Every corpus,
+  its pinned sdist and its suite are in `tests/corpus/corpora.toml` (the seven's, and the mega
+  corpora's 40 that `mega_packages.json` held), which each corpus script reads;
+  `corpus_untyped.py`'s shapes are a module of their own (`untyped_shapes.py`).
 - A corpora run's section keeps a code span on one line, as Prettier does: a note broken inside
   `python -m constricter.trace` failed CI's `prettier --check` on RUNS.md.
 - The corpora runs hold each fix to what its package's tests bound: the traced step's tests run

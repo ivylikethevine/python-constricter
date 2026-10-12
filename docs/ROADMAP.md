@@ -314,8 +314,8 @@
   one step after another, and 23 since a file a checker hangs on is remembered. Of the steps waiting
   for CPUs the one expected to last longest goes first, and `CORPUS_SLOTS` shares out fewer CPUs
   than the machine reports. Measured, with no gain: the fixed copies on a `tmpfs`.
-- **`tests/corpus/mega_corpora.py`**, the same on 40 more packages `mega_packages.json` pins (38
-  with a suite read from their own CI): typed applications, `asyncio` code, pytest-heavy test trees,
+- **`tests/corpus/mega_corpora.py`**, the same on 40 more packages `corpora.toml` pins (38 with a
+  suite read from their own CI): typed applications, `asyncio` code, pytest-heavy test trees,
   scientific packages on numpy's types, `TypedDict`s and overloads of their own, and untyped ones.
   54 minutes, 74 with every traceable suite's tests traced once more. A suite's tests are stopped
   after 15 minutes, suites binding one port run one at a time, a fixed run that differs is fixed and
@@ -490,11 +490,11 @@ fix.
    through its class, quoted where the class isn't bound yet. About 3 hours; a handful of fixes.
 6. **A suite's own differences, named.** black's `test_piping` asserts its own source is as black
    formats it, and fails after any fix: so a mega corpora run always exits 1, and its status doesn't
-   say whether anything else differs. Let `mega_packages.json` name the tests a fix may change, each
-   with why, and a run report them apart. Two more a run reports that no fix is shown to cause:
-   nibabel, whose failures vary, differs after each of the three fixes by tests that aren't the same
-   from one to the next (`test_multiload`, a `test_inverse_1` case, a `test_euler_mat_2` case) and
-   by five released failures gone; litestar fails `test_request_body_logging_middleware` after
+   say whether anything else differs. Let `corpora.toml` name the tests a fix may change, each with
+   why, and a run report them apart. Two more a run reports that no fix is shown to cause: nibabel,
+   whose failures vary, differs after each of the three fixes by tests that aren't the same from one
+   to the next (`test_multiload`, a `test_inverse_1` case, a `test_euler_mat_2` case) and by five
+   released failures gone; litestar fails `test_request_body_logging_middleware` after
    `--fix --unsafe-fixes` and not after `--fix --likely`, in a suite not marked as varying whose
    traced run failed 7 to the released 5. Read litestar's before naming it. Done when a run whose
    only differences are named exits 0. About 2 hours; coverage unchanged.
@@ -624,18 +624,27 @@ fix.
 9. **One corpus runner.** `python -m tests.corpus RUN.toml` reads a run file (the corpora, the
    constricter versions, the steps, the formats) and writes a folder of that execution's own
    (`<output>/<label>-<month>-<day>-<year>-<time>/`): a record for each corpus, version and step,
-   and `report.json`, `report.md` and `tables/*.csv`, each made from the records alone. Every step
+   and `report.json`, `report.md` and `tables/*.csv`, each made from the records alone. The corpora,
+   their sdists and their suites are `corpora.toml`'s, which the older scripts read too. Every step
    starts constricter one way (`launch.run`), on one tree a corpus (`catalog.Tree`): a suite's
    checkout at its pinned tag, with its settings and environment, where a corpus has one. Built: the
-   `check`, `fix` and `coverage` steps, which give what `corpus_table.py` does (pip's counts, whose
+   `check`, `fix` and `coverage` steps, which give what `corpus_table.py` does; `infer-with`, each
+   type checker's hints on a copy; and the census, of the same check, each binding and each fix kept
+   a line each; and a suite's own steps, each fixed run the checkout with a fix step's patch
+   applied: `tests`; `types`, each new error traced to its fix; and `traced`, each fix held to what
+   the traced tests bind, with a fix by the trace. Corpora are measured `at-once` at a time, a
+   suite's steps in a process of their own, suites of one port one at a time (pip's counts, whose
    tree is the same, are its own: 2,253 fixes, 414 likely and 1,133 guesses on top; pydantic's are
-   its suite's, 1,081 and 1,490 with guesses, where the table has 1,158 and 1,567). Left: the
-   census, `--infer-with` and the suites' tests, type checks and traces as steps, under the
-   scheduler `super_corpora.py` has; the suites and the mega corpora's packages in `corpora.toml`
-   (they're in `corpus_suite.SUITES` and `mega_packages.json`); timing and profiling; RUNS.md's
-   sections written from a run's folder; CI's jobs as run files; and the scripts it replaces
-   deleted. Done when no other script starts constricter on a corpus. About 12 hours left; coverage
-   unchanged.
+   its suite's, 1,081 and 1,490 with guesses, where the table has 1,158 and 1,567). On pydantic it
+   gives what RUNS.md has: 6,439 tests the same after each fix, no new type error, the change's size
+   to the line, one fix resting on the trace, and 99.0% of the certain fixes a test told of holding.
+   Left: steps sized to the CPUs and the memory they take, as `super_corpora.py` sizes them
+   (`at-once` and `jobs` are the run file's to say); a suite whose own failures vary, its fixed runs
+   settled as `corpora_steps` settles them; timing and profiling; RUNS.md's super and mega sections
+   written from a run's folder (`[publish]` writes a version's own); CI's jobs as run files; and the
+   scripts it replaces deleted. Done when no other script starts constricter on a corpus. A step
+   that fails leaves its traceback in its log and the run exits 1, the others' records kept. About 6
+   hours left; coverage unchanged.
 
 10. **One way to follow a re-export.** `project.definition` follows a name through the imports a
     module runs; `project._canonical` through those it makes for type checking alone too

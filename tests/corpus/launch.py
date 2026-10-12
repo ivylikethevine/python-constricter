@@ -21,8 +21,8 @@ from typing import Final, NamedTuple
 
 from constricter.cli import paths
 from tests.corpus import corpus_table
-from tests.corpus.catalog import Tree
 from tests.corpus.run_config import DEV
+from tests.corpus.trees import Tree
 
 _SETTINGS: str = "pyproject.toml"
 _INSTALLING: Final = threading.Lock()
@@ -116,7 +116,12 @@ def run(version: str, where: Place, options: Sequence[str], jobs: int) -> Ran:
         encoding="utf-8",
         check=False,
         cwd=where.cwd,
-        env={**os.environ, "VIRTUAL_ENV": str(where.environment or sys.prefix)},
+        env={
+            **os.environ,
+            "VIRTUAL_ENV": str(where.environment or sys.prefix),
+            # `--infer-with`'s type checkers are found beside this Python.
+            "PATH": os.pathsep.join((str(Path(sys.executable).parent), os.environ.get("PATH", os.defpath))),
+        },
     )
     return Ran(done.stdout, done.stderr, done.returncode, time.perf_counter() - start)
 

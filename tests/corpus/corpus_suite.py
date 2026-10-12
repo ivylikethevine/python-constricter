@@ -49,7 +49,6 @@ import hashlib
 import json
 import os
 import re
-import shlex
 import shutil
 import subprocess  # runs git, uv, the tests, the type checkers and constricter
 import sys
@@ -60,29 +59,13 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import IO, Final, NamedTuple, TypeAlias, cast
 
+from tests.corpus import catalog
 from tests.corpus.corpus_table import EVERYWHERE
 
 _Json: TypeAlias = "str | int | bool | list[_Json] | dict[str, _Json] | None"
 
 
-class Suite(NamedTuple):
-    """One package's repository, pinned tag and source, and how its CI installs, tests and checks it."""
-
-    repository: str
-    tag: str
-    source: str  # relative to the checkout
-    install: tuple[tuple[str, ...], ...]  # `uv` commands installing it and its tests' dependencies in `.venv`
-    # The command running its tests, the first word from `.venv/bin`; `_WORKERS` in a word stands for
-    # how many processes it's to take (see `workers`).
-    tests: tuple[str, ...]
-    checks: tuple[tuple[str, ...], ...] = ()  # its CI's type checks, each's first word from `.venv/bin`
-    left_out: str = ""  # requirements it can't build here, which `--excludes -` reads
-    most: int = 1  # the most processes its tests can keep busy
-    worker_memory: float = 1.0  # the gigabytes one of them takes
-    submodules: bool = False  # its build needs its repository's submodules (aiohttp's, llhttp)
-    # A script and its arguments running its tests in one process, where pytest doesn't run them:
-    # what `--trace` traces, the script's directory on the path as `python` puts it there.
-    script: tuple[str, ...] = ()
+Suite: TypeAlias = catalog.Suite
 
 
 class Outcome(NamedTuple):
@@ -117,7 +100,7 @@ WORK: Final = Path(__file__).resolve().parents[2] / "local" / "corpus-suites"
 # The most processes a suite's tests may take: half the CPUs, unless `CORPUS_SUITE_WORKERS` says
 # (see `super_corpora.py`).
 _MOST_WORKERS: Final = int(os.environ.get("CORPUS_SUITE_WORKERS", "0")) or max(1, (os.cpu_count() or 2) // 2)
-_WORKERS: Final = "{workers}"  # in a test command's word: how many processes to take
+_WORKERS: Final = catalog.WORKERS
 # How long a suite's tests may run before they're stopped: one waiting on a server no one started
 # never ends. Half an hour, unless `CORPUS_SUITE_SECONDS` says.
 _TEST_SECONDS: Final = float(os.environ.get("CORPUS_SUITE_SECONDS", "1800"))
@@ -125,110 +108,7 @@ _STOPPED: Final = "(stopped:"
 _TIMED_OUT: Final = f"ERROR {_STOPPED} it ran too long)"  # read as a failure (see `_FAILED`)
 _GIGABYTE: Final = 2**30
 _MEMORY_SHARE: Final = 2  # the tests' workers' part of the machine's memory: a half
-# Django's `runtests.py` under `fork`: with `forkserver`, Python 3.14's default on Linux, Django 5.2
-# can't clone a SQLite test database for each process.
-_DJANGO_FORKED: Final = (
-    "import multiprocessing, runpy, sys; "
-    "multiprocessing.set_start_method('fork'); "
-    "sys.argv[0] = 'tests/runtests.py'; "
-    "sys.path.insert(0, 'tests'); "
-    "runpy.run_path('tests/runtests.py', run_name='__main__')"
-)
-_PYTHON: Final = sys.executable
-_VENV: Final = ("venv", "-q", "--allow-existing", "--python", _PYTHON, ".venv")
-_PYTEST: Final = "python -m pytest -q -rfE -p no:cacheprovider"
-
-
-def _words(command: str) -> tuple[str, ...]:
-    """Split a command as a shell would.
-
-    Returns:
-      Its words.
-
-    """
-    return tuple(shlex.split(command))
-
-
-_PANDAS: Final = (  # its required, build and test dependencies from its `requirements-dev.txt`
-    "meson-python>=0.17.1,<1",
-    "meson[ninja]>=1.2.1,<2",
-    "cython>=3.1.0,<4",
-    "numpy>=2.3.3,<3",
-    "versioneer[toml]",
-    "python-dateutil>=2.8.2",
-    "pytest>=8.3.4,<9",  # 9 errors on 72 of its tests' parametrizations
-    "pytest-xdist>=3.6.1",
-    "hypothesis>=6.116.0",
-    "mypy==1.17.1",  # and its type checkers, as its pre-commit hooks pin them
-    "types-python-dateutil",
-    "pyright==1.1.404",
-)
-SUITES: Final = {
-    # Its CI's test job and linting job (`pyright pydantic`, its pre-commit typecheck hook); its tests
-    # of pydantic-core, its Rust core, which `--fix` doesn't touch, are left out.
-    "pydantic": Suite(
-        "https://github.com/pydantic/pydantic",
-        "v2.13.5",
-        "pydantic",
-        (
-            (
-                *_words("sync -q --locked --all-packages --all-extras --group testing-extra --group linting"),
-                "--python",
-                _PYTHON,
-            ),
-        ),
-        _words(f"{_PYTEST} -p no:pretty --ignore=tests/pydantic_core"),
-        (_words("pyright pydantic"),),
-    ),
-    # Its nox `github-cext-greenlet` session on SQLite (every SQLite driver, its C extensions built)
-    # and its `pep484` session (`mypy noxfile.py ./lib/sqlalchemy`, strict for the package).
-    "sqlalchemy": Suite(
-        "https://github.com/sqlalchemy/sqlalchemy",
-        "rel_2_0_54",
-        "lib/sqlalchemy",
-        (_VENV, _words("pip install -q -e . --group tests --group tests-sqlite-asyncio --group mypy")),
-        (
-            *_words(f"{_PYTEST} -n {_WORKERS} -m 'not memory_intensive and not mypy' --db sqlite"),
-            *_words("--dbdriver sqlite --dbdriver pysqlite_numeric --dbdriver aiosqlite"),
-        ),
-        (_words("mypy noxfile.py ./lib/sqlalchemy"),),
-        most=16,
-    ),
-    # Its `runtests.py` on SQLite, its processes forked (see `_DJANGO_FORKED`). It has no type checker.
-    # pylibmc needs libmemcached's headers, and its tests need a memcached server, so they skip anyway.
-    "django": Suite(
-        "https://github.com/django/django",
-        "5.2.17",
-        "django",
-        (_VENV, _words("pip install -q -e . -r tests/requirements/py3.txt --excludes -")),
-        ("python", "-Wall", "-c", _DJANGO_FORKED, f"--parallel={_WORKERS}"),
-        left_out="pylibmc",
-        most=16,
-        script=("tests/runtests.py", "--parallel=1"),
-    ),
-    # Its CI's unit tests, `-m "not slow and not network and not single_cpu"` (about 190,000, a few
-    # minutes over four workers), with its required dependencies and its tests' from its
-    # `requirements-dev.txt` (so the optional ones' tests skip); and its manual pre-commit typing
-    # hooks, which its code-checks job runs: mypy and pyright. It's built in place, so its Python
-    # files are the checkout's.
-    "pandas": Suite(
-        "https://github.com/pandas-dev/pandas",
-        "v3.0.6",
-        "pandas",
-        (
-            _VENV,
-            ("pip", "install", "-q", *_PANDAS),
-            _words("pip install -q --no-build-isolation -e ."),
-        ),
-        (
-            *_words(f"{_PYTEST} -n {_WORKERS} --dist=worksteal"),
-            *_words("-m 'not slow and not network and not single_cpu' pandas"),
-        ),
-        (("mypy",), ("pyright",)),
-        most=32,
-        worker_memory=1.5,
-    ),
-}
+SUITES: Final = catalog.load().suites(catalog.SEVEN)  # the seven corpora's, as `corpora.toml` has them
 # Written once every install command has succeeded: a hash of them, so changed ones are run again.
 _INSTALLED: Final = ".venv/corpus-suite-installed"
 # Each checker's settings file, what an empty one holds, and the `pyproject.toml` sections that stand
@@ -845,8 +725,24 @@ def compared(
 
     """
     made: tuple[_Fixes, str] = fixed_and_listed(root, suite, *options)
-    after: list[Complaint] = complaints(root, suite)
-    before: Counter[tuple[str, str]] = Counter(_key(complaint) for complaint in released())
+    return blamed(root, complaints(root, suite), released(), made)
+
+
+def blamed(
+    root: Path,
+    after: list[Complaint],
+    released: list[Complaint],
+    made: tuple[_Fixes, str],
+) -> Compared:
+    """Trace what's new in `after`, the fixed checkout's errors, since `released`, to the fixes `made`.
+
+    `made`: the fixes in the checkout, per file, and the size of their change.
+
+    Returns:
+      The comparison.
+
+    """
+    before: Counter[tuple[str, str]] = Counter(_key(complaint) for complaint in released)
     now: Counter[tuple[str, str]] = Counter(_key(complaint) for complaint in after)
     files: dict[str, _Fixed] = {}
     new: list[Blamed] = []

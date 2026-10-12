@@ -7,13 +7,15 @@
 The run file (`run_config`) names the corpora (`corpora.toml`'s), the constricter versions, the
 steps and the formats. Each execution writes `<output>/<label>-<month>-<day>-<year>-<time>/`:
 
-    run.toml      the run as it was read, the commit and the machine
+    run.toml      the run file, copied
+    facts.toml    the run as it was read, the commit and the machine
     records/      <corpus>/<version>/<step>.json, and each fix's patch: what every output is made from
     logs/         what each step's constricter wrote to standard error
     report.json   report.md   tables/*.csv
 
-Every step starts constricter one way (`launch.run`) on one tree a corpus (`catalog.Tree`), so a
-count in one table is the count in another.
+Corpora are measured `at-once` at a time, each one's steps side by side, then its suite's own
+tests and checks in a process of their own. Every step starts constricter one way (`launch.run`)
+on one tree a corpus (`trees.Tree`), so a count in one table is the count in another.
 """
 
 import os
@@ -21,17 +23,22 @@ import platform
 import shutil
 import subprocess  # asks git for the commit
 import sys
+import threading
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from functools import partial
 from pathlib import Path
-from typing import Final, cast
+from typing import IO, Final, TypeAlias, cast
 
 from constricter import __version__
-from tests.corpus import catalog, pipeline, render
+from tests.corpus import catalog, pipeline, render, suite_steps, trees
 from tests.corpus.pipeline import Record
 from tests.corpus.run_config import Run, read
 
+_Measured: TypeAlias = "tuple[trees.Tree, list[str]]"  # a corpus's tree, and its steps that failed
 _RESUME: Final = "--resume"
+_STEP: Final = "--step"  # then a run's folder, a corpus and a version: that corpus's suite steps
 _ROOT: Final = Path(__file__).resolve().parents[2]
 
 
@@ -55,10 +62,16 @@ def _facts(run: Run, started: datetime) -> Record:
         "versions": list(run.versions),
         "formats": list(run.formats),
         "jobs": run.jobs,
+        "at-once": run.at_once,
         "corpora": list(run.include),
         "check": run.steps.check,
         "fix": list(run.steps.fix),
         "coverage": run.steps.coverage,
+        "infer-with": list(run.steps.infer),
+        "census": run.steps.census,
+        "tests": run.steps.tests,
+        "types": run.steps.types,
+        "traced": run.steps.traced,
         "constricter": __version__,
         "commit": commit,
         "python": platform.python_version(),
@@ -89,33 +102,111 @@ def _toml(facts: Record) -> str:
     return "".join(f"{key} = {value(each)}\n" for key, each in facts.items())
 
 
+def _measured(
+    run: Run,
+    store: pipeline.Store,
+    ports: dict[str, threading.Lock],
+    entry: catalog.Entry,
+) -> _Measured:
+    """Measure one corpus with each of the run's versions.
+
+    Its suite's steps run in a process of their own (`--step`): they set what the suite's commands
+    need in the environment, and corpora are measured side by side. Suites whose tests bind one
+    port run one at a time (`ports`' locks).
+
+    Returns:
+      The corpus's tree, and the steps that failed: each has its traceback in its log, and no record.
+
+    """
+    tree: trees.Tree = trees.found(entry)
+    failed: list[str] = []
+    version: str
+    for version in run.versions:
+        job: pipeline.Job = pipeline.Job(run, store, tree, version)
+        failed += [f"{entry.name}, {job.recorded}: {name}" for name in pipeline.measure(job)]
+        if any(store.read(tree.name, job.recorded, name) is None for name in suite_steps.waiting(job)):
+            log: Path = store.root / "logs" / tree.name.replace(" ", "-") / job.recorded / "suite.log"
+            log.parent.mkdir(parents=True, exist_ok=True)
+            file: IO[str]
+            with ports[entry.port], log.open("a", encoding="utf-8") as file:
+                done: subprocess.CompletedProcess[bytes] = subprocess.run(
+                    [sys.executable, "-m", "tests.corpus", _STEP, str(store.root), entry.name, version],
+                    stdout=file,
+                    stderr=subprocess.STDOUT,
+                    check=False,
+                    cwd=_ROOT,
+                )
+            if done.returncode:
+                failed.append(f"{entry.name}, {job.recorded}: its suite's steps ({log})")
+    return tree, failed
+
+
+def _step(folder: Path, name: str, version: str) -> int:
+    """Run one corpus's suite steps with one version, in the run whose folder is `folder`.
+
+    Returns:
+      1 if one failed, else 0.
+
+    """
+    run: Run = read(folder / "run.toml")
+    tree: trees.Tree = trees.found(catalog.load().entries[name])
+    return int(bool(suite_steps.measure(pipeline.Job(run, pipeline.Store(folder), tree, version))))
+
+
 def main(argv: Sequence[str]) -> int:
     """Run the run file named, write its folder, and say where it is.
 
     Returns:
-      0.
+      1 if a step failed (the outputs have the rest; `--resume` makes it again), else 0.
+
+    """
+    if argv[:1] == [_STEP]:
+        return _step(Path(argv[1]), argv[2], argv[3])
+    run: Run = read(Path(argv[0]))
+    facts: Record = _facts(run, datetime.now().astimezone())
+    folder: Path = _folder(argv, run, facts)
+    store: pipeline.Store = pipeline.Store(folder)
+    measured: list[_Measured] = _all(run, store)
+    shutil.rmtree(folder / "work", ignore_errors=True)  # the copies its fixes worked on
+    records: render.Records = render.gathered(run, store, [tree for tree, _ in measured])
+    written: list[Path] = render.write(records, folder, facts)
+    render.publish(records, _ROOT)
+    _ = sys.stdout.write("".join(f"{path}\n" for path in written))
+    failed: list[str] = [each for _, failures in measured for each in failures]
+    _ = sys.stderr.write("".join(f"failed: {each}\n" for each in failed))
+    return int(bool(failed))
+
+
+def _folder(argv: Sequence[str], run: Run, facts: Record) -> Path:
+    """Make the folder this execution writes, or take the one `--resume` names, and keep the run file there.
+
+    Returns:
+      The folder.
 
     """
     resumed: Path | None = Path(argv[argv.index(_RESUME) + 1]) if _RESUME in argv else None
-    run: Run = read(Path(argv[0]))
-    started: datetime = datetime.now().astimezone()
+    started: datetime = datetime.fromisoformat(str(facts["started"]))
     folder: Path = (resumed or _ROOT / run.folder(started)).resolve()
     folder.mkdir(parents=True, exist_ok=True)
-    facts: Record = _facts(run, started)
-    _ = (folder / "run.toml").write_text(_toml(facts), encoding="utf-8")
-    store: pipeline.Store = pipeline.Store(folder)
+    if not (resumed and (folder / "run.toml").exists()):
+        _ = shutil.copyfile(argv[0], folder / "run.toml")
+    _ = (folder / "facts.toml").write_text(_toml(facts), encoding="utf-8")
+    return folder
+
+
+def _all(run: Run, store: pipeline.Store) -> list[_Measured]:
+    """Measure each of the run's corpora, `at-once` of them at a time.
+
+    Returns:
+      Each one's tree and failed steps, in the run's order.
+
+    """
     known: catalog.Catalog = catalog.load()
-    trees: list[catalog.Tree] = []
-    name: str
-    for name in known.names(list(run.include)):
-        trees.append(known.tree(name))
-        version: str
-        for version in run.versions:
-            pipeline.measure(pipeline.Job(run, store, trees[-1], version))
-    shutil.rmtree(folder / "work", ignore_errors=True)  # the copies its fixes worked on
-    written: list[Path] = render.write(render.gathered(run, store, trees), folder, facts)
-    _ = sys.stdout.write("".join(f"{path}\n" for path in written))
-    return 0
+    entries: list[catalog.Entry] = [known.entries[name] for name in known.names(list(run.include))]
+    ports: dict[str, threading.Lock] = {entry.port: threading.Lock() for entry in entries}
+    pool: ThreadPoolExecutor
+    with ThreadPoolExecutor(run.at_once) as pool:
+        return list(pool.map(partial(_measured, run, store, ports), entries))
 
 
 if __name__ == "__main__":

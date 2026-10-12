@@ -7,6 +7,7 @@
     versions = ["0.3.1", "dev"]      # releases from PyPI, and `dev`: this checkout
     formats = ["json", "markdown", "csv"]
     jobs = 0                         # constricter's worker processes: 0 is every CPU
+    at-once = 1                      # the corpora measured side by side (give `jobs` a share of the CPUs)
 
     [corpora]
     include = ["seven"]              # corpora or sets of `corpora.toml`
@@ -15,6 +16,15 @@
     check = true                     # offences per code, and errors and warnings at each level
     fix = ["certain", "likely", "unsafe"]   # each on a copy: fixed, broken, a second pass, typed after
     coverage = true                  # the bindings typed as released
+    infer-with = ["basedpyright"]    # `--fix --unsafe-fixes --infer-with` each, on a copy
+    census = true                    # every untyped binding, classified: what has no fix, and why
+    tests = true                     # a suite's own tests, as released and after each fix
+    types = true                     # its own type checks, each new error traced to its fix
+    traced = true                    # its tests traced: each fix held to what they bind; a fix by the trace
+
+    [publish]
+    runs-md = "docs/RUNS.md"         # and a section a version there, of the per-version tables
+    replace = false                  # over a section that's already there
 
 A key this doesn't know is an error, not ignored: a misspelt step would otherwise measure nothing.
 """
@@ -36,11 +46,14 @@ LIKELY: Final = "likely"
 UNSAFE: Final = "unsafe"
 # Each fix a run can make on a copy, and the options that make it beside `--fix`.
 FIXES: Final = {CERTAIN: (), LIKELY: ("--likely",), UNSAFE: ("--unsafe-fixes",)}
+CHECKERS: Final = ("basedpyright", "ty", "pyrefly")  # what `--infer-with` can start
 _KEYS: Final = {
-    "run": {"label", "output", "versions", "formats", "jobs"},
+    "run": {"label", "output", "versions", "formats", "jobs", "at-once"},
     "corpora": {"include"},
-    "steps": {"check", "fix", "coverage"},
+    "publish": {"runs-md", "replace"},
+    "steps": {"check", "fix", "infer-with", "census", "coverage", "tests", "types", "traced"},
 }
+_RUNS_MD: Final = "runs-md"
 _STAMP: Final = "%m-%d-%Y-%H%M"  # a run's folder: its label, then the month, day, year and time it started
 _Table: TypeAlias = dict[str, object]
 
@@ -51,6 +64,18 @@ class Steps(NamedTuple):
     check: bool = True
     fix: tuple[str, ...] = (CERTAIN, LIKELY, UNSAFE)
     coverage: bool = True
+    infer: tuple[str, ...] = ()  # the type checkers whose hints `--infer-with` takes, each on a copy
+    census: bool = True
+    tests: bool = False  # a suite's own tests take minutes: asked for
+    types: bool = False  # and its own type checks
+    traced: bool = False  # and its tests once more, traced (it needs `fix`'s `unsafe`)
+
+
+class Publish(NamedTuple):
+    """Where a run's tables go beside its folder."""
+
+    runs_md: Path | None = None  # docs/RUNS.md: a section a version, of the tables `corpus_table` lays out
+    replace: bool = False  # over a section that's there
 
 
 class Run(NamedTuple):
@@ -63,6 +88,8 @@ class Run(NamedTuple):
     jobs: int = 0
     include: tuple[str, ...] = ("seven",)
     steps: Steps = Steps()
+    at_once: int = 1  # the corpora measured side by side
+    publish: Publish = Publish()
 
     def folder(self, now: datetime) -> Path:
         """Name the folder an execution started at `now` writes.
@@ -120,6 +147,7 @@ def parse(data: _Table) -> Run:
             raise ValueError(message)
     run: _Table = cast("_Table", data.get("run", {}))
     steps: _Table = cast("_Table", data.get("steps", {}))
+    publish: _Table = cast("_Table", data.get("publish", {}))
     default: Run = Run()
     return Run(
         str(run.get("label", default.label)),
@@ -132,6 +160,16 @@ def parse(data: _Table) -> Run:
             bool(steps.get("check", default.steps.check)),
             _among(steps.get("fix", default.steps.fix), tuple(FIXES), "fix"),
             bool(steps.get("coverage", default.steps.coverage)),
+            _among(steps.get("infer-with", default.steps.infer), CHECKERS, "checker"),
+            bool(steps.get("census", default.steps.census)),
+            bool(steps.get("tests", default.steps.tests)),
+            bool(steps.get("types", default.steps.types)),
+            bool(steps.get("traced", default.steps.traced)),
+        ),
+        cast("int", run.get("at-once", default.at_once)),
+        Publish(
+            Path(str(publish[_RUNS_MD])) if _RUNS_MD in publish else None,
+            bool(publish.get("replace")),
         ),
     )
 

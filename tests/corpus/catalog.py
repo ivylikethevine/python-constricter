@@ -1,39 +1,115 @@
 # SPDX-License-Identifier: MIT
-"""The corpora a run can name: `corpora.toml`, read, and each one found on disk as a `Tree`.
+"""The corpora a run can name: `corpora.toml`, read (its head says what each key is).
 
-A corpus is one tree for every step of a run: the standard library's directory, an unpacked sdist's
-package, or a suite's checkout at its pinned tag, whose settings (`pyproject.toml`) and environment
-(`.venv`) every constricter the run starts on it reads.
+Each corpus is an `Entry`: why it's here, its pinned sdist if it has one (`corpus_sources.Source`),
+and its suite if it has one (`Suite`: its repository at a pinned tag, and how its CI installs, tests
+and type-checks it). Every script that names a corpus, a suite or an sdist reads it from here.
 """
 
-import sysconfig
+import shlex
+import sys
 import tomllib
-from pathlib import Path
+from functools import cache
 from typing import IO, Final, NamedTuple, TypeAlias, cast
 
-from tests.corpus import corpus_sources, corpus_suite
+from tests.corpus import corpus_sources
+from tests.corpus.corpus_sources import CATALOG, Source
 
-CATALOG: Final = Path(__file__).with_name("corpora.toml")
-STDLIB: Final = "stdlib"
-SUITE: Final = "suite"
-SDIST: Final = "sdist"
-_Entry: TypeAlias = dict[str, str]
+SEVEN: Final = "seven"  # the set every released version is measured on
+MEGA: Final = "mega"  # and the packages the seven don't stand for
+WORKERS: Final = "{workers}"  # in a test command's word: how many processes to take
+PYTHON: Final = sys.executable
+VENV: Final = ("venv", "-q", "--allow-existing", "--python", PYTHON, ".venv")
+PYTEST: Final = ("python", "-m", "pytest", "-q", "-rfE", "-p", "no:cacheprovider")
+_PIP: Final = "pip"
+_SUITE: Final = "suite"  # an entry's table
+_STDLIB: Final = "stdlib"  # the `kind` of the entry that is the running Python's standard library
+_RAW: Final = "!"  # before a test command that isn't pytest's
+_MOST: Final = 8  # the most processes a suite is given where its entry doesn't say
+_Table: TypeAlias = "dict[str, object]"  # a table of the catalog, as `tomllib` reads it
 
 
-class Tree(NamedTuple):
-    """One corpus on disk: what's checked, and where its settings and environment are."""
+class Suite(NamedTuple):
+    """One package's repository, pinned tag and source, and how its CI installs, tests and checks it."""
+
+    repository: str
+    tag: str
+    source: str  # relative to the checkout
+    install: tuple[tuple[str, ...], ...]  # `uv` commands installing it and its tests' dependencies in `.venv`
+    # The command running its tests, the first word from `.venv/bin`; `WORKERS` in a word stands for
+    # how many processes it's to take (see `corpus_suite.workers`).
+    tests: tuple[str, ...]
+    checks: tuple[tuple[str, ...], ...] = ()  # its CI's type checks, each's first word from `.venv/bin`
+    left_out: str = ""  # requirements it can't build here, which `--excludes -` reads
+    most: int = 1  # the most processes its tests can keep busy
+    worker_memory: float = 1.0  # the gigabytes one of them takes
+    submodules: bool = False  # its build needs its repository's submodules (aiohttp's, llhttp)
+    # A script and its arguments running its tests in one process, where pytest doesn't run them:
+    # what a trace traces, the script's directory on the path as `python` puts it there.
+    script: tuple[str, ...] = ()
+
+
+class Entry(NamedTuple):
+    """One corpus of the catalog."""
 
     name: str
-    version: str
-    root: Path  # the directory checked
-    base: Path | None = None  # a suite's checkout, which `root` is under: its `pyproject.toml` is read
-    environment: Path | None = None  # its venv: the installed packages constricter reads types from
+    version: str  # "" for the standard library: the running Python's
+    why: str
+    source: Source | None  # its pinned sdist
+    suite: Suite | None
+    environment: dict[str, str]  # what its commands need set
+    port: str  # the port its tests bind, or ""
+    stdlib: bool = False
+
+
+def _installing(commands: list[str]) -> tuple[tuple[str, ...], ...]:
+    """Read a suite's install commands.
+
+    Returns:
+      Each as `uv`'s arguments, after the venv's where the first installs with `uv pip`.
+
+    """
+    found: list[tuple[str, ...]] = [VENV] if commands[0].startswith(_PIP) else []
+    command: str
+    for command in commands:
+        kind: str
+        rest: list[str]
+        kind, *rest = shlex.split(command)
+        found.append(
+            (_PIP, "install", "-q", *rest) if kind == _PIP else (kind, "-q", *rest, "--python", PYTHON),
+        )
+    return tuple(found)
+
+
+def _suite(pinned: _Table) -> Suite:
+    """Read a corpus's `suite` table.
+
+    Returns:
+      The suite.
+
+    """
+    tests: str = cast("str", pinned["tests"])
+    return Suite(
+        cast("str", pinned["repository"]),
+        cast("str", pinned["tag"]),
+        cast("str", pinned["source"]),
+        _installing(cast("list[str]", pinned["install"])),
+        tuple(shlex.split(tests.removeprefix(_RAW)))
+        if tests.startswith(_RAW)
+        else (*PYTEST, *shlex.split(tests)),
+        tuple(tuple(shlex.split(check)) for check in cast("list[str]", pinned["checks"])),
+        cast("str", pinned.get("left-out", "")),
+        cast("int", pinned.get("most", _MOST if WORKERS in tests else 1)),
+        cast("float", pinned.get("worker-memory", 1.0)),
+        bool(pinned.get("submodules")),
+        tuple(shlex.split(cast("str", pinned.get("script", "")))),
+    )
 
 
 class Catalog(NamedTuple):
     """`corpora.toml`: each corpus's entry, and each set's names."""
 
-    entries: dict[str, _Entry]
+    entries: dict[str, Entry]
     sets: dict[str, list[str]]
 
     def names(self, include: list[str]) -> list[str]:
@@ -56,39 +132,46 @@ class Catalog(NamedTuple):
             found.update(dict.fromkeys(self.sets.get(name, [name])))
         return list(found)
 
-    def tree(self, name: str) -> Tree:
-        """Find corpus `name` on disk, cloning and installing a suite or fetching an sdist the first time.
+    def suites(self, among: str) -> dict[str, Suite]:
+        """Find the suites of the set `among`.
 
         Returns:
-          Its tree.
-
-        Raises:
-          ValueError: its entry's `kind` is none this knows.
+          Each by its corpus's name.
 
         """
-        entry: _Entry = self.entries[name]
-        kind: str = entry["kind"]
-        if kind == STDLIB:
-            return Tree(name, sysconfig.get_python_version(), Path(sysconfig.get_paths()["stdlib"]))
-        if kind == SDIST:
-            return Tree(name, corpus_sources.SOURCES[name].version, corpus_sources.fetch(name))
-        if kind == SUITE:
-            suite: corpus_suite.Suite = corpus_suite.SUITES[name]
-            base: Path = corpus_suite.checkout(name, suite)
-            corpus_suite.reset(base, suite)
-            return Tree(name, entry["version"], base / suite.source, base, base / ".venv")
-        message: str = f"{name}: kind {kind!r} is none of {STDLIB}, {SUITE}, {SDIST}"
-        raise ValueError(message)
+        found: dict[str, Suite] = {}
+        name: str
+        for name in self.sets[among]:
+            suite: Suite | None
+            if (suite := self.entries[name].suite) is not None:
+                found[name] = suite
+        return found
 
 
-def load(path: Path = CATALOG) -> Catalog:
-    """Read a catalog.
+@cache
+def load() -> Catalog:
+    """Read `corpora.toml`.
 
     Returns:
-      It.
+      The catalog.
 
     """
     file: IO[bytes]
-    with path.open("rb") as file:
-        data: dict[str, dict[str, _Entry]] = tomllib.load(file)
-    return Catalog(data.get("corpus", {}), cast("dict[str, list[str]]", data.get("sets", {})))
+    with CATALOG.open("rb") as file:
+        data: _Table = tomllib.load(file)
+    sources: dict[str, Source] = corpus_sources.pinned()
+    entries: dict[str, Entry] = {}
+    name: str
+    pinned: _Table
+    for name, pinned in cast("dict[str, _Table]", data["corpus"]).items():
+        entries[name] = Entry(
+            name,
+            cast("str", pinned.get("version", "")),
+            cast("str", pinned.get("why", "")),
+            sources.get(name),
+            _suite(cast("_Table", pinned[_SUITE])) if _SUITE in pinned else None,
+            cast("dict[str, str]", pinned.get("environment", {})),
+            cast("str", pinned.get("port", "")),
+            stdlib=pinned.get("kind") == _STDLIB,
+        )
+    return Catalog(entries, cast("dict[str, list[str]]", data["sets"]))

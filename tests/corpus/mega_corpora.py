@@ -6,17 +6,9 @@
   local/.venv/bin/python -m tests.corpus.mega_corpora --print    # print the section, don't record it
   local/.venv/bin/python -m tests.corpus.mega_corpora NAME ...   # only these packages, printed
 
-`mega_packages.json` pins each one: its sdist on PyPI's file host (`where`, the directory its hash
-names, and `archive`; fetched once into `local/mega-corpora/sources/`, its SHA-256 checked, as
-`tests/corpus/corpus_sources.py` fetches Twisted), which is the corpus that's checked and fixed
-(`package`, its directory in the sdist); and its `suite`, read from its own CI: the repository and
-tag to clone, its `source` there, the `uv` commands installing it (`pip ...` for
-`uv pip install`, into a venv made first; `sync ...` for `uv sync`), its `tests` (pytest's
-arguments, or a whole command after `!`; `{workers}` stands for its processes), its type
-`checks`, and whether its build needs its `submodules`. `alone` says why a package has no suite
-here, `environment` what its commands need set,
-and `port` the port its tests' own server binds: those of one port run one at a time (httpx's wait
-for theirs forever, where another suite has it). They're typed applications, `asyncio` code,
+The catalog's `mega` set names them (`corpora.toml`, whose head says what each key of an entry is):
+its pinned sdist, fetched once into `local/mega-corpora/sources/`, which is the corpus that's checked
+and fixed, and its suite, read from its own CI. They're typed applications, `asyncio` code,
 pytest-heavy test trees, scientific packages on numpy's types, packages with `TypedDict`s and
 overloads of their own, and untyped ones for contrast.
 
@@ -29,37 +21,24 @@ dependencies aren't in this checkout's environment, so `--fix` reads no installe
 but numpy's and the corpus group's.
 """
 
-import json
 import os
-import shlex
 import sys
 import tarfile
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Final, NamedTuple, TypeAlias, cast
+from typing import Final, NamedTuple, cast
 
-from tests.corpus import corpus_sources, super_corpora
+from tests.corpus import catalog, corpus_sources, super_corpora
 from tests.corpus.corpus_sources import Source
 from tests.corpus.corpus_suite import Suite
 from tests.corpus.corpus_table import Corpus
 
-_Json: TypeAlias = "str | list[str] | dict[str, _Json]"
 _ROOT: Final = Path(__file__).resolve().parents[2]
 WORK: Final = _ROOT / "local" / "mega-corpora"
-_PINNED: Final = Path(__file__).with_name("mega_packages.json")
-_FILES: Final = "https://files.pythonhosted.org/packages"
-_PYTHON: Final = sys.executable
-_VENV: Final = ("venv", "-q", "--allow-existing", "--python", _PYTHON, ".venv")
-_PYTEST: Final = ("python", "-m", "pytest", "-q", "-rfE", "-p", "no:cacheprovider")
-_PIP: Final = "pip"
-_RAW: Final = "!"  # before a test command that isn't pytest's
-_WORKERS: Final = "{workers}"
-_MOST: Final = 8  # the most processes a suite here is given: none was sized by a run
 _STEP_FLAG: Final = "--step"
 # How long a suite's tests may run here (see `corpus_suite`): the longest took 6 minutes a run.
 _SECONDS_VARIABLE: Final = "CORPUS_SUITE_SECONDS"
 _SECONDS: Final = "900"
-_SUITE: Final = "suite"
 
 
 class Package(NamedTuple):
@@ -72,70 +51,20 @@ class Package(NamedTuple):
     port: str  # the port its tests bind, or ""
 
 
-def _installing(commands: Sequence[str]) -> tuple[tuple[str, ...], ...]:
-    """Read a suite's install commands (see the module's docstring).
-
-    Returns:
-      Each as `uv`'s arguments, after the venv's where the first installs with `uv pip`.
-
-    """
-    found: list[tuple[str, ...]] = [_VENV] if commands[0].startswith(_PIP) else []
-    command: str
-    for command in commands:
-        kind: str
-        rest: list[str]
-        kind, *rest = shlex.split(command)
-        found.append(
-            (_PIP, "install", "-q", *rest) if kind == _PIP else (kind, "-q", *rest, "--python", _PYTHON),
-        )
-    return tuple(found)
-
-
-def _suite(pinned: dict[str, _Json]) -> Suite:
-    """Read a package's suite.
-
-    Returns:
-      It.
-
-    """
-    tests: str = cast("str", pinned["tests"])
-    return Suite(
-        cast("str", pinned["repository"]),
-        cast("str", pinned["tag"]),
-        cast("str", pinned["source"]),
-        _installing(cast("list[str]", pinned["install"])),
-        tuple(shlex.split(tests.removeprefix(_RAW)))
-        if tests.startswith(_RAW)
-        else (*_PYTEST, *shlex.split(tests)),
-        tuple(tuple(shlex.split(check)) for check in cast("list[str]", pinned["checks"])),
-        most=_MOST if _WORKERS in tests else 1,
-        submodules=bool(pinned.get("submodules")),
-    )
-
-
 def packages() -> dict[str, Package]:
-    """Read `mega_packages.json`.
+    """Read the catalog's `mega` set.
 
     Returns:
       Each package, by its name.
 
     """
+    known: catalog.Catalog = catalog.load()
     found: dict[str, Package] = {}
-    pinned: dict[str, _Json]
-    for pinned in cast("list[dict[str, _Json]]", json.loads(_PINNED.read_text(encoding="utf-8"))):
-        source: Source = Source(
-            cast("str", pinned["version"]),
-            f"{_FILES}/{pinned['where']}/{pinned['archive']}",
-            cast("str", pinned["sha256"]),
-            cast("str", pinned["package"]),
-        )
-        found[cast("str", pinned["name"])] = Package(
-            cast("str", pinned["why"]),
-            source,
-            _suite(cast("dict[str, _Json]", pinned[_SUITE])) if _SUITE in pinned else None,
-            cast("dict[str, str]", pinned.get("environment", {})),
-            cast("str", pinned.get("port", "")),
-        )
+    name: str
+    for name in known.sets[catalog.MEGA]:
+        entry: catalog.Entry = known.entries[name]
+        source: Source = cast("Source", entry.source)
+        found[name] = Package(entry.why, source, entry.suite, entry.environment, entry.port)
     return found
 
 

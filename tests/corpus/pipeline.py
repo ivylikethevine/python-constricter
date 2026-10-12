@@ -10,19 +10,29 @@ run again, so a stopped run resumes.
 - `fix-certain`, `fix-likely`, `fix-unsafe`: `--fix` with that tier's options on a copy: what it
   fixed (by tier and by mechanisms, where the version lists its fixes), the files it broke, what a
   second pass would still fix, the bindings typed after, and the copy's diff, kept as a patch;
+- `infer-CHECKER`: the same with `--unsafe-fixes --infer-with CHECKER`, a type checker's hints;
+- `census`: every untyped binding a check at `suffocate` reports, classified
+  (`corpus_untyped.census`): those with no fix, and their values' shapes;
 - `coverage`: the bindings typed as released.
+
+`suite_steps` has the steps that run a corpus package's own suite, after these.
+
+A fix step keeps each fix it made (`<step>.fixes.jsonl`), and the census each binding
+(`census.rows.jsonl`), a line each, beside its record.
 
 Every count of typed bindings is this checkout's `--coverage`, whatever the version.
 """
 
 import difflib
 import json
+import os
 import re
 import shutil
 import sys
 import time
+import traceback
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
@@ -30,9 +40,9 @@ from typing import IO, Final, NamedTuple, TypeAlias, cast
 
 from constricter import Level
 from constricter.cli import paths
-from tests.corpus import corpus_table, launch
-from tests.corpus.catalog import Tree
+from tests.corpus import corpus_table, corpus_untyped, launch
 from tests.corpus.run_config import CERTAIN, DEV, FIXES, LIKELY, Run
+from tests.corpus.trees import Tree
 
 Record: TypeAlias = "dict[str, object]"
 _Entry: TypeAlias = "dict[str, object]"
@@ -40,8 +50,15 @@ _Listed: TypeAlias = "list[_Entry] | _Entry | None"  # what `--format=json` may 
 CHECK: Final = "check"
 COVERAGE: Final = "coverage"
 FIX: Final = "fix-"
+INFER: Final = "infer-"
+CENSUS: Final = "census"
+TESTS: Final = "tests"
+TYPES: Final = "types"
+TRACED: Final = "traced"
+TRACE: Final = "trace"  # after `INFER`: the fix step by a suite's tests' trace
 GUESS: Final = "guess"
 _SUFFOCATE: Final = "--level=suffocate"
+_NAME: Final = re.compile(r"'([^']+)'")  # the name an offence's message quotes
 _ERROR: Final = "error"  # an offence's severity, in `--format=json`
 _TYPED: Final = re.compile(r"^Total: (\d+)/(\d+) typed", re.MULTILINE)  # `--coverage`'s summary
 _AT_ONCE: Final = 4  # a corpus's steps running side by side
@@ -210,19 +227,53 @@ def _patch(tree: Tree, where: launch.Place) -> str:
     return "".join(lines)
 
 
-def fix(job: Job, mode: str) -> Record:
-    """Fix a copy of the corpus with `mode`'s options, then ask a second pass what it would still fix.
+def _listed(job: Job, step: str, where: launch.Place, entries: list[_Entry]) -> list[_Entry]:
+    """Keep each fix a run made, a line each, beside the step's record (`<step>.fixes.jsonl`).
+
+    Returns:
+      The fixes, as `--format=json` gives each one's `fix`.
+
+    """
+    made: list[_Entry] = []
+    lines: list[str] = []
+    entry: _Entry
+    for entry in entries:
+        offered: _Entry | None = cast("_Entry | None", entry.get("fix"))
+        if offered and entry.get("fixed"):
+            named: re.Match[str] | None = _NAME.search(str(entry["message"]))
+            made.append(offered)
+            lines.append(
+                json.dumps(
+                    {
+                        "path": (where.cwd / str(entry["path"])).relative_to(where.target).as_posix(),
+                        "line": entry["line"],
+                        "name": named[1] if named else "",
+                        "annotation": offered["annotation"],
+                        "tier": tier(offered),
+                        "kinds": offered["kinds"],
+                        "imports": offered.get("imports", []),
+                    },
+                ),
+            )
+    _ = job.store.path(job.tree.name, job.recorded, step, ".fixes.jsonl").write_text(
+        "".join(f"{line}\n" for line in lines),
+        encoding="utf-8",
+    )
+    return made
+
+
+def fix(job: Job, step: str, extra: Sequence[str]) -> Record:
+    """Fix a copy of the corpus with `--fix` and `extra`, then ask a second pass what it would still fix.
 
     Returns:
       The step's record; its `fixed` is `None` where the fix crashed or the version hasn't the options.
 
     """
-    step: str = f"{FIX}{mode}"
     where: launch.Place
     valid: list[Path]
     where, valid = launch.copied(job.tree, job.work(step))
-    options: list[str] = [*FIXES[mode], _SUFFOCATE]
-    record: Record = {"options": ["--fix", *FIXES[mode]], "fixed": None}
+    options: list[str] = [*extra, _SUFFOCATE]
+    record: Record = {"options": ["--fix", *extra], "fixed": None}
     fixed: int | None
     ran: launch.Ran
     if launch.lists_fixes(job.version):
@@ -233,9 +284,7 @@ def fix(job: Job, mode: str) -> Record:
             job.run.jobs,
         )
         entries: list[_Entry] | None = _entries(ran.output)
-        made: list[_Entry] = [
-            cast("_Entry", e["fix"]) for e in entries or [] if e.get("fixed") and e.get("fix")
-        ]
+        made: list[_Entry] = _listed(job, step, where, entries or [])
         fixed = None if entries is None else len(made)
         record["tiers"] = dict(Counter(tier(each) for each in made))
         record["mechanisms"] = dict(Counter("+".join(cast("list[str]", each["kinds"])) for each in made))
@@ -261,6 +310,43 @@ def fix(job: Job, mode: str) -> Record:
     return record
 
 
+def census(job: Job) -> Record:
+    """Classify every untyped binding a check at `suffocate` reports, and why those with no fix have none.
+
+    Each binding is kept, a line each, beside the record (`census.rows.jsonl`).
+
+    Returns:
+      The step's record: the untyped bindings, those whose fix is a guess, those with none (and
+      their values' shapes), and those in files that don't parse, left out of the rest.
+
+    """
+    where: launch.Place = launch.place(job.tree, job.work(CENSUS))
+    ran: launch.Ran = launch.run(job.version, where, ["--format=json", _SUFFOCATE], job.run.jobs)
+    job.store.log(job.tree.name, job.recorded, CENSUS, ran.errors)
+    entries: list[_Entry] = _entries(ran.output) or []
+    entry: _Entry
+    for entry in entries:
+        entry["path"] = os.path.normpath(where.cwd / str(entry["path"]))  # as the tree's root is: no `..`
+    bindings: list[corpus_untyped.Binding]
+    unparsed: int
+    bindings, unparsed = corpus_untyped.census(
+        corpus_table.Corpus(job.tree.name, job.tree.version, job.tree.root),
+        json.dumps(entries),
+    )
+    _ = job.store.path(job.tree.name, job.recorded, CENSUS, ".rows.jsonl").write_text(
+        "".join(f"{json.dumps(binding._asdict())}\n" for binding in bindings),
+        encoding="utf-8",
+    )
+    return {
+        "untyped": len(bindings),
+        "guessed": sum(binding.fixed and binding.unsafe for binding in bindings),
+        "unfixed": sum(not binding.fixed for binding in bindings),
+        "unparsed": unparsed,
+        "shapes": dict(Counter(binding.shape for binding in bindings if not binding.fixed).most_common()),
+        "seconds": round(ran.seconds, 1),
+    }
+
+
 def coverage(job: Job) -> Record:
     """Count the corpus's bindings typed as released.
 
@@ -269,6 +355,19 @@ def coverage(job: Job) -> Record:
 
     """
     return {"typed": _typed(job, launch.place(job.tree, job.work(COVERAGE)))}
+
+
+def fixing(run: Run) -> list[str]:
+    """List the run's steps that fix a copy.
+
+    Returns:
+      Their names: each tier's, then each type checker's, then the trace's (which a `traced` step
+      makes, for a suite whose tests can be traced).
+
+    """
+    tiers: list[str] = [f"{FIX}{mode}" for mode in run.steps.fix]
+    hinted: list[str] = [f"{INFER}{checker}" for checker in run.steps.infer]
+    return [*tiers, *hinted, *([f"{INFER}{TRACE}"] if run.steps.traced else [])]
 
 
 def steps(run: Run) -> dict[str, Callable[[Job], Record]]:
@@ -283,14 +382,44 @@ def steps(run: Run) -> dict[str, Callable[[Job], Record]]:
         found[CHECK] = check
     mode: str
     for mode in run.steps.fix:
-        found[f"{FIX}{mode}"] = partial(fix, mode=mode)
+        found[f"{FIX}{mode}"] = partial(fix, step=f"{FIX}{mode}", extra=FIXES[mode])
+    checker: str
+    for checker in run.steps.infer:
+        found[f"{INFER}{checker}"] = partial(
+            fix,
+            step=f"{INFER}{checker}",
+            extra=("--unsafe-fixes", f"--infer-with={checker}"),
+        )
+    if run.steps.census:
+        found[CENSUS] = census
     if run.steps.coverage:
         found[COVERAGE] = coverage
     return found
 
 
-def measure(job: Job) -> None:
-    """Run each of the run's steps on the job that has no record yet, side by side, and keep each one's."""
+def settled(job: Job, name: str, done: Future[Record]) -> bool:
+    """Keep a finished step's record; or, where it raised, its traceback in the step's log.
+
+    Returns:
+      Whether it has a record: a step that failed has none, and a resumed run makes it again.
+
+    """
+    failure: BaseException | None
+    if (failure := done.exception()) is None:
+        job.store.write(job.tree.name, job.recorded, name, done.result())
+    else:
+        job.store.log(job.tree.name, job.recorded, name, "".join(traceback.format_exception(failure)))
+        _ = sys.stderr.write(f"{job.recorded} on {job.tree.name}: {name} failed: {failure!r}\n")
+    return failure is None
+
+
+def measure(job: Job) -> list[str]:
+    """Run each of the run's steps on the job that has no record yet, side by side, and keep each one's.
+
+    Returns:
+      The steps that failed.
+
+    """
     start: float = time.perf_counter()
     path: Path = job.store.path(job.tree.name, job.recorded, CHECK)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -301,9 +430,7 @@ def measure(job: Job) -> None:
             for name, step in steps(job.run).items()
             if job.store.read(job.tree.name, job.recorded, name) is None
         }
-    name: str
-    done: Future[Record]
-    for name, done in running.items():
-        job.store.write(job.tree.name, job.recorded, name, done.result())
+    failed: list[str] = [name for name, done in running.items() if not settled(job, name, done)]
     seconds: float = time.perf_counter() - start
     _ = sys.stderr.write(f"{job.recorded} on {job.tree.name}: {len(running)} steps in {seconds:.1f}s\n")
+    return failed
