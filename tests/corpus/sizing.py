@@ -5,7 +5,8 @@ Every step is a process of its own, started once the CPUs it's expected to keep 
 it's expected to hold are free (`Slots`). A step is expected to do what it did in the latest earlier
 run under the run's output that measured it (`before`: the CPU seconds of every process under it
 over its seconds, half the machine's CPUs at most, and the most memory they held at once, `_MARGIN`
-over). Unmeasured:
+over). `check` and `census` read one check at `suffocate`, which the first of them to start runs: each
+is expected to do the most either did. Unmeasured:
 
 - a suite's tests keep its workers busy (`Plan.workers`) and hold `worker-memory` for each; traced,
   what its `tests` step held where only that one is measured; a `heavy` suite's hold all there is;
@@ -45,7 +46,7 @@ from typing import Final, NamedTuple, Protocol, cast
 
 from constricter.rules import parsed
 from tests.corpus.catalog import Suite
-from tests.corpus.pipeline import INFER, PROFILE, TESTS, TIMING, TRACED, TYPES, Record
+from tests.corpus.pipeline import INFER, PROFILE, SHARING, TESTS, TIMING, TRACED, TYPES, Record
 from tests.corpus.run_config import Run
 from tests.corpus.trees import Tree
 
@@ -297,6 +298,12 @@ class Plan(NamedTuple):
         """
         directory: str = tree.name.replace(" ", "-")
         known: Before | None = self.before.get((directory, step))
+        if step in SHARING:  # either may run their one check: the most either took
+            both: list[Before] = [
+                self.before[directory, each] for each in sorted(SHARING) if (directory, each) in self.before
+            ]
+            if both:
+                known = Before(*(max(each) for each in zip(*both, strict=True)))
         tested: Before | None = self.before.get((directory, TESTS)) if step == TRACED else None
         testing: bool = step in _TESTING and tree.suite is not None
         workers: int = self.workers(tree.suite) if tree.suite is not None else 1

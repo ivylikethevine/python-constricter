@@ -72,6 +72,7 @@ GUESS: Final = "guess"
 IMPLIED: Final = "implied"  # in a suite's fixed test run's record: the run that stands for it, as released
 _SUFFOCATE: Final = "--level=suffocate"
 _SHARED: Final = "suffocate"  # where a job's one check at `suffocate` runs, and is kept (`suffocated`)
+SHARING: Final = frozenset({CHECK, CENSUS})  # the steps that read it: the first to start runs it
 _NAME: Final = re.compile(r"'([^']+)'")  # the name an offence's message quotes
 _ERROR: Final = "error"  # an offence's severity, in `--format=json`
 _TYPED: Final = re.compile(r"^Total: (\d+)/(\d+) typed", re.MULTILINE)  # `--coverage`'s summary

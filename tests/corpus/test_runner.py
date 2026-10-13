@@ -332,6 +332,16 @@ def test_a_step_is_given_what_it_took_in_the_last_run(tmp_path: Path) -> None:
     assert plan.wanted(tree, pipeline.CHECK) == sizing.Wanted(2, 2 * (sizing.GIB + sizing.GIB // 4), 10.0)
     assert plan.wanted(tree._replace(suite=None), pipeline.CHECK).lasting == 0
     assert plan.wanted(tree, pipeline.TIMING).cpus == plan.cpus
+    # The check and the census share one check: the one that only read it is held as the one that ran it.
+    read: sizing.Before = sizing.Before(0.7, 0.4, sizing.GIB // 50)
+    ran: sizing.Before = sizing.Before(2.2, 74.0, 4 * sizing.GIB)
+    shared: sizing.Plan = plan._replace(
+        before={("celery", pipeline.CHECK): read, ("celery", pipeline.CENSUS): ran},
+    )
+    assert shared.wanted(tree, pipeline.CHECK) == sizing.Wanted(3, 5 * sizing.GIB, 0.4, measured=True)
+    assert shared.wanted(tree, pipeline.CENSUS) == sizing.Wanted(3, 5 * sizing.GIB, 74.0, measured=True)
+    alone: sizing.Plan = plan._replace(before={("celery", pipeline.CENSUS): ran})
+    assert alone.wanted(tree, pipeline.CHECK) == sizing.Wanted(3, 5 * sizing.GIB, measured=True)
     unmeasured: sizing.Plan = plan._replace(before={})
     assert unmeasured.wanted(tree, pipeline.TESTS) == sizing.Wanted(1, sizing.GIB)
     assert unmeasured.wanted(tree, pipeline.TESTS, heavy=True).memory == plan.memory
