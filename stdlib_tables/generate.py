@@ -29,8 +29,11 @@ comes out the same for all twelve:
   templates its instance's type arguments bind, and a non-generic class's own that `attributes`
   can't hold (a `list[ast.stmt]`); `elements`: what iterating each class's instance
   gives (`io.TextIOWrapper`'s `str`, `itertools.chain`'s `_T`), as such a template;
-- `functions`: capitalised functions no other table types (`xml.etree.ElementTree.Comment`), so
-  a call to one isn't taken to construct a class;
+- `functions`: capitalised functions no other table types (`xml.etree.ElementTree.Comment`), and
+  capitalised variables bound to one (`multiprocessing.Value`), so a call to one isn't taken to
+  construct a class;
+- `platform`: the modules some platform's stubs have nothing public in (`winreg`, `fcntl`), each
+  to the platforms that have it;
 - `awaited`: what awaiting a call of each `async def` with one declared return gives, a function's
   by its path and a method's by its class's path and its name (a class's own path: its instance);
   `awaited_overloads`: those its arguments decide (`asyncio.wait_for`), as `overloads` holds a
@@ -92,9 +95,11 @@ from stdlib_tables.stubs import (
     Klass,
     Namespace,
     Stubs,
+    Unknown,
     Variable,
     private,
 )
+from stdlib_tables.written import inherited, platform_only
 
 ROOT: Final = Path(__file__).parents[1]
 OUTPUT: Final = ROOT / "constricter" / "fix" / "tables"  # one JSON file per table
@@ -149,6 +154,7 @@ _PRIVATE: Final = {
 # Modules whose names installed packages' stubs annotate with, private or not (`scalars`).
 _ANNOTATING: Final = frozenset({"typing", "typing_extensions", "builtins", "_typeshed", "collections.abc"})
 _YES: Final = "y"
+_HOPS: Final = 8  # the variables followed from one bound to another's
 _FUNCTION: Final = "def"  # a `functions` entry: what the path names
 _ENTER: Final = "__enter__"
 
@@ -411,8 +417,10 @@ def _enter(tables: _Tables, reader: _Reader, path: str, found: Found) -> None:
             _function(tables, reader, path, found.module, defs)
         case Alias(value=value):
             _enter_alias(tables, reader, path, value, found.module)
+            _enter_callable(tables, reader, path, value, found.module)
         case Variable(annotation=value):  # `sys.path`, `os.sep`
             _enter_variable(tables, reader, path, value, found.module)
+            _enter_callable(tables, reader, path, value, found.module)
         case Klass() if klass in reader.canonical:
             _enter_named(tables, reader, path, found)
         case Klass():  # a generic class, typed by what binds its parameters
@@ -428,6 +436,39 @@ def _enter_alias(tables: _Tables, reader: _Reader, path: str, value: "ast.expr",
         _enter_constructor(tables, reader, path, aliased)
     else:
         _entry(tables, path, reader.reading.bound_method(value, module), reader.canonical)
+
+
+def _enter_callable(tables: _Tables, reader: _Reader, path: str, value: "ast.expr", module: str) -> None:
+    """Enter a capitalised variable no table types under `functions`: a call of it constructs no such class.
+
+    `multiprocessing.Value`, bound to a context's method. Not one that names a class
+    (`Pattern = re.Pattern`, `x: type[C]`), nor a constant (`os.EX_OK`).
+    """
+    name: str = path.rpartition(".")[2]
+    held: bool = (
+        path in tables.returns
+        or path in tables.classes
+        or path in tables.overloads
+        or path in tables.variables
+        or path in tables.aliases
+    )
+    if name[:1].isupper() and not name.isupper() and not held and _calls(reader, value, module):
+        tables.functions[path] = _FUNCTION
+
+
+def _calls(reader: _Reader, value: "ast.expr", module: str, hops: int = 0) -> bool:
+    """Check whether what a variable is bound to, or declared as, is no class: a function, or unknown.
+
+    Returns:
+      Whether it is; not for a type's alias or a `type[C]`, nor through more variables than `_HOPS`.
+
+    """
+    if isinstance(value, (ast.Subscript, ast.BinOp)) or hops > _HOPS:
+        return False
+    target: Found | None = reader.reading.ref(value, module)
+    if target is not None and isinstance(target.binding, Variable):  # bound to another's variable
+        return _calls(reader, target.binding.annotation, target.module, hops + 1)
+    return target is None or isinstance(target.binding, (Function, Unknown))
 
 
 def _enter_variable(tables: _Tables, reader: _Reader, path: str, annotation: "ast.expr", module: str) -> None:
@@ -854,6 +895,7 @@ def generate(stubs_root: Path | None = None) -> dict[Path, str]:
         "awaited": tables.awaited,
         "awaited_overloads": tables.awaited_overloads,
         "elements": tables.elements,
+        "platform": platform_only(_parsed(root)),
     }
     source: dict[str, str | list[str]] = {
         **stamp(),
@@ -864,62 +906,6 @@ def generate(stubs_root: Path | None = None) -> dict[Path, str]:
     files[_SOURCE] = json.dumps(source, indent=0, sort_keys=True) + "\n"
     files[PARTIAL] = write(_partial(each))
     return files
-
-
-def inherited(members: dict[str, Table], bases: Table) -> dict[str, dict[str, str | None]]:
-    """Write each class's members as it has them apart from its public ancestors (`bases`).
-
-    `--fix` resolves a member as a class's own entry, else its ancestors' in order (each resolved
-    the same way): a member the class has as its nearest ancestor does is left out, and one it
-    hides (a member it defines that the tables can't hold) is `None`. Checked against the full
-    tables, entry by entry.
-
-    Returns:
-      Each class's entries.
-
-    Raises:
-      RuntimeError: if they don't resolve to the full tables.
-
-    """
-    found: dict[str, dict[str, str | None]] = {}
-    klass: str
-    for klass in dict.fromkeys([*members, *bases]):
-        through: dict[str, str] = {}
-        ancestor: str
-        name: str
-        value: str
-        for ancestor in bases.get(klass, "").split(",") if klass in bases else []:
-            for name, value in members.get(ancestor, {}).items():
-                _ = through.setdefault(name, value)
-        own: Table = members.get(klass, {})
-        entries: dict[str, str | None] = {
-            **{name: value for name, value in own.items() if through.get(name) != value},
-            **dict.fromkeys(through.keys() - own.keys()),
-        }
-        if entries:
-            found[klass] = entries
-    if any(_resolved(found, bases, klass) != table for klass, table in members.items()):
-        message: str = "a class's members resolve otherwise than they were read"
-        raise RuntimeError(message)
-    return found
-
-
-def _resolved(own: dict[str, dict[str, str | None]], bases: Table, klass: str) -> Table:
-    """Resolve a class's members as `--fix` does (`stdlib._member`): its own entries, then each ancestor's.
-
-    Returns:
-      Them.
-
-    """
-    found: dict[str, str | None] = {}
-    ancestor: str
-    for ancestor in bases.get(klass, "").split(",") if klass in bases else []:
-        name: str
-        value: str
-        for name, value in _resolved(own, bases, ancestor).items():
-            _ = found.setdefault(name, value)
-    found.update(own.get(klass, {}))
-    return {name: value for name, value in found.items() if value is not None}
 
 
 def write(table: _Json) -> str:

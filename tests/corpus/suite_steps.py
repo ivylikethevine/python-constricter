@@ -20,12 +20,14 @@ import subprocess  # applies a fix's patch to a suite's checkout
 import time
 from collections import Counter
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, Final, TypeAlias, cast
+from pathlib import Path
+from typing import Final, TypeAlias, cast
 
+from constricter.offences import Tier
 from tests.corpus import corpus_guesses, corpus_suite
 from tests.corpus.pipeline import (
     FIX,
-    GUESS,
+    IMPLIED,
     INFER,
     TESTS,
     TRACE,
@@ -38,10 +40,9 @@ from tests.corpus.pipeline import (
 )
 from tests.corpus.run_config import CERTAIN, DEV, LIKELY, UNSAFE
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
 _Entry: TypeAlias = dict[str, object]
+_WHOLE: Final = f"{FIX}{UNSAFE}"  # the fix step that makes every guess: the tiers' fixes are among its own
+_APART: Final = "types"  # names the checkout a suite's type checks run on, beside its tests' own
 _TRACED_KIND: Final = "traced"  # the mechanism of a fix that rests on a trace
 # The counts a test moves between, failing where it passed or passing where it was expected to fail
 # (altair's does from run to run): a run's others say what else changed.
@@ -99,8 +100,10 @@ def weighed(
     }
 
 
-def _patched(job: Job, step: str) -> str | None:
+def _patched(job: Job, step: str, base: Path | None = None) -> str | None:
     """Take the suite's checkout to its tag's source, then apply the patch a fix step kept.
+
+    `base`: another checkout of the suite, in place of the tree's.
 
     But for the files git doesn't track there (a build's generated `_version.py`): `reset` can't
     take one back to what it was, and the next patch wouldn't apply.
@@ -110,7 +113,7 @@ def _patched(job: Job, step: str) -> str | None:
 
     """
     suite: corpus_suite.Suite = cast("corpus_suite.Suite", job.tree.suite)
-    base: Path = cast("Path", job.tree.base)
+    base = cast("Path", job.tree.base) if base is None else base
     corpus_suite.reset(base, suite)
     patch: Path = job.store.path(job.tree.name, job.recorded, step, ".patch")
     untracked: str = subprocess.run(
@@ -181,7 +184,8 @@ def types(job: Job) -> Record:
     """Run the corpus package's own type checks as released, and after each fix the run made of it.
 
     Each fixed run is the checkout with a fix step's patch applied. An error the fixed run has that
-    the released one hasn't is new, and is traced to the fix it's about (`corpus_suite.blamed`).
+    the released one hasn't is new, and is traced to the fix it's about (`corpus_suite.blamed`). On
+    a checkout of the suite of their own (installed the first time), so they run beside its tests.
 
     Returns:
       The step's record: the released errors' count, and each fixed run's, with those gone and
@@ -189,7 +193,7 @@ def types(job: Job) -> Record:
 
     """
     suite: corpus_suite.Suite = cast("corpus_suite.Suite", job.tree.suite)
-    base: Path = cast("Path", job.tree.base)
+    base: Path = corpus_suite.checkout(job.tree.name, suite, _APART, variables=job.tree.variables)
     corpus_suite.reset(base, suite)
     os.environ.update(job.tree.variables or {})
     start: float = time.perf_counter()
@@ -200,7 +204,7 @@ def types(job: Job) -> Record:
     for step in fixing(job.run):
         if job.store.path(job.tree.name, job.recorded, step, ".patch").exists():
             refused: str | None
-            if (refused := _patched(job, step)) is not None:
+            if (refused := _patched(job, step, base)) is not None:
                 fixed[step] = {"error": refused}
                 continue
             change: str = subprocess.run(
@@ -290,7 +294,7 @@ def _judged(job: Job, made: dict[str, list[corpus_suite.Fix]]) -> dict[str, Coun
     each: corpus_suite.Fix
     for each in itertools.chain.from_iterable(made.values()):
         verdict: corpus_guesses.Verdict = corpus_guesses.verdict(judged, each.path, each.line, each.name)
-        level: str = LIKELY if each.likely else GUESS if each.unsafe else CERTAIN
+        level: str = Tier.of(unsafe=each.unsafe, likely=each.likely).value
         counts["told"][level] += bool(verdict.fit or verdict.differ)
         counts["held"][level] += bool(verdict.fit and not verdict.differ)
         counts["differed"][level] += bool(verdict.differ)
@@ -361,7 +365,9 @@ def tests(job: Job) -> Record:
         for step in fixing(job.run)
         if job.store.path(job.tree.name, job.recorded, step, ".patch").exists()
     ]
-    first: dict[str, corpus_suite.Outcome | str] = {step: _fixed_run(job, step, "") for step in patched}
+    if not job.run.steps.tests_hinted:
+        patched = [step for step in patched if not step.startswith(INFER)]
+    first: dict[str, corpus_suite.Outcome | str] = _first(job, patched, released[0])
     corpus_suite.reset(base, suite)
     again: dict[str, corpus_suite.Outcome | str] = {}
     if any(ran != released[0] for ran in first.values() if not isinstance(ran, str)):
@@ -381,7 +387,37 @@ def tests(job: Job) -> Record:
         else weighed(_both(ran, again.get(step)), released, named)
         for step, ran in first.items()
     }
-    return record | {"released": _outcome(released[0]), "fixed": fixed}
+    none: list[str] = []
+    same: Record = _outcome(released[0]) | {"same": True, "new": none, IMPLIED: _WHOLE}
+    return record | {
+        "released": _outcome(released[0]),
+        "fixed": {step: fixed.get(step, same) for step in patched},
+    }
+
+
+def _first(
+    job: Job,
+    patched: Sequence[str],
+    released: corpus_suite.Outcome,
+) -> dict[str, corpus_suite.Outcome | str]:
+    """Run the suite's tests after each of the fixes `patched`, but those another run stands for.
+
+    Every guess's run first: the same as `released`, it stands for the tiers under it, whose fixes
+    are among its own.
+
+    Returns:
+      Each run's outcome, or why its patch wasn't applied, by its fix step; none for a tier implied.
+
+    """
+    first: dict[str, corpus_suite.Outcome | str] = {
+        step: _fixed_run(job, step, "") for step in patched if step == _WHOLE
+    }
+    implied: bool = first.get(_WHOLE) == released
+    return first | {
+        step: _fixed_run(job, step, "")
+        for step in patched
+        if step != _WHOLE and not (implied and step.startswith(FIX))
+    }
 
 
 def told(suite: corpus_suite.Suite, runs: Sequence[corpus_suite.Outcome]) -> frozenset[str]:

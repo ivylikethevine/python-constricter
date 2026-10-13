@@ -26,11 +26,12 @@ class Tree(NamedTuple):
     variables: dict[str, str] | None = None  # what the suite's commands need set
 
 
-def found(entry: Entry, *, install: bool = True) -> Tree:
+def found(entry: Entry, *, install: bool = True, settle: bool = True) -> Tree:
     """Find a corpus on disk, cloning and installing its suite or fetching its sdist the first time.
 
     Without `install`, a suite is cloned alone: its source and settings, with no environment to read
-    installed packages' types from, and no suite to run.
+    installed packages' types from, and no suite to run. Without `settle`, a suite's checkout is
+    left as it is, not taken back to its tag's source: its tests may be running on a fix's patch.
 
     Returns:
       Its tree.
@@ -50,7 +51,8 @@ def found(entry: Entry, *, install: bool = True) -> Tree:
             install=install,
             variables=entry.environment,
         )
-        corpus_suite.reset(base, entry.suite)
+        if settle:
+            corpus_suite.reset(base, entry.suite)
         source: Path = base / entry.suite.source
         if not install:
             return Tree(entry.name, entry.version, source, base)

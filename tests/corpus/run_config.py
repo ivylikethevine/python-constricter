@@ -8,7 +8,7 @@
                                      # the constricter the Python at PATH runs (another checkout's)
     formats = ["json", "markdown", "csv"]
     jobs = 0                         # constricter's worker processes: 0 is every CPU
-    at-once = 1                      # the corpora measured side by side (give `jobs` a share of the CPUs)
+    at-once = 1                      # the corpora found side by side: cloned, installed
     suite-seconds = 1800             # how long a suite's tests may run before they're stopped
     suite-workers = 0                # the most processes a suite's tests take: 0 is half the CPUs
     cpus = 0                         # the CPUs the steps share: 0 is the machine's (see `sizing`)
@@ -30,6 +30,8 @@
 
     timing = 3                       # a check timed that many times, in one process and with `jobs`
     profile = true                   # a check in one process `py-spy` samples
+    tests-hinted = true              # false: no test run after a checker's hints or the trace's fix
+    every-level = false              # true: a check at each level, not one the levels are read from
 
     [publish]
     runs-md = "docs/RUNS.md"         # and a section a version there, of the per-version tables
@@ -84,6 +86,8 @@ _KEYS: Final = {
         "traced",
         "timing",
         "profile",
+        "tests-hinted",
+        "every-level",
     },
 }
 _RUNS_MD: Final = "runs-md"
@@ -104,6 +108,8 @@ class Steps(NamedTuple):
     traced: bool = False  # and its tests once more, traced (it needs `fix`'s `unsafe`)
     timing: int = 0  # how many times a check is timed, each way: 0 is not at all
     profile: bool = False
+    tests_hinted: bool = True  # a suite's tests after each checker's hints and the trace's fix too
+    every_level: bool = False  # a check at each level, not one at `suffocate` the others are read from
 
 
 class Publish(NamedTuple):
@@ -124,7 +130,7 @@ class Run(NamedTuple):
     jobs: int = 0
     include: tuple[str, ...] = ("seven",)
     steps: Steps = Steps()
-    at_once: int = 1  # the corpora measured side by side
+    at_once: int = 1  # the corpora found side by side: their steps wait for the machine alone
     publish: Publish = Publish()
     install: bool = True  # a suite's corpus installed with its tests' dependencies, not cloned alone
     suite_seconds: int = 1800  # how long a suite's tests may run before they're stopped
@@ -210,6 +216,8 @@ def parse(data: _Table) -> Run:
             bool(steps.get("traced", default.steps.traced)),
             cast("int", steps.get("timing", default.steps.timing)),
             bool(steps.get("profile", default.steps.profile)),
+            bool(steps.get("tests-hinted", default.steps.tests_hinted)),
+            bool(steps.get("every-level", default.steps.every_level)),
         ),
         cast("int", run.get("at-once", default.at_once)),
         Publish(

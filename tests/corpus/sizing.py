@@ -18,6 +18,12 @@ A step that wants all the memory there is, or more, runs alone. The timed steps 
 `profile`) want every CPU, so nothing runs beside the check timed: the run starts them last, one at
 a time.
 
+Of the steps waiting, the one with the most seconds still to come starts first: its own and those
+of its corpus's suite's steps after it, which wait for it. One that has waited `_PATIENCE` seconds
+for what smaller ones keep taking has what's free kept for it. And a running step's hold follows
+what it's seen to use (`Plan.fitted`): an unmeasured one gives back what it isn't using, and any
+one takes what it uses over its share from the next to start.
+
 The steps share the machine's CPUs and `_MEMORY_SHARE` of the memory free as the run starts, unless
 the run file says (`cpus`, `memory`). A step's use is read by `corpora_cpu`, which needs `psutil`:
 without it nothing is measured, and every step is sized as unmeasured.
@@ -31,7 +37,9 @@ import math
 import os
 import re
 import threading
+import time
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, NamedTuple, Protocol, cast
 
@@ -51,6 +59,9 @@ _JOB_MEMORY: Final = GIB + GIB // 4  # what a step holds for each of constricter
 _UNSIZED_SHARE: Final = 3  # the unmeasured steps starting the type checkers that the memory is split among
 _MOST_SHARE: Final = 2  # the most CPUs a step is given: the CPUs over this, or it waits for most to be idle
 _TESTING: Final = frozenset({TESTS, TRACED})  # the steps that run a suite's tests
+_CHAIN: Final = (TRACED, TESTS, TYPES)  # a suite's steps, each waiting for the one before it
+_PATIENCE: Final = 300.0  # the seconds a step waits before what's free is kept for it
+_SLACK: Final = 2.0  # over what an unmeasured step holds a minute in: it may hold more later
 TIMED: Final = frozenset({TIMING, PROFILE})  # the steps nothing runs beside
 _AVAILABLE: Final = re.compile(r"^MemAvailable:\s*(\d+) kB", re.MULTILINE)
 _MEMINFO: Final = Path("/proc/meminfo")
@@ -70,9 +81,23 @@ class Watcher(Protocol):
     def watch(self, root: int) -> None:
         """Start counting process `root` and what it starts."""
 
+    def seen(self, root: int) -> tuple[float, int]:
+        """Say what its tree has used so far: its CPU seconds, and its most bytes at once."""
+        raise NotImplementedError
+
     def used(self, root: int) -> tuple[float, int]:
         """Stop counting it, and say what its tree used: its CPU seconds, and its most bytes at once."""
         raise NotImplementedError
+
+
+@dataclass(eq=False)
+class _Waiter:
+    """A step waiting for its turn: how long it and what's behind it last, what it wants, since when."""
+
+    lasting: float
+    cpus: int
+    memory: int
+    since: float
 
 
 def watcher() -> Watcher | None:
@@ -101,8 +126,7 @@ class Slots:
         self.held: int = 0  # the bytes the running steps are expected to hold
         self.running: int = 0
         self.changed: threading.Condition = threading.Condition()
-        # How long each waiting step lasts, and the CPUs and the memory it wants.
-        self.waiting: list[tuple[float, int, int]] = []
+        self.waiting: list[_Waiter] = []
 
     def _fits(self, cpus: int, memory: int) -> bool:
         """Check that `cpus` are free and `memory` bytes are; a step alone has the memory, whatever it wants.
@@ -113,31 +137,37 @@ class Slots:
         """
         return self.free >= cpus and (self.held + memory <= self.memory or not self.running)
 
-    def _turn(self, waiter: tuple[float, int, int]) -> bool:
+    def _turn(self, waiter: _Waiter) -> bool:
         """Check whether a waiting step may start: it fits, and none waiting goes before it (see `take`).
 
         Returns:
           Whether it may.
 
         """
-        lasting: float
-        memory: int
-        lasting, _, memory = waiter
-        if not self._fits(waiter[1], memory):
+        if not self._fits(waiter.cpus, waiter.memory):
             return False
-        if memory >= self.memory:  # it runs alone: nothing is running
+        if waiter.memory >= self.memory:  # it runs alone: nothing is running
             return True
-        if any(needs >= self.memory for _, _, needs in self.waiting):
+        if any(other.memory >= self.memory for other in self.waiting):
             return False
-        return not any(longer > lasting and self._fits(cpus, needs) for longer, cpus, needs in self.waiting)
+        kept: float = time.monotonic() - _PATIENCE
+        if any(
+            other.since < min(kept, waiter.since) and not self._fits(other.cpus, other.memory)
+            for other in self.waiting
+        ):
+            return False
+        return not any(
+            other.lasting > waiter.lasting and self._fits(other.cpus, other.memory) for other in self.waiting
+        )
 
     def take(self, wanted: int, memory: int = 0, lasting: float = 0.0) -> int:
         """Wait until `wanted` CPUs and `memory` bytes are free, and hold them.
 
-        All the CPUs, for more than there are. `lasting`: the seconds the step is expected to take;
-        of the steps waiting, one that lasts longer and fits what's free goes before it, so the long
-        steps aren't the last to start. And one that wants all the memory goes before any that
-        wants less: it runs once those running have ended.
+        All the CPUs, for more than there are. `lasting`: the seconds the step and what waits for it
+        are expected to take; of the steps waiting, one that lasts longer and fits what's free goes
+        before it, so the long steps aren't the last to start. One that wants all the memory goes
+        before any that wants less: it runs once those running have ended. And one that has waited
+        `_PATIENCE` seconds without fitting goes before any that came after it.
 
         Returns:
           How many CPUs are held, to `give` back with the memory.
@@ -145,7 +175,7 @@ class Slots:
         """
         held: int = max(1, min(wanted, self.cpus))
         with self.changed:
-            waiter: tuple[float, int, int] = (lasting, held, memory)
+            waiter: _Waiter = _Waiter(lasting, held, memory, time.monotonic())
             self.waiting.append(waiter)
             _ = self.changed.wait_for(lambda: self._turn(waiter))
             self.waiting.remove(waiter)
@@ -154,6 +184,21 @@ class Slots:
             self.running += 1
             self.changed.notify_all()  # one that waited behind this may fit what's left
         return held
+
+    def resize(self, held: tuple[int, int], now: tuple[int, int]) -> tuple[int, int]:
+        """Change what a running step holds, its CPUs and its bytes, from `held` to `now`.
+
+        More than is free too: the next step then waits for it.
+
+        Returns:
+          What it holds now.
+
+        """
+        with self.changed:
+            self.free += held[0] - now[0]
+            self.held += now[1] - held[1]
+            self.changed.notify_all()
+        return now
 
     def give(self, held: int, memory: int = 0) -> None:
         """Free the CPUs and the memory a step held."""
@@ -216,11 +261,12 @@ def available() -> int | None:
 
 
 class Wanted(NamedTuple):
-    """What a step is expected to take: the CPUs, the bytes, and its seconds (0: unmeasured)."""
+    """What a step is expected to take: the CPUs, the bytes, and the seconds it and what waits for it last."""
 
     cpus: int
     memory: int
     lasting: float = 0.0
+    measured: bool = False  # by an earlier run: held to it, unless it uses more
 
 
 class Plan(NamedTuple):
@@ -267,7 +313,32 @@ class Plan(NamedTuple):
             memory = self.memory // _UNSIZED_SHARE
         else:
             memory = (self.run.jobs or self.cpus) * _JOB_MEMORY
-        return Wanted(self.cpus if step in TIMED else cpus, memory, known.seconds if known else 0.0)
+        behind: tuple[str, ...] = _CHAIN[_CHAIN.index(step) + 1 :] if step in _CHAIN else _CHAIN
+        lasting: float = sum(
+            self.before[directory, each].seconds
+            for each in (step, *(behind if tree.suite is not None else ()))
+            if (directory, each) in self.before
+        )
+        return Wanted(self.cpus if step in TIMED else cpus, memory, lasting, known is not None)
+
+    def fitted(self, wanted: Wanted, held: tuple[int, int], busy: float, peak: int) -> tuple[int, int]:
+        """Fit a running step's hold to what it's seen to use: `busy` CPUs of late, `peak` bytes at most.
+
+        `held`: its CPUs and its bytes now. A measured step keeps what its last run took, and an
+        unmeasured one gives back what it isn't using, `_SLACK` over what it holds; either takes
+        what it uses over that. Not a step that runs alone.
+
+        Returns:
+          The CPUs and the bytes to hold.
+
+        """
+        if wanted.cpus >= self.cpus or wanted.memory >= self.memory:
+            return held
+        using: int = max(1, min(math.ceil(busy), self.cpus))
+        holding: int = int(peak * _MARGIN)
+        if wanted.measured:
+            return max(wanted.cpus, using), max(wanted.memory, holding)
+        return using, min(max(int(peak * _SLACK), holding), max(wanted.memory, holding))
 
 
 def plan(run: Run, folder: Path, root: Path) -> Plan:

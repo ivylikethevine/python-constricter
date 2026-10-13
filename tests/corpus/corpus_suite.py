@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import IO, Final, NamedTuple, TypeAlias, cast
 
 from constricter import recording
+from constricter.offences import Tier
 from tests.corpus import catalog
 
 _Json: TypeAlias = "str | int | bool | list[_Json] | dict[str, _Json] | None"
@@ -132,6 +133,9 @@ _Traceable: TypeAlias = tuple[list[list[str]], list[str]]
 TRACE_FILE: Final = ".venv/corpus-suite-trace.json"  # a checkout's tests' trace: out of its source's way
 _MODULE: Final = ("python", "-m")  # how a suite's tests start, where a module runs them
 _TRACER: Final = ("constricter.trace", "--output", TRACE_FILE, "--root", ".")
+# In a checkout: a directory with this checkout's `constricter` alone, for a traced run's path. Not
+# this checkout's root, whose `tests` package a suite's own would then share the path with.
+_TRACER_PATH: Final = ".venv/corpus-suite-path"
 TRACER_VARIABLE: Final = "CORPUS_TRACER"  # set: another module that traces as it does, and where it is
 
 
@@ -458,6 +462,23 @@ def traceable(suite: Suite) -> bool:
     return _traceable(suite) is not None
 
 
+def tracer_path(root: Path) -> Path:
+    """Make the directory a traced run of the checkout at `root` finds `constricter` in (`_TRACER_PATH`).
+
+    Returns:
+      It: this checkout's `constricter` package, linked, and nothing else.
+
+    """
+    path: Path = root / _TRACER_PATH
+    link: Path = path / "constricter"
+    package: Path = Path(__file__).resolve().parents[2] / "constricter"
+    if not link.is_symlink() or link.resolve() != package:
+        path.mkdir(parents=True, exist_ok=True)
+        link.unlink(missing_ok=True)
+        link.symlink_to(package, target_is_directory=True)
+    return path
+
+
 def traced(root: Path, suite: Suite, keep: Path | None = None) -> tuple[str, Outcome] | None:
     """Run the checkout's tests as released under `python -m constricter.trace`, which writes `TRACE_FILE`.
 
@@ -474,7 +495,7 @@ def traced(root: Path, suite: Suite, keep: Path | None = None) -> tuple[str, Out
     if (target := _traceable(suite)) is None:
         return None
     tracer: list[str] = os.environ.get(TRACER_VARIABLE, _TRACER[0]).split(os.pathsep)  # and its directory
-    path: list[str] = [str(Path(__file__).resolve().parents[2]), *target[1], *tracer[1:]]
+    path: list[str] = [str(tracer_path(root)), *target[1], *tracer[1:]]
     outputs: list[str] = []
     traces: list[recording.Found] = []
     part: list[str]
@@ -722,6 +743,7 @@ def blamed(
     for complaint in _new(root, after, now - before, files):
         file: _Fixed = _file(root, files, complaint.path)
         fix: Fix | None = _blamed(complaint, file, made[0].get(complaint.path, []))
-        guess: str = " (likely)" if fix and fix.likely else " (guess)" if fix and fix.unsafe else ""
+        tier: Tier = Tier.of(unsafe=bool(fix and fix.unsafe), likely=bool(fix and fix.likely))
+        guess: str = "" if tier is Tier.CERTAIN else f" ({tier.value})"
         new.append(Blamed(complaint, fix, "(untraced)" if fix is None else fix.kinds + guess))
     return Compared(made[1], len(after), (before - now).total(), new, made[0])

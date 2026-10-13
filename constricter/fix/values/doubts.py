@@ -97,9 +97,8 @@ class Facts(NamedTuple):
     attributed: frozenset[str] = frozenset()
     # Its functions' parameters' types, where a `Callable` can list them (see `callables.signatures`).
     positional: Mapping[str, tuple[str, ...]] = MappingProxyType({})
-    nested: frozenset[str] = (
-        frozenset()
-    )  # the classes defined in a class's body (see `imports.nested_classes`)
+    # The classes defined in a class's body, and the class naming each (see `imports.nested_classes`).
+    nested: Mapping[str, str] = MappingProxyType({})
 
 
 def facts(

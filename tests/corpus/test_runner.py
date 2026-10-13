@@ -4,12 +4,14 @@
 import csv
 import json
 import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO, Final, TypeAlias, cast
 
 import pytest
 
+from constricter import Level
 from tests.corpus import catalog, corpus_suite, pipeline, render, sizing, suite_steps
 from tests.corpus.corpus_suite import Outcome
 from tests.corpus.pipeline import Record, Store
@@ -26,7 +28,9 @@ _SECTION: Final = "## constricter rc+dev"
 _FIXES: Final = "| 2 (33.3%) | 1 (16.7%) | 2 (33.3%) |      0 |    0 |            1 |"
 _COUNTED: Final[Record] = {"untyped": 6, "guessed": 2, "unfixed": 2, "unparsed": 0, "shapes": {"call": 2}}
 _INFERRED: Final = "| standard library | infer-ty |     5 |       2 |      1 |     2 |      0 |    0 |"
-_TESTED_ROW: Final = "| fix-unsafe | False            | 1 failed, 8 passed  |            1 |    0 |     0 |"
+_TESTED_ROW: Final = (
+    "| fix-unsafe  | False            | 1 failed, 8 passed        |            1 |    0 |     0 |"
+)
 _USED: Final[Record] = {
     "seconds": 10.0,
     "cpu": 25.0,
@@ -35,6 +39,7 @@ _USED: Final[Record] = {
     "alone": False,
 }
 _SUPER: Final = "## Super corpora\n"
+_SET_ROW: Final = "| unsafe  | constructor |     2 |         |      2 |       |"
 _PROSE: Final = 100  # the width Prettier fills prose to
 _OLD: Final = "\nold\n"  # a section a run's replaces
 _MACHINE: Final = "constricter 0.3.6 (`abc`), Python 3.14.7, on a CPU (16 CPUs, 60 GB, Linux): `--jobs=0`"
@@ -55,6 +60,12 @@ _TESTED: Final[Record] = {
             "new": [_FAILED],
         },
         "infer-ty": {"error": "error: patch failed"},
+        "fix-certain": {
+            "counts": {"passed": 9, "skipped": 1},
+            "same": True,
+            "new": [],
+            "implied": "fix-unsafe",
+        },
     },
 }
 _NEW: Final[Record] = {
@@ -124,6 +135,7 @@ def _fixed(count: int, tiers: dict[str, int], left: int = 0) -> Record:
     return {
         "fixed": count,
         "tiers": tiers,
+        "sets": {"call": {"certain": min(count, 2)}, "constructor": {"likely": count - min(count, 2)}},
         "broken": 0,
         "left": left,
         "typed": [4 + count, 10],
@@ -206,6 +218,96 @@ def test_a_step_waits_for_the_cpus_and_the_memory_it_wants() -> None:
         8,
         12.0,
     )
+    asked: Steps = parse({"steps": {"tests-hinted": False, "every-level": True}}).steps
+    assert (asked.tests_hinted, asked.every_level) == (False, True)
+    assert (Steps().tests_hinted, Steps().every_level) == (True, False)
+
+
+def _waited(slots: sizing.Slots) -> bool:
+    """Wait for a step to be waiting for `slots`, 5 seconds at most.
+
+    Returns:
+      Whether one is.
+
+    """
+    for _ in range(500):
+        if slots.waiting:
+            return True
+        time.sleep(0.01)
+    return False
+
+
+def test_a_step_that_waited_long_has_whats_free_kept_for_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One that came after it doesn't start, though it fits; nor does one that lasts less than one waiting."""
+    monkeypatch.setattr(sizing, "_PATIENCE", 0.0)
+    slots: sizing.Slots = sizing.Slots(4, 10)
+    held: int = slots.take(2)
+    started: list[str] = []
+
+    def step(name: str, cpus: int) -> None:
+        slots.give(slots.take(cpus))
+        started.append(name)
+
+    large: threading.Thread = threading.Thread(target=step, args=("large", 3))
+    large.start()
+    assert _waited(slots)
+    small: threading.Thread = threading.Thread(target=step, args=("small", 1))
+    small.start()
+    small.join(0.3)
+    assert not started
+    slots.give(held)
+    large.join()
+    small.join()
+    assert sorted(started) == ["large", "small"]
+    assert (slots.free, slots.running) == (4, 0)
+
+
+def test_a_running_steps_hold_follows_what_it_uses() -> None:
+    """Unmeasured, it gives back what it isn't using; measured, it keeps its last run's, or takes more."""
+    plan: sizing.Plan = sizing.Plan(parse({}), 8, 16 * sizing.GIB, {})
+    unmeasured: sizing.Wanted = sizing.Wanted(4, 8 * sizing.GIB)
+    assert plan.fitted(unmeasured, (4, 8 * sizing.GIB), 0.4, sizing.GIB) == (1, 2 * sizing.GIB)
+    assert plan.fitted(unmeasured, (1, 2 * sizing.GIB), 5.2, 7 * sizing.GIB) == (6, int(8.75 * sizing.GIB))
+    measured: sizing.Wanted = unmeasured._replace(measured=True)
+    assert plan.fitted(measured, (4, 8 * sizing.GIB), 0.4, sizing.GIB) == (4, 8 * sizing.GIB)
+    assert plan.fitted(measured, (4, 8 * sizing.GIB), 20.0, 8 * sizing.GIB) == (8, 10 * sizing.GIB)
+    alone: tuple[int, int] = (8, 4 * sizing.GIB)
+    assert plan.fitted(sizing.Wanted(8, 4 * sizing.GIB), alone, 1.0, sizing.GIB) == alone
+    slots: sizing.Slots = sizing.Slots(8, 16)
+    now: tuple[int, int] = slots.resize((slots.take(4, 8), 8), (6, 12))
+    assert (now, slots.free, slots.held) == ((6, 12), 2, 12)
+    slots.give(*now)
+    assert (slots.free, slots.held) == (8, 0)
+
+
+def test_a_check_at_suffocate_counts_every_level() -> None:
+    """A level chooses the codes it reports and which are errors: the rest of a check is the same."""
+    entries: list[Record] = [
+        {"code": "LVA001", "severity": "error"},
+        {"code": "LVA002", "severity": "error"},
+        {"code": "LVA005", "severity": "error"},
+    ]
+    counted: list[list[int]] = [pipeline.counted(entries, level) for level in (None, *Level)]
+    assert counted == [[3, 0], [0, 2], [1, 2], [2, 1], [3, 0]]
+    made: list[Record] = [
+        {"kinds": ["call"], "unsafe": False},
+        {"kinds": ["call"], "unsafe": False},
+        {"kinds": ["constructor"], "unsafe": True, "likely": True},
+        {"kinds": ["copy", "returned"], "unsafe": True, "likely": False},
+    ]
+    assert pipeline.sets(made) == {
+        "call": {"certain": 2},
+        "constructor": {"likely": 1},
+        "copy+returned": {"guess": 1},
+    }
+
+
+def test_a_traced_run_finds_constricter_alone(tmp_path: Path) -> None:
+    """Its path has a directory with the package linked, not this checkout's root and its `tests`."""
+    first: Path = corpus_suite.tracer_path(tmp_path)
+    assert [each.name for each in first.iterdir()] == ["constricter"]
+    assert (first / "constricter" / "trace.py").is_file()
+    assert corpus_suite.tracer_path(tmp_path) == first
 
 
 def test_a_step_is_given_what_it_took_in_the_last_run(tmp_path: Path) -> None:
@@ -223,10 +325,12 @@ def test_a_step_is_given_what_it_took_in_the_last_run(tmp_path: Path) -> None:
     assert not sizing.before(tmp_path, tmp_path / "earlier")
     plan: sizing.Plan = sizing.Plan(parse({"run": {"jobs": 2}}), 8, 16 * sizing.GIB, before)
     measured: sizing.Wanted = plan.wanted(tree, pipeline.TESTS)
-    assert measured == sizing.Wanted(3, int(9.5 * sizing.GIB * 1.25), 10.0)
-    assert plan.wanted(tree, pipeline.TRACED)[:2] == (1, measured.memory)  # as its tests', unmeasured
-    assert plan.wanted(tree, pipeline.TYPES).memory == 16 * sizing.GIB // 3
-    assert plan.wanted(tree, pipeline.CHECK) == sizing.Wanted(2, 2 * (sizing.GIB + sizing.GIB // 4))
+    assert measured == sizing.Wanted(3, int(9.5 * sizing.GIB * 1.25), 10.0, measured=True)
+    # As its tests', unmeasured; and its tests wait for it: their seconds are behind it.
+    assert plan.wanted(tree, pipeline.TRACED) == sizing.Wanted(1, measured.memory, 10.0)
+    assert plan.wanted(tree, pipeline.TYPES) == sizing.Wanted(2, 16 * sizing.GIB // 3)
+    assert plan.wanted(tree, pipeline.CHECK) == sizing.Wanted(2, 2 * (sizing.GIB + sizing.GIB // 4), 10.0)
+    assert plan.wanted(tree._replace(suite=None), pipeline.CHECK).lasting == 0
     assert plan.wanted(tree, pipeline.TIMING).cpus == plan.cpus
     unmeasured: sizing.Plan = plan._replace(before={})
     assert unmeasured.wanted(tree, pipeline.TESTS) == sizing.Wanted(1, sizing.GIB)
@@ -346,6 +450,7 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
         "offences.csv",
         "levels.csv",
         "fixes.csv",
+        "mechanisms.csv",
         "census.csv",
         "traced.csv",
         "tests.csv",
@@ -405,6 +510,7 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
     assert _COUNTED_ROW in text
     assert tables["tests"][1:] == [
         ["standard library", "rc+dev", "released", "", "9 passed, 1 skipped", "", "", ""],
+        ["standard library", "rc+dev", "fix-certain", "True", "as fix-unsafe's (implied)", "0", "0", "0"],
         ["standard library", "rc+dev", "fix-unsafe", "False", "1 failed, 8 passed", "1", "0", "0"],
         ["standard library", "rc+dev", "infer-ty", "True", "error: patch failed", "0", "0", "0"],
     ]
@@ -456,6 +562,24 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
         "standard library, rc+dev, fix-unsafe: 1 file(s) no longer compile",
         "standard library, rc+dev, fix-unsafe: a second pass would still fix 2",
     ]
+
+
+def test_fixes_are_counted_by_their_whole_set_of_mechanisms(tmp_path: Path) -> None:
+    """Each fix's sets, the corpora together, by tier: every one in the CSV, the most in the Markdown."""
+    run: Run = parse({"run": {"label": "rc"}})
+    store: Store
+    tree: Tree
+    store, tree = _recorded(tmp_path)
+    written: list[Path] = render.write(render.gathered(run, store, [tree]), tmp_path, {"label": "rc"})
+    file: IO[str]
+    with (tmp_path / "tables" / "mechanisms.csv").open(encoding="utf-8") as file:
+        rows: _Rows = list(csv.reader(file))
+    assert rows[0] == ["fix", "constricter", "mechanisms", "fixed", CERTAIN, LIKELY, "guess"]
+    assert rows[5:] == [
+        ["unsafe", "rc+dev", "call", "2", "2", "", ""],
+        ["unsafe", "rc+dev", "constructor", "2", "", "2", ""],
+    ]
+    assert _SET_ROW in written[1].read_text(encoding="utf-8")
 
 
 def test_each_judged_fix_is_listed_with_what_blames_it_and_bears_it_out(tmp_path: Path) -> None:

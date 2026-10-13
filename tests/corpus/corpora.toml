@@ -221,7 +221,7 @@ repository = "https://github.com/tox-dev/tox"
 tag = "4.64.9"
 source = "src/tox"
 install = ["pip -e .[completion] --group test"]
-tests = ""
+tests = "-n {workers}"
 checks = []
 
 [corpus.sphinx]
@@ -366,6 +366,7 @@ package = "anyio-4.15.1/src/anyio"
 repository = "https://github.com/agronholm/anyio"
 tag = "4.15.1"
 source = "src/anyio"
+# One process: under pytest-xdist its 8 `test_to_process` tests of a main module fail, in a worker.
 install = ["pip -e .[trio] --group test"]
 tests = "-m 'not network'"
 checks = []
@@ -386,6 +387,7 @@ repository = "https://github.com/python-websockets/websockets"
 tag = "17.2"
 source = "src/websockets"
 install = ["pip -e . mitmproxy python-socks[asyncio] trio werkzeug mypy"]
+# One process: `unittest` runs them, which takes no workers.
 tests = "!python -m unittest"
 checks = ["mypy --strict src"]
 
@@ -795,7 +797,7 @@ repository = "https://github.com/narwhals-dev/narwhals"
 tag = "v2.26.0"
 source = "src/narwhals"
 install = ["pip -e .[pandas,polars,pyarrow] --group tests --group plugins --group typing"]
-tests = "tests"
+tests = "tests -n {workers}"
 checks = ["pyright", "mypy"]
 
 [corpus.click]
@@ -900,6 +902,7 @@ package = "joblib-1.6.0/joblib"
 repository = "https://github.com/joblib/joblib"
 tag = "1.6.0"
 source = "joblib"
+# One process: pytest-xdist's workers each collect other tests (its parameters' ids differ a process).
 install = ["pip -e . pytest pytest-timeout numpy"]
 tests = "joblib --timeout=120"
 checks = []

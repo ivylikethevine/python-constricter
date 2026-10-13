@@ -259,6 +259,7 @@ _FLAG: Final = "    if other: flag = bool(tell())"
 _EACH: Final = "        each = (tell(), values.pop())[1]"
 _ITEM: Final = '    for item in (tell(), "ab")[1]: last = item'
 _ONE: Final = ["int"]
+_RETURNED: Final = "Monitor.returned"  # the hook that tells as `sys.monitoring` does of a return
 _Hook: TypeAlias = "Callable[[], object]"
 _Callback: TypeAlias = "Callable[..., object]"
 _Functions: TypeAlias = "Mapping[str, _Callback]"  # a script's, by name
@@ -350,10 +351,10 @@ def _direct(recorder: recording.Recorder) -> _Hooks:
     """
 
     def tell() -> None:
-        recorder.line(_caller())
+        _ = recorder.line(_caller())
 
     def leave() -> None:
-        recorder.left(_caller())
+        _ = recorder.left(_caller())
 
     def fail() -> None:
         recorder.raised(_caller())
@@ -598,6 +599,18 @@ def test_a_function_with_nothing_new_is_no_longer_looked_at(run: _Run) -> None:
     assert _bindings(run.recorder)[_line(_STEPS, _HELD)] == {"held": _ONE}
 
 
+def test_a_function_that_runs_on_with_nothing_new_is_no_longer_looked_at(
+    run: _Run,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After enough lines in a row that add no type: one that loops and never returns."""
+    monkeypatch.setattr(recording, "_QUIET", 12)
+    _ = run.functions["spun"](run.hooks.tell, run.hooks.leave, ["a"] + [1] * 20)
+    assert _bindings(run.recorder)[_line(_STEPS, _EACH)] == {"each": _ONE}
+    _ = run.functions["spun"](run.hooks.tell, run.hooks.leave, ["a"])
+    assert _bindings(run.recorder)[_line(_STEPS, _EACH)] == {"each": _ONE}
+
+
 def test_a_statement_an_exception_ends_says_nothing(run: _Run) -> None:
     """Its name holds what an earlier statement bound it to."""
     _ = run.functions["failed"](*run.hooks)
@@ -605,9 +618,12 @@ def test_a_statement_an_exception_ends_says_nothing(run: _Run) -> None:
 
 
 def test_a_yield_isnt_a_return(run: _Run) -> None:
-    """What the statement before it binds is noted at the next line: there's none here."""
+    """What the statement before it binds is noted at the next line: there's none here.
+
+    `sys.monitoring` tells of a return alone, never of a `yield`: what it's told of is one.
+    """
     assert list(cast("list[int]", run.functions["suspended"](run.hooks.tell, run.hooks.leave))) == [1]
-    assert not _files(run.recorder.found())
+    assert bool(_files(run.recorder.found())) is (_RETURNED in repr(run.hooks.leave))
 
 
 def test_only_a_functions_own_names_are_noted(run: _Run) -> None:
@@ -683,7 +699,7 @@ def test_only_the_roots_own_functions_are_recorded(run: _Run) -> None:
 
     Nor one whose file is gone, or no longer parses.
     """
-    run.recorder.line(cast("FrameType", inspect.currentframe()))
+    _ = run.recorder.line(cast("FrameType", inspect.currentframe()))
     name: str
     for name in ("site-packages/installed.py", "gone.py", "broken.py"):
         functions: _Functions = _steps(run.root / name)

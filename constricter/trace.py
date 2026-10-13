@@ -147,16 +147,14 @@ class Monitor:
             )
         return self.monitoring.DISABLE
 
-    def line(self, _code: CodeType, _line: int) -> object:
+    def line(self, _code: CodeType, line: int) -> object:
         """Tell the recorder its caller has arrived at a line.
 
         Returns:
           `DISABLE` for a function no longer recorded: that line of it isn't reported again.
 
         """
-        frame: FrameType = _frame(1)
-        self.recorder.line(frame)
-        return None if self.recorder.wanted(frame) else self.monitoring.DISABLE
+        return None if self.recorder.line(_frame(1), line) else self.monitoring.DISABLE
 
     def returned(self, _code: CodeType, _offset: int, _value: object) -> object:
         """Tell the recorder its caller returns.
@@ -165,9 +163,7 @@ class Monitor:
           `DISABLE` for a function no longer recorded.
 
         """
-        frame: FrameType = _frame(1)
-        self.recorder.left(frame)
-        return None if self.recorder.wanted(frame) else self.monitoring.DISABLE
+        return None if self.recorder.left(_frame(1), finished=True) else self.monitoring.DISABLE
 
     def raised(self, _code: CodeType, _offset: int, _error: BaseException) -> None:
         """Tell the recorder an exception is raised in its caller, or through it."""
@@ -212,9 +208,9 @@ class Tracer:
 
         """
         if event == _LINE:
-            self.recorder.line(frame)
+            _ = self.recorder.line(frame)
         elif event == _RETURN:
-            self.recorder.left(frame)
+            _ = self.recorder.left(frame)
         elif event == _EXCEPTION:
             self.recorder.raised(frame)
         return self.within

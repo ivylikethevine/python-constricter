@@ -27,6 +27,7 @@ Every count of typed bindings is this checkout's `--coverage`, whatever the vers
 """
 
 import difflib
+import fcntl
 import json
 import os
 import re
@@ -45,8 +46,9 @@ from typing import IO, Final, NamedTuple, TypeAlias, cast
 
 from constricter import Level
 from constricter.cli import paths
+from constricter.offences import Tier, errs, reports
 from tests.corpus import corpus_profile, corpus_table, corpus_untyped, launch
-from tests.corpus.run_config import CERTAIN, DEV, FIXES, LIKELY, Run
+from tests.corpus.run_config import DEV, FIXES, Run
 from tests.corpus.trees import Tree
 
 Record: TypeAlias = dict[str, object]
@@ -67,7 +69,9 @@ TYPES: Final = "types"
 TRACED: Final = "traced"
 TRACE: Final = "trace"  # after `INFER`: the fix step by a suite's tests' trace
 GUESS: Final = "guess"
+IMPLIED: Final = "implied"  # in a suite's fixed test run's record: the run that stands for it, as released
 _SUFFOCATE: Final = "--level=suffocate"
+_SHARED: Final = "suffocate"  # where a job's one check at `suffocate` runs, and is kept (`suffocated`)
 _NAME: Final = re.compile(r"'([^']+)'")  # the name an offence's message quotes
 _ERROR: Final = "error"  # an offence's severity, in `--format=json`
 _TYPED: Final = re.compile(r"^Total: (\d+)/(\d+) typed", re.MULTILINE)  # `--coverage`'s summary
@@ -153,7 +157,7 @@ def tier(offered: _Entry) -> str:
       `certain`, `likely` (a guess `--likely` applies) or `guess`.
 
     """
-    return CERTAIN if not offered.get("unsafe") else LIKELY if offered.get("likely") else GUESS
+    return Tier.of(unsafe=bool(offered.get("unsafe")), likely=bool(offered.get("likely"))).value
 
 
 def _entries(output: str) -> list[_Entry] | None:
@@ -182,8 +186,41 @@ def _typed(job: Job, where: launch.Place) -> list[int] | None:
     return [int(found[1]), int(found[2])] if found else None
 
 
+def suffocated(job: Job) -> tuple[launch.Place, launch.Ran]:
+    """Check the corpus at `suffocate` once for a job's steps: `check` and `census` both read it.
+
+    The first to ask runs it and keeps what it printed; the other waits for that.
+
+    Returns:
+      Where it ran, and the run.
+
+    """
+    where: launch.Place = launch.place(job.tree, job.work(_SHARED))
+    kept: Path = job.work(_SHARED) / "check.json"
+    lock: IO[str]
+    with (job.work(_SHARED) / "lock").open("w", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if kept.exists():
+            had: _Entry = cast("_Entry", json.loads(kept.read_text(encoding="utf-8")))
+            return where, launch.Ran(
+                str(had["output"]),
+                str(had["errors"]),
+                cast("int", had["status"]),
+                cast("float", had["seconds"]),
+            )
+        ran: launch.Ran = launch.run(job.version, where, ["--format=json", _SUFFOCATE], job.run.jobs)
+        if _entries(ran.output) is not None:
+            _ = kept.write_text(json.dumps(ran._asdict()), encoding="utf-8")
+        return where, ran
+
+
 def check(job: Job) -> Record:
-    """Check the corpus at every level, the levels at once.
+    """Check the corpus at every level.
+
+    This checkout's constricter once, at `suffocate` (`suffocated`): a level only chooses the codes
+    it reports and which are errors (`offences.reports`, `offences.errs`), so each lower level's
+    counts are read from that one. A run file's `every-level`, or another version, checks at each
+    level, the levels at once.
 
     Returns:
       The step's record.
@@ -192,6 +229,7 @@ def check(job: Job) -> Record:
       RuntimeError: a check printed no report: it crashed.
 
     """
+    every: bool = job.run.steps.every_level or job.version != DEV
     where: launch.Place = launch.place(job.tree, job.work(CHECK))
 
     def at(level: Level) -> launch.Ran:
@@ -202,22 +240,26 @@ def check(job: Job) -> Record:
             job.run.jobs,
         )
 
-    pool: ThreadPoolExecutor
-    with ThreadPoolExecutor(len(Level)) as pool:
-        runs: list[launch.Ran] = list(pool.map(at, Level))
+    runs: list[launch.Ran]
+    if every:
+        pool: ThreadPoolExecutor
+        with ThreadPoolExecutor(len(Level)) as pool:
+            runs = list(pool.map(at, Level))
+    else:
+        runs = [suffocated(job)[1]]
     levels: dict[str, list[int]] = {}
     entries: list[_Entry] = []
-    level: Level
     ran: launch.Ran
-    for level, ran in zip(Level, runs, strict=True):
+    for ran in runs:
         job.store.log(job.tree.name, job.recorded, CHECK, ran.errors)
+    level: Level
+    for level, ran in zip(Level, runs if every else runs * len(Level), strict=True):
         listed: list[_Entry] | None
         if (listed := _entries(ran.output)) is None:
             message: str = f"the check at {level.name.lower()} crashed ({ran.status}): {ran.errors[-2000:]}"
             raise RuntimeError(message)
         entries = listed  # the last level's are `suffocate`'s: every code
-        errors: int = sum(entry["severity"] == _ERROR for entry in entries)
-        levels[level.name.lower()] = [errors, len(entries) - errors]
+        levels[level.name.lower()] = counted(entries, None if every else level)
     fixes: list[_Entry] = [cast("_Entry", entry["fix"]) for entry in entries if entry.get("fix")]
     return {
         "files": sum(1 for _ in paths.python_files([job.tree.root])),
@@ -226,6 +268,20 @@ def check(job: Job) -> Record:
         "offered": dict(Counter(tier(each) for each in fixes)),
         "seconds": round(max(ran.seconds for ran in runs), 1),
     }
+
+
+def counted(entries: Sequence[_Entry], level: Level | None) -> list[int]:
+    """Count a check's errors and warnings: as it reported them, or as `level` would report them.
+
+    Returns:
+      The errors, then the warnings.
+
+    """
+    if level is None:
+        errors: int = sum(entry["severity"] == _ERROR for entry in entries)
+        return [errors, len(entries) - errors]
+    codes: list[str] = [str(entry["code"]) for entry in entries if reports(str(entry["code"]), level)]
+    return [sum(errs(code, level) for code in codes), sum(not errs(code, level) for code in codes)]
 
 
 def _patch(tree: Tree, where: launch.Place) -> str:
@@ -288,6 +344,20 @@ def _listed(job: Job, step: str, where: launch.Place, entries: list[_Entry]) -> 
     return made
 
 
+def sets(made: Sequence[_Entry]) -> dict[str, dict[str, int]]:
+    """Count the fixes made by their whole set of mechanisms, which a guess is likely by, and by tier.
+
+    Returns:
+      Each set's fixes of each tier, by its mechanisms joined with `+`.
+
+    """
+    found: dict[str, Counter[str]] = {}
+    each: _Entry
+    for each in made:
+        found.setdefault("+".join(cast("list[str]", each["kinds"])), Counter())[tier(each)] += 1
+    return {kinds: dict(tiers) for kinds, tiers in found.items()}
+
+
 def fix(job: Job, step: str, extra: Sequence[str]) -> Record:
     """Fix a copy of the corpus with `--fix` and `extra`, then ask a second pass what it would still fix.
 
@@ -314,18 +384,28 @@ def fix(job: Job, step: str, extra: Sequence[str]) -> Record:
         fixed = None if entries is None else len(made)
         record["tiers"] = dict(Counter(tier(each) for each in made))
         record["mechanisms"] = dict(Counter("+".join(cast("list[str]", each["kinds"])) for each in made))
+        record["sets"] = sets(made)
     else:
         ran = launch.run(job.version, where, ["--fix", *options], job.run.jobs)
         fixed = corpus_table.fixed_count(ran.output)
     job.store.log(job.tree.name, job.recorded, step, ran.errors)
     record["seconds"] = round(ran.seconds, 1)
     if fixed is not None:
-        second: launch.Ran = launch.run(job.version, where, ["--diff", *options], job.run.jobs)
+        pool: ThreadPoolExecutor
+        with ThreadPoolExecutor(2) as pool:  # both read the fixed copy
+            left: Future[launch.Ran] = pool.submit(
+                launch.run,
+                job.version,
+                where,
+                ["--diff", *options],
+                job.run.jobs,
+            )
+            typed: Future[list[int] | None] = pool.submit(_typed, job, where)
         record |= {
             "fixed": fixed,
             "broken": sum(not corpus_table.compiles(path) for path in valid),
-            "left": second.output.count("\n+"),
-            "typed": _typed(job, where),
+            "left": left.result().output.count("\n+"),
+            "typed": typed.result(),
         }
         _ = job.store.path(job.tree.name, job.recorded, step, ".patch").write_text(
             _patch(job.tree, where),
@@ -346,8 +426,9 @@ def census(job: Job) -> Record:
       their values' shapes), and those in files that don't parse, left out of the rest.
 
     """
-    where: launch.Place = launch.place(job.tree, job.work(CENSUS))
-    ran: launch.Ran = launch.run(job.version, where, ["--format=json", _SUFFOCATE], job.run.jobs)
+    where: launch.Place
+    ran: launch.Ran
+    where, ran = suffocated(job)
     job.store.log(job.tree.name, job.recorded, CENSUS, ran.errors)
     entries: list[_Entry] = _entries(ran.output) or []
     entry: _Entry

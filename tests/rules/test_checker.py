@@ -29,6 +29,8 @@ from constricter import (
     check_source,
     check_tree,
 )
+from constricter.cli.options import Guesses
+from constricter.offences import Fix, Tier, errs, reports
 from constricter.rules.checker import value_flow
 
 EXEMPT: Final = """
@@ -362,6 +364,42 @@ def test_levels(level: Level, errors: set[str]) -> None:
         MISMATCHED_TYPE,
     )
     assert {code for code in codes if Offence(1, 0, "x", code).is_error(level)} == errors
+
+
+def test_a_fix_has_one_tier_which_says_what_applies_it() -> None:
+    """Certain, a likely guess (by its whole set of mechanisms) or another guess; none with no fix."""
+    plain: Offence = Offence(1, 0, "x", UNANNOTATED)
+    certain: Offence = Offence(1, 0, "x", UNANNOTATED, edit=Fix("int", kinds=frozenset({"literal"})))
+    likely: Offence = Offence(
+        1,
+        0,
+        "x",
+        UNANNOTATED,
+        edit=Fix("T", unsafe=True, kinds=frozenset({"constructor"})),
+    )
+    guess: Offence = Offence(
+        1,
+        0,
+        "x",
+        UNANNOTATED,
+        edit=Fix("T", unsafe=True, kinds=frozenset({"returned"})),
+    )
+    assert [each.tier for each in (plain, certain, likely, guess)] == [
+        None,
+        Tier.CERTAIN,
+        Tier.LIKELY,
+        Tier.GUESS,
+    ]
+    assert [each.likely for each in (plain, certain, likely, guess)] == [False, False, True, False]
+    applied: dict[Guesses, list[bool]] = {
+        guesses: [guesses.applies(each) for each in (plain, certain, likely, guess)] for guesses in Guesses
+    }
+    assert applied == {
+        Guesses.NONE: [True, True, False, False],
+        Guesses.LIKELY: [True, True, True, False],
+        Guesses.ALL: [True, True, True, True],
+    }
+    assert (errs(UNTYPED_TARGET, Level.STRICT), reports(VAGUE_TYPE, Level.RELAXED)) == (False, False)
 
 
 def test_levels_by_name_and_number() -> None:

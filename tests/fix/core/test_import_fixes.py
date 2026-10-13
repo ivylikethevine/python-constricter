@@ -15,6 +15,15 @@ from constricter.fix.core import fixes, imports
 from constricter.fix.core.known import ImportPlan
 from constricter.offences import Edit, Fix, FixPolicy
 
+TABLES: Final = Path(imports.__file__).parents[1] / "tables"
+# What a fix leaves, where two classes define a class of the name or its class isn't the module's own.
+_ROW: Final = "row = self.one()"
+_CELL: Final = "cell = self.one()"
+_NAMES: Final = "names: Group._Names = self.make()"
+_KEPT: Final = "kept: list[Group._Names] = [self.make()]"
+# Annotations to spell through a class: the first is; in the others a string names the class.
+_THROUGH: Final = ("list[Deep]", "Literal['Deep'] | Deep", 'dict[str, "Deep"]')
+
 _Json: TypeAlias = dict[str, "_Json"] | list["_Json"] | str | int | float | bool | None
 _Object: TypeAlias = dict[str, _Json]
 _Sources: TypeAlias = dict[str, list[str]]
@@ -150,8 +159,8 @@ def test_the_guard_of_a_new_block_is_imported_to_run() -> None:
     ]
 
 
-def test_a_class_of_a_class_body_is_written_in_no_function() -> None:
-    """Its bare name is the class body's alone: what's read of it is typed, a name bound to it isn't."""
+def test_a_class_of_a_class_body_is_written_through_its_class() -> None:
+    """Its bare name is the class body's alone: a function names it through the class that has it."""
     source: str = """
         class Group:
             class _Names:
@@ -164,11 +173,75 @@ def test_a_class_of_a_class_body_is_written_in_no_function() -> None:
                 for name in names.prompts:
                     print(name)
     """
-    assert imports.nested_classes(ast.parse(textwrap.dedent(source))) == {"_Names"}
+    assert imports.nested_classes(ast.parse(textwrap.dedent(source))) == {"_Names": "Group"}
     fixed: list[str] = _twice(source).splitlines()
-    assert fixed[-4:-2] == ["        names = self._sessions.pop(key)", "        name: str"]
+    assert fixed[-4:-2] == ["        names: Group._Names = self._sessions.pop(key)", "        name: str"]
     both: str = "class _Names: ...\n" + textwrap.dedent(source)  # the module's too: a name any scope has
     assert _twice(both).splitlines()[-4:-2] == ["        names: _Names = self._sessions.pop(key)", fixed[-3]]
+
+
+def test_a_class_two_classes_define_is_named_through_neither() -> None:
+    """Nor one of a class that isn't the module's own, nor in a quoted type; a class's body names it bare."""
+    source: str = """
+        class First:
+            class Row: ...
+
+            def one(self) -> Row:
+                return self.Row()
+
+            def read(self) -> None:
+                row = self.one()
+
+        class Second:
+            class Row: ...
+
+            class Deep:
+                class Cell: ...
+
+                def one(self) -> Cell:
+                    return self.Cell()
+
+                def read(self) -> None:
+                    cell = self.one()
+    """
+    tree: ast.Module = ast.parse(textwrap.dedent(source))
+    nested: dict[str, str] = imports.nested_classes(tree)
+    assert nested == {"Row": "", "Deep": "Second", "Cell": ""}
+    assert _ROW in _twice(source)
+    assert _CELL in _twice(source)
+    plan: ImportPlan = _plan(textwrap.dedent(source))
+    spelled: list[str] = [imports.through(each, plan, nested) for each in _THROUGH]
+    assert spelled == ["list[Second.Deep]", *_THROUGH[1:]]
+    held: str = """
+        class Group:
+            class _Names: ...
+
+            def make(self) -> _Names:
+                return self._Names()
+
+            def read(self) -> None:
+                names = self.make()
+                kept = [self.make()]
+    """
+    fixed: str = _twice(held)
+    assert _NAMES in fixed
+    assert _KEPT in fixed
+
+
+def test_another_platforms_modules_are_read_from_the_stubs() -> None:
+    """Each module some platform's stubs have nothing public in, a submodule too: generated, not listed."""
+    plan: ImportPlan = _plan("def f():\n  import fcntl\n  from asyncio import windows_events\n")
+    assert plan.spell("asyncio.windows_events.ProactorEventLoop") is None
+    table: dict[str, str] = cast(
+        "dict[str, str]",
+        json.loads((TABLES / "platform.json").read_text(encoding="utf-8")),
+    )
+    assert [table.get(module) for module in ("winreg", "fcntl", "ossaudiodev", "os")] == [
+        "win32",
+        "linux,darwin",
+        "linux",
+        None,
+    ]
 
 
 @pytest.mark.parametrize(

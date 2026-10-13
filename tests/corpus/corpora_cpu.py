@@ -70,6 +70,16 @@ class Sampler:
                 self._thread = threading.Thread(target=self._sample, daemon=True)
                 self._thread.start()
 
+    def seen(self, root: int) -> Used:
+        """Say what process `root`'s tree was seen to use so far.
+
+        Returns:
+          It.
+
+        """
+        with self._lock:
+            return Used(sum(self._used.get(root, {}).values()), self._peak.get(root, 0))
+
     def used(self, root: int) -> Used:
         """Stop counting process `root`.
 

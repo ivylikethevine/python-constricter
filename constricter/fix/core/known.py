@@ -4,9 +4,11 @@
 import ast
 import builtins
 import copy
+import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NamedTuple, TypeAlias, cast
 
@@ -31,29 +33,13 @@ else:
 
 _BUILTINS: Final = frozenset(dir(builtins))
 _DOT: Final = "."
-# The standard library's modules only some platforms have: a checker on another finds nothing in one.
+# The standard library's modules only some platforms have: a checker on another finds nothing in
+# one. Generated from typeshed (`stdlib_tables`).
 _PLATFORM: Final = frozenset(
-    {
-        "_winapi",
-        "crypt",
-        "fcntl",
-        "grp",
-        "msvcrt",
-        "nis",
-        "nt",
-        "ossaudiodev",
-        "posix",
-        "pty",
-        "pwd",
-        "readline",
-        "resource",
-        "spwd",
-        "syslog",
-        "termios",
-        "tty",
-        "winreg",
-        "winsound",
-    },
+    cast(
+        "dict[str, str]",
+        json.loads(Path(__file__).parents[1].joinpath("tables", "platform.json").read_bytes()),
+    ),
 )
 _NAME: Final = re.compile(r"[A-Za-z_]\w*")  # each name in a return's template
 # What a name refers to: a module and an attribute of it (`None`: the module itself).
@@ -232,7 +218,7 @@ class ImportPlan:
         statement: str = f"from {module} import {name}"
         top: str = module.partition(_DOT)[0]
         if not runs and top in self.checking.lazy:
-            if top in _PLATFORM:
+            if top in _PLATFORM or module in _PLATFORM:
                 return None
             return name if self.guard(name, (module, name), statement) else None
         if self._free(name, statement):

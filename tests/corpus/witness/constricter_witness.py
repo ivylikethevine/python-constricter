@@ -52,7 +52,6 @@ FIT: Final = 0
 DIFFER: Final = 1
 UNKNOWN: Final = 2
 _MOST: Final = 50  # how many times one binding is judged
-_SUSPENDS: Final = 0x20 | 0x80 | 0x100 | 0x200  # a generator's or a coroutine's flags: it returns by yielding
 # What an annotation's class takes besides its own instances: a number's narrower numbers, and any
 # file object for `typing`'s, which none is an instance of.
 _TAKEN: Final = {
@@ -79,29 +78,6 @@ class _Statement(Protocol):  # pylint: disable=too-few-public-methods
     @property
     def stores(self) -> list[tuple[int, str]]:
         """The names it binds, each with its line."""
-        raise NotImplementedError
-
-
-class _File(Protocol):  # pylint: disable=too-few-public-methods
-    """What a recorder keeps of a file."""
-
-    @property
-    def path(self) -> Path:
-        """Its path under the root."""
-        raise NotImplementedError
-
-
-class _Function(Protocol):
-    """What a recorder keeps of a function."""
-
-    @property
-    def file(self) -> _File:
-        """Its file."""
-        raise NotImplementedError
-
-    @property
-    def lines(self) -> Mapping[int, _Statement]:
-        """The statement each of its lines is of."""
         raise NotImplementedError
 
 
@@ -203,42 +179,49 @@ class Witness(recording.Recorder):
         self.expected, self.out = _settings()
         self.hints: dict[_Key, object] = {}  # each binding's annotation, evaluated; `_UNSET`: it can't be
         self.verdicts: dict[_Key, list[int]] = {}  # each binding's counts: fit, differing, unknown
+        # What's expected of each function's file (see `_told`), by the function's id, kept with it.
+        self.told: dict[int, tuple[recording.Function, tuple[str, _Expected] | None]] = {}
 
     @override
-    def line(self, frame: FrameType) -> None:
-        """Judge what the statement `frame` was in bound, as it arrives at another's line; then note it."""
-        function: _Function | None
-        if (function := self.functions.get(id(frame.f_code))) is not None:
-            at: _Statement | None = function.lines.get(frame.f_lineno)
-            if self.pending.get(id(frame), (None, at))[1] is not at:
-                self._judge(frame, function)
-        super().line(frame)
+    def ended(self, frame: FrameType, function: recording.Function) -> None:
+        """Judge what the statement `frame` was in bound, as it ends; then note it."""
+        told: tuple[str, _Expected] | None
+        if (told := self._told(function)) is not None:
+            self._judge(frame, *told)
+        super().ended(frame, function)
 
-    @override
-    def left(self, frame: FrameType) -> None:
-        """Judge what `frame`'s last statement bound, as its function returns; then note it."""
-        function: _Function | None = self.functions.get(id(frame.f_code))
-        if function is not None and not frame.f_code.co_flags & _SUSPENDS:
-            self._judge(frame, function)
-        super().left(frame)
+    def _told(self, function: recording.Function) -> tuple[str, _Expected] | None:
+        """Find what the settings expect of a function's file, read once a function.
 
-    def _judge(self, frame: FrameType, function: _Function) -> None:
+        Returns:
+          The file's path and its bindings' annotations; `None` for a file with none.
+
+        """
+        if id(function) not in self.told:
+            path: str = function.file.path.as_posix()
+            expected: _Expected | None = self.expected.get(path)
+            self.told[id(function)] = (function, None if expected is None else (path, expected))
+        return self.told[id(function)][1]
+
+    def _judge(self, frame: FrameType, path: str, expected: _Expected) -> None:
         # Hold each name the pending statement bound to its annotation, where one's expected.
-        path: str = function.file.path.as_posix()
-        expected: _Expected | None = self.expected.get(path)
         pending: tuple[CodeType | None, _Statement] | None = self.pending.get(id(frame))
-        if expected is None or pending is None or pending[0] is not frame.f_code:
+        if pending is None or pending[0] is not frame.f_code:
             return
         line: int
         name: str
         for line, name in pending[1].stores:
             said: list[str] | None = expected.get(str(line), {}).get(name)
             key: _Key = (path, line, name)
-            if said is None or name not in frame.f_locals or sum(self.verdicts.get(key, ())) >= _MOST:
-                continue
+            if said is not None and sum(self.verdicts.get(key, ())) < _MOST:
+                self._weighed(frame, key, said, frame.f_locals)
+
+    def _weighed(self, frame: FrameType, key: _Key, said: list[str], bound: Mapping[str, object]) -> None:
+        # Hold what a name is bound to in `frame` to its annotation `said`, and count the verdict.
+        if key[2] in bound:
             if key not in self.hints:
                 self.hints[key] = _evaluated(said, frame)
-            fits: bool | None = _fits(cast("object", frame.f_locals[name]), self.hints[key])
+            fits: bool | None = _fits(bound[key[2]], self.hints[key])
             self.verdicts.setdefault(key, [0, 0, 0])[
                 UNKNOWN if fits is None else FIT if fits else DIFFER
             ] += 1

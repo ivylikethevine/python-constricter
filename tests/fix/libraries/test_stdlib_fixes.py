@@ -229,6 +229,23 @@ def test_a_bare_generic_return_is_written_with_its_defaults() -> None:
     }
 
 
+def test_a_capitalised_variable_bound_to_a_function_constructs_nothing() -> None:
+    """`multiprocessing.Value` is a context's method the stubs bind to a name, not a class."""
+    source: str = """
+    import gettext
+    import multiprocessing
+    from multiprocessing import Lock
+
+
+    def f() -> None:
+        a = multiprocessing.Value("i", 0)
+        b = Lock()
+        c = gettext.Catalog("messages")
+    """
+    found: list[Offence] = check_source(textwrap.dedent(source))
+    assert {o.name: o.fix for o in found if o.code == UNANNOTATED} == {"a": None, "b": None, "c": None}
+
+
 @pytest.mark.parametrize("name", sorted(stdlib.KNOWN | stdlib.FUNCTIONS))
 def test_every_table_function_exists(name: str) -> None:
     """Each table entry names a real standard-library function, as Linux CPython has it.

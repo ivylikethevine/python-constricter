@@ -461,6 +461,29 @@ def test_fix_checks_a_file_again_after_a_fix_made_late(
     assert cli.main(["--fix", "-q", str(plain)]) == cli.EXIT_CLEAN
 
 
+# What `--likely` writes in one run: a likely guess, then what rests on it alone.
+_RESTING: Final = "    thing: Thing = Thing()\n    held: Thing | None = thing"
+
+
+def test_fix_likely_checks_a_file_again_after_writing_a_guess(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """What rests on a likely guess and on no other is certain once it's declared: in the same run."""
+    source: str = (
+        "class Thing: ...\n\n\n"
+        "def f(flag: bool) -> None:\n"
+        "    thing = Thing()\n"
+        "    held = thing if flag else None\n"
+    )
+    path: Path = _write(tmp_path / "likely.py", source)
+    assert cli.main(["--fix", "--likely", "-q", str(path)]) == cli.EXIT_CLEAN
+    assert _RESTING in path.read_text(encoding="utf-8")
+    _ = capsys.readouterr()
+    assert cli.main(["--diff", "--likely", "-q", str(path)]) == cli.EXIT_CLEAN
+    assert not capsys.readouterr().out
+
+
 def test_relaxed_hides_vague_and_nested_annotations(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Final, NamedTuple, TextIO, TypeAlias, cast
 
 from constricter import notebook
 from constricter.cli import baseline, collecting, schedule, traced
-from constricter.cli.options import Mode, Options, Output
+from constricter.cli.options import Guesses, Mode, Options, Output
 from constricter.cli.paths import STDIN, python_files
 from constricter.cli.protocol import HintError
 from constricter.cli.report import Format, Result, fix_reasons, render, statistics
@@ -444,7 +444,7 @@ def _settled(
     again: list[int] = [
         index
         for index, run in enumerate(runs)
-        if options.mode is Mode.FIX and paths[index] != STDIN and _unsettled(run, session)
+        if options.mode is Mode.FIX and paths[index] != STDIN and _unsettled(run, session, options.guesses)
     ]
     for _ in range(HINT_ROUNDS - 1):
         if not again:
@@ -454,24 +454,30 @@ def _settled(
         run: FileRun
         for index, run in zip(again, redone, strict=True):
             runs[index] = merged(runs[index], run)
-        again = [index for index, run in zip(again, redone, strict=True) if _unsettled(run, session)]
+        again = [
+            index
+            for index, run in zip(again, redone, strict=True)
+            if _unsettled(run, session, options.guesses)
+        ]
     return runs
 
 
-def _unsettled(run: FileRun, session: "hints.Session | None") -> bool:
+def _unsettled(run: FileRun, session: "hints.Session | None", guesses: Guesses) -> bool:
     """Check whether a round of `--fix` changed a file in a way that changes what's inferred there.
 
     Returns:
       Whether it fixed anything, with a type checker's hints: its new annotations change them.
       Without, whether it made a fix the scope's check comes to late (`_LATE_KINDS`): what's bound
-      to such a name's value was read before its type was known.
+      to such a name's value was read before its type was known. Or, with `--likely` alone, wrote a
+      guess: what rests on it and on no other guess is certain once it's declared.
 
     """
     checked: CheckRun = cast("CheckRun", run)
     return bool(checked.fixed) and (
         session is not None
         or any(
-            isinstance(made.offence.edit, Fix) and made.offence.edit.kinds & _LATE_KINDS
+            isinstance(made.offence.edit, Fix)
+            and (made.offence.edit.kinds & _LATE_KINDS or (guesses is Guesses.LIKELY and made.offence.unsafe))
             for made in checked.made
         )
     )

@@ -12,6 +12,7 @@ install = false
 
 [steps]
 check = true
+every-level = true
 fix = []
 census = false
 coverage = false

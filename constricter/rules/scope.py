@@ -6,7 +6,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix.core.imports import guarded_imports, imports_of, unwritable
+from constricter.fix.core.imports import guarded_imports, imports_of, through, unwritable
 from constricter.fix.core.known import Hints, ImportPlan, Inference, Known, Passed, Typed
 from constricter.fix.libraries import stdlib
 from constricter.fix.libraries.library import chains
@@ -709,6 +709,8 @@ class Scope:
             return None
         certain: bool = not unsafe or policy.trusts(origins)
         plan: ImportPlan = self.settings.known.names.plan or ImportPlan({}, frozenset(), 0)
+        if self.kind.owner is None:  # a class's own body names its classes bare
+            fix = fix._replace(annotation=through(fix.annotation, plan, self.settings.facts.nested))
         if unwritable(fix.annotation, plan, self.settings.facts.nested):
             return None
         guarded: tuple[str, ...] = guarded_imports(fix.annotation, plan)

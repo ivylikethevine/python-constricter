@@ -37,6 +37,7 @@ from constricter.offences import (
     FixPolicy,
     Level,
     Offence,
+    Tier,
 )
 
 _ALL: Final = 100  # percent
@@ -592,7 +593,12 @@ class Guesses(Enum):
           Whether it is: a certain one always.
 
         """
-        return self is Guesses.ALL or not offence.unsafe or (self is Guesses.LIKELY and offence.likely)
+        tier: Tier | None = offence.tier
+        return (
+            self is Guesses.ALL
+            or tier in {None, Tier.CERTAIN}
+            or (self is Guesses.LIKELY and tier is Tier.LIKELY)
+        )
 
 
 @dataclass(frozen=True)

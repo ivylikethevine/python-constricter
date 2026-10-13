@@ -6,6 +6,40 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix --likely` leaves a second pass nothing: a file a round wrote a guess in is checked again in
+  the same run, since what rests on that guess and on no other is certain once it's declared
+  (`held = thing if flag else None` after `thing: Thing = Thing()`). A second pass still fixed 3
+  lines of pydantic's.
+- A capitalised standard-library name the stubs bind to a function is no longer guessed to construct
+  a class: `multiprocessing.Value`, `Lock`, `Pool` and 11 more (a context's methods), and
+  `gettext.Catalog`. The `functions` table lists a capitalised variable that names no class too.
+- `--fix` names a class defined in a class's body through that class, in a function or at the
+  module's top level: `names: Group._Names`, where a name bound to one had no fix (its bare name is
+  the class body's alone). Not where two classes define a class of that name, or the class that
+  defines it isn't the module's own.
+- The standard library's modules only some platforms have are read from typeshed, as a generated
+  table (`platform`): 35 from the 19 listed by hand, submodules among them
+  (`asyncio.windows_events`, `multiprocessing.popen_fork`, `msilib`, `_posixsubprocess`).
+- A fix's tier is decided once: `Offence.tier` (`offences.Tier`: certain, likely, guess), which
+  `--likely` and the corpus runner read.
+- `python -m constricter.trace` follows a function no longer once it adds nothing, whatever it is. A
+  generator's or a coroutine's returns are counted as any function's where the interpreter tells of
+  a return apart from a `yield` (`sys.monitoring`), and a function that runs 50,000 lines with
+  nothing new, never returning, is followed no more. Each line costs less too: its number is taken
+  as given, its function looked up once, and a class's name kept. pygments's 5,346 tests, 9s
+  untraced, take 12s traced, from 121s; 87 fixes rest on their trace, for 89.
+- The corpus runner starts more at once and runs less. Every corpus's steps wait for the machine
+  alone (`at-once` now bounds the corpora cloned and installed side by side), the step with the most
+  still behind it first, and what's free is kept for one that waited five minutes; a running step's
+  hold follows what it's using. A suite's traced tests start once `fix-unsafe` has ended and the
+  other steps have their copies, and its type checks run beside its tests, on a checkout of their
+  own. Its tests run after every guess first: the same as released, they stand for the tiers under
+  it (`implied` in the tests table), and `tests-hinted = false` in a run file leaves out the runs
+  after a checker's hints and the trace's fix. One check at `suffocate` gives every level's counts
+  and the census (`every-level = true` checks at each, as CI's does). A traced run finds
+  `constricter` alone on its path, not this checkout's `tests`. A run's `mechanisms` table counts
+  each fix's fixes by their whole set of mechanisms and by tier. tox's and narwhals's tests run on
+  workers (82s to 18s, and 74s to 19s).
 - A corpus runner, `python -m tests.corpus RUN.toml`: a run file names the corpora, the constricter
   versions, the steps and the formats, and each execution writes a folder of its own
   (`local/corpus-runs/<label>-<month>-<day>-<year>-<time>/`) with a record for each corpus, version

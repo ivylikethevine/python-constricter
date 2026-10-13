@@ -132,24 +132,29 @@
   `Final`, through an import the module has or one added after its leading imports; another checked
   file's type the module doesn't import, through the module defining it if the file imports that one
   to run (`core_schema.CoreSchema`), else under `if TYPE_CHECKING:` (no import cycle at run time),
-  quoted where a module-level annotation is evaluated.
+  quoted where a module-level annotation is evaluated. A class defined in a class's body is named
+  through that class outside it (`names: Group._Names`); a class of a module only some platforms
+  have is no fix where a function alone imports it, by a table generated from typeshed (`platform`:
+  35 modules).
 - **Guesses** apply only with `--unsafe-fixes`: a call taken to construct its class (a capitalised
-  name but a standard-library function's, which the `functions` table lists, or a class the checked
-  files define whatever its name's case), LVA008's and LVA010's narrowing, an empty container typed
-  by what's added to it (`append`, `extend`, `update`, ...; an attribute's, `self.items = []`, by
-  what its class's methods add), a display whose elements' types differ by their union (`joined`), a
-  method typed by its `return`s, an instance attribute by its assignments (`assigned`), a plain
-  class's variable by its literal value (`member`: under plain classes, test cases and builtin
-  exception or value classes), an unannotated parameter by what every call in the checked files
-  passes it (`callers`, builtin types alone: callers' classes too would add 10 fixes on the
-  corpora), a test's by the pytest fixture it names (its `conftest.py`s', or pytest's own: `capsys`,
-  `tmp_path`) or its `parametrize` literals (`fixture`), and what rests on any of these. **Fix
-  levels**: every mechanism has a stable id (`--show-fixes`, JSON), and `fix-select`, `fix-ignore`
-  and `unsafe-fix-select` choose which apply.
+  name but a standard-library function's, or a variable's bound to one, as `multiprocessing.Value`
+  is, which the `functions` table lists, or a class the checked files define whatever its name's
+  case), LVA008's and LVA010's narrowing, an empty container typed by what's added to it (`append`,
+  `extend`, `update`, ...; an attribute's, `self.items = []`, by what its class's methods add), a
+  display whose elements' types differ by their union (`joined`), a method typed by its `return`s,
+  an instance attribute by its assignments (`assigned`), a plain class's variable by its literal
+  value (`member`: under plain classes, test cases and builtin exception or value classes), an
+  unannotated parameter by what every call in the checked files passes it (`callers`, builtin types
+  alone: callers' classes too would add 10 fixes on the corpora), a test's by the pytest fixture it
+  names (its `conftest.py`s', or pytest's own: `capsys`, `tmp_path`) or its `parametrize` literals
+  (`fixture`), and what rests on any of these. **Fix levels**: every mechanism has a stable id
+  (`--show-fixes`, JSON), and `fix-select`, `fix-ignore` and `unsafe-fix-select` choose which apply.
 - **Likely guesses** (`--likely`, [LIKELY.md](LIKELY.md)): the guesses measured to hold as often as
   a certain fix does, by their whole set of mechanisms (`offences.LIKELY`). Every guess on 42
   packages is held to its package's type checker and to what its traced tests bound: 61 sets pass
-  the bars, 36,777 of the 45,922 guesses (80.1%).
+  the bars, 36,777 of the 45,922 guesses (80.1%). A file `--fix --likely` wrote a guess in is
+  checked again in the same run: what rests on that guess alone is certain once it's declared, so a
+  second pass is left nothing. A fix's tier is decided in one place (`Offence.tier`).
 - **Type-checker-backed inference** (`--infer-with basedpyright,ty,pyrefly`): the checkers' inlay
   hints type what `--fix` can't, as guesses, widened, checked and imported; with basedpyright it
   about doubles what `--fix --unsafe-fixes` types on the annotated corpora. A hint naming a class
@@ -312,7 +317,21 @@
   alone, and one that held over 8 GB beside others is noted. The timed checks hold every CPU, and
   run last, one at a time. A suite's tests of one port run one suite at a time, and its tests are
   stopped after `suite-seconds`. A stopped run resumes, and a run exits non-zero on anything a fix
-  broke or a step that failed, whose traceback its log keeps.
+  broke or a step that failed, whose traceback its log keeps. Every corpus's steps wait for the
+  machine alone (`at-once` bounds the corpora cloned and installed side by side): the step with the
+  most seconds still behind it first, its own and its suite's steps' after it, and what's free kept
+  for one that waited five minutes. A running step's hold follows what it's using: an unmeasured one
+  gives back what it isn't a minute in, and any one takes what it uses over its share from the next
+  to start; a step too short to be read is counted by the system's own total.
+- **Fewer runs for the same counts**: a suite's traced tests start once `fix-unsafe` has ended and
+  the other steps have their copies, and its type checks run beside its tests, on a checkout of
+  their own. Its tests run after every guess first: the same as released, they stand for the tiers
+  under it (`implied`), and a run file's `tests-hinted = false` leaves out the runs after each
+  checker's hints and the trace's fix. One check at `suffocate` gives every level's counts (a level
+  chooses the codes it reports and which are errors, no more) and the census; CI's run file checks
+  at each (`every-level`). A traced run has `constricter` alone on its path, not this checkout's
+  `tests`. A run's `mechanisms` table counts each fix's fixes by their whole set of mechanisms,
+  which a guess is likely by, and by tier.
 - **A suite's own differences, told apart**: a fixed run whose tests differ is run again, with the
   released tests, the trace's fix as any other: a failure is the fix's only if both fixed runs have
   it and no released run does (nibabel's and litestar's come and go: litestar's
@@ -326,8 +345,16 @@
   The parts' traces are joined (`recording.merged`).
 - **A traced suite's time, by its parts**: a run's `traced` table has each suite's traced tests'
   seconds beside its released tests' untraced, and `scratch/traced_share.py` times them under the
-  tracer alone. pygments's 5,346 tests take 9s untraced, 121s under `constricter.trace` and 184s
-  under the witness told its 960 fixes: the tracer is 61% of a traced run and the witness 34%.
+  tracer alone. pygments's 5,346 tests take 9s untraced, 12s under `constricter.trace` and 17s under
+  the witness told its 960 fixes, from 121s and 184s: its lexers are generators, whose returns
+  weren't counted, so none was ever followed no more. A function is now, whatever it is, once 20
+  returns or 50,000 lines add nothing, and a line costs less (its number as given, its function
+  looked up once, a class's name kept). The trace then has a little less: 87 fixes rest on
+  pygments's for 89, and 567 of pydantic's fixes are told of for 572.
+- **Workers for the suites that take them**: tox's tests (82s in one process, 18s on 8 workers) and
+  narwhals's (74s, 19s), the same three times over. Not anyio's (8 tests of a main module fail in a
+  worker), joblib's (the workers collect different tests) or websockets's (`unittest`), as
+  `corpora.toml` says.
 - **`tests/corpus/runs/super.toml`** asks every step of the seven corpora and writes
   [RUNS.md](RUNS.md)'s `Super corpora` section from the run's folder, with the machine it ran on;
   **`mega.toml`** the same of 40 more packages `corpora.toml` pins (38 with a suite read from their
@@ -474,39 +501,22 @@ fix.
 
 ### Small: under 4 hours
 
-1. **A function taken for a class.** `counter = multiprocessing.Value("i", 0)` is guessed a
-   `multiprocessing.Value` (`constructor`, a likely set): a capitalised name the standard library's
-   stubs declare as a variable, not a class, and that the `functions` table hasn't. Done when no
-   `constructor` guess names what typeshed declares otherwise than a class. About 2 hours; coverage
-   down by those guesses (one on Django).
-2. **A second `--likely` pass that adds nothing.** `--fix --likely` leaves a second pass 2 lines on
-   pydantic: a guess resting on a likely one, of a set that isn't likely itself, is certain once the
-   first is written. Count a guess likely where every guess it rests on is, or the table's
-   `Left, likely` stays above 0: 388 bindings on 26 of the mega corpora (networkx 49, dask 45, mypy
-   and sphinx 40 each, mkdocs 30, textual 25, pdm 23), where a second pass with every guess leaves
-   nothing. Done when it's 0 on the seven corpora and the mega corpora. About 3 hours; coverage
-   unchanged.
-3. **One tier, decided once.** `Offence.likely`, `cli.options.Guesses.applies` and
-   `corpora_steps.fix_tier` each decide whether a fix is certain, likely or another guess. Give
-   `Offence` a `tier` the three read. Done when one function names a fix's tier. About an hour;
-   coverage unchanged.
-4. **Platform-only modules, from typeshed.** A class of a standard-library module only some
-   platforms have is no fix where a function alone imports the module, by a list of 19 written by
-   hand (`fix.core.known._PLATFORM`). `stdlib_tables` reads each stub as Linux, macOS and Windows
-   see it: have it write the modules one of them finds nothing in. Done when the list is a generated
-   table. About 3 hours; coverage unchanged.
-5. **A class of a class's body, named through it.** `names: _Names` has no fix where `_Names` is
-   defined in the method's class: `Group._Names` names it anywhere. Done when such a fix is written
-   through its class, quoted where the class isn't bound yet. About 3 hours; a handful of fixes.
-6. **A traced run's path.** A suite's tests are traced with this checkout's root on their path, for
-   `constricter`: its `tests` package is there too, under the suite's own only because pytest puts
-   its root directory first. Give the traced run a directory that has `constricter` alone. Done when
-   no module of this checkout's `tests` can be imported in a traced suite. About 2 hours; coverage
-   unchanged.
-7. **Fixes per mechanism, by set and tier.** RUNS.md's fixes per mechanism count each mechanism
-   alone, certain or guessed, from the `check` step; a guess is likely by its whole set. Count the
-   sets, and each one's likely guesses. Done when the table's rows are LIKELY.md's sets. About 2
-   hours; coverage unchanged.
+1. **A guess another file's fix rests on.** `--fix --likely` checks a file again once it has written
+   a guess there, against the index of the files as they were: what a guess written in one file
+   makes certain in another waits for a second run. 4 lines on 13 corpora (twisted 2, dask and the
+   standard library 1 each; none on pydantic, django, sqlalchemy, pip, pandas, networkx, mypy,
+   sphinx, mkdocs, textual and pdm), from 388 bindings on 26 of the mega corpora. Index again, and
+   check again the files that read a module a guess was written in. Done when a second pass leaves
+   nothing on the seven corpora and the mega corpora. About 3 hours; coverage unchanged.
+2. **The runner's scheduling, measured.** Every corpus's steps now wait for the machine alone, the
+   one with the most behind it first, and a running step's hold follows what it uses
+   (`tests/corpus/sizing.py`); a suite's tests run 6 times for 8, its traced tests start early, and
+   its type checks beside its tests. Measured on pydantic and pygments alone. The last mega run used
+   74% of its CPU seconds in 142 minutes, the last super run 59% in 51. Left to weigh on the next
+   ones: `most` holds pandas and django to 8 workers of the 32 and 16 they take, celery's parts run
+   one after another, and a suite's first `types` step installs its checkout. Done when a mega run
+   uses 85% of its CPU seconds, and one with no earlier run under its output takes within a tenth of
+   one sized by its own. About 2 hours beside the runs; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -635,6 +645,19 @@ fix.
     apart from one that differs. Done when a certain fix that differs on the corpora is a
     declaration its package's tests contradict (pydantic's `multiple_of: Decimal | None`, bound to
     an `int`). About 5 hours; coverage unchanged.
+13. **A suite's fixed runs, side by side.** A suite's fixed test runs follow one another on one
+    checkout. For a suite of one process that can't take workers, that's most of its time at under a
+    CPU: anyio's 870s and joblib's 1,093s (neither's tests run under pytest-xdist), pint's 408s,
+    pydantic's 172s. Run them on checkouts of their own, at once. Not a suite whose tests bind a
+    port (websockets, uvicorn, httpx), nor one that keeps its CPUs busy. Done when such a suite's
+    `tests` step takes under twice its released run. About 5 hours; coverage unchanged.
+14. **django's traced tests, in more than one process.** The tracer doesn't follow the processes
+    `multiprocessing` starts, so django's suite is traced with `--parallel=1`: 812s traced, the
+    longest step of a super run, to 79s untraced on its workers (timed before a generator's returns
+    were counted: time it again first). celery's parts are traced one after another too. Record in a
+    forked child as a pytest-xdist worker records itself, or trace a suite's `parts` side by side, a
+    trace file each. Done when django's traced tests take under 300s, the fixes resting on the trace
+    the same. About 4 hours; coverage unchanged.
 
 ### Large: more than 8 hours
 

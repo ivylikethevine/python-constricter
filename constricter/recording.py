@@ -27,7 +27,7 @@ import inspect
 import itertools
 import json
 import sys
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import CodeType, FrameType, ModuleType
@@ -56,12 +56,14 @@ _DEPTH: Final = 2  # how deep a container's elements are spelled
 _MEMBERS: Final = 3  # how many types a container's elements may have
 _LENGTH: Final = 4  # the longest tuple spelled part by part
 _IDLE: Final = 20  # how many times with nothing new end a statement's recording, or a function's
+_QUIET: Final = 50_000  # how many lines with nothing new end a function's: one that loops, and never returns
 _INSTALLED: Final = "site-packages"
 _MODULE: Final = "<module>"  # the name of a module body's code
 # A function that returns to its caller more than once, each a `return` to `sys.settrace`: `inspect`'s
 # `CO_GENERATOR`, `CO_COROUTINE`, `CO_ITERABLE_COROUTINE` and `CO_ASYNC_GENERATOR`.
 _SUSPENDS: Final = 0x20 | 0x80 | 0x100 | 0x200
 _Def: TypeAlias = ast.FunctionDef | ast.AsyncFunctionDef
+_T = TypeVar("_T")
 SCOPES: Final = (  # what has names of its own
     ast.FunctionDef,
     ast.AsyncFunctionDef,
@@ -152,8 +154,10 @@ def _instance(value: object, cls: type, depth: int) -> str | None:
 
     """
     text: str = named(cls)
-    # What `Box[int]()` leaves on what it makes.
-    made: _Form = cast("_Form", inspect.getattr_static(value, "__orig_class__", None))
+    # What `Box[int]()` leaves on what it makes: on an instance of a generic class alone.
+    made: _Form = (
+        cast("_Form", inspect.getattr_static(value, "__orig_class__", None)) if _generic(cls) else None
+    )
     arguments: list[str] = [
         named(argument) if isinstance(argument, type) else UNKNOWN
         for argument in cast("tuple[_Form, ...]", get_args(made))
@@ -176,6 +180,44 @@ def _instance(value: object, cls: type, depth: int) -> str | None:
     return text
 
 
+def by_class(read: Callable[[type], _T]) -> Callable[[type], _T]:
+    """Keep what `read` says of each class: asked of every value a traced statement binds.
+
+    Not `UNKNOWN`, which a class may be only until its module binds it; nor of a class that can't
+    be hashed.
+
+    Returns:
+      `read`, answering from what it kept.
+
+    """
+    kept: dict[Hashable, _T] = {}
+
+    def remembered(cls: type) -> _T:
+        found: _T
+        try:
+            return kept[cls]
+        except KeyError:
+            if (found := read(cls)) != UNKNOWN:
+                kept[cls] = found
+            return found
+        except TypeError:
+            return read(cls)
+
+    return remembered
+
+
+@by_class
+def _generic(cls: type) -> bool:
+    """Check whether a class is generic: one of its line of classes takes type arguments.
+
+    Returns:
+      Whether it is.
+
+    """
+    return any(_held(base, "__parameters__") is not None for base in cls.__mro__)
+
+
+@by_class
 def named(cls: type) -> str:
     """Name a class as an annotation would: a builtin bare, another as `module:Class`.
 
@@ -289,6 +331,15 @@ class _Function:
     lines: dict[int, _Statement]
     idle: int = 0
     fresh: bool = False  # whether anything was added since it last returned
+    quiet: int = 0  # how many lines it arrived at since anything was added
+
+    @property
+    def spent(self) -> bool:
+        """Whether it's recorded no more: `_IDLE` returns, or `_QUIET` lines, added nothing."""
+        return self.idle >= _IDLE or self.quiet >= _QUIET
+
+
+Function: TypeAlias = _Function  # as what tells a recorder's `ended` more names it
 
 
 def _plans(tree: ast.Module) -> dict[int, dict[int, _Statement]]:
@@ -388,25 +439,49 @@ class Recorder:
         """
         return self._function(frame) is not None
 
-    def line(self, frame: FrameType) -> None:
-        """Note what the statement `frame` was in bound, as it arrives at another's line."""
+    def line(self, frame: FrameType, at: int = 0) -> bool:
+        """Note what the statement `frame` was in bound, as it arrives at another's line.
+
+        `at`: the line, where the caller was told it (0: it wasn't).
+
+        Returns:
+          Whether `frame`'s function is one to record, still.
+
+        """
         function: _Function | None
         if (function := self._function(frame)) is None:
-            return
-        statement: _Statement | None = function.lines.get(frame.f_lineno)
+            return False
+        function.quiet += 1
+        statement: _Statement | None = function.lines.get(at or frame.f_lineno)
         if self.pending.get(id(frame), (None, statement))[1] is not statement:
-            self._note(frame, function)
+            self.ended(frame, function)
         if statement is not None:
             self.pending[id(frame)] = (frame.f_code, statement)
+        return self.functions[id(frame.f_code)] is function and not function.spent
 
-    def left(self, frame: FrameType) -> None:
-        """Note what `frame`'s last statement bound, as its function returns: not as it yields."""
-        function: _Function | None = self._function(frame)
-        if function is None or frame.f_code.co_flags & _SUSPENDS:
-            return
-        self._note(frame, function)
+    def left(self, frame: FrameType, *, finished: bool = False) -> bool:
+        """Note what `frame`'s last statement bound, as its function returns: not as it yields.
+
+        `finished`: the caller was told of a return, not of a `yield` too (`sys.monitoring`): a
+        generator's or a coroutine's is counted then, as any function's.
+
+        Returns:
+          Whether `frame`'s function is one to record, still.
+
+        """
+        function: _Function | None
+        if (function := self._function(frame)) is None:
+            return False
+        if not finished and frame.f_code.co_flags & _SUSPENDS:
+            return True
+        self.ended(frame, function)
         function.idle = 0 if function.fresh else function.idle + 1
         function.fresh = False
+        return self.functions[id(frame.f_code)] is function and not function.spent
+
+    def ended(self, frame: FrameType, function: _Function) -> None:
+        """Note what the statement `frame` was in bound: it ended."""
+        self._note(frame, function)
 
     def raised(self, frame: FrameType) -> None:
         """Forget the statement `frame` was in: an exception ended it."""
@@ -431,12 +506,14 @@ class Recorder:
             return
         statement.idle = 0 if new else statement.idle + 1
         function.fresh = function.fresh or new
+        if new:
+            function.quiet = 0
 
     def _function(self, frame: FrameType) -> _Function | None:
         """Find `frame`'s function, if it's one to record: in a file under the root, binding a name.
 
         Returns:
-          It, or `None`: also for one that returned `_IDLE` times with nothing new.
+          It, or `None`: also for one recorded no more (`_Function.spent`).
 
         """
         code: CodeType = frame.f_code
@@ -450,7 +527,7 @@ class Recorder:
             if file is not None and lines:
                 self.modules[str(frame.f_globals.get("__name__"))] = file.digest
         function: _Function | None = self.functions[id(code)]
-        return None if function is None or function.idle >= _IDLE else function
+        return None if function is None or function.spent else function
 
     def _file(self, filename: str) -> _File | None:
         """Read the file `filename`, once.
