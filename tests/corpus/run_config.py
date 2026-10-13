@@ -11,6 +11,8 @@
     at-once = 1                      # the corpora measured side by side (give `jobs` a share of the CPUs)
     suite-seconds = 1800             # how long a suite's tests may run before they're stopped
     suite-workers = 0                # the most processes a suite's tests take: 0 is half the CPUs
+    cpus = 0                         # the CPUs the steps share: 0 is the machine's (see `sizing`)
+    memory = 0                       # and the gigabytes: 0 is most of what's free as the run starts
 
     [corpora]
     include = ["seven"]              # corpora or sets of `corpora.toml`, or directories
@@ -32,6 +34,7 @@
     [publish]
     runs-md = "docs/RUNS.md"         # and a section a version there, of the per-version tables
     replace = false                  # over a section that's already there
+    section = "Super corpora"        # or one section of that heading: every table of the run's last version
 
 A key this doesn't know is an error, not ignored: a misspelt step would otherwise measure nothing.
 """
@@ -56,9 +59,20 @@ UNSAFE: Final = "unsafe"
 FIXES: Final = {CERTAIN: (), LIKELY: ("--likely",), UNSAFE: ("--unsafe-fixes",)}
 CHECKERS: Final = ("basedpyright", "ty", "pyrefly")  # what `--infer-with` can start
 _KEYS: Final = {
-    "run": {"label", "output", "versions", "formats", "jobs", "at-once", "suite-seconds", "suite-workers"},
+    "run": {
+        "label",
+        "output",
+        "versions",
+        "formats",
+        "jobs",
+        "at-once",
+        "suite-seconds",
+        "suite-workers",
+        "cpus",
+        "memory",
+    },
     "corpora": {"include", "install"},
-    "publish": {"runs-md", "replace"},
+    "publish": {"runs-md", "replace", "section"},
     "steps": {
         "check",
         "fix",
@@ -97,6 +111,7 @@ class Publish(NamedTuple):
 
     runs_md: Path | None = None  # docs/RUNS.md: a section a version, of the tables `corpus_table` lays out
     replace: bool = False  # over a section that's there
+    section: str = ""  # its heading, for one section of the whole run in place of a version's
 
 
 class Run(NamedTuple):
@@ -114,6 +129,8 @@ class Run(NamedTuple):
     install: bool = True  # a suite's corpus installed with its tests' dependencies, not cloned alone
     suite_seconds: int = 1800  # how long a suite's tests may run before they're stopped
     suite_workers: int = 0  # the most processes a suite's tests take: 0 is half the CPUs
+    cpus: int = 0  # the CPUs the steps share: 0 is the machine's
+    memory: float = 0.0  # the gigabytes they share: 0 is most of what's free as the run starts
 
     def folder(self, now: datetime) -> Path:
         """Name the folder an execution started at `now` writes.
@@ -198,10 +215,13 @@ def parse(data: _Table) -> Run:
         Publish(
             Path(str(publish[_RUNS_MD])) if _RUNS_MD in publish else None,
             bool(publish.get("replace")),
+            str(publish.get("section", "")),
         ),
         bool(cast("_Table", data.get("corpora", {})).get("install", default.install)),
         cast("int", run.get("suite-seconds", default.suite_seconds)),
         cast("int", run.get("suite-workers", default.suite_workers)),
+        cast("int", run.get("cpus", default.cpus)),
+        float(cast("float", run.get("memory", default.memory))),
     )
 
 

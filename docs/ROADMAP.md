@@ -224,7 +224,7 @@
   in a second or two), and a worker forked while the servers' threads ran hung on Python 3.11.
 - **A hung server is restarted**: one silent for 120s is restarted and each file it hadn't answered
   asked about alone; a file it hangs on again has no hints, named on standard error.
-- **No new type errors**: `corpus_suite.py --types` runs pydantic's, sqlalchemy's and pandas's own
+- **No new type errors**: a corpus run's `types` step runs pydantic's, sqlalchemy's and pandas's own
   type checkers after `--fix` (none new but released errors in a new place) and
   `--fix --unsafe-fixes`. Where a checker would see a value otherwise, the fix is changed, made a
   guess, or not offered (see [FIXES.md](FIXES.md#what-a-type-checker-sees)): a name bound again
@@ -286,48 +286,60 @@
 
 ### Corpus
 
-- **`tests/corpus/corpus.py`** (no crash) and **`tests/corpus/corpus_fix.py`** (nothing broken, one
-  pass) on the standard library and pinned packages, in CI's Corpus job (Python 3.14);
-  **`tests/corpus/corpus_table.py`** records each version's results in [RUNS.md](RUNS.md), with
-  totals and percentages, and `--label` for a pseudo-version (`0.2.4-rc.N`); a release runs in a
-  venv of its own with the corpus packages' as its `VIRTUAL_ENV`, so it reads the installed
-  packages' types as this checkout does.
-- **`tests/corpus/corpus_suite.py`** clones a corpus package at its pinned tag, installs its test
-  dependencies as its CI does, and runs its test suite as released, after `--fix`, and after
-  `--fix --unsafe-fixes` (see [RUNS.md](RUNS.md)); `--types` runs each one's own type checker the
-  same way and traces each new error to its fix mechanism (of a file's alike errors, the one on a
-  line a fix wrote), and `--infer-with CHECKERS` adds a run with their hints' fixes, each checker
-  reading the checkout's own settings: basedpyright's server and pyrefly read pandas's, pydantic's
-  and sqlalchemy's, but this project's, above it, for a checkout with none (django's), which is
-  given empty ones (`pyrightconfig.json`, `pyrefly.toml`); ty reads nothing above its workspace.
-- **`tests/corpus/super_corpora.py`**, one command for all of it on the seven corpora: the census, a
-  check at every level, both fixes on copies, each package's suite and type checkers as released and
-  after each fix, and `--infer-with` each checker, every step timed, written as a section of
-  [RUNS.md](RUNS.md) with the machine it ran on. A step starts once the CPUs it keeps busy are free,
-  sized by what the last run measured, pandas's first; a suite has its own count of pytest workers
-  (the CPUs it can use, and the memory a worker of it takes), django's run with `--parallel`; a long
-  corpus's fixed runs are type-checked at once on checkouts of their own; a stopped run resumes, and
-  a run exits non-zero on anything a fix broke. A step's CPU seconds are its whole process tree's
-  (`corpora_cpu`: constricter's workers aren't its own to wait for); the table's checks and its two
-  fixes run at once (pandas's `table` step 283s, from 825s); the released source is type-checked
-  beside the fixed runs, whose fixes are listed while they're made. 25 minutes on 16 CPUs, from 55
-  one step after another, and 23 since a file a checker hangs on is remembered. Of the steps waiting
-  for CPUs the one expected to last longest goes first, and `CORPUS_SLOTS` shares out fewer CPUs
-  than the machine reports. Measured, with no gain: the fixed copies on a `tmpfs`.
-- **`tests/corpus/mega_corpora.py`**, the same on 40 more packages `corpora.toml` pins (38 with a
-  suite read from their own CI): typed applications, `asyncio` code, pytest-heavy test trees,
-  scientific packages on numpy's types, `TypedDict`s and overloads of their own, and untyped ones.
-  54 minutes, 74 with every traceable suite's tests traced once more. A suite's tests are stopped
-  after 15 minutes, suites binding one port run one at a time, a fixed run that differs is fixed and
-  run again (and where the released tests' own failures differ from run to run, as nibabel's do,
-  only what a fixed run fails both times and no released run did is the fix's), a failed step's
-  output is kept, and a changed `install` command reinstalls its checkout. The two scripts' first
-  runs found a crash, four packages a second pass still changed and 17 type errors after `--fix`,
-  each fixed since: after `--fix` no corpus's or package's own checker finds a new error but one of
+- **One corpus runner**: `python -m tests.corpus RUN.toml` reads a run file (the corpora, the
+  constricter versions, the steps, the formats) and writes a folder of that execution's own
+  (`<output>/<label>-<month>-<day>-<year>-<time>/`): a record for each corpus, version and step, and
+  `report.json`, `report.md` and `tables/*.csv`, each made from the records alone. The corpora,
+  their sdists and their suites are `corpora.toml`'s. Every step starts constricter one way
+  (`launch.run`), on one tree a corpus (`trees.Tree`): a suite's checkout at its pinned tag, with
+  its settings and environment, where a corpus has one. No other script starts constricter on a
+  corpus: CI's Corpus and Profile jobs are run files, and so are a release's section of
+  [RUNS.md](RUNS.md) (`runs/release.toml`, with `--label` for a pseudo-version, `0.2.4-rc.N`).
+- **Its steps**: a check at every level, each fix on a copy (no crash, nothing broken, one pass),
+  `--infer-with` each type checker's hints, coverage, the census of what has no fix, a timed and a
+  profiled check; and on a suite's checkout with each fix's patch applied, `tests` (as released and
+  after each fix), `types` (the package's own checkers, each new error traced to its fix mechanism:
+  of a file's alike errors, the one on a line a fix wrote) and `traced` (each fix held to what the
+  traced tests bind, then a fix by the trace). Each checker reads the checkout's own settings:
+  basedpyright's server and pyrefly read pandas's, pydantic's and sqlalchemy's, but this project's,
+  above it, for a checkout with none (django's), which is given empty ones (`pyrightconfig.json`,
+  `pyrefly.toml`); ty reads nothing above its workspace.
+- **Sized by the machine** (`tests/corpus/sizing.py`): each step is a process of its own, started
+  once the CPUs it's expected to keep busy and the memory it's expected to hold are free: what its
+  process tree took in the last run under the same output, which its record keeps (`used`: its
+  seconds, CPU seconds and the most memory held at once, read by `psutil`), a quarter over. An
+  unmeasured traced step is sized by its suite's `tests` step; a step that wants all the memory runs
+  alone, and one that held over 8 GB beside others is noted. The timed checks hold every CPU, so
+  they run once the rest is idle. A suite's tests of one port run one suite at a time, and its tests
+  are stopped after `suite-seconds`. A stopped run resumes, and a run exits non-zero on anything a
+  fix broke or a step that failed, whose traceback its log keeps.
+- **A suite's own differences, told apart**: a fixed run whose tests differ is run again, with the
+  released tests, the trace's fix as any other: a failure is the fix's only if both fixed runs have
+  it and no released run does (nibabel's and litestar's come and go: litestar's
+  `test_request_body_logging_middleware` failed one of two runs after `--fix --unsafe-fixes`, and
+  `test_websocket_stream_applies_guards` the other). `corpora.toml` names the tests a fix may
+  change, each with why (`differs`: black's `test_piping`, which asserts its own source is as black
+  formats it); a run reports them apart, and one whose only differences are named exits 0.
+- **celery's suite, part by part** (`parts`): in one process its tests held 25 GB (28 GB traced),
+  whatever pytest captures or logs; a directory of `t/unit` at a time, each a process, 4.6 GB at
+  most (`t/unit/concurrency`; 5.8 GB traced), the same 3,521 passed and 3 failed, in 107s from 131s.
+  The parts' traces are joined (`recording.merged`).
+- **A traced suite's time, by its parts**: a run's `traced` table has each suite's traced tests'
+  seconds beside its released tests' untraced, and `scratch/traced_share.py` times them under the
+  tracer alone. pygments's 5,346 tests take 9s untraced, 121s under `constricter.trace` and 184s
+  under the witness told its 960 fixes: the tracer is 61% of a traced run and the witness 34%.
+- **`tests/corpus/runs/super.toml`** asks every step of the seven corpora and writes
+  [RUNS.md](RUNS.md)'s `Super corpora` section from the run's folder, with the machine it ran on;
+  **`mega.toml`** the same of 40 more packages `corpora.toml` pins (38 with a suite read from their
+  own CI): typed applications, `asyncio` code, pytest-heavy test trees, scientific packages on
+  numpy's types, `TypedDict`s and overloads of their own, and untyped ones. The scripts they replace
+  took 23 and 54 minutes on 16 CPUs (74 with every traceable suite's tests traced): their first runs
+  found a crash, four packages a second pass still changed and 17 type errors after `--fix`, each
+  fixed since: after `--fix` no corpus's or package's own checker finds a new error but one of
   werkzeug's (`winreg`, another platform's: pydantic's 9 were Pyright reading this project's
-  settings, not its own); and closed two items that waited on a run: django's suite is the same
-  after `fix-plain-bases`' guesses, and one `--fix --unsafe-fixes` pass leaves a second nothing on
-  any of the seven.
+  settings, not its own); django's suite is the same after `fix-plain-bases`' guesses, and one
+  `--fix --unsafe-fixes` pass leaves a second nothing on any of the seven. Measured, with no gain:
+  the fixed copies on a `tmpfs`.
 - **Profiles and timings that can be trusted**: **`tests/corpus/corpus_profile.py`** runs the check
   under `py-spy`, which samples it from outside, its workers too (`--jobs N`), and prints each
   module's and function's own and whole time; **`tests/corpus/corpus_timing.py OTHER`** times the
@@ -336,8 +348,6 @@
   request says how long a check of pydantic takes with it and with its base, the median of 5 runs
   each on the same runner: kept with the run, not per commit (`pytest-benchmark` and `asv` keep a
   history a runner's noise would fill).
-- **A step's processes, by `psutil`**: `corpora_cpu` reads a step's process tree with it, on any
-  platform, and keeps the most memory the tree held at once beside its CPU seconds.
 - **Python 3**: the standard library, `django` (the 5.2 LTS, for 3.11), `sqlalchemy`, `pydantic` and
   `pandas` 3.0.6 (1,421 files with its tests: overloads, generics, `TYPE_CHECKING` imports).
 - **Python 2**: Twisted 12.3.0 (pure Python 2, 147 of 819 files unparsable) and pip 20.3.4 (the most
@@ -488,43 +498,15 @@ fix.
 5. **A class of a class's body, named through it.** `names: _Names` has no fix where `_Names` is
    defined in the method's class: `Group._Names` names it anywhere. Done when such a fix is written
    through its class, quoted where the class isn't bound yet. About 3 hours; a handful of fixes.
-6. **A suite's own differences, named.** black's `test_piping` asserts its own source is as black
-   formats it, and fails after any fix: so a mega corpora run always exits 1, and its status doesn't
-   say whether anything else differs. Let `corpora.toml` name the tests a fix may change, each with
-   why, and a run report them apart. Two more a run reports that no fix is shown to cause: nibabel,
-   whose failures vary, differs after each of the three fixes by tests that aren't the same from one
-   to the next (`test_multiload`, a `test_inverse_1` case, a `test_euler_mat_2` case) and by five
-   released failures gone; litestar fails `test_request_body_logging_middleware` after
-   `--fix --unsafe-fixes` and not after `--fix --likely`, in a suite not marked as varying whose
-   traced run failed 7 to the released 5. Read litestar's before naming it. Done when a run whose
-   only differences are named exits 0. About 2 hours; coverage unchanged.
-7. **A traced step that differs, run again.** A suite's `tests` step runs the released tests again
-   where a fixed run differs (`corpora_steps._settled`); its `traced` step doesn't, for a package
-   with no type checks: Django's `test_media_root_pathlib` failed once as released and the step said
-   the trace's fixes changed its tests. Done when the `traced` step settles a difference as the
-   `tests` step does. About 2 hours; coverage unchanged.
-8. **A traced run's path.** A suite's tests are traced with this checkout's root on their path, for
+6. **A traced run's path.** A suite's tests are traced with this checkout's root on their path, for
    `constricter`: its `tests` package is there too, under the suite's own only because pytest puts
    its root directory first. Give the traced run a directory that has `constricter` alone. Done when
    no module of this checkout's `tests` can be imported in a traced suite. About 2 hours; coverage
    unchanged.
-9. **Fixes per mechanism, by set and tier.** RUNS.md's fixes per mechanism count each mechanism
+7. **Fixes per mechanism, by set and tier.** RUNS.md's fixes per mechanism count each mechanism
    alone, certain or guessed, from the `check` step; a guess is likely by its whole set. Count the
    sets, and each one's likely guesses. Done when the table's rows are LIKELY.md's sets. About 2
    hours; coverage unchanged.
-10. **celery's suite, in the memory a run has.** celery's tests held 24.8 GB at half a CPU, and 28.0
-    GB traced: more than a 16 GB machine has, and of the 46 GB the mega run shared out. Every
-    `traced` step but narwhals's was counted as 5.0 GB, unmeasured: celery's held five times that,
-    mypy's 6.7 GB, optuna's 6.6 GB, altair's 6.2 GB. What celery's tests hold is unread (28,808
-    subtests). Size an unmeasured `traced` step by its suite's `tests` step, and run celery's suite
-    in parts or with what it keeps let go. Done when no step of a run holds over 8 GB unless it runs
-    alone. About 3 hours; coverage unchanged.
-11. **A traced suite's time.** The mega run takes 74 minutes with the `traced` steps, from 54. A
-    `traced` step to its suite's `tests` step, which runs the tests at least twice: pygments 436s to
-    45s, pint 411s to 91s, tox 576s to 300s, anyio 371s to 225s, joblib 516s to 315s, celery 582s to
-    374s, aiohttp 335s to 169s. zarr's are the run's longest, 1,508s and 1,020s at 0.7 CPUs. Profile
-    pygments's traced tests (`corpus_profile.py`) before changing anything. Done when the witness's
-    share of a traced run is known. About 2 hours; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -621,57 +603,28 @@ fix.
    every kind (`scratch/widen_suites.py`); no corpora run widens. Done when a second pass leaves
    nothing on the seven (`scratch/widen_pass.py`). About 2 hours; coverage unchanged.
 
-9. **One corpus runner.** `python -m tests.corpus RUN.toml` reads a run file (the corpora, the
-   constricter versions, the steps, the formats) and writes a folder of that execution's own
-   (`<output>/<label>-<month>-<day>-<year>-<time>/`): a record for each corpus, version and step,
-   and `report.json`, `report.md` and `tables/*.csv`, each made from the records alone. The corpora,
-   their sdists and their suites are `corpora.toml`'s, which the older scripts read too. Every step
-   starts constricter one way (`launch.run`), on one tree a corpus (`catalog.Tree`): a suite's
-   checkout at its pinned tag, with its settings and environment, where a corpus has one. Built: the
-   `check`, `fix` and `coverage` steps, which give what `corpus_table.py` does; `infer-with`, each
-   type checker's hints on a copy; and the census, of the same check, each binding and each fix kept
-   a line each; and a suite's own steps, each fixed run the checkout with a fix step's patch
-   applied: `tests`; `types`, each new error traced to its fix; and `traced`, each fix held to what
-   the traced tests bind, with a fix by the trace. Corpora are measured `at-once` at a time, a
-   suite's steps in a process of their own, suites of one port one at a time (pip's counts, whose
-   tree is the same, are its own: 2,253 fixes, 414 likely and 1,133 guesses on top; pydantic's are
-   its suite's, 1,081 and 1,490 with guesses, where the table has 1,158 and 1,567). On pydantic it
-   gives what RUNS.md has: 6,439 tests the same after each fix, no new type error, the change's size
-   to the line, one fix resting on the trace, and 99.0% of the certain fixes a test told of holding.
-   `runs/super.toml` and `runs/mega.toml` ask every step of the seven and of the 40. Left: steps
-   sized to the CPUs and the memory they take, as `super_corpora.py` sizes them (`at-once`, `jobs`
-   and `suite-workers` are the run file's to say, and a suite marked `heavy` runs its tests alone);
-   RUNS.md's super and mega sections written from a run's folder (`[publish]` writes a version's
-   own); and the scripts it replaces deleted (`corpus.py`, `corpus_fix.py`, `corpus_timing.py` and
-   `corpus_coverage.py` are, and `corpus_table.py` and `corpus_untyped.py` have no command line
-   left; `corpus_suite.py`'s, `super_corpora.py` and `mega_corpora.py` wait for those sections: CI's
-   Corpus and Profile jobs are run files, a suite's corpus cloned alone there). Done when no other
-   script starts constricter on a corpus. A step that fails leaves its traceback in its log and the
-   run exits 1, the others' records kept. About 3 hours left; coverage unchanged.
-
-10. **One way to follow a re-export.** `project.definition` follows a name through the imports a
-    module runs; `project._canonical` through those it makes for type checking alone too
-    (`if TYPE_CHECKING:` in an `__init__` that imports its names on demand, as pydantic's does). A
-    generic class is found either way; a class's members, a function's declared return and an alias
-    behind such a re-export aren't, so `from pydantic import TypeAdapter` types nothing read of one.
-    Have the lookups share one, and measure on mcp and on pydantic's own tests. Done when
-    `definition` follows what `_canonical` does, with no new type error on the suites. About 5
-    hours; coverage up, by what's read of a lazily exported class: unmeasured.
-11. **What a hint breaks, by its cause.** With `--infer-with basedpyright,ty,pyrefly` the packages'
+9. **One way to follow a re-export.** `project.definition` follows a name through the imports a
+   module runs; `project._canonical` through those it makes for type checking alone too
+   (`if TYPE_CHECKING:` in an `__init__` that imports its names on demand, as pydantic's does). A
+   generic class is found either way; a class's members, a function's declared return and an alias
+   behind such a re-export aren't, so `from pydantic import TypeAdapter` types nothing read of one.
+   Have the lookups share one, and measure on mcp and on pydantic's own tests. Done when
+   `definition` follows what `_canonical` does, with no new type error on the suites. About 5 hours;
+   coverage up, by what's read of a lazily exported class: unmeasured.
+10. **What a hint breaks, by its cause.** With `--infer-with basedpyright,ty,pyrefly` the packages'
     own type checkers find 215 new errors on litestar, 123 on pandas, 49 on sqlalchemy, 34 on mypy,
     20 on narwhals, 19 on optuna and 10 on mcp, nearly all traced to a hint's own fix (`checker`).
     litestar's weren't read: its Pyright is set to Python 3.8. Count them by cause, as the guesses'
     are above, and hold a hint to what the cause says. Done when a hinted run's new errors are under
     one for each hundred of its hints' fixes on the three corpora type-checked. About 8 hours;
     coverage down by the hints withdrawn.
-12. **Modules under 900 lines.** The Lint job warns of 16 past it, seven within five lines of the
+11. **Modules under 900 lines.** The Lint job warns of 15 past it, six within five lines of the
     1,000 pylint fails one at: `fix/index/stubbed.py` (1,000), `stdlib_tables/overloads.py` (999),
     `tests/corpus/corpus_untyped.py` (997), `fix/values/inference.py` and
-    `stdlib_tables/generate.py` (996), `rules/scope.py` and `tests/corpus/corpus_suite.py` (995). A
-    change to one of those is a split first. Split each along what it already groups (the blame of a
-    new type error out of `corpus_suite.py`, the generic classes out of `project.py`). Done when the
-    warning names none. About 8 hours; coverage unchanged.
-13. **The witness, past a value's class.** The corpora runs hold a fixed binding's value to its
+    `stdlib_tables/generate.py` (996), and `rules/scope.py` (995). A change to one of those is a
+    split first. Split each along what it already groups (the generic classes out of `project.py`).
+    Done when the warning names none. About 8 hours; coverage unchanged.
+12. **The witness, past a value's class.** The corpora runs hold a fixed binding's value to its
     annotation as its package's traced tests bind it (`tests/corpus/witness`): an instance of the
     class, not of its arguments (`list[int]` is held to `list`), and a test's own stand-in differs
     (`FakeProcess`, passed where a `ServerProcess` is declared: mcp's one certain fix that differed,
@@ -706,17 +659,16 @@ fix.
          names `constricter.trace` in `PYTEST_PLUGINS`), and the run's trace has theirs.
    - [x] **`self.attr`** where the class declares nothing: a local taken from an attribute a class
          with no base stores only unannotated parameters in.
-   - [x] **Counted on the corpora**: `corpus_suite.py --types --trace` traces a package's tests
-         before a fixed run that reads the trace, and counts its fixes and the new errors. On
-         SQLAlchemy 179 fixes and 6 new errors, on pandas 1,443 and one, on pydantic one and none,
-         past what `--fix --unsafe-fixes` brings; none at a traced binding, once a parameter the
-         function tests, binds again or gives a default isn't taken for untyped (3 of pandas's
-         were).
+   - [x] **Counted on the corpora**: a run's `traced` step traces a package's tests before a fixed
+         run that reads the trace, and counts its fixes and the new errors. On SQLAlchemy 179 fixes
+         and 6 new errors, on pandas 1,443 and one, on pydantic one and none, past what
+         `--fix --unsafe-fixes` brings; none at a traced binding, once a parameter the function
+         tests, binds again or gives a default isn't taken for untyped (3 of pandas's were).
    - [x] **Django's tests, by their script**: `runtests.py` in one process (`Suite.script`), 20
          minutes traced. 462 fixes rest on the trace, and its tests are the same after; it has no
          type checker.
-   - [x] **The four in one run**: `super_corpora.py`'s `traced` step, and `mega_corpora.py`'s: 462
-         fixes rest on Django's trace, 178 on SQLAlchemy's, 1,429 on pandas's and one on pydantic's.
+   - [x] **The four in one run**: the super and the mega run's `traced` steps: 462 fixes rest on
+         Django's trace, 178 on SQLAlchemy's, 1,429 on pandas's and one on pydantic's.
    - [ ] **No new error at a traced binding**: after the trace's fixes SQLAlchemy's mypy finds 6 new
          errors and pandas's checkers 3, three of them traced to a traced fix (`fk: ForeignKey`,
          passed where a `ForeignKeyConstraint` is taken; `index: Index`; `loc: int`, then iterated):

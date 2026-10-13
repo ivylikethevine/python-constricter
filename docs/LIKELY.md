@@ -166,9 +166,9 @@ traced type (`--infer-from`) weren't measured: neither is likely.
 
 ## Measuring again
 
-A super and a mega corpora run keep, for each suite, every fix of its one fixed run with its tier,
-the type errors traced to each, and what its traced tests saw of each binding; RUNS.md's sections
-give each package's fixes by tier with those told and those that held. `scratch/guess_census.py`
-lists every fix from what the runs kept, and `scratch/guess_report.py` prints these tables, and with
-`--likely` the sets that pass, as `LIKELY` is written. A set joins or leaves `LIKELY` by that
-listing alone.
+A super and a mega corpora run (`tests/corpus/runs/super.toml`, `mega.toml`) list, for each suite,
+every fix of its `fix-unsafe` step with its tier, the type errors traced to it, and what its traced
+tests saw of its binding (the run folder's `guesses.jsonl`); RUNS.md's sections give each package's
+fixes by tier with those told and those that held. `scratch/guess_report.py --from FOLDER` prints
+these tables, and with `--likely` the sets that pass, as `LIKELY` is written. A set joins or leaves
+`LIKELY` by that listing alone.

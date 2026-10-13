@@ -1,13 +1,14 @@
-# The 40 packages the seven don't stand for, every way: every step, a suite's own tests, type checks and traced tests
-# after each fix. Sized for a laptop (two corpora at a time, four processes each): `--at-once N --jobs M`
-# and `suite-workers` say otherwise for a larger machine. A stopped run carries on with `--resume FOLDER`.
+# The 40 packages the seven don't stand for, every way: every step, a suite's own tests, type checks
+# and traced tests after each fix, recorded as docs/RUNS.md's `Mega corpora` section. The machine
+# sizes it: each step starts once the CPUs and the memory it took in the last run are free
+# (`sizing`); `cpus` and `memory` under `[run]` share out less. A stopped run carries on with
+# `--resume FOLDER`.
 
 [run]
 label = "mega"
 versions = ["dev"]
 jobs = 4
-at-once = 2
-suite-workers = 4
+at-once = 8
 suite-seconds = 900 # the longest suite's tests took 6 minutes a run
 
 [corpora]
@@ -23,3 +24,7 @@ timing = 1
 tests = true
 types = true
 traced = true
+
+[publish]
+runs-md = "docs/RUNS.md"
+section = "Mega corpora"

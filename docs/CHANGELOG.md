@@ -29,6 +29,19 @@ Notable changes, newest first. Each release's full notes are generated from its 
   corpus, its pinned sdist and its suite are in `tests/corpus/corpora.toml` (the seven's, and the
   mega corpora's 40 that `mega_packages.json` held), which each corpus script reads;
   `corpus_untyped.py`'s shapes are a module of their own (`untyped_shapes.py`).
+- The corpus runner is the only script that starts constricter on a corpus: `super_corpora.py`,
+  `mega_corpora.py`, their steps and their section, and `corpus_suite.py`'s command line are gone.
+  `runs/super.toml` and `runs/mega.toml` write RUNS.md's `Super corpora` and `Mega corpora` sections
+  from the run's folder (`[publish] section`; a run kept to some corpora with `--only` publishes
+  nothing). Each step is a process of its own, given the CPUs and the memory its process tree took
+  in the last run, which its record keeps (`used`; `tests/corpus/sizing.py`), and the timed checks
+  run with nothing beside them; `cpus` and `memory` in a run file share out less than the machine
+  has. A fixed run whose tests differ is run again, with the released tests: a failure is the fix's
+  only if both fixed runs have it and no released run does, and the tests `corpora.toml` names under
+  a suite's `differs` (black's `test_piping`) are reported apart, so a run whose only differences
+  are named exits 0. A suite's `parts` run its tests a part a process: celery's held 25 GB in one,
+  and hold 4.6 GB at most a directory at a time. A run's `traced` table has the traced tests'
+  seconds beside the untraced, and its `steps` table each step's seconds, CPUs and memory.
 - A corpora run's section keeps a code span on one line, as Prettier does: a note broken inside
   `python -m constricter.trace` failed CI's `prettier --check` on RUNS.md.
 - The corpora runs hold each fix to what its package's tests bound: the traced step's tests run

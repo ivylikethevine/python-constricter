@@ -16,7 +16,10 @@
 #                       keep busy (8 where they take `{workers}`, else 1). `worker-memory`: the
 #                       gigabytes one takes (1). `left-out`: requirements it can't build here.
 #                       `submodules`: its build needs them. `script`: what runs its tests in one
-#                       process, where pytest doesn't.
+#                       process, where pytest doesn't. `differs`: a table of the tests a fix may
+#                       change the outcome of, each with why; a run reports them apart, and a
+#                       difference in these alone is none. `parts`: its tests' arguments, each
+#                       part run after `tests` in a process of its own, their outcomes added up.
 #
 # A corpus with a suite is checked in its checkout, with its settings and environment; one with an
 # sdist alone, in the unpacked sdist.
@@ -180,6 +183,9 @@ source = "src/black"
 install = ["pip -e .[d] --group cov-tests"]
 tests = "tests --run-optional no_jupyter -n {workers}"
 checks = []
+
+[corpus.black.suite.differs]
+"tests/test_black.py::BlackTestCase::test_piping" = "it asserts black's own source is as black formats it, which no annotated file is"
 
 [corpus.pdm]
 why = "a typed application"
@@ -825,7 +831,6 @@ checks = []
 [corpus.celery]
 why = "untyped, for contrast"
 version = "5.6.3"
-heavy = true # its tests held 24.8 GB, and 28.0 GB traced
 
 [corpus.celery.sdist]
 where = "e8/b4/a1233943ab5c8ea05fb877a88a0a0622bf47444b99e4991a8045ac37ea1d"
@@ -838,8 +843,24 @@ repository = "https://github.com/celery/celery"
 tag = "v5.6.3"
 source = "celery"
 install = ["pip -e . -r requirements/test.txt"]
-tests = "t/unit"
+tests = ""
 checks = []
+# In one process its tests hold 25 GB (28 GB traced); a directory at a time, 4.6 GB at most.
+parts = [
+  "t/unit/app",
+  "t/unit/apps",
+  "t/unit/backends",
+  "t/unit/bin",
+  "t/unit/concurrency",
+  "t/unit/contrib",
+  "t/unit/events",
+  "t/unit/fixups",
+  "t/unit/security",
+  "t/unit/tasks",
+  "t/unit/utils",
+  "t/unit/worker",
+  "t/unit/test_canvas.py t/unit/test_loops.py",
+]
 
 [corpus.botocore]
 why = "untyped, for contrast"

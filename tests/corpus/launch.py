@@ -87,7 +87,7 @@ def copied(tree: Tree, to: Path) -> tuple[Place, list[Path]]:
     return Place(to, target, tree.environment), valid
 
 
-def _python(version: str) -> str:
+def python(version: str) -> str:
     """Find the Python that runs `version`, one caller at a time: a release is installed the first time.
 
     A version written `NAME=PATH` is the constricter the Python at `PATH` runs (from this checkout's
@@ -112,7 +112,7 @@ def command(version: str, where: Place, options: Sequence[str], jobs: int) -> li
 
     """
     return [
-        _python(version),
+        python(version),
         *("-I", "-W", "ignore", "-m", "constricter"),
         *options,
         "--all-scopes",

@@ -1,46 +1,29 @@
 # SPDX-License-Identifier: MIT
-"""Run a corpus package's own tests or type checks as released and after `--fix --unsafe-fixes`.
+"""A corpus package's own suite: its checkout, its tests and its type checks, as the corpus runner runs them.
 
-  local/.venv/bin/python tests/corpus/corpus_suite.py                    # every suite's tests
-  local/.venv/bin/python tests/corpus/corpus_suite.py NAME ...           # just these
-  local/.venv/bin/python tests/corpus/corpus_suite.py --types [NAME ...] # their type checks instead
-  local/.venv/bin/python tests/corpus/corpus_suite.py --types --assure [NAME ...]
-  local/.venv/bin/python tests/corpus/corpus_suite.py --types --infer-with basedpyright,ty [NAME ...]
-  local/.venv/bin/python tests/corpus/corpus_suite.py --types --trace [NAME ...]
+Each package's source is cloned at its pinned tag into `local/corpus-suites/` (`checkout`), installed
+there with its test dependencies as its CI installs them (its own `uv.lock` where it has one, its
+pins or requirements where it hasn't). It needs `git`, `uv`, a C compiler and Rust (pandas,
+SQLAlchemy and pydantic-core are built) and the network, once. `suite_steps` runs its tests
+(`tested`), its tests traced (`traced`) and its type checks (`complaints`) as released and after
+each of a run's fixes, whose patch it applies to the checkout.
 
-Each package's source is cloned at its pinned tag into `local/corpus-suites/`, installed there with
-its test dependencies as its CI installs them (its own `uv.lock` where it has one, its pins or
-requirements where it hasn't), and its tests run twice: as released, and after
-`--fix --unsafe-fixes` (the source reset in between), at `suffocate` with `all-scopes`, as
-the corpus runner fixes. That one fixed run has every fix, certain, likely (`--likely`'s)
-and guessed. Each run's outcome is its summary counts and the tests that failed; the command exits
-1 if a fixed run's differs from the released one's. It needs `git`, `uv`, a C compiler and Rust
-(pandas, SQLAlchemy and pydantic-core are built) and the network; CI doesn't run it.
-
-A local variable's annotation is never evaluated at runtime (PEP 526), so these runs catch a fix
+A local variable's annotation is never evaluated at runtime (PEP 526), so the tests catch a fix
 that breaks the code itself (a declaration, a dropped comment or annotation, a module's
-`__annotations__`), not a wrong type: that's a type checker's job, and `--types` runs each package's
-own, as its CI does, the same two times. An error the fixed run has that the released one hasn't
-is new (of a file's alike errors, those on a line a fix wrote first); each new one is traced to the
-fix whose annotation it's about (the fix on its line, else the nearest one before it in its scope,
-else the module's, of a name on its line or in its message), and counted by the mechanisms that
-decided that fix (`--format=json`'s `kinds`), a guess's marked `(likely)` or `(guess)`; the command
-exits 1 if a fixed run has a new error. A trace is by line, not by cause: a certain fix can be
-blamed for what a guess beside it brought. `--assure` adds a run fixed with `--fix` alone, which
-says what certain fixes do by themselves; `super_corpora.py` makes the runs under the first one
-only where it doesn't say whose fixes a difference is (`corpora_steps.lower`).
+`__annotations__`), not a wrong type: that's a type checker's job, and the package's own run as its
+CI runs them. An error the fixed run has that the released one hasn't is new (of a file's alike
+errors, those on a line a fix wrote first); each new one is traced to the fix whose annotation it's
+about (`blamed`: the fix on its line, else the nearest one before it in its scope, else the
+module's, of a name on its line or in its message), and named by the mechanisms that decided that
+fix (`--format=json`'s `kinds`), a guess's marked `(likely)` or `(guess)`. A trace is by line, not
+by cause: a certain fix can be blamed for what a guess beside it brought.
 
-`--infer-with CHECKERS` adds another fixed run, `--fix --unsafe-fixes --infer-with CHECKERS`: the
-checkers' servers (on `PATH`, or beside this Python) see the checkout's own environment and settings,
-as its type checks do (a checkout with no settings for Pyright or pyrefly is given empty ones, or
-their servers read this project's, above it). Each fixed run lists the fixes it makes itself
-(`--fix --show-fixes --format=json`), a later round's too, on the lines they had as released.
+A checkout with no settings for Pyright or pyrefly is given empty ones (`_settled`), or the
+checkers' servers `--infer-with` starts read this project's, above it.
 
-`--trace` adds a fixed run too, `--fix --unsafe-fixes --infer-from TRACE`: the trace of the
-package's tests as released, run first under `python -m constricter.trace` (this checkout's, which
-the package's environment is given the path of), where pytest runs them or the suite names a script
-that does in one process (`Suite.script`: Django's `runtests.py`). A type-checked run says how many
-of its fixes rest on the trace.
+The tests are traced under `python -m constricter.trace` (this checkout's, which the package's
+environment is given the path of), where pytest runs them or the suite names a script that does in
+one process (`Suite.script`: Django's `runtests.py`).
 """
 
 import ast
@@ -49,18 +32,18 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess  # runs git, uv, the tests, the type checkers and constricter
-import sys
 import tempfile
 from collections import Counter
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import IO, Final, NamedTuple, TypeAlias, cast
 
+from constricter import recording
 from tests.corpus import catalog
-from tests.corpus.corpus_table import EVERYWHERE
 
 _Json: TypeAlias = "str | int | bool | list[_Json] | dict[str, _Json] | None"
 
@@ -98,7 +81,7 @@ class Fix(NamedTuple):
 
 WORK: Final = Path(__file__).resolve().parents[2] / "local" / "corpus-suites"
 # The most processes a suite's tests may take: half the CPUs, unless `CORPUS_SUITE_WORKERS` says
-# (see `super_corpora.py`).
+# (a run file's `suite-workers`).
 _MOST_WORKERS: Final = int(os.environ.get("CORPUS_SUITE_WORKERS", "0")) or max(1, (os.cpu_count() or 2) // 2)
 _WORKERS: Final = catalog.WORKERS
 # How long a suite's tests may run before they're stopped: one waiting on a server no one started
@@ -140,32 +123,15 @@ _ERROR: Final = re.compile(
 _OTHER_LINE: Final = re.compile(r"\bline \d+")  # a message's reference to another line, which a fix moves
 _QUOTED: Final = re.compile(r"""["'`]([A-Za-z_]\w*)["'`]""")
 _NAME: Final = re.compile(r"[A-Za-z_]\w*")
-_CONSTRICTER: Final = Path(sys.executable).with_name("constricter")
 _INSERTED: Final = "insert"  # difflib's opcode for lines only the fixed file has
 _EQUAL: Final = "equal"  # and for lines both have
 _Fixes: TypeAlias = dict[str, list[Fix]]  # those `--fix` makes, per file
-_Options: TypeAlias = tuple[str, ...]
-_Mode: TypeAlias = tuple[str, _Options]  # a fixed run's label, and its options beyond `--fix`
-ALL: Final[_Mode] = ("--fix --unsafe-fixes", ("--unsafe-fixes",))
-# The runs under it, widest first, made where `ALL`'s doesn't say whose fixes a difference is.
-LOWER: Final[tuple[_Mode, _Mode]] = (("--fix --likely", ("--likely",)), ("--fix", ()))
-MODES: Final[tuple[_Mode, ...]] = (ALL,)
-OPTIONS: Final[dict[str, _Options]] = dict((ALL, *LOWER))  # each such run's options, by its label
-_TYPES: Final = "--types"
-_ASSURE: Final = "--assure"
-_INFER_WITH: Final = "--infer-with"
-_TRACE: Final = "--trace"
-_INFER_FROM: Final = "--infer-from"
+# What `constricter.trace` runs for a suite's tests, part by part, and what it needs on the path.
+_Traceable: TypeAlias = tuple[list[list[str]], list[str]]
 TRACE_FILE: Final = ".venv/corpus-suite-trace.json"  # a checkout's tests' trace: out of its source's way
-_TRACE_KIND: Final = "traced"  # the mechanism of a fix that rests on it
 _MODULE: Final = ("python", "-m")  # how a suite's tests start, where a module runs them
 _TRACER: Final = ("constricter.trace", "--output", TRACE_FILE, "--root", ".")
 TRACER_VARIABLE: Final = "CORPUS_TRACER"  # set: another module that traces as it does, and where it is
-# The fixed run that reads a checkout's tests' trace (`--trace`): its label and options.
-TRACE_MODE: Final[_Mode] = (
-    f"--fix --unsafe-fixes {_INFER_FROM} TRACE",
-    ("--unsafe-fixes", _INFER_FROM, TRACE_FILE),
-)
 
 
 def _environment(cwd: Path) -> dict[str, str]:
@@ -395,12 +361,49 @@ def tested(root: Path, suite: Suite, keep: Path | None) -> Outcome:
       Their outcome.
 
     """
-    command: list[str] = [word.replace(_WORKERS, str(workers(suite))) for word in suite.tests]
-    done: subprocess.CompletedProcess[str] = _completed(_venv(root, command), root, seconds=_TEST_SECONDS)
-    output: str = _COLOUR.sub("", done.stdout + done.stderr)
+    outputs: list[str] = []
+    command: list[str]
+    for command in _commands(suite):
+        done: subprocess.CompletedProcess[str] = _completed(_venv(root, command), root, seconds=_TEST_SECONDS)
+        outputs.append(_COLOUR.sub("", done.stdout + done.stderr))
     if keep is not None:
         keep.parent.mkdir(parents=True, exist_ok=True)
-        _ = keep.write_text(output, encoding="utf-8")
+        _ = keep.write_text("\n".join(outputs), encoding="utf-8")
+    return _added([_outcome(output) for output in outputs])
+
+
+def _commands(suite: Suite) -> list[list[str]]:
+    """Write the commands that run the suite's tests: one, or one for each of its parts.
+
+    Returns:
+      Each one's words, its processes counted in.
+
+    """
+    command: list[str] = [word.replace(_WORKERS, str(workers(suite))) for word in suite.tests]
+    return [[*command, *shlex.split(part)] for part in suite.parts] or [command]
+
+
+def _added(outcomes: Sequence[Outcome]) -> Outcome:
+    """Add up the outcomes of a suite's tests, run part by part.
+
+    Returns:
+      Their counts summed, and every test that failed.
+
+    """
+    counts: Counter[str] = Counter()
+    each: Outcome
+    for each in outcomes:
+        counts.update(each.counts)
+    return Outcome(dict(counts), outcomes[0].failed.union(*(each.failed for each in outcomes)))
+
+
+def _outcome(output: str) -> Outcome:
+    """Read a test run's output, pytest's or unittest's.
+
+    Returns:
+      Its summary's counts, and the tests that failed or errored.
+
+    """
     ran: re.Match[str] | None = _RAN.search(output)
     counts: dict[str, int] = (
         {"ran": int(ran[1])}
@@ -414,18 +417,18 @@ def tested(root: Path, suite: Suite, keep: Path | None) -> Outcome:
     return Outcome(counts, frozenset(cast("list[str]", _FAILED.findall(output))))
 
 
-def _traceable(suite: Suite) -> tuple[list[str], list[str]] | None:
+def _traceable(suite: Suite) -> _Traceable | None:
     """Find what `constricter.trace` runs for the suite's tests, and what it needs on the path.
 
     Returns:
-      The module and its arguments where pytest runs them, else the suite's script and its (with
-      the script's directory); `None` where neither does.
+      The module and its arguments where pytest runs them, once for each of the suite's parts,
+      else the suite's script and its (with the script's directory); `None` where neither does.
 
     """
-    command: list[str] = [word.replace(_WORKERS, str(workers(suite))) for word in suite.tests]
-    if tuple(command[:2]) == _MODULE:
-        return command[1:], []
-    return (list(suite.script), [str(Path(suite.script[0]).parent)]) if suite.script else None
+    commands: list[list[str]] = _commands(suite)
+    if tuple(commands[0][:2]) == _MODULE:
+        return [command[1:] for command in commands], []
+    return ([list(suite.script)], [str(Path(suite.script[0]).parent)]) if suite.script else None
 
 
 def traceable(suite: Suite) -> bool:
@@ -438,43 +441,47 @@ def traceable(suite: Suite) -> bool:
     return _traceable(suite) is not None
 
 
-def traced(root: Path, suite: Suite) -> str | None:
+def traced(root: Path, suite: Suite, keep: Path | None = None) -> tuple[str, Outcome] | None:
     """Run the checkout's tests as released under `python -m constricter.trace`, which writes `TRACE_FILE`.
 
     Or under the module `TRACER_VARIABLE` names, from the directory it names after `os.pathsep`.
+    Their output is written to `keep` unless it's `None`.
 
     Returns:
-      The tests' summary, or `None` for tests neither pytest nor a script of the suite's runs:
-      there's no trace.
+      The tests' summary and their outcome, or `None` for tests neither pytest nor a script of the
+      suite's runs: there's no trace.
 
     """
     reset(root, suite)
-    target: tuple[list[str], list[str]] | None
+    target: _Traceable | None
     if (target := _traceable(suite)) is None:
         return None
     tracer: list[str] = os.environ.get(TRACER_VARIABLE, _TRACER[0]).split(os.pathsep)  # and its directory
     path: list[str] = [str(Path(__file__).resolve().parents[2]), *target[1], *tracer[1:]]
-    done: subprocess.CompletedProcess[str] = _completed(
-        _venv(root, [*_MODULE, tracer[0], *_TRACER[1:], *target[0]]),
-        root,
-        seconds=_TEST_SECONDS,
-        more={"PYTHONPATH": os.pathsep.join(path)},
-    )
-    return _summary(_COLOUR.sub("", done.stdout + done.stderr))
-
-
-def _modes(root: Path, suite: Suite, modes: Sequence[_Mode]) -> list[_Mode]:
-    """Trace the checkout's tests, if a fixed run of `modes` reads their trace.
-
-    Returns:
-      The fixed runs to make: not that one, where there's no trace.
-
-    """
-    if not any(_INFER_FROM in options for _, options in modes):
-        return list(modes)
-    summary: str | None = traced(root, suite)
-    _ = sys.stdout.write(f"  traced: {summary or 'no: nothing runs its tests traced'}\n")
-    return [(label, options) for label, options in modes if summary is not None or _INFER_FROM not in options]
+    outputs: list[str] = []
+    traces: list[recording.Found] = []
+    part: list[str]
+    for part in target[0]:
+        (root / TRACE_FILE).unlink(missing_ok=True)
+        done: subprocess.CompletedProcess[str] = _completed(
+            _venv(root, [*_MODULE, tracer[0], *_TRACER[1:], *part]),
+            root,
+            seconds=_TEST_SECONDS,
+            more={"PYTHONPATH": os.pathsep.join(path)},
+        )
+        outputs.append(_COLOUR.sub("", done.stdout + done.stderr))
+        if (root / TRACE_FILE).exists():
+            traces.append(
+                cast("recording.Found", json.loads((root / TRACE_FILE).read_text(encoding="utf-8"))),
+            )
+    if len(traces) > 1:  # each part wrote the trace anew
+        recording.write(root / TRACE_FILE, recording.merged(traces))
+    if keep is not None:
+        keep.parent.mkdir(parents=True, exist_ok=True)
+        _ = keep.write_text("\n".join(outputs), encoding="utf-8")
+    outcome: Outcome = _added([_outcome(output) for output in outputs])
+    counted: str = ", ".join(f"{count} {kind}" for kind, count in outcome.counts.items())
+    return (_summary(outputs[0]) if len(outputs) == 1 else counted), outcome
 
 
 def reset(root: Path, suite: Suite) -> None:
@@ -513,42 +520,6 @@ def _key(complaint: Complaint) -> tuple[str, str]:
 
     """
     return complaint.path, _OTHER_LINE.sub("line N", complaint.message)
-
-
-def fixed_and_listed(root: Path, suite: Suite, *extra: str) -> tuple[dict[str, list[Fix]], str]:
-    """Reset the checkout's source, then `--fix` it (with `extra` options), in one run that lists its fixes.
-
-    Returns:
-      The fixes it made, per file, each on the line it was on before any; and the size of the
-      change, as `git diff --shortstat` puts it.
-
-    """
-    reset(root, suite)
-    done: subprocess.CompletedProcess[str] = _completed(
-        [str(_CONSTRICTER), "--fix", "--show-fixes", "--format=json", *extra, *EVERYWHERE, suite.source],
-        root,
-    )
-    _ = sys.stdout.write(done.stderr)  # its warnings: a file a checker's server hung on, say
-    results: list[dict[str, _Json]] = cast("list[dict[str, _Json]]", json.loads(done.stdout))
-    fixes: dict[str, list[Fix]] = {}
-    result: dict[str, _Json]
-    for result in results:
-        fix: dict[str, _Json] | None = cast("dict[str, _Json] | None", result.get("fix"))
-        quoted: re.Match[str] | None = re.search(r"'([^']+)'", str(result["message"]))
-        if fix and quoted and result["fixed"]:
-            fixes.setdefault(str(result["path"]), []).append(
-                Fix(
-                    str(result["path"]),
-                    cast("int", result["line"]),
-                    quoted[1],
-                    str(fix["annotation"]),
-                    "+".join(cast("list[str]", fix["kinds"])),
-                    bool(fix["unsafe"]),
-                    bool(fix.get("likely")),
-                    tuple(cast("list[str]", fix.get("imports", []))),
-                ),
-            )
-    return fixes, _output(["git", "diff", "--shortstat"], root).strip()
 
 
 def _origins(original: list[str], changed: list[str]) -> tuple[list[int], frozenset[int]]:
@@ -709,26 +680,7 @@ class Compared(NamedTuple):
     errors: int
     gone: int
     new: list[Blamed]
-    fixes: Mapping[str, Sequence[Fix]] = {}  # every fix the run made, per file (see `resting`)
-
-
-def compared(
-    root: Path,
-    suite: Suite,
-    released: Callable[[], list[Complaint]],
-    options: tuple[str, ...],
-) -> Compared:
-    """Fix the checkout's source with `options`, type-check it, and trace what's new since `released`.
-
-    `released` gives the released source's errors, asked for once this checkout's are in: they may
-    be found meanwhile, on another checkout.
-
-    Returns:
-      The comparison.
-
-    """
-    made: tuple[_Fixes, str] = fixed_and_listed(root, suite, *options)
-    return blamed(root, complaints(root, suite), released(), made)
+    fixes: Mapping[str, Sequence[Fix]] = {}  # every fix the run made, per file
 
 
 def blamed(
@@ -756,141 +708,3 @@ def blamed(
         guess: str = " (likely)" if fix and fix.likely else " (guess)" if fix and fix.unsafe else ""
         new.append(Blamed(complaint, fix, "(untraced)" if fix is None else fix.kinds + guess))
     return Compared(made[1], len(after), (before - now).total(), new, made[0])
-
-
-def resting(fixes: Mapping[str, Sequence[Fix]]) -> int:
-    """Count the fixes that rest on a trace.
-
-    Returns:
-      How many do.
-
-    """
-    return sum(_TRACE_KIND in fix.kinds.split("+") for each in fixes.values() for fix in each)
-
-
-def _compare_types(
-    root: Path,
-    suite: Suite,
-    released: list[Complaint],
-    label: str,
-    options: tuple[str, ...],
-) -> bool:
-    """Fix the checkout's source with `options`, type-check it, and print what's new since `released`.
-
-    Each new error with the fix it's traced to, and their count per mechanism.
-
-    Returns:
-      Whether nothing is.
-
-    """
-    found: Compared = compared(root, suite, lambda: released, options)
-    _ = sys.stdout.write(
-        f"  {label} ({found.change}): {found.errors} errors: {len(found.new)} new, {found.gone} gone\n",
-    )
-    if resting(found.fixes):
-        _ = sys.stdout.write(f"    {resting(found.fixes)} fixes rest on the trace\n")
-    lines: list[str] = []
-    each: Blamed
-    for each in found.new:
-        fix: Fix | None = each.fix
-        what: str = "" if fix is None else f" [{fix.name}: {fix.annotation}, line {fix.line}]"
-        where: str = f"{each.complaint.path}:{each.complaint.line}"
-        lines.append(f"      {each.kind}: {where}{what}: {each.complaint.message}\n")
-    kind: str
-    count: int
-    for kind, count in Counter(each.kind for each in found.new).most_common():
-        _ = sys.stdout.write(f"    {kind}: {count}\n")
-    _ = sys.stdout.writelines(sorted(lines))
-    return not found.new
-
-
-def check_types(names: Sequence[str], modes: Sequence[_Mode] = MODES) -> int:
-    """Run each suite's type checks (default: every one's) as released, then fixed in each of `modes`.
-
-    Returns:
-      0 if no fixed run has an error its released one hasn't, else 1.
-
-    """
-    clean: bool = True
-    name: str
-    for name in names or [name for name, suite in SUITES.items() if suite.checks]:
-        suite: Suite = SUITES[name]
-        root: Path = checkout(name, suite)
-        reset(root, suite)
-        released: list[Complaint] = complaints(root, suite)
-        checks: str = "; ".join(" ".join(check) for check in suite.checks)
-        _ = sys.stdout.write(f"{name} {suite.tag}: {checks}: released: {len(released)} errors\n")
-        label: str
-        options: tuple[str, ...]
-        for label, options in _modes(root, suite, modes):
-            clean = _compare_types(root, suite, released, label, options) and clean
-        reset(root, suite)
-    return 0 if clean else 1
-
-
-def _arguments(argv: Sequence[str]) -> tuple[list[str], list[_Mode]]:
-    """Read the options out of the arguments: `--infer-with CHECKERS` adds a fixed run with their hints.
-
-    `--trace` one with the tests' trace, and `--assure` one with `--fix` alone.
-
-    Returns:
-      The other arguments, and the fixed runs to make.
-
-    """
-    rest: list[str] = list(argv)
-    modes: list[_Mode] = list(MODES)
-    if _INFER_WITH in rest:
-        at: int = rest.index(_INFER_WITH)
-        checkers: str = rest.pop(at + 1)
-        _ = rest.pop(at)
-        options: tuple[str, ...] = ("--unsafe-fixes", _INFER_WITH, checkers)
-        modes.append((f"--fix --unsafe-fixes {_INFER_WITH} {checkers}", options))
-    if _TRACE in rest:
-        rest.remove(_TRACE)
-        modes.append(TRACE_MODE)
-    if _ASSURE in rest:
-        rest.remove(_ASSURE)
-        modes.append(LOWER[1])
-    return rest, modes
-
-
-def main(argv: Sequence[str]) -> int:
-    """Run each suite named (default: all) as released and with every fix (and with hints).
-
-    Returns:
-      0 if every fixed run's outcome matches its released one, else 1.
-
-    """
-    names: list[str]
-    modes: list[_Mode]
-    names, modes = _arguments(argv)
-    if _TYPES in names:
-        names.remove(_TYPES)
-        return check_types(names, modes)
-    same: bool = True
-    name: str
-    for name in names or SUITES:
-        suite: Suite = SUITES[name]
-        root: Path = checkout(name, suite)
-        reset(root, suite)
-        released: Outcome = tested(root, suite, None)
-        _ = sys.stdout.write(f"{name} {suite.tag}: released: {released.counts}\n")
-        label: str
-        options: tuple[str, ...]
-        test: str
-        for label, options in _modes(root, suite, modes):
-            change: str = fixed_and_listed(root, suite, *options)[1]
-            outcome: Outcome = tested(root, suite, None)
-            verdict: str = "same" if outcome == released else "DIFFERENT"
-            _ = sys.stdout.write(f"  {label} ({change}): {outcome.counts}: {verdict}\n")
-            for test in sorted(outcome.failed ^ released.failed):
-                _ = sys.stdout.write(
-                    f"    {'now fails' if test in outcome.failed else 'now passes'}: {test}\n",
-                )
-            same = same and outcome == released
-        reset(root, suite)
-    return 0 if same else 1
-
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))

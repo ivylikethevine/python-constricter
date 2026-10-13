@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MIT
 """Measure a corpus with a constricter version, and lay the results out as docs/RUNS.md has them.
 
-What `tests/corpus/super_corpora.py`'s `table` step runs, and the tables and the sections the corpus
-runner (`python -m tests.corpus`) writes: `tables`, and `record` for a run file's `[publish]`.
+The tables and the sections the corpus runner (`python -m tests.corpus`) writes: `tables`, and
+`record` for a run file's `[publish]`.
 
 The corpora are this Python's standard library, the pinned `corpus` dependency group's packages
 (`uv sync --group dev --group corpus`), and the pure Python 2 sources tests/corpus/corpus_sources.py
@@ -62,7 +62,7 @@ PACKAGES: Final = (
     "pandas",
 )
 _SOURCES: Final = Path(__file__).with_name("corpus_sources.py")
-# How many worker processes each run takes: every CPU, unless `CORPUS_JOBS` says (see `super_corpora.py`).
+# How many worker processes each run takes: every CPU, unless `CORPUS_JOBS` says.
 JOBS: Final = f"--jobs={os.environ.get('CORPUS_JOBS', '0')}"
 # How many of a corpus's runs go at once: what the CPUs hold of runs that size, one where each
 # takes every CPU.

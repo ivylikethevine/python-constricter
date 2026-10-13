@@ -6,7 +6,10 @@
 - `markdown`: `report.md`, the tables docs/RUNS.md has a section of for each version, and
   `census.md`, what `--fix` can't type and why, where the run took the census;
 - `csv`: `tables/offences.csv`, `levels.csv`, `fixes.csv`, `census.csv`, `traced.csv`, `tests.csv`,
-  `types.csv`, `type-errors.csv` and `coverage.csv`, a row a measurement.
+  `types.csv`, `type-errors.csv`, `coverage.csv`, `timing.csv` and `steps.csv`, a row a measurement.
+
+`publish` puts the tables in docs/RUNS.md where the run file says: a section a version, or one
+section of the whole run (`section`).
 """
 
 import csv
@@ -36,6 +39,7 @@ from tests.corpus.pipeline import (
     steps,
 )
 from tests.corpus.run_config import CERTAIN, CSV, JSON, LIKELY, MARKDOWN, UNSAFE, Run
+from tests.corpus.sizing import USED
 from tests.corpus.trees import Tree
 
 _Row: TypeAlias = list[object]  # a table's cells, as `csv` writes them
@@ -50,6 +54,10 @@ _VERDICTS: Final = ("told", "held", "differed")  # a traced record's counts, eac
 _COUNTS: Final = ("untyped", "guessed", "unfixed", "unparsed")  # a census record's counts
 # The fix steps a second pass of which is to leave nothing: `--likely`'s is known to leave some.
 _CONVERGING: Final = frozenset({f"{FIX}{CERTAIN}", f"{FIX}{UNSAFE}"})
+_HEAVY: Final = 8  # gigabytes: a step that held more beside others is noted (a laptop has 16)
+_VERSIONS: Final = "\n## constricter "  # `corpus_table.record`'s sections, which a run's goes before
+_HEADING: Final = "\n## "
+MINUTES: Final = "minutes"  # in a run's facts: how long it took, unless it resumed another
 
 
 class Records(NamedTuple):
@@ -195,7 +203,8 @@ def _type_errors(records: Records) -> _Rows:
 
 
 def _traced(records: Records) -> _Rows:
-    rows: _Rows = [["corpus", "constricter", "tier", *_VERDICTS, "resting on the trace", "tests"]]
+    head: _Row = ["corpus", "constricter", "tier", *_VERDICTS, "resting on the trace", "tests"]
+    rows: _Rows = [[*head, "seconds", "untraced"]]
     tree: Tree
     for tree in records.trees:
         version: str
@@ -203,16 +212,18 @@ def _traced(records: Records) -> _Rows:
             record: Record
             if record := records.of(tree, version, TRACED):
                 summary: str = str(record.get("summary", record.get("error", "")))
-                rows.append([tree.name, version, "", "", "", "", record.get("resting", ""), summary])
+                took: _Row = [record.get("seconds", ""), records.of(tree, version, TESTS).get("seconds", "")]
+                rows.append([tree.name, version, "", "", "", "", record.get("resting", ""), summary, *took])
                 tier: str
                 for tier in (CERTAIN, LIKELY, GUESS) if _VERDICTS[0] in record else ():
                     counts: _Row = [cast("dict[str, int]", record[key]).get(tier, 0) for key in _VERDICTS]
-                    rows.append([tree.name, version, tier, *counts, "", ""])
+                    rows.append([tree.name, version, tier, *counts, "", "", "", ""])
     return rows
 
 
 def _tests(records: Records) -> _Rows:
-    rows: _Rows = [["corpus", "constricter", "run", "same as released", "summary", "new failures"]]
+    head: _Row = ["corpus", "constricter", "run", "same as released", "summary", "new failures"]
+    rows: _Rows = [[*head, "gone", "named"]]
     tree: Tree
     for tree in records.trees:
         version: str
@@ -220,13 +231,59 @@ def _tests(records: Records) -> _Rows:
             record: Record
             if record := records.of(tree, version, TESTS):
                 released: str = _summary(cast("Record", record["released"]))
-                rows.append([tree.name, version, "released", "", released, ""])
+                rows.append([tree.name, version, "released", "", released, "", "", ""])
                 step: str
                 ran: Record
                 for step, ran in cast("dict[str, Record]", record["fixed"]).items():
-                    new: list[str] = cast("list[str]", ran.get("new", []))
-                    rows.append([tree.name, version, step, ran.get("same", False), _summary(ran), len(new)])
+                    more: _Row = [
+                        len(cast("list[str]", ran.get(key, []))) for key in ("new", "gone", "named")
+                    ]
+                    rows.append([tree.name, version, step, not _differs(record, ran), _summary(ran), *more])
     return rows
+
+
+def _differs(record: Record, ran: Record) -> bool:
+    """Check whether a fixed run of a `tests` record differs from the released tests by the fix's doing.
+
+    Returns:
+      What `suite_steps.weighed` found; for a record from before it weighed, whether the run
+      isn't the released one's and the released tests don't vary.
+
+    """
+    return bool(ran.get("differs", ran.get("same") is False and not record.get("varies")))
+
+
+def _steps(records: Records) -> _Rows:
+    head: _Row = ["corpus", "constricter", "step", "seconds", "CPU seconds", "CPUs", "GB held"]
+    rows: _Rows = [[*head, "CPUs given", "GB given", "alone"]]
+    key: tuple[str, str, str]
+    record: Record
+    for key, record in records.found.items():
+        used: Record
+        if used := cast("Record", record.get(USED, {})):
+            seconds: float = cast("float", used["seconds"])
+            busy: float = round(cast("float", used["cpu"]) / seconds, 1) if seconds else 0.0
+            given: Record = cast("Record", used["given"])
+            took: _Row = [seconds, used["cpu"], busy, used["memory"]]
+            rows.append([*key, *took, given["cpus"], given["memory"], used["alone"]])
+    return rows
+
+
+def notes(records: Records) -> list[str]:
+    """List what a run says of itself that no fix broke: the steps that held much memory beside others.
+
+    Returns:
+      Each, a line: a step that held over `_HEAVY` gigabytes and wasn't run alone.
+
+    """
+    found: list[str] = []
+    key: tuple[str, str, str]
+    record: Record
+    for key, record in records.found.items():
+        used: Record = cast("Record", record.get(USED, {}))
+        if cast("float", used.get("memory", 0.0)) > _HEAVY and not used.get("alone"):
+            found.append(f"{', '.join(key)}: held {used['memory']} GB beside other steps")
+    return found
 
 
 def _more(records: Records, version: str) -> list[str]:
@@ -247,7 +304,8 @@ def _more(records: Records, version: str) -> list[str]:
             if row[1] in {version, _CONSTRICTER}
         ]
         if len(rows) > 1:
-            lines += [note, "", *corpus_table.table([row[:1] + row[2:] for row in rows], right=right - 1), ""]
+            laid: list[str] = corpus_table.table([row[:1] + row[2:] for row in rows], right=right - 1)
+            lines += [*corpus_table.filled(note), "", *laid, ""]
     return lines
 
 
@@ -259,8 +317,9 @@ def problems(records: Records) -> list[str]:
     """List what the run's fixes broke: what a run exits 1 for, beside a step that failed.
 
     A file that compiled before a fix and doesn't after; what a second pass of the certain fixes
-    or of every guess would still fix; a fix whose patch a suite's checkout refuses; and a suite's
-    tests that differ after a fix, unless they differ from one released run to the next.
+    or of every guess would still fix; a fix whose patch a suite's checkout refuses; a suite's
+    tests stopped for running too long; and a suite's tests that differ after a fix by more than
+    the tests its catalog entry names, both times they ran (`suite_steps.weighed`).
 
     Returns:
       Each, a line.
@@ -278,10 +337,12 @@ def problems(records: Records) -> list[str]:
         step: str
         ran: Record
         fixed: dict[str, Record] = cast("dict[str, Record]", record["fixed"] if key[2] in _SUITE else {})
+        if record.get("stopped"):
+            found.append(f"{where}: stopped as released: they ran too long")
         for step, ran in fixed.items():
             if _ERROR in ran:
                 found.append(f"{where}: {step}'s patch didn't apply: {ran[_ERROR]}")
-            elif ran.get("same") is False and not record.get("varies"):
+            elif _differs(record, ran):
                 new: int = len(cast("list[str]", ran["new"]))
                 found.append(f"{where}: the tests differ after {step}: {new} new")
     return found
@@ -396,18 +457,72 @@ def guesses(records: Records, store: Store) -> list[Record]:
     return found
 
 
-def publish(records: Records, root: Path) -> None:
-    """Record the run's per-version tables where its run file says: a section a version of RUNS.md.
+def section(records: Records, facts: Record) -> str:
+    """Write the whole run as one section of docs/RUNS.md: its machine, and its last version's tables.
 
-    `corpus_table.record` refuses to write over a section that's there, unless the run file says to
-    replace it.
+    Returns:
+      The Markdown, from its heading on, laid out as Prettier does.
+
+    """
+    version: str = records.versions[-1]
+    took: str = f" The run took {facts[MINUTES]} minutes." if MINUTES in facts else ""
+    intro: str = (
+        f"The run `{records.run.label}` (`python -m tests.corpus`) on {', '.join(records.run.include)}: "
+        f"constricter {facts.get('constricter', '')} (`{facts.get('commit', '')}`), Python "
+        f"{facts.get('python', '')}, on {facts.get('machine', '')} ({facts.get('cpus', '')} CPUs, "
+        f"{facts.get('gigabytes', '')} GB, {facts.get('system', '')}): `--jobs={records.run.jobs}`, each "
+        f"step a process of its own, started once the CPUs it's expected to keep busy and the memory "
+        f"it's expected to hold are free.{took} Timings don't compare across machines."
+    )
+    rows: list[Measured] = [measured(records, tree, version) for tree in records.trees]
+    broke: list[str] = [f"- {each}" for each in (*problems(records), *notes(records))]
+    parts: list[str] = [
+        f"## {records.run.publish.section}",
+        "",
+        *corpus_table.filled(intro),
+        "",
+        corpus_table.tables(rows),
+        "",
+        *_more(records, version),
+        *(line for each in broke for line in corpus_table.filled(each, "  ")),
+    ]
+    return "\n".join(parts).rstrip() + "\n"
+
+
+def _placed(text: str, heading: str, runs: Path) -> None:
+    """Write a section into `runs`, in place of the one of its `heading`, before the versions' sections."""
+    whole: str = runs.read_text(encoding="utf-8") if runs.exists() else ""
+    head: str
+    versions: str
+    rest: str
+    head, versions, rest = whole.partition(_VERSIONS)
+    after: str = ""
+    if heading in head:
+        old: str
+        head, _, old = head.partition(heading)
+        following: int = old.find(_HEADING)
+        after = "" if following < 0 else old[following:].strip() + "\n"
+    body: str = f"{head.rstrip()}\n\n{text}".lstrip() + (f"\n{after}" if after else "")
+    _ = runs.write_text(f"{body}{versions}{rest}", encoding="utf-8")
+
+
+def publish(records: Records, root: Path, facts: Record) -> None:
+    """Record the run's tables where its run file says, in docs/RUNS.md.
+
+    A section a version, of the per-version tables: `corpus_table.record` refuses to write over
+    one that's there, unless the run file says to replace it. Or, where the run file names a
+    `section`, that one alone, of the whole run (`section`), in place of the one that's there.
     """
     target: Path | None
-    if (target := records.run.publish.runs_md) is not None:
-        rows: list[Measured] = [
-            measured(records, tree, version) for version in records.versions for tree in records.trees
-        ]
-        corpus_table.record(rows, root / target, replace=records.run.publish.replace)
+    if (target := records.run.publish.runs_md) is None:
+        return
+    if records.run.publish.section:
+        _placed(section(records, facts), f"## {records.run.publish.section}\n", root / target)
+        return
+    rows: list[Measured] = [
+        measured(records, tree, version) for version in records.versions for tree in records.trees
+    ]
+    corpus_table.record(rows, root / target, replace=records.run.publish.replace)
 
 
 def _offences(records: Records) -> _Rows:
@@ -515,9 +630,31 @@ _SECTIONS: Final[tuple[_Section, ...]] = (
     ("Each fix on a copy: by tier, and with `--infer-with` each type checker or a trace:", _fixes, 3),
     ("The untyped bindings: with only a guess, with no fix, and in files that don't parse:", _counted, 2),
     ("A check at `suffocate`: the median seconds of its runs, in one process and with `jobs`:", _timing, 2),
-    ("The fixes a traced test could tell of, those whose every value fit, and those one didn't:", _traced, 3),
-    ("Each package's own tests, as released and after each fix:", _tests, 5),
+    (
+        (
+            "The fixes a traced test could tell of, those whose every value fit, and those one didn't; "
+            "and the traced tests' seconds, beside the released tests' untraced:"
+        ),
+        _traced,
+        3,
+    ),
+    (
+        (
+            "Each package's own tests, as released and after each fix: the failures every fixed run has "
+            "and no released run, those gone, and the differences in tests its catalog entry names:"
+        ),
+        _tests,
+        5,
+    ),
     ("Each package's own type checks: its errors as released, then those new and gone:", _types, 3),
+    (
+        (
+            "Each step's process tree: its seconds, its CPU seconds and the CPUs they kept busy, the most "
+            "memory it held at once, and what it was given (`sizing`):"
+        ),
+        _steps,
+        3,
+    ),
 )
 _TABLES: Final[dict[str, _Table]] = {
     "offences": _offences,
@@ -530,6 +667,7 @@ _TABLES: Final[dict[str, _Table]] = {
     "type-errors": _type_errors,
     "coverage": _coverage,
     "timing": _timing,
+    "steps": _steps,
 }
 
 
@@ -552,6 +690,7 @@ def report(records: Records, facts: Record) -> Record:
         "corpora": {tree.name: {"version": tree.version, "root": str(tree.root)} for tree in records.trees},
         "records": nested,
         "problems": problems(records),
+        "notes": notes(records),
     }
 
 

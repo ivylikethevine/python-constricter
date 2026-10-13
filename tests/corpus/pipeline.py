@@ -3,7 +3,8 @@
 
 Each step measures one corpus with one version, through `launch.run`, and writes one JSON record
 under the run's folder: `records/<corpus>/<version>/<step>.json`. A step whose record is there isn't
-run again, so a stopped run resumes.
+run again, so a stopped run resumes. The run starts each in a process of its own (`python -m
+tests.corpus --step`), and adds what its processes used to its record (`sizing.USED`).
 
 - `check`: the files, the offences per code at `suffocate`, each level's errors and warnings, and
   the fixes offered, by tier;
@@ -70,7 +71,6 @@ _SUFFOCATE: Final = "--level=suffocate"
 _NAME: Final = re.compile(r"'([^']+)'")  # the name an offence's message quotes
 _ERROR: Final = "error"  # an offence's severity, in `--format=json`
 _TYPED: Final = re.compile(r"^Total: (\d+)/(\d+) typed", re.MULTILINE)  # `--coverage`'s summary
-_AT_ONCE: Final = 4  # a corpus's steps running side by side
 
 
 class Store(NamedTuple):
@@ -103,11 +103,21 @@ class Store(NamedTuple):
         path.parent.mkdir(parents=True, exist_ok=True)
         _ = path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
+    def logged(self, corpus: str, version: str, step: str) -> Path:
+        """Find where what a step says is kept, making its directory.
+
+        Returns:
+          The path.
+
+        """
+        path: Path = self.root / "logs" / corpus.replace(" ", "-") / version / f"{step}.log"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
     def log(self, corpus: str, version: str, step: str, errors: str) -> None:
         """Keep what a step's constricter wrote to standard error, if anything."""
         if errors.strip():
-            path: Path = self.root / "logs" / corpus.replace(" ", "-") / version / f"{step}.log"
-            path.parent.mkdir(parents=True, exist_ok=True)
+            path: Path = self.logged(corpus, version, step)
             file: IO[str]
             with path.open("a", encoding="utf-8") as file:
                 _ = file.write(errors)
@@ -503,26 +513,3 @@ def settled(job: Job, name: str, done: Future[Record]) -> bool:
         job.store.log(job.tree.name, job.recorded, name, "".join(traceback.format_exception(failure)))
         _ = sys.stderr.write(f"{job.recorded} on {job.tree.name}: {name} failed: {failure!r}\n")
     return failure is None
-
-
-def measure(job: Job) -> list[str]:
-    """Run each of the run's steps on the job that has no record yet, side by side, and keep each one's.
-
-    Returns:
-      The steps that failed.
-
-    """
-    start: float = time.perf_counter()
-    path: Path = job.store.path(job.tree.name, job.recorded, CHECK)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    pool: ThreadPoolExecutor
-    with ThreadPoolExecutor(_AT_ONCE) as pool:
-        running: dict[str, Future[Record]] = {
-            name: pool.submit(step, job)
-            for name, step in steps(job.run).items()
-            if job.store.read(job.tree.name, job.recorded, name) is None
-        }
-    failed: list[str] = [name for name, done in running.items() if not settled(job, name, done)]
-    seconds: float = time.perf_counter() - start
-    _ = sys.stderr.write(f"{job.recorded} on {job.tree.name}: {len(running)} steps in {seconds:.1f}s\n")
-    return failed

@@ -4,7 +4,9 @@
 Each works on the suite's checkout at its pinned tag, taken back to the tag's source in between,
 with a fix step's patch applied for a fixed run: the very fix the run's other outputs count.
 
-- `tests`: the package's own tests as released, and after each of the run's fixes;
+- `tests`: the package's own tests as released, and after each of the run's fixes, the trace's
+  too; a fixed run that differs is run again, with the released tests, and only what it fails both
+  times and no released run did is the fix's (`weighed`);
 - `traced`, for a suite whose tests can be traced, with this checkout: the tests under a witness
   told every fix of `fix-unsafe`, each fix's verdict kept; and `infer-trace`, a fix by their trace;
 - `types`, for a suite with type checks: its own checkers' errors as released and after each fix,
@@ -17,8 +19,7 @@ import os
 import subprocess  # applies a fix's patch to a suite's checkout
 import time
 from collections import Counter
-from collections.abc import Callable
-from concurrent.futures import Future, ThreadPoolExecutor
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
 from tests.corpus import corpus_guesses, corpus_suite
@@ -34,7 +35,6 @@ from tests.corpus.pipeline import (
     Record,
     fix,
     fixing,
-    settled,
 )
 from tests.corpus.run_config import CERTAIN, DEV, LIKELY, UNSAFE
 
@@ -43,20 +43,59 @@ if TYPE_CHECKING:
 
 _Entry: TypeAlias = dict[str, object]
 _TRACED_KIND: Final = "traced"  # the mechanism of a fix that rests on a trace
+# The counts a test that fails where it passed moves between: a run's others say what else changed.
+_MOVED: Final = frozenset({"passed", "failed", "error", "failures", "errors"})
 
 
-def _outcome(outcome: corpus_suite.Outcome, released: corpus_suite.Outcome | None = None) -> Record:
-    """Lay a test run's outcome out for a record, beside the released run's where it's a fixed one.
+def _outcome(outcome: corpus_suite.Outcome) -> Record:
+    """Lay a test run's outcome out for a record.
 
     Returns:
-      Its summary counts and the tests that failed; and whether it's the released run's, with the
-      failures that one hasn't.
+      Its summary counts and the tests that failed.
 
     """
-    found: Record = {"counts": outcome.counts, "failed": sorted(outcome.failed)}
-    if released is not None:
-        found |= {"same": outcome == released, "new": sorted(outcome.failed - released.failed)}
-    return found
+    return {"counts": outcome.counts, "failed": sorted(outcome.failed)}
+
+
+def _others(outcome: corpus_suite.Outcome) -> dict[str, int]:
+    return {kind: count for kind, count in outcome.counts.items() if kind not in _MOVED}
+
+
+def weighed(
+    runs: Sequence[corpus_suite.Outcome],
+    released: Sequence[corpus_suite.Outcome],
+    named: frozenset[str],
+) -> Record:
+    """Lay a fixed run's outcome out beside the released tests', and say what of it is the fix's.
+
+    `runs`: the fixed run's outcomes, a second where its first differed from the first of
+    `released`, the released tests' (run again then too). A suite's own failures come and go, so a
+    failure is the fix's only if every fixed run has it and no released run does (`new`), and a
+    released failure is gone only if every released run has it and no fixed run does (`gone`).
+    `named`: the tests the catalog says a fix may change (`Suite.differs`), listed apart.
+
+    Returns:
+      The first run's counts and failures, and whether it's the released tests' (`same`); where it
+      isn't, what's new and gone, the tests named among them, and whether the run differs by more
+      than those: by a test not named, or by its other counts (the skipped, say).
+
+    """
+    none: list[str] = []
+    found: Record = _outcome(runs[0]) | {"same": runs[0] == released[0], "new": none}
+    if found["same"]:
+        return found
+    ever: frozenset[str] = released[0].failed.union(*(each.failed for each in released))
+    always: frozenset[str] = released[0].failed.intersection(*(each.failed for each in released))
+    new: frozenset[str] = runs[0].failed.intersection(*(each.failed for each in runs)) - ever
+    gone: frozenset[str] = always - runs[0].failed.union(*(each.failed for each in runs))
+    calm: bool = any(_others(runs[-1]) == _others(each) for each in released)
+    return found | {
+        "new": sorted(new - named),
+        "gone": sorted(gone - named),
+        "named": sorted((new | gone) & named),
+        "differs": bool(new - named or gone - named or not calm),
+        "again": [_outcome(each) for each in runs[1:]],
+    }
 
 
 def _patched(job: Job, step: str) -> str | None:
@@ -190,8 +229,8 @@ def traced(job: Job) -> Record:
     suite's tests and type checks then run after as they do any other.
 
     Returns:
-      The step's record: the traced tests' summary, and by tier the fixes a test could tell of,
-      those whose every value fit and those one of whose didn't.
+      The step's record: the traced tests' summary, outcome and seconds, and by tier the fixes a
+      test could tell of, those whose every value fit and those one of whose didn't.
 
     """
     suite: corpus_suite.Suite = cast("corpus_suite.Suite", job.tree.suite)
@@ -200,8 +239,14 @@ def traced(job: Job) -> Record:
     os.environ.update(job.tree.variables or {})
     os.environ[corpus_suite.TRACER_VARIABLE] = corpus_guesses.TRACER
     os.environ[corpus_guesses.WITNESS_VARIABLE] = corpus_guesses.expected(base, made)
-    summary: str | None
-    if (summary := corpus_suite.traced(base, suite)) is None:
+    start: float = time.perf_counter()
+    ran: tuple[str, corpus_suite.Outcome] | None = corpus_suite.traced(
+        base,
+        suite,
+        job.store.logged(job.tree.name, job.recorded, TRACED).with_name("tests-traced.txt"),
+    )
+    seconds: float = time.perf_counter() - start
+    if ran is None:
         return {"error": "nothing runs its tests traced"}
     step: str = f"{INFER}{TRACE}"
     by_trace: Record = fix(job, step, ("--unsafe-fixes", "--infer-from", str(base / corpus_suite.TRACE_FILE)))
@@ -209,7 +254,7 @@ def traced(job: Job) -> Record:
     resting: int = sum(
         _TRACED_KIND in one.kinds.split("+") for one in itertools.chain(*_made(job, step).values())
     )
-    record: Record = {"summary": summary, "resting": resting}
+    record: Record = {"summary": ran[0], "resting": resting, "seconds": round(seconds, 1)} | _outcome(ran[1])
     return record | {key: dict(count) for key, count in _judged(job, made).items()}
 
 
@@ -256,12 +301,30 @@ def _judged(job: Job, made: dict[str, list[corpus_suite.Fix]]) -> dict[str, Coun
     return counts
 
 
+def _fixed_run(job: Job, step: str, kept: str) -> corpus_suite.Outcome | str:
+    """Run the suite's tests on its checkout with a fix step's patch applied, their output kept as `kept`.
+
+    Returns:
+      Their outcome; why the patch wasn't applied, where git refuses it.
+
+    """
+    refused: str | None
+    if (refused := _patched(job, step)) is not None:
+        return refused
+    return corpus_suite.tested(
+        cast("Path", job.tree.base),
+        cast("corpus_suite.Suite", job.tree.suite),
+        job.store.logged(job.tree.name, job.recorded, TESTS).with_name(f"tests-{step}{kept}.txt"),
+    )
+
+
 def tests(job: Job) -> Record:
     """Run the corpus package's own tests as released, and after each fix the run made of it.
 
     Each fixed run is the checkout with a fix step's patch applied: the very fix the run's other
-    outputs count. Where a fixed run differs, the released tests run once more: a suite whose own
-    failures change from run to run says nothing by a difference.
+    outputs count, the trace's too. Where a fixed run differs, the released tests run once more,
+    and so does each fixed run that differed: what differs between the two says whose a failure is
+    (`weighed`). Tests stopped as released for running too long have no fixed run.
 
     Returns:
       The step's record: each run's outcome, and whether the released tests vary.
@@ -269,28 +332,46 @@ def tests(job: Job) -> Record:
     """
     suite: corpus_suite.Suite = cast("corpus_suite.Suite", job.tree.suite)
     base: Path = cast("Path", job.tree.base)
-    kept: Path = job.store.root / "logs" / job.tree.name.replace(" ", "-") / job.recorded
+    kept: Path = job.store.logged(job.tree.name, job.recorded, TESTS)
     corpus_suite.reset(base, suite)
     os.environ.update(job.tree.variables or {})  # what the suite's commands need set
     start: float = time.perf_counter()
-    released: corpus_suite.Outcome = corpus_suite.tested(base, suite, kept / "tests-released.txt")
+    released: list[corpus_suite.Outcome] = [
+        corpus_suite.tested(base, suite, kept.with_name("tests-released.txt")),
+    ]
     record: Record = {"tag": suite.tag, "seconds": round(time.perf_counter() - start, 1)}
-    fixed: dict[str, Record] = {}
-    step: str
-    for step in fixing(job.run):
-        if job.store.path(job.tree.name, job.recorded, step, ".patch").exists():
-            refused: str | None = _patched(job, step)
-            fixed[step] = (
-                _outcome(corpus_suite.tested(base, suite, kept / f"tests-{step}.txt"), released)
-                if refused is None
-                else {"error": refused}
-            )
+    if corpus_suite.stopped(released[0]):
+        return record | {"released": _outcome(released[0]), "fixed": {}, "stopped": True}
+    patched: list[str] = [
+        step
+        for step in fixing(job.run)
+        if job.store.path(job.tree.name, job.recorded, step, ".patch").exists()
+    ]
+    first: dict[str, corpus_suite.Outcome | str] = {step: _fixed_run(job, step, "") for step in patched}
     corpus_suite.reset(base, suite)
-    if any(not ran.get("same", True) for ran in fixed.values()):
-        again: corpus_suite.Outcome = corpus_suite.tested(base, suite, kept / "tests-released-again.txt")
-        record["varies"] = again != released
-        record["again"] = _outcome(again)
-    return record | {"released": _outcome(released), "fixed": fixed}
+    again: dict[str, corpus_suite.Outcome | str] = {}
+    if any(ran != released[0] for ran in first.values() if not isinstance(ran, str)):
+        released.append(corpus_suite.tested(base, suite, kept.with_name("tests-released-again.txt")))
+        again = {
+            step: _fixed_run(job, step, "-again")
+            for step, ran in first.items()
+            if not isinstance(ran, str) and ran != released[0]
+        }
+        corpus_suite.reset(base, suite)
+        record["varies"] = released[1] != released[0]
+        record["again"] = _outcome(released[1])
+    named: frozenset[str] = frozenset(test for test, _ in suite.differs)
+    fixed: dict[str, Record] = {
+        step: {"error": ran}
+        if isinstance(ran, str)
+        else weighed(_both(ran, again.get(step)), released, named)
+        for step, ran in first.items()
+    }
+    return record | {"released": _outcome(released[0]), "fixed": fixed}
+
+
+def _both(*runs: corpus_suite.Outcome | str | None) -> list[corpus_suite.Outcome]:
+    return [each for each in runs if isinstance(each, corpus_suite.Outcome)]
 
 
 def waiting(job: Job) -> dict[str, Callable[[Job], Record]]:
@@ -309,23 +390,3 @@ def waiting(job: Job) -> dict[str, Callable[[Job], Record]]:
     if suite is not None and suite.checks and job.run.steps.types:
         found[TYPES] = types
     return found
-
-
-def measure(job: Job) -> list[str]:
-    """Run each of these steps the job's run asks for that has no record yet, one after another.
-
-    Returns:
-      The steps that failed.
-
-    """
-    failed: list[str] = []
-    name: str
-    step: Callable[[Job], Record]
-    pool: ThreadPoolExecutor
-    with ThreadPoolExecutor(1) as pool:
-        for name, step in waiting(job).items():
-            if job.store.read(job.tree.name, job.recorded, name) is None:
-                done: Future[Record] = pool.submit(step, job)
-                if not settled(job, name, done):
-                    failed.append(name)
-    return failed

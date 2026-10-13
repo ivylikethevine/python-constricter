@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: MIT
-"""Sum up what `scratch.guess_census` wrote: each guess mechanism's count, blamed errors and run-time record.
+"""Sum up a corpus run's `guesses.jsonl`: each guess mechanism's count, blamed errors and run-time record.
 
-  local/.venv/bin/python -m scratch.guess_report                # the tables
+  local/.venv/bin/python -m scratch.guess_report --from FOLDER  # the tables, from a run's folder (`python -m tests.corpus`)
   local/.venv/bin/python -m scratch.guess_report --differ KIND  # the guesses of KIND a value differed from
   local/.venv/bin/python -m scratch.guess_report --blamed KIND  # those a type checker blames
   local/.venv/bin/python -m scratch.guess_report --likely       # the sets that pass `LIKELY.md`'s bars
-  local/.venv/bin/python -m scratch.guess_report --from FOLDER  # from a corpus run's folder (`python -m tests.corpus`)
+
+With no `--from`, every listing kept in `local/scratch/guesses/` (what older runs wrote).
 
 A guess's kinds are its mechanisms, joined by `+`. A table by the whole set, then one by each
 mechanism in it (a guess counts under each of its own). For each: the guesses, those in packages
@@ -26,7 +27,7 @@ HELD = 0.95  # the share of them that must have held
 BLAMED = 0.1  # the most guesses blamed by a type checker, per 100 checked
 
 
-SOURCE = "--from"  # then a corpus run's folder: its `guesses.jsonl`, not what `guess_census` wrote
+SOURCE = "--from"  # then a corpus run's folder: its `guesses.jsonl`
 
 
 def rows() -> list[dict]:

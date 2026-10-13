@@ -10,8 +10,8 @@ from typing import IO, Final, TypeAlias, cast
 
 import pytest
 
-from tests.corpus import catalog, pipeline, render
-from tests.corpus.__main__ import Turns
+from tests.corpus import catalog, pipeline, render, sizing, suite_steps
+from tests.corpus.corpus_suite import Outcome
 from tests.corpus.pipeline import Record, Store
 from tests.corpus.run_config import CERTAIN, CSV, DEV, JSON, LIKELY, MARKDOWN, Run, Steps, parse
 from tests.corpus.trees import Tree
@@ -26,11 +26,26 @@ _SECTION: Final = "## constricter rc+dev"
 _FIXES: Final = "| 2 (33.3%) | 1 (16.7%) | 2 (33.3%) |      0 |    0 |            1 |"
 _COUNTED: Final[Record] = {"untyped": 6, "guessed": 2, "unfixed": 2, "unparsed": 0, "shapes": {"call": 2}}
 _INFERRED: Final = "| standard library | infer-ty |     5 |       2 |      1 |     2 |      0 |    0 |"
-_TESTED_ROW: Final = "| fix-unsafe | False            | 1 failed, 8 passed  |            1 |"
+_TESTED_ROW: Final = "| fix-unsafe | False            | 1 failed, 8 passed  |            1 |    0 |     0 |"
+_USED: Final[Record] = {
+    "seconds": 10.0,
+    "cpu": 25.0,
+    "memory": 9.5,
+    "given": {"cpus": 2, "memory": 5.0},
+    "alone": False,
+}
+_SUPER: Final = "## Super corpora\n"
+_PROSE: Final = 100  # the width Prettier fills prose to
+_OLD: Final = "\nold\n"  # a section a run's replaces
+_MACHINE: Final = "constricter 0.3.6 (`abc`), Python 3.14.7, on a CPU (16 CPUs, 60 GB, Linux): `--jobs=0`"
+_TOOK: Final = "The run took 25 minutes."
+_STEP_ROW: Final = "| standard library | check |    10.0 |        25.0 |  2.5 |     9.5 |"
+_DIFFERS: Final = "- standard library, rc+dev, tests: the tests differ after fix-unsafe: 1 new"
 _TYPED_ROW: Final = "| standard library | fix-unsafe |      8 |   1 |    0 |      1 file changed |"
 _COUNTED_ROW: Final = "| standard library |       6 |       2 |       2 |        0 |"
 _FAILED: Final = "tests/test_a.py::test_a"
 _TESTED: Final[Record] = {
+    "seconds": 8.0,
     "released": {"counts": {"passed": 9, "skipped": 1}, "failed": []},
     "fixed": {
         "fix-unsafe": {
@@ -63,6 +78,7 @@ _TYPED: Final[Record] = {
     },
 }
 _TRACED: Final[Record] = {
+    "seconds": 40.0,
     "summary": "9 passed",
     "resting": 3,
     "told": {"certain": 2, "guess": 1},
@@ -162,20 +178,94 @@ def test_a_run_file_is_read_with_defaults_for_what_it_leaves_out() -> None:
         _ = parse({"steps": {"fix": ["all"]}})
 
 
-def test_a_heavy_suite_takes_every_turn() -> None:
-    """Its steps wait for the suites running, and none starts beside them; one port's take turns."""
+def test_a_step_waits_for_the_cpus_and_the_memory_it_wants() -> None:
+    """One that fits starts beside those running; one that wants all the memory runs alone."""
+    slots: sizing.Slots = sizing.Slots(4, 10)
+    held: int = slots.take(2, 6)
+    assert (held, slots.free, slots.held) == (2, 2, 6)
+    second: int = slots.take(2, 4)
+    assert sizing.Slots(4, 10).take(9) == slots.cpus  # more CPUs than there are: every one
+    started: threading.Event = threading.Event()
+
+    def alone() -> None:
+        slots.give(slots.take(1, 10), 10)
+        started.set()
+
+    waiting: threading.Thread = threading.Thread(target=alone)
+    waiting.start()
+    assert not started.wait(0.2)
+    slots.give(held, 6)
+    assert not started.wait(0.2)
+    slots.give(second, 4)
+    assert started.wait(5)
+    waiting.join()
+    assert (slots.free, slots.held, slots.running) == (4, 0, 0)
+    assert parse({"run": {"suite-seconds": 900, "suite-workers": 4, "cpus": 8, "memory": 12}})[-4:] == (
+        900,
+        4,
+        8,
+        12.0,
+    )
+
+
+def test_a_step_is_given_what_it_took_in_the_last_run(tmp_path: Path) -> None:
+    """Its CPUs and its memory, a margin over; unmeasured, by what it is; the timed ones, every CPU."""
     known: catalog.Catalog = catalog.load()
-    turns: Turns = Turns(2, threading.Semaphore(2), threading.Lock(), {"8000": threading.Lock()})
-    assert known.entries["celery"].heavy
-    with turns.of(known.entries["celery"]):
-        assert not turns.free.acquire(blocking=False)
-    with turns.of(known.entries["pip"]), turns.of(known.entries["twisted"]):  # no port: side by side
-        assert not turns.free.acquire(blocking=False)
-    with turns.of(known.entries["httpx"]):
-        assert turns.ports[known.entries["httpx"].port].locked()
-        assert turns.free.acquire(blocking=False)
-        turns.free.release()
-    assert parse({"run": {"suite-seconds": 900, "suite-workers": 4}})[-2:] == (900, 4)
+    celery: catalog.Entry = known.entries["celery"]
+    assert celery.suite is not None
+    assert not celery.heavy
+    assert len(celery.suite.parts) > 1
+    tree: Tree = Tree("celery", "1", tmp_path, tmp_path, suite=celery.suite)
+    Store(tmp_path / "earlier").write("celery", "rc+dev", pipeline.TESTS, {"used": _USED})
+    Store(tmp_path / "earlier").write("celery", "rc+dev", pipeline.CHECK, {})
+    before: dict[tuple[str, str], sizing.Before] = sizing.before(tmp_path, tmp_path / "this")
+    assert before == {("celery", pipeline.TESTS): sizing.Before(2.5, 10.0, int(9.5 * sizing.GIB))}
+    assert not sizing.before(tmp_path, tmp_path / "earlier")
+    plan: sizing.Plan = sizing.Plan(parse({"run": {"jobs": 2}}), 8, 16 * sizing.GIB, before)
+    measured: sizing.Wanted = plan.wanted(tree, pipeline.TESTS)
+    assert measured == sizing.Wanted(3, int(9.5 * sizing.GIB * 1.25), 10.0)
+    assert plan.wanted(tree, pipeline.TRACED)[:2] == (1, measured.memory)  # as its tests', unmeasured
+    assert plan.wanted(tree, pipeline.TYPES).memory == 16 * sizing.GIB // 3
+    assert plan.wanted(tree, pipeline.CHECK) == sizing.Wanted(2, 2 * (sizing.GIB + sizing.GIB // 4))
+    assert plan.wanted(tree, pipeline.TIMING).cpus == plan.cpus
+    unmeasured: sizing.Plan = plan._replace(before={})
+    assert unmeasured.wanted(tree, pipeline.TESTS) == sizing.Wanted(1, sizing.GIB)
+    assert unmeasured.wanted(tree, pipeline.TESTS, heavy=True).memory == plan.memory
+    assert plan.workers(celery.suite._replace(most=32)) == plan.cpus // 2
+    sized: sizing.Plan = sizing.plan(
+        parse({"run": {"cpus": 3, "memory": 2, "output": "."}}),
+        tmp_path,
+        tmp_path,
+    )
+    assert (sized.cpus, sized.memory, sized.before) == (3, 2 * sizing.GIB, before)
+
+
+def test_a_fixed_runs_failures_are_the_fixs_only_if_it_has_them_both_times() -> None:
+    """And no released run does; a test the catalog names is listed apart, and is no difference."""
+    released: Outcome = Outcome({"passed": 9, "skipped": 1}, frozenset())
+    failing: Outcome = Outcome({"passed": 8, "failed": 1, "skipped": 1}, frozenset({_FAILED}))
+    other: Outcome = Outcome({"passed": 8, "failed": 1, "skipped": 1}, frozenset({"tests/test_b.py::test_b"}))
+    assert suite_steps.weighed([released], [released], frozenset()) == {
+        "counts": released.counts,
+        "failed": [],
+        "same": True,
+        "new": [],
+    }
+    twice: Record = suite_steps.weighed([failing, failing], [released, released], frozenset())
+    assert (twice["same"], twice["new"], twice["differs"]) == (False, [_FAILED], True)
+    once: Record = suite_steps.weighed([failing, other], [released, released], frozenset())
+    assert (once["new"], once["differs"], len(cast("list[Record]", once["again"]))) == ([], False, 1)
+    named: Record = suite_steps.weighed([failing, failing], [released, released], frozenset({_FAILED}))
+    assert (named["new"], named["named"], named["differs"]) == ([], [_FAILED], False)
+    theirs: Record = suite_steps.weighed([failing, failing], [released, failing], frozenset())
+    assert (theirs["new"], theirs["gone"], theirs["differs"]) == ([], [], False)
+    gone: Record = suite_steps.weighed([released, released], [failing, failing], frozenset())
+    assert (gone["gone"], gone["differs"]) == ([_FAILED], True)
+    skipping: Outcome = Outcome({"passed": 8, "skipped": 2}, frozenset())
+    assert suite_steps.weighed([skipping, skipping], [released, released], frozenset())["differs"]
+    black: catalog.Suite | None = catalog.load().entries["black"].suite
+    assert black is not None
+    assert [test.rpartition("::")[2] for test, _ in black.differs] == ["test_piping"]
 
 
 def test_each_execution_has_a_folder_named_by_its_label_and_time() -> None:
@@ -215,7 +305,7 @@ def _recorded(root: Path) -> tuple[Store, Tree]:
     tree: Tree = Tree("standard library", "3.14", root)
     store: Store = Store(root)
     assert store.read(tree.name, "rc+dev", pipeline.CHECK) is None
-    store.write(tree.name, "rc+dev", pipeline.CHECK, _CHECKED)
+    store.write(tree.name, "rc+dev", pipeline.CHECK, _CHECKED | {"used": _USED})
     store.write(tree.name, "rc+dev", "fix-certain", _fixed(2, {"certain": 2}))
     store.write(tree.name, "rc+dev", "fix-likely", _fixed(3, {"certain": 2, "likely": 1}, left=1))
     store.write(tree.name, "rc+dev", "fix-unsafe", _fixed(4, {"certain": 2, "likely": 1, "guess": 1}))
@@ -257,6 +347,7 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
         "type-errors.csv",
         "coverage.csv",
         "timing.csv",
+        "steps.csv",
     ]
     report: dict[str, _Nested] = cast(
         "dict[str, _Nested]",
@@ -307,9 +398,9 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
     assert _INFERRED in text
     assert _COUNTED_ROW in text
     assert tables["tests"][1:] == [
-        ["standard library", "rc+dev", "released", "", "9 passed, 1 skipped", ""],
-        ["standard library", "rc+dev", "fix-unsafe", "False", "1 failed, 8 passed", "1"],
-        ["standard library", "rc+dev", "infer-ty", "False", "error: patch failed", "0"],
+        ["standard library", "rc+dev", "released", "", "9 passed, 1 skipped", "", "", ""],
+        ["standard library", "rc+dev", "fix-unsafe", "False", "1 failed, 8 passed", "1", "0", "0"],
+        ["standard library", "rc+dev", "infer-ty", "True", "error: patch failed", "0", "0", "0"],
     ]
     assert _TESTED_ROW in text
     assert tables["types"][1:] == [
@@ -323,11 +414,22 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
     ]
     assert _TYPED_ROW in text
     assert tables["traced"][1:] == [
-        ["standard library", "rc+dev", "", "", "", "", "3", "9 passed"],
-        ["standard library", "rc+dev", "certain", "2", "2", "0", "", ""],
-        ["standard library", "rc+dev", "likely", "0", "0", "0", "", ""],
-        ["standard library", "rc+dev", "guess", "1", "0", "1", "", ""],
+        ["standard library", "rc+dev", "", "", "", "", "3", "9 passed", "40.0", "8.0"],
+        ["standard library", "rc+dev", "certain", "2", "2", "0", "", "", "", ""],
+        ["standard library", "rc+dev", "likely", "0", "0", "0", "", "", "", ""],
+        ["standard library", "rc+dev", "guess", "1", "0", "1", "", "", "", ""],
     ]
+    assert tables["steps"][1:] == [
+        ["standard library", "rc+dev", "check", "10.0", "25.0", "2.5", "9.5", "2", "5.0", "False"],
+    ]
+    assert render.notes(records) == ["standard library, rc+dev, check: held 9.5 GB beside other steps"]
+    stopped: Record = {"released": {}, "fixed": {}, "stopped": True}
+    store.write(tree.name, "rc+dev", pipeline.TESTS, stopped | {"used": _USED | {"alone": True}})
+    assert render.problems(render.gathered(run, store, [tree]))[0].endswith(
+        "stopped as released: they ran too long",
+    )
+    assert len(render.notes(render.gathered(run, store, [tree]))) == 1
+    store.write(tree.name, "rc+dev", pipeline.TESTS, _TESTED)
     assert tables["coverage"][1] == ["standard library", "rc+dev", "4", "10"]
     assert render.write(
         render.gathered(parse({"run": {"label": "rc", "formats": [JSON]}}), store, [tree]),
@@ -399,12 +501,39 @@ def test_a_run_publishes_a_section_a_version(tmp_path: Path) -> None:
     store: Store
     tree: Tree
     store, tree = _recorded(tmp_path)
-    render.publish(render.gathered(parse({"run": {"label": "rc"}}), store, [tree]), tmp_path)
+    render.publish(render.gathered(parse({"run": {"label": "rc"}}), store, [tree]), tmp_path, {})
     assert not (tmp_path / "RUNS.md").exists()
     published: Run = parse({"run": {"label": "rc"}, "publish": {"runs-md": "RUNS.md"}})
-    render.publish(render.gathered(published, store, [tree]), tmp_path)
+    render.publish(render.gathered(published, store, [tree]), tmp_path, {})
     assert _PUBLISHED in (tmp_path / "RUNS.md").read_text(encoding="utf-8")
     with pytest.raises(ValueError, match="already has rc"):
-        render.publish(render.gathered(published, store, [tree]), tmp_path)
+        render.publish(render.gathered(published, store, [tree]), tmp_path, {})
     again: Run = parse({"run": {"label": "rc"}, "publish": {"runs-md": "RUNS.md", "replace": True}})
-    render.publish(render.gathered(again, store, [tree]), tmp_path)
+    render.publish(render.gathered(again, store, [tree]), tmp_path, {})
+
+
+def test_a_run_publishes_one_section_of_itself(tmp_path: Path) -> None:
+    """Before the versions' sections, in place of the one of its heading, with its machine and every table."""
+    store: Store
+    tree: Tree
+    store, tree = _recorded(tmp_path)
+    runs: Path = tmp_path / "RUNS.md"
+    _ = runs.write_text(f"# Corpus runs\n\n{_SUPER}{_OLD}\n## Other\n\nkept\n{_PUBLISHED}", encoding="utf-8")
+    whole: Run = parse(
+        {"run": {"label": "rc"}, "publish": {"runs-md": "RUNS.md", "section": "Super corpora"}},
+    )
+    facts: Record = {"constricter": "0.3.6", "commit": "abc", "cpus": 16, "gigabytes": 60, "minutes": 25}
+    facts |= {"python": "3.14.7", "machine": "a CPU", "system": "Linux"}
+    render.publish(render.gathered(whole, store, [tree]), tmp_path, facts)
+    render.publish(render.gathered(whole, store, [tree]), tmp_path, facts)
+    text: str = runs.read_text(encoding="utf-8")
+    assert text.count(_SUPER) == 1
+    assert _OLD not in text
+    assert text.index(_SUPER) < text.index("## Other\n\nkept\n") < text.index(_PUBLISHED)
+    prose: str = " ".join(text.split())
+    assert _MACHINE in prose
+    assert _TOOK in prose
+    assert _FIXES in text
+    assert _STEP_ROW in text
+    assert _DIFFERS in text
+    assert all(len(line) <= _PROSE or line.startswith("|") for line in text.splitlines())

@@ -48,6 +48,12 @@ class Suite(NamedTuple):
     # A script and its arguments running its tests in one process, where pytest doesn't run them:
     # what a trace traces, the script's directory on the path as `python` puts it there.
     script: tuple[str, ...] = ()
+    # The tests a fix may change the outcome of, each with why: a difference in these alone is no
+    # difference (`suite_steps.tests`).
+    differs: tuple[tuple[str, str], ...] = ()
+    # Its tests' arguments, part by part, each part a process of its own after `tests`: for tests
+    # that hold in one process more than a machine has (celery's, 25 GB).
+    parts: tuple[str, ...] = ()
 
 
 class Entry(NamedTuple):
@@ -106,6 +112,8 @@ def _suite(pinned: _Table) -> Suite:
         cast("float", pinned.get("worker-memory", 1.0)),
         bool(pinned.get("submodules")),
         tuple(shlex.split(cast("str", pinned.get("script", "")))),
+        tuple(cast("dict[str, str]", pinned.get("differs", {})).items()),
+        tuple(cast("list[str]", pinned.get("parts", []))),
     )
 
 
