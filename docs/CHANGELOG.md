@@ -6,6 +6,47 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A corpus runner, `python -m tests.corpus RUN.toml`: a run file names the corpora, the constricter
+  versions, the steps and the formats, and each execution writes a folder of its own
+  (`local/corpus-runs/<label>-<month>-<day>-<year>-<time>/`) with a record for each corpus, version
+  and step, and `report.json`, `report.md` and `tables/*.csv` made from those records alone. Every
+  step starts constricter one way, on one tree a corpus: a suite's checkout, with its settings and
+  environment, where it has one. It checks, fixes (by tier, and with each type checker's hints),
+  takes the census, counts coverage, and runs a suite's own tests, type checks and traced tests
+  after each fix so far, corpora side by side (`at-once`; a suite `corpora.toml` marks `heavy` runs
+  its tests alone, and `suite-seconds` and `suite-workers` bound a suite's tests), times a check and
+  profiles it under `py-spy`, and writes a version's section of RUNS.md where the run file says
+  (`[publish]`); a corpus may be any directory, and a version another checkout's constricter, by its
+  Python. It exits 1 on a step that failed, a file a fix broke, what a second pass still fixes, or a
+  suite's tests that differ. CI's Corpus and Profile jobs are run files of it
+  (`tests/corpus/runs/`), as is the pull request's coverage comment (`runs/coverage.toml`, this
+  checkout beside the base's), and a version's section of RUNS.md is `runs/release.toml`'s;
+  `corpus.py`, `corpus_fix.py`, `corpus_timing.py` and `corpus_coverage.py` are gone, and
+  `corpus_table.py` and `corpus_untyped.py` have no command line: the census's report is a run's
+  `census.md`, and every fix a suite's checks or traced tests judged is its `guesses.jsonl`, which
+  `scratch/guess_report.py --from FOLDER` reads; with the run file copied into the folder; the other
+  corpus scripts still run what it doesn't. A suite's install ignores the user's uv settings. Every
+  corpus, its pinned sdist and its suite are in `tests/corpus/corpora.toml` (the seven's, and the
+  mega corpora's 40 that `mega_packages.json` held), which each corpus script reads;
+  `corpus_untyped.py`'s shapes are a module of their own (`untyped_shapes.py`).
+- One `--fix` leaves a second nothing where a fix is made late: a file in which a round wrote an
+  `optional` or a `filled` fix is checked again in the same run, as every changed file is with
+  `--infer-with`, since what was bound from such a name was read before its type was known
+  (`fullname = basename + "."` after `basename: str | None`, a loop over a list typed by what fills
+  it). A second pass still fixed 2 lines of mypy's and 8 of websockets'.
+- The corpus runner is the only script that starts constricter on a corpus: `super_corpora.py`,
+  `mega_corpora.py`, their steps and their section, and `corpus_suite.py`'s command line are gone.
+  `runs/super.toml` and `runs/mega.toml` write RUNS.md's `Super corpora` and `Mega corpora` sections
+  from the run's folder (`[publish] section`; a run kept to some corpora with `--only` publishes
+  nothing). Each step is a process of its own, given the CPUs and the memory its process tree took
+  in the last run, which its record keeps (`used`; `tests/corpus/sizing.py`), and the timed checks
+  run with nothing beside them; `cpus` and `memory` in a run file share out less than the machine
+  has. A fixed run whose tests differ is run again, with the released tests: a failure is the fix's
+  only if both fixed runs have it and no released run does, and the tests `corpora.toml` names under
+  a suite's `differs` (black's `test_piping`) are reported apart, so a run whose only differences
+  are named exits 0. A suite's `parts` run its tests a part a process: celery's held 25 GB in one,
+  and hold 4.6 GB at most a directory at a time. A run's `traced` table has the traced tests'
+  seconds beside the untraced, and its `steps` table each step's seconds, CPUs and memory.
 - A corpora run's section keeps a code span on one line, as Prettier does: a note broken inside
   `python -m constricter.trace` failed CI's `prettier --check` on RUNS.md.
 - The corpora runs hold each fix to what its package's tests bound: the traced step's tests run
@@ -51,7 +92,7 @@ Notable changes, newest first. Each release's full notes are generated from its 
   suites named.
 - `--likely`, with `--fix` or `--diff`: applies the guesses measured to hold as often as a certain
   fix does, and no other. A guess is likely by its mechanisms, the whole set of them:
-  [LIKELY.md](LIKELY.md) lists the sets, 74% of the guesses on 42 packages, and the bars a set
+  [LIKELY.md](LIKELY.md) lists the sets, 80% of the guesses on 42 packages, and the bars a set
   passes: 20 of its guesses or more told of by their packages' traced tests, more than 95% of those
   holding, and under one guess in a thousand blamed by a type checker. `--show-fixes` names the flag
   a guess needs, `--format=json` gives each fix a `likely`, and `--fix`'s summary counts them.

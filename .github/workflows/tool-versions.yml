@@ -1,0 +1,103 @@
+name: Tool versions
+
+# Drift check over every pin: the inline pins in
+# .github/scripts/check_tool_versions.local.sh, the action SHAs, and the
+# dependency manifests. Dependabot opens no version-update
+# pull request (.github/dependabot.yml), so this is the one report of an
+# upstream release, held to the same 7-day cooldown. The signal is one
+# tracking issue, kept current: opened when something is behind, rewritten on
+# every later run, closed when all is current. Runs after every green CI run
+# on a push to main and weekly, since upstream releases land without a push
+# here.
+on: # zizmor: ignore[dangerous-triggers]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: "23 7 * * 1"
+  workflow_dispatch:
+
+# pushes to main can stack, but queue rather than cancel: a run cancelled
+# mid-upsert can leave its tracking issue half-written (or a duplicate opened)
+concurrency:
+  group: tool-versions
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: pinned CI tools vs upstream
+    # only a green push to main gets a fresh report; the schedule and a manual
+    # dispatch pass the first clause
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write # upsert (and close) its own tracking issue
+    steps:
+      # block, not audit: check_tool_versions.sh asks the GitHub API and the
+      # registry of each manifest in CI_MANIFESTS - nothing else.
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          disable-sudo: true
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            registry.npmjs.org:443
+            pypi.org:443
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The script exits with the number of problems, captured as an output
+      # rather than failing the step, so the issue closes on zero and opens on
+      # the rest. An unreadable upstream counts as current, unless no lookup on
+      # its host answered: that host is missing from allowed-endpoints above.
+      - id: check
+        name: Compare pins to upstream releases
+        env:
+          # raises the GitHub API rate limit (60/hour unauthenticated, shared
+          # across the runner pool) above the roster size
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          rc=0
+          .github/scripts/check_tool_versions.sh | tee "$RUNNER_TEMP/tool-versions.txt" || rc=$?
+          echo "problems=$rc" >>"$GITHUB_OUTPUT"
+
+      - name: Compose the tracking issue body
+        if: steps.check.outputs.problems != '0'
+        env:
+          PROBLEMS: ${{ steps.check.outputs.problems }}
+        run: |
+          set -euo pipefail
+          {
+            echo "$PROBLEMS problem(s) with the pins below. Fix each OUTDATED, MISMATCH or ERROR row"
+            echo "where it points: the file an inline or dependency row names (a release URL's sha256"
+            echo "moves with it), or every use of an action SHA - the \`->\` line under such a row is"
+            echo "what to pin."
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/tool-versions.txt"
+            echo '```'
+          } >"$RUNNER_TEMP/issue.md"
+
+      - uses: ./.github/actions/upsert-tracking-issue
+        with:
+          label: tool-versions
+          label-color: 0E8A16
+          label-description: A pin is behind its upstream release
+          title: Pinned tools and dependencies are behind upstream
+          resolved: ${{ steps.check.outputs.problems == '0' }}
+          close-comment: Every pin is current again.
+          resolved-when: every pin is current
+          body-file: ${{ runner.temp }}/issue.md

@@ -176,12 +176,13 @@ jobs:
           summary: "false"
           args: --level=suffocate --all-scopes --format=github constricter tests
 
-  # Against the runner's standard library, or one pinned real package (`pyproject.toml`'s `corpus`
-  # group: a web framework, an ORM, a runtime-validation library, a data library), or pure Python 2
-  # (Twisted 12.3.0) and pip 20.3.4's 2/3-era type comments, hash-pinned sdists
-  # tests/corpus/corpus_sources.py fetches (neither installs as a dependency): no crashes or slowdowns
-  # (corpus.py), and `--fix` doesn't break any file or leave anything for a second pass
-  # (corpus_fix.py). Each in its own job, so the largest corpus's two passes run side by side.
+  # Against the runner's standard library, or one pinned real package's clone at its tag (a web
+  # framework, an ORM, a runtime-validation library, a data library), or pure Python 2 (Twisted
+  # 12.3.0) and pip 20.3.4's 2/3-era type comments, hash-pinned sdists: each a corpus of
+  # tests/corpus/corpora.toml, measured by the corpus runner (`python -m tests.corpus`) as a run file
+  # says. No crashes (runs/ci-check.toml), and `--fix` doesn't break any file or leave anything for a
+  # second pass (runs/ci-fix.toml). Each in its own job, so the largest corpus's two passes run side
+  # by side.
   corpus:
     name: Corpus (${{ matrix.package }}, ${{ matrix.task }})
     needs: reuse
@@ -212,19 +213,15 @@ jobs:
         with:
           python-version: "3.14" # as RUNS.md is measured: the newest standard library, which has the most to fix
           group: corpus
-      - uses: ./.github/actions/corpus-target
-        id: target
-        with:
-          package: ${{ matrix.package }}
       - env:
-          SCRIPT: ${{ matrix.task == 'check' && 'corpus.py' || 'corpus_fix.py' }}
-          TARGET_PATH: ${{ steps.target.outputs.path }}
-        run: python "tests/corpus/$SCRIPT" ${TARGET_PATH:+"$TARGET_PATH"}
+          PACKAGE: ${{ matrix.package }}
+          TASK: ${{ matrix.task }}
+        run: python -m tests.corpus "tests/corpus/runs/ci-$TASK.toml" --only "${PACKAGE/#stdlib/standard library}"
 
-  # Where constricter's own time goes (corpus_profile.py): its slowest modules and functions, in the
-  # job's summary, and the profile itself, kept for `python -m pstats` or snakeviz. One process under
-  # cProfile is the slowest pass of all, and a report rather than a check: nothing waits for it, and
-  # it can't fail the run.
+  # Where constricter's own time goes (the corpus runner's `profile` step, runs/profile.toml): its
+  # slowest modules and functions, in the job's summary, and the samples `py-spy` took, kept for
+  # speedscope or `flamegraph.pl`. A report rather than a check: nothing waits for it, and it can't
+  # fail the run.
   profile:
     name: Profile (${{ matrix.package }})
     needs: reuse
@@ -255,17 +252,15 @@ jobs:
         with:
           python-version: "3.14"
           group: corpus
-      - uses: ./.github/actions/corpus-target
-        id: target
-        with:
-          package: ${{ matrix.package }}
       - env:
-          TARGET_PATH: ${{ steps.target.outputs.path }}
-        run: python tests/corpus/corpus_profile.py ${TARGET_PATH:+"$TARGET_PATH"} >> "$GITHUB_STEP_SUMMARY"
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          python -m tests.corpus tests/corpus/runs/profile.toml --only "${PACKAGE/#stdlib/standard library}"
+          cat local/corpus-runs/profile-*/records/*/*/profile.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: profile-${{ matrix.package }}
-          path: local/profile/
+          path: local/corpus-runs/
           if-no-files-found: error
 
   test:

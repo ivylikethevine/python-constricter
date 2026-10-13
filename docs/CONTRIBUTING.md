@@ -8,10 +8,9 @@ every one must pass, coverage stays at 100%, and the project's own code passes
 behaviour, and note user-facing changes in [CHANGELOG.md](CHANGELOG.md).
 
 When bumping the version for a release, record it in [RUNS.md](RUNS.md): run
-`tests/corpus/corpus_table.py --versions dev --write` (with the `corpus` group installed), which
-appends this checkout's results under the new version, and commit it with the bump. Between
-releases, `--label 0.2.4-rc.1` records a checkpoint under a pseudo-version instead, without bumping
-it.
+`local/.venv/bin/python -m tests.corpus tests/corpus/runs/release.toml`, which appends this
+checkout's results under the new version, and commit it with the bump. Between releases,
+`--label 0.2.4-rc.1` records a checkpoint under a pseudo-version instead, without bumping it.
 
 ## Development
 
@@ -52,60 +51,61 @@ what only one interpreter breaks fails before CI. Name jobs to run only those
 (`tests/ci_local.py lint docs interpreters`), and add `--install-hook` once to run it before every
 `git push`.
 
-After editing a dependency group, run `uv lock` (CI fails until you do). Dependabot updates
-`uv.lock`, the npm lock and the actions weekly.
+After editing a dependency group, run `uv lock` (CI fails until you do). Nothing bumps a pin for
+you: `tool-versions.yml` lists `uv.lock`'s direct dependencies, the npm pins, the actions and the
+tools pinned by URL that are behind upstream in one tracking issue, and each bump is a hand edit
+(`.github/scripts/check_tool_versions.sh` prints the same report locally).
 
 Fuzzing (`tests/test_fuzz.py`) runs with the tests: hypothesmith generates valid Python, which must
-never crash the checker and must stay valid after `--fix`. For a large real codebase, run
-`local/.venv/bin/python tests/corpus/corpus.py [PATH]` by hand: it checks PATH (default: this
-Python's standard library, about 730 files in a few seconds) at `suffocate` and prints the time, the
-offences per code, and any crash. `local/.venv/bin/python tests/corpus/corpus_fix.py [PATH]` runs
-`--fix --unsafe-fixes` on a copy of it (in `local/corpus-fix/`) and checks every file still compiles
-and a second pass has nothing left to fix.
-`local/.venv/bin/python tests/corpus/corpus_profile.py [PATH]` checks it in a process `py-spy`
-samples from outside (its workers too, with `--jobs N`), and prints (as Markdown) constricter's
-slowest modules and functions, and where the rest of the time went; the samples are saved to
-`local/profile/`. `local/.venv/bin/python tests/corpus/corpus_timing.py OTHER` times a check of the
-standard library and pandas with this checkout and another (`hyperfine` has to be installed). CI
-runs all three, each in its own job (the profile's never fails the run), against the standard
-library and, from the pinned `corpus` dependency group (`django`, `sqlalchemy`, `pydantic`, `pandas`
-— a web framework, an ORM, a runtime-validation library and a data library), the same way, and
-against pure Python 2 (Twisted 12.3.0) and pip 20.3.4 (2/3-era code whose `# type:` comments sit in
-modules with Python 2 `__future__` imports), hash-pinned sdists `tests/corpus/corpus_sources.py`
-fetches, since neither installs as a dependency.
+never crash the checker and must stay valid after `--fix`. For a large real codebase, the corpus
+runner measures it as a run file says: `local/.venv/bin/python -m tests.corpus RUN.toml`
+(`tests/corpus/run_config.py` lists a run file's keys, `tests/corpus/runs/` has some). A run names
+its corpora ([`corpora.toml`](../tests/corpus/corpora.toml)'s, or any directory), the constricter
+versions (releases, this checkout, or another checkout's by its Python), and its steps: a check at
+every level, each fix on a copy (every file still compiling, and nothing left for a second pass),
+`--infer-with` each type checker, the census, coverage, a check timed in one process and with every
+CPU, and one that `py-spy` samples from outside, with constricter's slowest modules and functions.
+CI runs the check, the fix and the profile, each in its own job (the profile's never fails the run),
+against the standard library and the clones, at their pinned tags, of `django`, `sqlalchemy`,
+`pydantic` and `pandas` (a web framework, an ORM, a runtime-validation library and a data library;
+their dependencies' types come from the pinned `corpus` dependency group), and against pure Python 2
+(Twisted 12.3.0) and pip 20.3.4 (2/3-era code whose `# type:` comments sit in modules with Python 2
+`__future__` imports), hash-pinned sdists `tests/corpus/corpus_sources.py` fetches, since neither
+installs as a dependency.
 
-`tests/corpus/corpus_suite.py` runs a Python 3 corpus package's own test suite (cloned at its pinned
-tag, with its test dependencies as its CI installs them, in `local/corpus-suites/`) as released and
-after `--fix --unsafe-fixes`, and exits 1 if that differs; with `--types` it runs the package's own
-type checker (as its CI does) the same two times instead, traces each new error to the fix behind
-it, a certain one, a likely guess or another guess, and exits 1 if there are any. One fixed run has
-every fix, so each difference is laid to a tier by the fix it's traced to; `--assure` adds a run
-fixed with `--fix` alone, which measures what certain fixes do. `--infer-with CHECKERS` adds a run
-fixed with those checkers' hints too, and `--trace` one fixed with the trace of the package's tests
-(`python -m constricter.trace`, where pytest runs them, or a script the suite names does in one
-process: Django's `runtests.py`). It needs `git`, `uv`, a C compiler, Rust (a default toolchain:
-`rustup default stable`) and the network.
+For a corpus with a suite (cloned at its pinned tag, with its test dependencies as its CI installs
+them, in `local/corpus-suites/`), three more steps run on its checkout with each fix's patch
+applied: `tests`, the package's own tests as released and after each fix; `types`, its own type
+checker as its CI runs it, each new error traced to the fix behind it, a certain one, a likely guess
+or another guess; and `traced`, its tests under a witness that holds each fixed binding's value to
+its annotation, then a fix by their trace (`python -m constricter.trace`, where pytest runs them, or
+a script the suite names does in one process: Django's `runtests.py`). A fixed run whose tests
+differ is run again, with the released tests: only what it fails both times and no released run did
+is the fix's, and a test `corpora.toml` names under the suite's `differs`, with why, is reported
+apart. They need `git`, `uv`, a C compiler, Rust (a default toolchain: `rustup default stable`) and
+the network, once.
 
-`tests/corpus/corpus_table.py` measures every corpus with released constricter versions and this
-checkout (each isolated in its own environment), at every level, checked and fixed, and records a
-section per version in [`docs/RUNS.md`](RUNS.md): offences per code, errors and warnings at each
-level, fixes, guesses, anything a fix broke, and the share of bindings typed before and after fixing
-(by this checkout's `--coverage`). It needs the `corpus` group
-(`uv sync --group dev --group corpus`) and `uv`; see its docstring for the options.
+Each execution writes a folder of its own under `local/corpus-runs/`, named by the run's label and
+the time: the run file, a record for each corpus, version and step, and `report.json`, `report.md`
+and `tables/*.csv` made from them. `--resume FOLDER` carries on a stopped run, and `--only NAME`
+keeps one to a corpus. Each step is a process of its own, started once the CPUs it's expected to
+keep busy and the memory it's expected to hold are free: what it took in the last run under the same
+output, which its record keeps (`tests/corpus/sizing.py`; `cpus` and `memory` in the run file share
+out less than the machine has). A step that fails leaves its traceback under `logs/`; the run exits
+1 for it, and for anything a fix broke.
+
+A run file with a `[publish]` table records a section per version in [`docs/RUNS.md`](RUNS.md):
+offences per code, errors and warnings at each level, fixes, guesses, anything a fix broke, and the
+share of bindings typed before and after fixing (by this checkout's `--coverage`). Its `versions`
+may name releases too, each installed in an environment of its own. With `section`, it records that
+one section of the whole run instead: `tests/corpus/runs/super.toml` and `mega.toml` ask every step
+of the seven corpora and of the 40 more packages, and write RUNS.md's `Super corpora` and
+`Mega corpora` sections, with the machine they ran on. Run both before a release, outside a sandbox.
 
 On a pull request that touches what `--fix` does, the Corpus coverage workflow comments with
 pydantic's share of bindings typed as released, after `--fix`, and after `--fix --unsafe-fixes`,
-beside the base branch's (`tests/corpus/corpus_coverage.py`), and edits the comment on each push.
-
-`local/.venv/bin/python -m tests.corpus.super_corpora` runs all of these on every corpus at once,
-for a machine with many cores: the table, the census, each installed checker's `--infer-with`, each
-package's suite and type checks, a fix by its tests' trace, and a timed check, the corpora side by
-side and each step kept so a stopped run resumes. It writes [RUNS.md](RUNS.md)'s `Super corpora`
-section, with the machine it ran on, and exits 1 on anything a fix broke. Where a suite's one fixed
-run doesn't say whose fixes a difference is (its tests differ; a type error is untraced, or traced
-to a certain or a likely fix), it runs again after `--fix --likely`, then after `--fix`. Before a
-release, run it and `tests.corpus.mega_corpora` with `--assure`: every suite's type checks after
-`--fix` alone too.
+beside the base branch's (a run of `tests/corpus/runs/coverage.toml`, with both), and edits the
+comment on each push.
 
 `local/.venv/bin/python -m tests.corpus.corpus_untyped` counts what `--fix` still can't type on the
 same corpora, and why: each untyped binding by the statement that binds it and the shape of its

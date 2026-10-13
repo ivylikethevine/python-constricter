@@ -1,0 +1,18 @@
+# What CI's Profile job asks of each corpus (`--only`): where constricter's own time goes, in a
+# check of one process that `py-spy` samples.
+
+[run]
+label = "profile"
+versions = ["dev"]
+formats = ["json"]
+
+[corpora]
+include = ["seven"]
+install = false
+
+[steps]
+check = false
+fix = []
+census = false
+coverage = false
+profile = true

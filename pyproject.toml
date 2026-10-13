@@ -48,7 +48,7 @@ test = [
     "pytest",
     "pytest-cov",
 ]
-# A pinned, reproducible corpus of real code for tests/corpus/corpus.py and tests/corpus/corpus_fix.py to check
+# A pinned, reproducible corpus of real code for the corpus runner (`python -m tests.corpus`) to check
 # and --fix, alongside the running interpreter's own standard library: a web framework, an ORM, a
 # runtime-validation library and a data library, each a different style of real-world Python.
 # Pure Python 2 code (Twisted 12.3.0) can't be installed on 3.11+: tests/corpus/corpus_sources.py fetches it.
@@ -57,7 +57,7 @@ corpus = [
     "django==5.2.17", # 6.x needs Python 3.12+; 5.2 is the current LTS and still supports 3.11
     "pandas==3.0.6", # a large, partly annotated data library: overloads, generics, TYPE_CHECKING imports
     "pydantic==2.13.5",
-    "py-spy", # tests/corpus/corpus_profile.py samples the check from outside, its workers too
+    "py-spy", # the corpus runner's `profile` step samples the check from outside
     "sqlalchemy==2.0.54",
 ]
 dev = [
@@ -144,9 +144,8 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 "tests/cli/test_hints.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The trace's tests run a traced pytest, whose pytest-xdist workers are processes of its own.
 "tests/test_trace.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
-# The profile and the timings run the check under `py-spy` and `hyperfine`.
+# The profile runs the check under `py-spy`.
 "tests/corpus/corpus_profile.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
-"tests/corpus/corpus_timing.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 "tests/corpus/corpus_suite.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
 # Hatchling's build hook interface: generating the tables needs neither the version nor the build data.
 "hatch_build.py" = ["unused-method-argument"]
@@ -154,15 +153,13 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 "tests/fix/libraries/test_stdlib_tables.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The census of what `--fix` can't type runs this checkout's constricter on each corpus.
 "tests/corpus/corpus_untyped.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
-# The super corpora run starts each step as a process, and keeps each one's result as a pickle it
-# alone writes and reads, under `local/`; its steps run this checkout's constricter.
-"tests/corpus/super_corpora.py" = [
-    "suspicious-subprocess-import",
-    "subprocess-without-shell-equals-true",
-    "suspicious-pickle-import",
-    "suspicious-pickle-usage",
-]
-"tests/corpus/corpora_steps.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
+# The corpus runner starts each constricter version under test (`launch`; under `py-spy`, `pipeline`),
+# each of its steps as a process, and git: for the commit, and to apply a fix to a checkout
+# (`suite_steps`).
+"tests/corpus/launch.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
+"tests/corpus/pipeline.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
+"tests/corpus/suite_steps.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
+"tests/corpus/__main__.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
 # The local CI runner runs the workflow's own steps (and git) as subprocesses.
 "tests/ci_local.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
 # Installed modules' reads are cached as pickles, written and read by constricter alone in the

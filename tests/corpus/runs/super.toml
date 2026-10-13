@@ -1,0 +1,28 @@
+# The seven corpora, every way: every step, a suite's own tests, type checks and traced tests
+# after each fix, recorded as docs/RUNS.md's `Super corpora` section. The machine sizes it: each step
+# starts once the CPUs and the memory it took in the last run are free (`sizing`); `cpus` and `memory`
+# under `[run]` share out less. A stopped run carries on with `--resume FOLDER`.
+
+[run]
+label = "super"
+versions = ["dev"]
+jobs = 4
+at-once = 7
+
+[corpora]
+include = ["seven"]
+
+[steps]
+check = true
+fix = ["certain", "likely", "unsafe"]
+infer-with = ["basedpyright", "ty", "pyrefly"]
+census = true
+coverage = true
+timing = 1
+tests = true
+types = true
+traced = true
+
+[publish]
+runs-md = "docs/RUNS.md"
+section = "Super corpora"

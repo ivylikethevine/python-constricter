@@ -1,0 +1,19 @@
+# What the Corpus coverage workflow asks of one corpus (`--only`), for a pull request's comment: its
+# bindings typed as released, after `--fix` and after `--fix --unsafe-fixes`, and a check's time,
+# with this checkout and with the base's (`base`: the Python the workflow installs it in).
+
+[run]
+label = "coverage"
+versions = ["dev", "base=local/base/local/.venv/bin/python"]
+formats = ["json"]
+
+[corpora]
+include = ["seven"]
+install = false
+
+[steps]
+check = false
+fix = ["certain", "unsafe"]
+census = false
+coverage = true
+timing = 5

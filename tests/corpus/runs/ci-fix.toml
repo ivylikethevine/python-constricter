@@ -1,0 +1,18 @@
+# What CI's Corpus job asks of each corpus (`--only`), a suite's corpus its clone alone: nothing
+# is installed. Its fix task: `--fix --unsafe-fixes` leaves every file compiling,
+# and nothing for a second pass.
+
+[run]
+label = "ci-fix"
+versions = ["dev"]
+formats = ["json", "markdown"]
+
+[corpora]
+include = ["seven"]
+install = false
+
+[steps]
+check = false
+fix = ["unsafe"]
+census = false
+coverage = false

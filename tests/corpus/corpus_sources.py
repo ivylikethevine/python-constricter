@@ -4,7 +4,8 @@
   local/.venv/bin/python tests/corpus/corpus_sources.py twisted       # prints the checked directory
   local/.venv/bin/python tests/corpus/corpus_sources.py --describe    # each: name, version, directory
 
-Each is downloaded once into `local/corpus-sources/`, its SHA-256 checked, unpacked there (with
+`corpora.toml` pins them (`pinned`): each corpus's `sdist` table. Each is downloaded once into
+`local/corpus-sources/`, its SHA-256 checked, unpacked there (with
 tarfile's `data` filter: nothing outside the directory, no links or devices), and its package
 directory printed. Python 3 can't parse all of it, which is the point: that's legacy code as it's
 found, and the command must report such files, not crash on them.
@@ -13,10 +14,11 @@ found, and the command must report such files, not crash on them.
 import hashlib
 import sys
 import tarfile
+import tomllib
 import urllib.request
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Final, NamedTuple
+from typing import IO, Final, NamedTuple, TypeAlias, cast
 
 
 class Source(NamedTuple):
@@ -29,25 +31,41 @@ class Source(NamedTuple):
 
 
 WORK: Final = Path(__file__).resolve().parents[2] / "local" / "corpus-sources"
-SOURCES: Final = {
-    # Twisted's last Python 2-only line (MIT): print statements, `except X, e`, tuple parameters and
-    # backticks next to 2/3-era code with `__future__` imports; about 1 file in 5 doesn't parse.
-    "twisted": Source(
-        "12.3.0",
-        "https://files.pythonhosted.org/packages/source/T/Twisted/Twisted-12.3.0.tar.bz2",
-        "d4d1afcfa7ca40a7da26832cba653851eb147a06bd3f7f6fae89af3d5cd295c6",
-        "Twisted-12.3.0/twisted",
-    ),
-    # The last pip for Python 2 (MIT): 2/3-era code whose `# type:` comments sit in modules importing
-    # Python 2 `__future__` features, the path those comments count on automatically. A dependency
-    # can't pin it: it would replace the environment's own pip.
-    "pip": Source(
-        "20.3.4",
-        "https://files.pythonhosted.org/packages/source/p/pip/pip-20.3.4.tar.gz",
-        "6773934e5f5fc3eaa8c5a44949b5b924fc122daa0a8aa9f80c835b4ca2a543fc",
-        "pip-20.3.4/src/pip",
-    ),
-}
+CATALOG: Final = Path(__file__).with_name("corpora.toml")
+FILES: Final = "https://files.pythonhosted.org/packages"  # PyPI's file host, which a `where` is under
+_SDIST: Final = "sdist"
+_Table: TypeAlias = dict[str, object]  # a table of the catalog, as `tomllib` reads it
+
+
+def pinned(among: str | None = None) -> dict[str, Source]:
+    """Read the sdists `corpora.toml` pins: every corpus's that has one, or those of the set `among`.
+
+    Returns:
+      Each by its corpus's name.
+
+    """
+    file: IO[bytes]
+    with CATALOG.open("rb") as file:
+        catalog: _Table = tomllib.load(file)
+    entries: dict[str, _Table] = cast("dict[str, _Table]", catalog["corpus"])
+    names: list[str] = cast("dict[str, list[str]]", catalog["sets"])[among] if among else list(entries)
+    found: dict[str, Source] = {}
+    name: str
+    for name in names:
+        entry: _Table = entries[name]
+        if _SDIST in entry:
+            sdist: dict[str, str] = cast("dict[str, str]", entry[_SDIST])
+            found[name] = Source(
+                str(entry["version"]),
+                f"{FILES}/{sdist['where']}/{sdist['archive']}",
+                sdist["sha256"],
+                sdist["package"],
+            )
+    return found
+
+
+# The seven corpora's: Twisted's and pip's last lines for Python 2, which no dependency can install.
+SOURCES: Final = pinned("seven")
 
 
 def fetch(name: str, work: Path = WORK, sources: Mapping[str, Source] | None = None) -> Path:
@@ -87,7 +105,7 @@ def main(argv: Sequence[str]) -> int:
     """Fetch each source named (default: all) and print its package directory.
 
     With `--describe`, each line is its name, version and directory, tab-separated (for
-    tests/corpus/corpus_table.py, which runs this rather than import it: it runs as a script, not from
+    `corpus_table.corpora`, which runs this rather than import it: it's read as a script too, not from
     the `tests` package).
 
     Returns:

@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: MIT
-"""Sum up what `scratch.guess_census` wrote: each guess mechanism's count, blamed errors and run-time record.
+"""Sum up a corpus run's `guesses.jsonl`: each guess mechanism's count, blamed errors and run-time record.
 
-  local/.venv/bin/python -m scratch.guess_report                # the tables
+  local/.venv/bin/python -m scratch.guess_report --from FOLDER  # the tables, from a run's folder (`python -m tests.corpus`)
   local/.venv/bin/python -m scratch.guess_report --differ KIND  # the guesses of KIND a value differed from
   local/.venv/bin/python -m scratch.guess_report --blamed KIND  # those a type checker blames
   local/.venv/bin/python -m scratch.guess_report --likely       # the sets that pass `LIKELY.md`'s bars
+
+With no `--from`, every listing kept in `local/scratch/guesses/` (what older runs wrote).
 
 A guess's kinds are its mechanisms, joined by `+`. A table by the whole set, then one by each
 mechanism in it (a guess counts under each of its own). For each: the guesses, those in packages
@@ -25,9 +27,13 @@ HELD = 0.95  # the share of them that must have held
 BLAMED = 0.1  # the most guesses blamed by a type checker, per 100 checked
 
 
+SOURCE = "--from"  # then a corpus run's folder: its `guesses.jsonl`
+
+
 def rows() -> list[dict]:
     found = []
-    for path in sorted(OUT.glob("*.jsonl")):
+    chosen = [Path(sys.argv[sys.argv.index(SOURCE) + 1]) / "guesses.jsonl"] if SOURCE in sys.argv else sorted(OUT.glob("*.jsonl"))
+    for path in chosen:
         with open(path, encoding="utf-8") as file:
             # A file an older census wrote has no verdicts: its package's newest run kept no fixes.
             found.extend(row for row in map(json.loads, file) if "verdict" in row)
@@ -90,6 +96,8 @@ def likely(groups: dict[str, list[dict]]) -> dict[str, list[dict]]:
 
 
 def main(argv: list[str]) -> int:
+    if SOURCE in argv:
+        argv = [arg for index, arg in enumerate(argv) if arg != SOURCE and argv[index - 1] != SOURCE]
     every = rows()
     guesses = [row for row in every if row["unsafe"]]
     whole: dict[str, list[dict]] = defaultdict(list)

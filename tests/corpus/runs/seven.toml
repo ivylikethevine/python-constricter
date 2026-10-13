@@ -1,0 +1,8 @@
+# The seven corpora with this checkout: what a release candidate records.
+
+[run]
+label = "0.3.6-rc.1"
+versions = ["dev"]
+
+[corpora]
+include = ["seven"]

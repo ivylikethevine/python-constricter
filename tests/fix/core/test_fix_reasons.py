@@ -200,7 +200,7 @@ def f() -> None:
 _LIKELY: Final = """\
 def f() -> None:
     a: Box = Box()
-    b = []
+    b: list[int] = []
     b.append(1)
     c = 1
     c = g()
@@ -220,13 +220,13 @@ def test_likely_applies_the_guesses_measured_to_hold(
     fixes: list[_Fix] = [cast("_Fix", entry["fix"]) for entry in report]
     assert [(fix["unsafe"], fix["likely"], fix["kinds"]) for fix in fixes] == [
         (True, True, ["constructor"]),
-        (True, False, ["filled", "literal"]),
+        (True, True, ["filled", "literal"]),
         (True, False, ["literal", "rebound"]),
         (True, True, ["copy"]),
     ]
     assert cli.main(["--fix", "--likely", str(path)]) == cli.EXIT_FOUND
     assert path.read_text(encoding="utf-8") == _LIKELY
-    assert capsys.readouterr().out.endswith("; fixed 2; 2 more with --unsafe-fixes.\n")
+    assert capsys.readouterr().out.endswith("; fixed 3; 1 more with --unsafe-fixes.\n")
     _ = path.write_text(_GUESSED, encoding="utf-8")
     assert cli.main(["--fix", "--unsafe-fixes", "-q", str(path)]) == cli.EXIT_CLEAN
     guessed: str = path.read_text(encoding="utf-8")
