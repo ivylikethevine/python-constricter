@@ -11,14 +11,17 @@ binding a fix annotates, then the name, to the annotation and the import stateme
 
 As a statement that binds such a name ends, the annotation is evaluated where the statement is (its
 function's globals and locals, with the fix's imports), once, and the value is held to it: it's an
-instance of the class, or of one of a union's; a subscripted class is held to the class alone, not
-to its arguments. Each process writes, for each binding, how many times the value fit, didn't, and
-couldn't be told (`FIT`, `DIFFER`, `UNKNOWN`): an annotation that can't be evaluated there, a
-protocol no `isinstance` checks, a type variable with no bound, a value that's a test's mock.
+instance of the class, or of one of a union's. A builtin container is held to its annotation's
+arguments too, by its first elements (`_elements`); any other subscripted class to the class alone.
+Each process writes, for each binding, how many times the value fit, didn't, and couldn't be told
+(`FIT`, `DIFFER`, `UNKNOWN`): an annotation that can't be evaluated there, a protocol no `isinstance`
+checks, a type variable with no bound, a value that's a test's mock.
 """
 
+import collections
 import collections.abc
 import io
+import itertools
 import json
 import os
 import sys
@@ -62,6 +65,13 @@ _TAKEN: Final = {
     typing.BinaryIO: (io.IOBase,),
 }
 _UNSET: Final = object()
+_FIRST: Final = 100  # how many of an ordered container's elements are held to its annotation's arguments
+# The containers read without running anything of the value's own: these classes themselves, no subclass.
+_SETS: Final = (set, frozenset)
+_SEQUENCES: Final = (list, collections.deque)
+_MAPPINGS: Final = (dict, collections.defaultdict, collections.OrderedDict)
+_TUPLES: Final = (tuple,)
+_PAIR: Final = 2  # a mapping's arguments: its keys' type and its values'
 _ALIASED: Final = "__value__"  # where a `type` statement's alias keeps what it names
 _CALLABLE: Final = collections.abc.Callable
 # What makes a union: `X | Y`, and `Union[X, Y]` where that's another thing (before Python 3.14).
@@ -132,7 +142,48 @@ def _held(value: object, hint: object, origin: object, args: tuple[object, ...])
         return isinstance(value, type)
     if origin is _CALLABLE:
         return callable(value)
-    return _instance(value, hint if origin is None else origin)
+    found_class: bool | None = _instance(value, hint if origin is None else origin)
+    return _elements(value, origin, args) if found_class and origin is not None else found_class
+
+
+def _elements(value: object, origin: object, args: tuple[object, ...]) -> bool | None:
+    """Check a builtin container's elements against its annotation's arguments, `value` being of its class.
+
+    Its first `_FIRST`, in its order; a set's every one, whose order is no two runs'. A tuple's
+    parts one by one, where the annotation has them so. Not another class's (a subclass may run its
+    own code as it's read), nor one whose arguments aren't its elements' types.
+
+    Returns:
+      Whether they all are; `None` where one can't be told and none isn't, `True` for a container
+      this doesn't read.
+
+    """
+    found: list[bool | None]
+    if (
+        type(value) in _TUPLES and origin is tuple and args[-1:] != (Ellipsis,)
+    ):  # `tuple[()]` has no arguments
+        if len(cast("tuple[object, ...]", value)) != len(args):
+            return False
+        found = list(itertools.starmap(holds, zip(cast("tuple[object, ...]", value), args, strict=True)))
+    elif type(value) in _MAPPINGS and len(args) == _PAIR:
+        found = [
+            holds(each, arg)
+            for pair in itertools.islice(cast("dict[object, object]", value).items(), _FIRST)
+            for each, arg in zip(pair, args, strict=True)
+        ]
+    elif (
+        (type(value) in _SEQUENCES or type(value) in _SETS or type(value) in _TUPLES)
+        and args
+        and args[1:] in {(), (Ellipsis,)}
+    ):
+        most: int = len(cast("collections.abc.Sized", value)) if type(value) in _SETS else _FIRST
+        found = [
+            holds(each, args[0])
+            for each in itertools.islice(cast("collections.abc.Iterable[object]", value), most)
+        ]
+    else:
+        return True
+    return False if False in found else None if None in found else True
 
 
 def _stood_for(hint: object) -> object:

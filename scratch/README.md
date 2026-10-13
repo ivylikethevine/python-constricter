@@ -16,6 +16,9 @@ goes under `local/scratch/`.
 - `typeshed_client_compare.py [MODULE ...]`, with `typeshed-client` on `PYTHONPATH`: where
   `stdlib_tables.stubs` and `typeshed-client` read a stub differently, for every module and
   configuration: whether it exists, its names, their kinds and exports, its `__all__`.
+- `witness_checkers.py`, with `typeguard` and `beartype` on `PYTHONPATH`: values held to annotations
+  by the witness's `holds`, typeguard and beartype, where each differs from a type checker, whether
+  it runs the value's own code, and what each costs.
 - `threads_probe.py DIR [THREADS ...]`: a directory's files checked in one process on each count of
   threads, with the seconds and how many files' findings differ from one thread's; for a
   free-threaded Python (`local/.venv-ft`).

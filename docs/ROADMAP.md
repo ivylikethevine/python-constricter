@@ -332,6 +332,25 @@
   its largest process's most memory. A step is sized by a run of its own label before any other's (a
   probe's steps size only what no run of the label measured), and `check` and `census`, which read
   one check that the first to start runs, by the most either took.
+- **A source-built Python, optimized**: the corpus runs need a Python built from source (a prebuilt
+  one has no `test` package, 1,205 of the standard library's 1,867 files), and pyenv's
+  `python-build` configures one with `-O3 --enable-shared` alone. With
+  `PYTHON_CONFIGURE_OPTS="--enable-optimizations --with-lto --disable-shared"` a check of pandas
+  takes 57.9s in one process and 9.5s with every CPU, from 68.5s and 11.7s: the shared library costs
+  half of that (63.2s without it), profile-guided and link-time optimization the rest. The build
+  takes 4 minutes for half of one, and the findings are the same.
+- **The witness, past a container's class**: a builtin container is held to its annotation's
+  arguments, not its class alone: a list's, a deque's or a tuple's first 100 elements, a set's every
+  one, a dict's keys and values, a tuple's parts one by one. Only a value of the builtin class
+  itself (a subclass may run its own code as it's read), and what can't be told of an element can't
+  be told of its container. Five more of sqlalchemy's certain fixes differ so (20 of 1,026, from
+  15), each a declaration of its own its tests contradict (`tables: set[TableClause]`, holding a
+  `Subquery`); none more of pydantic's 482. `typeguard` and `beartype` were weighed for it
+  (`scratch/witness_checkers.py`): of the 50,957 fixes pydantic's, pandas's, sqlalchemy's and
+  django's suites judge, 3,333 are containers their tests bind, and 315 of those hold an element the
+  annotation doesn't name outright. `beartype` checks one element, chosen at random, and calls a
+  container's own `__len__`; `typeguard` checks them all, and is kept for annotations held to a run
+  (below).
 - **Fewer runs for the same counts**: a suite's traced tests start once `fix-unsafe` has ended and
   the other steps have their copies, and its type checks run beside its tests, on a checkout of
   their own. Its tests run after every guess first: the same as released, they stand for the tiers
@@ -519,9 +538,8 @@ current, its finer counts are as first measured. Where an item cites a sample, i
 of the standard library, pandas, django and sqlalchemy, each checked alone: 28,931 bindings with no
 fix.
 
-First, out of that order, the two that bring in a package, neither a dependency of the installed
-one: **The witness, past a value's class** (`typeguard` or `beartype`, for the tests), and **Timings
-by a tool made for them** (a trial of `hyperfine` or `pyperf`).
+First, out of that order, **Timings by a tool made for them**: a trial of `hyperfine` or `pyperf`,
+neither a dependency of the installed package.
 
 ### Small: under 4 hours
 
@@ -561,6 +579,13 @@ by a tool made for them** (a trial of `hyperfine` or `pyperf`).
    bytes down each worker's pipe. Write them where every worker reads them (a temporary file,
    `multiprocessing.shared_memory`). Unmeasured: time the telling on the standard library first.
    Done when telling 16 workers takes no longer than telling one. About 3 hours; coverage unchanged.
+7. **The corpus runs' checks, on a prebuilt Python.** uv's prebuilt 3.14.7 checks pandas in 55.3s in
+   one process and 9.3s with every CPU; a source build with profile-guided and link-time
+   optimization and no shared library, 57.9s and 9.5s. The prebuilt one has no `test` package, and
+   the standard-library corpus is the running Python's own (`trees`). Name that corpus's directory
+   apart from the interpreter (a source build's `Lib`), and run the steps on the prebuilt one. Done
+   when a full run on it counts the standard library's 1,867 files. About 2 hours; coverage
+   unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -669,21 +694,16 @@ by a tool made for them** (a trial of `hyperfine` or `pyperf`).
     `stdlib_tables/generate.py` (996), and `rules/scope.py` (995). A change to one of those is a
     split first. Split each along what it already groups (the generic classes out of `project.py`).
     Done when the warning names none. About 8 hours; coverage unchanged.
-11. **The witness, past a value's class.** The corpora runs hold a fixed binding's value to its
-    annotation as its package's traced tests bind it (`tests/corpus/witness`): an instance of the
-    class, not of its arguments (`list[int]` is held to `list`), and a test's own stand-in differs
-    (`FakeProcess`, passed where a `ServerProcess` is declared: mcp's one certain fix that differed,
-    narwhals's too). On the mega corpora's suites 16 of the 20 `constructor` guesses that differed
-    are a class the trace couldn't name, one a function or a test defines again at each call
-    (networkx's `StackFrame`, 95 of 100 values; seaborn's `CatScale`, 126 of 132). Hold a builtin
-    container's first elements to its arguments, and count a value whose class a test module defines
-    apart from one that differs. By `typeguard`'s `check_type`, told to check every item of a
-    collection, in place of `holds`'s own reading of an annotation; `beartype`'s `is_bearable` where
-    it tells a protocol's members and typeguard doesn't (unverified for either). A test dependency
-    only, installed where the witness runs: each suite's environment. Try it on pydantic's suite
-    first. Done when a certain fix that differs on the corpora is a declaration its package's tests
-    contradict (pydantic's `multiple_of: Decimal | None`, bound to an `int`). About 5 hours;
-    coverage unchanged.
+11. **The witness, past a test's own classes.** The corpora runs hold a fixed binding's value to its
+    annotation as its package's traced tests bind it (`tests/corpus/witness`), and a test's own
+    stand-in differs (`FakeProcess`, passed where a `ServerProcess` is declared: mcp's one certain
+    fix that differed, narwhals's too). On the mega corpora's suites 16 of the 20 `constructor`
+    guesses that differed are a class the trace couldn't name, one a function or a test defines
+    again at each call (networkx's `StackFrame`, 95 of 100 values; seaborn's `CatScale`, 126 of
+    132). Count a value whose class a test module defines apart from one that differs. Done when a
+    certain fix that differs on the corpora is a declaration its package's tests contradict
+    (pydantic's `multiple_of: Decimal | None`, bound to an `int`). About 3 hours; coverage
+    unchanged.
 12. **A suite's fixed runs, side by side.** A suite's fixed test runs follow one another on one
     checkout. For a suite of one process that can't take workers, that's most of its time at under a
     CPU: anyio's 870s and joblib's 1,093s (neither's tests run under pytest-xdist), pint's 408s,
@@ -855,10 +875,9 @@ by a tool made for them** (a trial of `hyperfine` or `pyperf`).
    annotated local, parameter and return held to what a run binds, and those a value differs from
    reported as an offence with the type seen. It needs the witness in the package (tested as the
    tracer is), a container's elements held to its arguments, and a protocol's members looked for
-   where `isinstance` can't. `typeguard` and `beartype` do the last two, as an optional extra there:
-   the package has no dependency. Done when a traced run of this project's own tests reports no
-   annotation of its own. About 14 hours; coverage unchanged: it finds wrong annotations, not
-   missing ones.
+   where `isinstance` can't. `typeguard` does the last two, as an optional extra there: the package
+   has no dependency. Done when a traced run of this project's own tests reports no annotation of
+   its own. About 14 hours; coverage unchanged: it finds wrong annotations, not missing ones.
 
 ## Ongoing
 
