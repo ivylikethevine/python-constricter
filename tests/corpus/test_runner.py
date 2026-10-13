@@ -204,7 +204,7 @@ def test_a_step_waits_for_the_cpus_and_the_memory_it_wants() -> None:
         slots.give(slots.take(1, 10), 10)
         started.set()
 
-    waiting: threading.Thread = threading.Thread(target=alone)
+    waiting: threading.Thread = threading.Thread(target=alone, daemon=True)
     waiting.start()
     assert not started.wait(0.2)
     slots.give(held, 6)
@@ -249,10 +249,10 @@ def test_a_step_that_waited_long_has_whats_free_kept_for_it(monkeypatch: pytest.
         slots.give(slots.take(cpus))
         started.append(name)
 
-    large: threading.Thread = threading.Thread(target=step, args=("large", 3))
+    large: threading.Thread = threading.Thread(target=step, args=("large", 3), daemon=True)
     large.start()
     assert _waited(slots)
-    small: threading.Thread = threading.Thread(target=step, args=("small", 1))
+    small: threading.Thread = threading.Thread(target=step, args=("small", 1), daemon=True)
     small.start()
     small.join(0.3)
     assert not started

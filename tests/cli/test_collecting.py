@@ -54,3 +54,15 @@ def test_by_hand_without_freezing(monkeypatch: pytest.MonkeyPatch) -> None:
         assert not _FREEZES or gc.get_freeze_count() == 0
         collecting.sweep()
     assert gc.isenabled()
+
+
+def test_a_collector_without_generations_isnt_run_after_each_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A free-threaded build's looks through everything each time: a sweep there collects nothing."""
+    collected: list[int] = []
+    monkeypatch.setattr(gc, "collect", collected.append)
+    monkeypatch.setattr(collecting, "_YOUNGER", False)
+    collecting.sweep()
+    assert not collected
+    monkeypatch.setattr(collecting, "_YOUNGER", True)
+    collecting.sweep()
+    assert collected == [1]

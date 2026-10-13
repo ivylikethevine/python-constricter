@@ -153,10 +153,9 @@ class Slots:
         if any(other.memory >= self.memory for other in self.waiting):
             return False
         kept: float = time.monotonic() - _PATIENCE
-        if any(
-            other.since < min(kept, waiter.since) and not self._fits(other.cpus, other.memory)
-            for other in self.waiting
-        ):
+        # Those that came before it, by their place: a coarse clock gives two the same time.
+        ahead: list[_Waiter] = self.waiting[: self.waiting.index(waiter)]
+        if any(other.since <= kept and not self._fits(other.cpus, other.memory) for other in ahead):
             return False
         return not any(
             other.lasting > waiter.lasting and self._fits(other.cpus, other.memory) for other in self.waiting

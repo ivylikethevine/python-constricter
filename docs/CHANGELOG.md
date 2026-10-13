@@ -6,6 +6,9 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- On a free-threaded Python a check no longer collects after every file: its collector has no
+  generations, and each collection looked through every kept tree. pandas's `core` checks in 3.9s in
+  one process there, from 11.4s.
 - Under a directory in a git checkout, only what git tracks or would is checked: nothing a
   `.gitignore` names. A path named on the command line is checked regardless, and `--no-gitignore`
   (`gitignore = false` in `[tool.constricter]`) walks the directory whole, as before.
