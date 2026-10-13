@@ -22,9 +22,10 @@ with `--only` isn't.
 Corpora are measured `at-once` at a time. Each step is a process of its own (`--step`), started once
 the CPUs it's expected to keep busy and the memory it's expected to hold are free (`sizing`), and its
 record says what its processes used: a corpus's steps side by side, then its suite's own tests and
-checks one after another on their checkout (those of one port one suite at a time), then its timed
-checks, with nothing beside them. Every step starts constricter one way (`launch.run`) on one tree
-a corpus (`trees.Tree`), so a count in one table is the count in another.
+checks one after another on their checkout (those of one port one suite at a time); and once every
+corpus is measured, each one's timed checks, with nothing beside them. Every step starts
+constricter one way (`launch.run`) on one tree a corpus (`trees.Tree`), so a count in one table is
+the count in another.
 """
 
 import contextlib
@@ -250,7 +251,7 @@ class Running(NamedTuple):
         """Measure one corpus with each of the run's versions.
 
         Its steps side by side, each on a copy or reading the tree; then its suite's, which wait
-        for its fixes and share its checkout, one after another; then the timed ones.
+        for its fixes and share its checkout, one after another. Not the timed ones (`timed`).
 
         Returns:
           The corpus's tree, and the steps that failed: each has its traceback in its log, and no
@@ -269,8 +270,28 @@ class Running(NamedTuple):
             beside: list[str] = [name for name in every if name not in sizing.TIMED]
             failed += self.steps(entry, job, beside, len(beside))
             failed += self.steps(entry, job, list(suite_steps.waiting(job)))
-            failed += self.steps(entry, job, [name for name in every if name in sizing.TIMED])
         return tree, failed
+
+    def timed(self, entry: catalog.Entry, tree: trees.Tree) -> list[str]:
+        """Run a corpus's timed steps with each of the run's versions, one after another.
+
+        Each holds every CPU: started while other corpora are measured, it would wait for them all
+        holding its corpus's turn, and no other corpus would start.
+
+        Returns:
+          The steps that failed.
+
+        """
+        failed: list[str] = []
+        version: str
+        for version in self.run.versions:
+            job: pipeline.Job = pipeline.Job(self.run, self.store, tree, version)
+            failed += self.steps(
+                entry,
+                job,
+                [name for name in pipeline.steps(self.run) if name in sizing.TIMED],
+            )
+        return failed
 
 
 def _said(run: Run, argv: Sequence[str]) -> Run:
@@ -371,7 +392,7 @@ def _folder(argv: Sequence[str], run: Run, facts: Record) -> Path:
 
 
 def _all(run: Run, store: pipeline.Store) -> list[_Measured]:
-    """Measure each of the run's corpora, `at-once` of them at a time, their steps sharing the machine.
+    """Measure each of the run's corpora, `at-once` of them at a time, then time each: nothing beside it.
 
     Each version's constricter is found first, a release installed: the steps are processes of
     their own, and two would install it at once.
@@ -396,7 +417,14 @@ def _all(run: Run, store: pipeline.Store) -> list[_Measured]:
     )
     pool: ThreadPoolExecutor
     with ThreadPoolExecutor(run.at_once) as pool:
-        return list(pool.map(running.measured, entries))
+        measured: list[_Measured] = list(pool.map(running.measured, entries))
+    entry: catalog.Entry
+    tree: trees.Tree | None
+    failed: list[str]
+    for entry, (tree, failed) in zip(entries, measured, strict=True):
+        if tree is not None:
+            failed.extend(running.timed(entry, tree))
+    return measured
 
 
 if __name__ == "__main__":

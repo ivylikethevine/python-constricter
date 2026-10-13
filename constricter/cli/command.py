@@ -31,6 +31,7 @@ from constricter.offences import (
     DEFAULT_CHECKS,
     Checks,
     Edit,
+    Fix,
     Offence,
 )
 from constricter.rules import parsed
@@ -184,7 +185,10 @@ def fix_file(path: Path, offences: Sequence[Offence]) -> int:
     return count
 
 
-HINT_ROUNDS: Final = 4  # with `--fix --infer-with`: how many times each file is fixed, at most
+HINT_ROUNDS: Final = 4  # with `--fix`: how many times a file is fixed, at most (see `_settled`)
+# The fix kinds a scope's check comes to late, once the scope is read: what was bound to such a
+# name's value before had no type yet, and has one once the fix is written.
+_LATE_KINDS: Final = frozenset({"optional", "filled"})
 
 
 def _shown_lines(raw: str, name: Path) -> dict[tuple[int | None, int], str]:
@@ -377,9 +381,8 @@ def _check_rounds(options: Options) -> tuple[list[Path], list[FileRun]]:
 
     With `--infer-with`, the type checker's server runs throughout: it's asked for every file's
     hints first, and with `--fix`, each file a round changed is asked again and checked again, as its
-    new annotations change what the checker infers, until a round changes nothing (at most
-    `HINT_ROUNDS`). A baseline records offences, and coverage counts annotations: hints change
-    neither, only what `--fix` offers.
+    new annotations change what the checker infers (see `_settled`). A baseline records offences,
+    and coverage counts annotations: hints change neither, only what `--fix` offers.
 
     Returns:
       The names, and what each file found.
@@ -397,7 +400,7 @@ def _check_rounds(options: Options) -> tuple[list[Path], list[FileRun]]:
     if options.mode in {Mode.COVERAGE, Mode.WRITE_BASELINE}:
         return names, _checked_all(paths, check, options)[0]
     if not options.infer_with:
-        return names, _called_again(paths, _checked_all(paths, check, options), check, options)[0]
+        return names, _settled(paths, check, options, None)
     session: hints.Session
     # Imported only for `--infer-with`: it's slow to import, for every run's start.
     with cast("type[hints.Session]", importlib.import_module("constricter.cli.hints").Session)(
@@ -406,42 +409,72 @@ def _check_rounds(options: Options) -> tuple[list[Path], list[FileRun]]:
         options.jobs,
         options.infer_memory,
     ) as session:
-        runs: list[FileRun]
-        modules: project.Index
-        runs, modules = _called_again(
-            paths,
-            _checked_all(paths, check, options, session),
-            check,
-            options,
-            session,
-        )
-        # The files the last round changed: only their hints can have changed.
-        again: list[int] = [
-            index
-            for index, run in enumerate(runs)
-            if options.mode is Mode.FIX and isinstance(run, CheckRun) and run.fixed and paths[index] != STDIN
-        ]
-        for _ in range(HINT_ROUNDS - 1):
-            if not again:
-                break
-            redone: list[FileRun] = _checked_all(
-                [paths[i] for i in again],
-                check,
-                options,
-                session,
-                modules,
-            )[0]
-            index: int
-            run: FileRun
-            for index, run in zip(again, redone, strict=True):
-                runs[index] = merged(runs[index], run)
-            again = [index for index, run in zip(again, redone, strict=True) if cast("CheckRun", run).fixed]
+        runs: list[FileRun] = _settled(paths, check, options, session)
         checker: str
         path: Path
         for checker, path in session.abandoned:
             name: Path = options.input.name(path)
             _ = sys.stderr.write(f"constricter: warning: {checker} hung on {name} twice: no hints for it\n")
     return names, runs
+
+
+def _settled(
+    paths: Sequence[Path],
+    check: Callable[[Path, Outside], FileRun],
+    options: Options,
+    session: "hints.Session | None",
+) -> list[FileRun]:
+    """Check every file, then again each one `--fix` changed in a way a second check would see.
+
+    Until a round changes nothing, `HINT_ROUNDS` at most: a second pass is then left nothing.
+
+    Returns:
+      What each file found, a file's rounds joined.
+
+    """
+    runs: list[FileRun]
+    modules: project.Index
+    runs, modules = _called_again(
+        paths,
+        _checked_all(paths, check, options, session),
+        check,
+        options,
+        session,
+    )
+    again: list[int] = [
+        index
+        for index, run in enumerate(runs)
+        if options.mode is Mode.FIX and paths[index] != STDIN and _unsettled(run, session)
+    ]
+    for _ in range(HINT_ROUNDS - 1):
+        if not again:
+            break
+        redone: list[FileRun] = _checked_all([paths[i] for i in again], check, options, session, modules)[0]
+        index: int
+        run: FileRun
+        for index, run in zip(again, redone, strict=True):
+            runs[index] = merged(runs[index], run)
+        again = [index for index, run in zip(again, redone, strict=True) if _unsettled(run, session)]
+    return runs
+
+
+def _unsettled(run: FileRun, session: "hints.Session | None") -> bool:
+    """Check whether a round of `--fix` changed a file in a way that changes what's inferred there.
+
+    Returns:
+      Whether it fixed anything, with a type checker's hints: its new annotations change them.
+      Without, whether it made a fix the scope's check comes to late (`_LATE_KINDS`): what's bound
+      to such a name's value was read before its type was known.
+
+    """
+    checked: CheckRun = cast("CheckRun", run)
+    return bool(checked.fixed) and (
+        session is not None
+        or any(
+            isinstance(made.offence.edit, Fix) and made.offence.edit.kinds & _LATE_KINDS
+            for made in checked.made
+        )
+    )
 
 
 def _called_again(

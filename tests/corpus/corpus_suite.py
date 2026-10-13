@@ -102,8 +102,9 @@ _SETTINGS: Final = (
 )
 _PYRIGHTS: Final = frozenset({"pyright", "basedpyright"})
 _PROJECT: Final = frozenset({"-p", "--project"})  # Pyright's option naming its settings
-# pytest's `-rfE` lines, and unittest's (Django's runner's) headers of each failure and error
-_FAILED: Final = re.compile(r"^(?:FAILED |ERROR |FAIL: |ERROR: )(\S+(?: \([\w.]+\))?)", re.MULTILINE)
+# pytest's `-rfE` lines, and unittest's (Django's runner's) headers of each failure and error: not a
+# logged line (`ERROR - 2026-10-13 ... - litestar - ...`).
+_FAILED: Final = re.compile(r"^(?:FAILED |ERROR (?!- )|FAIL: |ERROR: )(\S+(?: \([\w.]+\))?)", re.MULTILINE)
 # pytest's summary's counts, but its warnings': those come and go between runs of the same code.
 _COUNTS: Final = re.compile(r"(\d+) (passed|failed|skipped|xfailed|xpassed|errors?)")
 # pytest's summary line, bare (`-q`) or between `=`s: its counts, before how long it took
@@ -270,11 +271,19 @@ def _settled(root: Path) -> None:
             _ = stream.write(f"/{name}\n")
 
 
-def checkout(name: str, suite: Suite, apart: str = "", *, install: bool = True) -> Path:
+def checkout(
+    name: str,
+    suite: Suite,
+    apart: str = "",
+    *,
+    install: bool = True,
+    variables: Mapping[str, str] | None = None,
+) -> Path:
     """Clone (once) `suite` at its tag and install it and its test dependencies (once for its commands).
 
     `apart`: names another checkout of it, for what's to run beside its tests (its type checks).
-    Without `install`, the clone alone: its source, with no environment.
+    Without `install`, the clone alone: its source, with no environment. `variables`: what its
+    corpus's commands need set, its install's too (a build without its C extensions, say).
 
     Returns:
       The checkout.
@@ -304,7 +313,13 @@ def checkout(name: str, suite: Suite, apart: str = "", *, install: bool = True) 
         for command in suite.install:
             status: int
             output: str
-            status, output = _run([uv, *command], root, suite.left_out)
+            ran: subprocess.CompletedProcess[str] = _completed(
+                [uv, *command],
+                root,
+                suite.left_out,
+                more=variables,
+            )
+            status, output = ran.returncode, ran.stdout + ran.stderr
             if status:
                 message: str = f"{name}: uv {' '.join(command)} failed:\n{output}"
                 raise RuntimeError(message)
@@ -351,7 +366,9 @@ def _summary(output: str) -> str:
     ran: list[tuple[str, str]] = cast("list[tuple[str, str]]", _RAN_SUMMARY.findall(output))
     if ran and not found:
         return ": ".join(ran[-1])
-    return found[-1] if found else output.strip().rsplit("\n", 1)[-1]
+    if found:  # pytest-pretty's counts are a line each
+        return ", ".join(line.strip() for line in found[-1].strip().splitlines())
+    return output.strip().rsplit("\n", 1)[-1]
 
 
 def tested(root: Path, suite: Suite, keep: Path | None) -> Outcome:
@@ -369,7 +386,7 @@ def tested(root: Path, suite: Suite, keep: Path | None) -> Outcome:
     if keep is not None:
         keep.parent.mkdir(parents=True, exist_ok=True)
         _ = keep.write_text("\n".join(outputs), encoding="utf-8")
-    return _added([_outcome(output) for output in outputs])
+    return _added([read(output) for output in outputs])
 
 
 def _commands(suite: Suite) -> list[list[str]]:
@@ -397,7 +414,7 @@ def _added(outcomes: Sequence[Outcome]) -> Outcome:
     return Outcome(dict(counts), outcomes[0].failed.union(*(each.failed for each in outcomes)))
 
 
-def _outcome(output: str) -> Outcome:
+def read(output: str) -> Outcome:
     """Read a test run's output, pytest's or unittest's.
 
     Returns:
@@ -479,7 +496,7 @@ def traced(root: Path, suite: Suite, keep: Path | None = None) -> tuple[str, Out
     if keep is not None:
         keep.parent.mkdir(parents=True, exist_ok=True)
         _ = keep.write_text("\n".join(outputs), encoding="utf-8")
-    outcome: Outcome = _added([_outcome(output) for output in outputs])
+    outcome: Outcome = _added([read(output) for output in outputs])
     counted: str = ", ".join(f"{count} {kind}" for kind, count in outcome.counts.items())
     return (_summary(outputs[0]) if len(outputs) == 1 else counted), outcome
 

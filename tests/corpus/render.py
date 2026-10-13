@@ -211,7 +211,10 @@ def _traced(records: Records) -> _Rows:
         for version in records.versions:
             record: Record
             if record := records.of(tree, version, TRACED):
-                summary: str = str(record.get("summary", record.get("error", "")))
+                said: str = str(record.get("summary", record.get("error", "")))
+                summary: str = ", ".join(
+                    line.strip() for line in said.splitlines()
+                )  # pytest-pretty's: a count a line
                 took: _Row = [record.get("seconds", ""), records.of(tree, version, TESTS).get("seconds", "")]
                 rows.append([tree.name, version, "", "", "", "", record.get("resting", ""), summary, *took])
                 tier: str
@@ -318,7 +321,7 @@ def problems(records: Records) -> list[str]:
 
     A file that compiled before a fix and doesn't after; what a second pass of the certain fixes
     or of every guess would still fix; a fix whose patch a suite's checkout refuses; a suite's
-    tests stopped for running too long; and a suite's tests that differ after a fix by more than
+    tests stopped for running too long, traced or not; and its tests that differ after a fix by more than
     the tests its catalog entry names, both times they ran (`suite_steps.weighed`).
 
     Returns:
@@ -338,7 +341,7 @@ def problems(records: Records) -> list[str]:
         ran: Record
         fixed: dict[str, Record] = cast("dict[str, Record]", record["fixed"] if key[2] in _SUITE else {})
         if record.get("stopped"):
-            found.append(f"{where}: stopped as released: they ran too long")
+            found.append(f"{where}: its tests were stopped as released: they ran too long")
         for step, ran in fixed.items():
             if _ERROR in ran:
                 found.append(f"{where}: {step}'s patch didn't apply: {ran[_ERROR]}")

@@ -4,7 +4,8 @@
 Every step is a process of its own, started once the CPUs it's expected to keep busy and the memory
 it's expected to hold are free (`Slots`). A step is expected to do what it did in the latest earlier
 run under the run's output that measured it (`before`: the CPU seconds of every process under it
-over its seconds, and the most memory they held at once, `_MARGIN` over). Unmeasured:
+over its seconds, half the machine's CPUs at most, and the most memory they held at once, `_MARGIN`
+over). Unmeasured:
 
 - a suite's tests keep its workers busy (`Plan.workers`) and hold `worker-memory` for each; traced,
   what its `tests` step held where only that one is measured; a `heavy` suite's hold all there is;
@@ -14,7 +15,8 @@ over its seconds, and the most memory they held at once, `_MARGIN` over). Unmeas
   holds `_JOB_MEMORY` for each of constricter's `--jobs`.
 
 A step that wants all the memory there is, or more, runs alone. The timed steps (`timing`,
-`profile`) want every CPU, so nothing runs beside the check timed: they start once the rest is idle.
+`profile`) want every CPU, so nothing runs beside the check timed: the run starts them last, one at
+a time.
 
 The steps share the machine's CPUs and `_MEMORY_SHARE` of the memory free as the run starts, unless
 the run file says (`cpus`, `memory`). A step's use is read by `corpora_cpu`, which needs `psutil`:
@@ -47,7 +49,7 @@ _MEMORY_SHARE: Final = 0.8  # of the memory free as the run starts: the rest is 
 _MARGIN: Final = 1.25  # over the most a step was seen to hold: its readings are seconds apart
 _JOB_MEMORY: Final = GIB + GIB // 4  # what a step holds for each of constricter's `--jobs`, unmeasured
 _UNSIZED_SHARE: Final = 3  # the unmeasured steps starting the type checkers that the memory is split among
-_EARLIER: Final = 4  # the earlier runs read for what a step did
+_MOST_SHARE: Final = 2  # the most CPUs a step is given: the CPUs over this, or it waits for most to be idle
 _TESTING: Final = frozenset({TESTS, TRACED})  # the steps that run a suite's tests
 TIMED: Final = frozenset({TIMING, PROFILE})  # the steps nothing runs beside
 _AVAILABLE: Final = re.compile(r"^MemAvailable:\s*(\d+) kB", re.MULTILINE)
@@ -171,7 +173,7 @@ class Before(NamedTuple):
 
 
 def before(output: Path, run: Path) -> dict[tuple[str, str], Before]:
-    """Read what each step did in the latest earlier runs under `output` that measured it.
+    """Read what each step did in the latest earlier run under `output` that measured it.
 
     `run`: this run's folder, whose own records say nothing of a step still to run.
 
@@ -185,7 +187,7 @@ def before(output: Path, run: Path) -> dict[tuple[str, str], Before]:
     )
     found: dict[tuple[str, str], Before] = {}
     kept: Path
-    for kept in (kept for records in earlier[-_EARLIER:] for kept in sorted(records.glob("*/*/*.json"))):
+    for kept in (kept for records in earlier for kept in sorted(records.glob("*/*/*.json"))):
         used: Record = {}
         with contextlib.suppress(OSError, ValueError):
             used = cast("Record", cast("Record", json.loads(kept.read_text(encoding="utf-8"))).get(USED, {}))
@@ -253,6 +255,7 @@ class Plan(NamedTuple):
         testing: bool = step in _TESTING and tree.suite is not None
         workers: int = self.workers(tree.suite) if tree.suite is not None else 1
         cpus: int = math.ceil(known.cpus) if known is not None else workers if testing else _STEP_CPUS
+        cpus = min(cpus, max(_STEP_CPUS, self.cpus // _MOST_SHARE))
         memory: int
         if known is not None and known.memory:
             memory = int(known.memory * _MARGIN)

@@ -309,10 +309,10 @@
   process tree took in the last run under the same output, which its record keeps (`used`: its
   seconds, CPU seconds and the most memory held at once, read by `psutil`), a quarter over. An
   unmeasured traced step is sized by its suite's `tests` step; a step that wants all the memory runs
-  alone, and one that held over 8 GB beside others is noted. The timed checks hold every CPU, so
-  they run once the rest is idle. A suite's tests of one port run one suite at a time, and its tests
-  are stopped after `suite-seconds`. A stopped run resumes, and a run exits non-zero on anything a
-  fix broke or a step that failed, whose traceback its log keeps.
+  alone, and one that held over 8 GB beside others is noted. The timed checks hold every CPU, and
+  run last, one at a time. A suite's tests of one port run one suite at a time, and its tests are
+  stopped after `suite-seconds`. A stopped run resumes, and a run exits non-zero on anything a fix
+  broke or a step that failed, whose traceback its log keeps.
 - **A suite's own differences, told apart**: a fixed run whose tests differ is run again, with the
   released tests, the trace's fix as any other: a failure is the fix's only if both fixed runs have
   it and no released run does (nibabel's and litestar's come and go: litestar's
@@ -484,8 +484,8 @@ fix.
    first is written. Count a guess likely where every guess it rests on is, or the table's
    `Left, likely` stays above 0: 388 bindings on 26 of the mega corpora (networkx 49, dask 45, mypy
    and sphinx 40 each, mkdocs 30, textual 25, pdm 23), where a second pass with every guess leaves
-   10 (websockets 8, mypy 2). Done when it's 0 on the seven corpora and the mega corpora. About 3
-   hours; coverage unchanged.
+   nothing. Done when it's 0 on the seven corpora and the mega corpora. About 3 hours; coverage
+   unchanged.
 3. **One tier, decided once.** `Offence.likely`, `cli.options.Guesses.applies` and
    `corpora_steps.fix_tier` each decide whether a fix is certain, likely or another guess. Give
    `Offence` a `tier` the three read. Done when one function names a fix's tier. About an hour;

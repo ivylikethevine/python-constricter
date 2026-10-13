@@ -1,8 +1,9 @@
 # The corpora a run file can name (`python -m tests.corpus RUN.toml`), and the sets of them.
 #
 # [corpus.NAME]         `why` it's here, and its `version`; `kind = "stdlib"` for the running Python's
-#                       standard library. `environment`: what its commands need set. `port`: the port
-#                       its tests' own server binds (those of one port run one at a time). `alone`:
+#                       standard library. `environment`: what its commands need set, its install's
+#                       too. `port`: the port its tests' own server binds (those of one port run
+#                       one at a time). `alone`:
 #                       why it has no suite here. `heavy`: its suite's tests hold more memory than a
 #                       run's corpora can share, so no other suite runs beside them.
 # [corpus.NAME.sdist]   its sdist on PyPI's file host, hash-pinned: `where` (the directory under
@@ -17,8 +18,8 @@
 #                       gigabytes one takes (1). `left-out`: requirements it can't build here.
 #                       `submodules`: its build needs them. `script`: what runs its tests in one
 #                       process, where pytest doesn't. `differs`: a table of the tests a fix may
-#                       change the outcome of, each with why; a run reports them apart, and a
-#                       difference in these alone is none. `parts`: its tests' arguments, each
+#                       change the outcome of (or a file or a class of them), each with why; a
+#                       run reports them apart, and a difference in these alone is none. `parts`: its tests' arguments, each
 #                       part run after `tests` in a process of its own, their outcomes added up.
 #
 # A corpus with a suite is checked in its checkout, with its settings and environment; one with an
@@ -652,7 +653,9 @@ repository = "https://github.com/zarr-developers/zarr-python"
 tag = "v3.4.0"
 source = "src/zarr"
 install = ["pip -e . --group test"]
-tests = "--ignore tests/benchmarks"
+# Its CI runs them in one process, 15 minutes here; pytest-xdist is in its test group. Its
+# regression tests start scripts with `uv run`, which builds numcodecs from source here: 12 minutes.
+tests = "-n {workers} --ignore tests/benchmarks --ignore tests/test_regression"
 checks = []
 
 [corpus.nibabel]
@@ -773,6 +776,9 @@ source = "litestar"
 install = ["sync"]
 tests = "tests -n {workers}"
 checks = ["mypy", "pyright"]
+
+[corpus.litestar.suite.differs]
+"tests/unit/test_handlers/test_websocket_handlers/test_stream.py" = "its stream tests fail from run to run beside other suites, as released too"
 
 [corpus.narwhals]
 why = "its own overloads"

@@ -10,7 +10,7 @@ from typing import IO, Final, TypeAlias, cast
 
 import pytest
 
-from tests.corpus import catalog, pipeline, render, sizing, suite_steps
+from tests.corpus import catalog, corpus_suite, pipeline, render, sizing, suite_steps
 from tests.corpus.corpus_suite import Outcome
 from tests.corpus.pipeline import Record, Store
 from tests.corpus.run_config import CERTAIN, CSV, DEV, JSON, LIKELY, MARKDOWN, Run, Steps, parse
@@ -266,6 +266,12 @@ def test_a_fixed_runs_failures_are_the_fixs_only_if_it_has_them_both_times() -> 
     black: catalog.Suite | None = catalog.load().entries["black"].suite
     assert black is not None
     assert [test.rpartition("::")[2] for test, _ in black.differs] == ["test_piping"]
+    flaky: Outcome = Outcome({}, frozenset({"tests/test_black.py::BlackTestCase::test_piping", _FAILED}))
+    whole: catalog.Suite = black._replace(differs=(("tests/test_black.py", "its tests come and go"),))
+    assert suite_steps.told(black, [flaky]) == suite_steps.told(whole, [flaky]) == flaky.failed - {_FAILED}
+    assert corpus_suite.read("ERROR - 2026-10-13 - logged\nFAILED tests/test_a.py::test_a - x\n").failed == {
+        _FAILED,
+    }
 
 
 def test_each_execution_has_a_folder_named_by_its_label_and_time() -> None:

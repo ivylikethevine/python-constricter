@@ -43,8 +43,9 @@ if TYPE_CHECKING:
 
 _Entry: TypeAlias = dict[str, object]
 _TRACED_KIND: Final = "traced"  # the mechanism of a fix that rests on a trace
-# The counts a test that fails where it passed moves between: a run's others say what else changed.
-_MOVED: Final = frozenset({"passed", "failed", "error", "failures", "errors"})
+# The counts a test moves between, failing where it passed or passing where it was expected to fail
+# (altair's does from run to run): a run's others say what else changed.
+_MOVED: Final = frozenset({"passed", "failed", "error", "failures", "errors", "xfailed", "xpassed"})
 
 
 def _outcome(outcome: corpus_suite.Outcome) -> Record:
@@ -101,19 +102,31 @@ def weighed(
 def _patched(job: Job, step: str) -> str | None:
     """Take the suite's checkout to its tag's source, then apply the patch a fix step kept.
 
+    But for the files git doesn't track there (a build's generated `_version.py`): `reset` can't
+    take one back to what it was, and the next patch wouldn't apply.
+
     Returns:
       `None` once it's applied; why it wasn't, where git refuses it.
 
     """
     suite: corpus_suite.Suite = cast("corpus_suite.Suite", job.tree.suite)
-    corpus_suite.reset(cast("Path", job.tree.base), suite)
+    base: Path = cast("Path", job.tree.base)
+    corpus_suite.reset(base, suite)
     patch: Path = job.store.path(job.tree.name, job.recorded, step, ".patch")
-    applied: subprocess.CompletedProcess[str] = subprocess.run(
-        ["git", "apply", "--whitespace=nowarn", f"--directory={suite.source}", str(patch)],
+    untracked: str = subprocess.run(
+        ["git", "ls-files", "--others", "--", suite.source],
         capture_output=True,
         text=True,
         check=False,
-        cwd=job.tree.base,
+        cwd=base,
+    ).stdout
+    kept: list[str] = [f"--exclude={path}" for path in untracked.splitlines() if path.endswith(".py")]
+    applied: subprocess.CompletedProcess[str] = subprocess.run(
+        ["git", "apply", "--whitespace=nowarn", f"--directory={suite.source}", *kept, str(patch)],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=base,
     )
     return applied.stderr.strip() if applied.returncode else None
 
@@ -255,6 +268,7 @@ def traced(job: Job) -> Record:
         _TRACED_KIND in one.kinds.split("+") for one in itertools.chain(*_made(job, step).values())
     )
     record: Record = {"summary": ran[0], "resting": resting, "seconds": round(seconds, 1)} | _outcome(ran[1])
+    record["stopped"] = corpus_suite.stopped(ran[1])  # for running too long: its trace is a part of one
     return record | {key: dict(count) for key, count in _judged(job, made).items()}
 
 
@@ -360,7 +374,7 @@ def tests(job: Job) -> Record:
         corpus_suite.reset(base, suite)
         record["varies"] = released[1] != released[0]
         record["again"] = _outcome(released[1])
-    named: frozenset[str] = frozenset(test for test, _ in suite.differs)
+    named: frozenset[str] = told(suite, [*released, *_both(*first.values(), *again.values())])
     fixed: dict[str, Record] = {
         step: {"error": ran}
         if isinstance(ran, str)
@@ -368,6 +382,23 @@ def tests(job: Job) -> Record:
         for step, ran in first.items()
     }
     return record | {"released": _outcome(released[0]), "fixed": fixed}
+
+
+def told(suite: corpus_suite.Suite, runs: Sequence[corpus_suite.Outcome]) -> frozenset[str]:
+    """Find the tests `runs` failed that the catalog says a fix may change (`Suite.differs`).
+
+    Returns:
+      Each failed test it names: by itself, or by its file or its class (`tests/test_a.py`,
+      `tests/test_a.py::TestA`).
+
+    """
+    listed: tuple[str, ...] = tuple(test for test, _ in suite.differs)
+    return frozenset(
+        test
+        for each in runs
+        for test in each.failed
+        if test in listed or test.startswith(tuple(f"{part}::" for part in listed))
+    )
 
 
 def _both(*runs: corpus_suite.Outcome | str | None) -> list[corpus_suite.Outcome]:

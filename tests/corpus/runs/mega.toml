@@ -9,7 +9,7 @@ label = "mega"
 versions = ["dev"]
 jobs = 4
 at-once = 8
-suite-seconds = 900 # the longest suite's tests took 6 minutes a run
+suite-seconds = 900 # the longest suite's tests take 6 minutes a run
 
 [corpora]
 include = ["mega"]

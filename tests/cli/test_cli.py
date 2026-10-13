@@ -428,6 +428,39 @@ def test_fix_adds_the_annotations_values_decide(tmp_path: Path, capsys: pytest.C
     assert cli.fix_file(path, []) == 0
 
 
+# What a run's second round writes over `key = None`, once `keys` is typed by what fills it.
+_LATE: Final = "    key: bytes | None = None\n    keys: list[bytes] = []\n"
+
+
+def test_fix_checks_a_file_again_after_a_fix_made_late(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A name bound from one typed late is typed in the same run: a second pass is left nothing.
+
+    `keys` is typed by what fills it once its function is read, after the loop over it; `key`, first
+    `None`, takes that loop's type in the run's next round.
+    """
+    source: str = (
+        "def f(held: dict[bytes, float]) -> None:\n"
+        "    key = None\n"
+        "    keys = []\n"
+        "    for key, _ in held.items():\n"
+        "        keys.append(key)\n"
+        "    for key in keys:\n"
+        "        del held[key]\n"
+    )
+    path: Path = _write(tmp_path / "late.py", source)
+    assert cli.main(["--fix", "--unsafe-fixes", "-q", str(path)]) == cli.EXIT_CLEAN
+    fixed: str = path.read_text(encoding="utf-8")
+    assert _LATE in fixed
+    _ = capsys.readouterr()
+    assert cli.main(["--diff", "--unsafe-fixes", "-q", str(path)]) == cli.EXIT_CLEAN
+    assert not capsys.readouterr().out
+    plain: Path = _write(tmp_path / "plain.py", "def g() -> None:\n    n = 1\n")
+    assert cli.main(["--fix", "-q", str(plain)]) == cli.EXIT_CLEAN
+
+
 def test_relaxed_hides_vague_and_nested_annotations(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

@@ -29,6 +29,11 @@ Notable changes, newest first. Each release's full notes are generated from its 
   corpus, its pinned sdist and its suite are in `tests/corpus/corpora.toml` (the seven's, and the
   mega corpora's 40 that `mega_packages.json` held), which each corpus script reads;
   `corpus_untyped.py`'s shapes are a module of their own (`untyped_shapes.py`).
+- One `--fix` leaves a second nothing where a fix is made late: a file in which a round wrote an
+  `optional` or a `filled` fix is checked again in the same run, as every changed file is with
+  `--infer-with`, since what was bound from such a name was read before its type was known
+  (`fullname = basename + "."` after `basename: str | None`, a loop over a list typed by what fills
+  it). A second pass still fixed 2 lines of mypy's and 8 of websockets'.
 - The corpus runner is the only script that starts constricter on a corpus: `super_corpora.py`,
   `mega_corpora.py`, their steps and their section, and `corpus_suite.py`'s command line are gone.
   `runs/super.toml` and `runs/mega.toml` write RUNS.md's `Super corpora` and `Mega corpora` sections

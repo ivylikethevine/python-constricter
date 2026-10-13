@@ -44,7 +44,12 @@ def found(entry: Entry, *, install: bool = True) -> Tree:
     if entry.stdlib:
         return Tree(entry.name, sysconfig.get_python_version(), Path(sysconfig.get_paths()["stdlib"]))
     if entry.suite is not None:
-        base: Path = corpus_suite.checkout(entry.name, entry.suite, install=install)
+        base: Path = corpus_suite.checkout(
+            entry.name,
+            entry.suite,
+            install=install,
+            variables=entry.environment,
+        )
         corpus_suite.reset(base, entry.suite)
         source: Path = base / entry.suite.source
         if not install:
