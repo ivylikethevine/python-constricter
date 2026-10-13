@@ -235,6 +235,7 @@ def _settings(
                 if isinstance(node.value, ast.Name)
             ),
             positional=callables.signatures(tree),
+            excused=late.excusing(lines),
         ),
         Seeded(
             keyed(tree, {} if outside is None else outside.parameters),

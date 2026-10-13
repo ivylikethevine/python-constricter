@@ -13,3 +13,9 @@ goes under `local/scratch/`.
 - `widen_pass.py`: what a second pass still fixes on each corpus after every `fix-widen` kind.
 - `widen_suites.py`: each suite's tests as released and after every `fix-widen` kind.
 - `widen_one.py`: one suite's tests after every `fix-widen` kind, their output and the diff kept.
+- `typeshed_client_compare.py [MODULE ...]`, with `typeshed-client` on `PYTHONPATH`: where
+  `stdlib_tables.stubs` and `typeshed-client` read a stub differently, for every module and
+  configuration: whether it exists, its names, their kinds and exports, its `__all__`.
+- `threads_probe.py DIR [THREADS ...]`: a directory's files checked in one process on each count of
+  threads, with the seconds and how many files' findings differ from one thread's; for a
+  free-threaded Python (`local/.venv-ft`).

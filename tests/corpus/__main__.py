@@ -72,6 +72,10 @@ _BOUND: Final = frozenset({pipeline.TESTS, pipeline.TRACED})  # the steps that b
 _DONE: Final = True  # what a future's `done` says once it is
 _POLL: Final = 0.2  # the seconds between looks at whether a step's process has ended
 _LOOK: Final = 60.0  # and between fittings of its hold to what it's using
+_MACOS: Final = "darwin"
+_MAXRSS: Final = (
+    1 if sys.platform == _MACOS else 1024
+)  # the bytes `ru_maxrss` counts in: kilobytes, but there
 
 
 def _facts(run: Run, started: datetime) -> Record:
@@ -183,7 +187,8 @@ class Running(NamedTuple):
         Returns:
           What the process and every one under it used: the most of what was read as it ran and
           of what the system counted for it and those it waited for, which has the ones too short
-          to read. Nothing where nothing counts it.
+          to read (their CPU seconds, and the largest one's most memory). Nothing where nothing
+          counts it.
 
         """
         command: list[str] = [sys.executable, "-m", "tests.corpus", _STEP, str(self.store.root)]
@@ -202,17 +207,18 @@ class Running(NamedTuple):
         ):
             if self.watcher is not None:
                 self.watcher.watch(process.pid)
-            counted: float = self._waited(process, hold)
+            counted: sizing.Used = self._waited(process, hold)
         if self.watcher is None:
             return sizing.Used()
         used: sizing.Used = sizing.Used(*self.watcher.used(process.pid))
-        return used._replace(cpu=max(used.cpu, counted))
+        return sizing.Used(max(used.cpu, counted.cpu), max(used.memory, counted.memory))
 
-    def _waited(self, process: subprocess.Popen[bytes], hold: "_Hold") -> float:
+    def _waited(self, process: subprocess.Popen[bytes], hold: "_Hold") -> sizing.Used:
         """Wait for a step's process, fitting its hold to what it's using as it runs (`Plan.fitted`).
 
         Returns:
-          The CPU seconds the system counted for it and the processes it waited for.
+          What the system counted for it and the processes it waited for: their CPU seconds, and
+          the most memory the largest of them held.
 
         """
         looked: float = time.perf_counter()
@@ -223,7 +229,7 @@ class Running(NamedTuple):
         for ended, status, usage in iter(partial(os.wait4, process.pid, os.WNOHANG), None):
             if ended:
                 process.returncode = os.waitstatus_to_exitcode(status)
-                return usage.ru_utime + usage.ru_stime
+                return sizing.Used(usage.ru_utime + usage.ru_stime, usage.ru_maxrss * _MAXRSS)
             time.sleep(_POLL)
             now: float = time.perf_counter()
             if self.watcher is not None and now - looked >= _LOOK:
@@ -236,7 +242,7 @@ class Running(NamedTuple):
                 )
                 hold.held = self.slots.resize(hold.held, fitted)
                 looked, before = now, seen.cpu
-        return 0.0
+        return sizing.Used()
 
     def step(self, entry: catalog.Entry, job: pipeline.Job, name: str) -> bool:
         """Run one step (`process`), once what it's expected to take is free (`sizing`).

@@ -279,6 +279,12 @@
 - **Notebooks** (`.ipynb`), checked and fixed per cell; every JSON file read allows comments and
   trailing commas; every public entry point takes `str` or `bytes`.
 
+- **A walk that asks git**: a directory is walked once, entering no directory it skips (a project's
+  `.venv` and `node_modules` aren't listed). In a git checkout only what git tracks there or would
+  is checked (`git ls-files`), so nothing a `.gitignore` names; a path named on the command line is
+  checked regardless, a directory git ignores included, and `--no-gitignore` (`gitignore = false`)
+  walks whole.
+
 ### Integrations
 
 - **Plugins** for flake8 and pylint (`C9101`–`C9112`); ruff through `lint.external`.
@@ -322,7 +328,10 @@
   most seconds still behind it first, its own and its suite's steps' after it, and what's free kept
   for one that waited five minutes. A running step's hold follows what it's using: an unmeasured one
   gives back what it isn't a minute in, and any one takes what it uses over its share from the next
-  to start; a step too short to be read is counted by the system's own total.
+  to start; a step too short to be read is counted by the system's own total, its CPU seconds and
+  its largest process's most memory. A step is sized by a run of its own label before any other's (a
+  probe's steps size only what no run of the label measured), and `check` and `census`, which read
+  one check that the first to start runs, by the most either took.
 - **Fewer runs for the same counts**: a suite's traced tests start once `fix-unsafe` has ended and
   the other steps have their copies, and its type checks run beside its tests, on a checkout of
   their own. Its tests run after every guess first: the same as released, they stand for the tiers
@@ -484,6 +493,17 @@
   wheel 395 KB). A build from a checkout downloads 75 MB (60 MB of it Node, which basedpyright
   depends on and the generator doesn't use) and generates them, about 12s on 4 cores. The Action
   pays it on every run, and a pre-commit hook once, on install.
+- **The stubs, read by `typeshed-client`** (`stdlib_tables/shed.py`), a build dependency `uv.lock`
+  pins beside basedpyright, both in the tables' stamp: it decides each stub's `sys.platform` and
+  `sys.version_info` blocks, lists what a body binds and resolves its imports, and
+  `stdlib_tables/stubs.py` binds what it lists in the stub's own order. The tables came out byte for
+  byte the same. Two things stay the generator's: whether a submodule exists in a Python version
+  (`typeshed-client` reads `VERSIONS` for the top-level module alone), and an `__all__` assigned
+  twice, where the last assignment stands.
+- **The installed modules' cache, swept** (`installed.swept`): each version and reading code has its
+  own part of the cache, and a run that writes to it sweeps, a day apart at most: entries of no
+  build's part go, another build's part unswept for a month, and its own entries unread for a month
+  or, the longest unread first, over 256 MB.
 
 ## Next
 
@@ -499,6 +519,10 @@ current, its finer counts are as first measured. Where an item cites a sample, i
 of the standard library, pandas, django and sqlalchemy, each checked alone: 28,931 bindings with no
 fix.
 
+First, out of that order, the two that bring in a package, neither a dependency of the installed
+one: **The witness, past a value's class** (`typeguard` or `beartype`, for the tests), and **Timings
+by a tool made for them** (a trial of `hyperfine` or `pyperf`).
+
 ### Small: under 4 hours
 
 1. **A guess another file's fix rests on.** `--fix --likely` checks a file again once it has written
@@ -510,13 +534,33 @@ fix.
    nothing on the seven corpora and the mega corpora. About 3 hours; coverage unchanged.
 2. **The runner's scheduling, measured.** Every corpus's steps now wait for the machine alone, the
    one with the most behind it first, and a running step's hold follows what it uses
-   (`tests/corpus/sizing.py`); a suite's tests run 6 times for 8, its traced tests start early, and
-   its type checks beside its tests. Measured on pydantic and pygments alone. The last mega run used
-   74% of its CPU seconds in 142 minutes, the last super run 59% in 51. Left to weigh on the next
-   ones: `most` holds pandas and django to 8 workers of the 32 and 16 they take, celery's parts run
-   one after another, and a suite's first `types` step installs its checkout. Done when a mega run
-   uses 85% of its CPU seconds, and one with no earlier run under its output takes within a tenth of
-   one sized by its own. About 2 hours beside the runs; coverage unchanged.
+   (`tests/corpus/sizing.py`); `check` and `census`, which read one check that the first to start
+   runs, are each held for the most either took; a suite's tests run 6 times for 8, its traced tests
+   start early, and its type checks beside its tests. Measured on pydantic and pygments alone. The
+   last mega run used 74% of its CPU seconds in 142 minutes, the last super run 59% in 51. Left to
+   weigh on the next ones: `most` holds pandas and django to 8 workers of the 32 and 16 they take,
+   celery's parts run one after another, and a suite's first `types` step installs its checkout.
+   Done when a mega run uses 85% of its CPU seconds, and one with no earlier run under its output
+   takes within a tenth of one sized by its own. About 2 hours beside the runs; coverage unchanged.
+3. **A step's use, from its control group.** `ru_maxrss` is one process's peak, and the sampler's
+   sum misses what lives between two readings. On Linux a step started in a scope of its own
+   (`systemd-run --user --scope`) has its whole tree's peak memory and CPU seconds counted by the
+   kernel (`memory.peak`, `cpu.stat`), the fork server's workers too. Only where a user's systemd
+   runs, which a CI container may not have: the sampler stays for the rest. Done when a step's
+   record there is its control group's. About 3 hours; coverage unchanged.
+4. **Timings by a tool made for them.** The `timing` step times a check in a loop of its own, with
+   nothing beside it. `hyperfine` (warm-up runs, outliers named, JSON) and `pyperf command` (with
+   `pyperf system tune`, unverified) time a command with statistics; either is one more tool to
+   install. Try one on the standard library and pandas. Done when it's adopted, or its spread is
+   shown to be no narrower than the step's own. About 2 hours; coverage unchanged.
+5. **Workers that start loaded.** Each worker imports constricter and reads the tables as it starts:
+   165 ms. Under `forkserver` (Python 3.14's on Linux), preload `constricter.cli.command`
+   (`multiprocessing.set_forkserver_preload`), so each is forked with them read. Done when a worker
+   starts in under 20 ms there, a check's findings the same. About 2 hours; coverage unchanged.
+6. **The index, sent once.** `schedule.sent` pickles the index once, and `Workers.tell` writes those
+   bytes down each worker's pipe. Write them where every worker reads them (a temporary file,
+   `multiprocessing.shared_memory`). Unmeasured: time the telling on the standard library first.
+   Done when telling 16 workers takes no longer than telling one. About 3 hours; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -596,16 +640,7 @@ fix.
    Black's are), by `hatch-mypyc`, with the whole suite run on the compiled build and the corpora's
    output compared with the pure one's. Done when a compiled wheel checks every corpus as the pure
    one does, and CI builds and tests both. About 8 hours, for a check 1.2 to 1.3 times as fast.
-7. **The stubs, read by `typeshed-client`.** `stdlib_tables/stubs.py` (532 of the generator's 3,774
-   lines) decides each stub's `sys.platform` and `sys.version_info` blocks, lists what it binds and
-   exports, and follows re-exports: what `typeshed-client` does, given the pinned basedpyright's
-   typeshed. Its names agree with ours for all 752 modules on all 12 configurations; whether a
-   module exists differs for 147 pairs (`VERSIONS`), unread yet. A build dependency only: the tables
-   are generated before a wheel is made. It doesn't read types or match overloads (`reading.py`,
-   `overloads.py`). Done when the tables come out byte for byte the same with `stubs.py` a layer
-   over it. About 5 hours; coverage unchanged.
-
-8. **Wider: a second pass that adds nothing.** With every `fix-widen` kind, a second
+7. **Wider: a second pass that adds nothing.** With every `fix-widen` kind, a second
    `--fix --unsafe-fixes` pass still fixes 13 bindings on the seven corpora (pandas 9, the standard
    library 3, pydantic 1): 12 a union of values that are guesses until the first pass declares what
    they rest on (`unions` joins certain types alone), one an `Any` the second pass types
@@ -613,7 +648,7 @@ fix.
    every kind (`scratch/widen_suites.py`); no corpora run widens. Done when a second pass leaves
    nothing on the seven (`scratch/widen_pass.py`). About 2 hours; coverage unchanged.
 
-9. **One way to follow a re-export.** `project.definition` follows a name through the imports a
+8. **One way to follow a re-export.** `project.definition` follows a name through the imports a
    module runs; `project._canonical` through those it makes for type checking alone too
    (`if TYPE_CHECKING:` in an `__init__` that imports its names on demand, as pydantic's does). A
    generic class is found either way; a class's members, a function's declared return and an alias
@@ -621,20 +656,20 @@ fix.
    Have the lookups share one, and measure on mcp and on pydantic's own tests. Done when
    `definition` follows what `_canonical` does, with no new type error on the suites. About 5 hours;
    coverage up, by what's read of a lazily exported class: unmeasured.
-10. **What a hint breaks, by its cause.** With `--infer-with basedpyright,ty,pyrefly` the packages'
-    own type checkers find 215 new errors on litestar, 123 on pandas, 49 on sqlalchemy, 34 on mypy,
-    20 on narwhals, 19 on optuna and 10 on mcp, nearly all traced to a hint's own fix (`checker`).
-    litestar's weren't read: its Pyright is set to Python 3.8. Count them by cause, as the guesses'
-    are above, and hold a hint to what the cause says. Done when a hinted run's new errors are under
-    one for each hundred of its hints' fixes on the three corpora type-checked. About 8 hours;
-    coverage down by the hints withdrawn.
-11. **Modules under 900 lines.** The Lint job warns of 15 past it, six within five lines of the
+9. **What a hint breaks, by its cause.** With `--infer-with basedpyright,ty,pyrefly` the packages'
+   own type checkers find 215 new errors on litestar, 123 on pandas, 49 on sqlalchemy, 34 on mypy,
+   20 on narwhals, 19 on optuna and 10 on mcp, nearly all traced to a hint's own fix (`checker`).
+   litestar's weren't read: its Pyright is set to Python 3.8. Count them by cause, as the guesses'
+   are above, and hold a hint to what the cause says. Done when a hinted run's new errors are under
+   one for each hundred of its hints' fixes on the three corpora type-checked. About 8 hours;
+   coverage down by the hints withdrawn.
+10. **Modules under 900 lines.** The Lint job warns of 15 past it, six within five lines of the
     1,000 pylint fails one at: `fix/index/stubbed.py` (1,000), `stdlib_tables/overloads.py` (999),
     `tests/corpus/corpus_untyped.py` (997), `fix/values/inference.py` and
     `stdlib_tables/generate.py` (996), and `rules/scope.py` (995). A change to one of those is a
     split first. Split each along what it already groups (the generic classes out of `project.py`).
     Done when the warning names none. About 8 hours; coverage unchanged.
-12. **The witness, past a value's class.** The corpora runs hold a fixed binding's value to its
+11. **The witness, past a value's class.** The corpora runs hold a fixed binding's value to its
     annotation as its package's traced tests bind it (`tests/corpus/witness`): an instance of the
     class, not of its arguments (`list[int]` is held to `list`), and a test's own stand-in differs
     (`FakeProcess`, passed where a `ServerProcess` is declared: mcp's one certain fix that differed,
@@ -642,22 +677,32 @@ fix.
     are a class the trace couldn't name, one a function or a test defines again at each call
     (networkx's `StackFrame`, 95 of 100 values; seaborn's `CatScale`, 126 of 132). Hold a builtin
     container's first elements to its arguments, and count a value whose class a test module defines
-    apart from one that differs. Done when a certain fix that differs on the corpora is a
-    declaration its package's tests contradict (pydantic's `multiple_of: Decimal | None`, bound to
-    an `int`). About 5 hours; coverage unchanged.
-13. **A suite's fixed runs, side by side.** A suite's fixed test runs follow one another on one
+    apart from one that differs. By `typeguard`'s `check_type`, told to check every item of a
+    collection, in place of `holds`'s own reading of an annotation; `beartype`'s `is_bearable` where
+    it tells a protocol's members and typeguard doesn't (unverified for either). A test dependency
+    only, installed where the witness runs: each suite's environment. Try it on pydantic's suite
+    first. Done when a certain fix that differs on the corpora is a declaration its package's tests
+    contradict (pydantic's `multiple_of: Decimal | None`, bound to an `int`). About 5 hours;
+    coverage unchanged.
+12. **A suite's fixed runs, side by side.** A suite's fixed test runs follow one another on one
     checkout. For a suite of one process that can't take workers, that's most of its time at under a
     CPU: anyio's 870s and joblib's 1,093s (neither's tests run under pytest-xdist), pint's 408s,
     pydantic's 172s. Run them on checkouts of their own, at once. Not a suite whose tests bind a
     port (websockets, uvicorn, httpx), nor one that keeps its CPUs busy. Done when such a suite's
     `tests` step takes under twice its released run. About 5 hours; coverage unchanged.
-14. **django's traced tests, in more than one process.** The tracer doesn't follow the processes
+13. **django's traced tests, in more than one process.** The tracer doesn't follow the processes
     `multiprocessing` starts, so django's suite is traced with `--parallel=1`: 812s traced, the
     longest step of a super run, to 79s untraced on its workers (timed before a generator's returns
     were counted: time it again first). celery's parts are traced one after another too. Record in a
     forked child as a pytest-xdist worker records itself, or trace a suite's `parts` side by side, a
     trace file each. Done when django's traced tests take under 300s, the fixes resting on the trace
     the same. About 4 hours; coverage unchanged.
+14. **A traced run, sampled.** The tracer follows every line of a recorded function until its
+    statements have ended 20 times with nothing new: django's traced tests take 812s, 79s untraced.
+    Record in short windows at random times, with `sys.monitoring`'s events off between them, and
+    stop reading a large container once new types stop turning up. Done when pydantic's and django's
+    traced tests take under twice their untraced time, and the fixes resting on the trace are within
+    a hundredth of today's. About 6 hours; coverage unchanged.
 
 ### Large: more than 8 hours
 
@@ -810,7 +855,8 @@ fix.
    annotated local, parameter and return held to what a run binds, and those a value differs from
    reported as an offence with the type seen. It needs the witness in the package (tested as the
    tracer is), a container's elements held to its arguments, and a protocol's members looked for
-   where `isinstance` can't. Done when a traced run of this project's own tests reports no
+   where `isinstance` can't. `typeguard` and `beartype` do the last two, as an optional extra there:
+   the package has no dependency. Done when a traced run of this project's own tests reports no
    annotation of its own. About 14 hours; coverage unchanged: it finds wrong annotations, not
    missing ones.
 

@@ -106,6 +106,7 @@ OUTPUT: Final = ROOT / "constricter" / "fix" / "tables"  # one JSON file per tab
 # Where each function or class only some platforms and Python versions have is (the tests' alone).
 PARTIAL: Final = Path(__file__).with_name("partial.json")
 STUBS: Final = "basedpyright"  # the package whose bundled typeshed stubs the tables are read from
+READER: Final = "typeshed-client"  # and the one that reads them (`stdlib_tables.shed`)
 # The code that decides the tables: the generator's, and the modules of constricter it imports (a
 # test checks that's all of them).
 INPUTS: Final = (
@@ -775,22 +776,22 @@ def _common_lists(each: list[dict[str, list[str]]]) -> dict[str, list[str]]:
     return found
 
 
-def pinned() -> str:
-    """Find the basedpyright version the tables are read from: `uv.lock`'s, else the one they were.
+def pinned(package: str = STUBS) -> str:
+    """Find the version of `package` the tables are read from or with: `uv.lock`'s, else the one they were.
 
     An sdist has no `uv.lock`, but carries the tables and their stamp.
 
     Returns:
-      It.
+      It; nothing for a package the lock doesn't have yet (`uv lock` builds the project to write it).
 
     """
     if not _LOCK.exists():
-        return _written()[STUBS]
+        return _written()[package]
     lock: dict[str, list[_Locked]] = cast(
         "dict[str, list[_Locked]]",
         tomllib.loads(_LOCK.read_text(encoding="utf-8")),
     )
-    return next(package["version"] for package in lock["package"] if package["name"] == STUBS)
+    return next((locked["version"] for locked in lock["package"] if locked["name"] == package), "")
 
 
 def digest() -> str:
@@ -809,13 +810,24 @@ def digest() -> str:
 
 
 def stamp() -> dict[str, str]:
-    """Say what the tables would be generated from now: the basedpyright version, and `digest`.
+    """Say what the tables would be generated from now: the stubs' and their reader's versions, and `digest`.
 
     Returns:
       Each, by `source.json`'s key.
 
     """
-    return {STUBS: pinned(), "digest": digest()}
+    return {STUBS: pinned(), READER: pinned(READER), "digest": digest()}
+
+
+def requirements() -> list[str]:
+    """Name what generating the tables needs installed: the pinned stubs, and their pinned reader.
+
+    Returns:
+      Each requirement: by name alone where the lock has no version of it yet.
+
+    """
+    versions: dict[str, str] = {package: pinned(package) for package in (STUBS, READER)}
+    return [f"{package}=={version}" if version else package for package, version in versions.items()]
 
 
 def current() -> bool:
@@ -846,7 +858,7 @@ def _written() -> dict[str, str]:
 
 
 def typeshed() -> Path:
-    """Find the typeshed stubs the installed basedpyright bundles, which must be the pinned version.
+    """Find the typeshed stubs the installed basedpyright bundles: it and the reader at their pinned versions.
 
     Returns:
       Their directory.
@@ -855,11 +867,14 @@ def typeshed() -> Path:
       RuntimeError: if another version is installed.
 
     """
-    installed: importlib.metadata.Distribution = importlib.metadata.distribution(STUBS)
-    if installed.version != pinned():
-        message: str = f"{STUBS} {installed.version} is installed, but the tables are read from {pinned()}"
-        raise RuntimeError(message)
-    return Path(str(installed.locate_file(f"{STUBS}/dist/typeshed-fallback")))
+    package: str
+    for package in (READER, STUBS):
+        installed: str
+        if (installed := importlib.metadata.version(package)) != pinned(package):
+            message: str = f"{package} {installed} is installed, but the tables need {pinned(package)}"
+            raise RuntimeError(message)
+    stubs: importlib.metadata.Distribution = importlib.metadata.distribution(STUBS)
+    return Path(str(stubs.locate_file(f"{STUBS}/dist/typeshed-fallback")))
 
 
 def generate(stubs_root: Path | None = None) -> dict[Path, str]:

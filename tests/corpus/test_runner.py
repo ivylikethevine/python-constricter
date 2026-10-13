@@ -3,6 +3,7 @@
 
 import csv
 import json
+import os
 import threading
 import time
 from datetime import UTC, datetime
@@ -352,6 +353,21 @@ def test_a_step_is_given_what_it_took_in_the_last_run(tmp_path: Path) -> None:
         tmp_path,
     )
     assert (sized.cpus, sized.memory, sized.before) == (3, 2 * sizing.GIB, before)
+
+
+def test_a_step_is_sized_by_a_run_of_its_own_label_first(tmp_path: Path) -> None:
+    """A later run under another label sizes only the steps this label's runs didn't measure."""
+    probe: Store = Store(tmp_path / "probe-10-13-2026-0900")
+    probe.write("celery", "rc+dev", pipeline.TESTS, {"used": _USED | {"memory": 0.1}})
+    probe.write("celery", "rc+dev", pipeline.TYPES, {"used": _USED})
+    Store(tmp_path / "full-10-12-2026-0800").write("celery", "rc+dev", pipeline.TESTS, {"used": _USED})
+    os.utime(tmp_path / "full-10-12-2026-0800" / "records", (0, 0))
+    labelled: dict[tuple[str, str], sizing.Before] = sizing.before(
+        tmp_path,
+        tmp_path / "full-10-13-2026-1000",
+    )
+    assert labelled["celery", pipeline.TESTS].memory == int(9.5 * sizing.GIB)
+    assert ("celery", pipeline.TYPES) in labelled
 
 
 def test_a_fixed_runs_failures_are_the_fixs_only_if_it_has_them_both_times() -> None:

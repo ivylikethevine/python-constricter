@@ -3,10 +3,10 @@
 
 Every step is a process of its own, started once the CPUs it's expected to keep busy and the memory
 it's expected to hold are free (`Slots`). A step is expected to do what it did in the latest earlier
-run under the run's output that measured it (`before`: the CPU seconds of every process under it
-over its seconds, half the machine's CPUs at most, and the most memory they held at once, `_MARGIN`
-over). `check` and `census` read one check at `suffocate`, which the first of them to start runs: each
-is expected to do the most either did. Unmeasured:
+run under the run's output that measured it, one of its own label first (`before`: the CPU seconds
+of every process under it over its seconds, half the machine's CPUs at most, and the most memory
+they held at once, `_MARGIN` over). `check` and `census` read one check at `suffocate`, which the
+first of them to start runs: each is expected to do the most either did. Unmeasured:
 
 - a suite's tests keep its workers busy (`Plan.workers`) and hold `worker-memory` for each; traced,
   what its `tests` step held where only that one is measured; a `heavy` suite's hold all there is;
@@ -66,6 +66,7 @@ _SLACK: Final = 2.0  # over what an unmeasured step holds a minute in: it may ho
 TIMED: Final = frozenset({TIMING, PROFILE})  # the steps nothing runs beside
 _AVAILABLE: Final = re.compile(r"^MemAvailable:\s*(\d+) kB", re.MULTILINE)
 _MEMINFO: Final = Path("/proc/meminfo")
+_STAMPED: Final = re.compile(r"(-\d+){4}$")  # after a run's label in its folder's name: when it started
 _UNKNOWN: Final = 1 << 62  # the bytes shared where the machine doesn't say what it has: every step fits
 
 
@@ -221,15 +222,18 @@ class Before(NamedTuple):
 def before(output: Path, run: Path) -> dict[tuple[str, str], Before]:
     """Read what each step did in the latest earlier run under `output` that measured it.
 
-    `run`: this run's folder, whose own records say nothing of a step still to run.
+    A run with this one's label, if any measured it: a probe's or a stopped run's steps under another
+    label size only what none of its own has. `run`: this run's folder, whose own records say nothing
+    of a step still to run.
 
     Returns:
       Each step's use, by its corpus's directory and its name.
 
     """
+    label: str = _STAMPED.sub("", run.name)
     earlier: list[Path] = sorted(
         (each for each in output.glob("*/records") if each.parent != run),
-        key=lambda each: each.stat().st_mtime,
+        key=lambda each: (_STAMPED.sub("", each.parent.name) == label, each.stat().st_mtime),
     )
     found: dict[tuple[str, str], Before] = {}
     kept: Path

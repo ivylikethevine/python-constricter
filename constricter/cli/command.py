@@ -388,7 +388,9 @@ def _check_rounds(options: Options) -> tuple[list[Path], list[FileRun]]:
       The names, and what each file found.
 
     """
-    paths: list[Path] = list(python_files(options.input.paths, options.input.exclude))
+    paths: list[Path] = list(
+        python_files(options.input.paths, options.input.exclude, tracked=options.input.gitignore),
+    )
     check: Callable[[Path, Outside], FileRun]
     if options.mode is Mode.COVERAGE:
         check = partial(_cover_path, options=options)

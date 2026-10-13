@@ -27,7 +27,7 @@ Every count of typed bindings is this checkout's `--coverage`, whatever the vers
 """
 
 import difflib
-import fcntl
+import importlib
 import json
 import os
 import re
@@ -187,6 +187,15 @@ def _typed(job: Job, where: launch.Place) -> list[int] | None:
     return [int(found[1]), int(found[2])] if found else None
 
 
+def _hold(lock: IO[str]) -> None:
+    """Wait for `lock`'s file to be free, and hold it until it's closed.
+
+    By `fcntl`, found as it's called: Windows has none, where the tests import this and no step runs.
+    """
+    exclusive: int = cast("int", importlib.import_module("fcntl").LOCK_EX)
+    cast("Callable[[IO[str], int], None]", importlib.import_module("fcntl").flock)(lock, exclusive)
+
+
 def suffocated(job: Job) -> tuple[launch.Place, launch.Ran]:
     """Check the corpus at `suffocate` once for a job's steps: `check` and `census` both read it.
 
@@ -200,7 +209,7 @@ def suffocated(job: Job) -> tuple[launch.Place, launch.Ran]:
     kept: Path = job.work(_SHARED) / "check.json"
     lock: IO[str]
     with (job.work(_SHARED) / "lock").open("w", encoding="utf-8") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        _hold(lock)
         if kept.exists():
             had: _Entry = cast("_Entry", json.loads(kept.read_text(encoding="utf-8")))
             return where, launch.Ran(

@@ -6,6 +6,19 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- Under a directory in a git checkout, only what git tracks or would is checked: nothing a
+  `.gitignore` names. A path named on the command line is checked regardless, and `--no-gitignore`
+  (`gitignore = false` in `[tool.constricter]`) walks the directory whole, as before.
+- A directory walk enters no directory it skips: a project's `.venv`, `node_modules` and `.git` were
+  listed whole, then dropped.
+- The cache of installed modules' reads is swept as it's written to, a day apart at most: what's
+  unread for a month goes, and what's over 256 MB. Each constricter version has its own part of it;
+  the entries written before, which nothing removed, go on the first sweep.
+- The standard-library tables are generated with `typeshed-client` reading the stubs (a build
+  dependency, pinned in `uv.lock`): the same tables, byte for byte.
+- The corpus runner sizes a step by a run of its own label first, holds `check` and `census` for the
+  most either took (the first to start runs the check both read), and counts a short step's memory
+  by the system's own total. Its tests import on Windows again.
 - `--fix --likely` leaves a second pass nothing: a file a round wrote a guess in is checked again in
   the same run, since what rests on that guess and on no other is certain once it's declared
   (`held = thing if flag else None` after `thing: Thing = Thing()`). A second pass still fixed 3

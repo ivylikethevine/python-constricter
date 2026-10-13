@@ -243,9 +243,12 @@ Without `lint.external`, ruff flags `# noqa: LVA00x` (RUF102) and `--fix` delete
 
 The CLI defaults to `.`, checks `*.py` and `*.ipynb`, and skips hidden dirs, `__pycache__`, `venv`,
 `site-packages`, `build`, `dist` and `node_modules` by directory name; `--exclude` adds more
-directory names (or globs) to skip the same way, on top of matching whole paths and file names. Exit
-codes: `0` no errors, `1` errors, `2` an unreadable or unparsable file, a `--fix` its encoding can't
-hold, or a bad `pyproject.toml`. A module is read in its PEP 263 declaration's encoding.
+directory names (or globs) to skip the same way, on top of matching whole paths and file names.
+Under a directory in a git checkout it checks only what git tracks or would, so nothing a
+`.gitignore` names (a file named on the command line is checked regardless); `--no-gitignore`, or
+`gitignore = false`, walks the directory whole. Exit codes: `0` no errors, `1` errors, `2` an
+unreadable or unparsable file, a `--fix` its encoding can't hold, or a bad `pyproject.toml`. A
+module is read in its PEP 263 declaration's encoding.
 
 pre-commit, after ruff's hooks (or `constricter-fix`, which runs `--fix` first):
 

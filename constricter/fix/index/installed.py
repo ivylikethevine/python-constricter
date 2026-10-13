@@ -9,7 +9,8 @@ as `modules.read` reads a checked file, but never checked or fixed; the modules 
 their own package (re-exports) are read too, up to `LIMIT` modules in all. Each module read is
 cached (`cached`) under the user's cache directory, by its file's path, size and modification time
 and constricter's version and reading code: a package upgraded, or a changed constricter, reads it
-again.
+again. Each version and reading code has its own part of the cache, swept as it's written to, a day
+apart at most (`swept`): what's unread for a month goes, and what's over its cap.
 """
 
 import contextlib
@@ -19,6 +20,7 @@ import pickle  # the cache: written and read by constricter alone, in the user's
 import sys
 import sysconfig
 import tempfile
+import time
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import replace
 from functools import lru_cache
@@ -39,6 +41,11 @@ _STDLIB: Final = sys.stdlib_module_names
 _CACHE_HOME: Final = "XDG_CACHE_HOME"
 _LOCAL_APP_DATA: Final = "LOCALAPPDATA"  # Windows'
 _CACHE: Final = "constricter"
+_ENTRIES: Final = "*.pickle"
+_SWEPT: Final = ".swept"  # in a build's part of the cache: touched when that build last swept it
+_DAY: Final = 86400.0  # the seconds between a build's sweeps
+_KEPT: Final = 30 * _DAY  # the seconds an entry is kept unread, and another build's part unswept
+_CAP: Final = 256 << 20  # the bytes a build's entries may take: past it, the longest unread go
 
 
 def search_path() -> tuple[Path, ...]:
@@ -168,8 +175,8 @@ def cached(path: Path, name: str) -> Module | None:
         stat: os.stat_result = path.stat()
     except OSError:
         return None
-    key: str = f"{__version__}\0{_code()}\0{name}\0{path.resolve()}\0{stat.st_size}\0{stat.st_mtime_ns}"
-    entry: Path = cache_directory() / f"{hashlib.sha256(key.encode()).hexdigest()}.pickle"
+    key: str = f"{name}\0{path.resolve()}\0{stat.st_size}\0{stat.st_mtime_ns}"
+    entry: Path = _own() / f"{hashlib.sha256(key.encode()).hexdigest()}.pickle"
     module: Module | None
     if (module := _load(entry)) is not None:
         return module
@@ -193,16 +200,84 @@ def _code() -> str:
     return hashlib.sha256(b"\0".join(source.read_bytes() for source in sources)).hexdigest()
 
 
+def _own() -> Path:
+    """Find this build's part of the cache: another version's or build's entries unpickle wrong.
+
+    Returns:
+      Its directory, named by the version and `_code` (not made yet).
+
+    """
+    return cache_directory() / hashlib.sha256(f"{__version__}\0{_code()}".encode()).hexdigest()[:16]
+
+
 def _load(entry: Path) -> Module | None:
-    """Read a cache entry.
+    """Read a cache entry, and mark one read after half its keep as read now.
 
     Returns:
       Its module, or `None` if there's none, or it can't be read.
 
     """
     with contextlib.suppress(OSError, pickle.UnpicklingError, EOFError, AttributeError, TypeError):
-        return _module(cast("object", pickle.loads(entry.read_bytes())))
+        module: Module | None = _module(cast("object", pickle.loads(entry.read_bytes())))
+        if _age(entry, time.time()) > _KEPT / 2:
+            os.utime(entry)
+        return module
     return None
+
+
+def _age(path: Path, now: float) -> float:
+    """Find how long ago `path` was written or marked read.
+
+    Returns:
+      The seconds; none for one that can't be read, which is then kept.
+
+    """
+    try:
+        return now - path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _dropped(part: Path) -> None:
+    """Remove a build's part of the cache: its entries, what a stopped write left, and its directory."""
+    with contextlib.suppress(OSError):
+        each: Path
+        for each in (*part.glob(_ENTRIES), *part.glob("*.tmp"), part / _SWEPT):
+            each.unlink(missing_ok=True)
+        part.rmdir()
+
+
+@lru_cache(maxsize=4)  # once a process for a cache, as it first writes there
+def swept(own: Path) -> None:
+    """Sweep the cache, a day or more after this build last did.
+
+    The entries no build's part holds (the cache's, before each had one) go, and another build's
+    part unswept for `_KEPT`: one still used sweeps, and marks its own. Of this build's entries,
+    those unread for `_KEPT`, then the longest unread until the rest fit `_CAP`.
+    """
+    now: float = time.time()
+    if (own / _SWEPT).exists() and _age(own / _SWEPT, now) < _DAY:
+        return
+    with contextlib.suppress(OSError):
+        (own / _SWEPT).touch()
+        other: Path
+        for other in own.parent.iterdir():
+            if other.match(_ENTRIES):
+                other.unlink(missing_ok=True)
+            elif other != own and len(other.name) == len(own.name) and _age(other / _SWEPT, now) > _KEPT:
+                _dropped(other)
+        held: list[tuple[float, int, Path]] = sorted(
+            (stat.st_mtime, stat.st_size, entry) for entry in own.glob(_ENTRIES) for stat in (entry.stat(),)
+        )
+        size: int = sum(taken for _, taken, _ in held)
+        written: float
+        taken: int
+        entry: Path
+        for written, taken, entry in held:
+            if now - written <= _KEPT and size <= _CAP:
+                break
+            entry.unlink(missing_ok=True)
+            size -= taken
 
 
 def _module(found: object) -> Module | None:
@@ -219,6 +294,7 @@ def _store(entry: Path, module: Module) -> None:
         os.close(handle)
         _ = Path(temporary).write_bytes(pickle.dumps(module))
         _ = Path(temporary).replace(entry)
+        swept(entry.parent)
 
 
 def _imported(found: Iterable[Module]) -> list[str]:

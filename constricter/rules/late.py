@@ -8,6 +8,7 @@ its function's use of the name makes an error of, dropped), and `finals` (LVA012
 """
 
 import ast
+import bisect
 import re
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
@@ -325,6 +326,16 @@ def shadowed(scope: Scope) -> None:
             scope.offences[index] = replace(o, edit=None)
 
 
+def excusing(lines: Sequence[str]) -> tuple[int, ...]:
+    """Find the lines a comment excuses to a type checker (`# type: ignore`), once for a module's scopes.
+
+    Returns:
+      Where each is, from 0, in order.
+
+    """
+    return tuple(index for index, line in enumerate(lines) if _IGNORE.search(line))
+
+
 def excused(scope: Scope) -> None:
     """Drop each fix of a name a line of its function excuses to a type checker (`# type: ignore`).
 
@@ -332,17 +343,20 @@ def excused(scope: Scope) -> None:
     excuse, and a checker told to report unused comments reports that one. A module's or a class
     body's name, by any line of the file: it's read everywhere.
     """
+    on: tuple[int, ...]
+    if not (on := scope.settings.facts.excused):  # most modules: none of its lines is
+        return
     function: FunctionDef | None = scope.kind.function
     lines: Sequence[str] = scope.settings.lines
-    first: int = 0 if function is None else function.lineno - 1
-    last: int | None = None if function is None else function.end_lineno
-    excusing: list[str]
-    if not (excusing := [line.partition("#")[0] for line in lines[first:last] if _IGNORE.search(line)]):
+    first: int = 0 if function is None else bisect.bisect_left(on, function.lineno - 1)
+    last: int = len(on) if function is None else bisect.bisect_left(on, function.end_lineno or len(lines))
+    excused_code: list[str]
+    if not (excused_code := [lines[line].partition("#")[0] for line in on[first:last]]):
         return
     index: int
     o: Offence
     for index, o in enumerate(scope.offences):
-        if o.edit is not None and any(o.name in _WORD.findall(code) for code in excusing):
+        if o.edit is not None and any(o.name in _WORD.findall(code) for code in excused_code):
             scope.offences[index] = replace(o, edit=None)
 
 

@@ -10,6 +10,7 @@ import runpy
 import sys
 import textwrap
 import urllib.request
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Final, TypeAlias, cast
@@ -40,6 +41,7 @@ FOURTH: Final = "local variable 'fourth' is not annotated where it's first bound
 LOOP: Final = "for/match variable 'loop' is untyped; declare it before the statement"
 _Json: TypeAlias = "str | int | float | bool | list[_Json] | dict[str, _Json] | None"
 _JsonObject: TypeAlias = dict[str, _Json]
+_Entries: TypeAlias = Iterator[os.DirEntry[str]]  # what `os.scandir` lists of a directory
 _Sarif: TypeAlias = dict[str, list[dict[str, list[dict[str, _Json]]]]]
 # SARIF 2.1.0's JSON schema, from SchemaStore at a pinned commit, fetched once into `local/` (not
 # distributed here) and checked against its SHA-256.
@@ -124,13 +126,22 @@ def test_directories_skip_hidden_and_tool_dirs_and_honour_exclude(tmp_path: Path
     assert not list(paths.python_files([tmp_path / "a.py"], ["a.py"]))
 
 
-def test_exclude_also_skips_a_directory_by_name(tmp_path: Path) -> None:
-    """`--exclude` prunes a directory walk by directory name too, like the built-in skip list."""
+def test_exclude_also_skips_a_directory_by_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--exclude` prunes a walk by directory name too, like the built-in skip list: none is entered."""
     name: str
-    for name in ("a.py", "pkg/b.py", "pkg/generated/c.py"):
+    for name in ("a.py", "pkg/b.ipynb", "pkg/generated/deep/c.py", ".venv/lib/d.py"):
         _ = _write(tmp_path / name, CLEAN)
+    entered: list[Path] = []
+    scandir: Callable[[str], _Entries] = os.scandir
+
+    def listed(directory: str) -> _Entries:
+        entered.append(Path(directory))
+        return scandir(directory)
+
+    monkeypatch.setattr(os, "scandir", listed)
     found: list[Path] = list(paths.python_files([tmp_path], ["generated"]))
-    assert found == [tmp_path / "a.py", tmp_path / "pkg" / "b.py"]
+    assert found == [tmp_path / "a.py", tmp_path / "pkg" / "b.ipynb"]
+    assert sorted(entered) == [tmp_path, tmp_path / "pkg"]
 
 
 def test_defaults_to_the_current_directory(

@@ -2276,6 +2276,7 @@ build = [
     { name = "basedpyright" },
     { name = "editables" },
     { name = "hatchling" },
+    { name = "typeshed-client" },
 ]
 corpus = [
     { name = "basedpyright" },
@@ -2286,6 +2287,7 @@ corpus = [
     { name = "py-spy" },
     { name = "pydantic" },
     { name = "sqlalchemy" },
+    { name = "typeshed-client" },
 ]
 dev = [
     { name = "basedpyright" },
@@ -2306,9 +2308,11 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-xdist" },
+    { name = "pyyaml" },
     { name = "ruff" },
     { name = "twine" },
     { name = "types-psutil" },
+    { name = "typeshed-client" },
     { name = "typos" },
     { name = "validate-pyproject" },
     { name = "zizmor" },
@@ -2323,6 +2327,7 @@ test = [
     { name = "pylint" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "typeshed-client" },
 ]
 
 [package.metadata]
@@ -2337,6 +2342,7 @@ build = [
     { name = "basedpyright" },
     { name = "editables" },
     { name = "hatchling", specifier = ">=1.27,<2" },
+    { name = "typeshed-client" },
 ]
 corpus = [
     { name = "basedpyright" },
@@ -2347,6 +2353,7 @@ corpus = [
     { name = "py-spy" },
     { name = "pydantic", specifier = "==2.13.5" },
     { name = "sqlalchemy", specifier = "==2.0.54" },
+    { name = "typeshed-client" },
 ]
 dev = [
     { name = "basedpyright" },
@@ -2367,9 +2374,11 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-xdist" },
+    { name = "pyyaml" },
     { name = "ruff" },
     { name = "twine" },
     { name = "types-psutil" },
+    { name = "typeshed-client" },
     { name = "typos" },
     { name = "validate-pyproject" },
     { name = "zizmor" },
@@ -2384,6 +2393,7 @@ test = [
     { name = "pylint", specifier = ">=3" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "typeshed-client" },
 ]
 
 [[package]]
@@ -2782,6 +2792,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/97/0a/f48b9b0ab5ba8599fd117309e345152bf82c756c72be2ff0f635780c2792/types_psutil-7.2.2.20260906.tar.gz", hash = "sha256:93abf22cf9a62b915f724e433bde702995ac274865425fd4a76d1d9b5828da1a", size = 27396, upload-time = "2026-09-06T06:35:24.499Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/eb/8d/81a86107486e1c23f5ca21bea1e9e5b18a50754242e7a0b82f41f9ae8384/types_psutil-7.2.2.20260906-py3-none-any.whl", hash = "sha256:db00baf7f96c3f63421c4d3d68d373923094a0dfddf13e922c5c5fbc42488159", size = 33383, upload-time = "2026-09-06T06:35:23.575Z" },
+]
+
+[[package]]
+name = "typeshed-client"
+version = "2.13.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/62/eb/ef31fadb73c5a9da6e88adf146b9db88282cf17136beb65a1c88905afe2f/typeshed_client-2.13.0.tar.gz", hash = "sha256:85ce73be98a5e3a51cafb2e2921653e3759ce7e9d1530adcca935dec201152f2", size = 532578, upload-time = "2026-08-03T04:11:13.63Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/76/2b/83e50380aa9ca001ee74460f027b518eefd330edb7ab7787442424f1e584/typeshed_client-2.13.0-py3-none-any.whl", hash = "sha256:71bc9ed297ddb32d3c4b2d29b5e688c6b0b9a21ca8ce6082d0aa7cee9cad5077", size = 800208, upload-time = "2026-08-03T04:11:12.368Z" },
 ]
 
 [[package]]

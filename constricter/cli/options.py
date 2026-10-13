@@ -240,6 +240,12 @@ def _parser() -> argparse.ArgumentParser:
         help="skip a path, file or directory matching this glob (repeatable), e.g. 'tests/fixtures/*'",
     )
     _ = parser.add_argument(
+        "--gitignore",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="in a git checkout, skip what git ignores under a directory (--no-gitignore walks it whole)",
+    )
+    _ = parser.add_argument(
         "--level",
         choices=LEVELS,
         default="strict",
@@ -480,6 +486,7 @@ class Input:
     exclude: list[str]
     stdin_name: Path = STDIN
     trace: Path | None = None  # the trace whose types `--fix` guesses with (`--infer-from`)
+    gitignore: bool = True  # under a directory in a git checkout, only what git tracks or would
 
     def name(self, path: Path) -> Path:
         """Name `path` for reports.
@@ -643,6 +650,7 @@ class Options:
                 cast("list[str]", args.exclude),
                 cast("Path", args.stdin_filename),
                 _trace(parser, cast("Path | None", args.infer_from)),
+                gitignore=cast("bool", args.gitignore),
             ),
             checks=Checks(
                 type_comments=cast("bool", args.type_comments),

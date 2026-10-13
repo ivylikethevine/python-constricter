@@ -99,6 +99,7 @@ class Facts(NamedTuple):
     positional: Mapping[str, tuple[str, ...]] = MappingProxyType({})
     # The classes defined in a class's body, and the class naming each (see `imports.nested_classes`).
     nested: Mapping[str, str] = MappingProxyType({})
+    excused: tuple[int, ...] = ()  # the lines (from 0) a `# type: ignore` is on, sorted (`late.excusing`)
 
 
 def facts(
