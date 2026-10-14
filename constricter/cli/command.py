@@ -22,7 +22,7 @@ from constricter.cli.paths import STDIN, python_files
 from constricter.cli.protocol import HintError
 from constricter.cli.report import Format, Result, fix_reasons, render, statistics
 from constricter.cli.runs import Added, BaselineRun, CheckRun, CoverageRun, FileRun, merged
-from constricter.cli.workers import Workers, kept, started
+from constricter.cli.workers import Workers, kept, running, started
 from constricter.fix.core import fixes
 from constricter.fix.core.known import Callee, Hints, Outside, Returns
 from constricter.fix.index import callers, decorated, installed, loose, plain, project
@@ -372,6 +372,7 @@ def _check_all(options: Options) -> tuple[list[Path], list[FileRun]]:
       The names, and what each file found.
 
     """
+    schedule.forget()
     with kept():
         return _check_rounds(options)
 
@@ -428,7 +429,10 @@ def _settled(
 ) -> list[FileRun]:
     """Check every file, then again each one `--fix` changed in a way a second check would see.
 
-    Until a round changes nothing, `HINT_ROUNDS` at most: a second pass is then left nothing.
+    Until a round changes nothing, `HINT_ROUNDS` at most: a second pass is then left nothing. With
+    `--likely` alone, the files a round changed are indexed again, and the others checked again too
+    where that changes what they know from outside: what reads a guess another file declares now is
+    certain.
 
     Returns:
       What each file found, a file's rounds joined.
@@ -443,25 +447,92 @@ def _settled(
         options,
         session,
     )
+    fixing: bool = options.mode is Mode.FIX
+    onward: bool = fixing and session is None and options.guesses is Guesses.LIKELY
     again: list[int] = [
         index
         for index, run in enumerate(runs)
-        if options.mode is Mode.FIX and paths[index] != STDIN and _unsettled(run, session, options.guesses)
+        if fixing and paths[index] != STDIN and _unsettled(run, session, options.guesses)
     ]
+    changed: list[int] = [at for at in range(len(runs)) if onward and _changed(paths[at], runs[at])]
     for _ in range(HINT_ROUNDS - 1):
-        if not again:
+        held: dict[int, FileRun] = {}
+        if changed:
+            modules = _reindexed(modules, [paths[i] for i in changed], options)
+            held = {i: run for i, run in enumerate(runs) if i not in again and paths[i] != STDIN}
+        if not again and not held:
             break
-        redone: list[FileRun] = _checked_all([paths[i] for i in again], check, options, session, modules)[0]
-        index: int
-        run: FileRun
-        for index, run in zip(again, redone, strict=True):
-            runs[index] = merged(runs[index], run)
-        again = [
-            index
-            for index, run in zip(again, redone, strict=True)
-            if _unsettled(run, session, options.guesses)
-        ]
+        fresh: list[tuple[int, FileRun]]
+        latest: project.Index
+        fresh, latest = _round(paths, runs, (again, held), (check, options, session), modules)
+        modules = latest if onward else modules
+        again = [index for index, run in fresh if _unsettled(run, session, options.guesses)]
+        changed = [index for index, run in fresh if _changed(paths[index], run)]
     return runs
+
+
+def _round(
+    paths: Sequence[Path],
+    runs: list[FileRun],
+    todo: tuple[Sequence[int], Mapping[int, FileRun]],
+    how: "tuple[Callable[[Path, Outside], FileRun], Options, hints.Session | None]",
+    modules: project.Index,
+) -> tuple[list[tuple[int, FileRun]], project.Index]:
+    """Check files of `paths` again, knowing `modules`: each one's new run is joined to its `runs`.
+
+    `todo`: the files to check, by index, and those held, each with its last run: checked only where
+    they know anything else from outside now (see `schedule.Rounds`). `how`: the check, the options
+    and the type checkers' session.
+
+    Returns:
+      Each file the round checked, with this round's run alone; and the index, with what their
+      functions return.
+
+    """
+    again: Sequence[int]
+    held: Mapping[int, FileRun]
+    again, held = todo
+    which: list[int] = sorted({*again, *held})
+    redone: list[FileRun]
+    latest: project.Index
+    redone, latest = _checked_all(
+        [paths[i] for i in which],
+        how[0],
+        how[1],
+        how[2],
+        _Known(modules, {at: held[i] for at, i in enumerate(which) if i in held}),
+    )
+    fresh: list[tuple[int, FileRun]] = [
+        (index, run) for index, run in zip(which, redone, strict=True) if run is not held.get(index)
+    ]
+    index: int
+    run: FileRun
+    for index, run in fresh:
+        runs[index] = merged(runs[index], run)
+    return fresh, latest
+
+
+def _changed(path: Path, run: FileRun) -> bool:
+    """Check whether a round of `--fix` changed a file the index has (not standard input or a notebook).
+
+    Returns:
+      Whether it fixed anything there.
+
+    """
+    return path.suffix == _PY and bool(cast("CheckRun", run).fixed)
+
+
+def _reindexed(modules: project.Index, paths: Sequence[Path], options: Options) -> project.Index:
+    """Index again the files at `paths`, which `--fix` changed: in the run's workers, if it has them.
+
+    Returns:
+      The index, with them as they are now (see `project.spliced`).
+
+    """
+    found: list[project.Module | None] = (
+        started(paths, options.jobs).read() if running() else [project.read(path) for path in paths]
+    )
+    return project.spliced(modules, found)
 
 
 def _unsettled(run: FileRun, session: "hints.Session | None", guesses: Guesses) -> bool:
@@ -543,7 +614,7 @@ def _checked_more(
 
     """
     redone: list[FileRun]
-    redone, modules = _checked_all([paths[at] for at in which], how[0], how[1], how[2], modules)
+    redone, modules = _checked_all([paths[at] for at in which], how[0], how[1], how[2], _Known(modules))
     at: int
     run: FileRun
     for at, run in zip(which, redone, strict=True):
@@ -570,14 +641,27 @@ def _calling(
     ]
 
 
+class _Known(NamedTuple):
+    """What a round of checks knows of the files: the index (`None`: index them), and their kept runs.
+
+    `kept`: see `schedule.Rounds`, by the index of each file in the round's.
+    """
+
+    modules: project.Index | None = None
+    kept: Mapping[int, FileRun] = {}
+
+
+_FIRST: Final = _Known()  # a run's first round: the files indexed, none kept
+
+
 def _checked_all(
     paths: Sequence[Path],
     check: Callable[[Path, Outside], FileRun],
     options: Options,
     session: "hints.Session | None" = None,
-    modules: project.Index | None = None,
+    known: _Known = _FIRST,
 ) -> tuple[list[FileRun], project.Index]:
-    """Check `paths` (`--jobs` at a time), with the `session`'s hints, and `modules` (else indexed).
+    """Check `paths` (`--jobs` at a time), with the `session`'s hints, knowing `known`.
 
     Returns:
       What each file found, and the index of every file's module.
@@ -588,7 +672,11 @@ def _checked_all(
     if options.input.trace is not None:
         hinted = traced.merged(hinted, traced.load(options.input.trace), paths)
     coverage: bool = options.mode is Mode.COVERAGE  # needs nothing from the other files
-    pool: Workers | None = started(paths, options.jobs) if options.jobs != 1 and len(paths) > 1 else None
+    # A run's later rounds go to its workers, whatever their size: each knows what its files last knew.
+    pool: Workers | None = (
+        started(paths, options.jobs) if options.jobs != 1 and (len(paths) > 1 or running()) else None
+    )
+    modules: project.Index | None = known.modules
     if modules is None and pool:
         modules = project.Index({}, []) if coverage else pool.index()
     elif modules is None:
@@ -604,7 +692,7 @@ def _checked_all(
         check,
         pool,
         (modules, hinted),
-        merged if options.mode is Mode.FIX else None,
+        schedule.Rounds(merged if options.mode is Mode.FIX else None, known.kept),
     )
 
 

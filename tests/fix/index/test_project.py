@@ -9,8 +9,8 @@ import pytest
 
 from constricter import Offence, check_source
 from constricter.cli import command as cli
-from constricter.fix.core.known import Classes, Guarded, Outside
-from constricter.fix.index import project
+from constricter.fix.core.known import Classes, Guarded, Outside, Returns
+from constricter.fix.index import linked, project
 
 # Each starts `--jobs` workers of its own: one at a time, where the tests run at once (`pytest -n`).
 JOBS: pytest.MarkDecorator = pytest.mark.xdist_group("jobs")
@@ -421,3 +421,30 @@ def test_a_call_through_a_module_follows_its_reexports(tmp_path: Path) -> None:
     assert project.calls(catalog, uses, guarded) == {"p.make": "Thing", "pkg.api.make": "Thing"}
     assert [needed.statement for needed in guarded.values()] == ["from pkg.impl import Thing"]
     assert project.returned(catalog, uses, {}).calls == {}
+
+
+def test_a_file_read_again_takes_its_modules_place(tmp_path: Path) -> None:
+    """A file `--fix` changed replaces its module, keeping what the other files told of it.
+
+    Not a module several files are named (but a `conftest.py`, by its directory), nor one the index
+    hasn't.
+    """
+    lib: Path = _write(tmp_path / "lib.py", "def make():\n    return 1\n")
+    near: Path = _write(tmp_path / "a" / "conftest.py", "")
+    far: Path = _write(tmp_path / "b" / "conftest.py", "")
+    twin: Path = _write(tmp_path / "c" / "twin.py", "")
+    paths: list[Path] = [lib, near, far, twin, _write(tmp_path / "d" / "twin.py", "")]
+    catalog: project.Index = linked.with_returned(project.index(paths), {"lib": Returns({"make": "int"})})
+    _ = _write(lib, "def make() -> int:\n    return 1\n")
+    _ = _write(near, "LIMIT: int = 1\n")
+    _ = _write(far, "LIMIT: int = 2\n")
+    _ = _write(twin, "LIMIT: int = 3\n")
+    again: list[Path] = [lib, near, far, twin, _write(tmp_path / "new.py", ""), tmp_path / "gone.py"]
+    spliced: project.Index = project.spliced(catalog, [project.read(path) for path in again])
+    assert spliced.modules["lib"].returns == {"make": "int"}
+    assert spliced.modules["lib"].returned == catalog.modules["lib"].returned
+    assert spliced.conftests[str(near.parent.resolve())].names.keys() == {"LIMIT"}
+    assert spliced.modules["conftest"] is spliced.conftests[str(far.parent.resolve())]
+    assert spliced.modules["twin"] is catalog.modules["twin"]
+    assert spliced.modules.keys() == catalog.modules.keys()  # not `new`
+    assert spliced.memo is not catalog.memo

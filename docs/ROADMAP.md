@@ -154,7 +154,12 @@
   packages is held to its package's type checker and to what its traced tests bound: 61 sets pass
   the bars, 36,777 of the 45,922 guesses (80.1%). A file `--fix --likely` wrote a guess in is
   checked again in the same run: what rests on that guess alone is certain once it's declared, so a
-  second pass is left nothing. A fix's tier is decided in one place (`Offence.tier`).
+  second pass is left nothing. The files a round changed are indexed again
+  (`constricter.fix.index.modules.spliced`), and every other file is checked again where what it
+  knows from outside changed (`f = defer.fail()` once `defer.py` declares the `Deferred` it
+  returns), by the `Outside` each was last checked with: a second pass leaves nothing on Twisted,
+  dask and the standard library, from 2, 1 and 1 lines. A fix's tier is decided in one place
+  (`Offence.tier`).
 - **Type-checker-backed inference** (`--infer-with basedpyright,ty,pyrefly`): the checkers' inlay
   hints type what `--fix` can't, as guesses, widened, checked and imported; with basedpyright it
   about doubles what `--fix --unsafe-fixes` types on the annotated corpora. A hint naming a class
@@ -262,6 +267,14 @@
   generates the standard-library tables in about 12s on 4 cores (from 70s): each configuration read
   in a worker process, and what a class takes, a name's definition and a class's members worked out
   once.
+- **Workers that start loaded, told once**: a fork server imports `constricter.cli.command`, its
+  tables read, before it forks a worker (`workers._preload`; 38 MB): one worker starts in 9 ms, 8 in
+  14 ms, the server itself in 74 ms once a run (`scratch/worker_start.py --alone`). The index is
+  pickled once and written once, to a file in a directory the `Workers` own, which each worker maps
+  (`Workers.tell`): a pool pickled it again down each worker's pipe. Telling 16 workers the standard
+  library's 8.3 MB index takes 0.28s, from 0.33s (0.18s for one), and the parent holds nothing more
+  as it tells, from up to 37 MB on pandas (`scratch/index_sent.py`); what's left is each worker's
+  own `pickle.loads`, 0.06s alone and 0.17s with 16 at once on 16 CPUs.
 
 ### Command and output
 
@@ -542,13 +555,12 @@ First, out of that order, **Timings by a tool made for them**: pandas's half of 
 
 ### Small: under 4 hours
 
-1. **A guess another file's fix rests on.** `--fix --likely` checks a file again once it has written
-   a guess there, against the index of the files as they were: what a guess written in one file
-   makes certain in another waits for a second run. 4 lines on 13 corpora (twisted 2, dask and the
-   standard library 1 each; none on pydantic, django, sqlalchemy, pip, pandas, networkx, mypy,
-   sphinx, mkdocs, textual and pdm), from 388 bindings on 26 of the mega corpora. Index again, and
-   check again the files that read a module a guess was written in. Done when a second pass leaves
-   nothing on the seven corpora and the mega corpora. About 3 hours; coverage unchanged.
+1. **A guess another file's fix rests on, on every corpus.** The files a `--fix --likely` round
+   changed are indexed again, and the others checked again where what they know changed: a second
+   pass leaves nothing on Twisted, dask and the standard library (2, 1 and 1 lines before). Left:
+   the same on the seven corpora and the mega corpora (388 bindings on 26 of them before), and the
+   time it adds there. Done when a second pass leaves nothing on each. About an hour beside the
+   runs; coverage unchanged.
 2. **The runner's scheduling, measured.** Every corpus's steps now wait for the machine alone, the
    one with the most behind it first, and a running step's hold follows what it uses
    (`tests/corpus/sizing.py`); `check` and `census`, which read one check that the first to start
@@ -576,24 +588,7 @@ First, out of that order, **Timings by a tool made for them**: pandas's half of 
    entry to Done, in place of the Corpus bullet that still names `tests/corpus/corpus_timing.py`
    (folded into the runner), and the `timing` docstring's "a tenth of the seconds' or less" held to
    pandas's numbers. Done when pandas's agree. About an hour beside the run; coverage unchanged.
-5. **Workers that start loaded.** A fork server (Python 3.14's start method on Linux) imports a
-   script's `__main__` before it forks a worker, and nothing under `python -m constricter`, where
-   each worker imported constricter and read the tables itself. `workers._preload` now has it import
-   `constricter.cli.command`: with 8 workers on one-line files, `-m` took 629 ms and 6.05 G
-   instructions before and 527 ms and 2.24 G after, as the `constricter` script already did
-   (`scratch/worker_start.py`). Left: one worker's start alone, against the 20 ms this asks, and the
-   fork server's memory with the tables read. Done when a worker starts in under 20 ms there, a
-   check's findings the same. About an hour left; coverage unchanged.
-6. **The index, sent once.** `schedule.sent` pickles the index once, and `Workers.tell` submits
-   those bytes to each worker's pool, whose feeder thread pickles them again on their way down its
-   pipe: telling 16 workers holds 16 more copies in the parent at once. Write them once where every
-   worker reads them: a file in a temporary directory the `Workers` own, removed as they stop, each
-   worker unpickling from it (`mmap` saves a copy; `multiprocessing.shared_memory` needs room in
-   `/dev/shm` and warns on a leak). Measure first: the pickled index's size on the standard library
-   and pandas, `tell`'s seconds at 2, 4, 8 and 16 workers, one `pickle.loads` of it (what each
-   worker still pays), and the parent's peak memory as it tells. Done when telling 16 workers takes
-   no longer than telling one, the parent holding one copy. About 3 hours; coverage unchanged.
-7. **The corpus runs' checks, on a prebuilt Python.** uv's prebuilt 3.14.7 checks pandas in 55.3s in
+5. **The corpus runs' checks, on a prebuilt Python.** uv's prebuilt 3.14.7 checks pandas in 55.3s in
    one process and 9.3s with every CPU; a source build with profile-guided and link-time
    optimization and no shared library, 57.9s and 9.5s. The prebuilt one has no `test` package, and
    the standard-library corpus is the running Python's own (`trees`). Name that corpus's directory

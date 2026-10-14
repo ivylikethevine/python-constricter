@@ -73,14 +73,13 @@ every level, each fix on a copy (every file still compiling, and nothing left fo
 `--infer-with` each type checker, the census, coverage, a check timed in one process and with every
 CPU (by [`hyperfine`](https://github.com/sharkdp/hyperfine) where it's installed, which also counts
 each run's instructions, a far steadier measure than its seconds), and one that `py-spy` samples
-from outside, with constricter's slowest modules and functions.
-CI runs the check, the fix and the profile, each in its own job (the profile's never fails the run),
-against the standard library and the clones, at their pinned tags, of `django`, `sqlalchemy`,
-`pydantic` and `pandas` (a web framework, an ORM, a runtime-validation library and a data library;
-their dependencies' types come from the pinned `corpus` dependency group), and against pure Python 2
-(Twisted 12.3.0) and pip 20.3.4 (2/3-era code whose `# type:` comments sit in modules with Python 2
-`__future__` imports), hash-pinned sdists `tests/corpus/corpus_sources.py` fetches, since neither
-installs as a dependency.
+from outside, with constricter's slowest modules and functions. CI runs the check, the fix and the
+profile, each in its own job (the profile's never fails the run), against the standard library and
+the clones, at their pinned tags, of `django`, `sqlalchemy`, `pydantic` and `pandas` (a web
+framework, an ORM, a runtime-validation library and a data library; their dependencies' types come
+from the pinned `corpus` dependency group), and against pure Python 2 (Twisted 12.3.0) and pip
+20.3.4 (2/3-era code whose `# type:` comments sit in modules with Python 2 `__future__` imports),
+hash-pinned sdists `tests/corpus/corpus_sources.py` fetches, since neither installs as a dependency.
 
 For a corpus with a suite (cloned at its pinned tag, with its test dependencies as its CI installs
 them, in `local/corpus-suites/`), three more steps run on its checkout with each fix's patch

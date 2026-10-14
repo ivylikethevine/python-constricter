@@ -13,7 +13,7 @@ import itertools
 import re
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
@@ -362,6 +362,33 @@ def indexed(found: Iterable[Module | None]) -> Index:
                 conftests[module.folder] = module
     repeated: frozenset[str] = frozenset(name for name, count in counts.items() if count > 1)
     return Index(modules, sorted(modules), repeated, conftests, Memo())
+
+
+def spliced(catalog: Index, found: Iterable[Module | None]) -> Index:
+    """Put modules read again (`read`'s, of files `--fix` changed) in place of the ones `catalog` has.
+
+    What the index learned of each from the others (`returned`, `parameters`) is kept; a name several
+    files have keeps the module `catalog` has, but in `conftests`. What's kept worked out goes: a
+    class's members may now declare their types.
+
+    Returns:
+      The index, with them.
+
+    """
+    modules: dict[str, Module] = dict(catalog.modules)
+    conftests: dict[str, Module] = dict(catalog.conftests)
+    again: Module
+    for again in (each for each in found if each is not None):
+        local: bool = again.name == CONFTEST and again.folder in conftests
+        before: Module | None
+        if (before := conftests[again.folder] if local else modules.get(again.name)) is None:
+            continue
+        module: Module = replace(again, returned=before.returned, parameters=before.parameters)
+        if local:
+            conftests[module.folder] = module
+        if modules.get(module.name) is before if local else module.name not in catalog.repeated:
+            modules[module.name] = module
+    return catalog._replace(modules=modules, conftests=conftests, memo=Memo())
 
 
 def read(path: Path, name: str | None = None) -> Module | None:

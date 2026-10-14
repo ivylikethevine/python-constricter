@@ -33,6 +33,7 @@ from constricter.fix.index.modules import (
     indexed,
     module_name,
     read,
+    spliced,
     takes,
     written_under,
 )
@@ -47,6 +48,7 @@ __all__ = [
     "indexed",
     "module_name",
     "read",
+    "spliced",
 ]  # the index's, re-exported
 
 _BUILTINS: Final = frozenset(dir(builtins))

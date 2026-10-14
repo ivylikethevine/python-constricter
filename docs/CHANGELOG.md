@@ -6,6 +6,14 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--jobs` workers are told the index through a file each maps, written once: a pool pickled it
+  again down each worker's pipe, every copy held at once. Telling 16 workers the standard library's
+  takes 0.28s, from 0.33s, and nothing more is held as it's told.
+- `--fix --likely` checks again, in the same run, what another file's guess made certain: the files
+  a round changed are indexed again, and each other file is checked again where what it knows from
+  outside changed (and only there: by the `Outside` its last check had). A second pass fixed 2 lines
+  of Twisted's, 1 of dask's and 1 of the standard library's, and now none; a run's later rounds go
+  to its workers whatever their size.
 - On a free-threaded Python a check no longer collects after every file: its collector has no
   generations, and each collection looked through every kept tree. pandas's `core` checks in 3.9s in
   one process there, from 11.4s.
