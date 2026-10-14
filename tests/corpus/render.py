@@ -30,6 +30,7 @@ from tests.corpus.pipeline import (
     FIX,
     GUESS,
     IMPLIED,
+    LOOP,
     TESTS,
     TIMING,
     TRACED,
@@ -354,7 +355,12 @@ def problems(records: Records) -> list[str]:
 
 
 def _timing(records: Records) -> _Rows:
-    rows: _Rows = [["corpus", "constricter", "jobs", "one process", "with jobs", "runs"]]
+    rows: _Rows = [
+        [
+            *("corpus", "constricter", "jobs", "one process", "with jobs", "runs"),
+            *("G instructions, one process", "with jobs", "timed by"),
+        ],
+    ]
     tree: Tree
     for tree in records.trees:
         version: str
@@ -363,7 +369,17 @@ def _timing(records: Records) -> _Rows:
             if record := records.of(tree, version, TIMING):
                 medians: _Row = [record["median one"], record["median every"]]
                 runs: int = len(cast("list[float]", record["one"]))
-                rows.append([tree.name, version, record["jobs"], *medians, runs])
+                instructions: _Row = [
+                    round(cast("int", record[key]) / 1e9, 1) if key in record else ""
+                    for key in ("median one instructions", "median every instructions")
+                ]
+                timed: _Row = [
+                    *medians,
+                    runs,
+                    *instructions,
+                    record.get("by", LOOP),  # a record from before `by` was timed in a loop
+                ]
+                rows.append([tree.name, version, record["jobs"], *timed])
     return rows
 
 
@@ -692,7 +708,14 @@ _SECTIONS: Final[tuple[_Section, ...]] = (
         3,
     ),
     ("The untyped bindings: with only a guess, with no fix, and in files that don't parse:", _counted, 2),
-    ("A check at `suffocate`: the median seconds of its runs, in one process and with `jobs`:", _timing, 2),
+    (
+        (
+            "A check at `suffocate`: the median seconds of its runs, in one process and with `jobs`, and "
+            "the billions of instructions they took, where `hyperfine` counted them:"
+        ),
+        _timing,
+        2,
+    ),
     (
         (
             "The fixes a traced test could tell of, those whose every value fit, and those one didn't; "

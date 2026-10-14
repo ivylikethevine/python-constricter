@@ -22,3 +22,9 @@ goes under `local/scratch/`.
 - `threads_probe.py DIR [THREADS ...]`: a directory's files checked in one process on each count of
   threads, with the seconds and how many files' findings differ from one thread's; for a
   free-threaded Python (`local/.venv-ft`).
+- `timing_trial.py [CORPUS ...] [--runs N] [--jobs N]`: a corpus's check timed as the `timing` step
+  times it, by `hyperfine` and by `pyperf command`, in one process and with `--jobs`: each method's
+  medians and spread, and hyperfine's instruction counts.
+- `worker_start.py [ROOT ...] [--jobs N] [--runs N]`: a `--jobs` check of one-line files, mostly its
+  workers' start, as `python -m constricter` and as the `constricter` script, against `--jobs=1`, by
+  `hyperfine`, for each checkout given.

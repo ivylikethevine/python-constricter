@@ -15,7 +15,8 @@ tests.corpus --step`), and adds what its processes used to its record (`sizing.U
 - `census`: every untyped binding a check at `suffocate` reports, classified
   (`corpus_untyped.census`): those with no fix, and their values' shapes;
 - `coverage`: the bindings typed as released;
-- `timing`: a check at `suffocate`, timed in one process and with the run's `jobs`, several times;
+- `timing`: a check at `suffocate`, timed in one process and with the run's `jobs`, several times,
+  by `hyperfine` where it's installed, with the instructions each run took;
 - `profile`: the same check in one process `py-spy` samples: where constricter's own time goes.
 
 `suite_steps` has the steps that run a corpus package's own suite, after these.
@@ -31,9 +32,10 @@ import importlib
 import json
 import os
 import re
+import shlex
 import shutil
 import statistics
-import subprocess  # runs a check under `py-spy`
+import subprocess  # runs a check under `py-spy` or `hyperfine`
 import sys
 import time
 import traceback
@@ -52,6 +54,7 @@ from tests.corpus.run_config import DEV, FIXES, Run
 from tests.corpus.trees import Tree
 
 Record: TypeAlias = dict[str, object]
+Measured: TypeAlias = dict[str, dict[str, float | None]]  # a run in `hyperfine --export-json`
 _Entry: TypeAlias = dict[str, object]
 _Listed: TypeAlias = list[_Entry] | _Entry | None  # what `--format=json` may print
 CHECK: Final = "check"
@@ -62,6 +65,9 @@ CENSUS: Final = "census"
 TIMING: Final = "timing"
 PROFILE: Final = "profile"
 _PY_SPY: Final = "py-spy"
+_HYPERFINE: Final = "hyperfine"
+_MEASUREMENTS: Final = "measurements"  # in hyperfine 2's JSON; 1's has `times`
+LOOP: Final = "loop"  # what timed a check where `hyperfine` isn't installed
 _RATE: Final = 100  # samples a second
 _TOP: Final = 25  # the functions a profile's report and record list
 TESTS: Final = "tests"
@@ -487,27 +493,92 @@ def fixing(run: Run) -> list[str]:
     return [*tiers, *hinted, *([f"{INFER}{TRACE}"] if run.steps.traced else [])]
 
 
+class Timed(NamedTuple):
+    """One way's runs of a timed check."""
+
+    seconds: list[float]
+    instructions: list[int]  # each run's, its workers' included: none where they weren't counted
+
+
 def timing(job: Job) -> Record:
     """Time a check of the corpus at `suffocate`, in one process and with the run's `jobs`, several times.
 
+    By `hyperfine` where it's installed, each way's runs after one to warm up, with the instructions
+    each took (hyperfine 2's counters), whose spread is a tenth of the seconds' or less; its output
+    is kept beside the record (`timing.one.json`, `timing.every.json`). Otherwise in a loop of its own.
+
     Returns:
-      The step's record: each way's seconds, a run each, and their medians.
+      The step's record: what timed it, each way's seconds and instructions, a run each, and their
+      medians.
 
     """
     where: launch.Place = launch.place(job.tree, job.work(TIMING))
     options: list[str] = [_SUFFOCATE, "--exit-zero", "-q", "--output-file", os.devnull]
+    hyperfine: str | None = shutil.which(_HYPERFINE, path=launch.environment(where)["PATH"])
+    ways: dict[str, Timed] = (
+        _looped(job, where, options) if hyperfine is None else _by_hyperfine(job, where, options, hyperfine)
+    )
+    record: Record = {"jobs": job.run.jobs, "by": LOOP if hyperfine is None else _HYPERFINE}
+    way: str
+    timed: Timed
+    for way, timed in ways.items():
+        record[way] = timed.seconds
+        record[f"median {way}"] = round(statistics.median(timed.seconds), 2)
+        if timed.instructions:
+            record[f"{way} instructions"] = timed.instructions
+            record[f"median {way} instructions"] = round(statistics.median(timed.instructions))
+    return record
+
+
+def _looped(job: Job, where: launch.Place, options: list[str]) -> dict[str, Timed]:
     one: list[float] = []
     every: list[float] = []
     for _ in range(job.run.steps.timing):  # the two ways in turn: what else the machine does falls on both
         one.append(round(launch.run(job.version, where, options, 1).seconds, 2))
         every.append(round(launch.run(job.version, where, options, job.run.jobs).seconds, 2))
-    return {
-        "jobs": job.run.jobs,
-        "one": one,
-        "every": every,
-        "median one": round(statistics.median(one), 2),
-        "median every": round(statistics.median(every), 2),
-    }
+    return {"one": Timed(one, []), "every": Timed(every, [])}
+
+
+def _by_hyperfine(job: Job, where: launch.Place, options: list[str], hyperfine: str) -> dict[str, Timed]:
+    found: dict[str, Timed] = {}
+    way: str
+    jobs: int
+    for way, jobs in (("one", 1), ("every", job.run.jobs)):
+        exported: Path = job.store.path(job.tree.name, job.recorded, TIMING, f".{way}.json")
+        command: list[str] = [hyperfine, "-N", "-i", "--warmup", "1", "--runs", str(job.run.steps.timing)]
+        command += ["--style", "none", "--export-json", str(exported)]
+        # `-i`: the standard library's check exits 2 whatever `--exit-zero` says (some files don't parse).
+        command.append(shlex.join(launch.command(job.version, where, options, jobs)))
+        done: subprocess.CompletedProcess[str] = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=where.cwd,
+            env=launch.environment(where),
+        )
+        if done.returncode:
+            failed: str = f"{_HYPERFINE} failed ({done.returncode}): {done.stderr[-2000:]}"
+            raise RuntimeError(failed)
+        found[way] = hyperfined(cast("Record", json.loads(exported.read_text(encoding="utf-8"))))
+    return found
+
+
+def hyperfined(exported: Record) -> Timed:
+    """Read a command's runs from `hyperfine --export-json`: hyperfine 2's measurements, or 1's times.
+
+    Returns:
+      Each run's seconds; and its instructions, where hyperfine counted them for every run.
+
+    """
+    result: Record = cast("list[Record]", exported["results"])[0]
+    if _MEASUREMENTS not in result:
+        return Timed([round(seconds, 2) for seconds in cast("list[float]", result["times"])], [])
+    measured: list[Measured] = cast("list[Measured]", result[_MEASUREMENTS])
+    seconds: list[float] = [round(cast("float", run["time_wall_clock"]["value"]), 2) for run in measured]
+    counts: list[float | None] = [run.get("instructions", {}).get("value") for run in measured]
+    instructions: list[int] = [int(count) for count in counts if count is not None]
+    return Timed(seconds, instructions if len(instructions) == len(seconds) else [])
 
 
 def profile(job: Job) -> Record:

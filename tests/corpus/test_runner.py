@@ -15,7 +15,7 @@ import pytest
 from constricter import Level
 from tests.corpus import catalog, corpus_suite, pipeline, render, sizing, suite_steps
 from tests.corpus.corpus_suite import Outcome
-from tests.corpus.pipeline import Record, Store
+from tests.corpus.pipeline import Measured, Record, Store
 from tests.corpus.run_config import CERTAIN, CSV, DEV, JSON, LIKELY, MARKDOWN, Run, Steps, parse
 from tests.corpus.trees import Tree
 
@@ -103,6 +103,13 @@ _TIMED: Final[Record] = {
     "every": [1.0, 1.0],
     "median one": 3.0,
     "median every": 1.0,
+}
+_COUNTED_TIMING: Final[Record] = {
+    "by": "hyperfine",
+    "one instructions": [1_400_000_000, 1_600_000_000],
+    "median one instructions": 1_500_000_000,
+    "every instructions": [2_000_000_000, 2_000_000_000],
+    "median every instructions": 2_000_000_000,
 }
 _SHAPE: Final = "empty list"  # an unfixed binding's value, as the census names it
 _BINDING: Final = json.dumps(
@@ -370,6 +377,33 @@ def test_a_step_is_sized_by_a_run_of_its_own_label_first(tmp_path: Path) -> None
     assert ("celery", pipeline.TYPES) in labelled
 
 
+def test_hyperfines_runs_are_read_with_their_instructions_where_every_run_counted_them() -> None:
+    """Read hyperfine 2's measurements as the seconds and the instructions, and 1's times as the seconds."""
+    first: Measured = {"time_wall_clock": {"value": 1.001}, "instructions": {"value": 7.0}}
+    second: Measured = {"time_wall_clock": {"value": 2.004}, "instructions": {"value": 9.0}}
+    uncounted: Measured = {"time_wall_clock": {"value": 2.004}, "instructions": {"value": None}}
+    measured: pipeline.Timed = pipeline.hyperfined({"results": [{"measurements": [first, second]}]})
+    assert measured == pipeline.Timed([1.0, 2.0], [7, 9])
+    assert pipeline.hyperfined({"results": [{"measurements": [first, uncounted]}]}).instructions == []
+    assert pipeline.hyperfined({"results": [{"times": [1.004, 2.0]}]}) == pipeline.Timed([1.0, 2.0], [])
+
+
+def test_the_timing_table_has_the_instructions_where_hyperfine_counted_them(tmp_path: Path) -> None:
+    """Give a record of hyperfine's instructions' medians, in billions, and what timed it."""
+    store: Store
+    tree: Tree
+    store, tree = _recorded(tmp_path)
+    store.write(tree.name, "rc+dev", pipeline.TIMING, _TIMED | _COUNTED_TIMING)
+    run: Run = parse({"run": {"label": "rc"}})
+    written: dict[str, Path] = {
+        path.name: path for path in render.write(render.gathered(run, store, [tree]), tmp_path, {})
+    }
+    counted: Path = written["timing.csv"]
+    file: IO[str]
+    with counted.open(encoding="utf-8", newline="") as file:
+        assert list(csv.reader(file))[1][6:] == ["1.5", "2.0", "hyperfine"]
+
+
 def test_a_fixed_runs_failures_are_the_fixs_only_if_it_has_them_both_times() -> None:
     """And no released run does; a test the catalog names is listed apart, and is no difference."""
     released: Outcome = Outcome({"passed": 9, "skipped": 1}, frozenset())
@@ -577,7 +611,7 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
         tmp_path / "report.json",
     ]
     assert MARKDOWN not in parse({"run": {"formats": [JSON]}}).formats
-    assert tables["timing"][1] == ["standard library", "rc+dev", "0", "3.0", "1.0", "2"]
+    assert tables["timing"][1] == ["standard library", "rc+dev", "0", "3.0", "1.0", "2", "", "", "loop"]
     assert render.problems(records) == [
         "standard library, rc+dev, tests: the tests differ after fix-unsafe: 1 new",
         "standard library, rc+dev, tests: infer-ty's patch didn't apply: error: patch failed",

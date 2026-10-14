@@ -19,6 +19,7 @@ from constricter.rules import parsed
 
 if TYPE_CHECKING:  # slow to import, and only needed for many files
     from concurrent.futures import Future, ProcessPoolExecutor
+    from multiprocessing.context import DefaultContext
 
 # A worker's answers, one per file of its share: what it read (to index), and what it found.
 _Reading: TypeAlias = "Future[list[project.Module | None]]"
@@ -30,6 +31,8 @@ File: TypeAlias = tuple[Path, tuple[Hints, ...]]
 Asked: TypeAlias = tuple[Sequence[File], Mapping[str, Returns], bool]
 Answering: TypeAlias = "Future[list[FileRun | None]]"  # a worker's answer for the files it was asked
 _Wait: TypeAlias = Callable[..., tuple[set[object], set[object]]]  # `concurrent.futures.wait`: done, and not
+_FORKSERVER: Final = "forkserver"  # Python 3.14's start method on Linux
+_PRELOADED: Final = ["constricter.cli.command"]  # what a fork server imports before forking a worker
 
 
 class Workers:
@@ -53,6 +56,7 @@ class Workers:
           Them.
 
         """
+        _preload()
         self.pools = [
             self.stack.enter_context(
                 cast(
@@ -177,6 +181,22 @@ def first_done(pending: Collection[Answering]) -> set[Answering]:
     """
     wait: _Wait = cast("_Wait", importlib.import_module("concurrent.futures").wait)
     return cast("set[Answering]", wait(pending, return_when=_FIRST_COMPLETED)[0])
+
+
+def _preload() -> None:
+    """Have a fork server import constricter, its tables read, before it forks a worker.
+
+    Its own default imports a script's `__main__` alone: under `python -m constricter` each worker
+    would import constricter itself as it starts. Once the server runs, this changes nothing; a
+    forked worker has the parent's imports, and a spawned one imports its own whatever this says.
+    """
+    get_context: Callable[[], DefaultContext] = cast(
+        "Callable[[], DefaultContext]",
+        importlib.import_module("multiprocessing").get_context,
+    )
+    context: DefaultContext = get_context()
+    if context.get_start_method() == _FORKSERVER:
+        context.set_forkserver_preload(_PRELOADED)
 
 
 def _started(processes: int) -> None:

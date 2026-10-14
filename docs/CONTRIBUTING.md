@@ -51,6 +51,13 @@ what only one interpreter breaks fails before CI. Name jobs to run only those
 (`tests/ci_local.py lint docs interpreters`), and add `--install-hook` once to run it before every
 `git push`.
 
+Three things pass on Python 3.14 and fail on 3.11, CI's oldest, and no linter says so. A quoted
+alias (`Record: TypeAlias = "dict[str, object]"`) in a signature's `Record | None` is `str | None`
+there, a `TypeError` at import, since only 3.14 leaves annotations unevaluated when a function is
+defined. A dataclass field defaulting to `MappingProxyType({})` raises at import, since 3.11's
+`dataclasses` takes any unhashable default for a mutable one. And 3.11 forks its worker processes,
+so a `ProcessPoolExecutor` first used while another thread runs can hang.
+
 After editing a dependency group, run `uv lock` (CI fails until you do). Nothing bumps a pin for
 you: `tool-versions.yml` lists `uv.lock`'s direct dependencies, the npm pins, the actions and the
 tools pinned by URL that are behind upstream in one tracking issue, and each bump is a hand edit
@@ -64,7 +71,9 @@ its corpora ([`corpora.toml`](../tests/corpus/corpora.toml)'s, or any directory)
 versions (releases, this checkout, or another checkout's by its Python), and its steps: a check at
 every level, each fix on a copy (every file still compiling, and nothing left for a second pass),
 `--infer-with` each type checker, the census, coverage, a check timed in one process and with every
-CPU, and one that `py-spy` samples from outside, with constricter's slowest modules and functions.
+CPU (by [`hyperfine`](https://github.com/sharkdp/hyperfine) where it's installed, which also counts
+each run's instructions, a far steadier measure than its seconds), and one that `py-spy` samples
+from outside, with constricter's slowest modules and functions.
 CI runs the check, the fix and the profile, each in its own job (the profile's never fails the run),
 against the standard library and the clones, at their pinned tags, of `django`, `sqlalchemy`,
 `pydantic` and `pandas` (a web framework, an ORM, a runtime-validation library and a data library;

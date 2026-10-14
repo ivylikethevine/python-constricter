@@ -538,8 +538,7 @@ current, its finer counts are as first measured. Where an item cites a sample, i
 of the standard library, pandas, django and sqlalchemy, each checked alone: 28,931 bindings with no
 fix.
 
-First, out of that order, **Timings by a tool made for them**: a trial of `hyperfine` or `pyperf`,
-neither a dependency of the installed package.
+First, out of that order, **Timings by a tool made for them**: pandas's half of the trial.
 
 ### Small: under 4 hours
 
@@ -566,19 +565,34 @@ neither a dependency of the installed package.
    kernel (`memory.peak`, `cpu.stat`), the fork server's workers too. Only where a user's systemd
    runs, which a CI container may not have: the sampler stays for the rest. Done when a step's
    record there is its control group's. About 3 hours; coverage unchanged.
-4. **Timings by a tool made for them.** The `timing` step times a check in a loop of its own, with
-   nothing beside it. `hyperfine` (warm-up runs, outliers named, JSON) and `pyperf command` (with
-   `pyperf system tune`, unverified) time a command with statistics; either is one more tool to
-   install. Try one on the standard library and pandas. Done when it's adopted, or its spread is
-   shown to be no narrower than the step's own. About 2 hours; coverage unchanged.
-5. **Workers that start loaded.** Each worker imports constricter and reads the tables as it starts:
-   165 ms. Under `forkserver` (Python 3.14's on Linux), preload `constricter.cli.command`
-   (`multiprocessing.set_forkserver_preload`), so each is forked with them read. Done when a worker
-   starts in under 20 ms there, a check's findings the same. About 2 hours; coverage unchanged.
-6. **The index, sent once.** `schedule.sent` pickles the index once, and `Workers.tell` writes those
-   bytes down each worker's pipe. Write them where every worker reads them (a temporary file,
-   `multiprocessing.shared_memory`). Unmeasured: time the telling on the standard library first.
-   Done when telling 16 workers takes no longer than telling one. About 3 hours; coverage unchanged.
+4. **Timings by a tool made for them.** The `timing` step runs under `hyperfine` where it's
+   installed (one run to warm up, the exit status ignored) and keeps each run's instructions, its
+   workers' included; without it, the loop as before. Tried on the standard library, 10 runs each
+   way, on 8 CPUs that `pyperf system tune` had set (`scratch/timing_trial.py`): the seconds'
+   relative deviation in one process and with every CPU was 0.53% and 0.89% by the loop, 0.27% and
+   0.60% by `hyperfine`, 0.50% and 0.51% by `pyperf command`; `hyperfine`'s instructions', 0.06% and
+   0.02%. `pyperf` counts no instructions, warms up in every process, and stops at a nonzero exit.
+   Left: the same on pandas (`scratch/timing_trial.py pandas`, about 2.5 hours on 8 CPUs); then this
+   entry to Done, in place of the Corpus bullet that still names `tests/corpus/corpus_timing.py`
+   (folded into the runner), and the `timing` docstring's "a tenth of the seconds' or less" held to
+   pandas's numbers. Done when pandas's agree. About an hour beside the run; coverage unchanged.
+5. **Workers that start loaded.** A fork server (Python 3.14's start method on Linux) imports a
+   script's `__main__` before it forks a worker, and nothing under `python -m constricter`, where
+   each worker imported constricter and read the tables itself. `workers._preload` now has it import
+   `constricter.cli.command`: with 8 workers on one-line files, `-m` took 629 ms and 6.05 G
+   instructions before and 527 ms and 2.24 G after, as the `constricter` script already did
+   (`scratch/worker_start.py`). Left: one worker's start alone, against the 20 ms this asks, and the
+   fork server's memory with the tables read. Done when a worker starts in under 20 ms there, a
+   check's findings the same. About an hour left; coverage unchanged.
+6. **The index, sent once.** `schedule.sent` pickles the index once, and `Workers.tell` submits
+   those bytes to each worker's pool, whose feeder thread pickles them again on their way down its
+   pipe: telling 16 workers holds 16 more copies in the parent at once. Write them once where every
+   worker reads them: a file in a temporary directory the `Workers` own, removed as they stop, each
+   worker unpickling from it (`mmap` saves a copy; `multiprocessing.shared_memory` needs room in
+   `/dev/shm` and warns on a leak). Measure first: the pickled index's size on the standard library
+   and pandas, `tell`'s seconds at 2, 4, 8 and 16 workers, one `pickle.loads` of it (what each
+   worker still pays), and the parent's peak memory as it tells. Done when telling 16 workers takes
+   no longer than telling one, the parent holding one copy. About 3 hours; coverage unchanged.
 7. **The corpus runs' checks, on a prebuilt Python.** uv's prebuilt 3.14.7 checks pandas in 55.3s in
    one process and 9.3s with every CPU; a source build with profile-guided and link-time
    optimization and no shared library, 57.9s and 9.5s. The prebuilt one has no `test` package, and
