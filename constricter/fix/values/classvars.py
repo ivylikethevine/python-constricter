@@ -38,8 +38,8 @@ from constricter.fix.libraries import stdlib
 from constricter.fix.values.inference import inference
 from constricter.fix.values.operated import operated
 from constricter.offences import MAX_LENGTH
-from constricter.rules.annotations import classes as annotated
 from constricter.rules.annotations import dotted
+from constricter.rules.declarations import classes as annotated
 from constricter.rules.flow import members as union
 from constricter.rules.syntax import import_bindings
 from constricter.rules.walked import classes, of_type

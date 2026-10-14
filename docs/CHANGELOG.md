@@ -6,6 +6,17 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A wheel compiled with mypyc for each platform and CPython 3.11 to 3.14, which pip picks where it
+  can: the same findings and fixes, a check of pydantic about a fifth faster in one process. The
+  pure wheel stays, for PyPy, free-threaded builds and anywhere else.
+- Every module is under 900 lines: the 14 past it are split along what they grouped, into
+  `fix/index/stub_signatures.py` and `crossed.py`, `fix/values/stored.py` and `loops.py`,
+  `fix/libraries/receivers.py`, `rules/declarations.py`, `scoped.py` and `settings.py`, and
+  `stdlib_tables/accepting.py` and `configured.py`, and their tests; the tables they generate are
+  the same.
+- The corpus runner's standard library is CPython 3.14.7's source release (`Lib`, hash-pinned in
+  `corpora.toml`), not the running Python's own: any Python 3.14 runs the corpora, a prebuilt one
+  too, where a prebuilt one checked 662 of the 1,867 files (it has no `test` package).
 - `--jobs` workers are told the index through a file each maps, written once: a pool pickled it
   again down each worker's pipe, every copy held at once. Telling 16 workers the standard library's
   takes 0.28s, from 0.33s, and nothing more is held as it's told.

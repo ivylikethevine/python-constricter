@@ -9,7 +9,7 @@ from constricter import Offence, check_source
 from constricter.cli import command as cli
 from constricter.cli import schedule
 from constricter.fix.core.known import Returns
-from constricter.fix.index import linked, loose, order, own_types, project
+from constricter.fix.index import crossed, linked, loose, order, own_types, project
 from constricter.rules.checker import Checked, checked_source
 
 _BASE: Final = """
@@ -191,5 +191,5 @@ def test_what_the_index_keeps_is_what_it_works_out(tmp_path: Path) -> None:
     kept: project.Index
     for kept in (catalog, catalog):  # worked out, then read back
         assert own_types.lineages(kept, use, {}) == own_types.lineages(bare, use, {})
-        assert project.imported(kept, use) == project.imported(bare, use)
+        assert crossed.imported(kept, use) == crossed.imported(bare, use)
         assert loose.returned(kept, use) == loose.returned(bare, use)

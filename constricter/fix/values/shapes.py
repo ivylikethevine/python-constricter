@@ -509,8 +509,8 @@ def attribute_of(value: ast.expr, known: Known, infer: Infer) -> Inference | Non
     """
     args: list[ast.expr]
     match value:
-        case ast.Call(func=ast.Name(id="getattr"), args=[_, _, *_] as args, keywords=[]) if (
-            len(args) <= _WITH_DEFAULT + 1
+        case ast.Call(func=ast.Name(id="getattr"), args=args, keywords=[]) if (
+            _WITH_DEFAULT <= len(args) <= _WITH_DEFAULT + 1
             and known.is_builtin(_GETATTR)
             and known.limits.vague > 0
             and not any(isinstance(arg, ast.Starred) for arg in args)

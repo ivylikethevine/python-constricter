@@ -19,7 +19,8 @@ from typing import Final, TypeAlias, cast
 from constricter.fix.core.known import ImportPlan, Inference, Known, Passed
 from constricter.fix.libraries import stdlib
 from constricter.fix.values.inference import inference
-from constricter.rules.annotations import defined_type_vars, dotted, is_vague, node_name
+from constricter.rules.annotations import dotted, is_vague, node_name
+from constricter.rules.declarations import defined_type_vars
 from constricter.rules.syntax import Start
 from constricter.rules.walked import classes, of_type
 

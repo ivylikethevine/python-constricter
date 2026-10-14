@@ -28,3 +28,19 @@ goes under `local/scratch/`.
 - `worker_start.py [ROOT ...] [--jobs N] [--runs N]`: a `--jobs` check of one-line files, mostly its
   workers' start, as `python -m constricter` and as the `constricter` script, against `--jobs=1`, by
   `hyperfine`, for each checkout given.
+- `module_outline.py PATH [--group NAME ...]`: a module's top-level definitions, each one's lines
+  and which of the module's names it reads and is read by; with `--group`, what moves with those
+  names and what outside them reads one. For choosing a split.
+- `split_module.py SOURCE NEW DOCSTRING_FILE NAME ...`: move top-level definitions to a new module
+  (or, with `-` for DOCSTRING_FILE, to one already there), making public what crosses the cut and
+  importing it, refusing an import cycle; `--as` names a public name, `--ignore` a dependency given
+  by hand. Prints the references elsewhere to fix.
+- `retarget_imports.py OLD NEW NAME ...`: each `from OLD import ...` of a moved name, split to
+  import it from NEW; a use through the module printed.
+- `tables_unchanged.py`: the standard-library tables this checkout's generator writes, compared with
+  `constricter/fix/tables/`, byte for byte (`source.json`'s stamp left out).
+- `mypyc_trial.py [--opt 0] [--exclude PATH ...] [-- PYTEST_ARGS]`, with `local/.venv-mypyc`: a copy
+  of `constricter` compiled as the compiled wheel is, quickly (a C file a module, every CPU), and
+  the tests run against it.
+- `compiled_compare.py SITE TREE ... [--runs N] [--jobs N] [--fix]`: a tree checked (or fixed) by
+  this checkout and by a compiled wheel's install, their output compared and timed.

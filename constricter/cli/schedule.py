@@ -21,6 +21,7 @@ from constricter.fix.index import (
     awaits,
     beyond,
     callers,
+    crossed,
     decorated,
     fixtures,
     linked,
@@ -51,7 +52,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
     """
     seeded: dict[str, Guarded] = {}
     seeds: dict[str, Passed] = fixtures.visible(modules, path, seeded)
-    imported: project.Imported = project.imported(
+    imported: project.Imported = crossed.imported(
         modules,
         path,
         (seeded, fixtures.attributes(seeds)),

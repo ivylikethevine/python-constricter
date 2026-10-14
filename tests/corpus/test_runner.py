@@ -13,7 +13,8 @@ from typing import IO, Final, TypeAlias, cast
 import pytest
 
 from constricter import Level
-from tests.corpus import catalog, corpus_suite, pipeline, render, sizing, suite_steps
+from tests.corpus import catalog, corpus_sources, corpus_suite, pipeline, render, sizing, suite_steps, trees
+from tests.corpus.corpus_sources import Source
 from tests.corpus.corpus_suite import Outcome
 from tests.corpus.pipeline import Measured, Record, Store
 from tests.corpus.run_config import CERTAIN, CSV, DEV, JSON, LIKELY, MARKDOWN, Run, Steps, parse
@@ -456,6 +457,29 @@ def test_the_catalog_expands_sets_and_refuses_a_name_it_hasnt() -> None:
     assert known.entry("pip") is known.entries["pip"]
     with pytest.raises(ValueError, match="'numpy' is no directory, and no corpus or set"):
         _ = known.names(["numpy"])
+
+
+def test_the_standard_library_is_cpythons_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Its `Lib`, fetched as an sdist is: not the running Python's, which may lack its tests."""
+    entry: catalog.Entry = catalog.load().entry("standard library")
+    source: Source = cast("Source", entry.source)
+    assert source.url == f"https://www.python.org/ftp/python/{entry.version}/Python-{entry.version}.tar.xz"
+    assert source.package == f"Python-{entry.version}/Lib"
+    fetched: list[str] = []
+
+    def fetch(name: str, *, sources: dict[str, Source]) -> Path:
+        fetched.append(name)
+        return tmp_path / sources[name].package
+
+    monkeypatch.setattr(corpus_sources, "fetch", fetch)
+    tree: Tree = trees.found(entry)
+    assert (tree.root, tree.version, tree.base, fetched) == (
+        tmp_path / source.package,
+        "3.14.7",
+        None,
+        [entry.name],
+    )
+    assert corpus_sources.pinned()["pip"].url.startswith(corpus_sources.FILES)
 
 
 def test_a_fix_is_certain_likely_or_a_guess() -> None:

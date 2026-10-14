@@ -88,7 +88,7 @@ def _unheld(
     """
     typed: Mapping[str, str] = module.members.get(key.rpartition(_DOT)[2], {})
     above: list[Mapping[str, str]] = [declared[each] for each in classvars.ancestors(key, found)]
-    return not classvars.reserved(key, found) & typed.keys() and classvars.agreeing(typed, above) == typed
+    return not typed.keys() & classvars.reserved(key, found) and classvars.agreeing(typed, above) == typed
 
 
 def resolved(modules: Mapping[str, Module], module: Module, base: str) -> str:

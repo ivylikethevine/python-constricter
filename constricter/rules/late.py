@@ -13,7 +13,7 @@ import re
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
 from functools import lru_cache
-from typing import Final, TypeAlias
+from typing import TYPE_CHECKING, Final, TypeAlias
 
 from constricter.fix.core.imports import imports_of
 from constricter.fix.core.known import ImportPlan, Inference
@@ -43,9 +43,12 @@ from constricter.rules import widened
 from constricter.rules.annotations import node_name, roots
 from constricter.rules.flow import Binding, Lifetime, members
 from constricter.rules.rebinding import Refit, refit
-from constricter.rules.scope import FINAL_KIND, Late, Plain, Scope, guesses_in
+from constricter.rules.scope import FINAL_KIND, Scope, guesses_in
 from constricter.rules.syntax import FunctionDef
 from constricter.rules.walked import children
+
+if TYPE_CHECKING:
+    from constricter.rules.scoped import Late, Plain
 
 _DISCARD: Final = "_"
 _OPTIONAL: Final = "optional"  # the fix kind of a `None` default rebound to one type

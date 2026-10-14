@@ -24,7 +24,6 @@ VENV: Final = ("venv", "-q", "--allow-existing", "--python", PYTHON, ".venv")
 PYTEST: Final = ("python", "-m", "pytest", "-q", "-rfE", "-p", "no:cacheprovider")
 _PIP: Final = "pip"
 _SUITE: Final = "suite"  # an entry's table
-_STDLIB: Final = "stdlib"  # the `kind` of the entry that is the running Python's standard library
 _RAW: Final = "!"  # before a test command that isn't pytest's
 _MOST: Final = 8  # the most processes a suite is given where its entry doesn't say
 _Table: TypeAlias = dict[str, object]  # a table of the catalog, as `tomllib` reads it
@@ -60,13 +59,12 @@ class Entry(NamedTuple):
     """One corpus of the catalog."""
 
     name: str
-    version: str  # "" for the standard library: the running Python's
+    version: str
     why: str
     source: Source | None  # its pinned sdist
     suite: Suite | None
     environment: dict[str, str]  # what its commands need set
     port: str  # the port its tests bind, or ""
-    stdlib: bool = False
     path: str = ""  # a directory a run names itself: no corpus of the catalog
     heavy: bool = False  # its suite's tests hold more memory than a machine has to share: they run alone
 
@@ -201,7 +199,6 @@ def load() -> Catalog:
             _suite(cast("_Table", pinned[_SUITE])) if _SUITE in pinned else None,
             cast("dict[str, str]", pinned.get("environment", {})),
             cast("str", pinned.get("port", "")),
-            stdlib=pinned.get("kind") == _STDLIB,
             heavy=bool(pinned.get("heavy")),
         )
     return Catalog(entries, cast("dict[str, list[str]]", data["sets"]))

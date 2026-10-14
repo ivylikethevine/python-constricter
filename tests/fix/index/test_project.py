@@ -10,7 +10,7 @@ import pytest
 from constricter import Offence, check_source
 from constricter.cli import command as cli
 from constricter.fix.core.known import Classes, Guarded, Outside, Returns
-from constricter.fix.index import linked, project
+from constricter.fix.index import crossed, linked, project
 
 # Each starts `--jobs` workers of its own: one at a time, where the tests run at once (`pytest -n`).
 JOBS: pytest.MarkDecorator = pytest.mark.xdist_group("jobs")
@@ -230,7 +230,7 @@ def test_imported_classes_type_their_members(tmp_path: Path) -> None:
     _ = _write(tmp_path / "pkg" / "types.py", "class Tag:\n    pass\n")
     _ = _write(tmp_path / "pkg" / "models.py", MODELS)
     main: Path = _write(tmp_path / "main.py", USES)
-    imported: project.Imported = project.imported(project.index(sorted(tmp_path.rglob("*.py"))), main)
+    imported: project.Imported = crossed.imported(project.index(sorted(tmp_path.rglob("*.py"))), main)
     offences: list[Offence] = check_source(
         main.read_text(encoding="utf-8"),
         outside=Outside(classes=imported.classes),
@@ -246,7 +246,7 @@ def test_imported_classes_type_their_members(tmp_path: Path) -> None:
         "i": "m.Hidden",
         "j": None,
     }
-    assert project.imported(project.Index({}, []), main) == project.Imported({}, Classes({}, {}))
+    assert crossed.imported(project.Index({}, []), main) == project.Imported({}, Classes({}, {}))
 
 
 BASES: Final = """
@@ -319,7 +319,7 @@ def test_a_class_takes_methods_from_another_files_base(tmp_path: Path) -> None:
     _ = _write(tmp_path / "pkg" / "__init__.py", "")
     _ = _write(tmp_path / "pkg" / "bases.py", BASES)
     main: Path = _write(tmp_path / "main.py", DERIVED)
-    imported: project.Imported = project.imported(project.index(sorted(tmp_path.rglob("*.py"))), main)
+    imported: project.Imported = crossed.imported(project.index(sorted(tmp_path.rglob("*.py"))), main)
     offences: list[Offence] = check_source(
         main.read_text(encoding="utf-8"),
         outside=Outside(classes=imported.classes),
@@ -378,7 +378,7 @@ def test_an_imported_type_variable_is_never_a_calls_type(tmp_path: Path) -> None
     assert project.type_vars(catalog, generic) == {"T"}
     assert project.type_vars(catalog, uses) == set()
     assert project.type_vars(catalog, tmp_path / "missing.py") == set()
-    imported: project.Imported = project.imported(catalog, uses)
+    imported: project.Imported = crossed.imported(catalog, uses)
     assert imported.calls == {}
     assert imported.classes.methods == {"Box": {}}
     inside: list[Offence] = check_source(

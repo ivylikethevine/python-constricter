@@ -65,6 +65,7 @@ def test_a_second_check_starts_from_the_first(monkeypatch: pytest.MonkeyPatch) -
     }
 
 
+@pytest.mark.interpreted
 def test_anything_else_new_starts_over(monkeypatch: pytest.MonkeyPatch) -> None:
     """Other checks, other knowledge from outside, LVA012, or no check kept."""
     source: str = textwrap.dedent(_SOURCE)

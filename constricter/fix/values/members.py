@@ -557,9 +557,11 @@ def _part(parts: Sequence[ast.expr], index: ast.expr) -> str | None:
     """
     at: int
     match index:
-        case ast.Constant(value=int() as at) if not isinstance(at, bool):
+        case ast.Constant(value=bool()) | ast.UnaryOp(operand=ast.Constant(value=bool())):
+            return None  # an `int` to Python, and no index to a type checker
+        case ast.Constant(value=int() as at):
             pass
-        case ast.UnaryOp(op=ast.USub(), operand=ast.Constant(value=int() as at)) if not isinstance(at, bool):
+        case ast.UnaryOp(op=ast.USub(), operand=ast.Constant(value=int() as at)):
             at = -at
         case _:
             return None

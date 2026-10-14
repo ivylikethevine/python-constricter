@@ -36,7 +36,8 @@ from constricter.rules.annotations import dotted
 from constricter.rules.decorators import FIXTURES, is_fixture
 from constricter.rules.decorators import spelled as decorated_as
 from constricter.rules.flow import members
-from constricter.rules.scope import Scope, Seeded, Settings, guesses_in
+from constricter.rules.scope import Scope, guesses_in
+from constricter.rules.scoped import Seeded, Settings
 from constricter.rules.syntax import FunctionDef, Start, has_within, own_nodes
 from constricter.rules.walked import classes, of_type
 
@@ -424,7 +425,7 @@ def unshadowed(settings: Settings, function: FunctionDef) -> Settings:
     nodes: list[ast.AST] = list(own_nodes(function.body))
     bound: frozenset[str] = _bound(function, nodes)
     own: dict[str, str] = _own_imports(nodes, _bound(function, nodes, imports=False))
-    if not (bound & names.stdlib.keys() or own):
+    if not (names.stdlib.keys() & bound or own):
         return settings
     stdlib_names: dict[str, str] = {
         name: origin for name, origin in names.stdlib.items() if name not in bound

@@ -15,7 +15,7 @@ from typing import Final, TypeAlias
 
 from constricter.fix.core.known import Guarded, Origin
 from constricter.fix.core.signatures import OWN, OWN_ELEMENTS, Accepts
-from constricter.fix.index import plain, project
+from constricter.fix.index import crossed, plain
 from constricter.fix.index.atoms import BUILTINS_MODULE, CLASS, Atom, Scope
 from constricter.fix.index.modules import SUFFIX, Index, Memo, Module, module_name
 from constricter.fix.libraries import stdlib
@@ -116,7 +116,7 @@ def lineages(catalog: Index, path: Path, guarded: Mapping[str, Guarded]) -> dict
     for names in (checking, target.names):
         key: str
         defined: tuple[Module, str]
-        for key, defined in project.spelled_classes(catalog, target, (names, target.attributes), set()):
+        for key, defined in crossed.spelled_classes(catalog, target, (names, target.attributes), set()):
             if not defined[0].installed:
                 found[key] = _lined(catalog, f"{defined[0].name}.{defined[1]}")
     return found

@@ -10,7 +10,8 @@ from typing import Final, cast
 
 from constricter.fix.core.imports import rebound_names
 from constricter.fix.core.known import Inference
-from constricter.rules.annotations import defined_type_vars, node_name
+from constricter.rules.annotations import node_name
+from constricter.rules.declarations import defined_type_vars
 from constricter.rules.quoted import written
 from constricter.rules.syntax import top_level
 from constricter.rules.walked import classes
@@ -351,8 +352,9 @@ def iterator_call(iterable: ast.expr) -> tuple[str, list[ast.expr]] | None:
     args: list[ast.expr]
     keywords: list[ast.keyword]
     match iterable:
-        case ast.Call(func=ast.Name(id=name), args=[_, *_] as args, keywords=keywords) if (
-            name in ITERATORS
+        case ast.Call(func=ast.Name(id=name), args=args, keywords=keywords) if (
+            args
+            and name in ITERATORS
             and not any(isinstance(arg, ast.Starred) for arg in args)
             and all(keyword.arg in _ITERATOR_KEYWORDS.get(name, ()) for keyword in keywords)
         ):

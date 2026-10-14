@@ -1,6 +1,6 @@
 # Corpus runs
 
-What each constricter version found and fixed on the corpus: this Python's standard library and the
+What each constricter version found and fixed on the corpus: CPython's standard library and the
 pinned `corpus` packages, at every level with `all-scopes`. Recorded by the corpus runner
 (`tests/corpus/runs/release.toml`); a section per version, added when the version goes up (see
 [CONTRIBUTING](CONTRIBUTING.md)).

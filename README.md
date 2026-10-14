@@ -236,6 +236,9 @@ uvx --from python-constricter constricter # or run it without installing: uv's t
 pipx run --spec python-constricter constricter  # or pipx's
 ```
 
+On CPython 3.11 to 3.14 for Linux, macOS and Windows, pip installs a build compiled with mypyc,
+about a fifth faster; anywhere else, the pure Python one, which finds and fixes the same.
+
 Tools that run flake8 or pylint (VS Code's extensions, python-lsp-server, prospector, MegaLinter,
 Trunk) pick the plugin up once it's installed alongside them.
 

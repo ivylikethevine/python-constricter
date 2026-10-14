@@ -1,12 +1,11 @@
 # SPDX-License-Identifier: MIT
 """A corpus on disk, one tree for every step of a run.
 
-The standard library's directory; a suite's checkout at its pinned tag, whose settings
-(`pyproject.toml`) and environment (`.venv`) every constricter the run starts on it reads; or, for a
-corpus with no suite, its unpacked sdist's package.
+A suite's checkout at its pinned tag, whose settings (`pyproject.toml`) and environment (`.venv`)
+every constricter the run starts on it reads; or, for a corpus with no suite, its unpacked sdist's
+package (the standard library's: CPython's source release's `Lib`, whatever Python runs it).
 """
 
-import sysconfig
 from pathlib import Path
 from typing import NamedTuple
 
@@ -37,13 +36,11 @@ def found(entry: Entry, *, install: bool = True, settle: bool = True) -> Tree:
       Its tree.
 
     Raises:
-      ValueError: the entry has neither a suite nor an sdist, and isn't the standard library.
+      ValueError: the entry has neither a suite nor an sdist.
 
     """
     if entry.path:
         return Tree(entry.name, "", Path(entry.path).resolve())
-    if entry.stdlib:
-        return Tree(entry.name, sysconfig.get_python_version(), Path(sysconfig.get_paths()["stdlib"]))
     if entry.suite is not None:
         base: Path = corpus_suite.checkout(
             entry.name,

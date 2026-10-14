@@ -276,6 +276,16 @@
   as it tells, from up to 37 MB on pandas (`scratch/index_sent.py`); what's left is each worker's
   own `pickle.loads`, 0.06s alone and 0.17s with 16 at once on 16 CPUs.
 
+- **A compiled wheel**: mypyc compiles the `rules` and `fix` packages, all 93 of their modules, as
+  they're annotated, into a wheel for each platform and CPython 3.11 to 3.14 beside the pure one
+  (`[tool.hatch.build.targets.wheel.hooks.mypyc]`, off by default; `build.yml`, by cibuildwheel),
+  with no runtime dependency. On pydantic it gives the same findings and the same `--fix` as the
+  pure build, 1.27 times as fast in one process (5.0s from 6.4s) and 1.15 times with every CPU on 8.
+  Compiled code runs as its annotations say, so where Python and typeshed differ the code is written
+  another way (CONTRIBUTING lists the kinds), and the two frozen dataclasses the workers are sent
+  pickle by their fields. The whole suite runs on it in CI (Compiled), but for the six tests that
+  patch a compiled module's globals (`interpreted`).
+
 ### Command and output
 
 - **Formats**: text, `full` (with the source line), JSON, GitHub annotations, SARIF (help text,
@@ -345,13 +355,12 @@
   its largest process's most memory. A step is sized by a run of its own label before any other's (a
   probe's steps size only what no run of the label measured), and `check` and `census`, which read
   one check that the first to start runs, by the most either took.
-- **A source-built Python, optimized**: the corpus runs need a Python built from source (a prebuilt
-  one has no `test` package, 1,205 of the standard library's 1,867 files), and pyenv's
-  `python-build` configures one with `-O3 --enable-shared` alone. With
-  `PYTHON_CONFIGURE_OPTS="--enable-optimizations --with-lto --disable-shared"` a check of pandas
-  takes 57.9s in one process and 9.5s with every CPU, from 68.5s and 11.7s: the shared library costs
-  half of that (63.2s without it), profile-guided and link-time optimization the rest. The build
-  takes 4 minutes for half of one, and the findings are the same.
+- **The standard library, pinned**: the standard-library corpus is CPython 3.14.7's source release's
+  `Lib` (`corpora.toml`, fetched and hash-checked as Twisted's sdist is), not the running Python's
+  own, which a prebuilt Python ships without its `test` package (1,205 of the 1,867 files). Any
+  Python 3.14 runs the corpora: uv's prebuilt 3.14.7 checks pandas in 55.3s in one process and 9.3s
+  with every CPU, a source build with profile-guided and link-time optimization and no shared
+  library 57.9s and 9.5s, and pyenv's `python-build` (`-O3 --enable-shared` alone) 68.5s and 11.7s.
 - **The witness, past a container's class**: a builtin container is held to its annotation's
   arguments, not its class alone: a list's, a deque's or a tuple's first 100 elements, a set's every
   one, a dict's keys and values, a tuple's parts one by one. Only a value of the builtin class
@@ -492,12 +501,15 @@
 - **Layout**: `constricter/` in `rules/`, `fix/`, `cli/` and `plugins/`; `fix/` in four layers, each
   importing only those before it: `core/` (what every part shares), `libraries/` (the standard
   library's and installed packages' types), `values/` (what a value makes its type) and `index/`
-  (the cross-file index), its tests laid out the same. All but eight modules are under 750 lines
-  (`cli/hints.py`, `fix/index/stubbed.py` and `project.py`, `fix/libraries/overloads.py`,
-  `fix/values/inference.py`, and `rules/annotations.py`, `checker.py` and `scope.py`); the
-  standard-library tables in `constricter/fix/tables/`, their generator in `stdlib_tables/`; docs in
-  `docs/` (changelog, contributing, security, integrations, fixes, likely, runs), release notes
-  grouped by `.github/release.yml`, issue and PR templates, CODEOWNERS.
+  (the cross-file index), its tests laid out the same. Every module is under 900 lines, which the
+  Lint job warns past, split along what each grouped (a reader of stubs' signatures out of
+  `stubbed.py`, what a file takes of another's classes out of `project.py`, loops out of
+  `inference.py`, what a module declares out of `rules/annotations.py`); all but seven under 750
+  (`cli/command.py`, `hints.py` and `options.py`, `fix/index/modules.py` and `stub_signatures.py`,
+  and `rules/checker.py` and `scope.py`); the standard-library tables in `constricter/fix/tables/`,
+  their generator in `stdlib_tables/`; docs in `docs/` (changelog, contributing, security,
+  integrations, fixes, likely, runs), release notes grouped by `.github/release.yml`, issue and PR
+  templates, CODEOWNERS.
 - **`Module` and `Outside`, by name**: frozen dataclasses with slots, every field given by keyword
   (they were tuples of 25 to 40 fields built by position). A check is no slower: the standard
   library's 48.3s in one process and 13.0s on 16 CPUs (48.5s and 13.0s before), pandas's 51.6s and
@@ -588,13 +600,11 @@ First, out of that order, **Timings by a tool made for them**: pandas's half of 
    entry to Done, in place of the Corpus bullet that still names `tests/corpus/corpus_timing.py`
    (folded into the runner), and the `timing` docstring's "a tenth of the seconds' or less" held to
    pandas's numbers. Done when pandas's agree. About an hour beside the run; coverage unchanged.
-5. **The corpus runs' checks, on a prebuilt Python.** uv's prebuilt 3.14.7 checks pandas in 55.3s in
-   one process and 9.3s with every CPU; a source build with profile-guided and link-time
-   optimization and no shared library, 57.9s and 9.5s. The prebuilt one has no `test` package, and
-   the standard-library corpus is the running Python's own (`trees`). Name that corpus's directory
-   apart from the interpreter (a source build's `Lib`), and run the steps on the prebuilt one. Done
-   when a full run on it counts the standard library's 1,867 files. About 2 hours; coverage
-   unchanged.
+5. **The corpus runs' checks, on a prebuilt Python.** The standard-library corpus is CPython's
+   pinned source release (see [Corpus](#corpus)), its 1,867 files found by the runner whatever
+   Python runs it. `local/.venv` runs on uv's prebuilt 3.14.7, the suite passing there. Left: a full
+   run on it. Done when that run counts the standard library's 1,867 files. Under an hour beside the
+   run; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -648,7 +658,7 @@ First, out of that order, **Timings by a tool made for them**: pandas's half of 
    through its imports (`own_types.lineages`), and every module's classes under each package it
    imports, worked out for each file whether it names one or not; it passes over the classes whose
    members it takes none of. On pandas, with one process, the classes a file names are walked 10.9
-   million times (`project.spelled_classes`, by `_take` three times and more, `loose._classes` and
+   million times (`crossed.spelled_classes`, by `_take` three times and more, `loose._classes` and
    the files' ordering, each over every class under `import pandas as pd`), and an installed class's
    methods are looked for 2.2 million times (`stubbed._class_methods`, once for each class of each
    package a file imports). Work out a class's when the check asks for it, or only for the names the
@@ -661,19 +671,13 @@ First, out of that order, **Timings by a tool made for them**: pandas's half of 
    when a second check of an unchanged standard library spends under a second indexing, and a
    changed file's is read again. About 6 hours; coverage unchanged.
 
-6. **Compiled where it can be.** `mypyc` compiles the `rules` and `fix` packages as they are
-   annotated (every local is): 64 of their modules built, a check of pandas takes 38.0s from 50.3s
-   in one process and 9.1s from 11.0s with every CPU, the standard library 35.5s from 46.3s and
-   11.5s from 14.0s; one module alone (`rules.walked`) gains 2%. It took nine changes of four kinds
-   to the source to run right: an `else` after `if TYPE_CHECKING:` it takes for unreachable; a
-   `frozenset & d.keys()` five times, a `set` where typeshed says `frozenset`; `[_, *_] as args` in
-   a `case`, left unbound in its guard (twice); a name bound again by `:=` after an `is not None`
-   return, taken for `None`; a `dict` subclass's class-level default, and the tables' JSON cast to
-   tuples, each left interpreted. And of pandas's 77,931 findings two differ (a type alias's fix, a
-   guess where it's certain): unexplained. Ship it as optional wheels beside the pure one (as
-   Black's are), by `hatch-mypyc`, with the whole suite run on the compiled build and the corpora's
-   output compared with the pure one's. Done when a compiled wheel checks every corpus as the pure
-   one does, and CI builds and tests both. About 8 hours, for a check 1.2 to 1.3 times as fast.
+6. **The compiled wheel, on every corpus.** A compiled wheel is built and tested in CI, and gave
+   pydantic's findings and fixes as the pure build does (see [Done](#--fix)). The first trial,
+   before the changes that made it run right, found two of pandas's 77,931 findings differ (a type
+   alias's fix, a guess where it's certain). Left: a full run with a compiled wheel's constricter
+   beside this checkout's (`versions`, `NAME=PATH`), and the release's first cibuildwheel builds.
+   Done when a compiled wheel checks every corpus as the pure one does. About an hour beside the
+   run; coverage unchanged.
 7. **Wider: a second pass that adds nothing.** With every `fix-widen` kind, a second
    `--fix --unsafe-fixes` pass still fixes 13 bindings on the seven corpora (pandas 9, the standard
    library 3, pydantic 1): 12 a union of values that are guesses until the first pass declares what
@@ -697,13 +701,7 @@ First, out of that order, **Timings by a tool made for them**: pandas's half of 
    are above, and hold a hint to what the cause says. Done when a hinted run's new errors are under
    one for each hundred of its hints' fixes on the three corpora type-checked. About 8 hours;
    coverage down by the hints withdrawn.
-10. **Modules under 900 lines.** The Lint job warns of 15 past it, six within five lines of the
-    1,000 pylint fails one at: `fix/index/stubbed.py` (1,000), `stdlib_tables/overloads.py` (999),
-    `tests/corpus/corpus_untyped.py` (997), `fix/values/inference.py` and
-    `stdlib_tables/generate.py` (996), and `rules/scope.py` (995). A change to one of those is a
-    split first. Split each along what it already groups (the generic classes out of `project.py`).
-    Done when the warning names none. About 8 hours; coverage unchanged.
-11. **The witness, past a test's own classes.** The corpora runs hold a fixed binding's value to its
+10. **The witness, past a test's own classes.** The corpora runs hold a fixed binding's value to its
     annotation as its package's traced tests bind it (`tests/corpus/witness`), and a test's own
     stand-in differs (`FakeProcess`, passed where a `ServerProcess` is declared: mcp's one certain
     fix that differed, narwhals's too). On the mega corpora's suites 16 of the 20 `constructor`
@@ -713,20 +711,20 @@ First, out of that order, **Timings by a tool made for them**: pandas's half of 
     certain fix that differs on the corpora is a declaration its package's tests contradict
     (pydantic's `multiple_of: Decimal | None`, bound to an `int`). About 3 hours; coverage
     unchanged.
-12. **A suite's fixed runs, side by side.** A suite's fixed test runs follow one another on one
+11. **A suite's fixed runs, side by side.** A suite's fixed test runs follow one another on one
     checkout. For a suite of one process that can't take workers, that's most of its time at under a
     CPU: anyio's 870s and joblib's 1,093s (neither's tests run under pytest-xdist), pint's 408s,
     pydantic's 172s. Run them on checkouts of their own, at once. Not a suite whose tests bind a
     port (websockets, uvicorn, httpx), nor one that keeps its CPUs busy. Done when such a suite's
     `tests` step takes under twice its released run. About 5 hours; coverage unchanged.
-13. **django's traced tests, in more than one process.** The tracer doesn't follow the processes
+12. **django's traced tests, in more than one process.** The tracer doesn't follow the processes
     `multiprocessing` starts, so django's suite is traced with `--parallel=1`: 812s traced, the
     longest step of a super run, to 79s untraced on its workers (timed before a generator's returns
     were counted: time it again first). celery's parts are traced one after another too. Record in a
     forked child as a pytest-xdist worker records itself, or trace a suite's `parts` side by side, a
     trace file each. Done when django's traced tests take under 300s, the fixes resting on the trace
     the same. About 4 hours; coverage unchanged.
-14. **A traced run, sampled.** The tracer follows every line of a recorded function until its
+13. **A traced run, sampled.** The tracer follows every line of a recorded function until its
     statements have ended 20 times with nothing new: django's traced tests take 812s, 79s untraced.
     Record in short windows at random times, with `sys.monitoring`'s events off between them, and
     stop reading a large container once new types stop turning up. Done when pydantic's and django's

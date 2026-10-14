@@ -9,8 +9,9 @@ import ast
 from typing import TYPE_CHECKING, Final
 
 from constricter.fix.core.known import ImportPlan, Inference
-from constricter.fix.values import bodies, entered, fills, returned
-from constricter.fix.values.inference import RETURNED, inference, looped
+from constricter.fix.values import bodies, entered, fills, stored
+from constricter.fix.values.inference import RETURNED, inference
+from constricter.fix.values.loops import looped
 from constricter.fix.values.targets import iterated
 from constricter.rules.scope import Scope, guesses_in
 from constricter.rules.syntax import FunctionDef, own_nodes
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
 _GENERATOR: Final = "collections.abc.Generator"
 
 
-def returns(scope: Scope, func: FunctionDef, module: ast.Module) -> list[returned.Recorded]:
+def returns(scope: Scope, func: FunctionDef, module: ast.Module) -> list[stored.Recorded]:
     """Record a finished function's `return` statements; a generator's one type instead (see `_generator`).
 
     `module`: the function's, whose `yield`s say which functions to look in for one.
@@ -38,7 +39,7 @@ def returns(scope: Scope, func: FunctionDef, module: ast.Module) -> list[returne
     ]
 
 
-def assigned(scope: Scope) -> list[returned.Assigned]:
+def assigned(scope: Scope) -> list[stored.Assigned]:
     """Record a finished function's `self.x = value` assignments, each value as a `return`'s is.
 
     But a value reading a local bound more than once is unknown: the scope's type for it is its last
@@ -54,7 +55,7 @@ def assigned(scope: Scope) -> list[returned.Assigned]:
     ]
 
 
-def used(scope: Scope, func: FunctionDef, module: ast.Module) -> list[returned.Used]:
+def used(scope: Scope, func: FunctionDef, module: ast.Module) -> list[stored.Used]:
     """Record a finished method's reads of the attributes its class binds to an empty container.
 
     Each as `fills.stored` judges it; what one adds is typed as an assigned value is (see `assigned`).
@@ -64,7 +65,7 @@ def used(scope: Scope, func: FunctionDef, module: ast.Module) -> list[returned.U
 
     """
     kinds: Mapping[str, str]
-    if not (kinds := returned.empties(module, func)):
+    if not (kinds := stored.empties(module, func)):
         return []
     return [
         (attr, _added(scope, use, kinds[attr]) if isinstance(use, fills.Fill) else (() if use else None))
@@ -72,7 +73,7 @@ def used(scope: Scope, func: FunctionDef, module: ast.Module) -> list[returned.U
     ]
 
 
-def _added(scope: Scope, use: fills.Fill, kind: str) -> returned.Added:
+def _added(scope: Scope, use: fills.Fill, kind: str) -> stored.Added:
     """Record what one fill of an empty container's attribute adds to it.
 
     Returns:
@@ -90,7 +91,7 @@ def _added(scope: Scope, use: fills.Fill, kind: str) -> returned.Added:
     )
 
 
-def _recorded(scope: Scope, value: ast.expr) -> returned.Recorded:
+def _recorded(scope: Scope, value: ast.expr) -> stored.Recorded:
     """Record a value as its finished function's scope sees it.
 
     Returns:
@@ -102,7 +103,7 @@ def _recorded(scope: Scope, value: ast.expr) -> returned.Recorded:
     return found, frozenset() if found is None else guesses_in(scope, [value])[1]
 
 
-def _generator(scope: Scope, func: ast.FunctionDef, *, bare: bool = False) -> list[returned.Recorded]:
+def _generator(scope: Scope, func: ast.FunctionDef, *, bare: bool = False) -> list[stored.Recorded]:
     """Record what calling a generator function gives, if its `yield`s decide it.
 
     Each a statement of its own (nothing is sent in), all of one type `T`, and no `return` of a
@@ -122,7 +123,7 @@ def _generator(scope: Scope, func: ast.FunctionDef, *, bare: bool = False) -> li
         id(node) not in statements for node in yields
     ):
         return []
-    found: list[returned.Recorded] = [_yielded(scope, node) for node in yields]
+    found: list[stored.Recorded] = [_yielded(scope, node) for node in yields]
     types: set[str | None] = {None if part is None else part.annotation for part, _ in found}
     element: str | None = next(iter(types)) if len(types) == 1 else None
     plan: ImportPlan | None = scope.settings.known.names.plan
@@ -136,7 +137,7 @@ def _generator(scope: Scope, func: ast.FunctionDef, *, bare: bool = False) -> li
     return [(typed, frozenset[str]().union(*(origins for _, origins in found)))]
 
 
-def _yielded(scope: Scope, node: ast.Yield | ast.YieldFrom) -> returned.Recorded:
+def _yielded(scope: Scope, node: ast.Yield | ast.YieldFrom) -> stored.Recorded:
     """Record what one `yield` gives: its value, or (`yield from`) each element of it.
 
     Unknown for a bare `yield`, and a value reading a local bound more than once (see `assigned`).
@@ -150,7 +151,7 @@ def _yielded(scope: Scope, node: ast.Yield | ast.YieldFrom) -> returned.Recorded
         return None, frozenset()
     if isinstance(node, ast.Yield):
         return _recorded(scope, value)
-    found: Inference | None = looped(value, scope.settings.known, scope.inferred.types)
+    found: Inference | None = looped(value, scope.settings.known, scope.inferred.types, inference)
     return found, frozenset() if found is None else guesses_in(scope, iterated(value))[1]
 
 

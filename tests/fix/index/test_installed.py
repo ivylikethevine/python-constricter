@@ -115,6 +115,7 @@ def test_an_untyped_package_shadows_a_later_one(tmp_path: Path) -> None:
     assert installed.locate("nowhere", (first,)) is None
 
 
+@pytest.mark.interpreted
 def test_at_most_the_limit_is_read(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Past `LIMIT` modules, the rest are left out; with none found, the index is as it was."""
     site: Path = _site(tmp_path, SITE)
@@ -126,6 +127,7 @@ def test_at_most_the_limit_is_read(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert installed.with_installed(catalog, ()) is catalog
 
 
+@pytest.mark.interpreted
 def test_a_read_is_cached_until_its_file_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The second read comes from the cache; a changed file, or an unreadable entry, is read again."""
     site: Path = _site(tmp_path, {"lone.pyi": "def k() -> bytes: ...\n"})
@@ -149,6 +151,7 @@ def test_a_read_is_cached_until_its_file_changes(tmp_path: Path, monkeypatch: py
     assert installed.cached(stub, "lone") is not None
 
 
+@pytest.mark.interpreted
 def test_a_read_is_cached_until_constricter_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A changed `constricter.fix`, at the same version, reads the module again."""
     site: Path = _site(tmp_path, {"lone.pyi": "def k() -> bytes: ...\n"})
@@ -165,6 +168,7 @@ def test_a_read_is_cached_until_constricter_changes(tmp_path: Path, monkeypatch:
     assert reads == [site / "lone.pyi"] * 2
 
 
+@pytest.mark.interpreted
 def test_the_cache_is_swept_as_its_written_to(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A day apart: no build's entries and builds long unswept go, its own long unread or over the cap."""
     site: Path = _site(tmp_path, {"lone.pyi": "def k() -> bytes: ...\n", "more.pyi": "def m() -> int: ...\n"})

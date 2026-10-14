@@ -177,9 +177,10 @@ def cached(path: Path, name: str) -> Module | None:
         return None
     key: str = f"{name}\0{path.resolve()}\0{stat.st_size}\0{stat.st_mtime_ns}"
     entry: Path = _own() / f"{hashlib.sha256(key.encode()).hexdigest()}.pickle"
+    loaded: Module | None
+    if (loaded := _load(entry)) is not None:
+        return loaded
     module: Module | None
-    if (module := _load(entry)) is not None:
-        return module
     if (module := read(path, name)) is not None:
         _store(entry, module)
     return module

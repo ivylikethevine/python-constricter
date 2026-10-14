@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Fetch the corpora that can't be installed as dependencies: Python 2 code, from pinned, hash-checked sdists.
+"""Fetch the corpora that can't be installed as dependencies, from pinned, hash-checked sdists.
 
   local/.venv/bin/python tests/corpus/corpus_sources.py twisted       # prints the checked directory
   local/.venv/bin/python tests/corpus/corpus_sources.py --describe    # each: name, version, directory
@@ -7,8 +7,9 @@
 `corpora.toml` pins them (`pinned`): each corpus's `sdist` table. Each is downloaded once into
 `local/corpus-sources/`, its SHA-256 checked, unpacked there (with
 tarfile's `data` filter: nothing outside the directory, no links or devices), and its package
-directory printed. Python 3 can't parse all of it, which is the point: that's legacy code as it's
-found, and the command must report such files, not crash on them.
+directory printed. Python 3 can't parse all of Twisted's or pip's, which is the point: that's
+legacy code as it's found, and the command must report such files, not crash on them. The standard
+library's is CPython's source release, whose `Lib` has the tests a prebuilt Python leaves out.
 """
 
 import hashlib
@@ -57,14 +58,14 @@ def pinned(among: str | None = None) -> dict[str, Source]:
             sdist: dict[str, str] = cast("dict[str, str]", entry[_SDIST])
             found[name] = Source(
                 str(entry["version"]),
-                f"{FILES}/{sdist['where']}/{sdist['archive']}",
+                sdist.get("url") or f"{FILES}/{sdist['where']}/{sdist['archive']}",
                 sdist["sha256"],
                 sdist["package"],
             )
     return found
 
 
-# The seven corpora's: Twisted's and pip's last lines for Python 2, which no dependency can install.
+# The seven corpora's: the standard library's, and Twisted's and pip's last lines for Python 2.
 SOURCES: Final = pinned("seven")
 
 

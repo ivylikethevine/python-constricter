@@ -38,6 +38,7 @@ def test_the_budget_is_a_quarter_of_the_memory_and_a_gigabyte_at_least(
     assert parsed.sized(available) == expected
 
 
+@pytest.mark.interpreted
 def test_memory_is_the_machines_or_its_control_groups_limit(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

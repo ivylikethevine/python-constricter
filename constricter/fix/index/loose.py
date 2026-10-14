@@ -13,7 +13,7 @@ from pathlib import Path
 
 from constricter.fix.core.known import Guarded, Returns
 from constricter.fix.core.signatures import AWAIT
-from constricter.fix.index import project
+from constricter.fix.index import crossed, project
 from constricter.fix.index.modules import SUFFIX, Index, Module, module_name
 
 
@@ -26,7 +26,7 @@ def _classes(catalog: Index, target: Module) -> Iterator[tuple[str, tuple[Module
     """
     key: str
     defined: tuple[Module, str]
-    for key, defined in project.spelled_classes(catalog, target, (target.names, target.attributes), set()):
+    for key, defined in crossed.spelled_classes(catalog, target, (target.names, target.attributes), set()):
         if defined[0].name != target.name and defined[0].loose & _called(target):
             yield key, defined
 

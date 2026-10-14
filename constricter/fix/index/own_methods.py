@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Final
 
 from constricter.fix.core.known import Guarded
 from constricter.fix.core.signatures import ReadSignature
-from constricter.fix.index import own_overloads, project, stubbed
+from constricter.fix.index import crossed, own_overloads, stubbed
 from constricter.fix.index.modules import SUFFIX, Index, Module, module_name
 from constricter.rules.annotations import roots
 
@@ -41,7 +41,7 @@ def overloaded(
     key: str
     defined: tuple[Module, str]
     named: dict[str, tuple[Module, str]] = {
-        **dict(project.spelled_classes(catalog, target, (target.names, target.attributes), set())),
+        **dict(crossed.spelled_classes(catalog, target, (target.names, target.attributes), set())),
         **{name: (target, name) for name in target.bases},  # its own
     }
     for key, defined in named.items():

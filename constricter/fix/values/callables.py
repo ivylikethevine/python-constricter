@@ -25,7 +25,8 @@ from constricter.fix.libraries import stdlib
 from constricter.fix.values.fills import Uses
 from constricter.fix.values.guesses import fixed_by_callee
 from constricter.fix.values.inference import inference
-from constricter.rules.annotations import defined_type_vars, dotted, roots
+from constricter.rules.annotations import dotted, roots
+from constricter.rules.declarations import defined_type_vars
 from constricter.rules.syntax import FunctionDef
 from constricter.rules.walked import classes, walk
 

@@ -1,14 +1,13 @@
 # The corpora a run file can name (`python -m tests.corpus RUN.toml`), and the sets of them.
 #
-# [corpus.NAME]         `why` it's here, and its `version`; `kind = "stdlib"` for the running Python's
-#                       standard library. `environment`: what its commands need set, its install's
-#                       too. `port`: the port its tests' own server binds (those of one port run
-#                       one at a time). `alone`:
-#                       why it has no suite here. `heavy`: its suite's tests hold more memory than a
-#                       run's corpora can share, so no other suite runs beside them.
-# [corpus.NAME.sdist]   its sdist on PyPI's file host, hash-pinned: `where` (the directory under
-#                       https://files.pythonhosted.org/packages), `archive`, `sha256`, and `package`,
-#                       the directory checked in it.
+# [corpus.NAME]         `why` it's here, and its `version`. `environment`: what its commands need
+#                       set, its install's too. `port`: the port its tests' own server binds (those
+#                       of one port run one at a time). `alone`: why it has no suite here. `heavy`:
+#                       its suite's tests hold more memory than a run's corpora can share, so no
+#                       other suite runs beside them.
+# [corpus.NAME.sdist]   its sdist, hash-pinned: on PyPI's file host, `where` (the directory under
+#                       https://files.pythonhosted.org/packages) and `archive`, or elsewhere, `url`;
+#                       its `sha256`, and `package`, the directory checked in it.
 # [corpus.NAME.suite]   its own tests and type checks, read from its CI: the `repository` and `tag` to
 #                       clone, its `source` there, and the `uv` commands that `install` it (`pip ...`
 #                       for `uv pip install`, into a venv made first; `sync ...` for `uv sync`); its
@@ -70,8 +69,16 @@ mega = [
   "joblib",
 ]
 
+# CPython's own source release (PSF-2.0), whose `Lib` has the `test` package a prebuilt Python
+# leaves out: the same 1,867 files on any interpreter, so long as it parses 3.14's syntax.
 [corpus."standard library"]
-kind = "stdlib"
+why = "the standard library with its tests"
+version = "3.14.7"
+
+[corpus."standard library".sdist]
+url = "https://www.python.org/ftp/python/3.14.7/Python-3.14.7.tar.xz"
+sha256 = "3b48dac8fb59f62eaa67ac83c1eb12bda1b7a08406dd286e252c11a66be27f81"
+package = "Python-3.14.7/Lib"
 
 # Its `runtests.py` on SQLite, its processes forked: with `forkserver`, Python 3.14's default on
 # Linux, Django 5.2 can't clone a SQLite test database for each process. It has no type checker.

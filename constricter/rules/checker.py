@@ -6,55 +6,39 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
 from typing import Final, NamedTuple, cast
 
-from constricter.fix.core import imports, inherited
+from constricter.fix.core import imports
 from constricter.fix.core.known import (
-    Classes,
-    ClassSide,
     Guarded,
     ImportPlan,
-    Indirect,
-    Known,
-    LibraryNames,
-    Limits,
     Observed,
     Outside,
-    Partial,
     Passed,
     Returned,
     Returns,
 )
-from constricter.fix.libraries import stdlib
-from constricter.fix.values import callables, classvars, entered, fills, ordered, returned
-from constricter.fix.values.doubts import facts, says_self
+from constricter.fix.values import ordered, returned, stored
 from constricter.jsonc import as_text
 from constricter.offences import (
     DEFAULT_CHECKS,
-    STARRED_SUBSCRIPTS,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
     UNTYPED_TARGET,
     Checks,
     Offence,
 )
-from constricter.rules import binding, late, parsed, recorded, widened
-from constricter.rules.annotations import (
-    awaited_returns,
-    casts,
-    class_attributes,
-    defined_type_vars,
-    factories,
-    free_of,
-    free_of_all,
+from constricter.rules import binding, late, parsed, recorded
+from constricter.rules.annotations import node_name
+from constricter.rules.calls import keyed, observed, seed_parameters, unshadowed
+from constricter.rules.declarations import (
     imported_from,
-    node_name,
-    self_returns,
 )
-from constricter.rules.calls import keyed, marked, observed, seed_parameters, unshadowed
-from constricter.rules.flow import Finding, Hierarchy
+from constricter.rules.flow import Finding
 from constricter.rules.narrowing import flow_offences, module_flow, module_names
 from constricter.rules.quoted import written
 from constricter.rules.redundant import redundant
-from constricter.rules.scope import Kind, Late, Scope, Seeded, Settings
+from constricter.rules.scope import Scope
+from constricter.rules.scoped import Kind, Late, Seeded, Settings
+from constricter.rules.settings import module_settings
 from constricter.rules.syntax import (
     BRANCHING,
     FUNCTION_DEFS,
@@ -65,12 +49,10 @@ from constricter.rules.syntax import (
     collect_functions,
     expressions,
     has_within,
-    owners,
-    python2_compatible,
     target_names,
 )
 from constricter.rules.tables import Tables, module_tables
-from constricter.rules.walked import classes, of_type
+from constricter.rules.walked import classes
 
 # The node class of `type X = ...` statements, by name: Python 3.11's `ast` has no `TypeAlias`.
 _TYPE_ALIAS: Final = "TypeAlias"
@@ -135,128 +117,6 @@ def _parse(source: str | bytes, filename: str) -> tuple[ast.Module, Tables | Non
     """
     kept: parsed.Kept | None = parsed.take(source) if isinstance(source, str) else None
     return kept or (parsed.parse(source, filename), None)
-
-
-def _settings(
-    tree: ast.Module,
-    checks: Checks,
-    lines: Sequence[str],
-    own: Tables,
-    outside: Outside | None = None,
-) -> Settings:
-    returned.hand(tree, {} if outside is None else outside.emptied)
-    # The functions' declared returns: other checked files' (see `Outside`), then the module's own.
-    calls: dict[str, str] = {**({} if outside is None else outside.calls), **own.returns, **own.side_calls}
-    imported: Classes | None = None if outside is None else outside.classes
-    # The bases whose members are known whole: the standard library's, and other checked files' below.
-    bases: dict[str, str] = stdlib.bases(tree, stdlib.origins(tree))
-    beyond: Mapping[str, inherited.Beyond] = {} if outside is None else outside.beyond
-    library: dict[str, inherited.Library] = {
-        text: (stdlib.members(path), stdlib.lines(path))
-        for text, path in (*bases.items(), *((end, end) for end in inherited.several(beyond)))
-        if path
-    }
-    # The file's own types that mention a type variable it imports (`--fix` sees only its own).
-    free: frozenset[str] = frozenset() if outside is None else outside.type_vars
-    selfish: dict[str, frozenset[str]] = self_returns(tree)
-    return Settings(
-        checks._replace(type_comments=checks.type_comments or python2_compatible(tree)),
-        lines,
-        Known(
-            free_of(calls, free),
-            factories(tree) | (frozenset[str]() if outside is None else outside.values),
-            {**(imported.attributes if imported else {}), **free_of_all(own.classes, free)},
-            {**(imported.methods if imported else {}), **free_of_all(own.methods, free)},
-            Indirect(
-                {**({} if outside is None else outside.awaits), **free_of(awaited_returns(tree), free)},
-                _partial(own, free, outside),
-                {**({} if outside is None else outside.tuples), **free_of(own.tuples, free)},
-                {**({} if outside is None else outside.unions), **own.unions},
-                {**({} if outside is None else outside.takers), **fills.takers(tree)},
-            ),
-            ClassSide(
-                free_of_all(own.order.flattened(class_attributes(tree)), free),
-                free_of_all(own.sides, free),
-                inherited.lineage(
-                    tree,
-                    selfish,
-                    # A base whose line the index followed is in sight too, another package's included.
-                    frozenset(bases).union(imported.methods if imported else (), beyond),
-                    beyond,
-                    library,
-                ),
-                classvars.variables(tree, classvars.imported(tree), outside, checks.plain_bases),
-                classvars.own_plain(tree, classvars.imported(tree), outside, checks.plain_bases),
-            ),
-            LibraryNames(
-                casts(tree),
-                stdlib.origins(tree),
-                # What annotations alone can name: its own imports for type checking, and other files' types'.
-                replace(
-                    imports.plan(tree),
-                    guarded={} if outside is None else {**outside.checking, **outside.guarded},
-                ),
-                {} if outside is None else outside.overloaded,
-                frozenset() if outside is None else outside.installed_classes,
-                {} if outside is None else outside.installed_parameters,
-                {} if outside is None else outside.installed_lineage,
-                {} if outside is None else outside.installed_aliases,
-                checks.min_python is not None and checks.min_python >= STARRED_SUBSCRIPTS,
-            ),
-            Limits(checks.max_length, checks.vague, widened.marks(lines)),
-        ),
-        Hierarchy.for_module(
-            tree,
-            {name: frozenset(wider) for name, wider in checks.narrower},
-            () if outside is None else outside.same,
-        ),
-        owners(tree, says_self),
-        tuple(
-            sorted(
-                (node.lineno, node.col_offset)
-                for node in cast("list[ast.NamedExpr]", of_type(tree, ast.NamedExpr))
-            ),
-        ),
-        () if outside is None else outside.hints,
-        facts(
-            tree,
-            selfish,
-            stdlib.generics(stdlib.origins(tree)) | (outside.generics if outside else frozenset[str]()),
-            {
-                **({} if outside is None else outside.managers),
-                **{name: (yielded, frozenset[str]()) for name, yielded in entered.managers(tree).items()},
-            },
-            defined_type_vars(tree) | free,
-        )._replace(
-            untyped=frozenset() if outside is None else outside.untyped,
-            attributed=frozenset(
-                node.value.id
-                for node in cast("list[ast.Attribute]", of_type(tree, ast.Attribute))
-                if isinstance(node.value, ast.Name)
-            ),
-            positional=callables.signatures(tree),
-            excused=late.excusing(lines),
-        ),
-        Seeded(
-            keyed(tree, {} if outside is None else outside.parameters),
-            {} if outside is None else outside.fixtures,
-            marked=marked(tree),
-        ),
-    )
-
-
-def _partial(own: Tables, free: frozenset[str], outside: Outside | None) -> Partial:
-    """Gather the returns only an unpacking can use: other checked files', then the module's own.
-
-    Returns:
-      Them, less the module's that mention a type variable it imports (`free`).
-
-    """
-    given: Partial = Partial() if outside is None else outside.partial
-    return Partial(
-        {**given.calls, **free_of(own.partial, free)},
-        {**given.methods, **free_of_all(own.partial_methods, free)},
-    )
 
 
 def check_tree(
@@ -347,7 +207,7 @@ def _started(
       The check.
 
     """
-    first: Settings = _settings(tree, checks, lines, own, outside)
+    first: Settings = module_settings(tree, checks, lines, own, outside)
     imported: Returns = Returns() if outside is None else outside.returned
     return _settled(tree, first, imported, _module_names(tree, first))
 
@@ -472,7 +332,7 @@ def annotation_coverage(source: str | bytes, checks: Checks = DEFAULT_CHECKS) ->
 
     """
     tree: ast.Module = _parse(source, "<unknown>")[0]
-    settings: Settings = _settings(tree, checks, as_text(source).splitlines(), module_tables(tree))
+    settings: Settings = module_settings(tree, checks, as_text(source).splitlines(), module_tables(tree))
     scopes: list[Scope] = _scopes(tree, settings)
     total: int = sum(len(scope.bound()) for scope in scopes)
     untyped: int = sum(o.code in _UNTYPED for scope in scopes for o in scope.reported())
@@ -782,7 +642,7 @@ def _returned(
         for scope, func in functions
         if table.stale(func)
         or scope.inferred.late.keys() - scope.inferred.seeded.keys()
-        or returned.reads_own(tree, func, settings.owners, found)
+        or stored.reads_own(tree, func, settings.owners, found)
     }
     bodies: list[Scope] = [scope for scope in scopes if scope.kind.function is None]
     return _rounds(tree, _Round(settings, functions, bodies, table, found), imported, again)
@@ -827,7 +687,7 @@ def _rounds(tree: ast.Module, start: _Round, imported: Returns, again: set[int])
             id(scope)
             for scope, func in functions
             if (typed and returned.called(tree, func, found))
-            or returned.reads(tree, func, newly, anywhere=True)
+            or stored.reads(tree, func, newly, anywhere=True)
             or scope.inferred.late.keys() - scope.inferred.seeded.keys()
         }
     bodies: list[Scope] = _bodies(
@@ -888,7 +748,7 @@ def _bodies(
         retyped is not None
         and bodies
         and any(
-            returned.called(tree, stmt, own) or returned.reads(tree, stmt, retyped, anywhere=True)
+            returned.called(tree, stmt, own) or stored.reads(tree, stmt, retyped, anywhere=True)
             for stmt in _body_statements(tree.body)
         )
     ):
@@ -947,5 +807,5 @@ def value_flow(
     """
     tree: ast.Module = _parse(source, filename)[0]
     # Its lines place a `**rest` capture at its name, as `check_source` does.
-    settings: Settings = _settings(tree, checks, as_text(source).splitlines(), module_tables(tree))
+    settings: Settings = module_settings(tree, checks, as_text(source).splitlines(), module_tables(tree))
     return module_flow(tree, _scopes(tree, settings))

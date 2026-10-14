@@ -11,7 +11,7 @@ from constricter import Offence, check_source
 from constricter.cli import command as cli
 from constricter.fix.core import fixes
 from constricter.fix.core.known import Guarded, Outside
-from constricter.fix.index import project
+from constricter.fix.index import crossed, project
 
 # Each starts `--jobs` workers of its own: one at a time, where the tests run at once (`pytest -n`).
 JOBS: pytest.MarkDecorator = pytest.mark.xdist_group("jobs")
@@ -334,7 +334,7 @@ def test_a_name_the_file_binds_otherwise_isnt_imported(tmp_path: Path) -> None:
     _package(tmp_path)
     user: Path = _write(tmp_path / "user.py", CLASHING)
     catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
-    imported: project.Imported = project.imported(catalog, user)
+    imported: project.Imported = crossed.imported(catalog, user)
     assert imported.calls == {"again": "Again", "handle": "Handles[str]"}
     assert imported.guarded == {
         "Again": Guarded(("pkg.again", "Again"), "from pkg.again import Again"),
@@ -359,7 +359,7 @@ def test_a_type_is_written_as_the_file_can(tmp_path: Path, source: str, annotati
     """
     _package(tmp_path)
     user: Path = _write(tmp_path / "user.py", source)
-    imported: project.Imported = project.imported(project.index(sorted(tmp_path.rglob("*.py"))), user)
+    imported: project.Imported = crossed.imported(project.index(sorted(tmp_path.rglob("*.py"))), user)
     offences: list[Offence] = check_source(
         user.read_text(encoding="utf-8"),
         outside=Outside(calls=imported.calls, guarded=imported.guarded),
@@ -413,7 +413,7 @@ def test_a_name_quoted_inside_a_type_is_read_as_the_name(tmp_path: Path) -> None
     extra: str
     for extra in ("", "from pkg.other import Thing"):
         user: Path = _write(tmp_path / "user.py", using.format(extra))
-        imported: project.Imported = project.imported(project.index(sorted(tmp_path.rglob("*.py"))), user)
+        imported: project.Imported = crossed.imported(project.index(sorted(tmp_path.rglob("*.py"))), user)
         offences: list[Offence] = check_source(
             user.read_text(encoding="utf-8"),
             outside=Outside(calls=imported.calls, guarded=imported.guarded),
@@ -525,7 +525,7 @@ def test_another_files_generic_class_is_known_as_the_file_spells_it(tmp_path: Pa
         tmp_path / "user.py",
         "from pkg.handles import Handles as H, Plain\nimport pkg.handles\n",
     )
-    imported: project.Imported = project.imported(project.index(sorted(tmp_path.rglob("*.py"))), user)
+    imported: project.Imported = crossed.imported(project.index(sorted(tmp_path.rglob("*.py"))), user)
     assert imported.generics == {"H", "pkg.handles.Handles", "pkg.Handles"}  # the package's re-export too
 
 
@@ -534,7 +534,7 @@ def test_a_guarded_import_is_a_replacement_too(tmp_path: Path) -> None:
     _package(tmp_path)
     user: Path = _write(tmp_path / "user.py", "from pkg.handles import plain\n\ndef f():\n    x = plain()\n")
     catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
-    imported: project.Imported = project.imported(catalog, user)
+    imported: project.Imported = crossed.imported(catalog, user)
     text: list[str] = user.read_text(encoding="utf-8").splitlines(keepends=True)
     offences: list[Offence] = check_source(
         "".join(text),

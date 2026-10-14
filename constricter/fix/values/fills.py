@@ -21,7 +21,8 @@ from collections.abc import Iterator, Mapping, Sequence
 from typing import Final, NamedTuple
 
 from constricter.fix.core.known import Inference, Known, Takers
-from constricter.fix.values.inference import inference, looped
+from constricter.fix.values.inference import inference
+from constricter.fix.values.loops import looped
 from constricter.fix.values.shapes import displayed
 from constricter.fix.values.targets import dict_parts
 from constricter.rules.annotations import dotted, is_vague
@@ -427,7 +428,7 @@ def added(fill: Fill, kind: str, known: Known, declared: Mapping[str, str]) -> l
     if not fill.spread:
         return [inference(part, known, declared) for part in (fill.key, fill.value) if part is not None]
     if kind != _DICT:
-        return [looped(fill.value, known, declared)]
+        return [looped(fill.value, known, declared, inference)]
     found: Inference | None = inference(fill.value, known, declared)
     types: tuple[str, str] | None = None if found is None else dict_parts(found.annotation)
     if found is None or types is None:

@@ -61,8 +61,17 @@ corpus = [
     "py-spy", # the corpus runner's `profile` step samples the check from outside
     "sqlalchemy==2.0.54",
 ]
+# What a compiled wheel's build from the sdist needs, without build isolation
+# (`HATCH_BUILD_HOOK_ENABLE_MYPYC=1`): the backend, and the mypyc hook's `dependencies`, pinned the same.
+mypyc = [
+    "hatchling>=1.27,<2",
+    "hatch-mypyc==0.16.0",
+    "mypy==2.3.1",
+    "setuptools==84.0.0",
+]
 dev = [
     { include-group = "test" },
+    { include-group = "mypyc" },
     "basedpyright",
     "build",
     "check-wheel-contents",
@@ -109,6 +118,15 @@ artifacts = ["constricter/fix/tables/*.json", "stdlib_tables/partial.json"]
 [tool.hatch.build.targets.wheel]
 packages = ["constricter"]
 
+# A compiled wheel: with `HATCH_BUILD_HOOK_ENABLE_MYPYC=1`, mypyc compiles the rules and the fixes, as
+# annotated as they are. Off by default: the pure wheel runs anywhere (PyPy, free-threaded builds).
+# Built from the sdist (`python -m build`), so nothing compiled lands beside the checkout's sources.
+[tool.hatch.build.targets.wheel.hooks.mypyc]
+enable-by-default = false
+dependencies = ["hatch-mypyc==0.16.0", "mypy==2.3.1", "setuptools==84.0.0"] # the `mypyc` group's
+include = ["/constricter/rules", "/constricter/fix"]
+options = { debug_level = "0" }
+
 [tool.hatch.build.targets.sdist]
 # The generator too: a wheel built from the sdist checks the tables it carries are current.
 only-include = ["constricter", "stdlib_tables", "hatch_build.py", "README.md", "LICENSE.md"]
@@ -143,7 +161,7 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 # The corpus table runs each constricter version under test as a subprocess.
 "tests/corpus/corpus_table.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # `--infer-with`'s tests start its guard and a fake server, and a constricter to kill.
-"tests/cli/test_hints.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
+"tests/cli/{test_hints,test_guard}.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 "tests/cli/test_paths.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
 # The trace's tests run a traced pytest, whose pytest-xdist workers are processes of its own.
 "tests/test_trace.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
@@ -170,13 +188,15 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 "constricter/fix/index/installed.py" = ["suspicious-pickle-import", "suspicious-pickle-usage"]
 # The main process sends its workers the index, pickled once for them all.
 "constricter/cli/schedule.py" = ["suspicious-pickle-import", "suspicious-pickle-usage"]
+# What the workers are sent, pickled and read back.
+"tests/fix/core/test_known.py" = ["assert", "suspicious-pickle-import", "suspicious-pickle-usage"]
 # `--infer-with` starts the type checker's language server, from a fixed table of commands (and
 # asks it its version, to see it runs).
 "constricter/cli/{hints,guard,paths,protocol}.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The generator's modules import `constricter`'s without its `__init__`, which loads the tables.
 "stdlib_tables/__init__.py" = ["non-empty-init-module"]
 "tests/corpus/corpus_sources.py" = ["suspicious-url-open-usage"] # downloads only its pinned https URLs
-"tests/cli/test_cli.py" = ["suspicious-url-open-usage"] # fetches the SARIF schema from its pinned URL
+"tests/cli/test_output.py" = ["suspicious-url-open-usage"] # fetches the SARIF schema from its pinned URL
 
 [tool.mypy]
 files = ["constricter", "stdlib_tables", "tests", "hatch_build.py"]
@@ -249,7 +269,10 @@ required-version = ">=0.12.17"
 testpaths = ["tests"]
 addopts = ["--strict-markers", "--strict-config"]
 # pytest-xdist's own, registered here for the runs without it (CI's).
-markers = ["xdist_group: tests that `--dist loadgroup` gives one worker"]
+markers = [
+    "xdist_group: tests that `--dist loadgroup` gives one worker",
+    "interpreted: tests that patch a module mypyc compiles, skipped on a compiled build (its callers call past a patch)",
+]
 filterwarnings = ["error"]
 xfail_strict = true
 cache_dir = "local/.pytest_cache"

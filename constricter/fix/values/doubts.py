@@ -25,7 +25,8 @@ from typing import Final, NamedTuple, TypeAlias, cast
 from constricter.fix.core.imports import checking, inner_imports, nested_classes, rebound_names
 from constricter.fix.core.known import ImportPlan, Inference, Passed
 from constricter.fix.values.narrowed import Regions, regions
-from constricter.rules.annotations import generic_classes, node_name, roots
+from constricter.rules.annotations import node_name, roots
+from constricter.rules.declarations import generic_classes
 from constricter.rules.flow import members
 from constricter.rules.quoted import parsed
 from constricter.rules.syntax import FunctionDef, Start, within

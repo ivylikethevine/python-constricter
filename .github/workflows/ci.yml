@@ -176,9 +176,9 @@ jobs:
           summary: "false"
           args: --level=suffocate --all-scopes --format=github constricter tests
 
-  # Against the runner's standard library, or one pinned real package's clone at its tag (a web
-  # framework, an ORM, a runtime-validation library, a data library), or pure Python 2 (Twisted
-  # 12.3.0) and pip 20.3.4's 2/3-era type comments, hash-pinned sdists: each a corpus of
+  # Against CPython's standard library with its tests, or one pinned real package's clone at its tag
+  # (a web framework, an ORM, a runtime-validation library, a data library), or pure Python 2
+  # (Twisted 12.3.0) and pip 20.3.4's 2/3-era type comments, hash-pinned sdists: each a corpus of
   # tests/corpus/corpora.toml, measured by the corpus runner (`python -m tests.corpus`) as a run file
   # says. No crashes (runs/ci-check.toml), and `--fix` doesn't break any file or leave anything for a
   # second pass (runs/ci-fix.toml). Each in its own job, so the largest corpus's two passes run side
@@ -206,6 +206,7 @@ jobs:
             files.pythonhosted.org:443
             raw.githubusercontent.com:443
             releases.astral.sh:443
+            www.python.org:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -245,6 +246,7 @@ jobs:
             files.pythonhosted.org:443
             raw.githubusercontent.com:443
             releases.astral.sh:443
+            www.python.org:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -313,9 +315,57 @@ jobs:
         env:
           COVERAGE: ${{ matrix.group == 'dev' && matrix.python != '3.11' && '--cov' || '' }}
 
+  # The compiled wheel (mypyc; `[tool.hatch.build.targets.wheel.hooks.mypyc]`), built from the sdist
+  # on CI's oldest and newest Python and tested in place of the sources: pytest's `append` import mode
+  # puts the checkout last on the path, after the wheel. The tests marked `interpreted` patch a module
+  # mypyc compiles, past which compiled callers call: they're skipped.
+  compiled:
+    name: Compiled (${{ matrix.os }}, ${{ matrix.python }})
+    needs: reuse
+    if: github.event.pull_request.draft != true && needs.reuse.outputs.tested != 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ['3.11', '3.14']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        if: runner.os == 'Linux'
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            raw.githubusercontent.com:443
+            releases.astral.sh:443
+            files.pythonhosted.org:443
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        if: runner.os != 'Linux'
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Build the compiled wheel, and install it over the checkout's
+        env:
+          HATCH_BUILD_HOOK_ENABLE_MYPYC: "1"
+        run: |
+          python -m build --no-isolation --outdir dist
+          uv pip install --python local/.venv --no-deps --reinstall dist/*.whl
+      - name: The compiled modules are the ones imported
+        working-directory: ${{ runner.temp }}
+        run: python -c 'import constricter.rules.checker as c; assert not c.__file__.endswith(".py"), c.__file__'
+      - run: pytest --import-mode=append -n auto --dist loadgroup
+
   build:
     name: Build
-    needs: [lint, docs, test, action, corpus]
+    needs: [lint, docs, test, compiled, action, corpus]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -343,7 +393,7 @@ jobs:
   # Everything passed on this tree: record it, for a later run on the same tree to reuse.
   tested:
     name: Tested
-    needs: [reuse, lint, docs, action, corpus, test, build]
+    needs: [reuse, lint, docs, action, corpus, test, compiled, build]
     if: needs.reuse.outputs.tested != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5

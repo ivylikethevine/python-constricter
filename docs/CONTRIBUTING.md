@@ -74,11 +74,12 @@ every level, each fix on a copy (every file still compiling, and nothing left fo
 CPU (by [`hyperfine`](https://github.com/sharkdp/hyperfine) where it's installed, which also counts
 each run's instructions, a far steadier measure than its seconds), and one that `py-spy` samples
 from outside, with constricter's slowest modules and functions. CI runs the check, the fix and the
-profile, each in its own job (the profile's never fails the run), against the standard library and
-the clones, at their pinned tags, of `django`, `sqlalchemy`, `pydantic` and `pandas` (a web
-framework, an ORM, a runtime-validation library and a data library; their dependencies' types come
-from the pinned `corpus` dependency group), and against pure Python 2 (Twisted 12.3.0) and pip
-20.3.4 (2/3-era code whose `# type:` comments sit in modules with Python 2 `__future__` imports),
+profile, each in its own job (the profile's never fails the run), against the standard library (the
+`Lib` of CPython's pinned source release, its tests included, whatever Python runs it) and the
+clones, at their pinned tags, of `django`, `sqlalchemy`, `pydantic` and `pandas` (a web framework,
+an ORM, a runtime-validation library and a data library; their dependencies' types come from the
+pinned `corpus` dependency group), and against pure Python 2 (Twisted 12.3.0) and pip 20.3.4
+(2/3-era code whose `# type:` comments sit in modules with Python 2 `__future__` imports),
 hash-pinned sdists `tests/corpus/corpus_sources.py` fetches, since neither installs as a dependency.
 
 For a corpus with a suite (cloned at its pinned tag, with its test dependencies as its CI installs
@@ -123,6 +124,33 @@ binding, as JSON lines.
 
 CI also runs the tests on PyPy 3.11 and free-threaded Python 3.14, which install only the `test`
 dependency group: every dev tool doesn't have wheels for them, and the tests don't need them all.
+
+A compiled wheel, mypyc's build of `constricter/rules` and `constricter/fix`, is built from the
+sdist, so nothing compiled lands beside the sources:
+`HATCH_BUILD_HOOK_ENABLE_MYPYC=1 python -m build --no-isolation`, with the dev group (it includes
+the `mypyc` group). CI's Compiled job builds one on Linux, macOS and Windows, on Python 3.11 and
+3.14, and runs the tests against it (`pytest --import-mode=append`, the wheel installed over the
+editable install); the release builds one for each platform and CPython (`build.yml`, by
+cibuildwheel) beside the pure wheel, which PyPy, free-threaded builds and musllinux take. Compiled,
+code runs as its annotations say, not as Python would, where the two differ and no type checker says
+so:
+
+- `frozenset & d.keys()` (or `-`, `|`) is a `set`, where typeshed says `frozenset`: write
+  `d.keys() & s`, or `frozenset.union` and `difference`.
+- A capture inside a star or an or-pattern with `None` (`[_, *_] as args`, `int() | None as x`) is
+  left unbound: capture the whole (`args=args`) and test it in the guard.
+- A name bound again by `:=` after an `if (x := ...) is not None: return x` is taken for `None`: use
+  another name.
+- A `bool` bound to a name declared `int` is an `int`: test for `bool()` in the pattern, before it.
+- `else:` after `if TYPE_CHECKING:` never runs (`constricter/overrides.py`, compiled by nothing, has
+  the one that must).
+- A frozen dataclass a worker is sent pickled defines `__getstate__` and `__setstate__`
+  (`known.pickled`).
+- A test that patches a module's global is marked `interpreted`: compiled callers call past it.
+
+`local/.venv-mypyc/bin/python -m scratch.mypyc_trial` compiles a copy in a few minutes (a C file a
+module, on every CPU, unoptimized) and runs the tests against it; `scratch/compiled_compare.py`
+compares a check by a compiled wheel with this checkout's.
 
 Markdown (markdownlint-cli2 and prettier, locked in `.github/package-lock.json`):
 

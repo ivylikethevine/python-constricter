@@ -2,7 +2,7 @@
 """What each checked file offers other files' `--fix`, read once: the cross-file index (`index`).
 
 `read` takes a file's module name, its top-level functions' declared return types (as
-`annotations.returns` picks them), its classes' attributes and methods' returns (as `classes` and
+`declarations.returns` picks them), its classes' attributes and methods' returns (as `classes` and
 `method_returns` do), its generic classes and type variables, and what each top-level name refers
 to; `constricter.fix.index.project` looks things up in it for each file.
 """
@@ -19,21 +19,17 @@ from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.core.imports import taken_names
-from constricter.fix.core.known import Origin, Passed, Returns, Takers
+from constricter.fix.core.known import Origin, Passed, Returns, Takers, pickled, unpickled
 from constricter.fix.core.signatures import AWAIT
 from constricter.fix.index.declared import Declarations, Signature, declarations, kinds, overloads
 from constricter.fix.values import classvars, entered, fills
 from constricter.fix.values.bodies import yields_itself
-from constricter.fix.values.returned import unannotated, untouched
+from constricter.fix.values.returned import unannotated
+from constricter.fix.values.stored import untouched
+from constricter.overrides import override
 from constricter.rules import parsed
-from constricter.rules.annotations import (
-    awaited_returns,
-    defined_type_vars,
-    dotted,
-    generic_classes,
-    is_composite,
-    node_name,
-)
+from constricter.rules.annotations import dotted, is_composite, node_name
+from constricter.rules.declarations import awaited_returns, defined_type_vars, generic_classes
 from constricter.rules.decorators import Held, Pass, is_fixture
 from constricter.rules.keys import key, optional
 from constricter.rules.syntax import child_statements, top_level
@@ -115,7 +111,7 @@ class Module:  # pylint: disable=too-many-instance-attributes
     bound: Mapping[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
     members: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
     plain: frozenset[str] = frozenset()
-    # Its classes' classmethods' and staticmethods' declared returns (see `annotations.class_methods`);
+    # Its classes' classmethods' and staticmethods' declared returns (see `declarations.class_methods`);
     # Those held back as `held` are, and those of them the index vouched for, now among `sides`.
     sides: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
     held_sides: Mapping[str, Mapping[str, Held]] = field(default_factory=dict[str, Mapping[str, Held]])
@@ -137,7 +133,7 @@ class Module:  # pylint: disable=too-many-instance-attributes
     assigned: frozenset[str] = frozenset()
     # Its classes' methods a `return` could type (as `unannotated`), by name, whatever the class.
     loose: frozenset[str] = frozenset()
-    # Its classes' methods declared to return a bare `Self` (see `annotations.self_returns`).
+    # Its classes' methods declared to return a bare `Self` (see `declarations.self_returns`).
     selfish: Mapping[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
     # What awaiting each of its `async def`s' calls gives (`awaited_returns`)
     awaits: Mapping[str, str] = field(default_factory=dict[str, str])
@@ -153,8 +149,22 @@ class Module:  # pylint: disable=too-many-instance-attributes
     takers: Mapping[str, Takers] = field(default_factory=dict[str, Takers])
     # A checked file's type aliases, type variables and protocols, read as a stub's (see `declared.kinds`).
     kinds: Declarations | None = None
-    # The attributes its classes bind to an empty container and do no more with (see `returned.untouched`).
+    # The attributes its classes bind to an empty container and do no more with (see `stored.untouched`).
     emptied: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
+
+    @override
+    def __getstate__(self) -> dict[str, object]:
+        """Pickle it by its fields (see `pickled`).
+
+        Returns:
+          Them.
+
+        """
+        return pickled(self)
+
+    def __setstate__(self, state: dict[str, object]) -> None:
+        """Unpickle it (see `unpickled`)."""
+        unpickled(self, state)
 
     @property
     def typing(self) -> Declarations | None:
@@ -442,7 +452,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         passes=own.passes,
         aliases={alias: generic for alias, generic in _aliases(tree).items() if alias not in rebound},
         rebound=rebound,
-        assigned=frozenset(assigned) - _aliases(tree).keys() - defined_type_vars(tree),
+        assigned=frozenset(assigned).difference(_aliases(tree).keys(), defined_type_vars(tree)),
         shadowed=frozenset(names) & taken_names(tree)[1] if name is None else frozenset(),
         bases={} if name is not None else classvars.bases(tree),
         bound=dict(own.order.bound),
