@@ -6,6 +6,12 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A file checked again knowing its parameters finishes only the scopes it checks anew: its second
+  round costs 7% of its first on pip, from 11%, and under that on the standard library, django and
+  pandas, with the same findings.
+- A name is followed through what a module imports for type checking alone too, as a package's
+  `__init__` does what it imports only when it's asked for: `from pydantic import TypeAdapter` types
+  what's read of one. 42 fixes more on pydantic's checkout with its tests, none lost.
 - A class spelled through a module a file imports (`test.test_x.C`) has its line of bases worked out
   only when the check asks for it, and one whose members the file takes none of is known as a class
   only where the file writes it: what a check knows of the standard library's files from outside

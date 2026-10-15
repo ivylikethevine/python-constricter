@@ -28,6 +28,7 @@ from constricter.fix.index.modules import (
     Index,
     Module,
     classes_under,
+    exported,
     index,
     indexed,
     module_name,
@@ -97,6 +98,9 @@ def definition(
 ) -> tuple[Module, str] | None:
     """Follow `origin` (through re-exports) to the module that defines it as a `kind` (function, class).
 
+    As `_canonical` does: through what a module imports for type checking alone too, as a package's
+    `__init__` does what it imports only when it's asked for (pydantic's `TypeAdapter`).
+
     Returns:
       That module and the name, or `None`.
 
@@ -107,7 +111,7 @@ def definition(
         return None
     if attribute in _kind(module, kind):
         return module, attribute
-    onward: Origin | None = module.names.get(attribute)
+    onward: Origin | None = module.names.get(attribute) or module.guarded.get(attribute)
     return definition(modules, onward, kind, hops - 1) if onward and onward[0] != module.name else None
 
 
@@ -273,7 +277,7 @@ def _named_under(catalog: Index, local: str, package: str, kind: str) -> Iterato
     found: list[tuple[str, Origin]] | None
     if (found := None if catalog.memo is None else catalog.memo.under.get(key)) is None:
         top: Module | None = catalog.modules.get(package)
-        named: Iterable[tuple[str, Origin]] = () if top is None else top.names.items()
+        named: Iterable[tuple[str, Origin]] = () if top is None else exported(top).items()
         found = []
         name: str
         origin: Origin
@@ -605,9 +609,9 @@ def _named(
         return matches[0]
     module: Module | None = modules.get(origin[0])
     # The module `origin` names has it when it runs, not for type checking alone.
-    exported: bool = module is not None and origin[1] in module.names
+    runs: bool = module is not None and origin[1] in module.names
     through: str | None = _through(modules, target, wanted) or (
-        _through(modules, target, origin) if exported else None
+        _through(modules, target, origin) if runs else None
     )
     if through is not None:
         return through

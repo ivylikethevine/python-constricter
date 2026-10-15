@@ -448,3 +448,58 @@ def test_a_file_read_again_takes_its_modules_place(tmp_path: Path) -> None:
     assert spliced.modules["twin"] is catalog.modules["twin"]
     assert spliced.modules.keys() == catalog.modules.keys()  # not `new`
     assert spliced.memo is not catalog.memo
+
+
+LAZY_INIT: Final = """
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .adapter import Adapter
+
+
+def __getattr__(name):
+    from importlib import import_module
+
+    return getattr(import_module(".adapter", __name__), name)
+"""
+ADAPTER: Final = """
+class Schema:
+    pass
+
+
+class Adapter:
+    schema: Schema
+
+    def validate(self, value: object) -> int:
+        return 1
+"""
+LAZY_USER: Final = """
+from pkg import Adapter
+
+
+def use(adapter: Adapter):
+    schema = adapter.schema
+    checked = adapter.validate(1)
+    return schema, checked
+"""
+LAZY_FIXED: Final = """
+from pkg import Adapter
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from pkg.adapter import Schema
+
+
+def use(adapter: Adapter):
+    schema: Schema = adapter.schema
+    checked: int = adapter.validate(1)
+    return schema, checked
+"""
+
+
+def test_a_class_a_package_exports_for_type_checking_alone_is_followed(tmp_path: Path) -> None:
+    """Its `__init__` imports it only when asked for (pydantic's): its members type what's read of it."""
+    _ = _write(tmp_path / "pkg" / "__init__.py", LAZY_INIT)
+    _ = _write(tmp_path / "pkg" / "adapter.py", ADAPTER)
+    user: Path = _write(tmp_path / "user.py", LAZY_USER)
+    assert cli.main(["--fix", "-q", "--select=LVA001", str(tmp_path)]) == cli.EXIT_CLEAN
+    assert user.read_text(encoding="utf-8") == textwrap.dedent(LAZY_FIXED)

@@ -18,6 +18,7 @@ from constricter.fix.index.modules import (
     Memo,
     Module,
     classes_under,
+    exported,
     module_name,
 )
 from constricter.fix.index.project import (
@@ -293,7 +294,7 @@ def _spelled_classes(
                 *classes_under(catalog, local, origin[0], CLASS),
                 *(
                     (f"{local}.{name}", where)
-                    for name, where in ({} if package is None else package.names).items()
+                    for name, where in (() if package is None else exported(package).items())
                     if (named[1] is None or name in named[1])
                     and where[1] is not None
                     and where[0] != origin[0]

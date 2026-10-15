@@ -18,7 +18,7 @@ from constricter.fix.core.known import Guarded, Origin
 from constricter.fix.core.signatures import OWN, OWN_ELEMENTS, Accepts
 from constricter.fix.index import plain, project
 from constricter.fix.index.atoms import BUILTINS_MODULE, CLASS, Atom, Scope
-from constricter.fix.index.modules import SUFFIX, Index, Memo, Module, classes_under, module_name
+from constricter.fix.index.modules import SUFFIX, Index, Memo, Module, classes_under, exported, module_name
 from constricter.fix.libraries import stdlib
 from constricter.fix.values import classvars
 from constricter.overrides import override
@@ -210,7 +210,7 @@ class Lineages(Mapping[str, tuple[str, ...]]):
                 1,
             )
             top: Module | None = modules.get(package)
-            where: Origin | None = None if top is None or len(rest) != 1 else top.names.get(rest[0])
+            where: Origin | None = None if top is None or len(rest) != 1 else exported(top).get(rest[0])
             if defined is None and where is not None and where[1] is not None and where[0] != package:
                 defined = (
                     project.definition(modules, where, CLASS) if rest[0] in self.named.attributes else None
@@ -237,7 +237,7 @@ class Lineages(Mapping[str, tuple[str, ...]]):
             spelled: list[str] = [key for key, _ in classes_under(self.catalog, local, package, CLASS)]
             spelled += [
                 f"{local}.{name}"
-                for name in ({} if top is None else top.names)
+                for name in (() if top is None else exported(top))
                 if name in self.named.attributes
             ]
             key: str

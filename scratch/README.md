@@ -47,5 +47,8 @@ goes under `local/scratch/`.
   the longest steps and how long each waited, and the corpora that ended last.
 - `outside_size.py [CORPUS] [--top N]`: what a check knows of each file from outside it, by its
   pickled size: the total, the median, the largest files, and the fields that hold the most.
+- `second_round.py [CORPUS ...]`: a check's second rounds, where a file is checked again knowing its
+  parameters, timed against the first checks in one process, and split into their rounds and what
+  follows them over the whole module.
 - `compiled_compare.py SITE TREE ... [--runs N] [--jobs N] [--fix]`: a tree checked (or fixed) by
   this checkout and by a compiled wheel's install, their output compared and timed.

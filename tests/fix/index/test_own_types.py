@@ -13,6 +13,8 @@ from constricter.fix.index import crossed, own_types, project
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from constricter.fix.core.known import Origin
+
 _FRAME: Final = """
 from collections.abc import Iterable, Mapping
 from typing import overload
@@ -146,6 +148,50 @@ def test_a_class_under_a_module_is_worked_out_when_asked(tmp_path: Path) -> None
     assert isinstance(copied, dict)
     assert copied["fr.Wide"] == found["Wide"]
     assert {"Wide", "fr.Wide", "fr.Base"} <= set(found)
+
+
+_REEXPORTING: Final = """
+from shelf.frames import Frame, build
+"""
+_FRAMES: Final = """
+class Frame:
+    pass
+
+
+def build() -> Frame:
+    return Frame()
+"""
+_BUILT: Final = "shelf.build"  # a function the package re-exports
+_UNSHELVED: Final = "shelf.shelves.Frame"  # under a module it hasn't
+_SHELVED: Final = """
+import shelf
+
+
+def f(frame: shelf.Frame) -> None:
+    shelf.build()
+"""
+
+
+def test_a_class_a_package_re_exports_is_worked_out_by_the_name_the_file_takes(tmp_path: Path) -> None:
+    """`shelf.Frame`, not the function it re-exports beside it, nor a module it hasn't."""
+    (tmp_path / "shelf").mkdir()
+    _ = (tmp_path / "shelf" / "__init__.py").write_text(textwrap.dedent(_REEXPORTING), encoding="utf-8")
+    _ = (tmp_path / "shelf" / "frames.py").write_text(textwrap.dedent(_FRAMES), encoding="utf-8")
+    main: Path = tmp_path / "main.py"
+    _ = main.write_text(textwrap.dedent(_SHELVED), encoding="utf-8")
+    catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
+    found: own_types.Lineages = own_types.lineages(catalog, main, {})
+    line: tuple[str, ...] = ("shelf.frames.Frame",)
+    assert found["shelf.Frame"] == found["shelf.frames.Frame"] == line
+    assert _BUILT not in found
+    assert _UNSHELVED not in found
+    assert set(found) == {"shelf.Frame", "shelf.frames.Frame"}
+    assert found == {"shelf.Frame": line, "shelf.frames.Frame": line}
+    assert hash(found) == hash(own_types.lineages(catalog, main, {}))
+    spelled: list[tuple[str, Origin]] = list(
+        project.spellings(catalog._replace(memo=None), catalog.modules["main"], project.CLASS),
+    )
+    assert ("shelf.Frame", ("shelf.frames", "Frame")) in spelled
 
 
 def test_a_class_whose_members_a_file_takes_none_of_is_known_where_it_writes_it(tmp_path: Path) -> None:

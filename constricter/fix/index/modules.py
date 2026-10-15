@@ -542,6 +542,19 @@ def _written(tree: ast.Module) -> dict[str, tuple[str, ...]]:
     return {root: tuple(chains) for root, chains in grouped.items()}
 
 
+def exported(module: Module) -> Mapping[str, Origin]:
+    """Name what a module imports from others, which a file may import from it in turn.
+
+    What it imports for type checking alone too: a package's `__init__` that imports its names only
+    when they're asked for (pydantic's) has them there.
+
+    Returns:
+      Each, by its name there.
+
+    """
+    return {**module.guarded, **module.names} if module.guarded else module.names
+
+
 def takes(module: Module, name: str) -> bool:
     """Check whether `module` binds `name` by an import from another module: one to follow there.
 

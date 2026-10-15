@@ -170,14 +170,15 @@ def checked_tree(
     own = own or module_tables(tree)
     read: ImportPlan = imports.plan(tree)
     outside = None if outside is None else outside.usable(read.taken, imports.present(read, outside.guarded))
+    # A second check's scopes it didn't check again are its first's, finished then.
+    finished: frozenset[int] = _kept_scopes(tree)
     done: _Round = _resumed(tree, checks, outside) or _started(tree, checks, lines, own, outside)
     # Kept with the tree, for as long as it is: a second check may only know its parameters anew.
     vars(tree)[_KEPT] = _Kept(outside, checks, done)
     settings: Settings = done.settings
     scopes: list[Scope] = done.scopes()
     # A finding's kind is the code that reports it (LVA008, LVA009, LVA010).
-    _finished(tree, scopes)
-    flow: list[Offence] = flow_offences(module_flow(tree, scopes), settings.checks.fixes)
+    _finished(tree, [scope for scope in scopes if id(scope) not in finished])
     finals: list[Offence] = [o for scope in scopes for o in late.finals(scope)] if checks.final else []
     reported: list[Offence] = [o for scope in scopes for o in scope.reported()]
     exported: Returns = returned.exported(done.found, settings.known.class_side.lineage)
@@ -188,10 +189,28 @@ def checked_tree(
         **({} if outside is None else outside.guarded),
     }
     return Checked(
-        sorted([*reported, *redundant(tree, settings.checks.fixes), *flow, *finals]),
+        sorted(
+            [
+                *reported,
+                *redundant(tree, settings.checks.fixes),
+                *flow_offences(module_flow(tree, scopes), settings.checks.fixes),
+                *finals,
+            ],
+        ),
         exported._replace(names=imports.exported_names(exported, guarded, plan.added)),
         observed(tree, scopes, settings.known, {} if outside is None else outside.callees),
     )
+
+
+def _kept_scopes(tree: ast.Module) -> frozenset[int]:
+    """Identify the scopes of a module's last check, kept on its tree (see `_Kept`).
+
+    Returns:
+      Their `id`s; none before its first.
+
+    """
+    kept: _Kept | None = cast("_Kept | None", vars(tree).get(_KEPT))
+    return frozenset() if kept is None else frozenset(id(scope) for scope in kept.done.scopes())
 
 
 def _started(
