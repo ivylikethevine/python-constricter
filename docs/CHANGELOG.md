@@ -6,6 +6,13 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- The corpus runner takes a share of the machine (`share` in a run file, or `--share 75`): its steps
+  are sized to that percent of its CPUs and memory (no more of the memory than 80% of what's free),
+  and held to it together where systemd starts them, in a slice whose CPU quota and memory ceiling
+  those are, so what else runs keeps the rest.
+- The methods a file calls are worked out once for it, not again for each class it can name, and a
+  class's overloaded methods are looked up by the class, not by each method the file calls: a check
+  of the standard library in one process takes 43s, from 54s, and of pandas 53s, from 62s.
 - A file checked again knowing its parameters finishes only the scopes it checks anew: its second
   round costs 7% of its first on pip, from 11%, and under that on the standard library, django and
   pandas, with the same findings.

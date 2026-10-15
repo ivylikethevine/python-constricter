@@ -29,11 +29,13 @@ what it's seen to use (`Plan.fitted`): an unmeasured one gives back what it isn'
 one takes what it uses over its share from the next to start.
 
 The steps share the machine's CPUs and `_MEMORY_SHARE` of the memory free as the run starts, unless
-the run file says (`cpus`, `memory`). Where a user's systemd runs, each step starts in a scope of
-its own (`scope`), whose control group the kernel counts whole: its CPU seconds and its peak memory,
-a fork server's workers and what lives between two readings too (`counted`). Elsewhere a step's use
-is read by `corpora_cpu`, which needs `psutil`: without it nothing is measured, and every step is
-sized as unmeasured.
+the run file says (`cpus`, `memory`), or a share of the machine (`share`, `--share`): that percent
+of its CPUs and of its memory, no more than that much of what's free. Where its steps start in
+scopes, a slice holds them to it together (`_sliced`), whatever they were sized to. Where a user's
+systemd runs, each step starts in a scope of its own (`scope`), whose control group the kernel
+counts whole: its CPU seconds and its peak memory, a fork server's workers and what lives between
+two readings too (`counted`). Elsewhere a step's use is read by `corpora_cpu`, which needs `psutil`:
+without it nothing is measured, and every step is sized as unmeasured.
 """
 
 import contextlib
@@ -87,6 +89,9 @@ _COUNTS: Final = ("cpu.stat", "memory.peak")  # in a control group's folder
 _USAGE: Final = re.compile(r"^usage_usec (\d+)$", re.MULTILINE)  # in `cpu.stat`
 _LINUX: Final = "linux"
 _SYSTEMD_RUN: Final = "systemd-run"
+_SYSTEMCTL: Final = "systemctl"
+_SLICE: Final = "constricter-corpus.slice"  # a run's steps' scopes, held to its share (`_sliced`)
+_WHOLE: Final = 100  # a share's percent of the whole machine
 _SCOPE: Final = (_SYSTEMD_RUN, "--user", "--scope", "--quiet", "--collect")  # then the command, run in it
 _PROBE: Final = (  # run in a scope by `scope`: whether its control group counts it
     "import sys; from tests.corpus import sizing; sys.exit(sizing.counted(sizing.group()) is None)"
@@ -163,14 +168,17 @@ def counted(folder: Path | None) -> Used | None:
     return Used(int(usage[1]) / 1e6, int(peak)) if usage is not None and peak.isdigit() else None
 
 
-def scope(root: Path) -> tuple[str, ...]:
+def scope(root: Path, held: "Plan | None" = None) -> tuple[str, ...]:
     """Find how to start a step in a scope of its own, which its control group then counts (`counted`).
 
-    `root`: the checkout, where the probe imports this module.
+    `root`: the checkout, where the probe imports this module. `held`: a run's plan, its CPUs and
+    memory a share of the machine (`Run.share`), which its steps' scopes are held to together: in a
+    slice whose CPU quota and memory ceiling are those, so what else runs has the rest.
 
     Returns:
       The command a step runs under: `systemd-run`'s, where it starts a scope whose CPU and memory
-      the kernel counts; else nothing.
+      the kernel counts, in that slice where one's asked for and systemd takes its limits; else
+      nothing.
 
     """
     if sys.platform != _LINUX or shutil.which(_SYSTEMD_RUN) is None:
@@ -186,7 +194,32 @@ def scope(root: Path) -> tuple[str, ...]:
         )
     except (OSError, subprocess.TimeoutExpired):
         return ()
-    return _SCOPE if done.returncode == 0 else ()
+    if done.returncode:
+        return ()
+    return _SCOPE if held is None else (*_SCOPE, *_sliced(held))
+
+
+def _sliced(held: "Plan") -> tuple[str, ...]:
+    """Hold a run's steps to its share of the machine: a slice whose limits are its `Plan`'s CPUs and bytes.
+
+    The memory a ceiling the kernel reclaims down to (`MemoryHigh`), not a limit that kills a step.
+
+    Returns:
+      `systemd-run`'s option putting a scope in it; nothing where systemd won't set them, and the
+      share is only the steps' sizing.
+
+    """
+    limits: list[str] = [f"CPUQuota={held.cpus * _WHOLE}%", f"MemoryHigh={held.memory}"]
+    try:
+        done: subprocess.CompletedProcess[bytes] = subprocess.run(
+            [_SYSTEMCTL, "--user", "set-property", "--runtime", _SLICE, *limits],
+            capture_output=True,
+            check=False,
+            timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ()
+    return () if done.returncode else (f"--slice={_SLICE}",)
 
 
 class Grouped:
@@ -532,7 +565,9 @@ def plan(run: Run, folder: Path, root: Path) -> Plan:
       The plan.
 
     """
-    cpus: int = run.cpus or os.cpu_count() or 1
-    free: int | None = available()
-    memory: int = int(run.memory * GIB) if run.memory else int((free or 0) * _MEMORY_SHARE)
+    machine: int = os.cpu_count() or 1
+    cpus: int = run.cpus or (max(1, machine * run.share // _WHOLE) if run.share else machine)
+    free: int = int((available() or 0) * _MEMORY_SHARE)
+    shared: int = (parsed.memory() or 0) * run.share // _WHOLE
+    memory: int = int(run.memory * GIB) if run.memory else min(free, shared or free)
     return Plan(run, cpus, memory or _UNKNOWN, before(root / run.output, folder))

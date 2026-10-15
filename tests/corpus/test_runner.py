@@ -25,6 +25,9 @@ from tests.corpus.trees import Tree
 _Nested: TypeAlias = dict[str, dict[str, dict[str, Record]]]  # corpus, version, step
 _Rows: TypeAlias = list[list[str]]  # a CSV table, read back
 _WARNING: Final = "a warning\n"
+SHARE: Final = 75  # percent of the machine
+_SLICED: Final = "--slice=constricter-corpus.slice"  # `systemd-run`'s, for a run with a share
+_SET: Final = "set-property"  # `systemctl`'s, setting the slice's limits
 _PUBLISHED: Final = "\n## constricter rc\n"  # in RUNS.md: `dev` under the run's label
 _BASE: Final = "base"  # a version that names another Python
 _SECTION: Final = "## constricter rc+dev"
@@ -223,11 +226,12 @@ def test_a_step_waits_for_the_cpus_and_the_memory_it_wants() -> None:
     assert started.wait(5)
     waiting.join()
     assert (slots.free, slots.held, slots.running) == (4, 0, 0)
-    assert parse({"run": {"suite-seconds": 900, "suite-workers": 4, "cpus": 8, "memory": 12}})[-4:] == (
+    assert parse({"run": {"suite-seconds": 900, "suite-workers": 4, "cpus": 8, "memory": 12}})[-5:] == (
         900,
         4,
         8,
         12.0,
+        0,
     )
     asked: Steps = parse({"steps": {"tests-hinted": False, "every-level": True}}).steps
     assert (asked.tests_hinted, asked.every_level) == (False, True)
@@ -411,6 +415,50 @@ def test_a_step_starts_in_a_scope_only_where_one_is_counted(monkeypatch: pytest.
     assert started[0][: len(scope)] == list(scope)
     assert isinstance(sizing.watcher(scoped=True), sizing.Grouped)
     assert not sizing.scope(Path())
+
+
+def test_a_run_takes_a_share_of_the_machine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Its CPUs and its memory, no more than so much of what's free; refused past the whole of it."""
+    monkeypatch.setattr("os.cpu_count", lambda: 16)
+    monkeypatch.setattr(sizing, "available", lambda: 40 * sizing.GIB)
+    monkeypatch.setattr("constricter.rules.parsed.memory", lambda: 60 * sizing.GIB)
+    shared: Run = parse({"run": {"share": 75, "output": "."}})
+    assert runner.commanded(Run(), ["--share", "75"]).share == shared.share == SHARE
+    plan: sizing.Plan = sizing.plan(shared, Path(), Path())
+    assert (plan.cpus, plan.memory) == (12, 32 * sizing.GIB)  # 45 GB is 75%: 80% of the free 40 holds less
+    halved: sizing.Plan = sizing.plan(shared._replace(share=25), Path(), Path())
+    assert (halved.cpus, halved.memory) == (4, 15 * sizing.GIB)
+    whole: sizing.Plan = sizing.plan(Run(output=Path()), Path(), Path())
+    assert (whole.cpus, whole.memory) == (16, 32 * sizing.GIB)
+    wrong: int | str
+    for wrong in (101, -1, True, "75"):
+        with pytest.raises(ValueError, match="share must be a percent"):
+            _ = parse({"run": {"share": wrong}})
+
+
+def test_a_runs_steps_are_held_to_its_share_in_a_slice(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Of the CPUs and memory its plan has, where systemd sets them; else only sized to it."""
+    asked: list[list[str]] = []
+    refused: list[bool] = []
+
+    def run(command: list[str], **_options: object) -> SimpleNamespace:
+        asked.append(command)
+        if refused and _SET in command:
+            raise OSError
+        return SimpleNamespace(returncode=0)
+
+    def which(name: str) -> str:
+        return f"/usr/bin/{name}"
+
+    monkeypatch.setattr("sys.platform", "linux")
+    monkeypatch.setattr("shutil.which", which)
+    monkeypatch.setattr("subprocess.run", run)
+    plan: sizing.Plan = sizing.Plan(parse({"run": {"share": 75}}), 12, 32 * sizing.GIB, {})
+    scope: tuple[str, ...] = sizing.scope(Path(), plan)
+    assert scope[-1] == _SLICED
+    assert asked[-1][-2:] == ["CPUQuota=1200%", f"MemoryHigh={32 * sizing.GIB}"]
+    refused.append(True)
+    assert _SLICED not in sizing.scope(Path(), plan)
 
 
 def test_a_check_at_suffocate_counts_every_level() -> None:
@@ -886,3 +934,6 @@ def test_a_run_publishes_one_section_of_itself(tmp_path: Path) -> None:
     assert _STEP_ROW in text
     assert _DIFFERS in text
     assert all(len(line) <= _PROSE or line.startswith("|") for line in text.splitlines())
+    render.publish(render.gathered(whole, store, [tree]), tmp_path, facts | {"share": SHARE})
+    shared: str = " ".join(runs.read_text(encoding="utf-8").split())
+    assert _MACHINE.replace("(Linux)", "(Linux), 75% of it") in shared

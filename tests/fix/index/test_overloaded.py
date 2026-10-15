@@ -368,6 +368,7 @@ def test_an_overload_is_matched_through_what_checked_files_declare(tmp_path: Pat
     catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
     found: set[str] = set(own_methods.overloaded(catalog, calling, {}))
     assert found == {"Frame.get", "shapes.Frame.get", "pkg.shapes.Frame.get"}
+    assert set(own_methods.overloaded(catalog._replace(memo=None), calling, {})) == found  # an index by hand
     assert not own_methods.overloaded(catalog, tmp_path / "missing.py", {})
     assert catalog.modules["pkg.keys"].reads("Key")
     assert not catalog.modules["pkg.keys"].reads("TypeAlias")

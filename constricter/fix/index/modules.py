@@ -188,6 +188,7 @@ class Module:  # pylint: disable=too-many-instance-attributes
 # The classes a module names by its own imports: each one's spelling, its module and its name
 # there; and the generic ones it spells through a module.
 _Spelled: TypeAlias = tuple[list[tuple[str, str, str]], list[str]]
+_ByClass: TypeAlias = dict[str, frozenset[str]]  # each class's methods of a kind, by its name
 _Under: TypeAlias = list[tuple[str, Origin]]  # classes' spellings after a package's name, and what each is
 
 
@@ -209,6 +210,8 @@ class Memo:
     lines: dict[str, tuple[str, ...]] = field(default_factory=dict)
     # The members a class declares a type for (attributes, methods' returns), by its module and name.
     members: dict[tuple[str, str], frozenset[str]] = field(default_factory=dict)
+    # The methods a module's classes overload, by class (see `own_methods`), by its name and folder.
+    overloaded: dict[tuple[str, str], "_ByClass"] = field(default_factory=dict)
 
 
 class Index(NamedTuple):

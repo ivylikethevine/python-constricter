@@ -668,27 +668,21 @@ fix.
    from where its first check ended when what it imports returns anew, as it is when its parameters
    are typed. Done when the standard library checks in under 9s with every CPU, its findings the
    same. About 8 hours; coverage unchanged.
-3. **The index, kept between runs.** Every run reads and indexes every file again, ten times over in
-   a corpus's `table` step alone. Keep each file's module (`modules.read`'s) by its content's hash,
-   as an installed package's are (`installed`), dropped when the code that reads it changes. Done
-   when a second check of an unchanged standard library spends under a second indexing, and a
-   changed file's is read again. About 6 hours; coverage unchanged.
-
-4. **The compiled wheel, on every corpus.** A compiled wheel is built and tested in CI, and gave
+3. **The compiled wheel, on every corpus.** A compiled wheel is built and tested in CI, and gave
    pydantic's findings and fixes as the pure build does (see [Done](#--fix)). The first trial,
    before the changes that made it run right, found two of pandas's 77,931 findings differ (a type
    alias's fix, a guess where it's certain). Left: a full run with a compiled wheel's constricter
    beside this checkout's (`versions`, `NAME=PATH`), and the release's first cibuildwheel builds.
    Done when a compiled wheel checks every corpus as the pure one does. About an hour beside the
    run; coverage unchanged.
-5. **What a hint breaks, by its cause.** With `--infer-with basedpyright,ty,pyrefly` the packages'
+4. **What a hint breaks, by its cause.** With `--infer-with basedpyright,ty,pyrefly` the packages'
    own type checkers find 215 new errors on litestar, 123 on pandas, 49 on sqlalchemy, 34 on mypy,
    20 on narwhals, 19 on optuna and 10 on mcp, nearly all traced to a hint's own fix (`checker`).
    litestar's weren't read: its Pyright is set to Python 3.8. Count them by cause, as the guesses'
    are above, and hold a hint to what the cause says. Done when a hinted run's new errors are under
    one for each hundred of its hints' fixes on the three corpora type-checked. About 8 hours;
    coverage down by the hints withdrawn.
-6. **The witness, past a test's own classes.** The corpora runs hold a fixed binding's value to its
+5. **The witness, past a test's own classes.** The corpora runs hold a fixed binding's value to its
    annotation as its package's traced tests bind it (`tests/corpus/witness`), and a test's own
    stand-in differs (`FakeProcess`, passed where a `ServerProcess` is declared: mcp's one certain
    fix that differed, narwhals's too). On the mega corpora's suites 16 of the 20 `constructor`
@@ -697,20 +691,20 @@ fix.
    a value whose class a test module defines apart from one that differs. Done when a certain fix
    that differs on the corpora is a declaration its package's tests contradict (pydantic's
    `multiple_of: Decimal | None`, bound to an `int`). About 3 hours; coverage unchanged.
-7. **A suite's fixed runs, side by side.** A suite's fixed test runs follow one another on one
+6. **A suite's fixed runs, side by side.** A suite's fixed test runs follow one another on one
    checkout. For a suite of one process that can't take workers, that's most of its time at under a
    CPU: anyio's 870s and joblib's 1,093s (neither's tests run under pytest-xdist), pint's 408s,
    pydantic's 172s. Run them on checkouts of their own, at once. Not a suite whose tests bind a port
    (websockets, uvicorn, httpx), nor one that keeps its CPUs busy. Done when such a suite's `tests`
    step takes under twice its released run. About 5 hours; coverage unchanged.
-8. **django's traced tests, in more than one process.** The tracer doesn't follow the processes
+7. **django's traced tests, in more than one process.** The tracer doesn't follow the processes
    `multiprocessing` starts, so django's suite is traced with `--parallel=1`: 812s traced, the
    longest step of a super run, to 79s untraced on its workers (timed before a generator's returns
    were counted: time it again first). celery's parts are traced one after another too. Record in a
    forked child as a pytest-xdist worker records itself, or trace a suite's `parts` side by side, a
    trace file each. Done when django's traced tests take under 300s, the fixes resting on the trace
    the same. About 4 hours; coverage unchanged.
-9. **A traced run, sampled.** The tracer follows every line of a recorded function until its
+8. **A traced run, sampled.** The tracer follows every line of a recorded function until its
    statements have ended 20 times with nothing new: django's traced tests take 812s, 79s untraced.
    Record in short windows at random times, with `sys.monitoring`'s events off between them, and
    stop reading a large container once new types stop turning up. Done when pydantic's and django's

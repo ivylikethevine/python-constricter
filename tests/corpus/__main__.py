@@ -6,6 +6,7 @@
     local/.venv/bin/python -m tests.corpus RUN.toml --only NAME       # on that corpus or set alone
     local/.venv/bin/python -m tests.corpus RUN.toml --label NAME      # under that label
     local/.venv/bin/python -m tests.corpus RUN.toml --at-once N --jobs M   # sized for this machine
+    local/.venv/bin/python -m tests.corpus RUN.toml --share 75        # 75% of its CPUs and memory
 
 The run file (`run_config`) names the corpora (`corpora.toml`'s), the constricter versions, the
 steps and the formats. Each execution writes `<output>/<label>-<month>-<day>-<year>-<time>/`:
@@ -52,7 +53,7 @@ from constricter import __version__
 from constricter.rules import parsed
 from tests.corpus import catalog, launch, pipeline, render, sizing, suite_steps, trees
 from tests.corpus.pipeline import Record
-from tests.corpus.run_config import UNSAFE, Run, read
+from tests.corpus.run_config import UNSAFE, Run, percent, read
 
 if TYPE_CHECKING:
     import resource
@@ -63,6 +64,7 @@ _RESUME: Final = "--resume"
 _AT_ONCE: Final = "--at-once"  # then how many corpora are found side by side, whatever the file says
 _JOBS: Final = "--jobs"  # and constricter's worker processes
 _LABEL: Final = "--label"  # then the run's label, whatever its file says
+_SHARE: Final = "--share"  # then the percent of the machine its steps share, whatever its file says
 _SAID: Final = 2000  # the characters kept of why a corpus couldn't be had: the end of its build's output
 _ONLY: Final = "--only"  # then a corpus or a set: the run file's, on that alone
 _STEP: Final = "--step"  # then a run's folder, a corpus, a version and a step: that step alone
@@ -120,6 +122,7 @@ def _facts(run: Run, started: datetime) -> Record:
         "python": platform.python_version(),
         "system": platform.system(),
         "cpus": os.cpu_count() or 1,
+        "share": run.share,
         "gigabytes": round((parsed.memory() or 0) / sizing.GIB),
     }
 
@@ -478,11 +481,11 @@ def _counted(record: Record | None, used: sizing.Used) -> tuple[sizing.Used, str
     return (counted, sizing.SCOPE) if scoped else (used, _SAMPLED)
 
 
-def _said(run: Run, argv: Sequence[str]) -> Run:
+def commanded(run: Run, argv: Sequence[str]) -> Run:
     """Read what a command says of its run, whatever the run file does.
 
     Returns:
-      The run, with the command's corpora, label, corpora at once and `--jobs`.
+      The run, with the command's corpora, label, corpora at once, `--jobs` and `--share`.
 
     """
     if _ONLY in argv:
@@ -493,6 +496,8 @@ def _said(run: Run, argv: Sequence[str]) -> Run:
         run = run._replace(at_once=int(argv[argv.index(_AT_ONCE) + 1]))
     if _JOBS in argv:
         run = run._replace(jobs=int(argv[argv.index(_JOBS) + 1]))
+    if _SHARE in argv:
+        run = run._replace(share=percent(int(argv[argv.index(_SHARE) + 1])))
     return run
 
 
@@ -510,7 +515,7 @@ def _step(argv: Sequence[str]) -> int:
     version: str
     name: str
     corpus, version, name = argv[1:4]
-    run: Run = _said(read(folder / "run.toml"), argv[4:])
+    run: Run = commanded(read(folder / "run.toml"), argv[4:])
     # A suite's type checks have a checkout of their own, and run beside its tests on the other.
     tree: trees.Tree = trees.found(
         catalog.load().entry(corpus),
@@ -544,7 +549,7 @@ def main(argv: Sequence[str]) -> int:
     if argv[:1] == [_STEP]:
         return _step(argv[1:])
     start: float = time.perf_counter()
-    run: Run = _said(read(Path(argv[0])), argv)
+    run: Run = commanded(read(Path(argv[0])), argv)
     facts: Record = _facts(run, datetime.now().astimezone())
     folder: Path = _folder(argv, run, facts)
     store: pipeline.Store = pipeline.Store(folder)
@@ -606,7 +611,8 @@ def _all(run: Run, store: pipeline.Store) -> list[_Measured]:
     for version in run.versions:
         _ = launch.python(version)
     plan: sizing.Plan = sizing.plan(run, store.root, _ROOT)
-    scope: tuple[str, ...] = sizing.scope(_ROOT)
+    # Its steps held to its share of the machine, where it has one.
+    scope: tuple[str, ...] = sizing.scope(_ROOT, plan if run.share else None)
     running: Running = Running(
         run,
         store,

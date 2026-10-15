@@ -478,6 +478,17 @@ def guesses(records: Records, store: Store) -> list[Record]:
     return found
 
 
+def _shared(facts: Record) -> str:
+    """Say what share of the machine a run took, where it was given one.
+
+    Returns:
+      `, 75% of it`, or nothing.
+
+    """
+    share: int = cast("int", facts.get("share", 0))
+    return f", {share}% of it" if share else ""
+
+
 def section(records: Records, facts: Record) -> str:
     """Write the whole run as one section of docs/RUNS.md: its machine, and its last version's tables.
 
@@ -491,7 +502,7 @@ def section(records: Records, facts: Record) -> str:
         f"The run `{records.run.label}` (`python -m tests.corpus`) on {', '.join(records.run.include)}: "
         f"constricter {facts.get('constricter', '')} (`{facts.get('commit', '')}`), Python "
         f"{facts.get('python', '')}, on {facts.get('cpus', '')}CPU/{facts.get('gigabytes', '')}GB "
-        f"({facts.get('system', '')}): `--jobs={records.run.jobs}`, each "
+        f"({facts.get('system', '')}){_shared(facts)}: `--jobs={records.run.jobs}`, each "
         f"step a process of its own, started once the CPUs it's expected to keep busy and the memory "
         f"it's expected to hold are free.{took} Timings don't compare across machines."
     )

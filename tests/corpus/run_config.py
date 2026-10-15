@@ -10,9 +10,11 @@
     jobs = 0                         # constricter's worker processes: 0 is every CPU
     at-once = 1                      # the corpora found side by side: cloned, installed
     suite-seconds = 1800             # how long a suite's tests may run before they're stopped
-    suite-workers = 0                # the most processes a suite's tests take: 0 is half the CPUs
+    suite-workers = 0                # the most processes a suite's tests take: 0, as many as fit
     cpus = 0                         # the CPUs the steps share: 0 is the machine's (see `sizing`)
     memory = 0                       # and the gigabytes: 0 is most of what's free as the run starts
+    share = 0                        # or the percent of the machine's CPUs and memory they share, and
+                                     # are held to where systemd starts them (`--share`): 0, as above
 
     [corpora]
     include = ["seven"]              # corpora or sets of `corpora.toml`, or directories
@@ -60,6 +62,7 @@ UNSAFE: Final = "unsafe"
 # Each fix a run can make on a copy, and the options that make it beside `--fix`.
 FIXES: Final = {CERTAIN: (), LIKELY: ("--likely",), UNSAFE: ("--unsafe-fixes",)}
 CHECKERS: Final = ("basedpyright", "ty", "pyrefly")  # what `--infer-with` can start
+_WHOLE: Final = 100  # a share's percent of the whole machine
 _KEYS: Final = {
     "run": {
         "label",
@@ -72,6 +75,7 @@ _KEYS: Final = {
         "suite-workers",
         "cpus",
         "memory",
+        "share",
     },
     "corpora": {"include", "install"},
     "publish": {"runs-md", "replace", "section"},
@@ -134,9 +138,10 @@ class Run(NamedTuple):
     publish: Publish = Publish()
     install: bool = True  # a suite's corpus installed with its tests' dependencies, not cloned alone
     suite_seconds: int = 1800  # how long a suite's tests may run before they're stopped
-    suite_workers: int = 0  # the most processes a suite's tests take: 0 is half the CPUs
+    suite_workers: int = 0  # the most processes a suite's tests take: 0, as many as fit (`sizing`)
     cpus: int = 0  # the CPUs the steps share: 0 is the machine's
     memory: float = 0.0  # the gigabytes they share: 0 is most of what's free as the run starts
+    share: int = 0  # the percent of the machine's CPUs and memory they share, held to it: 0, as above
 
     def folder(self, now: datetime) -> Path:
         """Name the folder an execution started at `now` writes.
@@ -230,7 +235,24 @@ def parse(data: _Table) -> Run:
         cast("int", run.get("suite-workers", default.suite_workers)),
         cast("int", run.get("cpus", default.cpus)),
         float(cast("float", run.get("memory", default.memory))),
+        percent(run.get("share", default.share)),
     )
+
+
+def percent(given: object) -> int:
+    """Read a share of the machine, in percent.
+
+    Returns:
+      It: 1 to 100, or 0 for none given.
+
+    Raises:
+      ValueError: it isn't a whole number from 0 to 100.
+
+    """
+    if isinstance(given, bool) or not isinstance(given, int) or not 0 <= given <= _WHOLE:
+        message: str = f"share must be a percent, 1 to {_WHOLE} (0: the machine's): {given!r}"
+        raise ValueError(message)
+    return given
 
 
 def read(path: Path) -> Run:
