@@ -61,3 +61,14 @@ def test_memory_isnt_known_where_the_system_doesnt_say(monkeypatch: pytest.Monke
     monkeypatch.delattr(os, "sysconf", raising=False)
     assert parsed.memory() is None
     assert parsed.sized(parsed.memory()) == 40 << 20
+
+
+@pytest.mark.parametrize("error", [ValueError, OSError])
+def test_memory_isnt_known_where_sysconf_fails(monkeypatch: pytest.MonkeyPatch, error: type[Exception]) -> None:
+    """A `sysconf` without the name (`ValueError`), or one the system refuses (`OSError`)."""
+
+    def sysconf(name: str) -> int:
+        raise error(name)
+
+    monkeypatch.setattr(os, "sysconf", sysconf, raising=False)
+    assert parsed.memory() is None
