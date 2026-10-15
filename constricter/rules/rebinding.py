@@ -74,10 +74,12 @@ def refit(
     if not later.misfits:
         return Refit(Inference(fix.annotation, fix.reason, kinds), origins, unsafe, fix.edit, fix.span)
     atoms: frozenset[str] = declared | later.misfits
+    if module[0] in atoms:  # a `Self` takes only `Self`, and is taken by nothing else
+        return None
     joined: tuple[str, frozenset[str]] | None
-    # A union only of what's certain: a guessed value's type is one a checker may see otherwise.
-    certain: bool = not (later.unknown or later.origins or fix.unsafe)
-    if (joined := _joined(atoms - {_NONE}, hierarchy, unions=module[1] and certain)) is None:
+    # A union of known types: one that's a guess makes it a guess, resting on what that one does, as
+    # a second pass would declare it once the first had declared the guess.
+    if (joined := _joined(atoms - {_NONE}, hierarchy, unions=module[1] and not later.unknown)) is None:
         return None
     return Refit(
         Inference(

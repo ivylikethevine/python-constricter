@@ -923,7 +923,8 @@ fix-widen = ["untyped-parameters", "empty-containers"]
   length.
 - `unions`: a name bound to values of two or three types that fit no one of them (`x = 1`, then
   `x = "a"`), declared their union on a line of its own before its first binding. Only of values
-  whose types are certain, and not for a name its function changes in place (`x += more`).
+  whose types are known, a guess where one is, resting on what that one does; never with a `Self`,
+  and not for a name its function changes in place (`x += more`).
 - `vague`: a value whose type is known and vaguer than `vague` allows (a call declared to return a
   `dict[str, Any]`), which `--fix` otherwise never writes.
 

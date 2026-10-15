@@ -1,13 +1,17 @@
 # SPDX-License-Identifier: MIT
 """`--fix` for a checked file's overloads decided by the checked files' own classes."""
 
+import copy
 import textwrap
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from constricter import Offence, check_source
 from constricter.cli import schedule
-from constricter.fix.index import own_types, project
+from constricter.fix.index import crossed, own_types, project
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 _FRAME: Final = """
 from collections.abc import Iterable, Mapping
@@ -67,6 +71,7 @@ def loose(obj: Series) -> str: ...
 def loose(obj):
     return obj
 """
+_NOTHING: Final = "fr.Nothing"  # a class `fr` doesn't have
 _MAIN: Final = """
 import pkg.frame as fr
 from pkg.frame import DataFrame, Odd, Series, Wide, concat, copy, keyed, loose
@@ -117,13 +122,44 @@ def test_each_class_a_file_names_has_its_lineage(tmp_path: Path) -> None:
     catalog: project.Index
     main: Path
     catalog, main = _package(tmp_path)
-    found: dict[str, tuple[str, ...]] = own_types.lineages(catalog, main, {})
+    found: Mapping[str, tuple[str, ...]] = own_types.lineages(catalog, main, {})
     assert found["DataFrame"] == ("pkg.frame.DataFrame", "pkg.frame.Base")
     assert found["Wide"] == ("pkg.frame.Wide", "pkg.frame.DataFrame", "pkg.frame.Base")
     assert found["Local"] == ("main.Local", "pkg.frame.Series", "pkg.frame.Base")
     assert found["fr.Series"] == found["Series"]
     assert found["Odd"] == ("pkg.frame.Odd", "?")
     assert not own_types.lineages(catalog, tmp_path / "missing.py", {})
+
+
+def test_a_class_under_a_module_is_worked_out_when_asked(tmp_path: Path) -> None:
+    """Once, and kept; copied (and pickled) as a `dict` of what's worked out; equal to the file's next."""
+    catalog: project.Index
+    main: Path
+    catalog, main = _package(tmp_path)
+    found: own_types.Lineages = own_types.lineages(catalog, main, {})
+    assert not found.asked
+    assert found["fr.Wide"] == found["Wide"]
+    assert _NOTHING not in found
+    assert found.asked == {"fr.Wide": found["Wide"], _NOTHING: None}
+    assert found == own_types.lineages(catalog, main, {})
+    copied: Mapping[str, tuple[str, ...]] = copy.copy(found)
+    assert isinstance(copied, dict)
+    assert copied["fr.Wide"] == found["Wide"]
+    assert {"Wide", "fr.Wide", "fr.Base"} <= set(found)
+
+
+def test_a_class_whose_members_a_file_takes_none_of_is_known_where_it_writes_it(tmp_path: Path) -> None:
+    """`fr.Series`, which it writes; not `fr.Wide`, which it could, nor any other of the module's."""
+    catalog: project.Index
+    main: Path
+    catalog, main = _package(tmp_path)
+    assert sorted(crossed.imported(catalog, main).classes.attributes) == [
+        "DataFrame",
+        "Odd",
+        "Series",
+        "Wide",
+        "fr.Series",
+    ]
 
 
 def test_an_overload_is_picked_by_the_checked_files_classes(tmp_path: Path) -> None:

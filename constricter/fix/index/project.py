@@ -62,6 +62,7 @@ DECORATOR: Final = "decorator"  # a function that gives back the one it decorate
 CLASS: Final = "class"
 ALIAS: Final = "alias"  # a type alias (see `modules.Module.aliases`)
 _TYPES: Final = frozenset({CLASS, ALIAS})  # the kinds a fix may write a name of that the file doesn't
+_REEXPORTED: Final = "re-exported"  # in the memo's key after a kind: what a package names of its submodules'
 _TYPE_VAR: Final = "type variable"
 _RETURNED: Final = "returned"  # an unannotated function its `return`s type
 UNANNOTATED: Final = "unannotated"  # an unannotated function, typed or not
@@ -244,6 +245,7 @@ def spellings(catalog: Index, target: Module, kind: str) -> Iterator[tuple[str, 
         elif origin[1] is None:  # a module: `u.f()`, or `pkg.util.f()` after `import pkg.util`
             if kind in _TYPES:  # a fix may write one the file doesn't yet: every one
                 yield from classes_under(catalog, local, origin[0], kind)
+                yield from _named_under(catalog, local, origin[0], kind)
                 continue
             key: str
             sub: str
@@ -253,6 +255,37 @@ def spellings(catalog: Index, target: Module, kind: str) -> Iterator[tuple[str, 
                 followed: bool = kind == _FUNCTION and other is not None and takes(other, function)
                 if other is not None and (followed or function in _kind(other, kind)):
                     yield key, (other.name, function)
+
+
+def _named_under(catalog: Index, local: str, package: str, kind: str) -> Iterator[tuple[str, Origin]]:
+    """Spell the classes (or aliases) `package` imports from its submodules, as a file importing it may.
+
+    `local`: the name the file imports it as.
+
+    `pd.DataFrame`, by `from pandas.core.api import DataFrame` in `pandas/__init__.py`: the class
+    `pandas.core.frame` defines, which `classes_under` spells only by its own module.
+
+    Returns:
+      Each spelling, and the module that defines it and its name there.
+
+    """
+    key: tuple[str, str] = (package, f"{kind} {_REEXPORTED}")
+    found: list[tuple[str, Origin]] | None
+    if (found := None if catalog.memo is None else catalog.memo.under.get(key)) is None:
+        top: Module | None = catalog.modules.get(package)
+        named: Iterable[tuple[str, Origin]] = () if top is None else top.names.items()
+        found = []
+        name: str
+        origin: Origin
+        for name, origin in named:
+            defined: tuple[Module, str] | None
+            if not origin[0].startswith(package + _DOT):
+                continue
+            if defined := definition(catalog.modules, origin, kind):
+                found.append((f"{_DOT}{name}", (defined[0].name, defined[1])))
+        if catalog.memo is not None:
+            catalog.memo.under[key] = found
+    return ((f"{local}{suffix}", origin) for suffix, origin in found)
 
 
 def resolved(catalog: Index, names: Mapping[str, Origin]) -> Iterator[tuple[str, Origin]]:

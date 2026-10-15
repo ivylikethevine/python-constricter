@@ -11,7 +11,7 @@ import pickle
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Final, NamedTuple, cast
+from typing import TYPE_CHECKING, Final, NamedTuple, cast
 
 from constricter.cli import collecting
 from constricter.cli.runs import CoverageRun, FileRun
@@ -40,6 +40,9 @@ from constricter.fix.index import (
 )
 from constricter.fix.index.modules import Memo
 
+if TYPE_CHECKING:
+    from constricter.fix.core.signatures import ReadSignature
+
 CYCLE_ROUNDS: Final = 3  # how many times to check again files calling each other's functions
 
 
@@ -64,9 +67,15 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
     hints: tuple[Hints, ...] = offers.vetted(modules, path, hinted.get(path, ()))
     # What only a hint can name: the classes the file imports for type checking alone.
     own: offers.Own = offers.own(modules, path) if hints else offers.Own()
+    overloaded: dict[str, tuple[ReadSignature, ...]] = {
+        **stubbed.overloaded(modules, path, guarded),
+        **methods.signatures,
+        **own_methods.overloaded(modules, path, guarded),
+    }
     return Outside(
         calls={**imported.calls, **side_calls, **decorated.own(modules, path)},
-        classes=imported.classes,
+        # With those of the classes the overloaded methods' returns import.
+        classes=crossed.guarded_classes(modules, path, imported, guarded),
         hints=hints,
         type_vars=project.type_vars(modules, path),
         returned=awaits.returned(
@@ -79,14 +88,10 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         generics=imported.generics | own.generics,
         callees=callers.callees(modules, path),
         parameters=callers.own_parameters(modules, path),
-        overloaded={
-            **stubbed.overloaded(modules, path, guarded),
-            **methods.signatures,
-            **own_methods.overloaded(modules, path, guarded),
-        },
+        overloaded=overloaded,
         installed_classes=stubbed.classes(modules, path),
         installed_parameters=methods.parameters,
-        installed_lineage={**own_types.lineages(modules, path, guarded), **methods.lineage},
+        installed_lineage=own_types.lineages(modules, path, guarded, methods.lineage),
         installed_aliases=methods.aliases,
         checking=own.guarded,
         plain=plain.classes(modules, path),

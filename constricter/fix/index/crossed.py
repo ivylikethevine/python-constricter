@@ -97,6 +97,38 @@ def imported(
     )
 
 
+def guarded_classes(catalog: Index, path: Path, found: Imported, guarded: Mapping[str, Guarded]) -> Classes:
+    """Add the members of the classes `guarded` names that `found` hasn't taken, as the file names them.
+
+    Those of the imports later steps add for type checking (an overloaded method's return):
+    `df = pd.DataFrame(...).set_index("C")`, typed `DataFrame` by its import: `df.explode()` is one of
+    that class's methods in the same pass, not only once the import is written.
+
+    Returns:
+      `found`'s classes, with theirs.
+
+    """
+    target: Module | None
+    if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
+        return found.classes
+    fresh: dict[str, Origin] = {
+        name: each.origin
+        for name, each in guarded.items()
+        if name not in found.guarded and name not in target.names and name not in found.classes.methods
+    }
+    if not fresh:
+        return found.classes
+    taken: _Taken = _Taken(
+        {key: dict(each) for key, each in found.classes.attributes.items()},
+        {key: dict(each) for key, each in found.classes.methods.items()},
+        {},
+        {},
+        set(),
+    )
+    _take(catalog, target, (fresh, None), taken, dict(guarded))
+    return Classes(taken.attributes, taken.methods)
+
+
 class _Taken(NamedTuple):
     """What `imported` takes of the classes a file names, each keyed as the file spells the class."""
 
@@ -117,13 +149,25 @@ def _take(catalog: Index, target: Module, named: _Named, taken: _Taken, guarded:
         if defined[1] in defined[0].plain and defined[1] in defined[0].members:
             taken.members[key] = _variables(catalog.modules, (target, defined), key, guarded)
         if _declared_members(catalog, defined).isdisjoint(target.attributes):
-            # Most classes it can name: it takes none of their members.
-            taken.attributes[key], taken.methods[key], taken.partial[key] = {}, {}, {}
+            # Most classes it can name: it takes none of their members, and asks whether it names one
+            # only by what it writes (`m.Row(...)` constructs one).
+            if _written(key, target.attributes):
+                taken.attributes[key], taken.methods[key], taken.partial[key] = {}, {}, {}
             continue
         taken.attributes[key], taken.methods[key], taken.partial[key] = (
             _used(catalog.modules, (target, defined), key, table.get(defined[1]), guarded)
             for table in (defined[0].classes, defined[0].methods, defined[0].partial_methods)
         )
+
+
+def _written(spelled: str, attributes: frozenset[str]) -> bool:
+    """Check whether a file can write a class as `spelled`: each part after its first an attribute it takes.
+
+    Returns:
+      Whether it can.
+
+    """
+    return all(part in attributes for part in spelled.split(".")[1:])
 
 
 def _variables(

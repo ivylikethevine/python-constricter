@@ -11,15 +11,17 @@ matched (see `constricter.fix.index.stubbed`). `concat([df, df])` then picks the
 import ast
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
-from typing import Final, TypeAlias
+from types import MappingProxyType
+from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.core.known import Guarded, Origin
 from constricter.fix.core.signatures import OWN, OWN_ELEMENTS, Accepts
-from constricter.fix.index import crossed, plain
+from constricter.fix.index import plain, project
 from constricter.fix.index.atoms import BUILTINS_MODULE, CLASS, Atom, Scope
-from constricter.fix.index.modules import SUFFIX, Index, Memo, Module, module_name
+from constricter.fix.index.modules import SUFFIX, Index, Memo, Module, classes_under, module_name
 from constricter.fix.libraries import stdlib
 from constricter.fix.values import classvars
+from constricter.overrides import override
 
 _NONE_ATOM: Final = "none"
 _LITERAL_ATOM: Final = "literal"
@@ -33,6 +35,8 @@ _ITERABLES: Final = frozenset(
 # Those a builtin sequence or set isn't: they neither take one nor say what its elements are.
 _MAPPINGS: Final = frozenset({"Mapping", "MutableMapping", "dict", "Dict"})
 _Atoms: TypeAlias = Callable[[ast.expr, Scope], Iterator[Atom]]
+_Lines: TypeAlias = Mapping[str, tuple[str, ...]]  # each class's line of bases, by how a file names it
+_NO_LINES: Final[_Lines] = MappingProxyType({})
 
 
 def accept(modules: Mapping[str, Module], atoms: Sequence[Atom], read: _Atoms, found: Accepts) -> None:
@@ -91,11 +95,16 @@ def _classes(modules: Mapping[str, Module], atoms: Sequence[Atom]) -> list[str] 
     return sorted(found)
 
 
-def lineages(catalog: Index, path: Path, guarded: Mapping[str, Guarded]) -> dict[str, tuple[str, ...]]:
+def lineages(
+    catalog: Index,
+    path: Path,
+    guarded: Mapping[str, Guarded],
+    installed: _Lines = _NO_LINES,
+) -> "Lineages":
     """Find where each checked file's class the file at `path` names comes from, by how it names it.
 
     Its own classes, those it imports (for type checking too, `guarded`), and those of the modules
-    it imports.
+    it imports; and `installed`, installed packages' classes, which go first.
 
     Returns:
       Each one's path and its bases', through the checked files, `?` last where a base can't be
@@ -104,22 +113,182 @@ def lineages(catalog: Index, path: Path, guarded: Mapping[str, Guarded]) -> dict
     """
     target: Module | None
     if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
-        return {}
-    found: dict[str, tuple[str, ...]] = {
+        return Lineages(catalog, Named({}, {}, frozenset()), installed)
+    own: dict[str, tuple[str, ...]] = {
         name: _lined(catalog, f"{target.name}.{name}") for name in target.bases
     }
     # Those it names for type checking alone, then by its own imports, which the index keeps.
     checking: dict[str, Origin] = {
         name: each.origin for name, each in guarded.items() if name not in target.names
     }
+    under: dict[str, str] = {}
     names: Mapping[str, Origin]
     for names in (checking, target.names):
-        key: str
-        defined: tuple[Module, str]
-        for key, defined in crossed.spelled_classes(catalog, target, (names, target.attributes), set()):
-            if not defined[0].installed:
-                found[key] = _lined(catalog, f"{defined[0].name}.{defined[1]}")
-    return found
+        local: str
+        origin: Origin
+        for local, origin in project.resolved(catalog, names):
+            defined: tuple[Module, str] | None
+            if origin[1] is None:
+                under[local] = origin[0]
+                continue
+            defined = None if origin[0] == target.name else project.definition(catalog.modules, origin, CLASS)
+            if defined is not None and not defined[0].installed:
+                own[local] = _lined(catalog, f"{defined[0].name}.{defined[1]}")
+    return Lineages(catalog, Named(own, under, target.attributes), installed)
+
+
+class Named(NamedTuple):
+    """The classes a file names itself, by its own or imported name, and where it can name more.
+
+    `under`: each module it imports, by how it names it, a class of whose (or of whose submodules')
+    it may name by that (`pkg.m.Row`); `attributes`: the attributes it takes of anything, which a
+    class its package re-exports must be one of (`pkg.Row`).
+    """
+
+    own: dict[str, tuple[str, ...]]
+    under: dict[str, str]
+    attributes: frozenset[str]
+
+
+class Lineages(Mapping[str, tuple[str, ...]]):
+    """Each class a file names, by how it names it, and its line of bases (see `lineages`).
+
+    Those it names itself or imports by name are worked out at once; one of a module it imports
+    (`test.support.Foo`, any of a package's) only when it's asked for: a file may name any of
+    thousands, and names a few. Two are equal where the file names the same, the index aside.
+    """
+
+    def __init__(self, catalog: Index, named: Named, installed: Mapping[str, tuple[str, ...]]) -> None:
+        """Keep what `lineages` found, `installed` first, and the index the rest are found in."""
+        self.catalog: Index = catalog
+        self.named: Named = named
+        self.installed: Mapping[str, tuple[str, ...]] = installed
+        self.asked: dict[str, tuple[str, ...] | None] = {}
+
+    @override
+    def __getitem__(self, key: str) -> tuple[str, ...]:
+        """Find a class's line of bases, as `lineages` would have.
+
+        Returns:
+          It.
+
+        Raises:
+          KeyError: the file names no such class.
+
+        """
+        found: tuple[str, ...] | None = self.installed.get(key) or self.named.own.get(key)
+        if found is None:
+            if key not in self.asked:
+                self.asked[key] = self._under(key)
+            found = self.asked[key]
+        if found is None:
+            raise KeyError(key)
+        return found
+
+    def _under(self, key: str) -> tuple[str, ...] | None:
+        """Find a class `key` names through a module the file imports, a checked file's.
+
+        `local.Row` for one the module defines, `local.m.Row` for one a submodule does, and
+        `local.Row` for one it imports from another of its package's, a name the file takes.
+
+        Returns:
+          Its line of bases, or `None`.
+
+        """
+        parts: list[str] = key.split(".")
+        cut: int
+        for cut in range(len(parts) - 1, 0, -1):
+            package: str | None
+            if (package := self.named.under.get(".".join(parts[:cut]))) is None:
+                continue
+            rest: list[str] = parts[cut:]
+            modules: Mapping[str, Module] = self.catalog.modules
+            defined: tuple[Module, str] | None = project.definition(
+                modules,
+                (".".join([package, *rest[:-1]]), rest[-1]),
+                CLASS,
+                1,
+            )
+            top: Module | None = modules.get(package)
+            where: Origin | None = None if top is None or len(rest) != 1 else top.names.get(rest[0])
+            if defined is None and where is not None and where[1] is not None and where[0] != package:
+                defined = (
+                    project.definition(modules, where, CLASS) if rest[0] in self.named.attributes else None
+                )
+            if defined is None or defined[0].installed:
+                return None
+            return _lined(self.catalog, f"{defined[0].name}.{defined[1]}")
+        return None
+
+    @override
+    def __iter__(self) -> Iterator[str]:
+        """Name every class the file can, its own and installed ones first: each one asked for.
+
+        Yields:
+          Each one's name, as the file names it.
+
+        """
+        yield from self.installed
+        yield from (name for name in self.named.own if name not in self.installed)
+        local: str
+        package: str
+        for local, package in self.named.under.items():
+            top: Module | None = self.catalog.modules.get(package)
+            spelled: list[str] = [key for key, _ in classes_under(self.catalog, local, package, CLASS)]
+            spelled += [
+                f"{local}.{name}"
+                for name in ({} if top is None else top.names)
+                if name in self.named.attributes
+            ]
+            key: str
+            for key in spelled:
+                if key not in self.installed and key not in self.named.own and key in self:
+                    yield key
+
+    @override
+    def __len__(self) -> int:
+        """Count the classes the file can name (see `__iter__`).
+
+        Returns:
+          How many.
+
+        """
+        return sum(1 for _ in self)
+
+    @override
+    def __eq__(self, other: object) -> bool:
+        """Compare two by what decides them: the classes named at once and the modules the rest are under.
+
+        Returns:
+          Whether they're equal.
+
+        """
+        if isinstance(other, Lineages):
+            return (self.named, dict(self.installed)) == (other.named, dict(other.installed))
+        return super().__eq__(other)
+
+    @override
+    def __hash__(self) -> int:
+        """Hash it by part of what `__eq__` compares: the modules the file names classes under.
+
+        Returns:
+          The hash.
+
+        """
+        return hash((tuple(self.named.under.items()), self.named.attributes))
+
+    @override
+    def __reduce__(self) -> tuple[type[dict[str, tuple[str, ...]]], tuple[dict[str, tuple[str, ...]]]]:
+        """Pickle what's worked out so far, as a `dict`: the index stays behind.
+
+        Returns:
+          How.
+
+        """
+        asked: dict[str, tuple[str, ...]] = {
+            key: line for key, line in self.asked.items() if line is not None
+        }
+        return dict, ({**asked, **self.named.own, **self.installed},)
 
 
 def _lined(catalog: Index, defined: str) -> tuple[str, ...]:

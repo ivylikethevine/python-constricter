@@ -6,6 +6,16 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A class spelled through a module a file imports (`test.test_x.C`) has its line of bases worked out
+  only when the check asks for it, and one whose members the file takes none of is known as a class
+  only where the file writes it: what a check knows of the standard library's files from outside
+  them is 8 MiB, from 54 MiB, with the same fixes.
+- `fix-widen`'s `unions` joins a guessed value's type too, the union a guess resting on it, and
+  never a `Self`; a class a package re-exports (`pd.DataFrame`) is the one its module defines; and
+  the members of a class an overloaded method's return imports type what's read of it in the same
+  pass (`df.explode()` after `df = pd.DataFrame(...).set_index("C")`). With every `fix-widen` kind,
+  a second `--fix --unsafe-fixes` pass leaves nothing on the seven corpora, where it typed 12
+  bindings; pandas gets 25 fixes more without widening.
 - A wheel compiled with mypyc for each platform and CPython 3.11 to 3.14, which pip picks where it
   can: the same findings and fixes, a check of pydantic about a fifth faster in one process. The
   pure wheel stays, for PyPy, free-threaded builds and anywhere else.

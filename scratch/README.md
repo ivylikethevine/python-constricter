@@ -45,5 +45,7 @@ goes under `local/scratch/`.
 - `run_timeline.py FOLDER [--top N] [--every MINUTES]`: a corpus run's timeline from its records:
   the share of the machine's CPU seconds used, the CPUs busy and the steps running in each bucket,
   the longest steps and how long each waited, and the corpora that ended last.
+- `outside_size.py [CORPUS] [--top N]`: what a check knows of each file from outside it, by its
+  pickled size: the total, the median, the largest files, and the fields that hold the most.
 - `compiled_compare.py SITE TREE ... [--runs N] [--jobs N] [--fix]`: a tree checked (or fixed) by
   this checkout and by a compiled wheel's install, their output compared and timed.

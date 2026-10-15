@@ -695,3 +695,64 @@ def test_a_name_another_file_keeps_to_itself_or_imports_two_ways_isnt_imported(t
     for _ in range(2):
         _ = cli.main(["--fix", "-q", "--jobs=1", "--select=LVA001", str(tmp_path)])
         assert user.read_text(encoding="utf-8") == textwrap.dedent(_OWN_FIXED)
+
+
+OVERLOADED_FRAME: Final = """
+from __future__ import annotations
+
+from typing import Literal, overload
+
+
+class Frame:
+    def __init__(self, data: list[int] | None = None) -> None:
+        self.data = data
+
+    @overload
+    def set_index(self, key: str, *, inplace: Literal[False] = ...) -> Frame: ...
+    @overload
+    def set_index(self, key: str, *, inplace: Literal[True]) -> None: ...
+    def set_index(self, key: str, *, inplace: bool = False) -> Frame | None:
+        return None if inplace else self
+
+    def explode(self, column: str) -> Frame:
+        return self
+"""
+FRAMED: Final = """
+import frames as pd
+
+
+def use():
+    df = pd.Frame([1]).set_index("C")
+    result = df.explode("B")
+    print(result)
+    df = pd.Frame([2])
+    return df
+"""
+FRAMED_FIXED: Final = """
+import frames as pd
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from frames.core.frame import Frame
+
+
+def use():
+    df: Frame = pd.Frame([1]).set_index("C")
+    result: Frame = df.explode("B")
+    print(result)
+    df = pd.Frame([2])
+    return df
+"""
+
+
+def test_a_class_an_import_names_is_the_one_its_package_re_exports(tmp_path: Path) -> None:
+    """`Frame`, imported for an overload's return, is `pd.Frame`; its methods type what's read of it at once.
+
+    A second run has nothing left to fix.
+    """
+    _ = _write(tmp_path / "frames" / "__init__.py", "from frames.core.frame import Frame\n")
+    _ = _write(tmp_path / "frames" / "core" / "__init__.py", "")
+    _ = _write(tmp_path / "frames" / "core" / "frame.py", OVERLOADED_FRAME)
+    user: Path = _write(tmp_path / "user.py", FRAMED)
+    for _ in range(2):
+        _ = cli.main(["--fix", "--unsafe-fixes", "-q", *_SELECT, str(tmp_path)])
+        assert user.read_text(encoding="utf-8") == textwrap.dedent(FRAMED_FIXED)
