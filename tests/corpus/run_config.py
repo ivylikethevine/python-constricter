@@ -2,7 +2,7 @@
 """A run file: what `python -m tests.corpus RUN.toml` measures, with what, and how it's written.
 
     [run]
-    label = "0.3.6-rc.1"             # names the run's folder, and `dev` in its tables
+    label = "0.3.7-rc.1"             # names the run's folder, and `dev` in its tables
     output = "local/corpus-runs"     # each execution writes a folder of its own under it
     versions = ["0.3.1", "dev"]      # releases from PyPI, and `dev`: this checkout; or `NAME=PATH`,
                                      # the constricter the Python at PATH runs (another checkout's)
