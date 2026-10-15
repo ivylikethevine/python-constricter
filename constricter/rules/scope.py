@@ -263,6 +263,9 @@ class Scope:
         held: frozenset[str] = frozenset() if typed is None else self.inferred.members(typed)
         if fix is None and _NONE in held and isinstance(value, ast.Constant) and value.value is None:
             fix = Inference(_NONE, "what a class above it declares it", frozenset())
+        # A checked file's class, by name: the index typed it so (`plain.settled`).
+        if fix is None and typed is not None and isinstance(value, ast.Name) and typed == f"type[{value.id}]":
+            fix = Inference(typed, f"the class `{value.id}` it names", frozenset())
         if fix is None or typed is None or fix.annotation not in held:
             return None, False, frozenset()
         return fix._replace(annotation=typed, kinds=fix.kinds | {MEMBER}), True, frozenset({MEMBER})

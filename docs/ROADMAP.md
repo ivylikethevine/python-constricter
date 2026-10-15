@@ -772,26 +772,23 @@ fix.
          an attribute (`os.sep`), a builtin's (`len(NAMES)`), written in a file that reads it as
          that file can. 40 more on Django; SQLAlchemy's and pandas's suites and type checkers find
          nothing new.
-   - [ ] **A value that names the checked files' own.** Of Django's 5,296 plain classes' variables
-         with no fix: 3,518 call a class through its module (`forms.ChoiceField(...)`) and 104 the
-         module's own; 261 are an imported name and 63 the module's own class
-         (`form_class = PasswordChangeForm`: a `type[PasswordChangeForm]`); 387 call an imported
-         function (`_("Administration")`), 447 are a display of such values, and 25 copy a constant
-         or another variable. The classes' files must say the type to the files that read it, in the
-         same run (`classvars.members` reads a file alone). Drawbacks: nearly every call is a
-         model's or a form's field, which its metaclass replaces (`self.title` is a `str`, not the
-         `models.CharField` declared), so only a class with no framework's base could take one; and
-         a class named in a base and another in a class under it (`form_class`, two forms) are an
-         override Pyright reports once both are declared. Recommended: the classes named alone, and
-         only where no class above or under it in the checked files binds the name to another.
+   - [x] **A value that names the checked files' own**, by name alone: `form_class = LoginForm` is a
+         `type[LoginForm]` where the index finds a checked file's class by the name, the class's
+         whole line of bases is in sight (checked files', builtins, `object`), and no class above or
+         under it binds the variable (`plain.settled`). Before: 106 such variables on Django, 77 on
+         the standard library, 51 on SQLAlchemy, 9 on pandas (`scratch/class_names_census.py`); 42,
+         36, 0 and 2 more fixes now, the readers' (`self.form_class()`) among them, with none lost
+         but one of the standard library's: a class's members reserve the names their types need
+         imported (`multiprocessing`'s `Process`), so asyncio's `Process` has none. A call of a
+         class (`forms.ChoiceField(...)`) isn't typed: nearly every one is a framework's field.
    - [ ] **Nothing new** to the corpus packages' test suites and type checkers after
          `--fix --unsafe-fixes`, `member` included: so on SQLAlchemy and pandas; Django's suite and
          pydantic's aren't run again.
 
    Measured and too small to build: a name the body binds more than once. Of 594 on Django, pandas,
    SQLAlchemy and the standard library, 425 are a method or a class too, 122 are bound in an `if`'s
-   or a `try`'s branches, and 14 by two plain assignments. About 8 hours left, for about 0.6% (some
-   1,500 guesses).
+   or a `try`'s branches, and 14 by two plain assignments. About 2 hours left, beside the suites'
+   runs; coverage unchanged.
 
 3. **A method's `return` of an untyped value.** Of the 11,959 `self.method()` bindings with no fix,
    5,617 call a method the class doesn't define itself, and 5,436 one whose `return` gives a value

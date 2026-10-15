@@ -594,3 +594,94 @@ def test_another_file_reads_a_library_type_as_it_can_write_it(tmp_path: Path) ->
             "d = config.limit",
             "d: int = config.limit",
         )
+
+
+FORMS: Final = """\
+class PasswordForm:
+    pass
+
+
+class OtherForm:
+    pass
+
+
+def make():
+    return PasswordForm()
+"""
+VIEWS: Final = """\
+from pkg.forms import PasswordForm, make
+
+
+class Local:
+    pass
+
+
+class View:
+    form_class = PasswordForm
+    local_class = Local
+    overridden = PasswordForm
+    maker = make
+
+    def get(self):
+        made = self.local_class()
+        return made
+"""
+SUB: Final = """\
+from pkg.forms import OtherForm
+from pkg.views import View
+
+
+class Sub(View):
+    overridden = OtherForm
+"""
+FIXED_VIEWS: Final = """\
+from pkg.forms import PasswordForm, make
+
+
+class Local:
+    pass
+
+
+class View:
+    form_class: type[PasswordForm] = PasswordForm
+    local_class: type[Local] = Local
+    overridden = PasswordForm
+    maker = make
+
+    def get(self):
+        made: Local = self.local_class()
+        return made
+"""
+
+
+def test_a_variable_bound_to_a_checked_files_class_is_its_type(tmp_path: Path) -> None:
+    """`type[Class]`: not a function's name, nor one a class above or under it binds to another."""
+    files: dict[str, str] = {
+        "pkg/__init__.py": "",
+        "pkg/forms.py": FORMS,
+        "pkg/views.py": VIEWS,
+        "pkg/sub.py": SUB,
+    }
+    name: str
+    source: str
+    for name, source in files.items():
+        (tmp_path / "pkg").mkdir(exist_ok=True)
+        _ = (tmp_path / name).write_text(source, encoding="utf-8")
+    views: Path = tmp_path / "pkg" / "views.py"
+    assert classvars.named(ast.parse(VIEWS)) == {
+        "View": {
+            "form_class": "PasswordForm",
+            "local_class": "Local",
+            "overridden": "PasswordForm",
+            "maker": "make",
+        },
+    }
+    catalog: project.Index = plain.settled(project.index(sorted(tmp_path.rglob("*.py"))))
+    assert plain.members(catalog, views) == {
+        "View": {"form_class": "type[PasswordForm]", "local_class": "type[Local]"},
+    }
+    assert not plain.members(catalog, tmp_path / "missing.py")
+    arguments: list[str] = ["--fix", "--unsafe-fixes", "--all-scopes", "-q", "--jobs=1", str(tmp_path)]
+    for _ in range(2):  # the second changes nothing
+        _ = cli.main(arguments)
+        assert views.read_text(encoding="utf-8") == FIXED_VIEWS

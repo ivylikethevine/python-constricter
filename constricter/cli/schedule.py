@@ -95,7 +95,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         installed_aliases=methods.aliases,
         checking=own.guarded,
         plain=plain.classes(modules, path),
-        members=imported.members,
+        members={**imported.members, **plain.members(modules, path)},
         same=linked.same(modules, path, guarded),
         partial=imported.partial,
         tuples=tuples.fields(modules, path, guarded),

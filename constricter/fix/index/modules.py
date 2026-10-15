@@ -110,6 +110,9 @@ class Module:  # pylint: disable=too-many-instance-attributes
     # The names each of its classes' bodies binds
     bound: Mapping[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
     members: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
+    # Its classes' variables bound to a bare name, with that name (`classvars.named`): typed as the
+    # Class it names, among `members`, where the index finds one (`plain.settled`).
+    named: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
     plain: frozenset[str] = frozenset()
     # Its classes' classmethods' and staticmethods' declared returns (see `declarations.class_methods`);
     # Those held back as `held` are, and those of them the index vouched for, now among `sides`.
@@ -460,6 +463,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         bases={} if name is not None else classvars.bases(tree),
         bound=dict(own.order.bound),
         members={} if name is not None else classvars.members(tree),
+        named={} if name is not None else classvars.named(tree),
         sides=own.sides,
         held_sides=own.held_sides,
         partial=own.partial,

@@ -6,6 +6,10 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A plain class's variable bound by name to a checked file's class (`form_class = LoginForm`) is a
+  `type[LoginForm]`, a guess, where every class above it is in sight and none above or under it
+  binds the variable; what reads it is typed by it (`self.form_class()`). 42 fixes more on Django,
+  36 on the standard library, 2 on pandas.
 - The corpus runner takes a share of the machine (`share` in a run file, or `--share 75`): its steps
   are sized to that percent of its CPUs and memory (no more of the memory than 80% of what's free),
   and held to it together where systemd starts them, in a slice whose CPU quota and memory ceiling

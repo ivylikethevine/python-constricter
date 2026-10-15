@@ -50,5 +50,7 @@ goes under `local/scratch/`.
 - `second_round.py [CORPUS ...]`: a check's second rounds, where a file is checked again knowing its
   parameters, timed against the first checks in one process, and split into their rounds and what
   follows them over the whole module.
+- `class_names_census.py [CORPUS ...]`: the plain classes' variables bound by name to a checked
+  file's class, and those no class above or under binds, with examples.
 - `compiled_compare.py SITE TREE ... [--runs N] [--jobs N] [--fix]`: a tree checked (or fixed) by
   this checkout and by a compiled wheel's install, their output compared and timed.
