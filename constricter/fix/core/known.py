@@ -12,6 +12,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NamedTuple, TypeAlias, cast
 
+from constricter.empty import Empty
 from constricter.fix.core.inherited import Beyond, Lineage
 from constricter.fix.core.signatures import Expansion, ReadSignature
 from constricter.offences import MAX_LENGTH, VAGUE
@@ -345,8 +346,8 @@ class Partial(NamedTuple):
     """
 
     # Plain `dict`s, not `MappingProxyType`s: the CLI's worker processes are sent them, pickled.
-    calls: Mapping[str, str] = {}
-    methods: Mapping[str, Mapping[str, str]] = {}
+    calls: Mapping[str, str] = Empty()
+    methods: Mapping[str, Mapping[str, str]] = Empty()
 
 
 # A function's parameters declared a builtin container (`names: list[str]`), by name: each one's
@@ -448,10 +449,10 @@ class Returns(NamedTuple):
     """
 
     # Plain `dict`s, not `MappingProxyType`s: the CLI's worker processes are sent them, pickled.
-    calls: Mapping[str, str] = {}
-    guesses: Mapping[str, frozenset[str]] = {}
-    names: Mapping[str, Origin] = {}
-    methods: Mapping[str, Mapping[str, str]] = {}
+    calls: Mapping[str, str] = Empty()
+    guesses: Mapping[str, frozenset[str]] = Empty()
+    names: Mapping[str, Origin] = Empty()
+    methods: Mapping[str, Mapping[str, str]] = Empty()
 
 
 class Offered(NamedTuple):
@@ -479,8 +480,8 @@ class Hints(NamedTuple):
 
     checker: str = ""
     # Plain `dict`s, not `MappingProxyType`s: the CLI's worker processes are sent them, pickled.
-    types: Mapping[tuple[int, int], str] = {}
-    offered: Mapping[tuple[int, int], Offered] = {}
+    types: Mapping[tuple[int, int], str] = Empty()
+    offered: Mapping[tuple[int, int], Offered] = Empty()
     kind: str = "checker"
 
 
@@ -512,7 +513,7 @@ class Observed(NamedTuple):
     """
 
     # Plain `dict`s and tuples, not `MappingProxyType`s: the CLI's worker processes send them back, pickled.
-    calls: Mapping[Callee, tuple[Call, ...]] = {}
+    calls: Mapping[Callee, tuple[Call, ...]] = Empty()
     escaped: frozenset[Callee] = frozenset()
 
 

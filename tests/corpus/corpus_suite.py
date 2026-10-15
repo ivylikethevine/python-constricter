@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import IO, Final, NamedTuple, TypeAlias, cast
 
 from constricter import recording
+from constricter.empty import Empty
 from constricter.offences import Tier
 from tests.corpus import catalog
 
@@ -726,7 +727,7 @@ class Compared(NamedTuple):
     errors: int
     gone: int
     new: list[Blamed]
-    fixes: Mapping[str, Sequence[Fix]] = {}  # every fix the run made, per file
+    fixes: Mapping[str, Sequence[Fix]] = Empty()  # every fix the run made, per file
 
 
 def blamed(

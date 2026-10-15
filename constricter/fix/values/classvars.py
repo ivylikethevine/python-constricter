@@ -424,7 +424,7 @@ def named(tree: ast.Module) -> dict[str, dict[str, str]]:
     node: ast.ClassDef
     for node in (each for each in classes(tree) if each.name in single):
         counts: Counter[str] = Counter(name for stmt in node.body for name in _bound(stmt))
-        kept: frozenset[str] = reserved(node.name, single) | typed.get(node.name, {}).keys() | stored.keys()
+        kept: frozenset[str] = reserved(node.name, single).union(typed.get(node.name, {}), stored)
         bound: dict[str, str] = {}
         stmt: ast.stmt
         for stmt in node.body:

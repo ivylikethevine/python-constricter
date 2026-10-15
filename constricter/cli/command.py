@@ -23,6 +23,7 @@ from constricter.cli.protocol import HintError
 from constricter.cli.report import Format, Result, fix_reasons, render, statistics
 from constricter.cli.runs import Added, BaselineRun, CheckRun, CoverageRun, FileRun, merged
 from constricter.cli.workers import Workers, kept, running, started
+from constricter.empty import Empty
 from constricter.fix.core import fixes
 from constricter.fix.core.known import Callee, Hints, Outside, Returns
 from constricter.fix.index import callers, decorated, installed, loose, plain, project
@@ -648,7 +649,7 @@ class _Known(NamedTuple):
     """
 
     modules: project.Index | None = None
-    kept: Mapping[int, FileRun] = {}
+    kept: Mapping[int, FileRun] = Empty()
 
 
 _FIRST: Final = _Known()  # a run's first round: the files indexed, none kept

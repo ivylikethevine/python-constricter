@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Final, NamedTuple, cast
 from constricter.cli import collecting
 from constricter.cli.runs import CoverageRun, FileRun
 from constricter.cli.workers import Again, Answering, Asked, File, Told, Workers, check_share, first_done
+from constricter.empty import Empty
 from constricter.fix.core.known import Guarded, Hints, Outside, Passed, Returns
 from constricter.fix.index import (
     awaits,
@@ -120,7 +121,7 @@ class Rounds(NamedTuple):
     """
 
     merge: Callable[[FileRun, FileRun], FileRun] | None = None
-    kept: Mapping[int, FileRun] = {}
+    kept: Mapping[int, FileRun] = Empty()
 
 
 class _Planned:

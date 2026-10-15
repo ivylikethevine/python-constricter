@@ -12,6 +12,7 @@ import ast
 from collections.abc import Collection, Iterator, Mapping, Sequence
 from typing import Final, NamedTuple, TypeAlias, cast
 
+from constricter.empty import Empty
 from constricter.rules.annotations import node_name
 from constricter.rules.declarations import defined_type_vars
 
@@ -54,7 +55,7 @@ class Class(NamedTuple):
     params: tuple[tuple[str, str | None], ...]
     bases: tuple[str, ...]
     methods: Mapping[str, tuple[Signature, ...]]
-    attributes: Mapping[str, str] = {}
+    attributes: Mapping[str, str] = Empty()
 
 
 class Alias(NamedTuple):
@@ -91,8 +92,8 @@ class Declarations(NamedTuple):
     exports: frozenset[str] | None = None
     # Classes generic only through a subscripted base (`class float64(floating[_64Bit])`), each with
     # the names in its bases' subscripts: generic if one is a type variable (see `installed`).
-    bases: Mapping[str, frozenset[str]] = {}
-    classes: Mapping[str, Class] = {}  # every class, for its methods
+    bases: Mapping[str, frozenset[str]] = Empty()
+    classes: Mapping[str, Class] = Empty()  # every class, for its methods
 
 
 def overloads(tree: ast.Module) -> dict[str, tuple[Signature, ...]]:

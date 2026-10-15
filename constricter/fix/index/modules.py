@@ -18,6 +18,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
 
+from constricter.empty import Empty
 from constricter.fix.core.imports import taken_names
 from constricter.fix.core.known import Origin, Passed, Returns, Takers, pickled, unpickled
 from constricter.fix.core.signatures import AWAIT
@@ -224,7 +225,7 @@ class Index(NamedTuple):
     names: list[str]  # modules, sorted by name
     repeated: frozenset[str] = frozenset()  # the names more than one file has: `modules` has the last
     # Each checked `conftest.py` outside any package, by its directory: several share the one name.
-    conftests: Mapping[str, Module] = {}
+    conftests: Mapping[str, Module] = Empty()
     memo: Memo | None = None  # `None`: nothing is kept (an index made by hand)
 
 

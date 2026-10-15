@@ -20,6 +20,7 @@ from collections.abc import Callable, Mapping, Sequence
 from itertools import islice
 from typing import Final, NamedTuple, TypeAlias
 
+from constricter.empty import Empty
 from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.libraries import stdlib
 from constricter.fix.values.fills import Uses
@@ -49,7 +50,7 @@ class Site(NamedTuple):
     function: FunctionDef | None
     owner: str | None = None
     attributed: frozenset[str] = frozenset()
-    positional: Mapping[str, tuple[str, ...]] = {}
+    positional: Mapping[str, tuple[str, ...]] = Empty()
 
 
 def signatures(tree: ast.Module) -> dict[str, tuple[str, ...]]:

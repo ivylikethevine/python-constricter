@@ -22,6 +22,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias
 
+from constricter.empty import Empty
 from constricter.fix.core.known import Classes, Guarded, Origin, Partial, Returns
 from constricter.fix.index.modules import (
     SUFFIX,
@@ -77,10 +78,12 @@ class Imported(NamedTuple):
     calls: dict[str, str]
     classes: Classes
     returned: Returns = Returns()
-    guarded: Mapping[str, Guarded] = {}  # names their types need imported to type check (pickled: a `dict`)
+    guarded: Mapping[str, Guarded] = (
+        Empty()
+    )  # names their types need imported to type check (pickled: a `dict`)
     generics: frozenset[str] = frozenset()  # its generic classes, as the file spells them
     # Its plain classes' variables typed by their values, by class (see `constricter.fix.values.classvars`).
-    members: Mapping[str, Mapping[str, str]] = {}
+    members: Mapping[str, Mapping[str, str]] = Empty()
     partial: Partial = Partial()  # the returns only an unpacking can use
 
 

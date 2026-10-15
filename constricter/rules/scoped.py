@@ -11,6 +11,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import NamedTuple, TypeAlias
 
+from constricter.empty import Empty
 from constricter.fix.core.known import Hints, Inference, Known, Passed, Typed
 from constricter.fix.values import aliased
 from constricter.fix.values.doubts import (
@@ -55,10 +56,10 @@ class Seeded(NamedTuple):
     what a class's `parametrize` gives each of its methods, by `id()` (see `calls.marked`).
     """
 
-    callers: Mapping[int, Mapping[str, Passed]] = {}
-    fixtures: Mapping[str, Passed] = {}
-    module: Mapping[str, Passed] = {}
-    marked: Mapping[int, Mapping[str, Passed]] = {}
+    callers: Mapping[int, Mapping[str, Passed]] = Empty()
+    fixtures: Mapping[str, Passed] = Empty()
+    module: Mapping[str, Passed] = Empty()
+    marked: Mapping[int, Mapping[str, Passed]] = Empty()
 
 
 class Kind(NamedTuple):
