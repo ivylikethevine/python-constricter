@@ -109,10 +109,12 @@ class Store(NamedTuple):
         return cast("Record", json.loads(path.read_text(encoding="utf-8"))) if path.exists() else None
 
     def write(self, corpus: str, version: str, step: str, record: Record) -> None:
-        """Keep a step's record."""
+        """Keep a step's record, whole: the runner reads records while steps write theirs."""
         path: Path = self.path(corpus, version, step)
         path.parent.mkdir(parents=True, exist_ok=True)
-        _ = path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        written: Path = path.with_name(f".{path.name}.{os.getpid()}")
+        _ = written.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        _ = written.replace(path)
 
     def logged(self, corpus: str, version: str, step: str) -> Path:
         """Find where what a step says is kept, making its directory.
