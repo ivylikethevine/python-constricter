@@ -157,8 +157,9 @@
   second pass is left nothing. The files a round changed are indexed again
   (`constricter.fix.index.modules.spliced`), and every other file is checked again where what it
   knows from outside changed (`f = defer.fail()` once `defer.py` declares the `Deferred` it
-  returns), by the `Outside` each was last checked with: a second pass leaves nothing on Twisted,
-  dask and the standard library, from 2, 1 and 1 lines. A fix's tier is decided in one place
+  returns), by the `Outside` each was last checked with: a second pass leaves nothing on the seven
+  corpora or the 40 mega corpora, from 605 and 248 lines. Those rounds take `fix-likely` to 1.47 and
+  1.84 times `fix-certain`'s seconds there, from 1.05 and 1.13. A fix's tier is decided in one place
   (`Offence.tier`).
 - **Type-checker-backed inference** (`--infer-with basedpyright,ty,pyrefly`): the checkers' inlay
   hints type what `--fix` can't, as guesses, widened, checked and imported; with basedpyright it
@@ -419,12 +420,19 @@
   the fixed copies on a `tmpfs`.
 - **Profiles and timings that can be trusted**: **`tests/corpus/corpus_profile.py`** runs the check
   under `py-spy`, which samples it from outside, its workers too (`--jobs N`), and prints each
-  module's and function's own and whole time; **`tests/corpus/corpus_timing.py OTHER`** times the
-  standard library and pandas at `--jobs` 1 and every CPU with this checkout and another, under
-  `hyperfine`, with each mean and its spread. And the Corpus coverage workflow's comment on a pull
-  request says how long a check of pydantic takes with it and with its base, the median of 5 runs
-  each on the same runner: kept with the run, not per commit (`pytest-benchmark` and `asv` keep a
-  history a runner's noise would fill).
+  module's and function's own and whole time; the runner's **`timing`** step checks each version
+  of a corpus at `--jobs` 1 and the run's `jobs`, under `hyperfine` where it's installed (one run to
+  warm up, the exit status ignored) and in a loop of its own otherwise, keeping each run's seconds
+  and, by `hyperfine`, the instructions it took, its workers' included. Their relative deviation,
+  10 runs each way in one process and with every worker (`scratch/timing_trial.py`): on pandas,
+  12 workers on 16CPU/60GB, the seconds' 3.52% and 3.58% by the loop, 3.66% and 1.10% by
+  `hyperfine` and 2.58% and 1.02% by `pyperf command`, the instructions' 0.08% and 0.04%; on the
+  standard library, 8 workers on 8CPU/60GB, 0.53% and 0.89%, 0.27% and 0.60%, 0.50% and 0.51%, and
+  0.06% and 0.02%. Both on CPUs `pyperf system tune` had set. `pyperf` counts no
+  instructions, warms up in every process, and stops at a nonzero exit. And the Corpus coverage
+  workflow's comment on a pull request says how long a check of pydantic takes with it and with its
+  base, the median of 5 runs each on the same runner: kept with the run, not per commit
+  (`pytest-benchmark` and `asv` keep a history a runner's noise would fill).
 - **Python 3**: the standard library, `django` (the 5.2 LTS, for 3.11), `sqlalchemy`, `pydantic` and
   `pandas` 3.0.6 (1,421 files with its tests: overloads, generics, `TYPE_CHECKING` imports).
 - **Python 2**: Twisted 12.3.0 (pure Python 2, 147 of 819 files unparsable) and pip 20.3.4 (the most
@@ -563,17 +571,9 @@ current, its finer counts are as first measured. Where an item cites a sample, i
 of the standard library, pandas, django and sqlalchemy, each checked alone: 28,931 bindings with no
 fix.
 
-First, out of that order, **Timings by a tool made for them**: pandas's half of the trial.
-
 ### Small: under 4 hours
 
-1. **A guess another file's fix rests on, on every corpus.** The files a `--fix --likely` round
-   changed are indexed again, and the others checked again where what they know changed: a second
-   pass leaves nothing on Twisted, dask and the standard library (2, 1 and 1 lines before). Left:
-   the same on the seven corpora and the mega corpora (388 bindings on 26 of them before), and the
-   time it adds there. Done when a second pass leaves nothing on each. About an hour beside the
-   runs; coverage unchanged.
-2. **The runner's scheduling, measured.** Every corpus's steps now wait for the machine alone, the
+1. **The runner's scheduling, measured.** Every corpus's steps now wait for the machine alone, the
    one with the most behind it first, and a running step's hold follows what it uses
    (`tests/corpus/sizing.py`); `check` and `census`, which read one check that the first to start
    runs, are each held for the most either took; a suite's tests run 6 times for 8, its traced tests
@@ -583,24 +583,13 @@ First, out of that order, **Timings by a tool made for them**: pandas's half of 
    celery's parts run one after another, and a suite's first `types` step installs its checkout.
    Done when a mega run uses 85% of its CPU seconds, and one with no earlier run under its output
    takes within a tenth of one sized by its own. About 2 hours beside the runs; coverage unchanged.
-3. **A step's use, from its control group.** `ru_maxrss` is one process's peak, and the sampler's
+2. **A step's use, from its control group.** `ru_maxrss` is one process's peak, and the sampler's
    sum misses what lives between two readings. On Linux a step started in a scope of its own
    (`systemd-run --user --scope`) has its whole tree's peak memory and CPU seconds counted by the
    kernel (`memory.peak`, `cpu.stat`), the fork server's workers too. Only where a user's systemd
    runs, which a CI container may not have: the sampler stays for the rest. Done when a step's
    record there is its control group's. About 3 hours; coverage unchanged.
-4. **Timings by a tool made for them.** The `timing` step runs under `hyperfine` where it's
-   installed (one run to warm up, the exit status ignored) and keeps each run's instructions, its
-   workers' included; without it, the loop as before. Tried on the standard library, 10 runs each
-   way, on 8 CPUs that `pyperf system tune` had set (`scratch/timing_trial.py`): the seconds'
-   relative deviation in one process and with every CPU was 0.53% and 0.89% by the loop, 0.27% and
-   0.60% by `hyperfine`, 0.50% and 0.51% by `pyperf command`; `hyperfine`'s instructions', 0.06% and
-   0.02%. `pyperf` counts no instructions, warms up in every process, and stops at a nonzero exit.
-   Left: the same on pandas (`scratch/timing_trial.py pandas`, about 2.5 hours on 8 CPUs); then this
-   entry to Done, in place of the Corpus bullet that still names `tests/corpus/corpus_timing.py`
-   (folded into the runner), and the `timing` docstring's "a tenth of the seconds' or less" held to
-   pandas's numbers. Done when pandas's agree. About an hour beside the run; coverage unchanged.
-5. **The corpus runs' checks, on a prebuilt Python.** The standard-library corpus is CPython's
+3. **The corpus runs' checks, on a prebuilt Python.** The standard-library corpus is CPython's
    pinned source release (see [Corpus](#corpus)), its 1,867 files found by the runner whatever
    Python runs it. `local/.venv` runs on uv's prebuilt 3.14.7, the suite passing there. Left: a full
    run on it. Done when that run counts the standard library's 1,867 files. Under an hour beside the

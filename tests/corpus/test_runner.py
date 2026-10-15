@@ -44,7 +44,7 @@ _SUPER: Final = "## Super corpora\n"
 _SET_ROW: Final = "| unsafe  | constructor |     2 |         |      2 |       |"
 _PROSE: Final = 100  # the width Prettier fills prose to
 _OLD: Final = "\nold\n"  # a section a run's replaces
-_MACHINE: Final = "constricter 0.3.6 (`abc`), Python 3.14.7, on a CPU (16 CPUs, 60 GB, Linux): `--jobs=0`"
+_MACHINE: Final = "constricter 0.3.6 (`abc`), Python 3.14.7, on 16CPU/60GB (Linux): `--jobs=0`"
 _TOOK: Final = "The run took 25 minutes."
 _STEP_ROW: Final = "| standard library | check |    10.0 |        25.0 |  2.5 |     9.5 |"
 _DIFFERS: Final = "- standard library, rc+dev, tests: the tests differ after fix-unsafe: 1 new"
@@ -737,7 +737,7 @@ def test_a_run_publishes_one_section_of_itself(tmp_path: Path) -> None:
         {"run": {"label": "rc"}, "publish": {"runs-md": "RUNS.md", "section": "Super corpora"}},
     )
     facts: Record = {"constricter": "0.3.6", "commit": "abc", "cpus": 16, "gigabytes": 60, "minutes": 25}
-    facts |= {"python": "3.14.7", "machine": "a CPU", "system": "Linux"}
+    facts |= {"python": "3.14.7", "system": "Linux"}
     render.publish(render.gathered(whole, store, [tree]), tmp_path, facts)
     render.publish(render.gathered(whole, store, [tree]), tmp_path, facts)
     text: str = runs.read_text(encoding="utf-8")

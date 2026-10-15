@@ -67,9 +67,9 @@ checkout doesn't have).
 ## Super corpora
 
 The run `super` (`python -m tests.corpus`) on seven: constricter 0.3.6 (`773ed2b6b4da`), Python
-3.14.7, on AMD Ryzen 7 9700X 8-Core Processor (16 CPUs, 60 GB, Linux): `--jobs=4`, each step a
-process of its own, started once the CPUs it's expected to keep busy and the memory it's expected to
-hold are free. The run took 48 minutes. Timings don't compare across machines.
+3.14.7, on 16CPU/60GB (Linux): `--jobs=4`, each step a process of its own, started once the CPUs
+it's expected to keep busy and the memory it's expected to hold are free. The run took 48 minutes.
+Timings don't compare across machines.
 
 Offences per code at `suffocate`, with `all-scopes` (Python 3.14.7); the total row gives each code's
 share of them:
@@ -473,9 +473,9 @@ it held at once, and what it was given (`sizing`):
 ## Mega corpora
 
 The run `mega` (`python -m tests.corpus`) on mega: constricter 0.3.6 (`773ed2b6b4da`), Python
-3.14.7, on AMD Ryzen 7 9700X 8-Core Processor (16 CPUs, 60 GB, Linux): `--jobs=4`, each step a
-process of its own, started once the CPUs it's expected to keep busy and the memory it's expected to
-hold are free. The run took 119 minutes. Timings don't compare across machines.
+3.14.7, on 16CPU/60GB (Linux): `--jobs=4`, each step a process of its own, started once the CPUs
+it's expected to keep busy and the memory it's expected to hold are free. The run took 119 minutes.
+Timings don't compare across machines.
 
 Offences per code at `suffocate`, with `all-scopes` (Python 3.14.7); the total row gives each code's
 share of them:

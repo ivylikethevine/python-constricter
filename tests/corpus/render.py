@@ -490,8 +490,8 @@ def section(records: Records, facts: Record) -> str:
     intro: str = (
         f"The run `{records.run.label}` (`python -m tests.corpus`) on {', '.join(records.run.include)}: "
         f"constricter {facts.get('constricter', '')} (`{facts.get('commit', '')}`), Python "
-        f"{facts.get('python', '')}, on {facts.get('machine', '')} ({facts.get('cpus', '')} CPUs, "
-        f"{facts.get('gigabytes', '')} GB, {facts.get('system', '')}): `--jobs={records.run.jobs}`, each "
+        f"{facts.get('python', '')}, on {facts.get('cpus', '')}CPU/{facts.get('gigabytes', '')}GB "
+        f"({facts.get('system', '')}): `--jobs={records.run.jobs}`, each "
         f"step a process of its own, started once the CPUs it's expected to keep busy and the memory "
         f"it's expected to hold are free.{took} Timings don't compare across machines."
     )

@@ -506,7 +506,7 @@ def timing(job: Job) -> Record:
     """Time a check of the corpus at `suffocate`, in one process and with the run's `jobs`, several times.
 
     By `hyperfine` where it's installed, each way's runs after one to warm up, with the instructions
-    each took (hyperfine 2's counters), whose spread is a tenth of the seconds' or less; its output
+    each took (hyperfine 2's counters), whose spread is a quarter of the seconds' or less; its output
     is kept beside the record (`timing.one.json`, `timing.every.json`). Otherwise in a loop of its own.
 
     Returns:

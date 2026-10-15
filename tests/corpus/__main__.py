@@ -34,7 +34,6 @@ import contextlib
 import itertools
 import os
 import platform
-import re
 import shutil
 import subprocess  # asks git for the commit, and runs each step
 import sys
@@ -67,7 +66,6 @@ _SAID: Final = 2000  # the characters kept of why a corpus couldn't be had: the 
 _ONLY: Final = "--only"  # then a corpus or a set: the run file's, on that alone
 _STEP: Final = "--step"  # then a run's folder, a corpus, a version and a step: that step alone
 _ROOT: Final = Path(__file__).resolve().parents[2]
-_MODEL: Final = re.compile(r"^model name\s*:\s*(.+)$", re.MULTILINE)  # in Linux's `/proc/cpuinfo`
 _BOUND: Final = frozenset({pipeline.TESTS, pipeline.TRACED})  # the steps that bind a suite's port
 _DONE: Final = True  # what a future's `done` says once it is
 _POLL: Final = 0.2  # the seconds between looks at whether a step's process has ended
@@ -82,13 +80,9 @@ def _facts(run: Run, started: datetime) -> Record:
     """Gather what a run's outputs say of the run itself.
 
     Returns:
-      The run file's values, this checkout's version and commit, and the machine.
+      The run file's values, this checkout's version and commit, and the machine's CPUs and memory.
 
     """
-    try:
-        model: re.Match[str] | None = _MODEL.search(Path("/proc/cpuinfo").read_text(encoding="utf-8"))
-    except OSError:
-        model = None
     commit: str = subprocess.run(
         ["git", "rev-parse", "--short=12", "HEAD"],
         capture_output=True,
@@ -120,7 +114,6 @@ def _facts(run: Run, started: datetime) -> Record:
         "constricter": __version__,
         "commit": commit,
         "python": platform.python_version(),
-        "machine": model[1] if model else platform.processor() or platform.machine(),
         "system": platform.system(),
         "cpus": os.cpu_count() or 1,
         "gigabytes": round((parsed.memory() or 0) / sizing.GIB),
