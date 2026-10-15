@@ -311,9 +311,12 @@ jobs:
           group: ${{ matrix.group }}
       # Coverage on CPython 3.12+ with every dev tool: 3.11 can't reach the branch for `type X = ...`
       # statements, and the test group has no hypothesmith, so the fuzz tests are skipped there.
+      # `stdlib`: the `mypyc` group's setuptools otherwise puts its own `distutils` in 3.11's, which
+      # lacks entries the tables list (`Mixin2to3`, a `None` for `get_versions`).
       - run: python -m pytest ${COVERAGE:+"$COVERAGE"}
         env:
           COVERAGE: ${{ matrix.group == 'dev' && matrix.python != '3.11' && '--cov' || '' }}
+          SETUPTOOLS_USE_DISTUTILS: stdlib
 
   # The compiled wheel (mypyc; `[tool.hatch.build.targets.wheel.hooks.mypyc]`), built from the sdist
   # on CI's oldest and newest Python and tested in place of the sources: pytest's `append` import mode
@@ -362,6 +365,8 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: python -c 'import constricter.rules.checker as c; assert not c.__file__.endswith(".py"), c.__file__'
       - run: pytest --import-mode=append -n auto --dist loadgroup
+        env:
+          SETUPTOOLS_USE_DISTUTILS: stdlib # as the test job's
 
   build:
     name: Build

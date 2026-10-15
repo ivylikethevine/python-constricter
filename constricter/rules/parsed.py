@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, TypeAlias
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from constricter.rules.tables import Tables
 
 _FLOOR: Final = 40 << 20  # bytes of source whose trees any run may keep (about 1 GB of them)
@@ -35,9 +37,13 @@ def memory() -> int | None:
       It, in bytes; `None` where the system doesn't say (Windows has no `sysconf`).
 
     """
+    # Looked up, not named: mypyc's mypy pass on Windows rejects `os.sysconf`.
+    sysconf: Callable[[str], int] | None
+    if (sysconf := getattr(os, "sysconf", None)) is None:
+        return None
     try:
-        total: int = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
-    except (AttributeError, ValueError, OSError):
+        total: int = sysconf("SC_PHYS_PAGES") * sysconf("SC_PAGE_SIZE")
+    except (ValueError, OSError):
         return None
     try:
         return min(total, int(_GROUP_LIMIT.read_text(encoding="ascii")))
