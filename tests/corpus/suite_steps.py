@@ -180,6 +180,17 @@ def _error(each: corpus_suite.Blamed) -> Record:
     }
 
 
+def apart(job: Job) -> Path:
+    """Clone and install the checkout a suite's type checks run on, beside its tests' own (once).
+
+    Returns:
+      It.
+
+    """
+    suite: corpus_suite.Suite = cast("corpus_suite.Suite", job.tree.suite)
+    return corpus_suite.checkout(job.tree.name, suite, _APART, variables=job.tree.variables)
+
+
 def types(job: Job) -> Record:
     """Run the corpus package's own type checks as released, and after each fix the run made of it.
 
@@ -193,7 +204,7 @@ def types(job: Job) -> Record:
 
     """
     suite: corpus_suite.Suite = cast("corpus_suite.Suite", job.tree.suite)
-    base: Path = corpus_suite.checkout(job.tree.name, suite, _APART, variables=job.tree.variables)
+    base: Path = apart(job)
     corpus_suite.reset(base, suite)
     os.environ.update(job.tree.variables or {})
     start: float = time.perf_counter()

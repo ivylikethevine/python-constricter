@@ -13,13 +13,15 @@
 #                       for `uv pip install`, into a venv made first; `sync ...` for `uv sync`); its
 #                       `tests` (pytest's arguments, or a whole command after `!`; `{workers}` stands
 #                       for its processes) and type `checks`. `most`: the most processes its tests
-#                       keep busy (8 where they take `{workers}`, else 1). `worker-memory`: the
-#                       gigabytes one takes (1). `left-out`: requirements it can't build here.
+#                       keep busy (8 where they take `{workers}`, its parts' count where it has
+#                       `parts`, else 1). `worker-memory`: the gigabytes one takes (1): a part, where
+#                       it has them. `left-out`: requirements it can't build here.
 #                       `submodules`: its build needs them. `script`: what runs its tests in one
 #                       process, where pytest doesn't. `differs`: a table of the tests a fix may
 #                       change the outcome of (or a file or a class of them), each with why; a
-#                       run reports them apart, and a difference in these alone is none. `parts`: its tests' arguments, each
-#                       part run after `tests` in a process of its own, their outcomes added up.
+#                       run reports them apart, and a difference in these alone is none. `parts`:
+#                       its tests' arguments, each part run after `tests` in a process of its own,
+#                       as many at once as it has workers, their outcomes added up.
 #
 # A corpus with a suite is checked in its checkout, with its settings and environment; one with an
 # sdist alone, in the unpacked sdist.
@@ -861,6 +863,7 @@ install = ["pip -e . -r requirements/test.txt"]
 tests = ""
 checks = []
 # In one process its tests hold 25 GB (28 GB traced); a directory at a time, 4.6 GB at most.
+worker-memory = 4.6
 parts = [
   "t/unit/app",
   "t/unit/apps",

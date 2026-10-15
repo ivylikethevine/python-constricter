@@ -64,7 +64,10 @@ def test_memory_isnt_known_where_the_system_doesnt_say(monkeypatch: pytest.Monke
 
 
 @pytest.mark.parametrize("error", [ValueError, OSError])
-def test_memory_isnt_known_where_sysconf_fails(monkeypatch: pytest.MonkeyPatch, error: type[Exception]) -> None:
+def test_memory_isnt_known_where_sysconf_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    error: type[Exception],
+) -> None:
     """A `sysconf` without the name (`ValueError`), or one the system refuses (`OSError`)."""
 
     def sysconf(name: str) -> int:

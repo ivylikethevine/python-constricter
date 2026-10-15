@@ -378,15 +378,21 @@ def _summary(output: str) -> str:
 def tested(root: Path, suite: Suite, keep: Path | None) -> Outcome:
     """Run the checkout's tests, writing their output to `keep` unless it's `None`.
 
+    Its parts side by side, as many at once as it has workers.
+
     Returns:
       Their outcome.
 
     """
-    outputs: list[str] = []
-    command: list[str]
-    for command in _commands(suite):
+
+    def run(command: list[str]) -> str:
         done: subprocess.CompletedProcess[str] = _completed(_venv(root, command), root, seconds=_TEST_SECONDS)
-        outputs.append(_COLOUR.sub("", done.stdout + done.stderr))
+        return _COLOUR.sub("", done.stdout + done.stderr)
+
+    commands: list[list[str]] = _commands(suite)
+    pool: ThreadPoolExecutor
+    with ThreadPoolExecutor(max(1, min(workers(suite), len(commands)))) as pool:  # parts side by side
+        outputs: list[str] = list(pool.map(run, commands))
     if keep is not None:
         keep.parent.mkdir(parents=True, exist_ok=True)
         _ = keep.write_text("\n".join(outputs), encoding="utf-8")
@@ -397,10 +403,12 @@ def _commands(suite: Suite) -> list[list[str]]:
     """Write the commands that run the suite's tests: one, or one for each of its parts.
 
     Returns:
-      Each one's words, its processes counted in.
+      Each one's words, its processes counted in: one each where its parts are its workers.
 
     """
-    command: list[str] = [word.replace(_WORKERS, str(workers(suite))) for word in suite.tests]
+    command: list[str] = [
+        word.replace(_WORKERS, str(1 if suite.parts else workers(suite))) for word in suite.tests
+    ]
     return [[*command, *shlex.split(part)] for part in suite.parts] or [command]
 
 

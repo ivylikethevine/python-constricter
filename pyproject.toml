@@ -175,12 +175,13 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 # The census of what `--fix` can't type runs this checkout's constricter on each corpus.
 "tests/corpus/corpus_untyped.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The corpus runner starts each constricter version under test (`launch`; under `py-spy`, `pipeline`),
-# each of its steps as a process, and git: for the commit, and to apply a fix to a checkout
-# (`suite_steps`).
+# each of its steps as a process (in a scope of its own where systemd starts one, `sizing`), and git:
+# for the commit, and to apply a fix to a checkout (`suite_steps`).
 "tests/corpus/launch.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 "tests/corpus/pipeline.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 "tests/corpus/suite_steps.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
 "tests/corpus/__main__.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
+"tests/corpus/sizing.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The local CI runner runs the workflow's own steps (and git) as subprocesses.
 "tests/ci_local.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
 # Installed modules' reads are cached as pickles, written and read by constricter alone in the

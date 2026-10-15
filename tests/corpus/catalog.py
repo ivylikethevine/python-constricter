@@ -41,7 +41,7 @@ class Suite(NamedTuple):
     tests: tuple[str, ...]
     checks: tuple[tuple[str, ...], ...] = ()  # its CI's type checks, each's first word from `.venv/bin`
     left_out: str = ""  # requirements it can't build here, which `--excludes -` reads
-    most: int = 1  # the most processes its tests can keep busy
+    most: int = 1  # the most processes its tests can keep busy: with `parts`, the parts at once
     worker_memory: float = 1.0  # the gigabytes one of them takes
     submodules: bool = False  # its build needs its repository's submodules (aiohttp's, llhttp)
     # A script and its arguments running its tests in one process, where pytest doesn't run them:
@@ -50,8 +50,9 @@ class Suite(NamedTuple):
     # The tests a fix may change the outcome of, each with why: a difference in these alone is no
     # difference (`suite_steps.tests`).
     differs: tuple[tuple[str, str], ...] = ()
-    # Its tests' arguments, part by part, each part a process of its own after `tests`: for tests
-    # that hold in one process more than a machine has (celery's, 25 GB).
+    # Its tests' arguments, part by part, each part a process of its own after `tests`, as many at
+    # once as it has workers: for tests that hold in one process more than a machine has (celery's,
+    # 25 GB).
     parts: tuple[str, ...] = ()
 
 
@@ -96,6 +97,7 @@ def _suite(pinned: _Table) -> Suite:
 
     """
     tests: str = cast("str", pinned["tests"])
+    parts: tuple[str, ...] = tuple(cast("list[str]", pinned.get("parts", [])))
     return Suite(
         cast("str", pinned["repository"]),
         cast("str", pinned["tag"]),
@@ -106,12 +108,12 @@ def _suite(pinned: _Table) -> Suite:
         else (*PYTEST, *shlex.split(tests)),
         tuple(tuple(shlex.split(check)) for check in cast("list[str]", pinned["checks"])),
         cast("str", pinned.get("left-out", "")),
-        cast("int", pinned.get("most", _MOST if WORKERS in tests else 1)),
+        cast("int", pinned.get("most", len(parts) or (_MOST if WORKERS in tests else 1))),
         cast("float", pinned.get("worker-memory", 1.0)),
         bool(pinned.get("submodules")),
         tuple(shlex.split(cast("str", pinned.get("script", "")))),
         tuple(cast("dict[str, str]", pinned.get("differs", {})).items()),
-        tuple(cast("list[str]", pinned.get("parts", []))),
+        parts,
     )
 
 

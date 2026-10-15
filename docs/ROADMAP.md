@@ -342,20 +342,24 @@
 - **Sized by the machine** (`tests/corpus/sizing.py`): each step is a process of its own, started
   once the CPUs it's expected to keep busy and the memory it's expected to hold are free: what its
   process tree took in the last run under the same output, which its record keeps (`used`: its
-  seconds, CPU seconds and the most memory held at once, read by `psutil`), a quarter over. An
-  unmeasured traced step is sized by its suite's `tests` step; a step that wants all the memory runs
-  alone, and one that held over 8 GB beside others is noted. The timed checks hold every CPU, and
-  run last, one at a time. A suite's tests of one port run one suite at a time, and its tests are
-  stopped after `suite-seconds`. A stopped run resumes, and a run exits non-zero on anything a fix
-  broke or a step that failed, whose traceback its log keeps. Every corpus's steps wait for the
-  machine alone (`at-once` bounds the corpora cloned and installed side by side): the step with the
-  most seconds still behind it first, its own and its suite's steps' after it, and what's free kept
-  for one that waited five minutes. A running step's hold follows what it's using: an unmeasured one
-  gives back what it isn't a minute in, and any one takes what it uses over its share from the next
-  to start; a step too short to be read is counted by the system's own total, its CPU seconds and
-  its largest process's most memory. A step is sized by a run of its own label before any other's (a
-  probe's steps size only what no run of the label measured), and `check` and `census`, which read
-  one check that the first to start runs, by the most either took.
+  seconds, CPU seconds and the most memory held at once), a quarter over. Where a user's systemd
+  runs, a step starts in a scope of its own (`systemd-run --user --scope`) and the kernel counts
+  every process in it (`memory.peak`, `cpu.stat`; `by: scope`): on pydantic, with every worker on
+  16CPU/60GB, a fix step's 11 to 13 CPU seconds and 0.8 to 0.9 GB, where `psutil`'s readings, which
+  count the rest, saw 1 and 0.1 to 0.2. An unmeasured traced step is sized by its suite's `tests`
+  step; a step that wants all the memory runs alone, and one that held over 8 GB beside others is
+  noted. The timed checks hold every CPU, and run last, one at a time. A suite's tests of one port
+  run one suite at a time, and its tests are stopped after `suite-seconds`. A stopped run resumes,
+  and a run exits non-zero on anything a fix broke or a step that failed, whose traceback its log
+  keeps. Every corpus's steps wait for the machine alone (`at-once` bounds the corpora cloned and
+  installed side by side): the step with the most seconds still behind it first, its own and its
+  suite's steps' after it, and what's free kept for one that waited five minutes. A running step's
+  hold follows what it's using: an unmeasured one gives back what it isn't a minute in, and any one
+  takes what it uses over its share from the next to start; a step too short to be read is counted
+  by the system's own total, its CPU seconds and its largest process's most memory. A step is sized
+  by a run of its own label before any other's (a probe's steps size only what no run of the label
+  measured), and `check` and `census`, which read one check that the first to start runs, by the
+  most either took.
 - **The standard library, pinned**: the standard-library corpus is CPython 3.14.7's source release's
   `Lib` (`corpora.toml`, fetched and hash-checked as Twisted's sdist is), not the running Python's
   own, which a prebuilt Python ships without its `test` package (1,205 of the 1,867 files). Any
@@ -420,19 +424,19 @@
   the fixed copies on a `tmpfs`.
 - **Profiles and timings that can be trusted**: **`tests/corpus/corpus_profile.py`** runs the check
   under `py-spy`, which samples it from outside, its workers too (`--jobs N`), and prints each
-  module's and function's own and whole time; the runner's **`timing`** step checks each version
-  of a corpus at `--jobs` 1 and the run's `jobs`, under `hyperfine` where it's installed (one run to
+  module's and function's own and whole time; the runner's **`timing`** step checks each version of
+  a corpus at `--jobs` 1 and the run's `jobs`, under `hyperfine` where it's installed (one run to
   warm up, the exit status ignored) and in a loop of its own otherwise, keeping each run's seconds
-  and, by `hyperfine`, the instructions it took, its workers' included. Their relative deviation,
-  10 runs each way in one process and with every worker (`scratch/timing_trial.py`): on pandas,
-  12 workers on 16CPU/60GB, the seconds' 3.52% and 3.58% by the loop, 3.66% and 1.10% by
-  `hyperfine` and 2.58% and 1.02% by `pyperf command`, the instructions' 0.08% and 0.04%; on the
-  standard library, 8 workers on 8CPU/60GB, 0.53% and 0.89%, 0.27% and 0.60%, 0.50% and 0.51%, and
-  0.06% and 0.02%. Both on CPUs `pyperf system tune` had set. `pyperf` counts no
-  instructions, warms up in every process, and stops at a nonzero exit. And the Corpus coverage
-  workflow's comment on a pull request says how long a check of pydantic takes with it and with its
-  base, the median of 5 runs each on the same runner: kept with the run, not per commit
-  (`pytest-benchmark` and `asv` keep a history a runner's noise would fill).
+  and, by `hyperfine`, the instructions it took, its workers' included. Their relative deviation, 10
+  runs each way in one process and with every worker (`scratch/timing_trial.py`): on pandas, 12
+  workers on 16CPU/60GB, the seconds' 3.52% and 3.58% by the loop, 3.66% and 1.10% by `hyperfine`
+  and 2.58% and 1.02% by `pyperf command`, the instructions' 0.08% and 0.04%; on the standard
+  library, 8 workers on 8CPU/60GB, 0.53% and 0.89%, 0.27% and 0.60%, 0.50% and 0.51%, and 0.06% and
+  0.02%. Both on CPUs `pyperf system tune` had set. `pyperf` counts no instructions, warms up in
+  every process, and stops at a nonzero exit. And the Corpus coverage workflow's comment on a pull
+  request says how long a check of pydantic takes with it and with its base, the median of 5 runs
+  each on the same runner: kept with the run, not per commit (`pytest-benchmark` and `asv` keep a
+  history a runner's noise would fill).
 - **Python 3**: the standard library, `django` (the 5.2 LTS, for 3.11), `sqlalchemy`, `pydantic` and
   `pandas` 3.0.6 (1,421 files with its tests: overloads, generics, `TYPE_CHECKING` imports).
 - **Python 2**: Twisted 12.3.0 (pure Python 2, 147 of 819 files unparsable) and pip 20.3.4 (the most
@@ -577,19 +581,21 @@ fix.
    one with the most behind it first, and a running step's hold follows what it uses
    (`tests/corpus/sizing.py`); `check` and `census`, which read one check that the first to start
    runs, are each held for the most either took; a suite's tests run 6 times for 8, its traced tests
-   start early, and its type checks beside its tests. Measured on pydantic and pygments alone. The
-   last mega run used 74% of its CPU seconds in 142 minutes, the last super run 59% in 51. Left to
-   weigh on the next ones: `most` holds pandas and django to 8 workers of the 32 and 16 they take,
-   celery's parts run one after another, and a suite's first `types` step installs its checkout.
-   Done when a mega run uses 85% of its CPU seconds, and one with no earlier run under its output
-   takes within a tenth of one sized by its own. About 2 hours beside the runs; coverage unchanged.
-2. **A step's use, from its control group.** `ru_maxrss` is one process's peak, and the sampler's
-   sum misses what lives between two readings. On Linux a step started in a scope of its own
-   (`systemd-run --user --scope`) has its whole tree's peak memory and CPU seconds counted by the
-   kernel (`memory.peak`, `cpu.stat`), the fork server's workers too. Only where a user's systemd
-   runs, which a CI container may not have: the sampler stays for the rest. Done when a step's
-   record there is its control group's. About 3 hours; coverage unchanged.
-3. **The corpus runs' checks, on a prebuilt Python.** The standard-library corpus is CPython's
+   start early, and its type checks beside its tests. Measured on pydantic and pygments alone.
+   Since: a suite's tests take a worker for each CPU, up to their `most` and as many as half the
+   run's memory holds, starting once half the CPUs they want are free (or half the machine's) with
+   as many more as are free then; celery's parts run as many at once as fit, 4.6 GB each; a suite's
+   type-check checkout is installed beside its corpus's first steps; and each step's record says
+   when it started and how long it waited for its share, the run's `runner.log` each step's end
+   (`scratch/run_timeline.py` lays a run out from them). Tested apart, and on pydantic's run alone.
+   The last mega run used 70% of its CPU seconds in 119 minutes, the last super run 46% in 48, both
+   on 16CPU/60GB, by the sampler's count, which misses most of a fork server's workers: the next
+   count them by control group. The mega run's last 15 minutes waited on `websockets`'s tests,
+   asleep, before the timed steps; the super run's minutes 17 to 24 kept 2 to 4 CPUs busy, its
+   suites' tests waiting for memory. Done when a mega run uses 85% of its CPU seconds, and one with
+   no earlier run under its output takes within a tenth of one sized by its own. About 2 hours
+   beside the runs; coverage unchanged.
+2. **The corpus runs' checks, on a prebuilt Python.** The standard-library corpus is CPython's
    pinned source release (see [Corpus](#corpus)), its 1,867 files found by the runner whatever
    Python runs it. `local/.venv` runs on uv's prebuilt 3.14.7, the suite passing there. Left: a full
    run on it. Done when that run counts the standard library's 1,867 files. Under an hour beside the

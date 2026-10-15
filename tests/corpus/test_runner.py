@@ -8,11 +8,13 @@ import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import IO, Final, TypeAlias, cast
 
 import pytest
 
 from constricter import Level
+from tests.corpus import __main__ as runner
 from tests.corpus import catalog, corpus_sources, corpus_suite, pipeline, render, sizing, suite_steps, trees
 from tests.corpus.corpus_sources import Source
 from tests.corpus.corpus_suite import Outcome
@@ -232,6 +234,72 @@ def test_a_step_waits_for_the_cpus_and_the_memory_it_wants() -> None:
     assert (Steps().tests_hinted, Steps().every_level) == (True, False)
 
 
+def test_a_suites_tests_start_with_half_the_cpus_they_want_and_take_whats_free() -> None:
+    """With as much memory for each CPU as they wanted, the more they hold."""
+    slots: sizing.Slots = sizing.Slots(8, 16)
+    first: int = slots.take(5, 5)
+    held: int = slots.take(8, 16, least=2)
+    assert (held, slots.share(8, 16, held)) == (3, 6)
+    assert (slots.free, slots.held) == (0, 11)
+    slots.give(held, 6)
+    slots.give(first, 5)
+    assert slots.take(8, 16, least=2) == slots.cpus
+
+
+def test_a_suites_parts_run_side_by_side(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """As many at once as it has workers, each with one process; their outcomes added up."""
+    tests: tuple[str, ...] = (*catalog.PYTEST, "-n", catalog.WORKERS)
+    suite: catalog.Suite = catalog.Suite("", "", "", (), tests, parts=("a", "b", "c"))
+    both: threading.Barrier = threading.Barrier(2, timeout=5)  # two of them at once, or it breaks
+    ran: list[list[str]] = []
+
+    def workers(_suite: catalog.Suite) -> int:
+        return both.parties
+
+    def completed(args: list[str], *_args: object, **_options: object) -> SimpleNamespace:
+        ran.append(args)
+        if len(ran) <= both.parties:
+            _ = both.wait()
+        return SimpleNamespace(stdout="1 passed in 0.1s", stderr="")
+
+    monkeypatch.setattr(corpus_suite, "workers", workers)
+    monkeypatch.setattr(corpus_suite, "_completed", completed)
+    assert corpus_suite.tested(tmp_path, suite, None).counts == {"passed": 3}
+    assert sorted(command[-1] for command in ran) == ["a", "b", "c"]
+    assert all(command[-3:-1] == ["-n", "1"] for command in ran)
+
+
+def test_a_steps_record_says_when_it_started_and_how_long_it_waited(tmp_path: Path) -> None:
+    """With its control group's count, the workers its tests took, and a line in the run's log."""
+    run: Run = parse({})
+    store: Store = Store(tmp_path)
+    plan: sizing.Plan = sizing.Plan(run, 8, 16 * sizing.GIB, {})
+    slots: sizing.Slots = sizing.Slots(8, 16)
+    running: runner.Running = runner.Running(run, store, plan, slots, None, {}, threading.Semaphore())
+    job: pipeline.Job = pipeline.Job(run, store, Tree("celery", "1", tmp_path), DEV)
+    store.write("celery", job.recorded, pipeline.TESTS, {"scope": {"cpu": 30.0, "memory": 2 * sizing.GIB}})
+    took: tuple[float, float] = (12.0, 60.0)
+    before: float = time.time()
+    assert running.recorded(job, pipeline.TESTS, sizing.Wanted(4, 8 * sizing.GIB), sizing.Used(1.0, 1), took)
+    record: Record | None = store.read("celery", job.recorded, pipeline.TESTS)
+    assert record is not None
+    assert sizing.SCOPE not in record
+    used: Record = cast("Record", record["used"])
+    assert before - 61 <= cast("float", used.pop("started")) <= time.time() - 59
+    assert used == {
+        "by": sizing.SCOPE,
+        "waited": 12.0,
+        "seconds": 60.0,
+        "cpu": 30.0,
+        "memory": 2.0,
+        "given": {"cpus": 4, "memory": 8.0},
+        "alone": False,
+        "workers": 4,
+    }
+    said: str = (tmp_path / "runner.log").read_text(encoding="utf-8")
+    assert said.endswith(": tests: 60s, 30 CPU seconds, 2.0 GB (given 4 CPUs, 8.0 GB; waited 12s)\n")
+
+
 def _waited(slots: sizing.Slots) -> bool:
     """Wait for a step to be waiting for `slots`, 5 seconds at most.
 
@@ -289,6 +357,62 @@ def test_a_running_steps_hold_follows_what_it_uses() -> None:
     assert (slots.free, slots.held) == (8, 0)
 
 
+def _grouped(root: Path, process: str, group: str, counts: tuple[str, str] | None = None) -> None:
+    """Put a process in a control group under `root`, which counts `cpu.stat` and `memory.peak`."""
+    (root / "proc" / process).mkdir(parents=True)
+    said: str = f"1:name=systemd:/other\n0::/{group}\n"  # a hybrid hierarchy's line first
+    _ = (root / "proc" / process / "cgroup").write_text(said, encoding="ascii")
+    if counts is not None:
+        folder: Path = root / "cgroup" / group
+        folder.mkdir(parents=True)
+        _ = (folder / "cpu.stat").write_text(f"usage_usec {counts[0]}\nuser_usec 1\n", encoding="ascii")
+        _ = (folder / "memory.peak").write_text(f"{counts[1]}\n", encoding="ascii")
+
+
+def test_a_scope_is_counted_by_its_control_group(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Its CPU seconds and peak memory, as it runs and once it ends; not the runner's group's."""
+    monkeypatch.setattr(sizing, "_PROC", tmp_path / "proc")
+    monkeypatch.setattr(sizing, "_CGROUPS", tmp_path / "cgroup")
+    _grouped(tmp_path, "self", "app.slice/terminal.scope", ("9000000", str(8 * sizing.GIB)))
+    _grouped(tmp_path, "42", "app.slice/run-42.scope", ("2500000", str(sizing.GIB)))
+    _grouped(tmp_path, "43", "app.slice/run-43.scope")
+    assert sizing.counted(sizing.group(42)) == sizing.Used(2.5, sizing.GIB)
+    assert sizing.counted(sizing.group(43)) is None
+    assert sizing.group(44) is None
+    watched: sizing.Grouped = sizing.Grouped()
+    watched.watch(42)
+    watched.watch(44)
+    assert watched.seen(42) == sizing.Used(2.5, sizing.GIB)
+    (tmp_path / "proc" / "42" / "cgroup").unlink()  # it ended: what was last read stands
+    assert watched.used(42) == sizing.Used(2.5, sizing.GIB)
+    _grouped(tmp_path, "44", "app.slice/terminal.scope")  # not moved to a scope of its own yet
+    assert watched.used(44) == sizing.Used()
+
+
+def test_a_step_starts_in_a_scope_only_where_one_is_counted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Where `systemd-run` starts a scope whose control group counts it; nowhere else."""
+    installed: list[str] = []
+    started: list[list[str]] = []
+
+    def which(name: str) -> str | None:
+        return f"/usr/bin/{name}" if installed else None
+
+    def probed(command: list[str], **_: object) -> SimpleNamespace:
+        started.append(command)
+        return SimpleNamespace(returncode=len(started) - 1)  # the first probe's scope counts it
+
+    monkeypatch.setattr("sys.platform", "linux")
+    monkeypatch.setattr("shutil.which", which)
+    monkeypatch.setattr("subprocess.run", probed)
+    assert not sizing.scope(Path())
+    installed.append("systemd-run")
+    scope: tuple[str, ...] = sizing.scope(Path())
+    assert scope[:3] == ("systemd-run", "--user", "--scope")
+    assert started[0][: len(scope)] == list(scope)
+    assert isinstance(sizing.watcher(scoped=True), sizing.Grouped)
+    assert not sizing.scope(Path())
+
+
 def test_a_check_at_suffocate_counts_every_level() -> None:
     """A level chooses the codes it reports and which are errors: the rest of a check is the same."""
     entries: list[Record] = [
@@ -325,18 +449,26 @@ def test_a_step_is_given_what_it_took_in_the_last_run(tmp_path: Path) -> None:
     celery: catalog.Entry = known.entries["celery"]
     assert celery.suite is not None
     assert not celery.heavy
-    assert len(celery.suite.parts) > 1
+    assert (celery.suite.most, celery.suite.worker_memory) == (len(celery.suite.parts), 4.6)
     tree: Tree = Tree("celery", "1", tmp_path, tmp_path, suite=celery.suite)
-    Store(tmp_path / "earlier").write("celery", "rc+dev", pipeline.TESTS, {"used": _USED})
+    Store(tmp_path / "earlier").write("celery", "rc+dev", pipeline.TESTS, {"used": _USED | {"workers": 2}})
     Store(tmp_path / "earlier").write("celery", "rc+dev", pipeline.CHECK, {})
     before: dict[tuple[str, str], sizing.Before] = sizing.before(tmp_path, tmp_path / "this")
-    assert before == {("celery", pipeline.TESTS): sizing.Before(2.5, 10.0, int(9.5 * sizing.GIB))}
+    assert before == {("celery", pipeline.TESTS): sizing.Before(2.5, 10.0, int(9.5 * sizing.GIB), 2)}
     assert not sizing.before(tmp_path, tmp_path / "earlier")
     plan: sizing.Plan = sizing.Plan(parse({"run": {"jobs": 2}}), 8, 16 * sizing.GIB, before)
-    measured: sizing.Wanted = plan.wanted(tree, pipeline.TESTS)
-    assert measured == sizing.Wanted(3, int(9.5 * sizing.GIB * 1.25), 10.0, measured=True)
+    # A suite's tests: a CPU for each worker, as many as half the run's memory holds; each worker's
+    # memory as in the last run; starting with half the CPUs.
+    roomy: sizing.Plan = plan._replace(memory=64 * sizing.GIB)
+    measured: sizing.Wanted = roomy.wanted(tree, pipeline.TESTS)
+    assert measured == sizing.Wanted(6, int(9.5 * sizing.GIB * 1.25 * 6 / 2), 10.0, measured=True, least=4)
     # As its tests', unmeasured; and its tests wait for it: their seconds are behind it.
-    assert plan.wanted(tree, pipeline.TRACED) == sizing.Wanted(1, measured.memory, 10.0)
+    assert roomy.wanted(tree, pipeline.TRACED) == measured._replace(measured=False)
+    # A record that doesn't say how many workers ran: each its `worker-memory`.
+    legacy: sizing.Plan = roomy._replace(
+        before={("celery", pipeline.TESTS): before["celery", pipeline.TESTS]._replace(workers=0)},
+    )
+    assert legacy.wanted(tree, pipeline.TESTS) == sizing.Wanted(6, int(6 * 4.6 * sizing.GIB), 10.0, least=4)
     assert plan.wanted(tree, pipeline.TYPES) == sizing.Wanted(2, 16 * sizing.GIB // 3)
     assert plan.wanted(tree, pipeline.CHECK) == sizing.Wanted(2, 2 * (sizing.GIB + sizing.GIB // 4), 10.0)
     assert plan.wanted(tree._replace(suite=None), pipeline.CHECK).lasting == 0
@@ -352,9 +484,12 @@ def test_a_step_is_given_what_it_took_in_the_last_run(tmp_path: Path) -> None:
     alone: sizing.Plan = plan._replace(before={("celery", pipeline.CENSUS): ran})
     assert alone.wanted(tree, pipeline.CHECK) == sizing.Wanted(3, 5 * sizing.GIB, measured=True)
     unmeasured: sizing.Plan = plan._replace(before={})
-    assert unmeasured.wanted(tree, pipeline.TESTS) == sizing.Wanted(1, sizing.GIB)
+    assert unmeasured.wanted(tree, pipeline.TESTS) == sizing.Wanted(1, int(4.6 * sizing.GIB), least=1)
     assert unmeasured.wanted(tree, pipeline.TESTS, heavy=True).memory == plan.memory
-    assert plan.workers(celery.suite._replace(most=32)) == plan.cpus // 2
+    assert plan.workers(celery.suite._replace(most=32, worker_memory=1.0)) == plan.cpus
+    assert (
+        plan.workers(celery.suite._replace(most=32, worker_memory=2.0)) == plan.cpus // 2
+    )  # half the memory
     sized: sizing.Plan = sizing.plan(
         parse({"run": {"cpus": 3, "memory": 2, "output": "."}}),
         tmp_path,
