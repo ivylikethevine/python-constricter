@@ -499,6 +499,16 @@ def test_a_traced_run_finds_constricter_alone(tmp_path: Path) -> None:
     assert corpus_suite.tracer_path(tmp_path) == first
 
 
+def test_a_suite_traced_by_its_script_is_one_process(tmp_path: Path) -> None:
+    """Its tests' workers aren't kept for it: it's given what any other step is."""
+    celery: catalog.Entry = catalog.load().entries["celery"]
+    assert celery.suite is not None
+    suite: catalog.Suite = celery.suite._replace(script=("runtests.py",))
+    plan: sizing.Plan = sizing.Plan(parse({"run": {"jobs": 2}}), 8, 64 * sizing.GIB, {})
+    tree: Tree = Tree("celery", "1", tmp_path, tmp_path, suite=suite)
+    assert plan.wanted(tree, pipeline.TRACED) == sizing.Wanted(2, 2 * (sizing.GIB + sizing.GIB // 4))
+
+
 def test_a_step_is_given_what_it_took_in_the_last_run(tmp_path: Path) -> None:
     """Its CPUs and its memory, a margin over; unmeasured, by what it is; the timed ones, every CPU."""
     known: catalog.Catalog = catalog.load()

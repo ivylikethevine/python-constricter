@@ -664,6 +664,14 @@ fix.
    where it lists them. Add it to the dev group and CI's lint step, as flake8's plugin or alone.
    Done when it finds nothing in `constricter stdlib_tables tests hatch_build.py`. About 3 hours;
    coverage unchanged.
+7. **mypy's signatures, from their callers.** `dmypy suggest FUNCTION` proposes an unannotated
+   function's whole signature from the arguments its calls pass and the values it returns, through
+   the daemon of the mypy already in the dev group; `dmypy inspect` answers one location at a time.
+   Most bindings with no fix are in functions with no annotations. Measure it as `pyrefly infer`
+   was: its signatures written before `--fix` on the six Python 3 corpora, the certain fixes gained,
+   the new basedpyright errors, the seconds per function. Done when measured; a fourth hint source
+   only if it brings clearly more than `pyrefly infer`'s 2,254 fixes for no more errors. About 3
+   hours; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -715,10 +723,12 @@ fix.
 3. **The compiled wheel, on every corpus.** A compiled wheel is built and tested in CI, and gave
    pydantic's findings and fixes as the pure build does (see [Done](#--fix)). The first trial,
    before the changes that made it run right, found two of pandas's 77,931 findings differ (a type
-   alias's fix, a guess where it's certain). Left: a full run with a compiled wheel's constricter
-   beside this checkout's (`versions`, `NAME=PATH`), and the release's first cibuildwheel builds.
-   Done when a compiled wheel checks every corpus as the pure one does. About an hour beside the
-   run; coverage unchanged.
+   alias's fix, a guess where it's certain). Ready to run: `scratch/compiled_venv.py` builds the
+   wheel into `local/.venv-compiled`, beside the `corpus` group's packages its fixes read the types
+   of; `tests/corpus/runs/compiled.toml` checks and fixes every corpus with it and this checkout,
+   each check timed; `scratch/version_diff.py` compares them. Left: that run, and the release's
+   first cibuildwheel builds. Done when a compiled wheel checks every corpus as the pure one does.
+   About an hour beside the run; coverage unchanged.
 4. **What a hint breaks, by its cause.** With `--infer-with` the packages' own type checkers find,
    by the worst of basedpyright's, ty's and pyrefly's hints, 125 new errors on pandas, 49 on
    sqlalchemy, 41 on streamlink, 12 on starlette, 10 on mcp, 9 on sphinx and 1 to 8 on eight more of
@@ -770,6 +780,14 @@ fix.
    finished run's steps the same way and proves how short any schedule of them can be. Left:
    OR-Tools in the `corpus` group. Done when a super and a mega run each take within a tenth of the
    solver's shortest schedule of their own steps. About 2 hours beside the runs; coverage unchanged.
+10. **Signatures from a sampled run.** RightTyper runs a package's tests
+    (`python -m righttyper run -m pytest`) and annotates the parameters and returns of the functions
+    they called, sampling with `sys.monitoring` at a fraction of a full trace's cost. The traced
+    parameters' types as `callers`' seeds brought more errors than fixes (Large 1), so what's new is
+    the returns, written before `--fix` as `pyrefly infer`'s signatures were; its sampling is also a
+    model for item 8. Measure on pydantic's and django's tests: the time against the `traced`
+    step's, the fixes past the trace's, the new errors. Done when measured; a corpus step only if it
+    brings more fixes than the trace for no more errors. About 4 hours; coverage unchanged.
 
 ### Large: more than 8 hours
 

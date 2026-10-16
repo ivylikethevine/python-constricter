@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 """The runner's queue for the machine (`sizing.Slots`): no step waiting holds back what could start."""
 
+import math
 import threading
 import time
 from typing import Final
@@ -38,6 +39,12 @@ def _started(
     slots.give(held, 0, locks)
 
 
+def _ranked(slots: sizing.Slots, wanted: sizing.Wanted, rank: float, into: list[str]) -> None:
+    held: int = slots.take(wanted, (), f"{wanted.lasting:g}", rank)
+    into.append(f"{wanted.lasting:g}")
+    slots.give(held, 0, (), f"{wanted.lasting:g}")
+
+
 def test_a_step_held_back_holds_back_none_after_it(monkeypatch: pytest.MonkeyPatch) -> None:
     """A long one kept waiting for one past its patience doesn't keep a brief one from starting."""
     monkeypatch.setattr(sizing, "_PATIENCE", 0.0)
@@ -63,6 +70,35 @@ def test_a_step_held_back_holds_back_none_after_it(monkeypatch: pytest.MonkeyPat
     for each in threads:
         each.join()
     assert sorted(started) == ["1", "2", "3"]
+
+
+def test_a_step_going_before_a_kept_one_isnt_kept_for_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Past its patience, one ranked after a small long step that fits doesn't hold it back."""
+    monkeypatch.setattr(sizing, "_PATIENCE", 0.0)
+    slots: sizing.Slots = sizing.Slots(4, 10)
+    held: int = slots.take(sizing.Wanted(2, 0))
+    started: list[str] = []
+    waits: list[tuple[sizing.Wanted, float]] = [
+        (sizing.Wanted(3, 0, 3.0), 2.0),  # doesn't fit: what's free is kept for it from those after it
+        (sizing.Wanted(1, 0, 2.0, seconds=600.0), 1.0),  # planned first: starts
+        (sizing.Wanted(1, 0, 4.0, seconds=600.0), math.inf),  # lasts longer, but isn't planned: kept
+    ]
+    threads: list[threading.Thread] = []
+    count: int
+    wanted: sizing.Wanted
+    rank: float
+    for count, (wanted, rank) in enumerate(waits, 1):
+        threads.append(threading.Thread(target=_ranked, args=(slots, wanted, rank, started), daemon=True))
+        threads[-1].start()
+        assert _waiting(slots, count) or started
+    threads[1].join(5)
+    threads[2].join(0.3)
+    assert started == ["2"]
+    slots.give(held)
+    each: threading.Thread
+    for each in threads:
+        each.join()
+    assert sorted(started) == ["2", "3", "4"]
 
 
 def test_a_port_is_taken_as_its_step_starts() -> None:

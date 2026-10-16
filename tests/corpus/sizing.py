@@ -10,7 +10,8 @@ first of them to start runs: each is expected to do the most either did. Unmeasu
 
 - a suite's tests keep its workers busy (`Plan.workers`) and hold `worker-memory` for each; traced,
   what its `tests` step held where only that one is measured; a `heavy` suite's hold all there is.
-  Measured, they hold what they held for each worker then;
+  Measured, they hold what they held for each worker then. Traced by its `script`, in one process,
+  as any other step;
 - a step that starts the type checkers (`infer-CHECKER`, a suite's type checks) keeps `_STEP_CPUS`
   busy and holds `_UNSIZED_SHARE` of the memory: their servers', of no known size;
 - any other keeps `_STEP_CPUS` busy (a check runs in bursts between stretches in one process) and
@@ -24,8 +25,8 @@ a time.
 
 Of the steps waiting, the one with the most seconds still to come starts first: its own and those
 of its corpus's suite's steps after it, which wait for it. One that has waited `_PATIENCE` seconds
-for what smaller ones keep taking has what's free kept for it, from all but those its last run says
-end within `_BESIDE` seconds. And a running step's hold follows
+for what smaller ones keep taking has what's free kept for it, from all but those that go before it
+and those its last run says end within `_BESIDE` seconds. And a running step's hold follows
 what it's seen to use (`Plan.fitted`): an unmeasured one gives back what it isn't using, and any
 one takes what it uses over its share from the next to start.
 
@@ -373,8 +374,9 @@ class Slots:
     def _keeping(self, waiter: _Waiter) -> _Waiter | None:
         """Find one that came before a waiting step and has waited `_PATIENCE` seconds without fitting.
 
-        What's free is kept for it, from all but a step whose last run ended within `_BESIDE` seconds,
-        or that's expected to end before what's running frees enough for it (`_shadow`): starting
+        What's free is kept for it, from all but a step that goes before it (`_ahead`: the run's plan
+        starts it first, or it lasts longer), one whose last run ended within `_BESIDE` seconds, or
+        one that's expected to end before what's running frees enough for it (`_shadow`): starting
         such a step doesn't keep the other waiting longer.
 
         Returns:
@@ -387,7 +389,7 @@ class Slots:
         # Those that came before it, by their place: a coarse clock gives two the same time.
         other: _Waiter
         for other in self.waiting[: self.waiting.index(waiter)]:
-            if other.since <= now - _PATIENCE and not self._ready(other):
+            if other.since <= now - _PATIENCE and not self._ready(other) and not _ahead(waiter, other):
                 shadow: float = self._shadow(other)  # `inf`: a step it waits on has no expected end
                 if waiter.seconds and now + waiter.seconds <= shadow < math.inf:
                     continue  # it ends before the other could start
@@ -473,12 +475,12 @@ class Slots:
         start now goes before it, so the long steps aren't the last to start. One that wants all the
         memory goes before any that wants less: it runs once those running have ended. And one that
         has waited `_PATIENCE` seconds without fitting goes before any that came after it, but one
-        whose own `seconds`, as its last run took, are `_BESIDE` at most, or that's expected to end
-        before the other could start. `locks`: those of the checkouts it works on and the port its
-        tests bind, taken with the rest as it starts, none held while it waits. `name`: what the
-        queue's log calls it (`report`), and `give` frees by. `rank`: when the run's plan starts it
-        (`planning`); of the steps that could start, the one ranked first does, then the one that
-        lasts longest.
+        that goes before it anyway, one whose own `seconds`, as its last run took, are `_BESIDE` at
+        most, or one that's expected to end before the other could start. `locks`: those of the
+        checkouts it works on and the port its tests bind, taken with the rest as it starts, none
+        held while it waits. `name`: what the queue's log calls it (`report`), and `give` frees by.
+        `rank`: when the run's plan starts it (`planning`); of the steps that could start, the one
+        ranked first does, then the one that lasts longest.
 
         Returns:
           How many CPUs are held, to `give` back with their `share` of the memory, and the locks.
@@ -661,7 +663,7 @@ class Plan(NamedTuple):
             for each in (step, *(behind if tree.suite is not None else ()))
             if (directory, each) in self.before
         )
-        if testing(step) and tree.suite is not None:
+        if testing(step) and tree.suite is not None and not (step == TRACED and tree.suite.script):
             tested: Before | None = self.before.get((directory, TESTS)) if step == TRACED else None
             return self._testing(tree.suite, (known, tested), lasting, heavy=heavy)
         cpus: int = math.ceil(known.cpus) if known is not None else _STEP_CPUS

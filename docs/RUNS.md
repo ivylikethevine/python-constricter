@@ -3111,6 +3111,472 @@ it held at once, and what it was given (`sizing`):
 - networkx, mega+dev, infer-basedpyright: held 8.9 GB beside other steps
 - dask, mega+dev, infer-basedpyright: held 12.01 GB beside other steps
 
+## Basic corpora
+
+The run `0.3.7-rc.1` (`python -m tests.corpus`) on original: constricter 0.3.7 (`e6337310db0b`),
+Python 3.14.7, on 16CPU/60GB (Linux): `--jobs=4`, each step a process of its own, started once the
+CPUs it's expected to keep busy and the memory it's expected to hold are free. The run took 52
+minutes. Timings don't compare across machines.
+
+Offences per code at `suffocate`, with `all-scopes` (Python 3.14.7); the total row gives each code's
+share of them:
+
+| Corpus           | Version | constricter    | Files |        `LVA001` |      `LVA002` |       `LVA004` |   `LVA005` |   `LVA006` |  `LVA009` | `LVA011` |   Total |
+| ---------------- | ------- | -------------- | ----: | --------------: | ------------: | -------------: | ---------: | ---------: | --------: | -------: | ------: |
+| standard library | 3.14.7  | 0.3.7-rc.1+dev | 1,867 |          88,565 |        12,334 |         12,772 |         57 |         14 |         8 |        0 | 113,750 |
+| django           | 5.2.17  | 0.3.7-rc.1+dev |   883 |           9,921 |         2,167 |          5,081 |          0 |          0 |         1 |        0 |  17,170 |
+| sqlalchemy       | 2.0.54  | 0.3.7-rc.1+dev |   257 |           8,504 |         1,567 |          2,339 |        551 |        124 |         1 |        1 |  13,087 |
+| pydantic         | 2.13.5  | 0.3.7-rc.1+dev |   105 |           2,023 |           438 |            631 |        190 |         13 |         0 |        0 |   3,295 |
+| pandas           | 3.0.6   | 0.3.7-rc.1+dev | 1,420 |          73,367 |         2,778 |          1,648 |        134 |          2 |         1 |        1 |  77,931 |
+| twisted          | 12.3.0  | 0.3.7-rc.1+dev |   819 |          13,310 |         1,349 |          3,215 |          0 |          0 |         0 |        0 |  17,874 |
+| pip              | 20.3.4  | 0.3.7-rc.1+dev |   366 |           5,902 |         1,150 |          1,872 |          0 |          0 |         0 |        0 |   8,924 |
+| **Total**        |         | 0.3.7-rc.1+dev | 5,717 | 201,592 (80.0%) | 21,783 (8.6%) | 27,558 (10.9%) | 932 (0.4%) | 153 (0.1%) | 11 (0.0%) | 2 (0.0%) | 252,031 |
+
+Errors / warnings at each level, by the version's own rules and defaults; what `--fix` fixed, what
+`--likely` guessed on top and what `--unsafe-fixes` did (each also as a share of the offences at
+`suffocate`; the likely guesses are among the guessed), files a fix broke, and what a second pass
+would still fix, with every guess and with the likely ones:
+
+| Corpus           | constricter    |   `relaxed` |         `strict` |     `constrict` | `suffocate` |          Fixed |         Likely |        Guessed | Broken | Left | Left, likely |
+| ---------------- | -------------- | ----------: | ---------------: | --------------: | ----------: | -------------: | -------------: | -------------: | -----: | ---: | -----------: |
+| standard library | 0.3.7-rc.1+dev | 0 / 113,679 | 101,337 / 12,413 |    113,679 / 71 | 113,750 / 0 | 37,329 (32.8%) |   6,433 (5.7%) | 12,373 (10.9%) |      0 |    0 |            0 |
+| django           | 0.3.7-rc.1+dev |  0 / 17,170 |   15,002 / 2,168 |      17,170 / 0 |  17,170 / 0 |  2,618 (15.2%) |     630 (3.7%) |  2,701 (15.7%) |      0 |    0 |            0 |
+| sqlalchemy       | 0.3.7-rc.1+dev |  0 / 12,411 |   10,843 / 2,244 |    12,411 / 676 |  13,087 / 0 |  1,668 (12.7%) |     320 (2.4%) |     962 (7.4%) |      0 |    0 |            0 |
+| pydantic         | 0.3.7-rc.1+dev |   0 / 3,092 |      2,654 / 641 |     3,092 / 203 |   3,295 / 0 |  1,083 (32.9%) |     148 (4.5%) |    409 (12.4%) |      0 |    0 |            0 |
+| pandas           | 0.3.7-rc.1+dev |  0 / 77,794 |   75,015 / 2,916 |    77,794 / 137 |  77,931 / 0 | 16,950 (21.8%) | 23,811 (30.6%) | 24,638 (31.6%) |      0 |    0 |            0 |
+| twisted          | 0.3.7-rc.1+dev |  0 / 17,874 |   16,525 / 1,349 |      17,874 / 0 |  17,874 / 0 |  2,437 (13.6%) |  3,657 (20.5%) |  4,678 (26.2%) |      0 |    0 |            0 |
+| pip              | 0.3.7-rc.1+dev |   0 / 8,924 |    7,774 / 1,150 |       8,924 / 0 |   8,924 / 0 |  2,253 (25.2%) |     425 (4.8%) |  1,136 (12.7%) |      0 |    0 |            0 |
+| **Total**        | 0.3.7-rc.1+dev | 0 / 250,944 | 229,150 / 22,881 | 250,944 / 1,087 | 252,031 / 0 | 64,338 (25.5%) | 35,424 (14.1%) | 46,897 (18.6%) |      0 |    0 |            0 |
+
+Annotation coverage (`--coverage` with `all-scopes`, counted by this checkout for every version):
+the share of bindings typed as released, after `--fix`, after `--fix --likely` and after
+`--fix --unsafe-fixes`, and how much the first and the last raised it: in percentage points, and as
+a share of the bindings that were untyped:
+
+| Corpus           | constricter    | Typed as released | After `--fix` | After `--likely` | After `--unsafe-fixes` |           Raised by `--fix` |         Raised with guesses |
+| ---------------- | -------------- | ----------------: | ------------: | ---------------: | ---------------------: | --------------------------: | --------------------------: |
+| standard library | 0.3.7-rc.1+dev |              1.2% |         33.6% |            39.2% |                  44.4% | +32.5 pts, 32.8% of untyped | +43.2 pts, 43.7% of untyped |
+| django           | 0.3.7-rc.1+dev |              0.0% |         15.3% |            18.9% |                  31.0% | +15.2 pts, 15.2% of untyped | +31.0 pts, 31.0% of untyped |
+| sqlalchemy       | 0.3.7-rc.1+dev |             14.8% |         26.2% |            28.4% |                  32.8% | +11.4 pts, 13.4% of untyped | +18.1 pts, 21.2% of untyped |
+| pydantic         | 0.3.7-rc.1+dev |             21.8% |         49.2% |            53.0% |                  59.6% | +27.4 pts, 35.0% of untyped | +37.7 pts, 48.3% of untyped |
+| pandas           | 0.3.7-rc.1+dev |              1.6% |         23.0% |            53.2% |                  54.2% | +21.4 pts, 21.8% of untyped | +52.6 pts, 53.5% of untyped |
+| twisted          | 0.3.7-rc.1+dev |              0.0% |         13.6% |            34.1% |                  39.8% | +13.6 pts, 13.6% of untyped | +39.8 pts, 39.8% of untyped |
+| pip              | 0.3.7-rc.1+dev |              1.5% |         26.4% |            31.1% |                  38.9% | +24.9 pts, 25.2% of untyped | +37.4 pts, 38.0% of untyped |
+| **Total**        | 0.3.7-rc.1+dev |              2.2% |         27.3% |            41.1% |                  45.6% | +25.1 pts, 25.6% of untyped | +43.3 pts, 44.3% of untyped |
+
+Each fix on a copy: by tier, and with `--infer-with` each type checker or a trace:
+
+| corpus           | fix                |  fixed | certain | likely |  guess | broken | left |  typed | bindings | seconds |
+| ---------------- | ------------------ | -----: | ------: | -----: | -----: | -----: | ---: | -----: | -------: | ------: |
+| standard library | certain            | 37,329 |  37,329 |        |        |      0 |    0 | 38,658 |  115,001 |    44.8 |
+| standard library | likely             | 43,762 |  37,543 |  6,219 |        |      0 |    0 | 45,091 |  115,001 |    71.5 |
+| standard library | unsafe             | 49,702 |  37,337 |  6,211 |  6,154 |      0 |    0 | 51,031 |  115,001 |    52.1 |
+| standard library | infer-basedpyright | 58,068 |  37,345 |  6,715 | 14,008 |      0 |    9 | 59,397 |  115,001 |   529.6 |
+| standard library | infer-ty           | 55,838 |  37,346 |  6,681 | 11,811 |      0 |   31 | 57,167 |  115,001 |   125.0 |
+| standard library | infer-pyrefly      | 58,455 |  37,345 |  6,849 | 14,261 |      0 |   37 | 59,784 |  115,001 |    91.0 |
+| django           | certain            |  2,618 |   2,618 |        |        |      0 |    0 |  2,620 |   17,171 |     8.5 |
+| django           | likely             |  3,248 |   2,621 |    627 |        |      0 |    0 |  3,250 |   17,171 |    10.5 |
+| django           | unsafe             |  5,319 |   2,618 |    626 |  2,075 |      0 |    0 |  5,321 |   17,171 |    10.5 |
+| django           | infer-basedpyright |  5,777 |   2,617 |    642 |  2,518 |      0 |    4 |  5,779 |   17,171 |    54.8 |
+| django           | infer-ty           |  5,561 |   2,619 |    635 |  2,307 |      0 |    3 |  5,563 |   17,171 |    35.7 |
+| django           | infer-pyrefly      |  6,034 |   2,609 |    648 |  2,777 |      0 |   36 |  6,036 |   17,171 |    18.9 |
+| django           | infer-trace        |  5,859 |   2,622 |    660 |  2,577 |      0 |    0 |  5,861 |   17,171 |    10.6 |
+| sqlalchemy       | certain            |  1,668 |   1,668 |        |        |      0 |    0 |  3,817 |   14,568 |     7.3 |
+| sqlalchemy       | likely             |  1,988 |   1,675 |    313 |        |      0 |    0 |  4,137 |   14,568 |    10.8 |
+| sqlalchemy       | unsafe             |  2,630 |   1,668 |    312 |    650 |      0 |    0 |  4,779 |   14,568 |     9.1 |
+| sqlalchemy       | infer-basedpyright |  3,509 |   1,669 |    356 |  1,484 |      0 |    0 |  5,658 |   14,568 |    41.1 |
+| sqlalchemy       | infer-ty           |  3,446 |   1,669 |    342 |  1,435 |      0 |    4 |  5,595 |   14,568 |    26.7 |
+| sqlalchemy       | infer-pyrefly      |  3,110 |   1,668 |    332 |  1,110 |      0 |    0 |  5,259 |   14,568 |    14.8 |
+| sqlalchemy       | infer-trace        |  2,810 |   1,668 |    312 |    830 |      0 |    0 |  4,959 |   14,568 |     6.5 |
+| pydantic         | certain            |  1,083 |   1,083 |        |        |      0 |    0 |  1,947 |    3,956 |     1.1 |
+| pydantic         | likely             |  1,231 |   1,091 |    140 |        |      0 |    0 |  2,095 |    3,956 |     3.3 |
+| pydantic         | unsafe             |  1,492 |   1,083 |    139 |    270 |      0 |    0 |  2,356 |    3,956 |     1.3 |
+| pydantic         | infer-basedpyright |  1,788 |   1,084 |    143 |    561 |      0 |    0 |  2,652 |    3,956 |    21.6 |
+| pydantic         | infer-ty           |  1,669 |   1,084 |    140 |    445 |      0 |    0 |  2,533 |    3,956 |     7.7 |
+| pydantic         | infer-pyrefly      |  1,687 |   1,083 |    141 |    463 |      0 |    0 |  2,551 |    3,956 |     4.9 |
+| pydantic         | infer-trace        |  1,493 |   1,083 |    139 |    271 |      0 |    0 |  2,357 |    3,956 |     2.0 |
+| pandas           | certain            | 16,950 |  16,950 |        |        |      0 |    0 | 18,219 |   79,062 |    36.2 |
+| pandas           | likely             | 40,761 |  17,133 | 23,628 |        |      0 |    0 | 42,030 |   79,062 |    74.0 |
+| pandas           | unsafe             | 41,588 |  16,946 | 23,409 |  1,233 |      0 |    0 | 42,857 |   79,062 |    35.6 |
+| pandas           | infer-basedpyright | 47,307 |  16,938 | 23,430 |  6,939 |      0 |   23 | 48,576 |   79,062 |   293.2 |
+| pandas           | infer-ty           | 46,441 |  16,946 | 23,466 |  6,029 |      0 |    2 | 47,710 |   79,062 |   238.3 |
+| pandas           | infer-pyrefly      | 48,328 |  16,949 | 23,472 |  7,907 |      0 |    9 | 49,597 |   79,062 |    97.2 |
+| pandas           | infer-trace        | 42,980 |  16,946 | 23,370 |  2,664 |      0 |    9 | 44,249 |   79,062 |    34.7 |
+| twisted          | certain            |  2,437 |   2,437 |        |        |      0 |    0 |  2,437 |   17,874 |     5.2 |
+| twisted          | likely             |  6,094 |   2,561 |  3,533 |        |      0 |    0 |  6,094 |   17,874 |    10.7 |
+| twisted          | unsafe             |  7,115 |   2,436 |  3,533 |  1,146 |      0 |    0 |  7,115 |   17,874 |     5.9 |
+| twisted          | infer-basedpyright |  8,551 |   2,441 |  3,563 |  2,547 |      0 |   10 |  8,551 |   17,874 |    44.5 |
+| twisted          | infer-ty           |  7,547 |   2,436 |  3,576 |  1,535 |      0 |    0 |  7,547 |   17,874 |    27.1 |
+| twisted          | infer-pyrefly      |  7,570 |   2,436 |  3,566 |  1,568 |      0 |    0 |  7,570 |   17,874 |    15.6 |
+| pip              | certain            |  2,253 |   2,253 |        |        |      0 |    0 |  2,390 |    9,064 |     4.4 |
+| pip              | likely             |  2,678 |   2,266 |    412 |        |      0 |    0 |  2,815 |    9,064 |     5.7 |
+| pip              | unsafe             |  3,389 |   2,253 |    412 |    724 |      0 |    0 |  3,526 |    9,064 |     4.4 |
+| pip              | infer-basedpyright |  4,183 |   2,258 |    466 |  1,459 |      0 |    9 |  4,320 |    9,064 |    31.4 |
+| pip              | infer-ty           |  3,715 |   2,255 |    436 |  1,024 |      0 |   11 |  3,852 |    9,064 |    18.3 |
+| pip              | infer-pyrefly      |  3,939 |   2,255 |    450 |  1,234 |      0 |    0 |  4,076 |    9,064 |    10.2 |
+
+Each fix's 12 sets of mechanisms that made the most fixes, the corpora together, by tier (a guess is
+likely by its whole set: every set is in `tables/mechanisms.csv`):
+
+| fix                | mechanisms             |  fixed | certain | likely |  guess |
+| ------------------ | ---------------------- | -----: | ------: | -----: | -----: |
+| certain            | literal                | 16,713 |  16,713 |        |        |
+| certain            | stdlib                 | 13,234 |  13,234 |        |        |
+| certain            | call                   |  5,105 |   5,105 |        |        |
+| certain            | container+literal      |  3,976 |   3,976 |        |        |
+| certain            | builtin                |  2,510 |   2,510 |        |        |
+| certain            | loop                   |  2,433 |   2,433 |        |        |
+| certain            | container+literal+loop |  1,581 |   1,581 |        |        |
+| certain            | copy+loop              |  1,541 |   1,541 |        |        |
+| certain            | method                 |  1,208 |   1,208 |        |        |
+| certain            | open                   |  1,101 |   1,101 |        |        |
+| certain            | literal+method         |    944 |     944 |        |        |
+| certain            | returned               |    860 |     860 |        |        |
+| likely             | constructor            | 27,103 |     234 | 26,869 |        |
+| likely             | literal                | 16,714 |  16,714 |        |        |
+| likely             | stdlib                 | 13,290 |  13,290 |        |        |
+| likely             | call                   |  5,560 |   5,117 |    443 |        |
+| likely             | container+literal      |  3,976 |   3,976 |        |        |
+| likely             | builtin                |  2,510 |   2,510 |        |        |
+| likely             | loop                   |  2,433 |   2,433 |        |        |
+| likely             | method                 |  2,208 |   1,230 |    978 |        |
+| likely             | copy+loop              |  1,802 |   1,549 |    253 |        |
+| likely             | container+literal+loop |  1,581 |   1,581 |        |        |
+| likely             | open                   |  1,101 |   1,101 |        |        |
+| likely             | returned               |  1,078 |   1,078 |        |        |
+| unsafe             | constructor            | 27,102 |     234 | 26,868 |        |
+| unsafe             | literal                | 16,716 |  16,713 |        |      3 |
+| unsafe             | stdlib                 | 13,544 |  13,236 |        |    308 |
+| unsafe             | call                   |  5,523 |   5,105 |    418 |        |
+| unsafe             | container+literal      |  3,976 |   3,976 |        |        |
+| unsafe             | literal+member         |  3,680 |         |        |  3,680 |
+| unsafe             | returned               |  3,279 |     862 |        |  2,417 |
+| unsafe             | builtin                |  2,510 |   2,510 |        |        |
+| unsafe             | loop                   |  2,433 |   2,433 |        |        |
+| unsafe             | method                 |  2,147 |   1,208 |    939 |        |
+| unsafe             | copy+loop              |  1,787 |   1,541 |    246 |        |
+| unsafe             | container+literal+loop |  1,581 |   1,581 |        |        |
+| infer-basedpyright | constructor            | 27,056 |     233 | 26,823 |        |
+| infer-basedpyright | literal                | 16,717 |  16,714 |        |      3 |
+| infer-basedpyright | checker                | 15,290 |         |        | 15,290 |
+| infer-basedpyright | stdlib                 | 13,600 |  13,134 |        |    466 |
+| infer-basedpyright | call                   |  5,620 |   5,103 |    517 |        |
+| infer-basedpyright | container+literal      |  3,976 |   3,976 |        |        |
+| infer-basedpyright | literal+member         |  3,679 |         |        |  3,679 |
+| infer-basedpyright | returned               |  3,562 |     848 |        |  2,714 |
+| infer-basedpyright | builtin                |  2,510 |   2,510 |        |        |
+| infer-basedpyright | loop                   |  2,433 |   2,433 |        |        |
+| infer-basedpyright | method                 |  2,275 |   1,208 |  1,067 |        |
+| infer-basedpyright | copy+loop              |  2,135 |   1,544 |    591 |        |
+| infer-ty           | constructor            | 27,060 |     234 | 26,826 |        |
+| infer-ty           | literal                | 16,716 |  16,713 |        |      3 |
+| infer-ty           | stdlib                 | 13,612 |  13,152 |        |    460 |
+| infer-ty           | checker                | 10,791 |         |        | 10,791 |
+| infer-ty           | call                   |  5,595 |   5,103 |    492 |        |
+| infer-ty           | container+literal      |  3,976 |   3,976 |        |        |
+| infer-ty           | literal+member         |  3,680 |         |        |  3,680 |
+| infer-ty           | returned               |  3,506 |     863 |        |  2,643 |
+| infer-ty           | builtin                |  2,510 |   2,510 |        |        |
+| infer-ty           | loop                   |  2,433 |   2,433 |        |        |
+| infer-ty           | method                 |  2,249 |   1,208 |  1,041 |        |
+| infer-ty           | copy+loop              |  2,034 |   1,543 |    491 |        |
+| infer-pyrefly      | constructor            | 27,041 |     233 | 26,808 |        |
+| infer-pyrefly      | literal                | 16,716 |  16,713 |        |      3 |
+| infer-pyrefly      | checker                | 15,268 |         |        | 15,268 |
+| infer-pyrefly      | stdlib                 | 13,672 |  13,197 |        |    475 |
+| infer-pyrefly      | call                   |  5,595 |   5,103 |    492 |        |
+| infer-pyrefly      | container+literal      |  3,976 |   3,976 |        |        |
+| infer-pyrefly      | literal+member         |  3,679 |         |        |  3,679 |
+| infer-pyrefly      | returned               |  3,494 |     863 |        |  2,631 |
+| infer-pyrefly      | builtin                |  2,510 |   2,510 |        |        |
+| infer-pyrefly      | loop                   |  2,433 |   2,433 |        |        |
+| infer-pyrefly      | method                 |  2,266 |   1,208 |  1,058 |        |
+| infer-pyrefly      | copy+loop              |  2,095 |   1,543 |    552 |        |
+| infer-trace        | constructor            | 19,780 |       2 | 19,778 |        |
+| infer-trace        | literal                |  6,870 |   6,870 |        |        |
+| infer-trace        | call                   |  5,159 |   4,740 |    419 |        |
+| infer-trace        | traced                 |  2,005 |         |        |  2,005 |
+| infer-trace        | literal+member         |  1,940 |         |        |  1,940 |
+| infer-trace        | method                 |  1,749 |     827 |    922 |        |
+| infer-trace        | container+literal      |  1,591 |   1,591 |        |        |
+| infer-trace        | stdlib                 |  1,160 |   1,122 |        |     38 |
+| infer-trace        | builtin                |    827 |     827 |        |        |
+| infer-trace        | returned               |    588 |     225 |        |    363 |
+| infer-trace        | loop                   |    578 |     578 |        |        |
+| infer-trace        | copy+loop              |    468 |     373 |     95 |        |
+
+The untyped bindings: with only a guess, with no fix, and in files that don't parse:
+
+| corpus           | untyped | guessed | unfixed | unparsed |
+| ---------------- | ------: | ------: | ------: | -------: |
+| standard library | 113,671 |  12,366 |  63,976 |        0 |
+| django           |  17,169 |   2,701 |  11,850 |        0 |
+| sqlalchemy       |  12,410 |     962 |   9,780 |        0 |
+| pydantic         |   3,092 |     409 |   1,600 |        0 |
+| pandas           |  77,793 |  24,637 |  36,206 |        0 |
+| twisted          |  17,874 |   4,678 |  10,759 |        0 |
+| pip              |   8,924 |   1,136 |   5,535 |        0 |
+
+A check at `suffocate`: the median seconds of its runs, in one process and with `jobs`, and the
+billions of instructions they took, where `hyperfine` counted them:
+
+| corpus           | jobs | one process | with jobs | runs | G instructions, one process | with jobs |  timed by |
+| ---------------- | ---: | ----------: | --------: | ---: | --------------------------: | --------: | --------: |
+| standard library |    4 |        40.6 |     17.23 |    1 |                       620.7 |     646.0 | hyperfine |
+| django           |    4 |        7.89 |      3.32 |    1 |                       117.0 |     125.1 | hyperfine |
+| sqlalchemy       |    4 |        6.59 |      2.93 |    1 |                        92.2 |      97.1 | hyperfine |
+| pydantic         |    4 |        1.45 |      0.66 |    1 |                        21.3 |      23.6 | hyperfine |
+| pandas           |    4 |       50.81 |     16.54 |    1 |                       767.9 |     784.7 | hyperfine |
+| twisted          |    4 |        6.03 |      2.39 |    1 |                        90.3 |      96.4 | hyperfine |
+| pip              |    4 |        4.01 |      1.68 |    1 |                        64.8 |      69.0 | hyperfine |
+
+The fixes a traced test could tell of, those whose every value fit, and those one didn't; and the
+traced tests' seconds, beside the released tests' untraced:
+
+| corpus     | tier    |   told |   held | differed | resting on the trace |                                                                   tests | seconds | untraced |
+| ---------- | ------- | -----: | -----: | -------: | -------------------: | ----------------------------------------------------------------------: | ------: | -------: |
+| django     |         |        |        |          |                  460 | Ran 17578 tests: FAILED (failures=5, skipped=1129, expected failures=5) |   426.0 |     59.7 |
+| django     | certain |    927 |    925 |        2 |                      |                                                                         |         |          |
+| django     | likely  |    297 |    296 |        1 |                      |                                                                         |         |          |
+| django     | guess   |    300 |    284 |       16 |                      |                                                                         |         |          |
+| sqlalchemy |         |        |        |          |                  177 |                                     1 failed, 26644 passed, 983 skipped |    89.0 |     94.9 |
+| sqlalchemy | certain |  1,039 |  1,019 |       20 |                      |                                                                         |         |          |
+| sqlalchemy | likely  |    166 |    164 |        2 |                      |                                                                         |         |          |
+| sqlalchemy | guess   |    124 |    122 |        2 |                      |                                                                         |         |          |
+| pydantic   |         |        |        |          |                    1 |                                    6439 passed, 329 skipped, 27 xfailed |    36.1 |     28.0 |
+| pydantic   | certain |    484 |    479 |        5 |                      |                                                                         |         |          |
+| pydantic   | likely  |     53 |     53 |        0 |                      |                                                                         |         |          |
+| pydantic   | guess   |     32 |     32 |        0 |                      |                                                                         |         |          |
+| pandas     |         |        |        |          |                1,415 |                   165411 passed, 24659 skipped, 753 xfailed, 84 xpassed |   103.3 |    103.7 |
+| pandas     | certain | 12,894 | 12,817 |       77 |                      |                                                                         |         |          |
+| pandas     | likely  | 20,119 | 20,060 |       59 |                      |                                                                         |         |          |
+| pandas     | guess   |    833 |    785 |       48 |                      |                                                                         |         |          |
+
+Each package's own tests, as released and after each fix: the failures every fixed run has and no
+released run, those gone, and the differences in tests its catalog entry names:
+
+| corpus     | run                | same as released | summary                                                    | new failures | gone | named |
+| ---------- | ------------------ | ---------------- | ---------------------------------------------------------- | -----------: | ---: | ----: |
+| django     | released           |                  | 5 expected failures, 1 failures, 18,184 ran, 1,313 skipped |              |      |       |
+| django     | fix-certain        | True             | 5 expected failures, 1 failures, 17,578 ran, 1,129 skipped |            0 |    0 |     0 |
+| django     | fix-likely         | True             | 5 expected failures, 1 failures, 17,578 ran, 1,129 skipped |            0 |    0 |     0 |
+| django     | fix-unsafe         | True             | 5 expected failures, 1 failures, 17,578 ran, 1,129 skipped |            0 |    0 |     0 |
+| django     | infer-basedpyright | True             | 5 expected failures, 1 failures, 17,578 ran, 1,129 skipped |            0 |    0 |     0 |
+| django     | infer-pyrefly      | True             | 5 expected failures, 1 failures, 17,578 ran, 1,129 skipped |            0 |    0 |     0 |
+| django     | infer-trace        | True             | 5 expected failures, 1 failures, 17,578 ran, 1,129 skipped |            0 |    0 |     0 |
+| django     | infer-ty           | True             | 5 expected failures, 1 failures, 17,578 ran, 1,129 skipped |            0 |    0 |     0 |
+| sqlalchemy | released           |                  | 26,643 passed, 985 skipped                                 |              |      |       |
+| sqlalchemy | fix-certain        | True             | as fix-unsafe's (implied)                                  |            0 |    0 |     0 |
+| sqlalchemy | fix-likely         | True             | as fix-unsafe's (implied)                                  |            0 |    0 |     0 |
+| sqlalchemy | fix-unsafe         | True             | 26,643 passed, 985 skipped                                 |            0 |    0 |     0 |
+| sqlalchemy | infer-basedpyright | True             | 26,643 passed, 985 skipped                                 |            0 |    0 |     0 |
+| sqlalchemy | infer-pyrefly      | True             | 26,646 passed, 982 skipped                                 |            0 |    0 |     0 |
+| sqlalchemy | infer-trace        | True             | 26,646 passed, 982 skipped                                 |            0 |    0 |     0 |
+| sqlalchemy | infer-ty           | True             | 26,643 passed, 985 skipped                                 |            0 |    0 |     0 |
+| pydantic   | released           |                  | 6,439 passed, 329 skipped, 27 xfailed                      |              |      |       |
+| pydantic   | fix-certain        | True             | as fix-unsafe's (implied)                                  |            0 |    0 |     0 |
+| pydantic   | fix-likely         | True             | as fix-unsafe's (implied)                                  |            0 |    0 |     0 |
+| pydantic   | fix-unsafe         | True             | 6,439 passed, 329 skipped, 27 xfailed                      |            0 |    0 |     0 |
+| pydantic   | infer-basedpyright | True             | 6,439 passed, 329 skipped, 27 xfailed                      |            0 |    0 |     0 |
+| pydantic   | infer-pyrefly      | True             | 6,439 passed, 329 skipped, 27 xfailed                      |            0 |    0 |     0 |
+| pydantic   | infer-trace        | True             | 6,439 passed, 329 skipped, 27 xfailed                      |            0 |    0 |     0 |
+| pydantic   | infer-ty           | True             | 6,439 passed, 329 skipped, 27 xfailed                      |            0 |    0 |     0 |
+| pandas     | released           |                  | 165,411 passed, 24,659 skipped, 753 xfailed, 84 xpassed    |              |      |       |
+| pandas     | fix-certain        | True             | as fix-unsafe's (implied)                                  |            0 |    0 |     0 |
+| pandas     | fix-likely         | True             | as fix-unsafe's (implied)                                  |            0 |    0 |     0 |
+| pandas     | fix-unsafe         | True             | 165,411 passed, 24,659 skipped, 753 xfailed, 84 xpassed    |            0 |    0 |     0 |
+| pandas     | infer-basedpyright | True             | 165,411 passed, 24,659 skipped, 753 xfailed, 84 xpassed    |            0 |    0 |     0 |
+| pandas     | infer-pyrefly      | True             | 165,411 passed, 24,659 skipped, 753 xfailed, 84 xpassed    |            0 |    0 |     0 |
+| pandas     | infer-trace        | True             | 165,411 passed, 24,659 skipped, 753 xfailed, 84 xpassed    |            0 |    0 |     0 |
+| pandas     | infer-ty           | True             | 165,411 passed, 24,659 skipped, 753 xfailed, 84 xpassed    |            0 |    0 |     0 |
+
+Each package's own type checks: its errors as released, then those new and gone:
+
+| corpus     | run                | errors | new | gone |                                                      change |
+| ---------- | ------------------ | -----: | --: | ---: | ----------------------------------------------------------: |
+| sqlalchemy | released           |      9 |     |      |                                                             |
+| sqlalchemy | fix-certain        |      9 |   0 |    0 |    164 files changed, 1729 insertions(+), 1327 deletions(-) |
+| sqlalchemy | fix-likely         |      9 |   0 |    0 |    175 files changed, 2054 insertions(+), 1632 deletions(-) |
+| sqlalchemy | fix-unsafe         |      9 |   0 |    0 |    194 files changed, 2726 insertions(+), 2244 deletions(-) |
+| sqlalchemy | infer-basedpyright |     16 |   7 |    0 |    199 files changed, 3641 insertions(+), 3088 deletions(-) |
+| sqlalchemy | infer-pyrefly      |     28 |  19 |    0 |    196 files changed, 3230 insertions(+), 2574 deletions(-) |
+| sqlalchemy | infer-trace        |     15 |   6 |    0 |    196 files changed, 2957 insertions(+), 2408 deletions(-) |
+| sqlalchemy | infer-ty           |     12 |   3 |    0 |    198 files changed, 3589 insertions(+), 2914 deletions(-) |
+| pydantic   | released           |      0 |     |      |                                                             |
+| pydantic   | fix-certain        |      0 |   0 |    0 |      73 files changed, 1119 insertions(+), 804 deletions(-) |
+| pydantic   | fix-likely         |      0 |   0 |    0 |      75 files changed, 1274 insertions(+), 933 deletions(-) |
+| pydantic   | fix-unsafe         |      0 |   0 |    0 |     77 files changed, 1547 insertions(+), 1175 deletions(-) |
+| pydantic   | infer-basedpyright |      3 |   3 |    0 |     80 files changed, 1878 insertions(+), 1469 deletions(-) |
+| pydantic   | infer-pyrefly      |      0 |   0 |    0 |     77 files changed, 1799 insertions(+), 1309 deletions(-) |
+| pydantic   | infer-trace        |      0 |   0 |    0 |     77 files changed, 1548 insertions(+), 1176 deletions(-) |
+| pydantic   | infer-ty           |      3 |   3 |    0 |     77 files changed, 1737 insertions(+), 1341 deletions(-) |
+| pandas     | released           |    259 |     |      |                                                             |
+| pandas     | fix-certain        |    259 |   0 |    0 | 1067 files changed, 18245 insertions(+), 15225 deletions(-) |
+| pandas     | fix-likely         |    259 |   0 |    0 | 1199 files changed, 42324 insertions(+), 38688 deletions(-) |
+| pandas     | fix-unsafe         |    260 |   1 |    0 | 1202 files changed, 43193 insertions(+), 39437 deletions(-) |
+| pandas     | infer-basedpyright |    295 |  36 |    0 | 1213 files changed, 49433 insertions(+), 45044 deletions(-) |
+| pandas     | infer-pyrefly      |    377 | 118 |    0 | 1209 files changed, 50363 insertions(+), 45730 deletions(-) |
+| pandas     | infer-trace        |    261 |   2 |    0 | 1205 files changed, 44633 insertions(+), 40796 deletions(-) |
+| pandas     | infer-ty           |    341 |  82 |    0 | 1212 files changed, 48318 insertions(+), 44046 deletions(-) |
+
+Each step's process tree: its seconds, its CPU seconds and the CPUs they kept busy, the most memory
+it held at once, and what it was given (`sizing`):
+
+| corpus           | step                     | seconds | CPU seconds | CPUs | GB held | CPUs given | GB given | alone |
+| ---------------- | ------------------------ | ------: | ----------: | ---: | ------: | ---------: | -------: | ----: |
+| standard library | check                    |    35.9 |        83.7 |  2.3 |    3.77 |          3 |     4.85 | False |
+| standard library | fix-certain              |    89.6 |       236.6 |  2.6 |    5.18 |          3 |     6.47 | False |
+| standard library | fix-likely               |   107.8 |       299.0 |  2.8 |    7.83 |          3 |     9.79 | False |
+| standard library | fix-unsafe               |    93.0 |       244.6 |  2.6 |     5.9 |          3 |     7.34 | False |
+| standard library | infer-basedpyright       |   709.5 |      1266.7 |  1.8 |   13.02 |          2 |    16.15 | False |
+| standard library | infer-ty                 |   196.6 |       580.6 |  3.0 |   16.21 |          4 |    20.04 | False |
+| standard library | infer-pyrefly            |   139.0 |       473.8 |  3.4 |   18.99 |          4 |    23.72 | False |
+| standard library | census                   |    26.6 |        26.2 |  1.0 |     0.5 |          3 |     4.85 | False |
+| standard library | coverage                 |     7.6 |        26.2 |  3.4 |    1.67 |          4 |     2.07 | False |
+| standard library | timing                   |   115.7 |       176.5 |  1.5 |    3.77 |         16 |     4.71 | False |
+| django           | check                    |     7.2 |        16.7 |  2.3 |    0.85 |          3 |     1.06 | False |
+| django           | fix-certain              |    16.0 |        44.5 |  2.8 |    1.12 |          3 |     1.41 | False |
+| django           | fix-likely               |    17.8 |        47.4 |  2.7 |     1.5 |          3 |     1.88 | False |
+| django           | fix-unsafe               |    18.4 |        46.1 |  2.5 |    1.25 |          3 |     1.56 | False |
+| django           | infer-basedpyright       |    77.0 |       305.4 |  4.0 |    7.65 |          5 |    10.32 | False |
+| django           | infer-ty                 |    57.1 |       138.4 |  2.4 |    3.73 |          2 |     3.91 | False |
+| django           | infer-pyrefly            |    30.9 |        93.9 |  3.0 |    4.17 |          4 |     5.21 | False |
+| django           | census                   |     2.8 |         2.7 |  1.0 |    0.09 |          3 |     1.06 | False |
+| django           | coverage                 |     1.6 |         4.4 |  2.8 |    0.34 |          3 |     0.42 | False |
+| django           | timing                   |    22.8 |        34.6 |  1.5 |    0.85 |         16 |     1.07 | False |
+| django           | traced                   |   442.7 |       429.0 |  1.0 |    1.35 |          1 |     1.72 | False |
+| django           | tests-released           |    60.5 |       444.7 |  7.4 |     5.3 |         13 |     5.78 | False |
+| django           | tests-fix-certain        |    42.5 |       410.2 |  9.7 |    5.24 |         16 |     7.11 | False |
+| django           | tests-fix-likely         |    43.7 |       416.6 |  9.5 |     5.4 |         16 |     7.11 | False |
+| django           | tests-fix-unsafe         |    56.9 |       435.3 |  7.7 |    4.47 |         12 |     5.33 | False |
+| django           | tests-infer-basedpyright |    41.9 |       414.0 |  9.9 |     5.8 |         16 |     7.11 | False |
+| django           | tests-infer-ty           |    42.1 |       406.4 |  9.7 |    5.32 |         16 |     7.11 | False |
+| django           | tests-infer-pyrefly      |    54.9 |       404.9 |  7.4 |    4.11 |         11 |     4.89 | False |
+| django           | tests-infer-trace        |    44.3 |       395.3 |  8.9 |    5.21 |         14 |     6.22 | False |
+| django           | tests                    |   330.2 |      3257.8 |  9.9 |     5.7 |         16 |     7.11 | False |
+| sqlalchemy       | check                    |     0.4 |         0.3 |  0.7 |    0.05 |          2 |     1.17 | False |
+| sqlalchemy       | fix-certain              |    15.8 |        34.9 |  2.2 |    0.97 |          2 |     1.21 | False |
+| sqlalchemy       | fix-likely               |    18.6 |        46.2 |  2.5 |    1.34 |          3 |     1.67 | False |
+| sqlalchemy       | fix-unsafe               |    17.0 |        37.6 |  2.2 |     1.0 |          3 |     1.25 | False |
+| sqlalchemy       | infer-basedpyright       |    61.3 |       256.7 |  4.2 |    7.03 |          5 |     8.86 | False |
+| sqlalchemy       | infer-ty                 |    45.1 |       125.8 |  2.8 |     3.9 |          3 |     4.39 | False |
+| sqlalchemy       | infer-pyrefly            |    25.5 |        79.4 |  3.1 |    4.02 |          4 |     4.39 | False |
+| sqlalchemy       | census                   |     7.8 |        14.3 |  1.8 |    0.85 |          2 |     1.17 | False |
+| sqlalchemy       | coverage                 |     1.6 |         4.0 |  2.5 |    0.37 |          3 |     0.46 | False |
+| sqlalchemy       | timing                   |    19.4 |        27.0 |  1.4 |    0.86 |         16 |     1.07 | False |
+| sqlalchemy       | traced                   |    99.9 |       949.4 |  9.5 |    5.74 |         14 |     8.09 | False |
+| sqlalchemy       | tests-released           |    95.1 |       550.7 |  5.8 |     3.0 |          8 |     3.91 | False |
+| sqlalchemy       | tests-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |         12 |     4.94 | False |
+| sqlalchemy       | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |         12 |     4.94 | False |
+| sqlalchemy       | tests-fix-unsafe         |    84.3 |       588.7 |  7.0 |    3.63 |         10 |     4.12 | False |
+| sqlalchemy       | tests-infer-basedpyright |    83.5 |       580.3 |  6.9 |    3.57 |         10 |     4.12 | False |
+| sqlalchemy       | tests-infer-ty           |    82.7 |       641.0 |  7.8 |    3.88 |         11 |     4.98 | False |
+| sqlalchemy       | tests-infer-pyrefly      |    88.1 |       688.7 |  7.8 |    4.11 |         12 |     4.94 | False |
+| sqlalchemy       | tests-infer-trace        |    92.7 |       665.3 |  7.2 |    4.11 |         12 |     4.94 | False |
+| sqlalchemy       | tests                    |   244.6 |      2132.9 |  8.7 |    4.15 |         12 |     4.94 | False |
+| sqlalchemy       | types-released           |     5.0 |         4.7 |  0.9 |    0.32 |          1 |      0.4 | False |
+| sqlalchemy       | types-fix-certain        |     6.2 |         5.7 |  0.9 |    0.29 |          1 |      0.4 | False |
+| sqlalchemy       | types-fix-likely         |     5.8 |         5.6 |  1.0 |     0.3 |          1 |     0.37 | False |
+| sqlalchemy       | types-fix-unsafe         |     5.2 |         5.1 |  1.0 |     0.3 |          1 |     0.39 | False |
+| sqlalchemy       | types-infer-basedpyright |     5.2 |         5.0 |  1.0 |     0.3 |          1 |      0.4 | False |
+| sqlalchemy       | types-infer-ty           |     5.2 |         5.1 |  1.0 |    0.31 |          1 |      0.4 | False |
+| sqlalchemy       | types-infer-pyrefly      |     6.6 |         6.1 |  0.9 |    0.29 |          1 |     0.36 | False |
+| sqlalchemy       | types-infer-trace        |     6.0 |         5.8 |  1.0 |     0.3 |          1 |     0.39 | False |
+| sqlalchemy       | types                    |     0.2 |         0.1 |  0.5 |    0.03 |          1 |     0.04 | False |
+| pydantic         | check                    |     0.4 |         0.2 |  0.5 |    0.03 |          2 |     0.51 | False |
+| pydantic         | fix-certain              |     2.8 |         7.1 |  2.5 |    0.43 |          2 |     0.56 | False |
+| pydantic         | fix-likely               |     5.8 |        12.2 |  2.1 |    0.49 |          3 |     0.61 | False |
+| pydantic         | fix-unsafe               |     2.8 |         7.1 |  2.5 |    0.42 |          3 |     0.54 | False |
+| pydantic         | infer-basedpyright       |    32.9 |       105.6 |  3.2 |    3.14 |          3 |      3.8 | False |
+| pydantic         | infer-ty                 |    12.4 |        31.5 |  2.5 |    1.67 |          3 |     2.07 | False |
+| pydantic         | infer-pyrefly            |     7.8 |        34.3 |  4.4 |    2.46 |          5 |     3.02 | False |
+| pydantic         | census                   |     1.8 |         3.4 |  1.9 |     0.3 |          2 |     0.51 | False |
+| pydantic         | coverage                 |     1.0 |         1.8 |  1.8 |     0.2 |          2 |     0.25 | False |
+| pydantic         | timing                   |     4.4 |         6.5 |  1.5 |     0.3 |         16 |     0.37 | False |
+| pydantic         | traced                   |    40.3 |        43.2 |  1.1 |    0.48 |          1 |     0.59 | False |
+| pydantic         | tests-released           |    28.3 |        24.5 |  0.9 |    0.28 |          1 |     0.31 | False |
+| pydantic         | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
+| pydantic         | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
+| pydantic         | tests-fix-unsafe         |    31.1 |        27.5 |  0.9 |    0.25 |          1 |     0.34 | False |
+| pydantic         | tests-infer-basedpyright |    22.6 |        22.2 |  1.0 |    0.28 |          1 |     0.36 | False |
+| pydantic         | tests-infer-ty           |    30.7 |        27.5 |  0.9 |    0.25 |          1 |     0.31 | False |
+| pydantic         | tests-infer-pyrefly      |    25.6 |        24.1 |  0.9 |    0.25 |          1 |     0.31 | False |
+| pydantic         | tests-infer-trace        |    25.9 |        24.9 |  1.0 |    0.25 |          1 |     0.32 | False |
+| pydantic         | tests                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
+| pydantic         | types-released           |    10.4 |        14.2 |  1.4 |    0.52 |          2 |     0.62 | False |
+| pydantic         | types-fix-certain        |     7.0 |        11.7 |  1.7 |    0.52 |          2 |     0.64 | False |
+| pydantic         | types-fix-likely         |     6.8 |        11.5 |  1.7 |    0.52 |          2 |     0.64 | False |
+| pydantic         | types-fix-unsafe         |     7.6 |        12.6 |  1.7 |    0.51 |          2 |     0.69 | False |
+| pydantic         | types-infer-basedpyright |    13.4 |        16.6 |  1.2 |    0.54 |          2 |     0.69 | False |
+| pydantic         | types-infer-ty           |     9.2 |        13.8 |  1.5 |    0.53 |          2 |     0.69 | False |
+| pydantic         | types-infer-pyrefly      |     8.0 |        13.2 |  1.6 |    0.54 |          2 |     0.66 | False |
+| pydantic         | types-infer-trace        |     8.8 |        13.6 |  1.5 |    0.52 |          2 |     0.67 | False |
+| pydantic         | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
+| pandas           | check                    |    35.5 |        99.2 |  2.8 |    3.27 |          3 |     4.29 | False |
+| pandas           | fix-certain              |    77.8 |       241.1 |  3.1 |    4.05 |          4 |     5.06 | False |
+| pandas           | fix-likely               |   111.0 |       359.5 |  3.2 |    7.27 |          4 |     9.06 | False |
+| pandas           | fix-unsafe               |    75.9 |       240.7 |  3.2 |    4.31 |          4 |     5.37 | False |
+| pandas           | infer-basedpyright       |   379.9 |      1012.9 |  2.7 |   15.77 |          2 |    19.91 | False |
+| pandas           | infer-ty                 |   324.4 |      1102.1 |  3.4 |   14.61 |          4 |    18.36 | False |
+| pandas           | infer-pyrefly            |   144.6 |       557.3 |  3.9 |   20.54 |          5 |    21.92 | False |
+| pandas           | census                   |    14.8 |        14.4 |  1.0 |    0.33 |          3 |     4.29 | False |
+| pandas           | coverage                 |     6.4 |        20.5 |  3.2 |    1.06 |          4 |     1.31 | False |
+| pandas           | timing                   |   135.1 |       213.6 |  1.6 |    3.27 |         16 |     4.11 | False |
+| pandas           | traced                   |   162.4 |       992.6 |  6.1 |   13.32 |         12 |    16.87 | False |
+| pandas           | tests-released           |   104.4 |       636.9 |  6.1 |    9.77 |          9 |     12.7 | False |
+| pandas           | tests-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |         12 |     0.04 | False |
+| pandas           | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |         12 |     0.04 | False |
+| pandas           | tests-fix-unsafe         |    88.1 |       657.1 |  7.5 |    12.3 |         12 |     15.4 | False |
+| pandas           | tests-infer-basedpyright |    83.5 |       638.8 |  7.7 |   12.19 |         12 |    15.83 | False |
+| pandas           | tests-infer-ty           |    95.1 |       703.3 |  7.4 |   12.15 |         12 |    16.25 | False |
+| pandas           | tests-infer-pyrefly      |    92.1 |       562.6 |  6.1 |    9.74 |          9 |    11.87 | False |
+| pandas           | tests-infer-trace        |    89.7 |       658.0 |  7.3 |   12.25 |         12 |    15.37 | False |
+| pandas           | tests                    |     0.2 |         0.1 |  0.5 |    0.03 |         12 |    15.83 | False |
+| pandas           | types-released           |    59.7 |        92.7 |  1.6 |    2.32 |          2 |     2.82 | False |
+| pandas           | types-fix-certain        |    56.5 |        90.1 |  1.6 |    2.34 |          2 |     2.67 | False |
+| pandas           | types-fix-likely         |    55.5 |        90.5 |  1.6 |    2.28 |          2 |     2.84 | False |
+| pandas           | types-fix-unsafe         |    55.3 |        88.6 |  1.6 |    2.14 |          2 |     2.84 | False |
+| pandas           | types-infer-basedpyright |    52.3 |        83.4 |  1.6 |    2.19 |          2 |     2.96 | False |
+| pandas           | types-infer-ty           |    60.3 |        91.8 |  1.5 |    2.24 |          2 |     2.79 | False |
+| pandas           | types-infer-pyrefly      |    53.3 |        78.0 |  1.5 |    2.16 |          2 |     2.96 | False |
+| pandas           | types-infer-trace        |    56.1 |        91.2 |  1.6 |    2.19 |          2 |     2.74 | False |
+| pandas           | types                    |     0.2 |         0.1 |  0.5 |    0.03 |          2 |     2.96 | False |
+| twisted          | check                    |     0.6 |         0.3 |  0.5 |    0.07 |          3 |     1.02 | False |
+| twisted          | fix-certain              |    13.2 |        34.3 |  2.6 |    0.94 |          3 |     1.17 | False |
+| twisted          | fix-likely               |    18.6 |        45.6 |  2.5 |    1.42 |          3 |     1.76 | False |
+| twisted          | fix-unsafe               |    14.2 |        36.2 |  2.5 |    0.96 |          3 |      1.2 | False |
+| twisted          | infer-basedpyright       |    66.7 |       281.4 |  4.2 |    9.58 |          5 |    11.99 | False |
+| twisted          | infer-ty                 |    45.9 |       120.8 |  2.6 |    3.79 |          3 |     4.07 | False |
+| twisted          | infer-pyrefly            |    27.9 |        88.8 |  3.2 |    4.19 |          4 |     4.66 | False |
+| twisted          | census                   |     9.2 |        16.9 |  1.8 |    0.82 |          3 |     1.02 | False |
+| twisted          | coverage                 |     2.2 |         5.3 |  2.4 |    0.37 |          3 |     0.46 | False |
+| twisted          | timing                   |    17.2 |        26.5 |  1.5 |    0.82 |         16 |     1.02 | False |
+| pip              | check                    |     3.2 |         8.3 |  2.6 |    0.54 |          3 |     0.69 | False |
+| pip              | fix-certain              |     9.6 |        25.3 |  2.6 |    0.71 |          3 |     0.91 | False |
+| pip              | fix-likely               |    10.2 |        28.4 |  2.8 |    0.89 |          3 |     1.11 | False |
+| pip              | fix-unsafe               |     8.8 |        24.5 |  2.8 |    0.71 |          3 |     0.91 | False |
+| pip              | infer-basedpyright       |    47.3 |       197.9 |  4.2 |    5.44 |          5 |      6.6 | False |
+| pip              | infer-ty                 |    29.3 |        76.2 |  2.6 |    2.95 |          3 |     3.69 | False |
+| pip              | infer-pyrefly            |    16.3 |        60.0 |  3.7 |     3.2 |          4 |     3.74 | False |
+| pip              | census                   |     3.2 |         2.9 |  0.9 |    0.09 |          3 |     0.69 | False |
+| pip              | coverage                 |     1.2 |         3.1 |  2.6 |    0.32 |          2 |      0.4 | False |
+| pip              | timing                   |    11.6 |        17.6 |  1.5 |    0.54 |         16 |     0.67 | False |
+
+- standard library, 0.3.7-rc.1+dev, infer-basedpyright: held 13.02 GB beside other steps
+- standard library, 0.3.7-rc.1+dev, infer-ty: held 16.21 GB beside other steps
+- standard library, 0.3.7-rc.1+dev, infer-pyrefly: held 18.99 GB beside other steps
+- pandas, 0.3.7-rc.1+dev, infer-basedpyright: held 15.77 GB beside other steps
+- pandas, 0.3.7-rc.1+dev, infer-ty: held 14.61 GB beside other steps
+- pandas, 0.3.7-rc.1+dev, infer-pyrefly: held 20.54 GB beside other steps
+- pandas, 0.3.7-rc.1+dev, traced: held 13.32 GB beside other steps
+- pandas, 0.3.7-rc.1+dev, tests-released: held 9.77 GB beside other steps
+- pandas, 0.3.7-rc.1+dev, tests-fix-unsafe: held 12.3 GB beside other steps
+- pandas, 0.3.7-rc.1+dev, tests-infer-basedpyright: held 12.19 GB beside other steps
+- pandas, 0.3.7-rc.1+dev, tests-infer-ty: held 12.15 GB beside other steps
+- pandas, 0.3.7-rc.1+dev, tests-infer-pyrefly: held 9.74 GB beside other steps
+- pandas, 0.3.7-rc.1+dev, tests-infer-trace: held 12.25 GB beside other steps
+- twisted, 0.3.7-rc.1+dev, infer-basedpyright: held 9.58 GB beside other steps
+
 ## constricter 0.2.2
 
 Offences per code at `suffocate`, with `all-scopes` (Python 3.14.7); the total row gives each code's
