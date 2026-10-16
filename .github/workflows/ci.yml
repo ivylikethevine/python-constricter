@@ -291,8 +291,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      # Linux only: macOS and Windows reach OS hosts no allowlist can predict. pypi.org: setup-python
-      # upgrades pip when it downloads an interpreter the runner image lacks (3.14t).
+      # block on Linux; macOS and Windows audit until each has an allowlist from its audit runs.
+      # pypi.org: setup-python upgrades pip when it downloads an interpreter the runner image lacks
+      # (3.14t).
       - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         if: runner.os == 'Linux'
         with:

@@ -71,9 +71,9 @@ jobs:
       id-token: write # sign the attestation
       attestations: write # store the attestation
     steps:
-      # Linux only: macOS and Windows reach OS hosts no allowlist can predict. On Linux, uv, the
-      # build's artifact, cibuildwheel and its manylinux images, the hash-checked build dependencies,
-      # Sigstore and the attestation.
+      # block on Linux; macOS and Windows audit until each has an allowlist from its audit runs.
+      # The hosts: uv, the build's artifact, cibuildwheel and its manylinux images, the
+      # hash-checked build dependencies, Sigstore and the attestation.
       - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         if: runner.os == 'Linux'
         with:

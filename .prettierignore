@@ -1,5 +1,6 @@
 # Paths prettier must never format: local state, the Markdown tools' install,
-# and the license text (kept byte-for-byte).
+# and the license and code of conduct texts (kept byte-for-byte).
 local/
 .github/node_modules/
 LICENSE.md
+docs/CODE_OF_CONDUCT.md
