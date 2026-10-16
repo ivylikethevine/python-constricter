@@ -46,10 +46,11 @@ class Step:
     after: set[str] = field(default_factory=set)  # this corpus's steps it waits for
 
 
-def read(folder: Path, *, given: bool = False) -> list[Step]:
+def read(folder: Path, *, given: bool = False, only: str = "") -> list[Step]:
     """Read a run's steps, each with the steps of its corpus it waits for.
 
-    With `given`, a step holds the CPUs and memory the runner gave it, not what it used.
+    With `given`, a step holds the CPUs and memory the runner gave it, not what it used; `only`
+    ("cpus" or "memory") takes that one of them alone, to see which the run lost time to.
     """
     steps: list[Step] = []
     for record in sorted(folder.glob("records/*/*/*.json")):
@@ -61,7 +62,9 @@ def read(folder: Path, *, given: bool = False) -> list[Step]:
         cpus = max(1, min(16, round(cpu / seconds)))
         memory = float(used.get("memory", 0)) * _MARGIN
         if given and used.get("given"):
-            cpus, memory = int(used["given"]["cpus"]), float(used["given"]["memory"])
+            gave = (int(used["given"]["cpus"]), float(used["given"]["memory"]))
+            cpus = gave[0] if only in {"", "cpus"} else cpus
+            memory = gave[1] if only in {"", "memory"} else memory
         steps.append(
             Step(record.parts[-3], record.stem, seconds, cpus, memory, float(used.get("started", 0)), cpu),
         )

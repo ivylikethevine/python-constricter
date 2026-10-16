@@ -6,6 +6,18 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types an index into a `list` or a `tuple[T, ...]` as its element only where the index is
+  typed `int`: one of another or no known type may be a slice (`list(range(n))[key]`, `key` an
+  `int | slice`, isn't an `int`).
+- The corpus runner sizes a suite's measured tests by the CPUs they kept busy, a margin over, with
+  as many workers as before; a suite traced by its own script as one process; and a step the run's
+  solver starts first, or whose chain lasts longer, isn't held back for one past its patience. Its
+  plan holds each step to what the runner will hold for it. `tests-released = false` takes a suite's
+  released tests from the latest earlier run at the suite's tag: `runs/super-fast.toml` and
+  `runs/mega-fast.toml` run a suite's tests only after each fix, and trace none. Its witness counts
+  a `SimpleNamespace`, and an annotation naming a test's class where a test patched the name, as
+  telling nothing, and a module's class imported anew as the one it names.
+
 - The corpus runner plans its steps' order with OR-Tools' CP-SAT from what they took in the last
   runs, where it's installed (the dev group has it), and lets a step start beside one kept waiting
   when it ends before that one could start; `queue.log` in a run's folder says each minute what's

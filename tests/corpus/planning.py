@@ -4,8 +4,9 @@
 A run's steps on its corpora are a resource-constrained project: each holds CPUs and memory for so
 long, the machine has so many of both, a suite's tests hold its port and each of its checkouts holds
 one step at a time, and a step waits for those whose records it reads (`suite_steps.needs`). OR-Tools'
-CP-SAT schedules that, the steps' seconds, CPUs and memory as the last runs measured them
-(`sizing.before`); each step's planned start is its rank, and of the steps that could start, the
+CP-SAT schedules that, each step's seconds as the last runs measured them (`sizing.before`), and
+the CPUs and memory the runner will hold for it (`sizing.Plan.wanted`), so the plan is one it can
+keep; each step's planned start is its rank, and of the steps that could start, the
 one ranked first does (`sizing.Slots.take`). A step no run has measured has no rank: the runner's
 rules order it (`sizing`). Where OR-Tools isn't installed, nothing is planned.
 """
@@ -36,13 +37,13 @@ _RELEASED: Final = pipeline.part(pipeline.TESTS, pipeline.RELEASED)
 class _Step:  # pylint: disable=too-few-public-methods
     """One step to plan: its corpus and name, what it takes, and the steps it waits for."""
 
-    def __init__(self, corpus: str, name: str, before: sizing.Before, after: frozenset[str]) -> None:
-        """Keep what's planned of it."""
+    def __init__(self, corpus: str, name: str, wanted: sizing.Wanted, after: frozenset[str]) -> None:
+        """Keep what's planned of it: what the runner holds for it (`wanted`), for its last run's seconds."""
         self.corpus: str = corpus
         self.name: str = name
-        self.seconds: int = max(1, math.ceil(before.seconds))
-        self.cpus: int = max(1, math.ceil(before.cpus))
-        self.memory: int = math.ceil(before.memory / sizing.GIB * _TENTHS)
+        self.seconds: int = max(1, math.ceil(wanted.seconds))
+        self.cpus: int = max(1, wanted.cpus)
+        self.memory: int = math.ceil(wanted.memory / sizing.GIB * _TENTHS)
         self.after: frozenset[str] = after
 
 
@@ -59,16 +60,18 @@ def ranks(run: Run, entries: Sequence[catalog.Entry], plan: sizing.Plan) -> dict
     """
     if importlib.util.find_spec("ortools") is None:
         return {}
-    steps: list[_Step] = _measured(run, entries, plan.before)
+    steps: list[_Step] = _measured(run, entries, plan)
     return _solved(steps, plan.cpus, plan.memory, {entry.name: entry.port for entry in entries if entry.port})
 
 
 def _measured(
     run: Run,
     entries: Sequence[catalog.Entry],
-    before: Mapping[tuple[str, str], sizing.Before],
+    plan: sizing.Plan,
 ) -> list[_Step]:
     """List the run's steps on `entries` that an earlier run measured, each with those it waits for.
+
+    Each as `plan` sizes it: the CPUs and the memory the runner will hold for it, not what it used.
 
     Returns:
       Them.
@@ -85,9 +88,9 @@ def _measured(
         for name in names:
             if name == _RELEASED and not run.steps.tests_released:
                 continue  # an earlier run's, most likely: not run
-            known: sizing.Before | None
-            if (known := before.get((entry.name.replace(" ", "-"), name))) is not None:
-                found.append(_Step(entry.name, name, known, needs.get(name, frozenset())))
+            if (entry.name.replace(" ", "-"), name) in plan.before:
+                wanted: sizing.Wanted = plan.wanted(job.tree, name, heavy=entry.heavy)
+                found.append(_Step(entry.name, name, wanted, needs.get(name, frozenset())))
     return found
 
 

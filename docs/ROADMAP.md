@@ -450,6 +450,10 @@
   narwhals's (74s, 19s), the same three times over. Not anyio's (8 tests of a main module fail in a
   worker), joblib's (the workers collect different tests) or websockets's (`unittest`), as
   `corpora.toml` says.
+- **A suite's fixed runs, side by side**: each is a part of its own on one of the suite's `at-once`
+  checkouts, started once its fix is made. In the mega run anyio's took 103s to 127s each and pint's
+  28s to 41s, beside released runs of 111s and 32s; their whole tests took 586s and 219s, one after
+  another, in the mega run before.
 - **`tests/corpus/runs/super.toml`** asks every step of the `super` corpora (the seven and every
   fast one) and writes [RUNS.md](RUNS.md)'s `Super corpora` section from the run's folder, with the
   machine it ran on; **`mega.toml`** the same of every corpus, the seven and 40 more packages
@@ -643,9 +647,17 @@ fix.
    schedule taking it under 77 (its CPU seconds over every CPU). Since, not yet run: a step that
    can't start holds back none after it; a suite step's port and checkouts are taken with its share
    as it starts, none held while it waits; and a suite's tests and type checks are a part per fix,
-   each on a checkout of the suite's own once its fix is made (`suite_steps.needs`). Done when a
-   mega run uses 85% of its CPU seconds, and one with no earlier run under its output takes within a
-   tenth of one sized by its own. About 2 hours beside the runs; coverage unchanged.
+   each on a checkout of the suite's own once its fix is made (`suite_steps.needs`). The mega run of
+   all 47 corpora after them took 155 minutes (the super and the slow corpora's, apart, 87 and 91)
+   and used 78% of its CPU seconds before its timed checks, 74% with them: the standard library's
+   and pandas's `infer-*` steps held 13 to 17.5 GB each, and what was left of the memory, not of the
+   CPUs, kept the rest waiting. Its steps' CPUs, not their memory, cost the time: held to what each
+   was given, no schedule of them takes under 147 minutes; to the memory alone, 127. A suite's tests
+   kept 5 of 8 CPUs busy (mypy's), and of the 11 CPU hours held and idle, its tests held 3.9, the
+   timed checks 2.5. Done, not yet run: a suite's measured tests hold the CPUs they kept busy, a
+   margin over, with as many workers as before (141 minutes, replayed). Done when a mega run uses
+   85% of its CPU seconds, and one with no earlier run under its output takes within a tenth of one
+   sized by its own. About 2 hours beside the runs; coverage unchanged.
 2. **ty on the project's own code.** A fourth type checker, beside basedpyright, mypy and pyrefly
    (`pyrefly check`, in CI's lint step since it found 10 errors, each a pattern or a cast the others
    pass), catching what they miss; the corpus runner already takes its hints. Add it to the dev
@@ -746,30 +758,36 @@ fix.
    at each call (networkx's `StackFrame`, 95 of 100 values; seaborn's `CatScale`, 126 of 132). Done,
    not yet run: a value of a class a test module defines tells nothing of the annotation, as a mock
    doesn't, and a class a function defines again is the annotation's by its module and qualified
-   name (`constricter_witness`). Done when a certain fix that differs on the corpora is a
+   name (`constricter_witness`). In the mega run after it, the certain fixes that differed fell from
+   259 to 238 (mcp's none), the likely from 102 to 74 and the guesses from 109 to 96; pandas has 75
+   of the certain, sphinx 27, sqlalchemy 19. Most are the package's own declarations, which its
+   tests contradict: a numpy scalar where `int` or `bool` is declared (pandas's `iloc`,
+   `_has_infs`), `None` where it isn't (sphinx's C++ parser), `round_trip_pickle`'s
+   `DataFrame | Series` for any value pickled, pytest's `FSHookProxy` for a `HookRelay`. Two were
+   `--fix`'s own: an index of no known type into a list typed as its element (pandas's `ilkey`, a
+   slice), since fixed; and a display typed by its elements alone (networkx's `probs = [0]`, then
+   `probs.append(d**-r)`, a `float`), as type checkers type it. Done, not yet run: the witness tells
+   nothing of a `SimpleNamespace` (pdm's stand-ins) or of an annotation naming a test's class
+   outside the tests (django's `datetime`, patched to `MockDateTime`), and takes a module's class
+   imported anew as the one it names (sphinx's `CitationDomain`). Left: a display that's added to
+   later, by a value not known to fit. Done when a certain fix that differs on the corpora is a
    declaration its package's tests contradict (pydantic's `multiple_of: Decimal | None`, bound to an
    `int`). About 3 hours; coverage unchanged.
-5. **A suite's fixed runs, side by side.** A suite's fixed test runs followed one another on one
-   checkout: for a suite of one process that can't take workers, most of its time at under a CPU
-   (anyio's 586s, pint's 219s in the last mega run). Done, not yet run: each is a part of its own on
-   one of the suite's `at-once` checkouts (anyio's and pint's 7), so they go side by side; joblib's
-   and pydantic's aren't set yet. Done when such a suite's `tests` step takes under twice its
-   released run. About an hour beside the runs; coverage unchanged.
-6. **django's traced tests, in more than one process.** The tracer doesn't follow the processes
+5. **django's traced tests, in more than one process.** The tracer doesn't follow the processes
    `multiprocessing` starts, so django's suite is traced with `--parallel=1`: 812s traced, the
    longest step of a super run, to 79s untraced on its workers (timed before a generator's returns
    were counted: time it again first). celery's parts are traced one after another too. Record in a
    forked child as a pytest-xdist worker records itself, or trace a suite's `parts` side by side, a
    trace file each. Done when django's traced tests take under 300s, the fixes resting on the trace
    the same. About 4 hours; coverage unchanged.
-7. **A traced run, sampled.** The tracer follows every line of a recorded function until its
+6. **A traced run, sampled.** The tracer follows every line of a recorded function until its
    statements have ended 20 times with nothing new: django's traced tests take 812s, 79s untraced.
    Record in short windows at random times, with `sys.monitoring`'s events off between them, and
    stop reading a large container once new types stop turning up. Done when pydantic's and django's
    traced tests take under twice their untraced time, and the fixes resting on the trace are within
    a hundredth of today's. About 6 hours; coverage unchanged.
 
-8. **The runner's order, from a solver.** No library runs subprocess steps in a graph under CPUs and
+7. **The runner's order, from a solver.** No library runs subprocess steps in a graph under CPUs and
    memory as the runner does: Snakemake's scheduler comes nearest, choosing among its ready jobs as
    a knapsack, greedily or by PuLP's solver, but is a workflow engine whole, and Dask's and Ray's
    resources are their workers' Python tasks'. Done, not yet run: where OR-Tools is installed, the
@@ -778,14 +796,18 @@ fix.
    the steps that could start, starts the one planned first; a step no run has measured keeps the
    rules (the longest chain first, `_PATIENCE`, backfilling). `scratch/schedule_solve.py` plans a
    finished run's steps the same way and proves how short any schedule of them can be. Left:
-   OR-Tools in the `corpus` group. Done when a super and a mega run each take within a tenth of the
-   solver's shortest schedule of their own steps. About 2 hours beside the runs; coverage unchanged.
-9. **Signatures from a sampled run.** RightTyper runs a package's tests
+   OR-Tools in the `corpus` group. The mega run took 154 minutes, the solver's shortest schedule of
+   its steps 129 and the least it proves 57; held to what the runner gave each, 147. Done, not yet
+   run: the solver holds each step to what the runner will hold for it (`sizing.Plan.wanted`), not
+   what it used, so its order is one the runner can keep. Done when a super and a mega run each take
+   within a tenth of the solver's shortest schedule of their own steps. About 2 hours beside the
+   runs; coverage unchanged.
+8. **Signatures from a sampled run.** RightTyper runs a package's tests
    (`python -m righttyper run -m pytest`) and annotates the parameters and returns of the functions
    they called, sampling with `sys.monitoring` at a fraction of a full trace's cost. The traced
    parameters' types as `callers`' seeds brought more errors than fixes (Large 1), so what's new is
    the returns, written before `--fix` as `pyrefly infer`'s signatures were; its sampling is also a
-   model for item 7. Measure on pydantic's and django's tests: the time against the `traced` step's,
+   model for item 6. Measure on pydantic's and django's tests: the time against the `traced` step's,
    the fixes past the trace's, the new errors. Done when measured; a corpus step only if it brings
    more fixes than the trace for no more errors. About 4 hours; coverage unchanged.
 

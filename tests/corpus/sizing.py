@@ -10,7 +10,8 @@ first of them to start runs: each is expected to do the most either did. Unmeasu
 
 - a suite's tests keep its workers busy (`Plan.workers`) and hold `worker-memory` for each; traced,
   what its `tests` step held where only that one is measured; a `heavy` suite's hold all there is.
-  Measured, they hold what they held for each worker then. Traced by its `script`, in one process,
+  Measured, they hold what they held for each worker then, and the CPUs they kept busy, a margin
+  over, with as many workers as then. Traced by its `script`, in one process,
   as any other step;
 - a step that starts the type checkers (`infer-CHECKER`, a suite's type checks) keeps `_STEP_CPUS`
   busy and holds `_UNSIZED_SHARE` of the memory: their servers', of no known size;
@@ -620,6 +621,17 @@ class Wanted(NamedTuple):
     measured: bool = False  # by an earlier run: held to it, unless it uses more
     least: int = 0  # the fewest CPUs it may start with, `memory` shared out among them (`Slots.take`)
     seconds: float = 0.0  # its own, as its last run took: 0 where none did
+    workers: int = 0  # a suite's tests' processes, where they're more than its CPUs (`started`)
+
+    def started(self, held: int) -> int:
+        """Count the processes a suite's tests start with, holding `held` CPUs.
+
+        Returns:
+          Its `workers` for its every CPU held, as many fewer as it holds fewer; one a CPU where it
+          has none of its own.
+
+        """
+        return max(1, self.workers * held // self.cpus) if self.workers else held
 
 
 class Plan(NamedTuple):
@@ -696,7 +708,9 @@ class Plan(NamedTuple):
 
         `known`: the step's last run, and its tests' where it's traced. Each worker is expected to
         hold what one held in the first of them that says how many ran, a margin over; else its
-        `worker-memory`. A `heavy` suite's hold all there is.
+        `worker-memory`. Measured itself, it holds the CPUs it kept busy, a margin over, as many
+        workers on them as before: a suite's workers seldom all run at once. A `heavy` suite's hold
+        all there is.
 
         Returns:
           What they take, and the fewest CPUs they start with.
@@ -712,7 +726,18 @@ class Plan(NamedTuple):
             memory: int = int(workers * suite.worker_memory * GIB)
             return Wanted(workers, memory, lasting, least=least, seconds=seconds)
         memory = int(runs[0].memory * _MARGIN * workers / runs[0].workers)
-        return Wanted(workers, memory, lasting, measured=runs[0] is known[0], least=least, seconds=seconds)
+        if runs[0] is not known[0]:  # traced, sized by its tests
+            return Wanted(workers, memory, lasting, least=least, seconds=seconds)
+        busy: int = max(1, min(workers, math.ceil(runs[0].cpus * _MARGIN)))
+        return Wanted(
+            busy,
+            memory,
+            lasting,
+            measured=True,
+            least=min(least, busy),
+            seconds=seconds,
+            workers=workers if busy < workers else 0,
+        )
 
     def _parted(self, directory: str, step: str) -> Before | None:
         """Estimate a part of a suite's tests or type checks no run has measured, by its kind's last whole.

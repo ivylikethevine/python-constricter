@@ -513,8 +513,9 @@ def subscripted(container: str, node: ast.Subscript, index: str | None) -> str |
     """Infer `container[...]`'s type, given `container`'s own type as text, and the index's (`index`).
 
     A slice (`x[1:2]`, or an index typed `slice`) of a `list`, `str`, `bytes` or `tuple[T, ...]` is
-    the same type as `container` itself; a plain index into one is its element type (a `bytes`'s, an
-    `int`), as is any index into a `dict` (its value type). A fixed-length `tuple[T1, T2]`'s part is
+    the same type as `container` itself; an index typed `int` into one is its element type (a
+    `bytes`'s, an `int`), and one of another or no known type decides nothing: it may be a slice. Any
+    index into a `dict` is its value type. A fixed-length `tuple[T1, T2]`'s part is
     the one a literal index names (`pair[0]`, `pair[-1]`).
 
     Returns:
@@ -530,7 +531,7 @@ def subscripted(container: str, node: ast.Subscript, index: str | None) -> str |
             # A `bytes`'s plain index is one byte's `int`; an index of unknown type may be a slice.
             return container if sliced or name == _STR else _INT if index == _INT else None
         case ast.Subscript(value=ast.Name(id="list" | "List"), slice=element):
-            return container if sliced else ast.unparse(sole(element))
+            return container if sliced else ast.unparse(sole(element)) if index == _INT else None
         case ast.Subscript(
             value=ast.Name(id="dict" | "Dict"),
             slice=ast.Tuple(elts=[_, element]),
@@ -540,7 +541,7 @@ def subscripted(container: str, node: ast.Subscript, index: str | None) -> str |
             value=ast.Name(id="tuple" | "Tuple"),
             slice=ast.Tuple(elts=[element, last]),
         ) if isinstance(last, ast.Constant) and last.value is Ellipsis:
-            return container if sliced else ast.unparse(element)
+            return container if sliced else ast.unparse(element) if index == _INT else None
         case ast.Subscript(value=ast.Name(id="tuple" | "Tuple"), slice=element) if not sliced:
             return _part(element.elts if isinstance(element, ast.Tuple) else [element], node.slice)
         case _:

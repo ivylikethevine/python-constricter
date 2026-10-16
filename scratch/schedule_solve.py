@@ -12,7 +12,7 @@ Needs OR-Tools, which the project doesn't depend on; `uv` installs it for one ru
 older than a week:
 
     uv run --exclude-newer "$(date -d '7 days ago' +%F)" --with ortools python scratch/schedule_solve.py \\
-        FOLDER... [--cpus 16] [--memory 36] [--given] [--seconds 60]
+        FOLDER... [--cpus 16] [--memory 36] [--given [--only cpus|memory]] [--seconds 60]
 """
 
 import argparse
@@ -87,11 +87,12 @@ def main() -> None:
     parser.add_argument("--cpus", type=int, default=16)
     parser.add_argument("--memory", type=float, default=36.0, help="gigabytes the steps share")
     parser.add_argument("--given", action="store_true", help="steps hold what the runner gave them")
+    parser.add_argument("--only", choices=["cpus", "memory"], default="", help="with --given: that alone")
     parser.add_argument("--seconds", type=float, default=60.0, help="the most the solver takes on each run")
     args = parser.parse_args()
     folder: Path
     for folder in args.folders:
-        steps: list[schedule_sim.Step] = schedule_sim.read(folder, given=args.given)
+        steps: list[schedule_sim.Step] = schedule_sim.read(folder, given=args.given, only=args.only)
         first: float = min(step.started for step in steps)
         recorded: float = max(step.started + step.seconds for step in steps) - first
         found: float

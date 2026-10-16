@@ -379,20 +379,27 @@ def test_a_step_is_given_what_it_took_in_the_last_run(tmp_path: Path) -> None:
     assert before == {("celery", pipeline.TESTS): sizing.Before(2.5, 10.0, int(9.5 * sizing.GIB), 2)}
     assert not sizing.before(tmp_path, tmp_path / "earlier")
     plan: sizing.Plan = sizing.Plan(parse({"run": {"jobs": 2}}), 8, 16 * sizing.GIB, before)
-    # A suite's tests: a CPU for each worker, as many as half the run's memory holds; each worker's
-    # memory as in the last run; starting with half the CPUs.
+    # A suite's tests: a worker each for as many as half the run's memory holds, each worker's memory
+    # as in the last run, on the CPUs they kept busy then, a margin over; fewer CPUs, fewer workers.
     roomy: sizing.Plan = plan._replace(memory=64 * sizing.GIB)
     measured: sizing.Wanted = roomy.wanted(tree, pipeline.TESTS)
     assert measured == sizing.Wanted(
-        6,
+        4,
         int(9.5 * sizing.GIB * 1.25 * 6 / 2),
         10.0,
         measured=True,
         least=4,
         seconds=10.0,
+        workers=6,
     )
-    # As its tests', unmeasured; and its tests wait for it: their seconds are behind it.
-    assert roomy.wanted(tree, pipeline.TRACED) == measured._replace(measured=False, seconds=0.0)
+    assert (measured.started(4), measured.started(2), sizing.Wanted(3, 0).started(3)) == (6, 3, 3)
+    # As its tests', unmeasured, a CPU a worker; and its tests wait for it: their seconds are behind it.
+    assert roomy.wanted(tree, pipeline.TRACED) == measured._replace(
+        cpus=6,
+        measured=False,
+        seconds=0.0,
+        workers=0,
+    )
     # A record that doesn't say how many workers ran: each its `worker-memory`.
     legacy: sizing.Plan = roomy._replace(
         before={("celery", pipeline.TESTS): before["celery", pipeline.TESTS]._replace(workers=0)},

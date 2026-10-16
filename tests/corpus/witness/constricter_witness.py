@@ -15,8 +15,10 @@ instance of the class, or of one of a union's. A builtin container is held to it
 arguments too, by its first elements (`_elements`); any other subscripted class to the class alone.
 Each process writes, for each binding, how many times the value fit, didn't, and couldn't be told
 (`FIT`, `DIFFER`, `UNKNOWN`): an annotation that can't be evaluated there, a protocol no `isinstance`
-checks, a type variable with no bound, a value that's a test's mock or of a class a test module
-defines (`_stand_in`). A class a function defines anew at each call is the annotation's class where
+checks, a type variable with no bound, a value that's a test's mock, a `SimpleNamespace` or of a
+class a test module defines (`_stand_in`), and an annotation that names such a class: a module's
+name a test has patched (`humanize.datetime = MockDateTime`), as the annotation was evaluated. A class
+made again, by a function at each call or by a module imported anew, is the annotation's class where
 its module and its qualified name are (`_redefined`).
 """
 
@@ -75,7 +77,6 @@ _MAPPINGS: Final = (dict, collections.defaultdict, collections.OrderedDict)
 _TUPLES: Final = (tuple,)
 _PAIR: Final = 2  # a mapping's arguments: its keys' type and its values'
 _ALIASED: Final = "__value__"  # where a `type` statement's alias keeps what it names
-_LOCAL: Final = "<locals>"  # in the qualified name of a class a function defines
 # A test module's name, by any of its parts: pytest's and unittest's ways of naming them.
 _TESTS: Final = frozenset({"test", "tests", "testing", "conftest"})
 _CALLABLE: Final = collections.abc.Callable
@@ -226,26 +227,42 @@ def _instance(value: object, hint: object) -> bool | None:
 
 
 def _redefined(kind: type, hint: type) -> bool:
-    """Check whether `kind` or a base of it is `hint` made again: a class a function defines at each call.
+    """Check whether `kind` or a base of it is `hint` made again: by a function, or a module imported anew.
 
     Returns:
-      Whether one has `hint`'s module and qualified name, `hint` being a function's.
+      Whether one has `hint`'s module and qualified name.
 
     """
-    return _LOCAL in hint.__qualname__ and any(
+    return any(
         (base.__module__, base.__qualname__) == (hint.__module__, hint.__qualname__) for base in kind.__mro__
     )
 
 
 def _stand_in(kind: type) -> bool:
-    """Check whether a test module defines `kind`: a test's stand-in, which says nothing of the annotation.
+    """Check whether `kind` is a test's stand-in, which says nothing of the annotation.
 
     Returns:
-      Whether a part of its module's name is a test package's, or a test file's (`test_x`, `x_test`).
+      Whether it's `SimpleNamespace`, or a test module's (`_testing`).
 
     """
-    parts: list[str] = kind.__module__.split(".")
-    return any(part in _TESTS or part.startswith("test_") or part.endswith("_test") for part in parts)
+    return kind is types.SimpleNamespace or _testing(kind.__module__)
+
+
+def _testing(module: str) -> bool:
+    # Whether a part of a module's name is a test package's, or a test file's (`test_x`, `x_test`).
+    return any(
+        part in _TESTS or part.startswith("test_") or part.endswith("_test") for part in module.split(".")
+    )
+
+
+def patched(hint: object, module: str) -> bool:
+    """Check whether an annotation in `module` names a test's class: a name of the module's a test patched.
+
+    Returns:
+      Whether it does, `module` being no test module, whose own annotations name its classes.
+
+    """
+    return isinstance(hint, type) and _testing(hint.__module__) and not _testing(module)
 
 
 class Witness(recording.Recorder):
@@ -302,6 +319,9 @@ class Witness(recording.Recorder):
             if key not in self.hints:
                 self.hints[key] = _evaluated(said, frame)
             fits: bool | None = _fits(bound[key[2]], self.hints[key])
+            if patched(self.hints[key], _module(frame)):  # evaluated again once the test's done
+                fits = None
+                del self.hints[key]
             self.verdicts.setdefault(key, [0, 0, 0])[
                 UNKNOWN if fits is None else FIT if fits else DIFFER
             ] += 1
@@ -334,6 +354,11 @@ def _fits(value: object, hint: object) -> bool | None:
         return None if hint is _UNSET else holds(value, hint)
     except Exception:  # ruff: ignore[blind-except]  # pylint: disable=broad-exception-caught
         return None
+
+
+def _module(frame: FrameType) -> str:
+    # The name of the module `frame` runs in.
+    return str(cast("object", frame.f_globals.get("__name__", "")))
 
 
 def _evaluated(said: list[str], frame: FrameType) -> object:

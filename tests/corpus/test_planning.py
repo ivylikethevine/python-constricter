@@ -9,16 +9,16 @@ import pytest
 from tests.corpus import catalog, planning, sizing
 from tests.corpus.run_config import Run, parse
 
-_ALL: Final = 16  # the machine's CPUs here: each step planned wants every one
+_ALL: Final = 16  # the machine's CPUs here
 
 
-def test_steps_wanting_every_cpu_are_planned_one_after_another() -> None:
-    """None overlaps another; a step no run measured isn't planned."""
+def test_steps_that_cant_share_the_machine_are_planned_one_after_another() -> None:
+    """Each held to what the runner holds for it, more than half the memory: none overlaps another."""
     if importlib.util.find_spec("ortools") is None:
         pytest.skip("OR-Tools isn't installed: the dev group has it")
     run: Run = parse({"steps": {"fix": ["certain", "unsafe"]}})
     before: dict[tuple[str, str], sizing.Before] = {
-        ("pip", name): sizing.Before(float(_ALL), 10.0, sizing.GIB) for name in ("check", "fix-certain")
+        ("pip", name): sizing.Before(float(_ALL), 10.0, 20 * sizing.GIB) for name in ("check", "fix-certain")
     }
     plan: sizing.Plan = sizing.Plan(run, _ALL, 32 * sizing.GIB, before)
     ranks: dict[tuple[str, str], float] = planning.ranks(run, [catalog.load().entry("pip")], plan)

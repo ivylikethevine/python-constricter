@@ -15,6 +15,7 @@ import pytest
 from constricter import trace
 
 _Holds: TypeAlias = Callable[[object, object], bool | None]
+_Patched: TypeAlias = Callable[[object, str], bool]
 _Case: TypeAlias = tuple[object, object, bool | None]  # a value, an annotation, and whether it holds
 _T = TypeVar("_T")
 _HELD: Final[tuple[_Case, ...]] = (
@@ -93,11 +94,13 @@ def _made() -> type[_Framed]:
     return Frame
 
 
-def test_a_class_a_function_makes_again_is_the_annotations(holds: _Holds) -> None:
-    """By its module and qualified name; another class of the same name is still another."""
+def test_a_class_made_again_is_the_annotations(holds: _Holds) -> None:
+    """By a function or a module imported anew, by its module and qualified name; another name is another."""
     first: type[_Framed] = _made()
     assert holds(_made()(), first) is True
     assert holds(type("Frame", (), {"__module__": "pkg.core"})(), first) is False
+    named: dict[str, str] = {"__module__": _Framed.__module__, "__qualname__": _Framed.__qualname__}
+    assert holds(type("_Framed", (), named)(), _Framed) is True
 
 
 def test_a_test_modules_class_says_nothing_of_the_annotation(holds: _Holds) -> None:
@@ -107,6 +110,21 @@ def test_a_test_modules_class_says_nothing_of_the_annotation(holds: _Holds) -> N
     for module, held in (("pkg.tests.test_core", None), ("test_core", None), ("pkg.core", False)):
         stand_in: type[_Framed] = type("FakeProcess", (_Framed,), {"__module__": module})
         assert holds(stand_in(), int) is held
+    assert holds(types.SimpleNamespace(), int) is None
+
+
+def test_an_annotation_naming_a_tests_class_outside_the_tests_is_patched() -> None:
+    """A module's name a test patched (`humanize.datetime = MockDateTime`): a test's own names its classes."""
+    with mock.patch.dict(trace.__dict__):
+        patched: _Patched = typing.cast(
+            "_Patched",
+            importlib.import_module("tests.corpus.witness.constricter_witness").patched,
+        )
+    stand_in: type[_Framed] = type("MockDateTime", (_Framed,), {"__module__": "humanize_tests.tests"})
+    assert patched(stand_in, "django.contrib.humanize")
+    assert not patched(stand_in, "humanize_tests.test_more")
+    assert not patched(int, "django.contrib.humanize")
+    assert not patched("datetime", "django.contrib.humanize")
 
 
 def test_only_a_builtin_containers_elements_are_read(holds: _Holds) -> None:

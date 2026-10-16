@@ -136,13 +136,22 @@ def test_a_rebound_builtins_arguments_still_decide() -> None:
 
 
 def test_an_index_typed_slice_slices() -> None:
-    """`items[since]`, `since` a `slice`, is a `list`, not an element."""
+    """`items[since]`, `since` a `slice`, is a `list`; an element only for an `int`, as a slice may be."""
     body: str = """
-    def f(t: Table, since: slice, at: int) -> None:
+    def f(t: Table, since: slice, at: int, either: int | slice, unknown) -> None:
       a = t.index.items[since]
       b = t.index.items[at]
+      c = t.index.items[either]
+      d = t.index.items[unknown]
+      e = tuple(t.index.items)[unknown]
     """
-    assert _fixes(body) == [("a", "list[str]", False), ("b", "str", False)]
+    assert _fixes(body) == [
+        ("a", "list[str]", False),
+        ("b", "str", False),
+        ("c", None, False),
+        ("d", None, False),
+        ("e", None, False),
+    ]
 
 
 def test_a_dict_view_on_a_chained_receiver_is_certain() -> None:

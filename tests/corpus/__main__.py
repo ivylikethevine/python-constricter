@@ -194,7 +194,7 @@ class Running(NamedTuple):
         `hold`: what it holds of the machine, fitted every `_LOOK` seconds to what it's using.
 
         In a scope of its own where `scope` says, which it reads the count of as it ends (`_step`). A
-        suite's tests take a worker for each CPU they started with.
+        suite's tests take the workers its hold says (`Wanted.started`).
 
         Returns:
           What the process and every one under it used: the most of what was read as it ran and
@@ -205,7 +205,7 @@ class Running(NamedTuple):
         """
         command: list[str] = [*self.scope, sys.executable, "-m", "tests.corpus", _STEP, str(self.store.root)]
         scoped: dict[str, str] = {sizing.SCOPED: "1"} if self.scope else {}
-        scoped |= {_SUITE_WORKERS: str(hold.held[0])} if sizing.testing(name) else {}
+        scoped |= {_SUITE_WORKERS: str(hold.wanted.workers)} if sizing.testing(name) else {}
         said: list[str] = [_LABEL, self.run.label, _JOBS, str(self.run.jobs)]  # what the run's command said
         file: IO[str]
         process: subprocess.Popen[bytes]
@@ -281,7 +281,8 @@ class Running(NamedTuple):
         rank: float = (self.ranks or {}).get((entry.name, name), math.inf)
         held: int = self.slots.take(wanted, locks, f"{entry.name}/{name}", rank)
         memory: int = self.slots.share(wanted.cpus, wanted.memory, held)
-        hold: _Hold = _Hold(wanted._replace(cpus=held, memory=memory), (held, memory))
+        given: sizing.Wanted = wanted._replace(cpus=held, memory=memory, workers=wanted.started(held))
+        hold: _Hold = _Hold(given, (held, memory))
         start: float = time.perf_counter()
         try:
             used: sizing.Used = self.process(entry, job, name, hold)
@@ -327,7 +328,7 @@ class Running(NamedTuple):
                 "memory": round(used.memory / sizing.GIB, 2),
                 "given": given,
                 "alone": wanted.memory >= self.plan.memory,
-            } | ({sizing.WORKERS: wanted.cpus} if sizing.testing(name) else {})
+            } | ({sizing.WORKERS: wanted.started(wanted.cpus)} if sizing.testing(name) else {})
             self.store.write(job.tree.name, job.recorded, name, record)
         said: str = (
             "failed" if record is None else f"{used.cpu:.0f} CPU seconds, {used.memory / sizing.GIB:.1f} GB"
