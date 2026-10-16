@@ -2,7 +2,7 @@
 """What each checked file offers other files' `--fix`, read once: the cross-file index (`index`).
 
 `read` takes a file's module name, its top-level functions' declared return types (as
-`annotations.returns` picks them), its classes' attributes and methods' returns (as `classes` and
+`declarations.returns` picks them), its classes' attributes and methods' returns (as `classes` and
 `method_returns` do), its generic classes and type variables, and what each top-level name refers
 to; `constricter.fix.index.project` looks things up in it for each file.
 """
@@ -13,27 +13,26 @@ import itertools
 import re
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
 
+from constricter.empty import Empty
 from constricter.fix.core.imports import taken_names
-from constricter.fix.core.known import Origin, Passed, Returns, Takers
+from constricter.fix.core.known import Origin, Passed, Returns, Takers, pickled, unpickled
 from constricter.fix.core.signatures import AWAIT
 from constricter.fix.index.declared import Declarations, Signature, declarations, kinds, overloads
+from constricter.fix.index.origins import guarded_origins, origins_of
+from constricter.fix.index.params import Param, open_functions
 from constricter.fix.values import classvars, entered, fills
 from constricter.fix.values.bodies import yields_itself
-from constricter.fix.values.returned import unannotated, untouched
+from constricter.fix.values.returned import unannotated
+from constricter.fix.values.stored import untouched
+from constricter.overrides import override
 from constricter.rules import parsed
-from constricter.rules.annotations import (
-    awaited_returns,
-    defined_type_vars,
-    dotted,
-    generic_classes,
-    is_composite,
-    node_name,
-)
+from constricter.rules.annotations import dotted, is_composite, node_name
+from constricter.rules.declarations import awaited_returns, defined_type_vars, generic_classes
 from constricter.rules.decorators import Held, Pass, is_fixture
 from constricter.rules.keys import key, optional
 from constricter.rules.syntax import child_statements, top_level
@@ -54,14 +53,6 @@ _CLASS: Final = "class"  # `project.CLASS`: the kind of name `classes_under` spe
 _ANNOTATION: Final = 200  # the longest string read for the names a type in it is written with
 _DOTTED: Final = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+")
 STUB: Final = ".pyi"
-
-
-# A function's parameter: its name, kind (`p` positional only, `e` either, `k` keyword only), and
-# whether it has a default and an annotation.
-Param: TypeAlias = tuple[str, str, bool, bool]
-_POSITIONAL: Final = "p"
-_EITHER: Final = "e"
-_KEYWORD: Final = "k"
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -114,8 +105,11 @@ class Module:  # pylint: disable=too-many-instance-attributes
     # The names each of its classes' bodies binds
     bound: Mapping[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
     members: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
+    # Its classes' variables bound to a bare name, with that name (`classvars.named`): typed as the
+    # Class it names, among `members`, where the index finds one (`plain.settled`).
+    named: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
     plain: frozenset[str] = frozenset()
-    # Its classes' classmethods' and staticmethods' declared returns (see `annotations.class_methods`);
+    # Its classes' classmethods' and staticmethods' declared returns (see `declarations.class_methods`);
     # Those held back as `held` are, and those of them the index vouched for, now among `sides`.
     sides: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
     held_sides: Mapping[str, Mapping[str, Held]] = field(default_factory=dict[str, Mapping[str, Held]])
@@ -137,7 +131,7 @@ class Module:  # pylint: disable=too-many-instance-attributes
     assigned: frozenset[str] = frozenset()
     # Its classes' methods a `return` could type (as `unannotated`), by name, whatever the class.
     loose: frozenset[str] = frozenset()
-    # Its classes' methods declared to return a bare `Self` (see `annotations.self_returns`).
+    # Its classes' methods declared to return a bare `Self` (see `declarations.self_returns`).
     selfish: Mapping[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
     # What awaiting each of its `async def`s' calls gives (`awaited_returns`)
     awaits: Mapping[str, str] = field(default_factory=dict[str, str])
@@ -153,8 +147,22 @@ class Module:  # pylint: disable=too-many-instance-attributes
     takers: Mapping[str, Takers] = field(default_factory=dict[str, Takers])
     # A checked file's type aliases, type variables and protocols, read as a stub's (see `declared.kinds`).
     kinds: Declarations | None = None
-    # The attributes its classes bind to an empty container and do no more with (see `returned.untouched`).
+    # The attributes its classes bind to an empty container and do no more with (see `stored.untouched`).
     emptied: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
+
+    @override
+    def __getstate__(self) -> dict[str, object]:
+        """Pickle it by its fields (see `pickled`).
+
+        Returns:
+          Them.
+
+        """
+        return pickled(self)
+
+    def __setstate__(self, state: dict[str, object]) -> None:
+        """Unpickle it (see `unpickled`)."""
+        unpickled(self, state)
 
     @property
     def typing(self) -> Declarations | None:
@@ -178,6 +186,7 @@ class Module:  # pylint: disable=too-many-instance-attributes
 # The classes a module names by its own imports: each one's spelling, its module and its name
 # there; and the generic ones it spells through a module.
 _Spelled: TypeAlias = tuple[list[tuple[str, str, str]], list[str]]
+_ByClass: TypeAlias = dict[str, frozenset[str]]  # each class's methods of a kind, by its name
 _Under: TypeAlias = list[tuple[str, Origin]]  # classes' spellings after a package's name, and what each is
 
 
@@ -199,6 +208,8 @@ class Memo:
     lines: dict[str, tuple[str, ...]] = field(default_factory=dict)
     # The members a class declares a type for (attributes, methods' returns), by its module and name.
     members: dict[tuple[str, str], frozenset[str]] = field(default_factory=dict)
+    # The methods a module's classes overload, by class (see `own_methods`), by its name and folder.
+    overloaded: dict[tuple[str, str], "_ByClass"] = field(default_factory=dict)
 
 
 class Index(NamedTuple):
@@ -208,7 +219,7 @@ class Index(NamedTuple):
     names: list[str]  # modules, sorted by name
     repeated: frozenset[str] = frozenset()  # the names more than one file has: `modules` has the last
     # Each checked `conftest.py` outside any package, by its directory: several share the one name.
-    conftests: Mapping[str, Module] = {}
+    conftests: Mapping[str, Module] = Empty()
     memo: Memo | None = None  # `None`: nothing is kept (an index made by hand)
 
 
@@ -229,108 +240,6 @@ def module_name(path: Path) -> str:
     return ".".join(
         [*(folder.name for folder in reversed(packages)), *([] if path.stem == _PACKAGE else [path.stem])],
     )
-
-
-def absolute(name: str, module: str | None, level: int, *, is_package: bool) -> str:
-    """Resolve `from <.level><module> import ...` in module `name`.
-
-    Returns:
-      The absolute module name.
-
-    """
-    if not level:
-        return module or ""
-    package: list[str] = name.split(".") if is_package else name.split(".")[:-1]
-    base: list[str] = package[: len(package) - (level - 1)] if level > 1 else package
-    return ".".join([*base, *([module] if module else [])])
-
-
-def _names(tree: ast.Module, name: str, *, is_package: bool) -> dict[str, Origin]:
-    """Map module `name`'s top-level names (the last binding wins).
-
-    Returns:
-      What each refers to.
-
-    """
-    names: dict[str, Origin] = {}
-    stmt: ast.stmt
-    for stmt in tree.body:
-        match stmt:
-            case ast.Import() | ast.ImportFrom():
-                names.update(_imported(stmt, name, is_package=is_package))
-            case _:
-                names.update((bound, (name, bound)) for bound in _bound(stmt))
-    return names
-
-
-def _imported(stmt: ast.Import | ast.ImportFrom, name: str, *, is_package: bool) -> dict[str, Origin]:
-    """Map the names one import in module `name` binds.
-
-    Returns:
-      What each refers to.
-
-    """
-    names: dict[str, Origin] = {}
-    alias: ast.alias
-    if isinstance(stmt, ast.Import):
-        for alias in stmt.names:
-            if alias.asname:
-                names[alias.asname] = (alias.name, None)
-            else:  # `import a.b` binds `a`
-                names[alias.name.split(".")[0]] = (alias.name.split(".")[0], None)
-        return names
-    for alias in stmt.names:
-        names[alias.asname or alias.name] = (
-            absolute(name, stmt.module, stmt.level, is_package=is_package),
-            alias.name,
-        )
-    return names
-
-
-def _guarded(tree: ast.Module, name: str, *, is_package: bool) -> dict[str, Origin]:
-    """Map the names module `name` imports under a top-level `if` or `try` (`if TYPE_CHECKING:`).
-
-    Not what it binds at run time (`_names`): a type variable imported only for the checker is a type
-    variable all the same. Not a name two of them bind to different things (one in each branch of an
-    `if`): which it is, another file can't say.
-
-    Returns:
-      What each refers to.
-
-    """
-    found: dict[str, Origin] = {}
-    either: set[str] = set()
-    node: ast.AST
-    bound: str
-    origin: Origin
-    for node in (
-        n for stmt in tree.body if isinstance(stmt, ast.If | ast.Try | ast.TryStar) for n in ast.walk(stmt)
-    ):
-        if isinstance(node, ast.Import | ast.ImportFrom):
-            for bound, origin in _imported(node, name, is_package=is_package).items():
-                if found.setdefault(bound, origin) != origin:
-                    either.add(bound)
-    return {bound: origin for bound, origin in found.items() if bound not in either}
-
-
-def _bound(stmt: ast.stmt) -> Iterator[str]:
-    """Walk a top-level statement other than an import.
-
-    Yields:
-      Each name it binds.
-
-    """
-    node: ast.AST
-    match stmt:
-        case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
-            yield stmt.name
-        case ast.Assign() | ast.AnnAssign() | ast.AugAssign():
-            targets: list[ast.expr] = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
-            for node in (n for target in targets for n in ast.walk(target)):
-                if isinstance(node, ast.Name):
-                    yield node.id
-        case _:
-            pass
 
 
 def index(paths: Sequence[Path]) -> Index:
@@ -364,6 +273,33 @@ def indexed(found: Iterable[Module | None]) -> Index:
     return Index(modules, sorted(modules), repeated, conftests, Memo())
 
 
+def spliced(catalog: Index, found: Iterable[Module | None]) -> Index:
+    """Put modules read again (`read`'s, of files `--fix` changed) in place of the ones `catalog` has.
+
+    What the index learned of each from the others (`returned`, `parameters`) is kept; a name several
+    files have keeps the module `catalog` has, but in `conftests`. What's kept worked out goes: a
+    class's members may now declare their types.
+
+    Returns:
+      The index, with them.
+
+    """
+    modules: dict[str, Module] = dict(catalog.modules)
+    conftests: dict[str, Module] = dict(catalog.conftests)
+    again: Module
+    for again in (each for each in found if each is not None):
+        local: bool = again.name == CONFTEST and again.folder in conftests
+        before: Module | None
+        if (before := conftests[again.folder] if local else modules.get(again.name)) is None:
+            continue
+        module: Module = replace(again, returned=before.returned, parameters=before.parameters)
+        if local:
+            conftests[module.folder] = module
+        if modules.get(module.name) is before if local else module.name not in catalog.repeated:
+            modules[module.name] = module
+    return catalog._replace(modules=modules, conftests=conftests, memo=Memo())
+
+
 def read(path: Path, name: str | None = None) -> Module | None:
     """Read what one `.py` file offers and uses.
 
@@ -389,7 +325,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
     if name is None:
         parsed.keep(source, (tree, own))  # for the check to take, rather than parse it and read it again
     named: str = name or module_name(path)
-    names: dict[str, Origin] = _names(tree, named, is_package=path.stem == _PACKAGE)
+    names: dict[str, Origin] = origins_of(tree, named, is_package=path.stem == _PACKAGE)
     return Module(
         name=named,
         returns=own.returns,
@@ -397,7 +333,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         classes=own.classes,
         methods=own.order.flattened(own.methods),
         type_vars=defined_type_vars(tree),
-        guarded=_guarded(tree, named, is_package=path.stem == _PACKAGE),
+        guarded=guarded_origins(tree, named, is_package=path.stem == _PACKAGE),
         unannotated=unannotated(tree.body),
         called=_called(tree, names),
         generics=generic_classes(tree),
@@ -415,11 +351,12 @@ def read(path: Path, name: str | None = None) -> Module | None:
         passes=own.passes,
         aliases={alias: generic for alias, generic in _aliases(tree).items() if alias not in rebound},
         rebound=rebound,
-        assigned=frozenset(assigned) - _aliases(tree).keys() - defined_type_vars(tree),
+        assigned=frozenset(assigned).difference(_aliases(tree).keys(), defined_type_vars(tree)),
         shadowed=frozenset(names) & taken_names(tree)[1] if name is None else frozenset(),
         bases={} if name is not None else classvars.bases(tree),
         bound=dict(own.order.bound),
         members={} if name is not None else classvars.members(tree),
+        named={} if name is not None else classvars.named(tree),
         sides=own.sides,
         held_sides=own.held_sides,
         partial=own.partial,
@@ -503,6 +440,19 @@ def _written(tree: ast.Module) -> dict[str, tuple[str, ...]]:
     for chain in sorted(found):
         grouped.setdefault(chain.partition(".")[0], []).append(chain)
     return {root: tuple(chains) for root, chains in grouped.items()}
+
+
+def exported(module: Module) -> Mapping[str, Origin]:
+    """Name what a module imports from others, which a file may import from it in turn.
+
+    What it imports for type checking alone too: a package's `__init__` that imports its names only
+    when they're asked for (pydantic's) has them there.
+
+    Returns:
+      Each, by its name there.
+
+    """
+    return {**module.guarded, **module.names} if module.guarded else module.names
 
 
 def takes(module: Module, name: str) -> bool:
@@ -658,72 +608,6 @@ def _assigned(body: Sequence[ast.stmt]) -> Counter[str]:
 
 def _names_any(value: ast.expr, names: frozenset[str]) -> bool:
     return any(node_name(node) in names for node in ast.walk(value))
-
-
-def open_functions(tree: ast.Module) -> dict[str, tuple[Param, ...]]:
-    """Find a module's plain top-level functions with a parameter left unannotated.
-
-    Plain: not decorated (a decorator may change how it's called), without `*args` or `**kwargs`
-    (whose arguments can't be matched), and defined once.
-
-    Returns:
-      Each one's parameters, by its name.
-
-    """
-    counts: dict[str, int] = {}
-    stmt: ast.stmt
-    for stmt in tree.body:
-        if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            counts[stmt.name] = counts.get(stmt.name, 0) + 1
-    return {
-        stmt.name: _params(stmt.args)
-        for stmt in tree.body
-        if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef)
-        and counts[stmt.name] == 1
-        and _plain(stmt)
-    }
-
-
-def _plain(function: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Check a function is undecorated, without `*args` or `**kwargs`, and has an unannotated parameter.
-
-    Returns:
-      Whether it is.
-
-    """
-    args: ast.arguments = function.args
-    return (
-        not function.decorator_list
-        and args.vararg is None
-        and args.kwarg is None
-        and any(arg.annotation is None for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs))
-    )
-
-
-def _params(args: ast.arguments) -> tuple[Param, ...]:
-    """Read a function's parameters (see `Param`).
-
-    Returns:
-      Them, in order.
-
-    """
-    positional: list[ast.arg] = [*args.posonlyargs, *args.args]
-    first_default: int = len(positional) - len(args.defaults)
-    return (
-        *(
-            (
-                arg.arg,
-                _POSITIONAL if at < len(args.posonlyargs) else _EITHER,
-                at >= first_default,
-                arg.annotation is not None,
-            )
-            for at, arg in enumerate(positional)
-        ),
-        *(
-            (arg.arg, _KEYWORD, default is not None, arg.annotation is not None)
-            for arg, default in zip(args.kwonlyargs, args.kw_defaults, strict=True)
-        ),
-    )
 
 
 def _called(tree: ast.Module, names: Mapping[str, Origin]) -> frozenset[str]:

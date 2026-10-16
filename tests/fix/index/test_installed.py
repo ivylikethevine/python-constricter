@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 """`--fix` for calls into installed packages that declare their types: stubs, `py.typed`, a lone stub."""
 
+import os
 import sys
 import textwrap
 from pathlib import Path
@@ -114,6 +115,7 @@ def test_an_untyped_package_shadows_a_later_one(tmp_path: Path) -> None:
     assert installed.locate("nowhere", (first,)) is None
 
 
+@pytest.mark.interpreted
 def test_at_most_the_limit_is_read(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Past `LIMIT` modules, the rest are left out; with none found, the index is as it was."""
     site: Path = _site(tmp_path, SITE)
@@ -125,6 +127,7 @@ def test_at_most_the_limit_is_read(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert installed.with_installed(catalog, ()) is catalog
 
 
+@pytest.mark.interpreted
 def test_a_read_is_cached_until_its_file_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The second read comes from the cache; a changed file, or an unreadable entry, is read again."""
     site: Path = _site(tmp_path, {"lone.pyi": "def k() -> bytes: ...\n"})
@@ -141,13 +144,14 @@ def test_a_read_is_cached_until_its_file_changes(tmp_path: Path, monkeypatch: py
     assert len(reads) == 1
     _ = stub.write_text("def k() -> str: ...\n", encoding="utf-8", newline="\n")
     assert installed.cached(stub, "lone") != first
-    entry: Path = next(installed.cache_directory().glob("*.pickle"))
+    entry: Path = next(installed.cache_directory().glob("*/*.pickle"))
     _ = entry.write_bytes(b"not a pickle")
     assert installed.cached(site / "missing.pyi", "missing") is None
     monkeypatch.setenv("XDG_CACHE_HOME", str(stub))  # a file: nothing can be made under it
     assert installed.cached(stub, "lone") is not None
 
 
+@pytest.mark.interpreted
 def test_a_read_is_cached_until_constricter_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A changed `constricter.fix`, at the same version, reads the module again."""
     site: Path = _site(tmp_path, {"lone.pyi": "def k() -> bytes: ...\n"})
@@ -162,6 +166,55 @@ def test_a_read_is_cached_until_constricter_changes(tmp_path: Path, monkeypatch:
     monkeypatch.setattr("constricter.fix.index.installed._code", lambda: "changed")
     _ = installed.cached(site / "lone.pyi", "lone")
     assert reads == [site / "lone.pyi"] * 2
+
+
+@pytest.mark.interpreted
+def test_the_cache_is_swept_as_its_written_to(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A day apart: no build's entries and builds long unswept go, its own long unread or over the cap."""
+    site: Path = _site(tmp_path, {"lone.pyi": "def k() -> bytes: ...\n", "more.pyi": "def m() -> int: ...\n"})
+    root: Path = installed.cache_directory()
+    long_ago: tuple[float, float] = (0.0, 0.0)
+    gone: Path = root / ("0" * 16)
+    kept: tuple[Path, ...] = (root / ("1" * 16), root / ("2" * 16), root / "hung", root / ("3" * 16))
+    part: Path
+    for part in (gone, *kept):
+        part.mkdir(parents=True)
+        _ = (part / "old.pickle").write_bytes(b"")
+    for part in (gone, kept[0], kept[1]):
+        (part / ".swept").touch()
+    _ = (gone / "left.tmp").write_bytes(b"")
+    os.utime(gone / ".swept", long_ago)
+    os.utime(kept[1] / ".swept", long_ago)
+    _ = (kept[1] / "another").write_bytes(b"")  # not the cache's: its directory can't be removed
+    _ = (root / "flat.pickle").write_bytes(b"")
+    assert installed.cached(site / "lone.pyi", "lone") is not None
+    assert not gone.exists()
+    own: Path = next(each for each in root.iterdir() if each.is_dir() and each not in kept)
+    assert not (root / "flat.pickle").exists()
+    assert [each.exists() for each in kept] == [True] * len(kept)
+    assert not (kept[1] / "old.pickle").exists()
+    # Within a day of its last sweep, nothing is looked at; after it, what's unread for a month goes.
+    entry: Path = next(own.glob("*.pickle"))
+    os.utime(entry, long_ago)
+    installed.swept.cache_clear()
+    assert installed.cached(site / "more.pyi", "more") is not None
+    assert entry.exists()
+    assert installed.cached(site / "lone.pyi", "lone") is not None  # read: marked read now
+    assert entry.stat().st_mtime > 0
+    os.utime(entry, long_ago)
+    os.utime(own / ".swept", long_ago)
+    installed.swept.cache_clear()
+    _ = (site / "more.pyi").write_text("def m() -> str: ...\n", encoding="utf-8", newline="\n")
+    assert installed.cached(site / "more.pyi", "more") is not None
+    assert not entry.exists()
+    # And of the rest, the longest unread until what's left fits the cap.
+    assert len(list(own.glob("*.pickle"))) > 1
+    monkeypatch.setattr(installed, "_CAP", 0)
+    os.utime(own / ".swept", long_ago)
+    installed.swept.cache_clear()
+    _ = (site / "more.pyi").write_text("def m() -> bytes: ...\n", encoding="utf-8", newline="\n")
+    assert installed.cached(site / "more.pyi", "more") is not None
+    assert not list(own.glob("*.pickle"))
 
 
 def test_the_cache_is_the_platforms(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

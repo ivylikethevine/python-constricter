@@ -29,6 +29,8 @@ from tests.corpus.pipeline import (
     COVERAGE,
     FIX,
     GUESS,
+    IMPLIED,
+    LOOP,
     TESTS,
     TIMING,
     TRACED,
@@ -38,6 +40,7 @@ from tests.corpus.pipeline import (
     fixing,
     steps,
 )
+from tests.corpus.pipeline import parts as suite_parts
 from tests.corpus.run_config import CERTAIN, CSV, JSON, LIKELY, MARKDOWN, UNSAFE, Run
 from tests.corpus.sizing import USED
 from tests.corpus.trees import Tree
@@ -85,7 +88,8 @@ def _every(run: Run) -> list[str]:
       Their names, each once.
 
     """
-    return list(dict.fromkeys([*steps(run), *fixing(run), TRACED, TESTS, TYPES, TIMING]))
+    suited: list[str] = [TRACED, *suite_parts(run, TESTS), TESTS, *suite_parts(run, TYPES), TYPES]
+    return list(dict.fromkeys([*steps(run), *fixing(run), *suited, TIMING]))
 
 
 def gathered(run: Run, store: Store, trees: Sequence[Tree]) -> Records:
@@ -241,7 +245,8 @@ def _tests(records: Records) -> _Rows:
                     more: _Row = [
                         len(cast("list[str]", ran.get(key, []))) for key in ("new", "gone", "named")
                     ]
-                    rows.append([tree.name, version, step, not _differs(record, ran), _summary(ran), *more])
+                    summary: str = f"as {ran[IMPLIED]}'s (implied)" if IMPLIED in ran else _summary(ran)
+                    rows.append([tree.name, version, step, not _differs(record, ran), summary, *more])
     return rows
 
 
@@ -352,7 +357,12 @@ def problems(records: Records) -> list[str]:
 
 
 def _timing(records: Records) -> _Rows:
-    rows: _Rows = [["corpus", "constricter", "jobs", "one process", "with jobs", "runs"]]
+    rows: _Rows = [
+        [
+            *("corpus", "constricter", "jobs", "one process", "with jobs", "runs"),
+            *("G instructions, one process", "with jobs", "timed by"),
+        ],
+    ]
     tree: Tree
     for tree in records.trees:
         version: str
@@ -361,7 +371,17 @@ def _timing(records: Records) -> _Rows:
             if record := records.of(tree, version, TIMING):
                 medians: _Row = [record["median one"], record["median every"]]
                 runs: int = len(cast("list[float]", record["one"]))
-                rows.append([tree.name, version, record["jobs"], *medians, runs])
+                instructions: _Row = [
+                    round(cast("int", record[key]) / 1e9, 1) if key in record else ""
+                    for key in ("median one instructions", "median every instructions")
+                ]
+                timed: _Row = [
+                    *medians,
+                    runs,
+                    *instructions,
+                    record.get("by", LOOP),  # a record from before `by` was timed in a loop
+                ]
+                rows.append([tree.name, version, record["jobs"], *timed])
     return rows
 
 
@@ -460,6 +480,17 @@ def guesses(records: Records, store: Store) -> list[Record]:
     return found
 
 
+def _shared(facts: Record) -> str:
+    """Say what share of the machine a run took, where it was given one.
+
+    Returns:
+      `, 75% of it`, or nothing.
+
+    """
+    share: int = cast("int", facts.get("share", 0))
+    return f", {share}% of it" if share else ""
+
+
 def section(records: Records, facts: Record) -> str:
     """Write the whole run as one section of docs/RUNS.md: its machine, and its last version's tables.
 
@@ -472,8 +503,8 @@ def section(records: Records, facts: Record) -> str:
     intro: str = (
         f"The run `{records.run.label}` (`python -m tests.corpus`) on {', '.join(records.run.include)}: "
         f"constricter {facts.get('constricter', '')} (`{facts.get('commit', '')}`), Python "
-        f"{facts.get('python', '')}, on {facts.get('machine', '')} ({facts.get('cpus', '')} CPUs, "
-        f"{facts.get('gigabytes', '')} GB, {facts.get('system', '')}): `--jobs={records.run.jobs}`, each "
+        f"{facts.get('python', '')}, on {facts.get('cpus', '')}CPU/{facts.get('gigabytes', '')}GB "
+        f"({facts.get('system', '')}){_shared(facts)}: `--jobs={records.run.jobs}`, each "
         f"step a process of its own, started once the CPUs it's expected to keep busy and the memory "
         f"it's expected to hold are free.{took} Timings don't compare across machines."
     )
@@ -599,6 +630,55 @@ def _fixes(records: Records) -> _Rows:
     return rows
 
 
+def _mechanisms(records: Records, most: int | None = None) -> _Rows:
+    """Count each fix's fixes by their whole set of mechanisms and by tier, the corpora together.
+
+    `most`: only that many sets of each fix, those that made the most.
+
+    Returns:
+      The rows, a fix's sets from the one that made the most.
+
+    """
+    rows: _Rows = [["fix", "constricter", "mechanisms", "fixed", CERTAIN, LIKELY, GUESS]]
+    version: str
+    for version in records.versions:
+        mode: str
+        for mode in fixing(records.run):
+            sets: dict[str, Counter[str]] = {}
+            tiers: dict[str, int]
+            tree: Tree
+            for tree in records.trees:
+                counted: dict[str, dict[str, int]] = cast(
+                    "dict[str, dict[str, int]]",
+                    records.of(tree, version, mode).get("sets", {}),
+                )
+                kinds: str
+                for kinds, tiers in counted.items():
+                    sets.setdefault(kinds, Counter()).update(tiers)
+            rows.extend(
+                [
+                    *(mode.removeprefix(FIX), version, each, sets[each].total()),
+                    *(sets[each].get(tier, "") for tier in (CERTAIN, LIKELY, GUESS)),
+                ]
+                for each in _ranked(sets)[:most]
+            )
+    return rows
+
+
+def _ranked(sets: dict[str, Counter[str]]) -> list[str]:
+    """Order sets of mechanisms from the one that made the most fixes.
+
+    Returns:
+      Their names.
+
+    """
+    return sorted(sets, key=lambda each: (-sets[each].total(), each))
+
+
+def _most_mechanisms(records: Records) -> _Rows:
+    return _mechanisms(records, _MOST_SETS)
+
+
 def _census(records: Records) -> _Rows:
     rows: _Rows = [["corpus", "constricter", *_COUNTS, _SHAPE, "bindings"]]
     tree: Tree
@@ -626,13 +706,29 @@ def _coverage(records: Records) -> _Rows:
     return rows
 
 
+_MOST_SETS: Final = 12  # the sets of mechanisms `report.md` lists for each fix
 _Table: TypeAlias = Callable[[Records], _Rows]
 # What `report.md` has under each version's tables: a note, the table, and its columns of words.
 _Section: TypeAlias = tuple[str, _Table, int]
 _SECTIONS: Final[tuple[_Section, ...]] = (
     ("Each fix on a copy: by tier, and with `--infer-with` each type checker or a trace:", _fixes, 3),
+    (
+        (
+            f"Each fix's {_MOST_SETS} sets of mechanisms that made the most fixes, the corpora together, "
+            "by tier (a guess is likely by its whole set: every set is in `tables/mechanisms.csv`):"
+        ),
+        _most_mechanisms,
+        3,
+    ),
     ("The untyped bindings: with only a guess, with no fix, and in files that don't parse:", _counted, 2),
-    ("A check at `suffocate`: the median seconds of its runs, in one process and with `jobs`:", _timing, 2),
+    (
+        (
+            "A check at `suffocate`: the median seconds of its runs, in one process and with `jobs`, and "
+            "the billions of instructions they took, where `hyperfine` counted them:"
+        ),
+        _timing,
+        2,
+    ),
     (
         (
             "The fixes a traced test could tell of, those whose every value fit, and those one didn't; "
@@ -663,6 +759,7 @@ _TABLES: Final[dict[str, _Table]] = {
     "offences": _offences,
     "levels": _levels,
     "fixes": _fixes,
+    "mechanisms": _mechanisms,
     "census": _census,
     "traced": _traced,
     "tests": _tests,
@@ -729,5 +826,5 @@ def write(records: Records, folder: Path, facts: Record) -> list[Path]:
                 written.append(folder / "tables" / f"{name}.csv")
                 file: IO[str]
                 with written[-1].open("w", encoding="utf-8", newline="") as file:
-                    csv.writer(file).writerows(table)
+                    csv.writer(file, lineterminator="\n").writerows(table)  # as git keeps text
     return written

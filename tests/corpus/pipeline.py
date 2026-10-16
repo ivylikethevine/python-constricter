@@ -15,7 +15,8 @@ tests.corpus --step`), and adds what its processes used to its record (`sizing.U
 - `census`: every untyped binding a check at `suffocate` reports, classified
   (`corpus_untyped.census`): those with no fix, and their values' shapes;
 - `coverage`: the bindings typed as released;
-- `timing`: a check at `suffocate`, timed in one process and with the run's `jobs`, several times;
+- `timing`: a check at `suffocate`, timed in one process and with the run's `jobs`, several times,
+  by `hyperfine` where it's installed, with the instructions each run took;
 - `profile`: the same check in one process `py-spy` samples: where constricter's own time goes.
 
 `suite_steps` has the steps that run a corpus package's own suite, after these.
@@ -27,12 +28,14 @@ Every count of typed bindings is this checkout's `--coverage`, whatever the vers
 """
 
 import difflib
+import importlib
 import json
 import os
 import re
+import shlex
 import shutil
 import statistics
-import subprocess  # runs a check under `py-spy`
+import subprocess  # runs a check under `py-spy` or `hyperfine`
 import sys
 import time
 import traceback
@@ -45,11 +48,13 @@ from typing import IO, Final, NamedTuple, TypeAlias, cast
 
 from constricter import Level
 from constricter.cli import paths
+from constricter.offences import Tier, errs, reports
 from tests.corpus import corpus_profile, corpus_table, corpus_untyped, launch
-from tests.corpus.run_config import CERTAIN, DEV, FIXES, LIKELY, Run
+from tests.corpus.run_config import DEV, FIXES, Run
 from tests.corpus.trees import Tree
 
 Record: TypeAlias = dict[str, object]
+Measured: TypeAlias = dict[str, dict[str, float | None]]  # a run in `hyperfine --export-json`
 _Entry: TypeAlias = dict[str, object]
 _Listed: TypeAlias = list[_Entry] | _Entry | None  # what `--format=json` may print
 CHECK: Final = "check"
@@ -60,14 +65,21 @@ CENSUS: Final = "census"
 TIMING: Final = "timing"
 PROFILE: Final = "profile"
 _PY_SPY: Final = "py-spy"
+_HYPERFINE: Final = "hyperfine"
+_MEASUREMENTS: Final = "measurements"  # in hyperfine 2's JSON; 1's has `times`
+LOOP: Final = "loop"  # what timed a check where `hyperfine` isn't installed
 _RATE: Final = 100  # samples a second
 _TOP: Final = 25  # the functions a profile's report and record list
 TESTS: Final = "tests"
 TYPES: Final = "types"
 TRACED: Final = "traced"
 TRACE: Final = "trace"  # after `INFER`: the fix step by a suite's tests' trace
+RELEASED: Final = "released"  # names the part of a suite's tests or type checks with no fix (`part`)
 GUESS: Final = "guess"
+IMPLIED: Final = "implied"  # in a suite's fixed test run's record: the run that stands for it, as released
 _SUFFOCATE: Final = "--level=suffocate"
+_SHARED: Final = "suffocate"  # where a job's one check at `suffocate` runs, and is kept (`suffocated`)
+SHARING: Final = frozenset({CHECK, CENSUS})  # the steps that read it: the first to start runs it
 _NAME: Final = re.compile(r"'([^']+)'")  # the name an offence's message quotes
 _ERROR: Final = "error"  # an offence's severity, in `--format=json`
 _TYPED: Final = re.compile(r"^Total: (\d+)/(\d+) typed", re.MULTILINE)  # `--coverage`'s summary
@@ -98,10 +110,12 @@ class Store(NamedTuple):
         return cast("Record", json.loads(path.read_text(encoding="utf-8"))) if path.exists() else None
 
     def write(self, corpus: str, version: str, step: str, record: Record) -> None:
-        """Keep a step's record."""
+        """Keep a step's record, whole: the runner reads records while steps write theirs."""
         path: Path = self.path(corpus, version, step)
         path.parent.mkdir(parents=True, exist_ok=True)
-        _ = path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        written: Path = path.with_name(f".{path.name}.{os.getpid()}")
+        _ = written.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        _ = written.replace(path)
 
     def logged(self, corpus: str, version: str, step: str) -> Path:
         """Find where what a step says is kept, making its directory.
@@ -153,7 +167,7 @@ def tier(offered: _Entry) -> str:
       `certain`, `likely` (a guess `--likely` applies) or `guess`.
 
     """
-    return CERTAIN if not offered.get("unsafe") else LIKELY if offered.get("likely") else GUESS
+    return Tier.of(unsafe=bool(offered.get("unsafe")), likely=bool(offered.get("likely"))).value
 
 
 def _entries(output: str) -> list[_Entry] | None:
@@ -182,8 +196,50 @@ def _typed(job: Job, where: launch.Place) -> list[int] | None:
     return [int(found[1]), int(found[2])] if found else None
 
 
+def _hold(lock: IO[str]) -> None:
+    """Wait for `lock`'s file to be free, and hold it until it's closed.
+
+    By `fcntl`, found as it's called: Windows has none, where the tests import this and no step runs.
+    """
+    exclusive: int = cast("int", importlib.import_module("fcntl").LOCK_EX)
+    cast("Callable[[IO[str], int], None]", importlib.import_module("fcntl").flock)(lock, exclusive)
+
+
+def suffocated(job: Job) -> tuple[launch.Place, launch.Ran]:
+    """Check the corpus at `suffocate` once for a job's steps: `check` and `census` both read it.
+
+    The first to ask runs it and keeps what it printed; the other waits for that.
+
+    Returns:
+      Where it ran, and the run.
+
+    """
+    where: launch.Place = launch.place(job.tree, job.work(_SHARED))
+    kept: Path = job.work(_SHARED) / "check.json"
+    lock: IO[str]
+    with (job.work(_SHARED) / "lock").open("w", encoding="utf-8") as lock:
+        _hold(lock)
+        if kept.exists():
+            had: _Entry = cast("_Entry", json.loads(kept.read_text(encoding="utf-8")))
+            return where, launch.Ran(
+                str(had["output"]),
+                str(had["errors"]),
+                cast("int", had["status"]),
+                cast("float", had["seconds"]),
+            )
+        ran: launch.Ran = launch.run(job.version, where, ["--format=json", _SUFFOCATE], job.run.jobs)
+        if _entries(ran.output) is not None:
+            _ = kept.write_text(json.dumps(ran._asdict()), encoding="utf-8")
+        return where, ran
+
+
 def check(job: Job) -> Record:
-    """Check the corpus at every level, the levels at once.
+    """Check the corpus at every level.
+
+    This checkout's constricter once, at `suffocate` (`suffocated`): a level only chooses the codes
+    it reports and which are errors (`offences.reports`, `offences.errs`), so each lower level's
+    counts are read from that one. A run file's `every-level`, or another version, checks at each
+    level, the levels at once.
 
     Returns:
       The step's record.
@@ -192,6 +248,7 @@ def check(job: Job) -> Record:
       RuntimeError: a check printed no report: it crashed.
 
     """
+    every: bool = job.run.steps.every_level or job.version != DEV
     where: launch.Place = launch.place(job.tree, job.work(CHECK))
 
     def at(level: Level) -> launch.Ran:
@@ -202,22 +259,26 @@ def check(job: Job) -> Record:
             job.run.jobs,
         )
 
-    pool: ThreadPoolExecutor
-    with ThreadPoolExecutor(len(Level)) as pool:
-        runs: list[launch.Ran] = list(pool.map(at, Level))
+    runs: list[launch.Ran]
+    if every:
+        pool: ThreadPoolExecutor
+        with ThreadPoolExecutor(len(Level)) as pool:
+            runs = list(pool.map(at, Level))
+    else:
+        runs = [suffocated(job)[1]]
     levels: dict[str, list[int]] = {}
     entries: list[_Entry] = []
-    level: Level
     ran: launch.Ran
-    for level, ran in zip(Level, runs, strict=True):
+    for ran in runs:
         job.store.log(job.tree.name, job.recorded, CHECK, ran.errors)
+    level: Level
+    for level, ran in zip(Level, runs if every else runs * len(Level), strict=True):
         listed: list[_Entry] | None
         if (listed := _entries(ran.output)) is None:
             message: str = f"the check at {level.name.lower()} crashed ({ran.status}): {ran.errors[-2000:]}"
             raise RuntimeError(message)
         entries = listed  # the last level's are `suffocate`'s: every code
-        errors: int = sum(entry["severity"] == _ERROR for entry in entries)
-        levels[level.name.lower()] = [errors, len(entries) - errors]
+        levels[level.name.lower()] = counted(entries, None if every else level)
     fixes: list[_Entry] = [cast("_Entry", entry["fix"]) for entry in entries if entry.get("fix")]
     return {
         "files": sum(1 for _ in paths.python_files([job.tree.root])),
@@ -226,6 +287,20 @@ def check(job: Job) -> Record:
         "offered": dict(Counter(tier(each) for each in fixes)),
         "seconds": round(max(ran.seconds for ran in runs), 1),
     }
+
+
+def counted(entries: Sequence[_Entry], level: Level | None) -> list[int]:
+    """Count a check's errors and warnings: as it reported them, or as `level` would report them.
+
+    Returns:
+      The errors, then the warnings.
+
+    """
+    if level is None:
+        errors: int = sum(entry["severity"] == _ERROR for entry in entries)
+        return [errors, len(entries) - errors]
+    codes: list[str] = [str(entry["code"]) for entry in entries if reports(str(entry["code"]), level)]
+    return [sum(errs(code, level) for code in codes), sum(not errs(code, level) for code in codes)]
 
 
 def _patch(tree: Tree, where: launch.Place) -> str:
@@ -288,6 +363,21 @@ def _listed(job: Job, step: str, where: launch.Place, entries: list[_Entry]) -> 
     return made
 
 
+def sets(made: Sequence[_Entry]) -> dict[str, dict[str, int]]:
+    """Count the fixes made by their whole set of mechanisms, which a guess is likely by, and by tier.
+
+    Returns:
+      Each set's fixes of each tier, by its mechanisms joined with `+`.
+
+    """
+    found: dict[str, Counter[str]] = {}
+    each: _Entry
+    for each in made:
+        kinds: list[str] = cast("list[str]", each["kinds"])
+        found.setdefault("+".join(kinds), Counter())[tier(each)] += 1
+    return {kinds: dict(tiers) for kinds, tiers in found.items()}
+
+
 def fix(job: Job, step: str, extra: Sequence[str]) -> Record:
     """Fix a copy of the corpus with `--fix` and `extra`, then ask a second pass what it would still fix.
 
@@ -314,18 +404,28 @@ def fix(job: Job, step: str, extra: Sequence[str]) -> Record:
         fixed = None if entries is None else len(made)
         record["tiers"] = dict(Counter(tier(each) for each in made))
         record["mechanisms"] = dict(Counter("+".join(cast("list[str]", each["kinds"])) for each in made))
+        record["sets"] = sets(made)
     else:
         ran = launch.run(job.version, where, ["--fix", *options], job.run.jobs)
         fixed = corpus_table.fixed_count(ran.output)
     job.store.log(job.tree.name, job.recorded, step, ran.errors)
     record["seconds"] = round(ran.seconds, 1)
     if fixed is not None:
-        second: launch.Ran = launch.run(job.version, where, ["--diff", *options], job.run.jobs)
+        pool: ThreadPoolExecutor
+        with ThreadPoolExecutor(2) as pool:  # both read the fixed copy
+            left: Future[launch.Ran] = pool.submit(
+                launch.run,
+                job.version,
+                where,
+                ["--diff", *options],
+                job.run.jobs,
+            )
+            typed: Future[list[int] | None] = pool.submit(_typed, job, where)
         record |= {
             "fixed": fixed,
             "broken": sum(not corpus_table.compiles(path) for path in valid),
-            "left": second.output.count("\n+"),
-            "typed": _typed(job, where),
+            "left": left.result().output.count("\n+"),
+            "typed": typed.result(),
         }
         _ = job.store.path(job.tree.name, job.recorded, step, ".patch").write_text(
             _patch(job.tree, where),
@@ -346,8 +446,9 @@ def census(job: Job) -> Record:
       their values' shapes), and those in files that don't parse, left out of the rest.
 
     """
-    where: launch.Place = launch.place(job.tree, job.work(CENSUS))
-    ran: launch.Ran = launch.run(job.version, where, ["--format=json", _SUFFOCATE], job.run.jobs)
+    where: launch.Place
+    ran: launch.Ran
+    where, ran = suffocated(job)
     job.store.log(job.tree.name, job.recorded, CENSUS, ran.errors)
     entries: list[_Entry] = _entries(ran.output) or []
     entry: _Entry
@@ -396,27 +497,117 @@ def fixing(run: Run) -> list[str]:
     return [*tiers, *hinted, *([f"{INFER}{TRACE}"] if run.steps.traced else [])]
 
 
+def part(kind: str, step: str) -> str:
+    """Name a part of a suite's tests (`TESTS`) or type checks (`TYPES`): as `RELEASED`, or after a fix step.
+
+    Each is a step of its own, which starts once what it reads is there; its kind's step gathers them.
+
+    Returns:
+      It: `tests-released`, `types-fix-unsafe`.
+
+    """
+    return f"{kind}-{step}"
+
+
+def parts(run: Run, kind: str) -> list[str]:
+    """List the parts of a suite's tests (`TESTS`) or type checks (`TYPES`) a run asks for.
+
+    Returns:
+      Their names: as released, then after each fix step; the tests' after no hints but where the
+      run asks for them (`tests-hinted`).
+
+    """
+    hinted: bool = kind != TESTS or run.steps.tests_hinted
+    made: list[str] = [step for step in fixing(run) if hinted or not step.startswith(INFER)]
+    return [part(kind, RELEASED), *(part(kind, step) for step in made)]
+
+
+class Timed(NamedTuple):
+    """One way's runs of a timed check."""
+
+    seconds: list[float]
+    instructions: list[int]  # each run's, its workers' included: none where they weren't counted
+
+
 def timing(job: Job) -> Record:
     """Time a check of the corpus at `suffocate`, in one process and with the run's `jobs`, several times.
 
+    By `hyperfine` where it's installed, each way's runs after one to warm up, with the instructions
+    each took (hyperfine 2's counters), whose spread is a quarter of the seconds' or less; its output
+    is kept beside the record (`timing.one.json`, `timing.every.json`). Otherwise in a loop of its own.
+
     Returns:
-      The step's record: each way's seconds, a run each, and their medians.
+      The step's record: what timed it, each way's seconds and instructions, a run each, and their
+      medians.
 
     """
     where: launch.Place = launch.place(job.tree, job.work(TIMING))
     options: list[str] = [_SUFFOCATE, "--exit-zero", "-q", "--output-file", os.devnull]
+    hyperfine: str | None = shutil.which(_HYPERFINE, path=launch.environment(where)["PATH"])
+    ways: dict[str, Timed] = (
+        _looped(job, where, options) if hyperfine is None else _by_hyperfine(job, where, options, hyperfine)
+    )
+    record: Record = {"jobs": job.run.jobs, "by": LOOP if hyperfine is None else _HYPERFINE}
+    way: str
+    timed: Timed
+    for way, timed in ways.items():
+        record[way] = timed.seconds
+        record[f"median {way}"] = round(statistics.median(timed.seconds), 2)
+        if timed.instructions:
+            record[f"{way} instructions"] = timed.instructions
+            record[f"median {way} instructions"] = round(statistics.median(timed.instructions))
+    return record
+
+
+def _looped(job: Job, where: launch.Place, options: list[str]) -> dict[str, Timed]:
     one: list[float] = []
     every: list[float] = []
     for _ in range(job.run.steps.timing):  # the two ways in turn: what else the machine does falls on both
         one.append(round(launch.run(job.version, where, options, 1).seconds, 2))
         every.append(round(launch.run(job.version, where, options, job.run.jobs).seconds, 2))
-    return {
-        "jobs": job.run.jobs,
-        "one": one,
-        "every": every,
-        "median one": round(statistics.median(one), 2),
-        "median every": round(statistics.median(every), 2),
-    }
+    return {"one": Timed(one, []), "every": Timed(every, [])}
+
+
+def _by_hyperfine(job: Job, where: launch.Place, options: list[str], hyperfine: str) -> dict[str, Timed]:
+    found: dict[str, Timed] = {}
+    way: str
+    jobs: int
+    for way, jobs in (("one", 1), ("every", job.run.jobs)):
+        exported: Path = job.store.path(job.tree.name, job.recorded, TIMING, f".{way}.json")
+        command: list[str] = [hyperfine, "-N", "-i", "--warmup", "1", "--runs", str(job.run.steps.timing)]
+        command += ["--style", "none", "--export-json", str(exported)]
+        # `-i`: the standard library's check exits 2 whatever `--exit-zero` says (some files don't parse).
+        command.append(shlex.join(launch.command(job.version, where, options, jobs)))
+        done: subprocess.CompletedProcess[str] = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=where.cwd,
+            env=launch.environment(where),
+        )
+        if done.returncode:
+            failed: str = f"{_HYPERFINE} failed ({done.returncode}): {done.stderr[-2000:]}"
+            raise RuntimeError(failed)
+        found[way] = hyperfined(cast("Record", json.loads(exported.read_text(encoding="utf-8"))))
+    return found
+
+
+def hyperfined(exported: Record) -> Timed:
+    """Read a command's runs from `hyperfine --export-json`: hyperfine 2's measurements, or 1's times.
+
+    Returns:
+      Each run's seconds; and its instructions, where hyperfine counted them for every run.
+
+    """
+    result: Record = cast("list[Record]", exported["results"])[0]
+    if _MEASUREMENTS not in result:
+        return Timed([round(seconds, 2) for seconds in cast("list[float]", result["times"])], [])
+    measured: list[Measured] = cast("list[Measured]", result[_MEASUREMENTS])
+    seconds: list[float] = [round(cast("float", run["time_wall_clock"]["value"]), 2) for run in measured]
+    counts: list[float | None] = [run.get("instructions", {}).get("value") for run in measured]
+    instructions: list[int] = [int(count) for count in counts if count is not None]
+    return Timed(seconds, instructions if len(instructions) == len(seconds) else [])
 
 
 def profile(job: Job) -> Record:

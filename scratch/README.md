@@ -13,3 +13,59 @@ goes under `local/scratch/`.
 - `widen_pass.py`: what a second pass still fixes on each corpus after every `fix-widen` kind.
 - `widen_suites.py`: each suite's tests as released and after every `fix-widen` kind.
 - `widen_one.py`: one suite's tests after every `fix-widen` kind, their output and the diff kept.
+- `typeshed_client_compare.py [MODULE ...]`, with `typeshed-client` on `PYTHONPATH`: where
+  `stdlib_tables.stubs` and `typeshed-client` read a stub differently, for every module and
+  configuration: whether it exists, its names, their kinds and exports, its `__all__`.
+- `witness_checkers.py`, with `typeguard` and `beartype` on `PYTHONPATH`: values held to annotations
+  by the witness's `holds`, typeguard and beartype, where each differs from a type checker, whether
+  it runs the value's own code, and what each costs.
+- `threads_probe.py DIR [THREADS ...]`: a directory's files checked in one process on each count of
+  threads, with the seconds and how many files' findings differ from one thread's; for a
+  free-threaded Python (`local/.venv-ft`).
+- `timing_trial.py [CORPUS ...] [--runs N] [--jobs N]`: a corpus's check timed as the `timing` step
+  times it, by `hyperfine` and by `pyperf command`, in one process and with `--jobs`: each method's
+  medians and spread, and hyperfine's instruction counts.
+- `worker_start.py [ROOT ...] [--jobs N] [--runs N]`: a `--jobs` check of one-line files, mostly its
+  workers' start, as `python -m constricter` and as the `constricter` script, against `--jobs=1`, by
+  `hyperfine`, for each checkout given.
+- `module_outline.py PATH [--group NAME ...]`: a module's top-level definitions, each one's lines
+  and which of the module's names it reads and is read by; with `--group`, what moves with those
+  names and what outside them reads one. For choosing a split.
+- `split_module.py SOURCE NEW DOCSTRING_FILE NAME ...`: move top-level definitions to a new module
+  (or, with `-` for DOCSTRING_FILE, to one already there), making public what crosses the cut and
+  importing it, refusing an import cycle; `--as` names a public name, `--ignore` a dependency given
+  by hand. Prints the references elsewhere to fix.
+- `retarget_imports.py OLD NEW NAME ...`: each `from OLD import ...` of a moved name, split to
+  import it from NEW; a use through the module printed.
+- `tables_unchanged.py`: the standard-library tables this checkout's generator writes, compared with
+  `constricter/fix/tables/`, byte for byte (`source.json`'s stamp left out).
+- `mypyc_trial.py [--opt 0] [--exclude PATH ...] [-- PYTEST_ARGS]`, with `local/.venv-mypyc`: a copy
+  of `constricter` compiled as the compiled wheel is, quickly (a C file a module, every CPU), and
+  the tests run against it.
+- `run_timeline.py FOLDER [--top N] [--every MINUTES]`: a corpus run's timeline from its records:
+  the share of the machine's CPU seconds used, the CPUs busy and the steps running in each bucket,
+  the longest steps and how long each waited, and the corpora that ended last.
+- `outside_size.py [CORPUS] [--top N]`: what a check knows of each file from outside it, by its
+  pickled size: the total, the median, the largest files, and the fields that hold the most.
+- `second_round.py [CORPUS ...]`: a check's second rounds, where a file is checked again knowing its
+  parameters, timed against the first checks in one process, and split into their rounds and what
+  follows them over the whole module.
+- `class_names_census.py [CORPUS ...]`: the plain classes' variables bound by name to a checked
+  file's class, and those no class above or under binds, with examples.
+- `compiled_compare.py SITE TREE ... [--runs N] [--jobs N] [--fix]`: a tree checked (or fixed) by
+  this checkout and by a compiled wheel's install, their output compared and timed.
+- `corpus_quadrants.py FOLDER ...`: each corpus's files and its steps' wall and CPU seconds in
+  finished runs, and its size-and-time group at the medians.
+- `schedule_sim.py FOLDER... [--cpus N] [--memory GB] [--given] [--sweep]`: finished runs' steps
+  replayed under other queueing orders, beside each run's length and the least any schedule could
+  take; `--sweep` searches the runner's order, `_PATIENCE` and `_BESIDE` for the fastest over them
+  all.
+- `compiled_venv.py`: builds the pure wheel and the compiled one (mypyc), each installed in a venv
+  of its own beside the `corpus` group's packages (`local/.venv-pure`, `local/.venv-compiled`), for
+  `tests/corpus/runs/compiled.toml`.
+- `version_diff.py FOLDER [A B]`: two versions' findings and fixes in one run, corpus by corpus, and
+  how much faster one is.
+- `schedule_solve.py FOLDER... [--given] [--seconds N]`: the shortest schedule of finished runs'
+  steps by OR-Tools' CP-SAT, and the least it proves any can take; `uv run --with ortools` runs it.
+- `dmypy_suggest.py [--limit N]`: `dmypy suggest`'s signatures written into a copy of pydantic, each
+  call timed, and `--fix`'s fixes and basedpyright's errors on it against a plain copy's.

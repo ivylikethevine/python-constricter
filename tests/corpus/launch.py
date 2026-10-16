@@ -115,6 +115,9 @@ def command(version: str, where: Place, options: Sequence[str], jobs: int) -> li
         python(version),
         *("-I", "-W", "ignore", "-m", "constricter"),
         *options,
+        *(
+            ("--no-gitignore",) if version == DEV else ()
+        ),  # a suite's checkout is walked whole, as a release walks it
         "--all-scopes",
         f"--jobs={jobs}",
         os.path.relpath(where.target, where.cwd),

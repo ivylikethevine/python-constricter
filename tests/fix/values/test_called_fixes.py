@@ -7,7 +7,7 @@ from typing import Final, TypeAlias
 
 from constricter import Offence, check_source
 from constricter.cli import schedule
-from constricter.fix.index import project
+from constricter.fix.index import crossed, project
 
 # Each offence's fix and whether it's a guess.
 _Fixes: TypeAlias = dict[str, tuple[str | None, bool]]
@@ -163,7 +163,7 @@ def test_another_files_class_is_called_by_its_declared_call(tmp_path: Path) -> N
         _ = path.write_text(source, encoding="utf-8")
     using: Path = tmp_path / "using.py"
     catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
-    assert project.imported(catalog, using).classes.methods == {
+    assert crossed.imported(catalog, using).classes.methods == {
         "Handler": {"__call__": "int", "__enter__": "bytes"},
     }
     found: list[Offence] = check_source(_USING, outside=schedule.outside(catalog, using, {}))

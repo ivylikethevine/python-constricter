@@ -12,6 +12,8 @@ from constricter.offences import Offence
 
 SUFFIX: Final = ".ipynb"
 _Json: TypeAlias = "str | int | float | bool | list[_Json] | dict[str, _Json] | None"
+_CODE: Final = "code"  # a code cell's `cell_type`
+_SOURCE: Final = "source"  # its lines
 # IPython syntax that isn't Python: line magics, shell escapes (`!ls`), and help (`obj?`, `?obj`).
 _MAGIC: re.Pattern[str] = re.compile(r"\s*([%!?]|[\w.]+\?{1,2}\s*$)")
 
@@ -76,15 +78,11 @@ def parse(raw: str, name: str) -> tuple[str, list[Line]]:
     where: list[Line] = []
     number: int
     cell: _Json
-    source: _Json
     for number, cell in enumerate(cells, start=1):
-        match cell:
-            case {"cell_type": "code", "source": source}:
-                lines: list[str] = _cell_lines(source)
-                joined += lines
-                where += [Line(number, line) for line in range(1, len(lines) + 1)]
-            case _:
-                pass
+        if isinstance(cell, dict) and cell.get("cell_type") == _CODE and _SOURCE in cell:
+            lines: list[str] = _cell_lines(cell[_SOURCE])
+            joined += lines
+            where += [Line(number, line) for line in range(1, len(lines) + 1)]
     return "".join(joined), where
 
 

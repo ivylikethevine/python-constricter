@@ -1,0 +1,27 @@
+# Every corpus as `mega.toml` measures them, faster: a suite's own tests run only after
+# each fix, the tests as released taken from the latest earlier run at the suite's tag
+# (`tests-released`; run where none has them), and no traced tests, so no fix by the trace. Not
+# published: its fixes and tests aren't `mega.toml`'s. A stopped run carries on with
+# `--resume FOLDER`.
+
+[run]
+label = "mega-fast"
+versions = ["dev"]
+jobs = 4
+at-once = 8
+suite-seconds = 900 # the longest suite's tests take 6 minutes a run
+
+[corpora]
+include = ["mega"]
+
+[steps]
+check = true
+fix = ["certain", "likely", "unsafe"]
+infer-with = ["basedpyright", "ty", "pyrefly"]
+census = true
+coverage = true
+timing = 1
+tests = true
+types = true
+traced = false
+tests-released = false

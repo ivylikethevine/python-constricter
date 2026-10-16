@@ -236,6 +236,9 @@ uvx --from python-constricter constricter # or run it without installing: uv's t
 pipx run --spec python-constricter constricter  # or pipx's
 ```
 
+On CPython 3.11 to 3.14 for Linux, macOS and Windows, pip installs a build compiled with mypyc,
+about a fifth faster; anywhere else, the pure Python one, which finds and fixes the same.
+
 Tools that run flake8 or pylint (VS Code's extensions, python-lsp-server, prospector, MegaLinter,
 Trunk) pick the plugin up once it's installed alongside them.
 
@@ -243,15 +246,18 @@ Without `lint.external`, ruff flags `# noqa: LVA00x` (RUF102) and `--fix` delete
 
 The CLI defaults to `.`, checks `*.py` and `*.ipynb`, and skips hidden dirs, `__pycache__`, `venv`,
 `site-packages`, `build`, `dist` and `node_modules` by directory name; `--exclude` adds more
-directory names (or globs) to skip the same way, on top of matching whole paths and file names. Exit
-codes: `0` no errors, `1` errors, `2` an unreadable or unparsable file, a `--fix` its encoding can't
-hold, or a bad `pyproject.toml`. A module is read in its PEP 263 declaration's encoding.
+directory names (or globs) to skip the same way, on top of matching whole paths and file names.
+Under a directory in a git checkout it checks only what git tracks or would, so nothing a
+`.gitignore` names (a file named on the command line is checked regardless); `--no-gitignore`, or
+`gitignore = false`, walks the directory whole. Exit codes: `0` no errors, `1` errors, `2` an
+unreadable or unparsable file, a `--fix` its encoding can't hold, or a bad `pyproject.toml`. A
+module is read in its PEP 263 declaration's encoding.
 
 pre-commit, after ruff's hooks (or `constricter-fix`, which runs `--fix` first):
 
 ```yaml
 - repo: https://github.com/ivylikethevine/python-constricter
-  rev: v0.3.6
+  rev: v0.3.7
   hooks:
     - id: constricter
 ```
@@ -336,7 +342,7 @@ it to code scanning (the job needs `security-events: write`; the
 ```yaml
 - run: constricter --format=sarif src > constricter.sarif
 - if: ${{ !cancelled() }} # upload the findings even when the step above failed on them
-  uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
+  uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
   with:
     sarif_file: constricter.sarif
     category: constricter

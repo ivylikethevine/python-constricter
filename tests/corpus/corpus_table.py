@@ -4,14 +4,14 @@
 The tables and the sections the corpus runner (`python -m tests.corpus`) writes: `tables`, and
 `record` for a run file's `[publish]`.
 
-The corpora are this Python's standard library, the pinned `corpus` dependency group's packages
-(`uv sync --group dev --group corpus`), and the pure Python 2 sources tests/corpus/corpus_sources.py
-fetches. A version is a release from PyPI, installed with
-`uv` into `local/corpus-table/venvs/`, or `dev`, this checkout (recorded as `<__version__>+dev`, or
-`<label>+dev` with `--label`: a pseudo-version, like a release candidate, without bumping it).
-Each runs isolated (`python -I`, from `local/corpus-table/`), so neither this checkout nor its
-`pyproject.toml` leaks into a release's run, and with this Python's environment as its
-`VIRTUAL_ENV`, so a release sees the installed packages `dev` does.
+The corpora are the pinned `corpus` dependency group's packages
+(`uv sync --group dev --group corpus`), and the sources tests/corpus/corpus_sources.py fetches:
+CPython's standard library with its tests, and pure Python 2. A version is a release from PyPI,
+installed with `uv` into `local/corpus-table/venvs/`, or `dev`, this checkout (recorded as
+`<__version__>+dev`, or `<label>+dev` with `--label`: a pseudo-version, like a release candidate,
+without bumping it). Each runs isolated (`python -I`, from `local/corpus-table/`), so neither this
+checkout nor its `pyproject.toml` leaks into a release's run, and with this Python's environment as
+its `VIRTUAL_ENV`, so a release sees the installed packages `dev` does.
 
 For each corpus and version: a check at every level (with `--all-scopes`), counted per code at
 `suffocate` and as errors and warnings at each level, by that version's own rules and defaults;
@@ -33,7 +33,6 @@ import re
 import shutil
 import subprocess  # runs each version under test
 import sys
-import sysconfig
 import threading
 import time
 import warnings
@@ -62,6 +61,7 @@ PACKAGES: Final = (
     "pandas",
 )
 _SOURCES: Final = Path(__file__).with_name("corpus_sources.py")
+STDLIB: Final = "standard library"  # the corpus that is CPython's `Lib`
 # How many worker processes each run takes: every CPU, unless `CORPUS_JOBS` says.
 JOBS: Final = f"--jobs={os.environ.get('CORPUS_JOBS', '0')}"
 # How many of a corpus's runs go at once: what the CPUs hold of runs that size, one where each
@@ -102,10 +102,10 @@ _LEVELS_NOTE: Final = (
 )
 _RUNS_HEADER: Final = """# Corpus runs
 
-What each constricter version found and fixed on the corpus: this Python's standard library and
-the pinned `corpus` packages, at every level with `all-scopes`. Recorded by the
-corpus runner (`tests/corpus/runs/release.toml`); a section per version, added when the version goes
-up (see [CONTRIBUTING](CONTRIBUTING.md)).
+What each constricter version found and fixed on the corpus: CPython's standard library and the
+pinned `corpus` packages, at every level with `all-scopes`. Recorded by the corpus runner
+(`tests/corpus/runs/release.toml`); a section per version, added when the version goes up (see
+[CONTRIBUTING](CONTRIBUTING.md)).
 """
 
 
@@ -151,15 +151,24 @@ class Measured(NamedTuple):
 
 
 def corpora() -> list[Corpus]:
-    """Find the standard library, each installed `corpus` package, and each fetched source.
+    """Find each fetched source and each installed `corpus` package.
 
     Returns:
-      Them; a package that isn't installed is left out, with a note on standard error.
+      The standard library first, then the packages, then the other sources; a package that isn't
+      installed is left out, with a note on standard error.
 
     """
-    found: list[Corpus] = [
-        Corpus("standard library", sysconfig.get_python_version(), Path(sysconfig.get_paths()["stdlib"])),
+    described: str = subprocess.run(
+        [sys.executable, str(_SOURCES), "--describe"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    sources: list[Corpus] = [
+        Corpus(source, version, Path(root))
+        for source, version, root in (line.split("\t") for line in described.splitlines())
     ]
+    found: list[Corpus] = [source for source in sources if source.name == STDLIB]
     name: str
     for name in PACKAGES:
         try:
@@ -168,20 +177,7 @@ def corpora() -> list[Corpus]:
             _ = sys.stderr.write(f"{name} isn't installed: run `uv sync --group dev --group corpus`\n")
             continue
         found.append(Corpus(name, metadata.version(name), Path(cast("str", module_file)).parent))
-    described: str = subprocess.run(
-        [sys.executable, str(_SOURCES), "--describe"],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
-    line: str
-    for line in described.splitlines():
-        source: str
-        version: str
-        root: str
-        source, version, root = line.split("\t")
-        found.append(Corpus(source, version, Path(root)))
-    return found
+    return found + [source for source in sources if source.name != STDLIB]
 
 
 def label(version: str, name: str = __version__) -> str:

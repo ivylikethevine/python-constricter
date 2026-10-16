@@ -6,6 +6,7 @@ on:
   # Drafts run nothing (each job's `if`) until marked ready: ready_for_review
   # isn't a default type, and converted_to_draft cancels the in-flight run.
   pull_request:
+    branches: [main] # PRs into dev run nothing; dev is checked by its PR into main
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_call:
 
@@ -36,7 +37,7 @@ jobs:
       tested: ${{ steps.find.outputs.tested }}
       tree: ${{ steps.find.outputs.tree }}
     steps:
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -72,7 +73,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -89,17 +90,23 @@ jobs:
       - run: ruff format --check .
       - run: basedpyright
       - run: mypy
+      - run: pyrefly check
       - run: pylint constricter stdlib_tables tests hatch_build.py
-      # A warning for each module past 900 lines, which never fails: pylint's own limit, 1,000, does
+      # A warning for each module past 800 lines, which never fails: pylint's own limit, 1,000, does
       # (`too-many-lines`), and a module is easier to split before it's there.
       - run: >-
-          pylint --disable=all --enable=too-many-lines --max-module-lines=900 --exit-zero
+          pylint --disable=all --enable=too-many-lines --max-module-lines=800 --exit-zero
           --msg-template='::warning file={path},line=1,title=Long module::{msg}'
           constricter stdlib_tables tests hatch_build.py
       - run: flake8 constricter stdlib_tables tests hatch_build.py
       - run: typos
       - run: validate-pyproject pyproject.toml
       - run: lint-imports --cache-dir local/.import_linter_cache
+      - run: deptry constricter
+      # The code only a checkout runs, every group a dev one to deptry: an import none declares.
+      - run: >-
+          deptry . --ignore DEP002,DEP004
+          --exclude '^(\.venv|venv|constricter|docs|local|scratch|\.github)/'
       - run: uv lock --check
       - run: constricter --level=suffocate --all-scopes --format=github constricter stdlib_tables tests hatch_build.py
       - run: constricter --coverage --all-scopes --fail-under=100 constricter stdlib_tables tests hatch_build.py
@@ -114,7 +121,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -124,7 +131,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
       # markdownlint-cli2 and prettier, locked in .github/package-lock.json.
@@ -148,7 +155,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -176,9 +183,9 @@ jobs:
           summary: "false"
           args: --level=suffocate --all-scopes --format=github constricter tests
 
-  # Against the runner's standard library, or one pinned real package's clone at its tag (a web
-  # framework, an ORM, a runtime-validation library, a data library), or pure Python 2 (Twisted
-  # 12.3.0) and pip 20.3.4's 2/3-era type comments, hash-pinned sdists: each a corpus of
+  # Against CPython's standard library with its tests, or one pinned real package's clone at its tag
+  # (a web framework, an ORM, a runtime-validation library, a data library), or pure Python 2
+  # (Twisted 12.3.0) and pip 20.3.4's 2/3-era type comments, hash-pinned sdists: each a corpus of
   # tests/corpus/corpora.toml, measured by the corpus runner (`python -m tests.corpus`) as a run file
   # says. No crashes (runs/ci-check.toml), and `--fix` doesn't break any file or leave anything for a
   # second pass (runs/ci-fix.toml). Each in its own job, so the largest corpus's two passes run side
@@ -197,7 +204,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -206,6 +213,7 @@ jobs:
             files.pythonhosted.org:443
             raw.githubusercontent.com:443
             releases.astral.sh:443
+            www.python.org:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -236,7 +244,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -245,6 +253,7 @@ jobs:
             files.pythonhosted.org:443
             raw.githubusercontent.com:443
             releases.astral.sh:443
+            www.python.org:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -257,7 +266,7 @@ jobs:
         run: |
           python -m tests.corpus tests/corpus/runs/profile.toml --only "${PACKAGE/#stdlib/standard library}"
           cat local/corpus-runs/profile-*/records/*/*/profile.md >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: profile-${{ matrix.package }}
           path: local/corpus-runs/
@@ -282,9 +291,10 @@ jobs:
     permissions:
       contents: read
     steps:
-      # Linux only: macOS and Windows reach OS hosts no allowlist can predict. pypi.org: setup-python
-      # upgrades pip when it downloads an interpreter the runner image lacks (3.14t).
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+      # block on Linux; macOS and Windows audit until each has an allowlist from its audit runs.
+      # pypi.org: setup-python upgrades pip when it downloads an interpreter the runner image lacks
+      # (3.14t).
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         if: runner.os == 'Linux'
         with:
           egress-policy: block
@@ -296,7 +306,7 @@ jobs:
             downloads.python.org:443
             release-assets.githubusercontent.com:443
             pypi.org:443
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         if: runner.os != 'Linux'
         with:
           egress-policy: audit
@@ -309,19 +319,72 @@ jobs:
           group: ${{ matrix.group }}
       # Coverage on CPython 3.12+ with every dev tool: 3.11 can't reach the branch for `type X = ...`
       # statements, and the test group has no hypothesmith, so the fuzz tests are skipped there.
+      # `stdlib`: the `mypyc` group's setuptools otherwise puts its own `distutils` in 3.11's, which
+      # lacks entries the tables list (`Mixin2to3`, a `None` for `get_versions`).
       - run: python -m pytest ${COVERAGE:+"$COVERAGE"}
         env:
           COVERAGE: ${{ matrix.group == 'dev' && matrix.python != '3.11' && '--cov' || '' }}
+          SETUPTOOLS_USE_DISTUTILS: stdlib
+
+  # The compiled wheel (mypyc; `[tool.hatch.build.targets.wheel.hooks.mypyc]`), built from the sdist
+  # on CI's oldest and newest Python and tested in place of the sources: pytest's `append` import mode
+  # puts the checkout last on the path, after the wheel. The tests marked `interpreted` patch a module
+  # mypyc compiles, past which compiled callers call: they're skipped.
+  compiled:
+    name: Compiled (${{ matrix.os }}, ${{ matrix.python }})
+    needs: reuse
+    if: github.event.pull_request.draft != true && needs.reuse.outputs.tested != 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ['3.11', '3.14']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        if: runner.os == 'Linux'
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            raw.githubusercontent.com:443
+            releases.astral.sh:443
+            files.pythonhosted.org:443
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        if: runner.os != 'Linux'
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Build the compiled wheel, and install it over the checkout's
+        env:
+          HATCH_BUILD_HOOK_ENABLE_MYPYC: "1"
+        run: |
+          python -m build --no-isolation --outdir dist
+          uv pip install --python local/.venv --no-deps --reinstall dist/*.whl
+      - name: The compiled modules are the ones imported
+        working-directory: ${{ runner.temp }}
+        run: python -c 'import constricter.rules.checker as c; assert not c.__file__.endswith(".py"), c.__file__'
+      - run: pytest --import-mode=append -n auto --dist loadgroup
+        env:
+          SETUPTOOLS_USE_DISTUTILS: stdlib # as the test job's
 
   build:
     name: Build
-    needs: [lint, docs, test, action, corpus]
+    needs: [lint, docs, test, compiled, action, corpus]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -334,7 +397,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/build
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-dist # release.yml's build uploads `dist`
           path: dist/
@@ -343,13 +406,13 @@ jobs:
   # Everything passed on this tree: record it, for a later run on the same tree to reuse.
   tested:
     name: Tested
-    needs: [reuse, lint, docs, action, corpus, test, build]
+    needs: [reuse, lint, docs, action, corpus, test, compiled, build]
     if: needs.reuse.outputs.tested != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
     steps:
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -357,7 +420,7 @@ jobs:
       - env:
           TREE: ${{ needs.reuse.outputs.tree }}
         run: echo "$TREE" > tested-tree.txt
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tested-tree-${{ needs.reuse.outputs.tree }}
           path: tested-tree.txt

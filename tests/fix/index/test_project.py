@@ -9,8 +9,8 @@ import pytest
 
 from constricter import Offence, check_source
 from constricter.cli import command as cli
-from constricter.fix.core.known import Classes, Guarded, Outside
-from constricter.fix.index import project
+from constricter.fix.core.known import Classes, Guarded, Outside, Returns
+from constricter.fix.index import crossed, linked, project
 
 # Each starts `--jobs` workers of its own: one at a time, where the tests run at once (`pytest -n`).
 JOBS: pytest.MarkDecorator = pytest.mark.xdist_group("jobs")
@@ -230,7 +230,7 @@ def test_imported_classes_type_their_members(tmp_path: Path) -> None:
     _ = _write(tmp_path / "pkg" / "types.py", "class Tag:\n    pass\n")
     _ = _write(tmp_path / "pkg" / "models.py", MODELS)
     main: Path = _write(tmp_path / "main.py", USES)
-    imported: project.Imported = project.imported(project.index(sorted(tmp_path.rglob("*.py"))), main)
+    imported: project.Imported = crossed.imported(project.index(sorted(tmp_path.rglob("*.py"))), main)
     offences: list[Offence] = check_source(
         main.read_text(encoding="utf-8"),
         outside=Outside(classes=imported.classes),
@@ -246,7 +246,7 @@ def test_imported_classes_type_their_members(tmp_path: Path) -> None:
         "i": "m.Hidden",
         "j": None,
     }
-    assert project.imported(project.Index({}, []), main) == project.Imported({}, Classes({}, {}))
+    assert crossed.imported(project.Index({}, []), main) == project.Imported({}, Classes({}, {}))
 
 
 BASES: Final = """
@@ -319,7 +319,7 @@ def test_a_class_takes_methods_from_another_files_base(tmp_path: Path) -> None:
     _ = _write(tmp_path / "pkg" / "__init__.py", "")
     _ = _write(tmp_path / "pkg" / "bases.py", BASES)
     main: Path = _write(tmp_path / "main.py", DERIVED)
-    imported: project.Imported = project.imported(project.index(sorted(tmp_path.rglob("*.py"))), main)
+    imported: project.Imported = crossed.imported(project.index(sorted(tmp_path.rglob("*.py"))), main)
     offences: list[Offence] = check_source(
         main.read_text(encoding="utf-8"),
         outside=Outside(classes=imported.classes),
@@ -378,7 +378,7 @@ def test_an_imported_type_variable_is_never_a_calls_type(tmp_path: Path) -> None
     assert project.type_vars(catalog, generic) == {"T"}
     assert project.type_vars(catalog, uses) == set()
     assert project.type_vars(catalog, tmp_path / "missing.py") == set()
-    imported: project.Imported = project.imported(catalog, uses)
+    imported: project.Imported = crossed.imported(catalog, uses)
     assert imported.calls == {}
     assert imported.classes.methods == {"Box": {}}
     inside: list[Offence] = check_source(
@@ -421,3 +421,85 @@ def test_a_call_through_a_module_follows_its_reexports(tmp_path: Path) -> None:
     assert project.calls(catalog, uses, guarded) == {"p.make": "Thing", "pkg.api.make": "Thing"}
     assert [needed.statement for needed in guarded.values()] == ["from pkg.impl import Thing"]
     assert project.returned(catalog, uses, {}).calls == {}
+
+
+def test_a_file_read_again_takes_its_modules_place(tmp_path: Path) -> None:
+    """A file `--fix` changed replaces its module, keeping what the other files told of it.
+
+    Not a module several files are named (but a `conftest.py`, by its directory), nor one the index
+    hasn't.
+    """
+    lib: Path = _write(tmp_path / "lib.py", "def make():\n    return 1\n")
+    near: Path = _write(tmp_path / "a" / "conftest.py", "")
+    far: Path = _write(tmp_path / "b" / "conftest.py", "")
+    twin: Path = _write(tmp_path / "c" / "twin.py", "")
+    paths: list[Path] = [lib, near, far, twin, _write(tmp_path / "d" / "twin.py", "")]
+    catalog: project.Index = linked.with_returned(project.index(paths), {"lib": Returns({"make": "int"})})
+    _ = _write(lib, "def make() -> int:\n    return 1\n")
+    _ = _write(near, "LIMIT: int = 1\n")
+    _ = _write(far, "LIMIT: int = 2\n")
+    _ = _write(twin, "LIMIT: int = 3\n")
+    again: list[Path] = [lib, near, far, twin, _write(tmp_path / "new.py", ""), tmp_path / "gone.py"]
+    spliced: project.Index = project.spliced(catalog, [project.read(path) for path in again])
+    assert spliced.modules["lib"].returns == {"make": "int"}
+    assert spliced.modules["lib"].returned == catalog.modules["lib"].returned
+    assert spliced.conftests[str(near.parent.resolve())].names.keys() == {"LIMIT"}
+    assert spliced.modules["conftest"] is spliced.conftests[str(far.parent.resolve())]
+    assert spliced.modules["twin"] is catalog.modules["twin"]
+    assert spliced.modules.keys() == catalog.modules.keys()  # not `new`
+    assert spliced.memo is not catalog.memo
+
+
+LAZY_INIT: Final = """
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .adapter import Adapter
+
+
+def __getattr__(name):
+    from importlib import import_module
+
+    return getattr(import_module(".adapter", __name__), name)
+"""
+ADAPTER: Final = """
+class Schema:
+    pass
+
+
+class Adapter:
+    schema: Schema
+
+    def validate(self, value: object) -> int:
+        return 1
+"""
+LAZY_USER: Final = """
+from pkg import Adapter
+
+
+def use(adapter: Adapter):
+    schema = adapter.schema
+    checked = adapter.validate(1)
+    return schema, checked
+"""
+LAZY_FIXED: Final = """
+from pkg import Adapter
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from pkg.adapter import Schema
+
+
+def use(adapter: Adapter):
+    schema: Schema = adapter.schema
+    checked: int = adapter.validate(1)
+    return schema, checked
+"""
+
+
+def test_a_class_a_package_exports_for_type_checking_alone_is_followed(tmp_path: Path) -> None:
+    """Its `__init__` imports it only when asked for (pydantic's): its members type what's read of it."""
+    _ = _write(tmp_path / "pkg" / "__init__.py", LAZY_INIT)
+    _ = _write(tmp_path / "pkg" / "adapter.py", ADAPTER)
+    user: Path = _write(tmp_path / "user.py", LAZY_USER)
+    assert cli.main(["--fix", "-q", "--select=LVA001", str(tmp_path)]) == cli.EXIT_CLEAN
+    assert user.read_text(encoding="utf-8") == textwrap.dedent(LAZY_FIXED)

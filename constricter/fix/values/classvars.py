@@ -28,6 +28,7 @@ bind it to another type.
 import ast
 import builtins
 import re
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from typing import Final, TypeAlias, cast
 from weakref import WeakKeyDictionary
@@ -38,8 +39,8 @@ from constricter.fix.libraries import stdlib
 from constricter.fix.values.inference import inference
 from constricter.fix.values.operated import operated
 from constricter.offences import MAX_LENGTH
-from constricter.rules.annotations import classes as annotated
 from constricter.rules.annotations import dotted
+from constricter.rules.declarations import classes as annotated
 from constricter.rules.flow import members as union
 from constricter.rules.syntax import import_bindings
 from constricter.rules.walked import classes, of_type
@@ -332,9 +333,15 @@ def variables(
     """
     own: frozenset[str] = own_plain(tree, origins, outside, entries)
     typed: dict[str, dict[str, str]] = members(tree) if own else {}
+    # The index's of its own: what the file alone types, and what it types by other files' classes.
+    indexed: Mapping[str, Mapping[str, str]] = {} if outside is None else outside.members
     return {
-        **({} if outside is None else outside.members),
-        **{name: each for name, each in typed.items() if name in own},
+        **indexed,
+        **{
+            name: {**typed.get(name, {}), **indexed.get(name, {})}
+            for name in own
+            if name in typed or name in indexed
+        },
     }
 
 
@@ -394,6 +401,45 @@ def _read_members(tree: ast.Module) -> dict[str, dict[str, str]]:
         for name, each in typed.items()
     }
     return {name: each for name, each in kept.items() if each}
+
+
+def named(tree: ast.Module) -> dict[str, dict[str, str]]:
+    """Find the variables of each class the module defines once that are bound to a bare name.
+
+    `form_class = PasswordChangeForm`: a `type[PasswordChangeForm]`, where the index finds a checked
+    file's class by that name and no class above or under this one binds the variable
+    (`plain.settled`). Bound once, directly in the body, and not one the module stores
+    (`self.form_class = ...`), a builtin base has, or its value's own text types already.
+
+    Returns:
+      Each class's such variables, with the name each is bound to; a class with none left out.
+
+    """
+    single: dict[str, tuple[str, ...]]
+    if not (single := bases(tree)):
+        return {}
+    stored: dict[str, list[_Store | None]] = _stores(tree)
+    typed: dict[str, dict[str, str]] = members(tree)
+    found: dict[str, dict[str, str]] = {}
+    node: ast.ClassDef
+    for node in (each for each in classes(tree) if each.name in single):
+        counts: Counter[str] = Counter(name for stmt in node.body for name in _bound(stmt))
+        kept: frozenset[str] = reserved(node.name, single).union(typed.get(node.name, {}), stored)
+        bound: dict[str, str] = {}
+        stmt: ast.stmt
+        for stmt in node.body:
+            variable: str
+            value: str
+            match stmt:
+                case ast.Assign(targets=[ast.Name(id=variable)], value=ast.Name(id=value)) if (
+                    counts[variable] == 1 and variable not in kept
+                ):
+                    bound[variable] = value
+                case _:
+                    pass
+        if bound:
+            found[node.name] = bound
+    return found
 
 
 def _may_test(name: str, found: Bases, origins: Mapping[str, str]) -> bool:

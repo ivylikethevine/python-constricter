@@ -20,12 +20,14 @@ from collections.abc import Callable, Mapping, Sequence
 from itertools import islice
 from typing import Final, NamedTuple, TypeAlias
 
+from constricter.empty import Empty
 from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.libraries import stdlib
 from constricter.fix.values.fills import Uses
 from constricter.fix.values.guesses import fixed_by_callee
 from constricter.fix.values.inference import inference
-from constricter.rules.annotations import defined_type_vars, dotted, roots
+from constricter.rules.annotations import dotted, roots
+from constricter.rules.declarations import defined_type_vars
 from constricter.rules.syntax import FunctionDef
 from constricter.rules.walked import classes, walk
 
@@ -48,7 +50,7 @@ class Site(NamedTuple):
     function: FunctionDef | None
     owner: str | None = None
     attributed: frozenset[str] = frozenset()
-    positional: Mapping[str, tuple[str, ...]] = {}
+    positional: Mapping[str, tuple[str, ...]] = Empty()
 
 
 def signatures(tree: ast.Module) -> dict[str, tuple[str, ...]]:

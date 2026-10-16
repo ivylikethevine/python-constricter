@@ -2,20 +2,22 @@
 """A run file: what `python -m tests.corpus RUN.toml` measures, with what, and how it's written.
 
     [run]
-    label = "0.3.6-rc.1"             # names the run's folder, and `dev` in its tables
+    label = "0.3.7-rc.1"             # names the run's folder, and `dev` in its tables
     output = "local/corpus-runs"     # each execution writes a folder of its own under it
     versions = ["0.3.1", "dev"]      # releases from PyPI, and `dev`: this checkout; or `NAME=PATH`,
                                      # the constricter the Python at PATH runs (another checkout's)
     formats = ["json", "markdown", "csv"]
     jobs = 0                         # constricter's worker processes: 0 is every CPU
-    at-once = 1                      # the corpora measured side by side (give `jobs` a share of the CPUs)
+    at-once = 1                      # the corpora found side by side: cloned, installed
     suite-seconds = 1800             # how long a suite's tests may run before they're stopped
-    suite-workers = 0                # the most processes a suite's tests take: 0 is half the CPUs
+    suite-workers = 0                # the most processes a suite's tests take: 0, as many as fit
     cpus = 0                         # the CPUs the steps share: 0 is the machine's (see `sizing`)
     memory = 0                       # and the gigabytes: 0 is most of what's free as the run starts
+    share = 0                        # or the percent of the machine's CPUs and memory they share, and
+                                     # are held to where systemd starts them (`--share`): 0, as above
 
     [corpora]
-    include = ["seven"]              # corpora or sets of `corpora.toml`, or directories
+    include = ["original"]           # corpora or sets of `corpora.toml`, or directories
     install = true                   # false: a suite's corpus is cloned alone, with no environment
 
     [steps]
@@ -30,6 +32,10 @@
 
     timing = 3                       # a check timed that many times, in one process and with `jobs`
     profile = true                   # a check in one process `py-spy` samples
+    tests-hinted = true              # false: no test run after a checker's hints or the trace's fix
+    tests-released = true            # false: the tests as released not run, their record the latest
+                                     # earlier run's at the suite's tag (`suite_steps.earlier`)
+    every-level = false              # true: a check at each level, not one the levels are read from
 
     [publish]
     runs-md = "docs/RUNS.md"         # and a section a version there, of the per-version tables
@@ -58,6 +64,7 @@ UNSAFE: Final = "unsafe"
 # Each fix a run can make on a copy, and the options that make it beside `--fix`.
 FIXES: Final = {CERTAIN: (), LIKELY: ("--likely",), UNSAFE: ("--unsafe-fixes",)}
 CHECKERS: Final = ("basedpyright", "ty", "pyrefly")  # what `--infer-with` can start
+_WHOLE: Final = 100  # a share's percent of the whole machine
 _KEYS: Final = {
     "run": {
         "label",
@@ -70,6 +77,7 @@ _KEYS: Final = {
         "suite-workers",
         "cpus",
         "memory",
+        "share",
     },
     "corpora": {"include", "install"},
     "publish": {"runs-md", "replace", "section"},
@@ -84,6 +92,9 @@ _KEYS: Final = {
         "traced",
         "timing",
         "profile",
+        "tests-hinted",
+        "every-level",
+        "tests-released",
     },
 }
 _RUNS_MD: Final = "runs-md"
@@ -104,6 +115,9 @@ class Steps(NamedTuple):
     traced: bool = False  # and its tests once more, traced (it needs `fix`'s `unsafe`)
     timing: int = 0  # how many times a check is timed, each way: 0 is not at all
     profile: bool = False
+    tests_hinted: bool = True  # a suite's tests after each checker's hints and the trace's fix too
+    every_level: bool = False  # a check at each level, not one at `suffocate` the others are read from
+    tests_released: bool = True  # a suite's tests as released run, not taken from an earlier run
 
 
 class Publish(NamedTuple):
@@ -122,15 +136,17 @@ class Run(NamedTuple):
     versions: tuple[str, ...] = (DEV,)
     formats: tuple[str, ...] = FORMATS
     jobs: int = 0
-    include: tuple[str, ...] = ("seven",)
+    include: tuple[str, ...] = ("original",)
     steps: Steps = Steps()
-    at_once: int = 1  # the corpora measured side by side
+    at_once: int = 1  # the corpora found side by side: their steps wait for the machine alone
     publish: Publish = Publish()
     install: bool = True  # a suite's corpus installed with its tests' dependencies, not cloned alone
     suite_seconds: int = 1800  # how long a suite's tests may run before they're stopped
-    suite_workers: int = 0  # the most processes a suite's tests take: 0 is half the CPUs
+    suite_workers: int = 0  # the most processes a suite's tests take: 0, as many as fit (`sizing`)
     cpus: int = 0  # the CPUs the steps share: 0 is the machine's
     memory: float = 0.0  # the gigabytes they share: 0 is most of what's free as the run starts
+    share: int = 0  # the percent of the machine's CPUs and memory they share, held to it: 0, as above
+    minus: tuple[str, ...] = ()  # corpora or sets left out of `include`'s (`--minus`)
 
     def folder(self, now: datetime) -> Path:
         """Name the folder an execution started at `now` writes.
@@ -210,6 +226,9 @@ def parse(data: _Table) -> Run:
             bool(steps.get("traced", default.steps.traced)),
             cast("int", steps.get("timing", default.steps.timing)),
             bool(steps.get("profile", default.steps.profile)),
+            bool(steps.get("tests-hinted", default.steps.tests_hinted)),
+            bool(steps.get("every-level", default.steps.every_level)),
+            bool(steps.get("tests-released", default.steps.tests_released)),
         ),
         cast("int", run.get("at-once", default.at_once)),
         Publish(
@@ -222,7 +241,24 @@ def parse(data: _Table) -> Run:
         cast("int", run.get("suite-workers", default.suite_workers)),
         cast("int", run.get("cpus", default.cpus)),
         float(cast("float", run.get("memory", default.memory))),
+        percent(run.get("share", default.share)),
     )
+
+
+def percent(given: object) -> int:
+    """Read a share of the machine, in percent.
+
+    Returns:
+      It: 1 to 100, or 0 for none given.
+
+    Raises:
+      ValueError: it isn't a whole number from 0 to 100.
+
+    """
+    if isinstance(given, bool) or not isinstance(given, int) or not 0 <= given <= _WHOLE:
+        message: str = f"share must be a percent, 1 to {_WHOLE} (0: the machine's): {given!r}"
+        raise ValueError(message)
+    return given
 
 
 def read(path: Path) -> Run:

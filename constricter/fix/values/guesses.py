@@ -11,16 +11,14 @@ from constricter.fix.libraries.library import installed_method, library_class
 from constricter.fix.libraries.opened import opened, opened_path
 from constricter.fix.values import called, decided, displays, shapes
 from constricter.fix.values.inference import (
-    COMPREHENSIONS,
     CONTAINER_BUILDERS,
     RETURNED,
-    dict_view,
     inference,
     inferred,
     joined,
     scalar,
-    targets_typed,
 )
+from constricter.fix.values.loops import COMPREHENSIONS, dict_view, targets_typed
 from constricter.fix.values.members import (
     assigned_owner,
     awaited,
@@ -138,6 +136,7 @@ def guessing(
         [node for node in walked if isinstance(node, COMPREHENSIONS)],
         known,
         declared,
+        inference,
     )
     unsafe: bool = False
     named: bool = True  # only names are guesses, so far
@@ -204,7 +203,10 @@ def certain_method(call: ast.expr, known: Known, declared: Mapping[str, str]) ->
             return typed is not None and (
                 member(typed, method, call, known) is not None
                 or partial_method(typed, method, known) is not None
-                or (method in DICT_VIEWS and dict_view(receiver, method, known, declared) is not None)
+                or (
+                    method in DICT_VIEWS
+                    and dict_view(receiver, method, known, declared, inference) is not None
+                )
             )
         case _:
             return False

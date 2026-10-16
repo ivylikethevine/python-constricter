@@ -13,7 +13,7 @@ _TOTAL: Final = "total"
 
 
 def key(name: str) -> str:
-    """Spell a `TypedDict`'s key as `annotations.classes` holds it: apart from any attribute's name.
+    """Spell a `TypedDict`'s key as `declarations.classes` holds it: apart from any attribute's name.
 
     Returns:
       It.

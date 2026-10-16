@@ -16,7 +16,12 @@ the value decides it, for a plain `name = value` in a function or module body:
   keys and values (`{**d, k: v}`). A list, set or dict whose elements' types differ is their union,
   `None` last (`[1, "a"]` is a `list[int | str]`, `{"k": 1, "j": None}` a `dict[str, int | None]`):
   up to three, each a plain name (not a container or a union), and a guess (`joined`), since a
-  checker joins them too, but not always to the same union (mypy to their common base);
+  checker joins them too, but not always to the same union (mypy to their common base). A list, set
+  or dict display its function adds to later (`append`, `insert`, `add`, `extend`, `update`,
+  `setdefault`, `d[k] = v`) takes what's added too, which a checker holds to its elements' type
+  though it may be more at run time: numbers as the widest of them (`xs = [0]`, then
+  `xs.append(0.5)`, is a `list[float]`), others as their union (a guess, `joined`), and no fix where
+  what's added isn't known;
 - a call to a capitalised name (`path = Path(...)` gives `Path`, a guess; not a standard-library
   function, `ET.Comment(...)`), or to a class the checked files define whatever its name's case
   (`_Definitions()`), if it can be written as a type: a name or dotted name whose first name the
@@ -327,15 +332,16 @@ the value decides it, for a plain `name = value` in a function or module body:
   one type, `or` dropping a `None` before its last operand (`name or "x"` is a `str` for a
   `name: str | None`), and `a or []`, `a if c else {}` by `a`'s `list` or `dict` (`a if a else []`
   is never `None`); arithmetic on builtin scalars (`n + 1`, `n / 2`, `-n`, `~n`, `"x" * n`,
-  `3 * "x"`, `"%s" % n`; `n << 2`, `n | 1` and `n & mask` of integers; `**` only where its result
-  can't change type, an integer's by a literal, `2 ** 32`, or a `float`'s by an integer), lists
-  (`names + names`, `names * 2`), tuples (`pair + (n,)` lists both sides' parts, up to `max-length`;
-  `row * 2` is a `tuple[T, ...]`), and a `set`'s `|`, `&`, `-` and `^` or a `dict`'s `|` with
-  another of its type, a `dict`'s `.keys()` counting as a `set` of its keys (`allowed & d.keys()`);
-  a `pathlib` path's `/` with a `str` or another path (`root / "x"`: `root`'s class); an operator
-  between a standard-library class's instance and another's or a builtin's, by the first signature
-  of its method (`__add__`, `__sub__`, ...) in typeshed that takes the right operand, as a type
-  checker picks it: `when - start`, two `datetime`s, is a `timedelta`, `when - span` a `datetime`,
+  `3 * "x"`, `"%s" % n`; `n << 2`, `n | 1` and `n & mask` of integers; `**`: an integer's by a
+  literal, `2 ** 32`, an `int`; by any other integer, `n ** k`, which may be negative, a `float`,
+  which takes an `int` too; a `float`'s by an integer a `float`), lists (`names + names`,
+  `names * 2`), tuples (`pair + (n,)` lists both sides' parts, up to `max-length`; `row * 2` is a
+  `tuple[T, ...]`), and a `set`'s `|`, `&`, `-` and `^` or a `dict`'s `|` with another of its type,
+  a `dict`'s `.keys()` counting as a `set` of its keys (`allowed & d.keys()`); a `pathlib` path's
+  `/` with a `str` or another path (`root / "x"`: `root`'s class); an operator between a
+  standard-library class's instance and another's or a builtin's, by the first signature of its
+  method (`__add__`, `__sub__`, ...) in typeshed that takes the right operand, as a type checker
+  picks it: `when - start`, two `datetime`s, is a `timedelta`, `when - span` a `datetime`,
   `price * 2` a `Decimal` (not where the right operand's class is under the left's, or is a checked
   file's or an installed package's, whose reflected method may answer); a list, set or dict
   comprehension whose elements are known; `sorted` (with `key=` and `reverse=` or not), `list`,
@@ -923,7 +929,8 @@ fix-widen = ["untyped-parameters", "empty-containers"]
   length.
 - `unions`: a name bound to values of two or three types that fit no one of them (`x = 1`, then
   `x = "a"`), declared their union on a line of its own before its first binding. Only of values
-  whose types are certain, and not for a name its function changes in place (`x += more`).
+  whose types are known, a guess where one is, resting on what that one does; never with a `Self`,
+  and not for a name its function changes in place (`x += more`).
 - `vague`: a value whose type is known and vaguer than `vague` allows (a call declared to return a
   `dict[str, Any]`), which `--fix` otherwise never writes.
 

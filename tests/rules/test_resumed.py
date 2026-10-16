@@ -2,6 +2,7 @@
 """A module checked again knowing only its functions' parameters anew starts from its last check."""
 
 import ast
+import copy
 import textwrap
 from typing import Final
 from unittest.mock import Mock
@@ -65,6 +66,7 @@ def test_a_second_check_starts_from_the_first(monkeypatch: pytest.MonkeyPatch) -
     }
 
 
+@pytest.mark.interpreted
 def test_anything_else_new_starts_over(monkeypatch: pytest.MonkeyPatch) -> None:
     """Other checks, other knowledge from outside, LVA012, or no check kept."""
     source: str = textwrap.dedent(_SOURCE)
@@ -79,3 +81,13 @@ def test_anything_else_new_starts_over(monkeypatch: pytest.MonkeyPatch) -> None:
     _ = checked_tree(tree, final, outside=Outside())
     _ = checked_tree(tree, final, outside=Outside(parameters=_SEEDS))
     assert [settled.call_count] == [_STARTS]
+
+
+def test_a_copy_of_a_checked_tree_keeps_no_check() -> None:
+    """A deep copy of a checked tree, as pydoclint's flake8 plugin makes of what it reads, checks anew."""
+    source: str = textwrap.dedent(_SOURCE)
+    tree: ast.Module = ast.parse(source)
+    _ = checked_tree(tree, _CHECKS, outside=Outside())
+    copied: ast.Module = copy.deepcopy(tree)
+    fresh: Checked = checked_tree(ast.parse(source), _CHECKS, outside=Outside(parameters=_SEEDS))
+    assert checked_tree(copied, _CHECKS, outside=Outside(parameters=_SEEDS)) == fresh

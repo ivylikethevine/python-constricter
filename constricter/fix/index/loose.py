@@ -8,12 +8,12 @@ override one. A file is checked after the modules whose classes it names that ha
 it calls (`needs`).
 """
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator
 from pathlib import Path
 
 from constricter.fix.core.known import Guarded, Returns
 from constricter.fix.core.signatures import AWAIT
-from constricter.fix.index import project
+from constricter.fix.index import crossed, project
 from constricter.fix.index.modules import SUFFIX, Index, Module, module_name
 
 
@@ -24,10 +24,11 @@ def _classes(catalog: Index, target: Module) -> Iterator[tuple[str, tuple[Module
       Each, as it spells it, and the module defining it and its name there.
 
     """
+    called: frozenset[str] = _called(target)  # once: a file may name thousands of classes
     key: str
     defined: tuple[Module, str]
-    for key, defined in project.spelled_classes(catalog, target, (target.names, target.attributes), set()):
-        if defined[0].name != target.name and defined[0].loose & _called(target):
+    for key, defined in crossed.spelled_classes(catalog, target, (target.names, target.attributes), set()):
+        if defined[0].name != target.name and not defined[0].loose.isdisjoint(called):
             yield key, defined
 
 
@@ -72,11 +73,15 @@ def returned(
         return found
     methods: dict[str, dict[str, str]] = {}
     guesses: dict[str, frozenset[str]] = dict(found.guesses)
+    called: frozenset[str] = _called(target)
     key: str
     defined: tuple[Module, str]
     for key, defined in _classes(catalog, target):
-        typed: Mapping[str, str] = defined[0].returned.methods.get(defined[1], {})
-        wanted: dict[str, str] = {name: each for name, each in typed.items() if name in _called(target)}
+        wanted: dict[str, str] = {
+            name: each
+            for name, each in defined[0].returned.methods.get(defined[1], {}).items()
+            if name in called
+        }
         kept: dict[str, str] = (
             project.portable(
                 catalog.modules,

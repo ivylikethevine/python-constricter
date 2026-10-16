@@ -4,56 +4,33 @@
 import ast
 import builtins
 import copy
+import json
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
+from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NamedTuple, TypeAlias, cast
 
+from constricter.empty import Empty
 from constricter.fix.core.inherited import Beyond, Lineage
 from constricter.fix.core.signatures import Expansion, ReadSignature
 from constricter.offences import MAX_LENGTH, VAGUE
+from constricter.overrides import override
 from constricter.rules.annotations import free_of, free_of_all, roots
 
 if TYPE_CHECKING:
-    from typing_extensions import override  # `typing.override` is 3.12+
-else:
-
-    def override(func: object) -> object:
-        """Mark an override (for type checkers only).
-
-        Returns:
-          `func`, unchanged.
-
-        """
-        return func
-
+    from _typeshed import DataclassInstance
 
 _BUILTINS: Final = frozenset(dir(builtins))
 _DOT: Final = "."
-# The standard library's modules only some platforms have: a checker on another finds nothing in one.
+# The standard library's modules only some platforms have: a checker on another finds nothing in
+# one. Generated from typeshed (`stdlib_tables`).
 _PLATFORM: Final = frozenset(
-    {
-        "_winapi",
-        "crypt",
-        "fcntl",
-        "grp",
-        "msvcrt",
-        "nis",
-        "nt",
-        "ossaudiodev",
-        "posix",
-        "pty",
-        "pwd",
-        "readline",
-        "resource",
-        "spwd",
-        "syslog",
-        "termios",
-        "tty",
-        "winreg",
-        "winsound",
-    },
+    cast(
+        "dict[str, str]",
+        json.loads(Path(__file__).parents[1].joinpath("tables", "platform.json").read_bytes()),
+    ),
 )
 _NAME: Final = re.compile(r"[A-Za-z_]\w*")  # each name in a return's template
 # What a name refers to: a module and an attribute of it (`None`: the module itself).
@@ -73,8 +50,11 @@ class Typed(dict[str, str]):  # ruff: ignore[subclass-builtin]
     each with the call, which an attribute read of the name is typed by (see `stood`).
     """
 
-    version: int = 0
-    held: Mapping[str, ast.expr] = MappingProxyType({})
+    def __init__(self, types: Mapping[str, str] | None = None, /) -> None:
+        """Start with `types`, counted as none."""
+        super().__init__(types or {})
+        self.version: int = 0
+        self.held: Mapping[str, ast.expr] = MappingProxyType({})
 
     @override
     def __setitem__(self, name: str, annotation: str) -> None:
@@ -169,7 +149,7 @@ class Checking(NamedTuple):
 class Classes(NamedTuple):
     """Classes' instance attributes (and properties) and methods' returns, by the class's name as spelled.
 
-    What `classes` and `method_returns` read from a module, and `project.imported` adds for the
+    What `classes` and `method_returns` read from a module, and `crossed.imported` adds for the
     classes a file imports from other checked files.
     """
 
@@ -232,7 +212,7 @@ class ImportPlan:
         statement: str = f"from {module} import {name}"
         top: str = module.partition(_DOT)[0]
         if not runs and top in self.checking.lazy:
-            if top in _PLATFORM:
+            if top in _PLATFORM or module in _PLATFORM:
                 return None
             return name if self.guard(name, (module, name), statement) else None
         if self._free(name, statement):
@@ -366,8 +346,8 @@ class Partial(NamedTuple):
     """
 
     # Plain `dict`s, not `MappingProxyType`s: the CLI's worker processes are sent them, pickled.
-    calls: Mapping[str, str] = {}
-    methods: Mapping[str, Mapping[str, str]] = {}
+    calls: Mapping[str, str] = Empty()
+    methods: Mapping[str, Mapping[str, str]] = Empty()
 
 
 # A function's parameters declared a builtin container (`names: list[str]`), by name: each one's
@@ -469,10 +449,10 @@ class Returns(NamedTuple):
     """
 
     # Plain `dict`s, not `MappingProxyType`s: the CLI's worker processes are sent them, pickled.
-    calls: Mapping[str, str] = {}
-    guesses: Mapping[str, frozenset[str]] = {}
-    names: Mapping[str, Origin] = {}
-    methods: Mapping[str, Mapping[str, str]] = {}
+    calls: Mapping[str, str] = Empty()
+    guesses: Mapping[str, frozenset[str]] = Empty()
+    names: Mapping[str, Origin] = Empty()
+    methods: Mapping[str, Mapping[str, str]] = Empty()
 
 
 class Offered(NamedTuple):
@@ -500,8 +480,8 @@ class Hints(NamedTuple):
 
     checker: str = ""
     # Plain `dict`s, not `MappingProxyType`s: the CLI's worker processes are sent them, pickled.
-    types: Mapping[tuple[int, int], str] = {}
-    offered: Mapping[tuple[int, int], Offered] = {}
+    types: Mapping[tuple[int, int], str] = Empty()
+    offered: Mapping[tuple[int, int], Offered] = Empty()
     kind: str = "checker"
 
 
@@ -533,8 +513,26 @@ class Observed(NamedTuple):
     """
 
     # Plain `dict`s and tuples, not `MappingProxyType`s: the CLI's worker processes send them back, pickled.
-    calls: Mapping[Callee, tuple[Call, ...]] = {}
+    calls: Mapping[Callee, tuple[Call, ...]] = Empty()
     escaped: frozenset[Callee] = frozenset()
+
+
+def pickled(frozen: "DataclassInstance") -> dict[str, object]:
+    """Give a frozen dataclass's fields, to pickle it by: a class mypyc compiled has no other.
+
+    Returns:
+      Each field's value, by its name.
+
+    """
+    return {each.name: getattr(frozen, each.name) for each in fields(frozen)}
+
+
+def unpickled(frozen: "DataclassInstance", state: Mapping[str, object]) -> None:
+    """Set a frozen dataclass's fields from what `pickled` gave, past the class's own refusal."""
+    name: str
+    for name in state:
+        # Past the class's own `__setattr__`, which refuses.
+        object.__setattr__(frozen, name, state[name])  # ruff: ignore[unnecessary-dunder-call]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -543,7 +541,7 @@ class Outside:  # pylint: disable=too-many-instance-attributes
 
     `calls`: the return types of functions other checked files define, `returned` those of their
     unannotated functions (see `Returns`), and `classes` their classes' attributes and methods'
-    returns, as the file spells them (see `project.imported`); `hints`, a
+    returns, as the file spells them (see `crossed.imported`); `hints`, a
     type checker's types for what `--fix` can't type itself (`--infer-with`); `type_vars`, the names
     it imports that are type variables where they're defined (see `project.type_vars`), which a
     type its own functions declare can't be written with outside them; `guarded`, the names those
@@ -610,6 +608,20 @@ class Outside:  # pylint: disable=too-many-instance-attributes
     takers: Mapping[str, Takers] = field(default_factory=dict[str, Takers])
     # What `with` gives of each call it makes to their `@contextmanager` functions (see `index.managed`).
     managers: Mapping[str, Passed] = field(default_factory=dict[str, Passed])
+
+    @override
+    def __getstate__(self) -> dict[str, object]:
+        """Pickle it by its fields (see `pickled`).
+
+        Returns:
+          Them.
+
+        """
+        return pickled(self)
+
+    def __setstate__(self, state: dict[str, object]) -> None:
+        """Unpickle it (see `unpickled`)."""
+        unpickled(self, state)
 
     def usable(self, taken: frozenset[str], present: frozenset[str]) -> "Outside":
         """Drop what other files offer whose type needs a name imported that the module binds already.
@@ -698,3 +710,13 @@ class Inference(NamedTuple):
     reason: str
     kinds: frozenset[str] = frozenset()
     reads: tuple[str, ...] = ()
+
+
+def kinds_of(*parts: Inference | None, kind: str) -> frozenset[str]:
+    """Collect `kind` and the kinds of each part an inference was built from.
+
+    Returns:
+      Them all.
+
+    """
+    return frozenset({kind}).union(*(part.kinds for part in parts if part is not None))

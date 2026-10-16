@@ -11,16 +11,18 @@ import pickle
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Final, cast
+from typing import TYPE_CHECKING, Final, NamedTuple, cast
 
 from constricter.cli import collecting
 from constricter.cli.runs import CoverageRun, FileRun
-from constricter.cli.workers import Answering, Asked, File, Workers, check_share, first_done
+from constricter.cli.workers import Again, Answering, Asked, File, Told, Workers, check_share, first_done
+from constricter.empty import Empty
 from constricter.fix.core.known import Guarded, Hints, Outside, Passed, Returns
 from constricter.fix.index import (
     awaits,
     beyond,
     callers,
+    crossed,
     decorated,
     fixtures,
     linked,
@@ -39,6 +41,9 @@ from constricter.fix.index import (
 )
 from constricter.fix.index.modules import Memo
 
+if TYPE_CHECKING:
+    from constricter.fix.core.signatures import ReadSignature
+
 CYCLE_ROUNDS: Final = 3  # how many times to check again files calling each other's functions
 
 
@@ -51,7 +56,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
     """
     seeded: dict[str, Guarded] = {}
     seeds: dict[str, Passed] = fixtures.visible(modules, path, seeded)
-    imported: project.Imported = project.imported(
+    imported: project.Imported = crossed.imported(
         modules,
         path,
         (seeded, fixtures.attributes(seeds)),
@@ -63,9 +68,15 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
     hints: tuple[Hints, ...] = offers.vetted(modules, path, hinted.get(path, ()))
     # What only a hint can name: the classes the file imports for type checking alone.
     own: offers.Own = offers.own(modules, path) if hints else offers.Own()
+    overloaded: dict[str, tuple[ReadSignature, ...]] = {
+        **stubbed.overloaded(modules, path, guarded),
+        **methods.signatures,
+        **own_methods.overloaded(modules, path, guarded),
+    }
     return Outside(
         calls={**imported.calls, **side_calls, **decorated.own(modules, path)},
-        classes=imported.classes,
+        # With those of the classes the overloaded methods' returns import.
+        classes=crossed.guarded_classes(modules, path, imported, guarded),
         hints=hints,
         type_vars=project.type_vars(modules, path),
         returned=awaits.returned(
@@ -78,18 +89,14 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         generics=imported.generics | own.generics,
         callees=callers.callees(modules, path),
         parameters=callers.own_parameters(modules, path),
-        overloaded={
-            **stubbed.overloaded(modules, path, guarded),
-            **methods.signatures,
-            **own_methods.overloaded(modules, path, guarded),
-        },
+        overloaded=overloaded,
         installed_classes=stubbed.classes(modules, path),
         installed_parameters=methods.parameters,
-        installed_lineage={**own_types.lineages(modules, path, guarded), **methods.lineage},
+        installed_lineage=own_types.lineages(modules, path, guarded, methods.lineage),
         installed_aliases=methods.aliases,
         checking=own.guarded,
         plain=plain.classes(modules, path),
-        members=imported.members,
+        members={**imported.members, **plain.members(modules, path)},
         same=linked.same(modules, path, guarded),
         partial=imported.partial,
         tuples=tuples.fields(modules, path, guarded),
@@ -105,6 +112,18 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
     )
 
 
+class Rounds(NamedTuple):
+    """How a check stands to the files' earlier ones.
+
+    `merge` joins a file's two rounds' runs (`None`: the later one's stands). `kept`: the last runs
+    of those whose text is as it was then, by index: each is checked only if it knows anything else
+    from outside now, else that run is its own.
+    """
+
+    merge: Callable[[FileRun, FileRun], FileRun] | None = None
+    kept: Mapping[int, FileRun] = Empty()
+
+
 class _Planned:
     """What checking the files in order has found so far, and the index as it grows."""
 
@@ -113,15 +132,15 @@ class _Planned:
         paths: Sequence[Path],
         modules: project.Index,
         hinted: Mapping[Path, tuple[Hints, ...]],
-        merge: Callable[[FileRun, FileRun], FileRun] | None,
+        rounds: Rounds,
     ) -> None:
-        """Plan checking `paths` with `modules` and their hints; `merge` joins a file's two rounds' runs."""
+        """Plan checking `paths` with `modules` and their hints, after `rounds`."""
         self.paths: Sequence[Path] = paths
         self.modules: project.Index = modules
         self.hinted: Mapping[Path, tuple[Hints, ...]] = hinted
-        self.merge: Callable[[FileRun, FileRun], FileRun] | None = merge
         self.plan: order.Plan = order.plan(modules, paths)
         self.runs: dict[int, FileRun] = {}
+        self.earlier: Rounds = rounds
         self.given: dict[int, Outside] = {}  # what each file was last checked knowing
         self.rounds: list[int] = [0] * len(self.plan.components)
         # Each file's component.
@@ -133,14 +152,18 @@ class _Planned:
         """Find what the component's files are to be checked knowing, now that it can start.
 
         Returns:
-          Each file's.
+          Each file's; not a kept one's (see `checked`) that knows what it was last checked knowing.
 
         """
         given: dict[int, Outside] = {
             at: outside(self.modules, self.paths[at], self.hinted) for at in self.plan.components[component]
         }
         self.given.update(given)
-        return given
+        return {
+            at: known
+            for at, known in given.items()
+            if at not in self.earlier.kept or _WORKER.given.get(self.paths[at]) != known
+        }
 
     def record(self, component: int, found: Mapping[int, FileRun]) -> dict[str, Returns]:
         """Record what a round of the component's files found, and what its functions return.
@@ -149,10 +172,11 @@ class _Planned:
           What each checked module's functions return now, by its name.
 
         """
+        merge: Callable[[FileRun, FileRun], FileRun] | None = self.earlier.merge
         at: int
         run: FileRun
         for at, run in found.items():
-            self.runs[at] = self.merge(self.runs[at], run) if self.merge and at in self.runs else run
+            self.runs[at] = merge(self.runs[at], run) if merge and at in self.runs else run
         returned: dict[str, Returns] = {
             self.plan.names[at]: run.returned
             for at, run in found.items()
@@ -194,25 +218,25 @@ def checked(
     check: Callable[[Path, Outside], FileRun],
     pool: Workers | None,
     known: tuple[project.Index, Mapping[Path, tuple[Hints, ...]]],
-    merge: Callable[[FileRun, FileRun], FileRun] | None = None,
+    rounds: Rounds,
 ) -> tuple[list[FileRun], project.Index]:
     """Check `paths` in order (see `order.plan`), in `pool`'s workers or this process.
 
-    `known`: the index and each file's hints; `merge` joins a file's two rounds' runs (`None`: the
-    later one's stands).
+    `known`: the index and each file's hints; `rounds`: how this check stands to earlier ones.
 
     Returns:
       What each file found, and the index, with what their functions return.
 
     """
-    planned: _Planned = _Planned(paths, known[0], known[1], merge)
+    planned: _Planned = _Planned(paths, known[0], known[1], rounds)
     if pool is None:
         component: int
         for component in range(len(planned.plan.components)):
             _in_process(planned, check, component, planned.start(component))
     else:
         _Pooled(planned, check, pool).run()
-    return [planned.runs[at] for at in range(len(paths))], planned.modules
+    runs: list[FileRun] = [planned.runs.get(at) or planned.earlier.kept[at] for at in range(len(paths))]
+    return runs, planned.modules
 
 
 def _in_process(
@@ -224,12 +248,16 @@ def _in_process(
     """Check a component's files here (`todo`: each with what it's to know), round by round."""
     if todo:
         runs: list[FileRun] = check_share(check, [(planned.paths[at], given) for at, given in todo.items()])
+        _WORKER.given.update((planned.paths[at], given) for at, given in todo.items())
         _in_process(planned, check, component, planned.settle(component, dict(zip(todo, runs, strict=True))))
 
 
 @dataclass
 class _Worker:
-    """What a worker process knows: the index it was sent, and what each of its files last knew."""
+    """What a worker process knows: the index it was sent, and what each of its files last knew.
+
+    A run checking alone keeps the latter here too: its files' checks, round after round.
+    """
 
     modules: project.Index = field(default_factory=lambda: project.Index({}, []))
     given: dict[Path, Outside] = field(default_factory=dict[Path, Outside])
@@ -271,9 +299,13 @@ def sent(modules: project.Index) -> bytes:
     return pickle.dumps(modules._replace(memo=None), pickle.HIGHEST_PROTOCOL)
 
 
-def know(index: bytes) -> None:
+def know(index: Told) -> None:
     """Take the index (see `sent`), in a worker process: what it works its files' `Outside` out from."""
     _WORKER.modules = cast("project.Index", pickle.loads(index))._replace(memo=Memo())
+
+
+def forget() -> None:
+    """Forget what each file was last checked knowing, as a run starts: its workers are new."""
     _WORKER.given.clear()
 
 
@@ -281,12 +313,12 @@ def check_asked(check: Callable[[Path, Outside], FileRun], asked: Asked) -> list
     """Check a worker's files, each knowing what the worker's index says of it now.
 
     Returns:
-      What each found; `None` for one left unchecked, what it imports returning what it did.
+      What each found; `None` for one left unchecked, knowing what it last did (see `Again`).
 
     """
     files: Sequence[File]
     returned: Mapping[str, Returns]
-    again: bool
+    again: Again
     files, returned, again = asked
     _WORKER.modules = linked.with_returned(_WORKER.modules, returned)
     found: list[FileRun | None] = []
@@ -294,7 +326,11 @@ def check_asked(check: Callable[[Path, Outside], FileRun], asked: Asked) -> list
     hints: tuple[Hints, ...]
     for path, hints in files:
         known: Outside = outside(_WORKER.modules, path, {path: hints} if hints else {})
-        if again and path in _WORKER.given and known.returned == _WORKER.given[path].returned:
+        last: Outside | None = _WORKER.given.get(path)
+        if last is not None and (
+            (again is Again.RETURNED and known.returned == last.returned)
+            or (again is Again.OUTSIDE and known == last)
+        ):
             found.append(None)
             continue
         _WORKER.given[path] = known
@@ -366,22 +402,33 @@ class _Pooled:
     def submit(self, files: Sequence[int], *, again: bool) -> None:
         """Start checking `files` (by index), each by its worker.
 
-        `again`: only those whose imports return something else now.
+        `again`: only those whose imports return something else now. Otherwise a kept file (see
+        `checked`) only if it knows anything else from outside now.
         """
         if not files:
             return
         hinted: Mapping[Path, tuple[Hints, ...]] = self.planned.hinted
         paths: Sequence[Path] = self.planned.paths
+        kept: Mapping[int, FileRun] = self.planned.earlier.kept
         wanted: frozenset[int] = frozenset(files)
         worker: int
         share: list[int]
         for worker, share in enumerate(self.pool.shares):
-            mine: list[int]
-            if not (mine := [at for at in share if at in wanted]):
-                continue
-            given: list[File] = [(paths[at], hinted.get(paths[at], ())) for at in mine]
-            asked: Asked = (given, self.news.since(worker), again)
-            self.active[self.pool.ask(worker, check_asked, self.check, asked)] = mine
+            mine: list[int] = [at for at in share if at in wanted]
+            each: list[int]
+            how: Again
+            for each, how in (
+                [(mine, Again.RETURNED)]
+                if again
+                else [
+                    ([at for at in mine if at not in kept], Again.NO),
+                    ([at for at in mine if at in kept], Again.OUTSIDE),
+                ]
+            ):
+                if each:
+                    given: list[File] = [(paths[at], hinted.get(paths[at], ())) for at in each]
+                    asked: Asked = (given, self.news.since(worker), how)
+                    self.active[self.pool.ask(worker, check_asked, self.check, asked)] = each
         at: int
         for at in files:
             self.left[self.planned.of[at]] += 1

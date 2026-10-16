@@ -25,7 +25,8 @@ from typing import Final, NamedTuple, TypeAlias, cast
 from constricter.fix.core.imports import checking, inner_imports, nested_classes, rebound_names
 from constricter.fix.core.known import ImportPlan, Inference, Passed
 from constricter.fix.values.narrowed import Regions, regions
-from constricter.rules.annotations import generic_classes, node_name, roots
+from constricter.rules.annotations import node_name, roots
+from constricter.rules.declarations import generic_classes
 from constricter.rules.flow import members
 from constricter.rules.quoted import parsed
 from constricter.rules.syntax import FunctionDef, Start, within
@@ -97,9 +98,9 @@ class Facts(NamedTuple):
     attributed: frozenset[str] = frozenset()
     # Its functions' parameters' types, where a `Callable` can list them (see `callables.signatures`).
     positional: Mapping[str, tuple[str, ...]] = MappingProxyType({})
-    nested: frozenset[str] = (
-        frozenset()
-    )  # the classes defined in a class's body (see `imports.nested_classes`)
+    # The classes defined in a class's body, and the class naming each (see `imports.nested_classes`).
+    nested: Mapping[str, str] = MappingProxyType({})
+    excused: tuple[int, ...] = ()  # the lines (from 0) a `# type: ignore` is on, sorted (`late.excusing`)
 
 
 def facts(

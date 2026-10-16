@@ -18,7 +18,8 @@ from constricter import check_source, check_tree
 from constricter.cli import command as cli
 from constricter.fix.core import fixes
 from constricter.fix.core.known import Inference, Known
-from constricter.fix.values.inference import looped
+from constricter.fix.values.inference import inference
+from constricter.fix.values.loops import looped
 from constricter.fix.values.targets import unpacked
 from constricter.offences import COMMENT_TYPED_TARGET as COMMENT_TYPED
 from constricter.offences import Edit, Fix, Offence
@@ -90,7 +91,12 @@ def _fixed(source: str, *, unsafe: bool = False) -> str:
 )
 def test_a_loops_element_type(iterable: str, declared: dict[str, str], expected: str | None) -> None:
     """What each time round a loop over `iterable` binds."""
-    found: Inference | None = looped(ast.parse(iterable, mode="eval").body, _NOTHING_KNOWN, declared)
+    found: Inference | None = looped(
+        ast.parse(iterable, mode="eval").body,
+        _NOTHING_KNOWN,
+        declared,
+        inference,
+    )
     assert (None if found is None else found.annotation) == expected
 
 

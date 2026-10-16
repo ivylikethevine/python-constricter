@@ -18,6 +18,11 @@ A guess is likely by its mechanisms alone: the whole set `--show-fixes` lists in
 (`[constructor, rebound]`) is one of the sets below, `constricter.offences.LIKELY`. Not by any one
 of them: `rebound` with `constructor` is likely, with `copy` it isn't.
 
+What rests on a likely guess and on no other is certain once that guess is declared:
+`--fix --likely` checks a file again in the same run once it has written a guess there, and indexes
+it again: every other file whose view of it changed is checked again too (`f = defer.fail()`, once
+`fail`'s `d: Deferred = Deferred()` is declared), so a second run finds nothing more to fix.
+
 ## The measure
 
 Every guess `--fix --unsafe-fixes` makes on 42 packages' own sources (pandas, SQLAlchemy, pydantic,

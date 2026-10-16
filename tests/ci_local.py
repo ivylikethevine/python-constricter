@@ -171,7 +171,8 @@ def _pypy_build(python: str, pin: str) -> str:
     """Find the newest PyPy build uv has of an entry's line (`pypy3.11` at `v7.3.x`), as setup-python does.
 
     uv requests a PyPy by the Python version it implements alone, so the build is picked by its
-    download's name (`pypy3.11-v7.3.23-linux64.tar.gz`).
+    download's name (`pypy3.11-v7.3.23-linux64.tar.gz`). Downloads alone are listed: an installed
+    build is listed without its URL, in place of its download.
 
     Returns:
       The build's uv key (`pypy-3.11.15-linux-x86_64-gnu`), or `python` if uv has none of that line.
@@ -179,7 +180,7 @@ def _pypy_build(python: str, pin: str) -> str:
     """
     request: str = f"{_PYPY}@{python.removeprefix(_PYPY)}"
     listed: subprocess.CompletedProcess[str] = subprocess.run(
-        ["uv", "python", "list", request, "--all-versions", "--output-format", "json"],
+        ["uv", "python", "list", request, "--all-versions", "--only-downloads", "--output-format", "json"],
         capture_output=True,
         text=True,
         check=True,

@@ -2,8 +2,8 @@
 """Hatchling's build hook: generate the standard-library tables where they're missing or stale.
 
 They aren't tracked (see `stdlib_tables.generate`). A build from a checkout generates them, and asks
-for the basedpyright version `uv.lock` pins to read typeshed's stubs from; one from an sdist, which
-carries them, asks for nothing.
+for the basedpyright `uv.lock` pins, to read typeshed's stubs from, and the typeshed-client it pins,
+to read them with; one from an sdist, which carries them, asks for nothing.
 """
 
 import importlib
@@ -31,9 +31,8 @@ else:
 class _Generator(Protocol):  # pylint: disable=too-few-public-methods  # a module's functions
     """What the hook uses of `stdlib_tables.generate`."""
 
-    STUBS: str
     current: Callable[[], bool]  # whether the tables are all there, and current
-    pinned: Callable[[], str]  # the basedpyright version the tables are read from
+    requirements: Callable[[], list[str]]  # the pinned basedpyright and typeshed-client they're read with
     ensure: Callable[[], bool]  # generate the tables if they're missing or stale
 
 
@@ -63,14 +62,14 @@ class TablesHook(BuildHookInterface[BuilderConfig]):
 
     @override
     def dependencies(self) -> list[str]:
-        """Ask for the pinned basedpyright, if the tables must be generated.
+        """Ask for the pinned basedpyright and typeshed-client, if the tables must be generated.
 
         Returns:
-          It, or nothing.
+          Them, or nothing.
 
         """
         generator: _Generator = self._generator()
-        return [] if generator.current() else [f"{generator.STUBS}=={generator.pinned()}"]
+        return [] if generator.current() else generator.requirements()
 
     @override
     def initialize(self, version: str, build_data: dict[str, object]) -> None:

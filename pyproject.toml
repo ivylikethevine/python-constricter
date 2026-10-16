@@ -37,6 +37,7 @@ build = [
     "basedpyright",
     "editables",
     "hatchling>=1.27,<2",
+    "typeshed-client", # reads the stubs the tables are generated from (stdlib_tables/shed.py)
 ]
 # What the tests need: pure Python, so it installs on PyPy and free-threaded builds too.
 test = [
@@ -60,18 +61,32 @@ corpus = [
     "py-spy", # the corpus runner's `profile` step samples the check from outside
     "sqlalchemy==2.0.54",
 ]
+# What a compiled wheel's build from the sdist needs, without build isolation
+# (`HATCH_BUILD_HOOK_ENABLE_MYPYC=1`): the backend, and the mypyc hook's `dependencies`, pinned the same.
+mypyc = [
+    "hatchling>=1.27,<2",
+    "hatch-mypyc==0.16.0",
+    "mypy==2.3.1",
+    "setuptools==84.0.0",
+]
 dev = [
     { include-group = "test" },
+    { include-group = "mypyc" },
     "basedpyright",
     "build",
     "check-wheel-contents",
+    "deptry", # each group's dependencies, held to what its code imports (see [tool.deptry])
     "hypothesmith",
     "import-linter", # the layers' contracts (see [tool.importlinter])
     "mypy",
+    "ortools", # tests/corpus/planning.py: plans a run's steps with CP-SAT
     "pip-audit",
+    "pyrefly", # a third type checker, beside basedpyright and mypy
     "pre-commit",
+    "pydoclint", # docstrings' sections, held to the signatures (see [tool.pydoclint])
     "psutil", # tests/corpus/corpora_cpu.py: a step's process tree, its CPU seconds and memory
     "pytest-xdist",
+    "pyyaml", # tests/ci_local.py reads CI's workflow for its steps
     "ruff",
     "twine",
     "types-psutil",
@@ -107,6 +122,15 @@ artifacts = ["constricter/fix/tables/*.json", "stdlib_tables/partial.json"]
 [tool.hatch.build.targets.wheel]
 packages = ["constricter"]
 
+# A compiled wheel: with `HATCH_BUILD_HOOK_ENABLE_MYPYC=1`, mypyc compiles the rules and the fixes, as
+# annotated as they are. Off by default: the pure wheel runs anywhere (PyPy, free-threaded builds).
+# Built from the sdist (`python -m build`), so nothing compiled lands beside the checkout's sources.
+[tool.hatch.build.targets.wheel.hooks.mypyc]
+enable-by-default = false
+dependencies = ["hatch-mypyc==0.16.0", "mypy==2.3.1", "setuptools==84.0.0"] # the `mypyc` group's
+include = ["/constricter/rules", "/constricter/fix"]
+options = { debug_level = "0" }
+
 [tool.hatch.build.targets.sdist]
 # The generator too: a wheel built from the sdist checks the tables it carries are current.
 only-include = ["constricter", "stdlib_tables", "hatch_build.py", "README.md", "LICENSE.md"]
@@ -141,7 +165,8 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 # The corpus table runs each constricter version under test as a subprocess.
 "tests/corpus/corpus_table.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # `--infer-with`'s tests start its guard and a fake server, and a constricter to kill.
-"tests/cli/test_hints.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
+"tests/cli/{test_hints,test_guard}.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
+"tests/cli/test_paths.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
 # The trace's tests run a traced pytest, whose pytest-xdist workers are processes of its own.
 "tests/test_trace.py" = ["assert", "suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The profile runs the check under `py-spy`.
@@ -154,12 +179,13 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 # The census of what `--fix` can't type runs this checkout's constricter on each corpus.
 "tests/corpus/corpus_untyped.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The corpus runner starts each constricter version under test (`launch`; under `py-spy`, `pipeline`),
-# each of its steps as a process, and git: for the commit, and to apply a fix to a checkout
-# (`suite_steps`).
+# each of its steps as a process (in a scope of its own where systemd starts one, `sizing`), and git:
+# for the commit, and to apply a fix to a checkout (`suite_steps`).
 "tests/corpus/launch.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 "tests/corpus/pipeline.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 "tests/corpus/suite_steps.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
 "tests/corpus/__main__.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
+"tests/corpus/sizing.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The local CI runner runs the workflow's own steps (and git) as subprocesses.
 "tests/ci_local.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
 # Installed modules' reads are cached as pickles, written and read by constricter alone in the
@@ -167,13 +193,15 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 "constricter/fix/index/installed.py" = ["suspicious-pickle-import", "suspicious-pickle-usage"]
 # The main process sends its workers the index, pickled once for them all.
 "constricter/cli/schedule.py" = ["suspicious-pickle-import", "suspicious-pickle-usage"]
+# What the workers are sent, pickled and read back.
+"tests/fix/core/test_known.py" = ["assert", "suspicious-pickle-import", "suspicious-pickle-usage"]
 # `--infer-with` starts the type checker's language server, from a fixed table of commands (and
 # asks it its version, to see it runs).
-"constricter/cli/{hints,guard,protocol}.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
+"constricter/cli/{hints,guard,paths,protocol}.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The generator's modules import `constricter`'s without its `__init__`, which loads the tables.
 "stdlib_tables/__init__.py" = ["non-empty-init-module"]
 "tests/corpus/corpus_sources.py" = ["suspicious-url-open-usage"] # downloads only its pinned https URLs
-"tests/cli/test_cli.py" = ["suspicious-url-open-usage"] # fetches the SARIF schema from its pinned URL
+"tests/cli/test_output.py" = ["suspicious-url-open-usage"] # fetches the SARIF schema from its pinned URL
 
 [tool.mypy]
 files = ["constricter", "stdlib_tables", "tests", "hatch_build.py"]
@@ -246,7 +274,10 @@ required-version = ">=0.12.17"
 testpaths = ["tests"]
 addopts = ["--strict-markers", "--strict-config"]
 # pytest-xdist's own, registered here for the runs without it (CI's).
-markers = ["xdist_group: tests that `--dist loadgroup` gives one worker"]
+markers = [
+    "xdist_group: tests that `--dist loadgroup` gives one worker",
+    "interpreted: tests that patch a module mypyc compiles, skipped on a compiled build (its callers call past a patch)",
+]
 filterwarnings = ["error"]
 xfail_strict = true
 cache_dir = "local/.pytest_cache"
@@ -282,6 +313,16 @@ forbidden_modules = [
     "constricter.plugins",
 ]
 
+# What `deptry constricter` holds the package's imports to: its dependencies (none) and extras. CI's
+# lint runs it again over the code only a checkout runs, for an import no group declares: deptry
+# takes every dependency group for a dev one, so it can't tell one group's code from another's.
+[tool.deptry]
+known_first_party = ["constricter", "hatch_build", "stdlib_tables", "tests"]
+
+[tool.deptry.per_rule_ignores]
+DEP002 = ["flake8"] # the flake8 extra's plugin is an entry point, importing flake8 for its types alone
+DEP003 = ["astroid"] # pylint's AST, the API a pylint plugin is written against, versioned by pylint
+
 [tool.coverage.run]
 data_file = "local/.coverage"
 source = ["constricter"]
@@ -299,6 +340,13 @@ follow_imports = "skip"
 follow_imports_for_stubs = true  # numpy ships `.pyi` stubs, which `follow_imports` alone doesn't cover
 
 # What only basedpyright has: pyrightconfig.json, which both it and Pyright read, extends this.
+[tool.pyrefly]
+# Beside basedpyright and mypy: what neither finds. The dev venv's packages (see CONTRIBUTING,
+# Development), and the oldest Python the project supports.
+project-includes = ["constricter", "stdlib_tables", "tests", "hatch_build.py"]
+python-interpreter-path = "local/.venv/bin/python"
+python-version = "3.11"
+
 [tool.basedpyright]
 typeCheckingMode = "all"
 # astroid (pylint's AST) and fastjsonschema (the SARIF test's validator) ship no annotations.

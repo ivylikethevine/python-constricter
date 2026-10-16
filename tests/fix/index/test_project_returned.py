@@ -10,6 +10,7 @@ import pytest
 from constricter.cli import command as cli
 from constricter.cli import schedule
 from constricter.cli.runs import CheckRun, FileRun
+from constricter.cli.workers import Again
 from constricter.fix.core.known import Outside, Returns
 from constricter.fix.index import linked, order, project
 
@@ -276,6 +277,53 @@ def test_a_worker_checks_again_only_what_imports_something_new(tmp_path: Path) -
         seen.append(path)
         return CheckRun()
 
-    assert schedule.check_asked(check, ([(first, ())], {}, False)) == [CheckRun()]
-    assert schedule.check_asked(check, ([(first, ())], {}, True)) == [None]
+    assert schedule.check_asked(check, ([(first, ())], {}, Again.NO)) == [CheckRun()]
+    assert schedule.check_asked(check, ([(first, ())], {}, Again.RETURNED)) == [None]
     assert seen == [first]
+
+
+def test_a_worker_checks_again_a_kept_file_only_where_it_knows_more(tmp_path: Path) -> None:
+    """A file whose text is as it was is checked again only if anything it knows from outside changed."""
+    schedule.forget()
+    first: Path = _write(tmp_path / "a.py", CYCLE_A)
+    second: Path = _write(tmp_path / "b.py", CYCLE_B)
+    paths: list[Path] = [first, second]
+    schedule.know(schedule.sent(project.index(paths)))
+    seen: list[Path] = []
+
+    def check(path: Path, _known: Outside) -> FileRun:
+        seen.append(path)
+        return CheckRun()
+
+    assert schedule.check_asked(check, ([(first, ())], {}, Again.OUTSIDE)) == [CheckRun()]  # never checked
+    assert schedule.check_asked(check, ([(first, ())], {}, Again.OUTSIDE)) == [None]
+    _ = _write(second, "def f() -> str:\n    return ''\n")
+    schedule.know(schedule.sent(project.spliced(project.index(paths), [project.read(second)])))
+    assert schedule.check_asked(check, ([(first, ())], {}, Again.OUTSIDE)) == [CheckRun()]
+    assert seen == [first, first]
+
+
+# What `--likely` writes in one run: a guess in `lib.py`, then what `use.py` reads of it, certain.
+GUESSED_RETURN: Final = "    got: Thing = make()\n"
+
+
+@JOBS
+@pytest.mark.parametrize("jobs", ["1", "2"])
+def test_fix_likely_checks_again_what_reads_a_guess_another_file_wrote(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    jobs: str,
+) -> None:
+    """A likely guess one file declares makes what another reads of it certain: in the same run.
+
+    The file that writes it is indexed again, and the files whose view of it changed checked again.
+    """
+    lib: str = "class Thing: ...\n\ndef make():\n    thing = Thing()\n    return thing\n"
+    _ = _write(tmp_path / "lib.py", lib)
+    use: Path = _write(tmp_path / "use.py", "from lib import make\n\ndef f() -> None:\n    got = make()\n")
+    _ = _write(tmp_path / "other.py", "def g() -> None:\n    n = 1\n")
+    assert cli.main([f"--jobs={jobs}", "--fix", "--likely", "-q", str(tmp_path)]) == cli.EXIT_CLEAN
+    assert GUESSED_RETURN in use.read_text(encoding="utf-8")
+    _ = capsys.readouterr()
+    assert cli.main([f"--jobs={jobs}", "--diff", "--likely", "-q", str(tmp_path)]) == cli.EXIT_CLEAN
+    assert not capsys.readouterr().out

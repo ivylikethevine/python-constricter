@@ -1,8 +1,8 @@
-# The 40 packages the seven don't stand for, every way: every step, a suite's own tests, type checks
-# and traced tests after each fix, recorded as docs/RUNS.md's `Mega corpora` section. The machine
-# sizes it: each step starts once the CPUs and the memory it took in the last run are free
-# (`sizing`); `cpus` and `memory` under `[run]` share out less. A stopped run carries on with
-# `--resume FOLDER`.
+# Every corpus, every way: every step, a suite's own tests, type checks and traced tests after each
+# fix, recorded as docs/RUNS.md's `Mega corpora` section. `--minus super` measures only the slow
+# corpora it adds to `super`'s. The machine sizes it: each step starts once the CPUs and the memory
+# it took in the last run are free (`sizing`); `cpus` and `memory` under `[run]` share out less. A
+# stopped run carries on with `--resume FOLDER`.
 
 [run]
 label = "mega"

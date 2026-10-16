@@ -11,7 +11,7 @@ import pytest
 from constricter import Offence, check_source
 from constricter.cli import schedule
 from constricter.fix.index import decorated, project
-from constricter.rules import annotations
+from constricter.rules import declarations
 from constricter.rules.decorators import Held
 
 _Fixes: TypeAlias = dict[str, str | None]
@@ -287,10 +287,10 @@ def test_an_instance_and_a_subclass_have_the_class_side_methods_too() -> None:
 
 def test_class_side_methods_under_other_decorators_are_held() -> None:
     """Those the module can't vouch for alone, each with those decorators."""
-    assert annotations.held_class_methods(ast.parse(textwrap.dedent(_LOCAL))) == {
+    assert declarations.held_class_methods(ast.parse(textwrap.dedent(_LOCAL))) == {
         "Box": {"registered": Held("int", ("other.registered",))},
     }
-    assert annotations.held_class_methods(ast.parse(textwrap.dedent(_MODELS))) == {
+    assert declarations.held_class_methods(ast.parse(textwrap.dedent(_MODELS))) == {
         "Row": {
             "from_pairs": Held("Row", ("compat",)),
             "boxed": Held("int", ("boxed",)),

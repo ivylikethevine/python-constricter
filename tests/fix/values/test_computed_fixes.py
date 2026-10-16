@@ -19,8 +19,8 @@ LOCAL: str = "LVA001"  # an unannotated local's code
         ("n * ratio", "float"),
         ("flag + flag", "int"),
         ("n ** 2", "int"),
-        ("n ** -1", None),  # a float
-        ("n ** n", None),  # by a negative `n`, a float
+        ("n ** -1", "float"),
+        ("n ** n", "float"),  # an `int` or, by a negative `n`, a `float`: a `float` takes both
         ("flag ** 2", "int"),
         ("ratio ** 2", "float"),
         ("ratio ** n", "float"),

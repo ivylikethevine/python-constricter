@@ -6,6 +6,142 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- The flake8 plugin no longer breaks another plugin that deep-copies a node, as pydoclint's does:
+  the check it keeps on a module's tree isn't copied with it.
+- `--fix` types a list, set or dict display its function adds to later by what's added too: numbers
+  as the widest of them (`xs = [0]`, then `xs.append(0.5)`, a `list[float]`), others as their union
+  (a guess), and nothing where what's added isn't known. An integer's `**` by an integer that isn't
+  a literal is a `float`, which takes the `int` it may be too.
+- `--fix` types an index into a `list` or a `tuple[T, ...]` as its element only where the index is
+  typed `int`: one of another or no known type may be a slice (`list(range(n))[key]`, `key` an
+  `int | slice`, isn't an `int`).
+- The corpus runner sizes a suite's measured tests by the CPUs they kept busy, a margin over, with
+  as many workers as before; a suite traced by its own script as one process; and a step the run's
+  solver starts first, or whose chain lasts longer, isn't held back for one past its patience. Its
+  plan holds each step to what the runner will hold for it. `tests-released = false` takes a suite's
+  released tests from the latest earlier run at the suite's tag: `runs/super-fast.toml` and
+  `runs/mega-fast.toml` run a suite's tests only after each fix, and trace none. Its witness counts
+  a `SimpleNamespace`, and an annotation naming a test's class where a test patched the name, as
+  telling nothing, and a module's class imported anew as the one it names.
+
+- The corpus runner plans its steps' order with OR-Tools' CP-SAT from what they took in the last
+  runs, where it's installed (the dev group has it), and lets a step start beside one kept waiting
+  when it ends before that one could start; `queue.log` in a run's folder says each minute what's
+  running and why each step waits.
+- `--infer-with` remembers a file a checker hung on by the checker's installed version, so an
+  install of the same version doesn't forget it, and by the file's path for an hour, so the pass
+  after `--fix` leaves out the text it fixed too.
+- The corpus runner starts a suite's work as soon as what it reads is there: its tests and type
+  checks are a part per fix, each on a checkout of the suite's own once that fix is made, a suite
+  with `at-once` running that many side by side. A step waiting for the machine holds no port or
+  checkout, and holds back none that could start. Its witness counts a test's own class as telling
+  nothing, and a class a function makes again at each call as the one it names; its tables are
+  written with LF line ends; and websockets' tests wait as long as its own CI's do.
+- The corpus runner starts a step whose last run took 5 minutes at most beside one that has waited
+  past its patience, rather than keeping what's free from it: replayed, the last super run takes 75
+  minutes from 85, on 16CPU/60GB.
+- The corpora's sets nest: `original` (the seven a release records) within `super` (and every fast
+  corpus) within `mega` (every corpus), and every corpus is in one of four sets by its size and its
+  time (`fast-small`, `fast-large`, `slow-small`, `slow-large`). `--minus NAME` leaves a corpus's, a
+  set's or a run file's corpora out of a run: `super.toml --minus original` measures only what
+  `super` adds, and doesn't publish. `runs/basic.toml` measures the seven every way `super.toml` and
+  `mega.toml` measure theirs, as RUNS.md's `Basic corpora` section.
+- A plain class's variable bound by name to a checked file's class (`form_class = LoginForm`) is a
+  `type[LoginForm]`, a guess, where every class above it is in sight and none above or under it
+  binds the variable; what reads it is typed by it (`self.form_class()`). 42 fixes more on Django,
+  36 on the standard library, 2 on pandas.
+- The corpus runner takes a share of the machine (`share` in a run file, or `--share 75`): its steps
+  are sized to that percent of its CPUs and memory (no more of the memory than 80% of what's free),
+  and held to it together where systemd starts them, in a slice whose CPU quota and memory ceiling
+  those are, so what else runs keeps the rest.
+- The methods a file calls are worked out once for it, not again for each class it can name, and a
+  class's overloaded methods are looked up by the class, not by each method the file calls: a check
+  of the standard library in one process takes 43s, from 54s, and of pandas 53s, from 62s.
+- A file checked again knowing its parameters finishes only the scopes it checks anew: its second
+  round costs 7% of its first on pip, from 11%, and under that on the standard library, django and
+  pandas, with the same findings.
+- A name is followed through what a module imports for type checking alone too, as a package's
+  `__init__` does what it imports only when it's asked for: `from pydantic import TypeAdapter` types
+  what's read of one. 42 fixes more on pydantic's checkout with its tests, none lost.
+- A class spelled through a module a file imports (`test.test_x.C`) has its line of bases worked out
+  only when the check asks for it, and one whose members the file takes none of is known as a class
+  only where the file writes it: what a check knows of the standard library's files from outside
+  them is 8 MiB, from 54 MiB, with the same fixes.
+- `fix-widen`'s `unions` joins a guessed value's type too, the union a guess resting on it, and
+  never a `Self`; a class a package re-exports (`pd.DataFrame`) is the one its module defines; and
+  the members of a class an overloaded method's return imports type what's read of it in the same
+  pass (`df.explode()` after `df = pd.DataFrame(...).set_index("C")`). With every `fix-widen` kind,
+  a second `--fix --unsafe-fixes` pass leaves nothing on the seven corpora, where it typed 12
+  bindings; pandas gets 25 fixes more without widening.
+- A wheel compiled with mypyc for each platform and CPython 3.11 to 3.14, which pip picks where it
+  can: the same findings and fixes, a check of pydantic about a fifth faster in one process. The
+  pure wheel stays, for PyPy, free-threaded builds and anywhere else.
+- Every module is under 900 lines: the 14 past it are split along what they grouped, into
+  `fix/index/stub_signatures.py` and `crossed.py`, `fix/values/stored.py` and `loops.py`,
+  `fix/libraries/receivers.py`, `rules/declarations.py`, `scoped.py` and `settings.py`, and
+  `stdlib_tables/accepting.py` and `configured.py`, and their tests; the tables they generate are
+  the same.
+- The corpus runner's standard library is CPython 3.14.7's source release (`Lib`, hash-pinned in
+  `corpora.toml`), not the running Python's own: any Python 3.14 runs the corpora, a prebuilt one
+  too, where a prebuilt one checked 662 of the 1,867 files (it has no `test` package).
+- `--jobs` workers are told the index through a file each maps, written once: a pool pickled it
+  again down each worker's pipe, every copy held at once. Telling 16 workers the standard library's
+  takes 0.28s, from 0.33s, and nothing more is held as it's told.
+- `--fix --likely` checks again, in the same run, what another file's guess made certain: the files
+  a round changed are indexed again, and each other file is checked again where what it knows from
+  outside changed (and only there: by the `Outside` its last check had). A second pass fixed 2 lines
+  of Twisted's, 1 of dask's and 1 of the standard library's, and now none; a run's later rounds go
+  to its workers whatever their size.
+- On a free-threaded Python a check no longer collects after every file: its collector has no
+  generations, and each collection looked through every kept tree. pandas's `core` checks in 3.9s in
+  one process there, from 11.4s.
+- Under a directory in a git checkout, only what git tracks or would is checked: nothing a
+  `.gitignore` names. A path named on the command line is checked regardless, and `--no-gitignore`
+  (`gitignore = false` in `[tool.constricter]`) walks the directory whole, as before.
+- A directory walk enters no directory it skips: a project's `.venv`, `node_modules` and `.git` were
+  listed whole, then dropped.
+- The cache of installed modules' reads is swept as it's written to, a day apart at most: what's
+  unread for a month goes, and what's over 256 MB. Each constricter version has its own part of it;
+  the entries written before, which nothing removed, go on the first sweep.
+- The standard-library tables are generated with `typeshed-client` reading the stubs (a build
+  dependency, pinned in `uv.lock`): the same tables, byte for byte.
+- The corpus runner sizes a step by a run of its own label first, holds `check` and `census` for the
+  most either took (the first to start runs the check both read), and counts a short step's memory
+  by the system's own total. Its tests import on Windows again.
+- `--fix --likely` leaves a second pass nothing: a file a round wrote a guess in is checked again in
+  the same run, since what rests on that guess and on no other is certain once it's declared
+  (`held = thing if flag else None` after `thing: Thing = Thing()`). A second pass still fixed 3
+  lines of pydantic's.
+- A capitalised standard-library name the stubs bind to a function is no longer guessed to construct
+  a class: `multiprocessing.Value`, `Lock`, `Pool` and 11 more (a context's methods), and
+  `gettext.Catalog`. The `functions` table lists a capitalised variable that names no class too.
+- `--fix` names a class defined in a class's body through that class, in a function or at the
+  module's top level: `names: Group._Names`, where a name bound to one had no fix (its bare name is
+  the class body's alone). Not where two classes define a class of that name, or the class that
+  defines it isn't the module's own.
+- The standard library's modules only some platforms have are read from typeshed, as a generated
+  table (`platform`): 35 from the 19 listed by hand, submodules among them
+  (`asyncio.windows_events`, `multiprocessing.popen_fork`, `msilib`, `_posixsubprocess`).
+- A fix's tier is decided once: `Offence.tier` (`offences.Tier`: certain, likely, guess), which
+  `--likely` and the corpus runner read.
+- `python -m constricter.trace` follows a function no longer once it adds nothing, whatever it is. A
+  generator's or a coroutine's returns are counted as any function's where the interpreter tells of
+  a return apart from a `yield` (`sys.monitoring`), and a function that runs 50,000 lines with
+  nothing new, never returning, is followed no more. Each line costs less too: its number is taken
+  as given, its function looked up once, and a class's name kept. pygments's 5,346 tests, 9s
+  untraced, take 12s traced, from 121s; 87 fixes rest on their trace, for 89.
+- The corpus runner starts more at once and runs less. Every corpus's steps wait for the machine
+  alone (`at-once` now bounds the corpora cloned and installed side by side), the step with the most
+  still behind it first, and what's free is kept for one that waited five minutes; a running step's
+  hold follows what it's using. A suite's traced tests start once `fix-unsafe` has ended and the
+  other steps have their copies, and its type checks run beside its tests, on a checkout of their
+  own. Its tests run after every guess first: the same as released, they stand for the tiers under
+  it (`implied` in the tests table), and `tests-hinted = false` in a run file leaves out the runs
+  after a checker's hints and the trace's fix. One check at `suffocate` gives every level's counts
+  and the census (`every-level = true` checks at each, as CI's does). A traced run finds
+  `constricter` alone on its path, not this checkout's `tests`. A run's `mechanisms` table counts
+  each fix's fixes by their whole set of mechanisms and by tier. tox's and narwhals's tests run on
+  workers (82s to 18s, and 74s to 19s).
 - A corpus runner, `python -m tests.corpus RUN.toml`: a run file names the corpora, the constricter
   versions, the steps and the formats, and each execution writes a folder of its own
   (`local/corpus-runs/<label>-<month>-<day>-<year>-<time>/`) with a record for each corpus, version

@@ -3,12 +3,15 @@
 
 import contextlib
 import copy
+import enum
 import gc
 import importlib
+import mmap
+import tempfile
 from collections.abc import Callable, Collection, Generator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Self, TypeAlias, cast
+from typing import TYPE_CHECKING, BinaryIO, Final, Self, TypeAlias, cast
 
 from constricter.cli import collecting
 from constricter.cli.paths import shares
@@ -19,17 +22,32 @@ from constricter.rules import parsed
 
 if TYPE_CHECKING:  # slow to import, and only needed for many files
     from concurrent.futures import Future, ProcessPoolExecutor
+    from multiprocessing.context import DefaultContext
 
 # A worker's answers, one per file of its share: what it read (to index), and what it found.
 _Reading: TypeAlias = "Future[list[project.Module | None]]"
 _FIRST_COMPLETED: Final = "FIRST_COMPLETED"  # `concurrent.futures.FIRST_COMPLETED`
 _Check: TypeAlias = Callable[[Path, Outside], FileRun]
-# A worker's files to check: each with its hints; what checked modules' functions return since it
-# was last told; and whether a file is checked only if what it imports returns something else now.
 File: TypeAlias = tuple[Path, tuple[Hints, ...]]
-Asked: TypeAlias = tuple[Sequence[File], Mapping[str, Returns], bool]
+
+
+class Again(enum.Enum):
+    """Which of a worker's files asked about again it checks: those whose last check knew otherwise."""
+
+    NO = "no"  # each, whatever it was last checked knowing
+    RETURNED = "returned"  # each whose imports return something else now
+    OUTSIDE = "outside"  # each that knows anything else from outside now (its text as it was)
+
+
+# A worker's files to check: each with its hints; what checked modules' functions return since it
+# was last told; and which of them it checks.
+Asked: TypeAlias = tuple[Sequence[File], Mapping[str, Returns], Again]
 Answering: TypeAlias = "Future[list[FileRun | None]]"  # a worker's answer for the files it was asked
 _Wait: TypeAlias = Callable[..., tuple[set[object], set[object]]]  # `concurrent.futures.wait`: done, and not
+_FORKSERVER: Final = "forkserver"  # Python 3.14's start method on Linux
+_PRELOADED: Final = ["constricter.cli.command"]  # what a fork server imports before forking a worker
+_TOLD: Final = "told.pickle"  # in the workers' directory: what they're all told, once (see `Workers.tell`)
+Told: TypeAlias = bytes | mmap.mmap  # what `Workers.tell` gives each worker: a file's contents, mapped
 
 
 class Workers:
@@ -45,6 +63,7 @@ class Workers:
         self.shares: list[list[int]] = shares(paths, jobs)
         self.stack: contextlib.ExitStack = contextlib.ExitStack()
         self.pools: list[ProcessPoolExecutor] = []  # started by `__enter__`
+        self.told: Path = Path()  # in a directory of their own, made by `__enter__`
 
     def __enter__(self) -> Self:
         """Start the workers, one process each, each with its part of the budget.
@@ -53,6 +72,9 @@ class Workers:
           Them.
 
         """
+        _preload()
+        # Before the pools: they stop first, as the stack unwinds, and the directory goes after.
+        self.told = Path(self.stack.enter_context(tempfile.TemporaryDirectory(prefix="constricter-"))) / _TOLD
         self.pools = [
             self.stack.enter_context(
                 cast(
@@ -94,6 +116,15 @@ class Workers:
           The index, as one process would build it.
 
         """
+        return project.indexed(self.read())
+
+    def read(self) -> list[project.Module | None]:
+        """Read every file, each worker its share, keeping its tree to check (see `project.read`).
+
+        Returns:
+          Each file's module, in their order, as one process reads them.
+
+        """
         read: list[_Reading] = [
             pool.submit(_read_share, [self.paths[at] for at in share])
             for pool, share in zip(self.pools, self.shares, strict=True)
@@ -103,11 +134,16 @@ class Workers:
         future: _Reading
         for share, future in zip(self.shares, read, strict=True):
             found.update(zip(share, future.result(), strict=True))
-        return project.indexed(found[at] for at in range(len(self.paths)))  # in their order, as one at a time
+        return [found[at] for at in range(len(self.paths))]
 
-    def tell(self, function: Callable[[bytes], None], told: bytes) -> None:
-        """Run `function(told)` in every worker, and wait for them all: what each is to know from then on."""
-        telling: list[Future[None]] = [pool.submit(function, told) for pool in self.pools]
+    def tell(self, function: Callable[[Told], None], told: bytes) -> None:
+        """Run `function(told)` in every worker, and wait for them all: what each is to know from then on.
+
+        `told` is written once, to a file each worker maps (`_mapped`): a pool would pickle it again
+        on its way down each worker's pipe, every copy held at once.
+        """
+        _ = self.told.write_bytes(told)
+        telling: list[Future[None]] = [pool.submit(_mapped, function, self.told) for pool in self.pools]
         each: Future[None]
         for each in telling:
             each.result()
@@ -155,6 +191,16 @@ def kept() -> Generator[None]:
             _KEPT.stack = _KEPT.workers = None
 
 
+def running() -> bool:
+    """Check whether the run's workers (see `kept`) have started: its later rounds are theirs to check.
+
+    Returns:
+      Whether they have.
+
+    """
+    return _KEPT.workers is not None
+
+
 def started(paths: Sequence[Path], jobs: int) -> Workers:
     """Start workers for `paths`, or ask the run's (see `kept`) about these of their files.
 
@@ -177,6 +223,30 @@ def first_done(pending: Collection[Answering]) -> set[Answering]:
     """
     wait: _Wait = cast("_Wait", importlib.import_module("concurrent.futures").wait)
     return cast("set[Answering]", wait(pending, return_when=_FIRST_COMPLETED)[0])
+
+
+def _preload() -> None:
+    """Have a fork server import constricter, its tables read, before it forks a worker.
+
+    Its own default imports a script's `__main__` alone: under `python -m constricter` each worker
+    would import constricter itself as it starts. Once the server runs, this changes nothing; a
+    forked worker has the parent's imports, and a spawned one imports its own whatever this says.
+    """
+    get_context: Callable[[], DefaultContext] = cast(
+        "Callable[[], DefaultContext]",
+        importlib.import_module("multiprocessing").get_context,
+    )
+    context: DefaultContext = get_context()
+    if context.get_start_method() == _FORKSERVER:
+        context.set_forkserver_preload(_PRELOADED)
+
+
+def _mapped(function: Callable[[Told], None], told: Path) -> None:
+    """Run `function` on the contents of the file `told`, mapped, in a worker (see `Workers.tell`)."""
+    file: BinaryIO
+    mapped: mmap.mmap
+    with told.open("rb") as file, mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as mapped:
+        function(mapped)
 
 
 def _started(processes: int) -> None:

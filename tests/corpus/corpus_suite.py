@@ -43,6 +43,8 @@ from pathlib import Path
 from typing import IO, Final, NamedTuple, TypeAlias, cast
 
 from constricter import recording
+from constricter.empty import Empty
+from constricter.offences import Tier
 from tests.corpus import catalog
 
 _Json: TypeAlias = "str | int | bool | list[_Json] | dict[str, _Json] | None"
@@ -91,7 +93,7 @@ _STOPPED: Final = "(stopped:"
 _TIMED_OUT: Final = f"ERROR {_STOPPED} it ran too long)"  # read as a failure (see `_FAILED`)
 _GIGABYTE: Final = 2**30
 _MEMORY_SHARE: Final = 2  # the tests' workers' part of the machine's memory: a half
-SUITES: Final = catalog.load().suites(catalog.SEVEN)  # the seven corpora's, as `corpora.toml` has them
+SUITES: Final = catalog.load().suites(catalog.ORIGINAL)  # the seven corpora's, as `corpora.toml` has them
 # Written once every install command has succeeded: a hash of them, so changed ones are run again.
 _INSTALLED: Final = ".venv/corpus-suite-installed"
 # Each checker's settings file, what an empty one holds, and the `pyproject.toml` sections that stand
@@ -132,6 +134,9 @@ _Traceable: TypeAlias = tuple[list[list[str]], list[str]]
 TRACE_FILE: Final = ".venv/corpus-suite-trace.json"  # a checkout's tests' trace: out of its source's way
 _MODULE: Final = ("python", "-m")  # how a suite's tests start, where a module runs them
 _TRACER: Final = ("constricter.trace", "--output", TRACE_FILE, "--root", ".")
+# In a checkout: a directory with this checkout's `constricter` alone, for a traced run's path. Not
+# this checkout's root, whose `tests` package a suite's own would then share the path with.
+_TRACER_PATH: Final = ".venv/corpus-suite-path"
 TRACER_VARIABLE: Final = "CORPUS_TRACER"  # set: another module that traces as it does, and where it is
 
 
@@ -374,15 +379,21 @@ def _summary(output: str) -> str:
 def tested(root: Path, suite: Suite, keep: Path | None) -> Outcome:
     """Run the checkout's tests, writing their output to `keep` unless it's `None`.
 
+    Its parts side by side, as many at once as it has workers.
+
     Returns:
       Their outcome.
 
     """
-    outputs: list[str] = []
-    command: list[str]
-    for command in _commands(suite):
+
+    def run(command: list[str]) -> str:
         done: subprocess.CompletedProcess[str] = _completed(_venv(root, command), root, seconds=_TEST_SECONDS)
-        outputs.append(_COLOUR.sub("", done.stdout + done.stderr))
+        return _COLOUR.sub("", done.stdout + done.stderr)
+
+    commands: list[list[str]] = _commands(suite)
+    pool: ThreadPoolExecutor
+    with ThreadPoolExecutor(max(1, min(workers(suite), len(commands)))) as pool:  # parts side by side
+        outputs: list[str] = list(pool.map(run, commands))
     if keep is not None:
         keep.parent.mkdir(parents=True, exist_ok=True)
         _ = keep.write_text("\n".join(outputs), encoding="utf-8")
@@ -393,10 +404,12 @@ def _commands(suite: Suite) -> list[list[str]]:
     """Write the commands that run the suite's tests: one, or one for each of its parts.
 
     Returns:
-      Each one's words, its processes counted in.
+      Each one's words, its processes counted in: one each where its parts are its workers.
 
     """
-    command: list[str] = [word.replace(_WORKERS, str(workers(suite))) for word in suite.tests]
+    command: list[str] = [
+        word.replace(_WORKERS, str(1 if suite.parts else workers(suite))) for word in suite.tests
+    ]
     return [[*command, *shlex.split(part)] for part in suite.parts] or [command]
 
 
@@ -458,6 +471,23 @@ def traceable(suite: Suite) -> bool:
     return _traceable(suite) is not None
 
 
+def tracer_path(root: Path) -> Path:
+    """Make the directory a traced run of the checkout at `root` finds `constricter` in (`_TRACER_PATH`).
+
+    Returns:
+      It: this checkout's `constricter` package, linked, and nothing else.
+
+    """
+    path: Path = root / _TRACER_PATH
+    link: Path = path / "constricter"
+    package: Path = Path(__file__).resolve().parents[2] / "constricter"
+    if not link.is_symlink() or link.resolve() != package:
+        path.mkdir(parents=True, exist_ok=True)
+        link.unlink(missing_ok=True)
+        link.symlink_to(package, target_is_directory=True)
+    return path
+
+
 def traced(root: Path, suite: Suite, keep: Path | None = None) -> tuple[str, Outcome] | None:
     """Run the checkout's tests as released under `python -m constricter.trace`, which writes `TRACE_FILE`.
 
@@ -474,7 +504,7 @@ def traced(root: Path, suite: Suite, keep: Path | None = None) -> tuple[str, Out
     if (target := _traceable(suite)) is None:
         return None
     tracer: list[str] = os.environ.get(TRACER_VARIABLE, _TRACER[0]).split(os.pathsep)  # and its directory
-    path: list[str] = [str(Path(__file__).resolve().parents[2]), *target[1], *tracer[1:]]
+    path: list[str] = [str(tracer_path(root)), *target[1], *tracer[1:]]
     outputs: list[str] = []
     traces: list[recording.Found] = []
     part: list[str]
@@ -697,7 +727,7 @@ class Compared(NamedTuple):
     errors: int
     gone: int
     new: list[Blamed]
-    fixes: Mapping[str, Sequence[Fix]] = {}  # every fix the run made, per file
+    fixes: Mapping[str, Sequence[Fix]] = Empty()  # every fix the run made, per file
 
 
 def blamed(
@@ -722,6 +752,7 @@ def blamed(
     for complaint in _new(root, after, now - before, files):
         file: _Fixed = _file(root, files, complaint.path)
         fix: Fix | None = _blamed(complaint, file, made[0].get(complaint.path, []))
-        guess: str = " (likely)" if fix and fix.likely else " (guess)" if fix and fix.unsafe else ""
+        tier: Tier = Tier.of(unsafe=bool(fix and fix.unsafe), likely=bool(fix and fix.likely))
+        guess: str = "" if tier is Tier.CERTAIN else f" ({tier.value})"
         new.append(Blamed(complaint, fix, "(untraced)" if fix is None else fix.kinds + guess))
     return Compared(made[1], len(after), (before - now).total(), new, made[0])

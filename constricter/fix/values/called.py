@@ -6,6 +6,10 @@ A local, an attribute or anything else typed `Callable[..., R]` gives `R` (`hand
 `type(self)()`), as does `__new__` given one (`cls.__new__(cls)`, `object.__new__(cls)`); and an
 instance of a class that declares `__call__`, what that returns. Not a callable that may be `None`
 (a union's call is narrowed first), nor an `R` that is `None`.
+
+And a call typed by its callee's name alone (`typed_call`): a checked file's function's declared
+return, a fixed-return builtin's, or a class it's taken to construct, by its capitalised name
+(`constructs`).
 """
 
 import ast
@@ -13,8 +17,11 @@ from collections.abc import Callable, Mapping
 from typing import Final, TypeAlias
 
 from constricter.fix.core.known import ImportPlan, Inference, Known
+from constricter.fix.libraries import stdlib
 from constricter.fix.values.members import member, parsed
-from constricter.rules.annotations import node_name
+from constricter.fix.values.returns import BUILTIN_RETURNS
+from constricter.offences import CONSTRUCTOR
+from constricter.rules.annotations import GENERICS, dotted, node_name
 
 _Infer: TypeAlias = Callable[[ast.expr], Inference | None]
 _CALLABLE: Final = "Callable"
@@ -104,3 +111,84 @@ def _returned(callee: str, spelled: str, call: ast.Call, known: Known) -> Infere
             return None if made is None else Inference(ast.unparse(made), reason, _KIND)
         case _:
             return member(callee, _CALL, call, known)
+
+
+# Calls that return a class or a special form, not an instance of what they're named.
+_FACTORIES: Final = frozenset(
+    {
+        "Enum",
+        "Flag",
+        "IntEnum",
+        "IntFlag",
+        "NamedTuple",
+        "NewType",
+        "ParamSpec",
+        "StrEnum",
+        "TypeAliasType",
+        "TypeVar",
+        "TypeVarTuple",
+        "TypedDict",
+    },
+)
+
+
+def typed_call(value: ast.expr, known: Known) -> Inference | None:
+    """Infer a call by its callee's name alone (see the module docstring).
+
+    Returns:
+      The inference, or `None` for a callee typed no such way.
+
+    """
+    func: ast.expr
+    name: str
+    callee: str | None
+    match value:
+        case ast.Call(func=ast.Name() | ast.Attribute() as func) if (callee := dotted(func)) in known.calls:
+            return Inference(
+                known.calls[callee or ""],
+                f"`{callee}`'s declared return type",
+                frozenset({"call"}),
+            )
+        case ast.Call(func=ast.Name(id=name)) if name in BUILTIN_RETURNS and known.is_builtin(name):
+            return Inference(BUILTIN_RETURNS[name], f"`{name}`'s fixed return type", frozenset({"builtin"}))
+        case ast.Call(func=ast.Name() | ast.Attribute() as func) if (
+            (constructs(node_name(func), known.factories) or dotted(func) in known.classes)
+            and _type_expression(func, known)
+            and stdlib.resolved(func, known.names.stdlib) not in stdlib.FUNCTIONS
+        ):
+            return Inference(
+                ast.unparse(func),
+                f"a call to `{ast.unparse(func)}`, taken to construct one",
+                frozenset({CONSTRUCTOR}),
+            )
+        case _:
+            return None
+
+
+def _type_expression(func: ast.Name | ast.Attribute, known: Known) -> bool:
+    """Check that a callee can be written as a type: a (dotted) name starting with a class or module.
+
+    Not a call's attribute (`_tables().Filters`), nor through a name the module binds as a value
+    somewhere (`Klass = ...`, `jinja2 = import_optional_dependency("jinja2")`, `self`): a type
+    checker rejects a variable in a type.
+
+    Returns:
+      Whether it can.
+
+    """
+    path: str | None = dotted(func)
+    plan: ImportPlan | None = known.names.plan
+    return path is not None and (plan is None or path.partition(".")[0] not in plan.values)
+
+
+def constructs(name: str, known_factories: frozenset[str]) -> bool:
+    """Check whether a call to `name` constructs a class, by its capitalised name.
+
+    Returns:
+      Whether it does, and is worth annotating: `name` isn't a known factory, by import
+      (`known_factories`) or by its bare name (`_FACTORIES`, for one imported some other way).
+
+    """
+    return (
+        name[:1].isupper() and name not in known_factories and name not in _FACTORIES and name not in GENERICS
+    )

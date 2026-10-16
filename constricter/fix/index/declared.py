@@ -4,7 +4,7 @@
 `declarations` reads, from a module's top level: each function whose arguments decide its return
 (`@overload`s, or a return naming a type variable) with its signatures as written; type aliases
 (`X: TypeAlias = ...`, `type X[T] = ...`, `X = A | B`); type variables' bounds and constraints; and
-protocols' members. All as source text, for `constricter.fix.index.stubbed` to resolve across modules
+protocols' members. All as source text, for `constricter.fix.index.stub_signatures` to resolve across modules
 when a call needs them (`Module` keeps them, pickled into the installed modules' cache).
 """
 
@@ -12,7 +12,9 @@ import ast
 from collections.abc import Collection, Iterator, Mapping, Sequence
 from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter.rules.annotations import defined_type_vars, node_name
+from constricter.empty import Empty
+from constricter.rules.annotations import node_name
+from constricter.rules.declarations import defined_type_vars
 
 # A parameter: its name, kind (`p` positional only, `e` either, `k` keyword only, `a` `*args`,
 # `w` `**kwargs`), whether it has a default, and its annotation's text (`None`: unannotated).
@@ -53,7 +55,7 @@ class Class(NamedTuple):
     params: tuple[tuple[str, str | None], ...]
     bases: tuple[str, ...]
     methods: Mapping[str, tuple[Signature, ...]]
-    attributes: Mapping[str, str] = {}
+    attributes: Mapping[str, str] = Empty()
 
 
 class Alias(NamedTuple):
@@ -90,8 +92,8 @@ class Declarations(NamedTuple):
     exports: frozenset[str] | None = None
     # Classes generic only through a subscripted base (`class float64(floating[_64Bit])`), each with
     # the names in its bases' subscripts: generic if one is a type variable (see `installed`).
-    bases: Mapping[str, frozenset[str]] = {}
-    classes: Mapping[str, Class] = {}  # every class, for its methods
+    bases: Mapping[str, frozenset[str]] = Empty()
+    classes: Mapping[str, Class] = Empty()  # every class, for its methods
 
 
 def overloads(tree: ast.Module) -> dict[str, tuple[Signature, ...]]:
@@ -222,7 +224,7 @@ def _class(node: ast.ClassDef, type_vars: frozenset[str], variables: Mapping[str
     generic: list[ast.Subscript] = [
         base for base in subscripts if node_name(base.value) in {"Generic", _PROTOCOL}
     ]
-    known: frozenset[str] = type_vars | variables.keys()
+    known: frozenset[str] = type_vars.union(variables.keys())
     names: list[str] = list(
         dict.fromkeys(
             found.id

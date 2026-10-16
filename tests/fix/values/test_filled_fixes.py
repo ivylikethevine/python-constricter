@@ -319,3 +319,45 @@ def test_an_empty_container_is_typed_by_the_parameter_it_is_passed_to() -> None:
     assert kinds["names"] == {"filled"}
     shadowed: str = textwrap.dedent(_PASSED).replace("add_local: int", "add: int")
     assert {o.name: o.fix for o in check_source(shadowed)}["names"] is None  # a local of that name
+
+
+_DISPLAYED: Final = """
+def f(r: int, x: float, s: str, unknown) -> None:
+    same = [0]
+    same.append(2)
+    wider = [0]
+    wider.append(2**-r)
+    joined = [0]
+    joined.append(s)
+    untold = [0]
+    untold.append(unknown)
+    keyed = {"a": 1}
+    keyed["b"] = x
+    spread = {1}
+    spread.update([x])
+    many = [0]
+    many.append(s)
+    many.append(b"")
+    many.append(x)
+
+    def inner() -> None:
+        seen.append(s)
+
+    seen = [0]
+    print(same, wider, joined, untold, keyed, spread, many, seen)
+"""
+
+
+def test_a_display_added_to_later_takes_what_is_added() -> None:
+    """Numbers as the widest of them, others as their union (a guess); added unknown, no fix."""
+    found: list[Offence] = check_source(textwrap.dedent(_DISPLAYED))
+    assert {o.name: (o.fix, o.unsafe) for o in found if o.code == UNANNOTATED} == {
+        "same": ("list[int]", False),
+        "wider": ("list[float]", False),
+        "joined": ("list[int | str]", True),
+        "untold": (None, False),
+        "keyed": ("dict[str, float]", False),
+        "spread": ("set[float]", False),
+        "many": (None, False),  # more types than a union written for them
+        "seen": ("list[int]", False),  # a nested scope adds to it, out of sight: as its display
+    }

@@ -1,12 +1,11 @@
 # SPDX-License-Identifier: MIT
 """A corpus on disk, one tree for every step of a run.
 
-The standard library's directory; a suite's checkout at its pinned tag, whose settings
-(`pyproject.toml`) and environment (`.venv`) every constricter the run starts on it reads; or, for a
-corpus with no suite, its unpacked sdist's package.
+A suite's checkout at its pinned tag, whose settings (`pyproject.toml`) and environment (`.venv`)
+every constricter the run starts on it reads; or, for a corpus with no suite, its unpacked sdist's
+package (the standard library's: CPython's source release's `Lib`, whatever Python runs it).
 """
 
-import sysconfig
 from pathlib import Path
 from typing import NamedTuple
 
@@ -26,23 +25,22 @@ class Tree(NamedTuple):
     variables: dict[str, str] | None = None  # what the suite's commands need set
 
 
-def found(entry: Entry, *, install: bool = True) -> Tree:
+def found(entry: Entry, *, install: bool = True, settle: bool = True) -> Tree:
     """Find a corpus on disk, cloning and installing its suite or fetching its sdist the first time.
 
     Without `install`, a suite is cloned alone: its source and settings, with no environment to read
-    installed packages' types from, and no suite to run.
+    installed packages' types from, and no suite to run. Without `settle`, a suite's checkout is
+    left as it is, not taken back to its tag's source: its tests may be running on a fix's patch.
 
     Returns:
       Its tree.
 
     Raises:
-      ValueError: the entry has neither a suite nor an sdist, and isn't the standard library.
+      ValueError: the entry has neither a suite nor an sdist.
 
     """
     if entry.path:
         return Tree(entry.name, "", Path(entry.path).resolve())
-    if entry.stdlib:
-        return Tree(entry.name, sysconfig.get_python_version(), Path(sysconfig.get_paths()["stdlib"]))
     if entry.suite is not None:
         base: Path = corpus_suite.checkout(
             entry.name,
@@ -50,7 +48,8 @@ def found(entry: Entry, *, install: bool = True) -> Tree:
             install=install,
             variables=entry.environment,
         )
-        corpus_suite.reset(base, entry.suite)
+        if settle:
+            corpus_suite.reset(base, entry.suite)
         source: Path = base / entry.suite.source
         if not install:
             return Tree(entry.name, entry.version, source, base)

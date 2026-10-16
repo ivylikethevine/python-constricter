@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """The rules as a pylint plugin (C9101-C9112); reports the codes the level makes errors."""
 
-from typing import IO, TYPE_CHECKING, NamedTuple, cast, final
+from typing import IO, NamedTuple, cast, final
 
 from astroid import nodes
 from pylint.checkers import BaseRawFileChecker
@@ -33,21 +33,9 @@ from constricter.offences import (
     Level,
     Offence,
 )
+from constricter.overrides import override
 from constricter.rules.checker import check_source
 from constricter.rules.flow import parse_narrower
-
-if TYPE_CHECKING:
-    from typing_extensions import override  # `typing.override` is 3.12+
-else:
-
-    def override(func: object) -> object:
-        """Mark an override (for type checkers only).
-
-        Returns:
-          `func`, unchanged.
-
-        """
-        return func
 
 
 class Message(NamedTuple):

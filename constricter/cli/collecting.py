@@ -6,15 +6,21 @@ cyclic. Left to itself, the collector looked through the kept trees again and ag
 allocated: a third of the standard library's check (34s, 21s without). So while the command runs,
 it's off: what indexing built is frozen (never looked through again), and after each file, only
 what's been allocated since (the young generations) is collected, which bounds what a cycle can hold.
+Not on a free-threaded build, whose collector has no generations: each collection there looks through
+everything, and one after every file made a check several times as long. Its cycles wait for the run's
+end (a check of pandas held 2.9 GB so, to 2.7 GB).
 """
 
 import contextlib
 import gc
+import sysconfig
 from collections.abc import Generator
 from typing import Final
 
 _YOUNG: Final = 1  # the generations collected after each file: 0 and 1, never the frozen or the old
 _FREEZES: Final = hasattr(gc, "freeze")  # PyPy's collector has no freezing
+# Whether the collector has generations: a free-threaded build's has none, its GIL on or off.
+_YOUNGER: Final = not sysconfig.get_config_var("Py_GIL_DISABLED")
 
 
 @contextlib.contextmanager
@@ -44,4 +50,5 @@ def indexed() -> None:
 
 def sweep() -> None:
     """Collect what the file just checked left behind (see the module docstring)."""
-    _ = gc.collect(_YOUNG)
+    if _YOUNGER:
+        _ = gc.collect(_YOUNG)

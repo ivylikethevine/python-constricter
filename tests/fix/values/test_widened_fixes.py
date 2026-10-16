@@ -350,6 +350,50 @@ def test_each_wider_type_is_its_own_kind() -> None:
     assert {fix[0] for fix in _found(WIDER, Checks()).values()} == {None, "str", "int", "list[int]"}
 
 
+GUESSED_UNION: Final = """
+class T:
+    CASES = [("a", "b"), ("c", "d")]
+
+    def t(self):
+        for path, expected in self.CASES:
+            print(path)
+            path = path.encode("utf-8")
+            expected = expected.encode("utf-8")
+"""
+
+
+def test_a_union_of_a_guess_is_a_guess_and_leaves_a_second_pass_nothing() -> None:
+    """Its members' guesses are what it rests on: a second pass would join them once they're declared."""
+    source: str = textwrap.dedent(GUESSED_UNION)
+    checks: Checks = Checks(fixes=FixPolicy(widen=frozenset({"unions"})))
+    union: tuple[str, bool, frozenset[str]] = (
+        "bytes | str",
+        True,
+        frozenset({"loop", "member", "rebound", "unions"}),
+    )
+    assert _found(source, checks) == {"path": union, "expected": union}
+    once: str = "".join(fixes.apply(lines(source), check_source(source, checks=checks)))
+    assert not [o for o in check_source(once, checks=checks) if o.fix]
+
+
+SELF_UNION: Final = """
+from typing import Self
+
+
+class C:
+    def copy(self, flag: bool) -> Self:
+        copied = C()
+        if flag:
+            copied = self
+        return copied
+"""
+
+
+def test_a_self_joins_no_union() -> None:
+    """It takes only `Self`, a guess among its members or not."""
+    assert _found(SELF_UNION, Checks(fixes=FixPolicy(widen=frozenset({"unions"}))))["copied"][0] is None
+
+
 def test_a_wider_types_mark_ends_its_statement() -> None:
     """A declaration's own line; an assignment's last line, however many it's on."""
     source: str = textwrap.dedent(WIDER)

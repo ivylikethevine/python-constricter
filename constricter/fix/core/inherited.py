@@ -16,7 +16,8 @@ from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.core.signatures import AWAIT
-from constricter.rules.annotations import generic_classes, node_name
+from constricter.rules.annotations import node_name
+from constricter.rules.declarations import generic_classes
 from constricter.rules.syntax import FUNCTION_DEFS, child_statements, expressions
 from constricter.rules.walked import classes, walk
 

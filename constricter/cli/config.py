@@ -276,6 +276,7 @@ _READERS: dict[str, Callable[[_Toml], Default | None]] = {
     "fix-plain-bases": _strings,
     "type-comments": _flag,
     "all-scopes": _flag,
+    "gitignore": _flag,
     "per-path-levels": _levels,
     "per-file-ignores": partial(_lists, read=_codes),
     "narrower": partial(_lists, read=_strings),  # a type hierarchy: each type, and those it's narrower than

@@ -3,6 +3,7 @@
 
 import ast
 import bisect
+import re
 import sys
 from collections.abc import Iterator, Mapping, Sequence
 from itertools import accumulate
@@ -15,6 +16,7 @@ from constricter.rules.syntax import FunctionDef, Start, import_bindings
 from constricter.rules.walked import classes, of_type
 
 _TYPE_CHECKING: Final = "TYPE_CHECKING"
+_QUOTES: Final = ("'", '"')  # what starts a string in an annotation: a name in one isn't a class's
 _STDLIB: Final = sys.stdlib_module_names
 _FUTURE: Final = "__future__"
 _ANNOTATIONS: Final = "annotations"  # `from __future__ import annotations` postpones them all
@@ -75,16 +77,37 @@ def plan(tree: ast.Module) -> ImportPlan:
     )
 
 
-def nested_classes(tree: ast.Module) -> frozenset[str]:
+def nested_classes(tree: ast.Module) -> dict[str, str]:
     """Name the classes defined in another class's body: bare, names of that body alone.
 
     Returns:
-      Them.
+      Each, mapped to the class that names it anywhere (`_Names`: `Group`, for `Group._Names`): one
+      of the module's own body, the only class defining that name; else to nothing.
 
     """
-    return frozenset(
-        stmt.name for node in classes(tree) for stmt in node.body if isinstance(stmt, ast.ClassDef)
-    )
+    top: frozenset[int] = frozenset(id(stmt) for stmt in tree.body)
+    found: dict[str, str] = {}
+    node: ast.ClassDef
+    for node in classes(tree):
+        stmt: ast.stmt
+        for stmt in node.body:
+            if isinstance(stmt, ast.ClassDef):
+                found[stmt.name] = node.name if id(node) in top and stmt.name not in found else ""
+    return found
+
+
+def through(annotation: str, planned: ImportPlan, nested: Mapping[str, str]) -> str:
+    """Spell `annotation` for a function: a class of a class's body through that class (`Group._Names`).
+
+    Returns:
+      It, each such class the module binds nowhere else named through its class, where one names it.
+
+    """
+    name: str
+    for name in roots(annotation) & nested.keys() - planned.bound.keys() - planned.defined.keys():
+        if nested[name] and not any(quote in annotation for quote in _QUOTES):
+            annotation = re.sub(rf"(?<![\w.]){re.escape(name)}\b", f"{nested[name]}.{name}", annotation)
+    return annotation
 
 
 def _private(statement: str) -> bool:
@@ -103,7 +126,7 @@ def _private(statement: str) -> bool:
     return name.startswith("_") and not name.startswith("__") and module.partition(".")[0] not in _STDLIB
 
 
-def unwritable(annotation: str, planned: ImportPlan, nested: frozenset[str]) -> bool:
+def unwritable(annotation: str, planned: ImportPlan, nested: Mapping[str, str]) -> bool:
     """Check whether the module can't write `annotation`, whatever it imports.
 
     It names a class of `nested` (see `nested_classes`) the module binds nowhere else, which no
@@ -113,7 +136,7 @@ def unwritable(annotation: str, planned: ImportPlan, nested: frozenset[str]) -> 
       Whether it can't.
 
     """
-    if roots(annotation) & nested - planned.bound.keys() - planned.defined.keys():
+    if roots(annotation) & nested.keys() - planned.bound.keys() - planned.defined.keys():
         return True
     return any(
         _private(statement)
@@ -384,9 +407,10 @@ def _read_taken_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]
                 | ast.arg(arg=name)
                 | ast.FunctionDef(name=name)
                 | ast.AsyncFunctionDef(name=name)
-                | ast.ExceptHandler(name=str() as name)
-                | ast.MatchAs(name=str() as name)
             ):
+                names.add(name)
+                values.add(name)
+            case ast.ExceptHandler(name=str() as name) | ast.MatchAs(name=str() as name):
                 names.add(name)
                 values.add(name)
             case _:
@@ -425,9 +449,9 @@ def _read_rebound_names(tree: ast.Module) -> dict[str, list[Start]]:
                 | ast.FunctionDef(name=name)
                 | ast.AsyncFunctionDef(name=name)
                 | ast.ClassDef(name=name)
-                | ast.ExceptHandler(name=str() as name)
-                | ast.MatchAs(name=str() as name)
             ):
+                found.setdefault(name, []).append((node.lineno, node.col_offset))
+            case ast.ExceptHandler(name=str() as name) | ast.MatchAs(name=str() as name):
                 found.setdefault(name, []).append((node.lineno, node.col_offset))
             case _:
                 pass

@@ -1,0 +1,20 @@
+# Every corpus checked and fixed by this checkout's pure wheel and by its compiled one (mypyc's build),
+# each in a venv of its own beside the same packages (`scratch/compiled_venv.py`), each check timed
+# once: the same findings and fixes from both, and how much faster the compiled one is.
+# `scratch/version_diff.py FOLDER` compares the two. Nothing's published.
+
+[run]
+label = "compiled"
+versions = ["pure=local/.venv-pure/bin/python", "compiled=local/.venv-compiled/bin/python"]
+jobs = 4
+at-once = 8
+
+[corpora]
+include = ["mega"]
+
+[steps]
+check = true
+fix = ["certain", "likely", "unsafe"]
+census = false
+coverage = false
+timing = 1

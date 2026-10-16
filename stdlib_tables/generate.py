@@ -29,15 +29,18 @@ comes out the same for all twelve:
   templates its instance's type arguments bind, and a non-generic class's own that `attributes`
   can't hold (a `list[ast.stmt]`); `elements`: what iterating each class's instance
   gives (`io.TextIOWrapper`'s `str`, `itertools.chain`'s `_T`), as such a template;
-- `functions`: capitalised functions no other table types (`xml.etree.ElementTree.Comment`), so
-  a call to one isn't taken to construct a class;
+- `functions`: capitalised functions no other table types (`xml.etree.ElementTree.Comment`), and
+  capitalised variables bound to one (`multiprocessing.Value`), so a call to one isn't taken to
+  construct a class;
+- `platform`: the modules some platform's stubs have nothing public in (`winreg`, `fcntl`), each
+  to the platforms that have it;
 - `awaited`: what awaiting a call of each `async def` with one declared return gives, a function's
   by its path and a method's by its class's path and its name (a class's own path: its instance);
   `awaited_overloads`: those its arguments decide (`asyncio.wait_for`), as `overloads` holds a
   function's;
 - `variables`: module-level variables' types (`sys.path`, `os.sep`), as `returns` and `classes` hold
   a function's;
-- `scalars`: which builtin scalar types (`overloads.SCALARS`), then containers (`CONTAINERS`),
+- `scalars`: which builtin scalar types (`accepting.SCALARS`), then containers (`CONTAINERS`),
   each class or alias takes, by every path an installed package's stub may import it from
   (`typing.SupportsIndex`, `_typeshed.StrPath`), and `scalar_members`: each of those types'
   members, for its protocols; installed packages' overloads are matched with them
@@ -50,7 +53,6 @@ functional API makes a class), and what `_RUNTIME` lists.
 """
 
 import argparse
-import ast
 import contextlib
 import hashlib
 import importlib.metadata
@@ -62,45 +64,25 @@ from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from functools import lru_cache
 from pathlib import Path
-from typing import Final, NamedTuple, TypeAlias, TypeVar, cast
+from typing import Final, TypeAlias, TypeVar, cast
 
-from constricter.fix.core.signatures import Signature
-from stdlib_tables.elements import element, entered_by_base
-from stdlib_tables.overloads import CONTAINERS, SCALARS, Overloads
+from stdlib_tables.configured import YES, Signatures, Tables, tables_for
 from stdlib_tables.reading import (
-    ANY,
-    ANY_STR,
-    ATTRIBUTE,
-    AWAITED,
-    CLASSMETHOD,
-    ClassRef,
-    Defs,
-    Form,
-    Member,
-    Reading,
     Table,
-    Text,
-    usable,
 )
 from stdlib_tables.stubs import (
     CONFIGS,
-    Alias,
-    Binding,
     Config,
-    Found,
-    Function,
-    Klass,
-    Namespace,
     Stubs,
-    Variable,
-    private,
 )
+from stdlib_tables.written import inherited, platform_only
 
 ROOT: Final = Path(__file__).parents[1]
 OUTPUT: Final = ROOT / "constricter" / "fix" / "tables"  # one JSON file per table
 # Where each function or class only some platforms and Python versions have is (the tests' alone).
 PARTIAL: Final = Path(__file__).with_name("partial.json")
 STUBS: Final = "basedpyright"  # the package whose bundled typeshed stubs the tables are read from
+READER: Final = "typeshed-client"  # and the one that reads them (`stdlib_tables.shed`)
 # The code that decides the tables: the generator's, and the modules of constricter it imports (a
 # test checks that's all of them).
 INPUTS: Final = (
@@ -121,42 +103,10 @@ INPUTS: Final = (
 _SOURCE: Final = OUTPUT / "source.json"  # what the tables were generated from: `stamp`, and more
 _LOCK: Final = ROOT / "uv.lock"
 _TABLES_KEY: Final = "tables"  # `source.json`'s list of the tables
-# Modules nothing is taken from: `typing`'s classes are special forms and factories, `builtins` is
-# typed apart, and these aren't imported for what they define (`encodings`' codecs register
-# themselves; `xxlimited` is CPython's example extension).
-_SKIPPED_MODULES: Final = frozenset(
-    {"typing", "typing_extensions", "builtins", "encodings", "xxlimited", "__main__", "this", "antigravity"},
-)
-# In the stubs for every platform, but not in every Python CI runs the tests on (CPython's own, a
-# debug build's), or not what they say there (`KW_ONLY`, `python_symbols` are instances, not classes).
-_RUNTIME: Final = frozenset(
-    {
-        "sys.getrefcount",
-        "sys.gettotalrefcount",
-        "dataclasses.KW_ONLY",
-        "lib2to3.pygram.python_symbols",
-        "lib2to3.pygram.pattern_symbols",
-    },
-)
-# The private classes a public function returns and nothing public stands for (what a `with`
-# binds), and a private function code calls all the same.
-_PRIVATE: Final = {
-    "unittest.case": ("_AssertRaisesContext", "_AssertWarnsContext"),
-    "unittest._log": ("_AssertLogsContext", "_LoggingWatcher"),
-    "tempfile": ("_TemporaryFileWrapper",),
-    "sys": ("_getframe",),
-}
-# Modules whose names installed packages' stubs annotate with, private or not (`scalars`).
-_ANNOTATING: Final = frozenset({"typing", "typing_extensions", "builtins", "_typeshed", "collections.abc"})
-_YES: Final = "y"
-_FUNCTION: Final = "def"  # a `functions` entry: what the path names
-_ENTER: Final = "__enter__"
 
 
 _Locked: TypeAlias = dict[str, str]  # a package `uv.lock` pins: its name, its version, and more
 
-# Each signature of a function whose return its arguments decide (see `overloads.Overloads.entry`).
-Signatures: TypeAlias = list[Signature]
 _V = TypeVar("_V")
 # One of the tables (or `source`, where they're from).
 _Json: TypeAlias = (
@@ -168,64 +118,7 @@ _Json: TypeAlias = (
 )
 
 
-class _Tables(NamedTuple):
-    """Every table, for one configuration or all of them together."""
-
-    returns: Table
-    overloads: dict[str, list[Signatures]]  # each configuration's reading, once
-    classes: Table
-    aliases: Table
-    methods: dict[str, Table]
-    attributes: dict[str, Table]
-    method_overloads: dict[str, Table]  # each class's methods in `method_signatures` (`await m`: awaited)
-    method_signatures: dict[str, list[Signatures]]  # as `overloads`, by where they're defined
-    type_parameters: Table  # each generic class's, in order, comma-separated (`_T=`: with a default)
-    bases: Table  # each class's public ancestors in the tables, nearest first, comma-separated
-    subscriptable: Table  # each generic class's: `y` if it can be subscripted at run time, else `n`
-    generic_attributes: dict[str, Table]  # a class's own attributes, as templates
-    variables: Table  # module-level variables' types: builtin annotations, or classes' paths
-    scalars: Table  # each class's and alias's verdict (`y`, `n`, `?`) per `SCALARS`, then `CONTAINERS`, type
-    scalar_members: dict[str, list[str]]  # each scalar's members, its class's and its bases'
-    functions: Table  # capitalised functions no other table types, each to `_FUNCTION`
-    # What awaiting a call of each `async def` gives: a function's by its path, a method's by its
-    # class's path and its name, each class's inherited ones included.
-    awaited: Table
-    awaited_overloads: dict[str, list[Signatures]]  # as `overloads`: an `async def`'s, awaited
-    elements: Table  # what iterating each class's instance gives, as a template (see `generic_attributes`)
-
-
-def _paths(stubs: Stubs, config: Config) -> dict[str, Found]:
-    """Find every public path in the stubs (`module.name`), and what it names, in `config`; and `_PRIVATE`'s.
-
-    Not a name that's also a submodule's (`curses.has_key`): which one it is depends on the imports.
-
-    Returns:
-      Each path's definition.
-
-    """
-    modules: frozenset[str] = frozenset(stubs.modules())
-    found: dict[str, Found] = {}
-    module: str
-    space: Namespace | None
-    target: Found | None
-    for module in sorted(modules):
-        skipped: bool = module.split(".")[0] in _SKIPPED_MODULES or (
-            private(module) and module not in _PRIVATE
-        )
-        if skipped or (space := stubs.namespace(module, config)) is None:
-            continue
-        name: str
-        for name in () if private(module) else sorted(space.public):
-            path: str = f"{module}.{name}"
-            if not private(name) and path not in modules and (target := stubs.lookup(module, name, config)):
-                found[path] = target
-        for name in _PRIVATE.get(module, ()):
-            if (target := stubs.lookup(module, name, config)) is not None:
-                found[f"{module}.{name}"] = target
-    return found
-
-
-def readings(root: Path) -> list[_Tables]:
+def readings(root: Path) -> list[Tables]:
     """Read the stubs under `root` as each of `CONFIGS` sees them: in worker processes, if it can.
 
     In this process where there's one core, or no process can be started (a sandbox).
@@ -242,315 +135,19 @@ def readings(root: Path) -> list[_Tables]:
     return [read_config(config, root) for config in CONFIGS]
 
 
-def read_config(config: Config, root: Path) -> _Tables:
+def read_config(config: Config, root: Path) -> Tables:
     """Build every table as `config` sees the stubs under `root`, parsed once a process.
 
     Returns:
       Them.
 
     """
-    return _read(_parsed(root), config)
+    return tables_for(_parsed(root), config)
 
 
 @lru_cache(maxsize=1)
 def _parsed(root: Path) -> Stubs:
     return Stubs(root)
-
-
-def _read(stubs: Stubs, config: Config) -> _Tables:
-    """Build every table as `config` sees the stubs.
-
-    Returns:
-      Them.
-
-    """
-    reading: Reading = Reading(stubs, config)
-    paths: dict[str, Found] = _paths(stubs, config)
-    every: dict[ClassRef, str] = {}  # generic classes too, which only a return template names
-    path: str
-    found: Found
-    for path, found in sorted(paths.items(), key=lambda item: _preference(*item)):
-        if isinstance(found.binding, Klass):
-            _ = every.setdefault(ClassRef(found.module, found.name), path)
-    canonical: dict[ClassRef, str] = {
-        klass: path for klass, path in every.items() if not reading.generic(klass)
-    }
-    tables: _Tables = _Tables({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
-    reader: _Reader = _Reader(reading, Overloads(reading, every), canonical)
-    _enter_scalars(tables, reader, stubs, config)
-    for path, found in paths.items():
-        _enter(tables, reader, path, found)
-    owner: ClassRef
-    for owner, path in canonical.items():
-        _enter_class(tables, reader, owner, path)
-    for owner, path in every.items():
-        _enter_generic(tables, reader, owner, path)
-        yielded: str | None
-        if (yielded := element(reader.overloads, owner)) is not None:
-            tables.elements[path] = yielded
-    return tables
-
-
-class _Reader(NamedTuple):
-    """What one configuration's tables are read with: its stubs, overloads and classes' paths."""
-
-    reading: Reading
-    overloads: Overloads
-    canonical: dict[ClassRef, str]  # every public non-generic class's path
-
-
-def _enter_scalars(tables: _Tables, reader: _Reader, stubs: Stubs, config: Config) -> None:
-    """Enter which scalars each class and alias takes, by its public paths and `_ANNOTATING`'s names."""
-    paths: dict[str, Found] = {}
-    module: str
-    for module in sorted(_ANNOTATING):
-        space: Namespace | None = stubs.namespace(module, config)
-        name: str
-        for name in sorted({} if space is None else space.names):
-            found: Found | None
-            if (found := stubs.lookup(module, name, config)) is not None:
-                paths[f"{module}.{name}"] = found
-    paths.update(_paths(stubs, config))
-    path: str
-    target: Found
-    for path, target in paths.items():
-        if isinstance(target.binding, Klass | Alias):
-            bare: ast.Name = ast.Name(path.rpartition(".")[2])
-            tables.scalars[path] = reader.overloads.accepts(bare, path.rpartition(".")[0]).values + (
-                reader.overloads.takes(bare, path.rpartition(".")[0], CONTAINERS)
-            )
-    scalar: str
-    members: frozenset[str] | None
-    for scalar in (*SCALARS, *CONTAINERS):
-        if (members := reader.overloads.scalar_members(scalar)) is not None:
-            tables.scalar_members[scalar] = sorted(members)
-
-
-def _enter_class(tables: _Tables, reader: _Reader, klass: ClassRef, path: str) -> None:
-    """Enter a class's members, its public ancestors, and its methods whose arguments decide their return.
-
-    And its own attributes no builtin annotation or class alone types, as templates (`Signature`'s
-    `parameters`, a `MappingProxyType[str, Parameter]`).
-    """
-    members: dict[str, Member] = reader.reading.members(klass)
-    _enter_members(tables, path, members, reader.canonical)
-    entered: Table = tables.attributes.get(path, {})
-    templates: Table = {
-        name: template for name, template in reader.overloads.attributes(klass).items() if name not in entered
-    }
-    if templates:
-        tables.generic_attributes[path] = templates
-    ancestors: list[str] = [
-        reader.canonical[base] for base in reader.reading.trusted(klass)[0][1:] if base in reader.canonical
-    ]
-    if ancestors:
-        tables.bases[path] = ",".join(ancestors)
-    name: str
-    method: str
-    signatures: list[Signature]
-    for name, (method, signatures) in reader.overloads.methods(klass, members).items():
-        tables.method_overloads.setdefault(path, {})[name] = method
-        tables.method_signatures[method] = [signatures]
-
-
-def _enter_generic(tables: _Tables, reader: _Reader, klass: ClassRef, path: str) -> None:
-    """Enter a generic class's own methods' signatures, and its type parameters, which its instances bind."""
-    params: list[str] | None
-    if klass in reader.canonical or not (params := reader.overloads.type_parameters(klass)):
-        return
-    tables.type_parameters[path] = ",".join(params)
-    tables.subscriptable[path] = _YES if reader.reading.subscriptable(klass) else "n"
-    if reader.overloads.enters_itself(klass):  # `with` gives the instance, whatever its arguments
-        tables.methods.setdefault(path, {})[_ENTER] = path
-    attributes: Table
-    if attributes := reader.overloads.attributes(klass):
-        tables.generic_attributes[path] = attributes
-    name: str
-    method: str
-    signatures: list[Signature]
-    for name, (method, signatures) in reader.overloads.methods(klass, (), inherited=False).items():
-        tables.method_overloads.setdefault(path, {})[name] = method
-        tables.method_signatures[method] = [signatures]
-    given: str | None
-    if (given := entered_by_base(reader.overloads, klass)) is not None:  # `with closing(thing)`: by its base
-        tables.method_overloads.setdefault(path, {})[_ENTER] = f"{path}.{_ENTER}"
-        tables.method_signatures[f"{path}.{_ENTER}"] = [[Signature(params=[], returns=given)]]
-    # What it inherits with one type, whatever its arguments (`TextIOWrapper.read()`, `TextIOBase`'s).
-    own: dict[str, Binding] = reader.reading.body(klass)
-    _enter_members(
-        tables,
-        path,
-        {name: member for name, member in reader.reading.members(klass).items() if name not in own},
-        reader.canonical,
-    )
-
-
-def _preference(path: str, found: Found) -> tuple[int, bool, int, str]:
-    """Rank a class's public paths: the shortest, then the one in the module that defines it.
-
-    Returns:
-      The sort key.
-
-    """
-    return (path.count("."), path.rpartition(".")[0] != found.module, len(path), path)
-
-
-def _enter(tables: _Tables, reader: _Reader, path: str, found: Found) -> None:
-    """Enter what one public path names: a function's return, or a class, its classmethods and alias.
-
-    A function whose every signature returns the same builtin or class goes in `returns` or
-    `classes`; one whose arguments decide it, in `overloads`.
-    """
-    defs: tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]
-    value: ast.expr
-    klass: ClassRef = ClassRef(found.module, found.name)
-    match found.binding:
-        case _ if path in _RUNTIME:
-            pass
-        case Function(defs=defs):
-            _function(tables, reader, path, found.module, defs)
-        case Alias(value=value):
-            _enter_alias(tables, reader, path, value, found.module)
-        case Variable(annotation=value):  # `sys.path`, `os.sep`
-            _enter_variable(tables, reader, path, value, found.module)
-        case Klass() if klass in reader.canonical:
-            _enter_named(tables, reader, path, found)
-        case Klass():  # a generic class, typed by what binds its parameters
-            _enter_constructor(tables, reader, path, klass)
-        case _:
-            pass
-
-
-def _enter_alias(tables: _Tables, reader: _Reader, path: str, value: "ast.expr", module: str) -> None:
-    """Enter an alias: a generic class's constructor (`ref = ReferenceType`), or a bound method's return."""
-    aliased: ClassRef | None
-    if (aliased := _aliased(reader, value, module)) is not None:
-        _enter_constructor(tables, reader, path, aliased)
-    else:
-        _entry(tables, path, reader.reading.bound_method(value, module), reader.canonical)
-
-
-def _enter_variable(tables: _Tables, reader: _Reader, path: str, annotation: "ast.expr", module: str) -> None:
-    """Enter a module-level variable's type, if the tables can hold it.
-
-    A builtin annotation or a class's path (`sys.path`: `list[str]`), else a template naming classes
-    by their paths (`sys.modules`: `dict[str, types.ModuleType]`).
-    """
-    form: Form | None = reader.reading.form(annotation, module, None)
-    value: str | None = None if form is None else _value(form, reader.canonical)
-    if value is None and form is None:
-        value = reader.overloads.template(annotation, module)
-    if value is not None:
-        tables.variables[path] = value
-
-
-def _enter_named(tables: _Tables, reader: _Reader, path: str, found: Found) -> None:
-    """Enter a non-generic class under one of its paths: its alias, what constructs it, its classmethods."""
-    klass: ClassRef = ClassRef(found.module, found.name)
-    canonical: dict[ClassRef, str] = reader.canonical
-    if canonical[klass] != path:
-        tables.aliases[path] = canonical[klass]
-    if reader.reading.constructs(klass):
-        tables.classes[path] = canonical[klass]
-    name: str
-    member: Member
-    # Only those its own module's classes define: typeshed makes some classes subclass an abstract
-    # class they're only registered with at runtime (`importlib.abc`'s).
-    for name, member in reader.reading.members(klass).items():
-        if member.kind == CLASSMETHOD and member.module == found.module:
-            _entry(tables, f"{path}.{name}", member.form, canonical)
-
-
-def _aliased(reader: _Reader, value: "ast.expr", module: str) -> ClassRef | None:
-    """Find the generic class an alias names (`ref = ReferenceType`), if it is one.
-
-    Returns:
-      It, or `None`.
-
-    """
-    target: Found | None = reader.reading.ref(value, module)
-    if target is None or not isinstance(target.binding, Klass):
-        return None
-    klass: ClassRef = ClassRef(target.module, target.name)
-    return None if klass in reader.canonical else klass
-
-
-def _enter_constructor(tables: _Tables, reader: _Reader, path: str, klass: ClassRef) -> None:
-    """Enter a generic class's constructor, under a path naming it (see `Overloads.constructor`)."""
-    signatures: Signatures | None
-    if (signatures := reader.overloads.constructor(klass)) is not None:
-        tables.overloads[path] = [signatures]
-
-
-def _function(tables: _Tables, reader: _Reader, path: str, module: str, defs: Defs) -> None:
-    """Enter a function: under `returns` or `classes` if it always returns the same, else `overloads`.
-
-    An `async def`: under `awaited` or `awaited_overloads`, as what awaiting its call gives.
-
-    One none of them can hold is under `functions`, if its name is capitalised.
-    """
-    form: Form | None = reader.reading.returns(defs, module, None)
-    signatures: Signatures | None
-    value: str | None
-    awaited: Form | None = reader.reading.returns(defs, module, None, awaited=True)
-    value = None if awaited is None or awaited == ANY_STR else _value(awaited, reader.canonical)
-    if value is not None:
-        tables.awaited[path] = value
-    elif form != ANY_STR and form is not None and _value(form, reader.canonical) is not None:
-        _entry(tables, path, form, reader.canonical)
-    elif reader.reading.returns_any(defs, module):
-        tables.returns[path] = ANY
-    elif (signatures := reader.overloads.entry(defs, module)) is not None:
-        tables.overloads[path] = [signatures]
-    elif (signatures := reader.overloads.entry(defs, module, awaited=True)) is not None:
-        tables.awaited_overloads[path] = [signatures]
-    elif path.rpartition(".")[2][:1].isupper():
-        tables.functions[path] = _FUNCTION
-
-
-def _enter_members(
-    tables: _Tables,
-    path: str,
-    members: dict[str, Member],
-    canonical: dict[ClassRef, str],
-) -> None:
-    """Enter a class's members' types under its path: its methods' returns, and its attributes'."""
-    name: str
-    member: Member
-    value: str | None
-    for name, member in members.items():
-        if (value := _value(member.form, canonical)) is None:
-            continue
-        if member.kind == AWAITED:
-            tables.awaited[f"{path}.{name}"] = value
-        else:
-            (tables.attributes if member.kind == ATTRIBUTE else tables.methods).setdefault(path, {})[name] = (
-                value
-            )
-
-
-def _entry(tables: _Tables, path: str, form: Form | None, canonical: dict[ClassRef, str]) -> None:
-    """Enter a function's (or classmethod's) return under `path`, in the table its form belongs in."""
-    value: str | None
-    if form is not None and (value := _value(form, canonical)) is not None:
-        (tables.classes if isinstance(form, ClassRef) else tables.returns)[path] = value
-
-
-def _value(form: Form, canonical: dict[ClassRef, str]) -> str | None:
-    """Spell a form as a table holds it: a builtin annotation, or a class's canonical path.
-
-    Returns:
-      It, or `None` for `AnyStr`, a class with no public path, or an annotation `--fix` shouldn't write.
-
-    """
-    text: str
-    match form:
-        case Text(text=text):
-            return text if usable(text) else None
-        case ClassRef():
-            return canonical.get(form)
-        case _:
-            return None
 
 
 def _common(each: list[Table]) -> Table:
@@ -608,7 +205,7 @@ def _common_by_class(each: list[dict[str, Table]]) -> dict[str, Table]:
     return found
 
 
-def _agreed(tables: list[_Tables]) -> _Tables:
+def _agreed(tables: list[Tables]) -> Tables:
     """Keep what every configuration's tables that have an entry agree on.
 
     Returns:
@@ -618,7 +215,7 @@ def _agreed(tables: list[_Tables]) -> _Tables:
     """
     split: frozenset[str] = _split(tables)
     tables = [_unsplit(one, split) for one in tables]
-    return _Tables(
+    return Tables(
         _common([one.returns for one in tables]),
         _variants([one.overloads for one in tables]),
         _common([one.classes for one in tables]),
@@ -641,7 +238,7 @@ def _agreed(tables: list[_Tables]) -> _Tables:
     )
 
 
-def _split(each: list[_Tables]) -> frozenset[str]:
+def _split(each: list[Tables]) -> frozenset[str]:
     """Find the functions and members the configurations hold in different tables.
 
     `importlib.metadata.entry_points` is overloaded before Python 3.12 (`overloads`) and one `def`
@@ -653,7 +250,7 @@ def _split(each: list[_Tables]) -> frozenset[str]:
     """
     first: dict[str, frozenset[int]] = {}
     split: set[str] = set()
-    one: _Tables
+    one: Tables
     for one in each:
         members: list[dict[str, Table]] = [one.methods, one.attributes, one.method_overloads]
         members += [one.generic_attributes]
@@ -674,7 +271,7 @@ def _split(each: list[_Tables]) -> frozenset[str]:
     return frozenset(split)
 
 
-def _unsplit(one: _Tables, split: frozenset[str]) -> _Tables:
+def _unsplit(one: Tables, split: frozenset[str]) -> Tables:
     """Leave `split`'s functions and members out of a configuration's tables (see `_split`).
 
     Returns:
@@ -734,22 +331,22 @@ def _common_lists(each: list[dict[str, list[str]]]) -> dict[str, list[str]]:
     return found
 
 
-def pinned() -> str:
-    """Find the basedpyright version the tables are read from: `uv.lock`'s, else the one they were.
+def pinned(package: str = STUBS) -> str:
+    """Find the version of `package` the tables are read from or with: `uv.lock`'s, else the one they were.
 
     An sdist has no `uv.lock`, but carries the tables and their stamp.
 
     Returns:
-      It.
+      It; nothing for a package the lock doesn't have yet (`uv lock` builds the project to write it).
 
     """
     if not _LOCK.exists():
-        return _written()[STUBS]
+        return _written()[package]
     lock: dict[str, list[_Locked]] = cast(
         "dict[str, list[_Locked]]",
         tomllib.loads(_LOCK.read_text(encoding="utf-8")),
     )
-    return next(package["version"] for package in lock["package"] if package["name"] == STUBS)
+    return next((locked["version"] for locked in lock["package"] if locked["name"] == package), "")
 
 
 def digest() -> str:
@@ -768,13 +365,24 @@ def digest() -> str:
 
 
 def stamp() -> dict[str, str]:
-    """Say what the tables would be generated from now: the basedpyright version, and `digest`.
+    """Say what the tables would be generated from now: the stubs' and their reader's versions, and `digest`.
 
     Returns:
       Each, by `source.json`'s key.
 
     """
-    return {STUBS: pinned(), "digest": digest()}
+    return {STUBS: pinned(), READER: pinned(READER), "digest": digest()}
+
+
+def requirements() -> list[str]:
+    """Name what generating the tables needs installed: the pinned stubs, and their pinned reader.
+
+    Returns:
+      Each requirement: by name alone where the lock has no version of it yet.
+
+    """
+    versions: dict[str, str] = {package: pinned(package) for package in (STUBS, READER)}
+    return [f"{package}=={version}" if version else package for package, version in versions.items()]
 
 
 def current() -> bool:
@@ -805,7 +413,7 @@ def _written() -> dict[str, str]:
 
 
 def typeshed() -> Path:
-    """Find the typeshed stubs the installed basedpyright bundles, which must be the pinned version.
+    """Find the typeshed stubs the installed basedpyright bundles: it and the reader at their pinned versions.
 
     Returns:
       Their directory.
@@ -814,11 +422,14 @@ def typeshed() -> Path:
       RuntimeError: if another version is installed.
 
     """
-    installed: importlib.metadata.Distribution = importlib.metadata.distribution(STUBS)
-    if installed.version != pinned():
-        message: str = f"{STUBS} {installed.version} is installed, but the tables are read from {pinned()}"
-        raise RuntimeError(message)
-    return Path(str(installed.locate_file(f"{STUBS}/dist/typeshed-fallback")))
+    package: str
+    for package in (READER, STUBS):
+        installed: str
+        if (installed := importlib.metadata.version(package)) != pinned(package):
+            message: str = f"{package} {installed} is installed, but the tables need {pinned(package)}"
+            raise RuntimeError(message)
+    stubs: importlib.metadata.Distribution = importlib.metadata.distribution(STUBS)
+    return Path(str(stubs.locate_file(f"{STUBS}/dist/typeshed-fallback")))
 
 
 def generate(stubs_root: Path | None = None) -> dict[Path, str]:
@@ -831,8 +442,8 @@ def generate(stubs_root: Path | None = None) -> dict[Path, str]:
 
     """
     root: Path = typeshed() if stubs_root is None else stubs_root
-    each: list[_Tables] = readings(root)
-    tables: _Tables = _agreed(each)
+    each: list[Tables] = readings(root)
+    tables: Tables = _agreed(each)
     document: dict[str, _Json] = {
         "returns": tables.returns,
         "overloads": tables.overloads,
@@ -845,7 +456,7 @@ def generate(stubs_root: Path | None = None) -> dict[Path, str]:
         "method_signatures": tables.method_signatures,
         "type_parameters": tables.type_parameters,
         # Where Pythons differ (`array.array`, 3.12+), the entry is left out: not subscriptable.
-        "subscriptable": {path: value for path, value in tables.subscriptable.items() if value == _YES},
+        "subscriptable": {path: value for path, value in tables.subscriptable.items() if value == YES},
         "generic_attributes": tables.generic_attributes,
         "variables": tables.variables,
         "scalars": tables.scalars,
@@ -854,6 +465,7 @@ def generate(stubs_root: Path | None = None) -> dict[Path, str]:
         "awaited": tables.awaited,
         "awaited_overloads": tables.awaited_overloads,
         "elements": tables.elements,
+        "platform": platform_only(_parsed(root)),
     }
     source: dict[str, str | list[str]] = {
         **stamp(),
@@ -864,62 +476,6 @@ def generate(stubs_root: Path | None = None) -> dict[Path, str]:
     files[_SOURCE] = json.dumps(source, indent=0, sort_keys=True) + "\n"
     files[PARTIAL] = write(_partial(each))
     return files
-
-
-def inherited(members: dict[str, Table], bases: Table) -> dict[str, dict[str, str | None]]:
-    """Write each class's members as it has them apart from its public ancestors (`bases`).
-
-    `--fix` resolves a member as a class's own entry, else its ancestors' in order (each resolved
-    the same way): a member the class has as its nearest ancestor does is left out, and one it
-    hides (a member it defines that the tables can't hold) is `None`. Checked against the full
-    tables, entry by entry.
-
-    Returns:
-      Each class's entries.
-
-    Raises:
-      RuntimeError: if they don't resolve to the full tables.
-
-    """
-    found: dict[str, dict[str, str | None]] = {}
-    klass: str
-    for klass in dict.fromkeys([*members, *bases]):
-        through: dict[str, str] = {}
-        ancestor: str
-        name: str
-        value: str
-        for ancestor in bases.get(klass, "").split(",") if klass in bases else []:
-            for name, value in members.get(ancestor, {}).items():
-                _ = through.setdefault(name, value)
-        own: Table = members.get(klass, {})
-        entries: dict[str, str | None] = {
-            **{name: value for name, value in own.items() if through.get(name) != value},
-            **dict.fromkeys(through.keys() - own.keys()),
-        }
-        if entries:
-            found[klass] = entries
-    if any(_resolved(found, bases, klass) != table for klass, table in members.items()):
-        message: str = "a class's members resolve otherwise than they were read"
-        raise RuntimeError(message)
-    return found
-
-
-def _resolved(own: dict[str, dict[str, str | None]], bases: Table, klass: str) -> Table:
-    """Resolve a class's members as `--fix` does (`stdlib._member`): its own entries, then each ancestor's.
-
-    Returns:
-      Them.
-
-    """
-    found: dict[str, str | None] = {}
-    ancestor: str
-    for ancestor in bases.get(klass, "").split(",") if klass in bases else []:
-        name: str
-        value: str
-        for name, value in _resolved(own, bases, ancestor).items():
-            _ = found.setdefault(name, value)
-    found.update(own.get(klass, {}))
-    return {name: value for name, value in found.items() if value is not None}
 
 
 def write(table: _Json) -> str:
@@ -936,7 +492,7 @@ def write(table: _Json) -> str:
     return "{\n" + ",\n".join(entries) + "\n}\n"
 
 
-def _partial(each: list[_Tables]) -> dict[str, list[str]]:
+def _partial(each: list[Tables]) -> dict[str, list[str]]:
     """Find the functions and classes only some configurations have, for the tests to look for there alone.
 
     Returns:
@@ -945,7 +501,7 @@ def _partial(each: list[_Tables]) -> dict[str, list[str]]:
     """
     found: dict[str, list[str]] = {}
     config: Config
-    tables: _Tables
+    tables: Tables
     for config, tables in zip(CONFIGS, each, strict=True):
         path: str
         for path in {*tables.returns, *tables.overloads, *tables.classes, *tables.functions}:

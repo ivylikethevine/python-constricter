@@ -5,7 +5,7 @@
 versions = ["dev"]
 
 [corpora]
-include = ["seven"]
+include = ["original"]
 
 [publish]
 runs-md = "docs/RUNS.md"

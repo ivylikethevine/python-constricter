@@ -1,77 +1,89 @@
 # The corpora a run file can name (`python -m tests.corpus RUN.toml`), and the sets of them.
 #
-# [corpus.NAME]         `why` it's here, and its `version`; `kind = "stdlib"` for the running Python's
-#                       standard library. `environment`: what its commands need set, its install's
-#                       too. `port`: the port its tests' own server binds (those of one port run
-#                       one at a time). `alone`:
-#                       why it has no suite here. `heavy`: its suite's tests hold more memory than a
-#                       run's corpora can share, so no other suite runs beside them.
-# [corpus.NAME.sdist]   its sdist on PyPI's file host, hash-pinned: `where` (the directory under
-#                       https://files.pythonhosted.org/packages), `archive`, `sha256`, and `package`,
-#                       the directory checked in it.
+# [corpus.NAME]         `why` it's here, and its `version`. `environment`: what its commands need
+#                       set, its install's too. `port`: the port its tests' own server binds (those
+#                       of one port run one at a time). `alone`: why it has no suite here. `heavy`:
+#                       its suite's tests hold more memory than a run's corpora can share, so no
+#                       other suite runs beside them.
+# [corpus.NAME.sdist]   its sdist, hash-pinned: on PyPI's file host, `where` (the directory under
+#                       https://files.pythonhosted.org/packages) and `archive`, or elsewhere, `url`;
+#                       its `sha256`, and `package`, the directory checked in it.
 # [corpus.NAME.suite]   its own tests and type checks, read from its CI: the `repository` and `tag` to
 #                       clone, its `source` there, and the `uv` commands that `install` it (`pip ...`
 #                       for `uv pip install`, into a venv made first; `sync ...` for `uv sync`); its
 #                       `tests` (pytest's arguments, or a whole command after `!`; `{workers}` stands
 #                       for its processes) and type `checks`. `most`: the most processes its tests
-#                       keep busy (8 where they take `{workers}`, else 1). `worker-memory`: the
-#                       gigabytes one takes (1). `left-out`: requirements it can't build here.
+#                       keep busy (8 where they take `{workers}`, its parts' count where it has
+#                       `parts`, else 1). `worker-memory`: the gigabytes one takes (1): a part, where
+#                       it has them. `left-out`: requirements it can't build here.
 #                       `submodules`: its build needs them. `script`: what runs its tests in one
 #                       process, where pytest doesn't. `differs`: a table of the tests a fix may
 #                       change the outcome of (or a file or a class of them), each with why; a
-#                       run reports them apart, and a difference in these alone is none. `parts`: its tests' arguments, each
-#                       part run after `tests` in a process of its own, their outcomes added up.
+#                       run reports them apart, and a difference in these alone is none. `parts`:
+#                       its tests' arguments, each part run after `tests` in a process of its own,
+#                       as many at once as it has workers, their outcomes added up. `at-once`: how
+#                       many of its fixed runs go side by side, each on a checkout of its own (1),
+#                       for tests in one process that mostly wait; not where they bind a port.
+#
+# [sets]                each set's corpora, or other sets, which stand for theirs.
 #
 # A corpus with a suite is checked in its checkout, with its settings and environment; one with an
 # sdist alone, in the unpacked sdist.
 
 [sets]
-seven = ["standard library", "django", "sqlalchemy", "pydantic", "pandas", "twisted", "pip"]
-mega = [
-  "black",
-  "pdm",
-  "tox",
-  "sphinx",
-  "mkdocs",
-  "streamlink",
-  "mypy",
-  "httpx",
-  "starlette",
-  "uvicorn",
-  "anyio",
-  "websockets",
-  "hypercorn",
-  "aiohttp",
-  "fastapi",
-  "textual",
-  "mcp",
-  "pytest",
-  "attrs",
-  "werkzeug",
-  "cattrs",
+# Each corpus by its size and its time: files over 124, and over 315s of steps in a super or mega
+# run on 16CPU/60GB, the medians of the 2026-10-14 runs (`scratch/corpus_quadrants.py` reprints them).
+fast-small = [
   "structlog",
-  "xarray",
-  "networkx",
-  "pint",
-  "dask",
-  "zarr",
-  "nibabel",
-  "seaborn",
-  "optuna",
-  "altair",
-  "stripe",
-  "strawberry-graphql",
-  "litestar",
-  "narwhals",
+  "attrs",
   "click",
-  "pygments",
-  "celery",
+  "hypercorn",
+  "starlette",
+  "werkzeug",
+  "mkdocs",
+  "httpx",
+  "black",
+  "fastapi",
+  "cattrs",
+  "pytest",
   "botocore",
-  "joblib",
+  "uvicorn",
+  "mcp",
 ]
+fast-large = ["textual", "pdm", "pip", "twisted", "strawberry-graphql", "pygments", "streamlink", "sphinx", "tox"]
+slow-small = ["pydantic", "pint", "altair", "seaborn", "aiohttp", "websockets", "anyio", "zarr", "joblib"]
+slow-large = [
+  "networkx",
+  "nibabel",
+  "narwhals",
+  "xarray",
+  "litestar",
+  "sqlalchemy",
+  "stripe",
+  "django",
+  "celery",
+  "standard library",
+  "optuna",
+  "dask",
+  "pandas",
+  "mypy",
+]
+# The tiers, each holding the one before it: `original`, what every released version is measured on;
+# `super`, with every fast corpus; `mega`, every corpus.
+original = ["standard library", "django", "sqlalchemy", "pydantic", "pandas", "twisted", "pip"]
+super = ["original", "fast-small", "fast-large"]
+mega = ["super", "slow-small", "slow-large"]
 
+# CPython's own source release (PSF-2.0), whose `Lib` has the `test` package a prebuilt Python
+# leaves out: the same 1,867 files on any interpreter, so long as it parses 3.14's syntax.
 [corpus."standard library"]
-kind = "stdlib"
+why = "the standard library with its tests"
+version = "3.14.7"
+
+[corpus."standard library".sdist]
+url = "https://www.python.org/ftp/python/3.14.7/Python-3.14.7.tar.xz"
+sha256 = "3b48dac8fb59f62eaa67ac83c1eb12bda1b7a08406dd286e252c11a66be27f81"
+package = "Python-3.14.7/Lib"
 
 # Its `runtests.py` on SQLite, its processes forked: with `forkserver`, Python 3.14's default on
 # Linux, Django 5.2 can't clone a SQLite test database for each process. It has no type checker.
@@ -221,7 +233,7 @@ repository = "https://github.com/tox-dev/tox"
 tag = "4.64.9"
 source = "src/tox"
 install = ["pip -e .[completion] --group test"]
-tests = ""
+tests = "-n {workers}"
 checks = []
 
 [corpus.sphinx]
@@ -366,14 +378,19 @@ package = "anyio-4.15.1/src/anyio"
 repository = "https://github.com/agronholm/anyio"
 tag = "4.15.1"
 source = "src/anyio"
+# One process: under pytest-xdist its 8 `test_to_process` tests of a main module fail, in a worker.
 install = ["pip -e .[trio] --group test"]
 tests = "-m 'not network'"
 checks = []
+at-once = 7
 
+# A tagged release waits 100 times its tests' unit of time (`tests/utils.py`), its CI 20, as here:
+# its tests spend most of their time waiting.
 [corpus.websockets]
 why = "`asyncio` code"
 version = "17.2"
 port = "8000"
+environment = { WEBSOCKETS_TESTS_TIMEOUT_FACTOR = "20" }
 
 [corpus.websockets.sdist]
 where = "01/89/3f825ab71c242fffb62ea8fe638741c290f62f8d7aadf8125ff897747af3"
@@ -386,6 +403,7 @@ repository = "https://github.com/python-websockets/websockets"
 tag = "17.2"
 source = "src/websockets"
 install = ["pip -e . mitmproxy python-socks[asyncio] trio werkzeug mypy"]
+# One process: `unittest` runs them, which takes no workers.
 tests = "!python -m unittest"
 checks = ["mypy --strict src"]
 
@@ -619,6 +637,7 @@ source = "pint"
 install = ["pip -e .[test,numpy] pyright"]
 tests = "--benchmark-skip"
 checks = ["pyright"]
+at-once = 7
 
 [corpus.dask]
 why = "numpy's types"
@@ -795,7 +814,7 @@ repository = "https://github.com/narwhals-dev/narwhals"
 tag = "v2.26.0"
 source = "src/narwhals"
 install = ["pip -e .[pandas,polars,pyarrow] --group tests --group plugins --group typing"]
-tests = "tests"
+tests = "tests -n {workers}"
 checks = ["pyright", "mypy"]
 
 [corpus.click]
@@ -852,6 +871,7 @@ install = ["pip -e . -r requirements/test.txt"]
 tests = ""
 checks = []
 # In one process its tests hold 25 GB (28 GB traced); a directory at a time, 4.6 GB at most.
+worker-memory = 4.6
 parts = [
   "t/unit/app",
   "t/unit/apps",
@@ -900,6 +920,7 @@ package = "joblib-1.6.0/joblib"
 repository = "https://github.com/joblib/joblib"
 tag = "1.6.0"
 source = "joblib"
+# One process: pytest-xdist's workers each collect other tests (its parameters' ids differ a process).
 install = ["pip -e . pytest pytest-timeout numpy"]
 tests = "joblib --timeout=120"
 checks = []

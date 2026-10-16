@@ -140,7 +140,7 @@ def container(value: ast.expr, plan: ImportPlan, kinds: Collection[str]) -> Infe
             annotation = f"set[{spelled}]"
         case ast.Tuple(elts=[_, *_]):
             annotation = f"tuple[{spelled}, ...]"
-        case ast.Dict(keys=[_, *_] as keys):
+        case ast.Dict(keys=keys) if keys:
             texts: bool = all(isinstance(key, ast.Constant) and isinstance(key.value, str) for key in keys)
             annotation = f"dict[{'str' if texts else spelled}, {spelled}]"
         case _:

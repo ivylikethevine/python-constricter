@@ -7,7 +7,7 @@ versions = ["dev"]
 formats = ["json"]
 
 [corpora]
-include = ["seven"]
+include = ["original"]
 install = false
 
 [steps]

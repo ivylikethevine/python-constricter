@@ -15,9 +15,11 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Final, NamedTuple
 
+from constricter.empty import Empty
 from constricter.fix.core.known import Guarded, Hints, Offered, Origin
 from constricter.fix.index import project
-from constricter.fix.index.modules import SUFFIX, absolute
+from constricter.fix.index.modules import SUFFIX
+from constricter.fix.index.origins import absolute
 from constricter.fix.libraries import stdlib
 
 _PACKAGE: Final = "__init__"
@@ -28,7 +30,7 @@ class Own(NamedTuple):
     """The classes and aliases a file imports for type checking alone (`guarded`), and the generic ones."""
 
     # A plain `dict`, not a `MappingProxyType`: the CLI's worker processes are sent it, pickled.
-    guarded: Mapping[str, Guarded] = {}
+    guarded: Mapping[str, Guarded] = Empty()
     generics: frozenset[str] = frozenset()
 
 

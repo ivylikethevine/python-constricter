@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: MIT
 """Which files to check: the paths given, directories walked, and what's excluded."""
 
-from collections.abc import Iterator, Sequence
+import os
+import shutil
+import subprocess  # asks git which files it tracks, or would
+from collections.abc import Iterable, Iterator, Sequence
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Final
@@ -12,6 +15,7 @@ from constricter import notebook
 # tool/vendor ones. Merged with `exclude`'s globs (matched per directory name), not replaced by them.
 _DEFAULT_EXCLUDES: Final = (".*", "__pycache__", "node_modules", "venv", "site-packages", "build", "dist")
 STDIN: Final = Path("-")
+_KINDS: Final = ("*.py", f"*{notebook.SUFFIX}")  # the files a directory walk finds
 
 
 def excluded(path: Path, patterns: Sequence[str], text: str | None = None) -> bool:
@@ -25,11 +29,18 @@ def excluded(path: Path, patterns: Sequence[str], text: str | None = None) -> bo
     return any(fnmatch(text, p) or fnmatch(path.name, p) for p in patterns)
 
 
-def python_files(paths: Sequence[Path], exclude: Sequence[str] = ()) -> Iterator[Path]:
+def python_files(
+    paths: Sequence[Path],
+    exclude: Sequence[str] = (),
+    *,
+    tracked: bool = False,
+) -> Iterator[Path]:
     """Find the files to check.
 
     A directory walk skips `_DEFAULT_EXCLUDES` and `exclude`'s globs by directory name, and `exclude`
-    by whole path or file name; a file named directly is checked regardless.
+    by whole path or file name; a file named directly is checked regardless. With `tracked`, a
+    directory in a git checkout has only what git tracks there or would (`_listed`), so nothing its
+    `.gitignore` files name.
 
     Yields:
       Each file given, and each `*.py` under each directory given.
@@ -43,12 +54,70 @@ def python_files(paths: Sequence[Path], exclude: Sequence[str] = ()) -> Iterator
             if not excluded(path, exclude):
                 yield path
             continue
-        for found in sorted([*path.rglob("*.py"), *path.rglob(f"*{notebook.SUFFIX}")]):
-            parts: tuple[str, ...] = found.relative_to(path).parts[:-1]
-            if any(fnmatch(part, glob) for part in parts for glob in globs):
-                continue
+        listed: list[Path] | None = _listed(path) if tracked else None
+        for found in sorted(_walked(path, globs) if listed is None else _under(path, listed, globs)):
             if not excluded(found, exclude):
                 yield found
+
+
+def _listed(top: Path) -> list[Path] | None:
+    """Ask git for the files to check under `top`: those it tracks, and the untracked it doesn't ignore.
+
+    By its `.gitignore` files, its `info/exclude` and the user's own, as git reads them.
+
+    Returns:
+      Them; `None` where there's no git or `top` is in no checkout, and where git lists none: a
+      directory it ignores was still named, and is walked whole.
+
+    """
+    git: str | None
+    if (git := shutil.which("git")) is None:
+        return None
+    asking: list[str] = [git, "-C", str(top), "ls-files", "-z", "--cached", "--others", "--exclude-standard"]
+    try:
+        ran: subprocess.CompletedProcess[bytes] = subprocess.run(
+            [*asking, "--", *_KINDS],
+            capture_output=True,
+            check=False,
+            env=os.environ | {"GIT_OPTIONAL_LOCKS": "0"},  # reads the index: never waits to write it
+        )
+    except OSError:
+        return None
+    if ran.returncode or not ran.stdout:
+        return None
+    return [top / os.fsdecode(name) for name in ran.stdout.split(b"\0") if name]
+
+
+def _under(top: Path, listed: Iterable[Path], globs: Sequence[str]) -> Iterator[Path]:
+    """Keep the files git listed under `top` that a walk would reach: there, in no skipped directory.
+
+    Yields:
+      Each (one tracked and since deleted isn't there).
+
+    """
+    found: Path
+    for found in listed:
+        inside: tuple[str, ...] = found.relative_to(top).parts[:-1]
+        if not any(fnmatch(part, glob) for part in inside for glob in globs) and found.is_file():
+            yield found
+
+
+def _walked(top: Path, globs: Sequence[str]) -> Iterator[Path]:
+    """Walk `top` for the files to check, entering no directory whose name a glob of `globs` matches.
+
+    Yields:
+      Each `*.py` file and notebook under it, in no order.
+
+    """
+    directory: str
+    inner: list[str]
+    names: list[str]
+    for directory, inner, names in os.walk(top):
+        inner[:] = [name for name in inner if not any(fnmatch(name, glob) for glob in globs)]
+        name: str
+        for name in names:
+            if any(fnmatch(name, kind) for kind in _KINDS):
+                yield Path(directory, name)
 
 
 def shares(paths: Sequence[Path], workers: int) -> list[list[int]]:

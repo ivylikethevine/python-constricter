@@ -3,15 +3,19 @@
 
   local/.venv/bin/python -m scratch.widen_pass [CORPUS ...]
 
-Each second pass's diff is kept in `local/scratch/widen/`. Outside a sandbox; about 5 minutes.
+Each second pass's diff is kept in `local/scratch/widen/`; its count is the bindings it adds or
+changes. Outside a sandbox; about 5 minutes. `CORPUS_JOBS` sets the workers (every CPU, unset).
 """
 
+import re
 import sys
 from pathlib import Path
 
 from tests.corpus import corpus_table
 
 OUT = Path(__file__).resolve().parents[1] / "local" / "scratch" / "widen"
+# A line a second pass adds or changes for a binding: not a file's header, nor an import it adds.
+BOUND = re.compile(r"^\+(?!\+\+ )(?!\s*(?:from |import |if TYPE_CHECKING))", re.MULTILINE)
 ARGS = ["--level=suffocate", "--all-scopes", corpus_table.JOBS, "--unsafe-fixes", "--fix-widen=all"]
 
 
@@ -28,9 +32,9 @@ def main() -> int:
         diff = corpus_table._run(python, ["--diff", *ARGS, str(root)])
         name = corpus.name.replace(" ", "-")
         (OUT / f"{name}.diff").write_text(diff, encoding="utf-8")
-        left = diff.count("\n+")
+        left = len(BOUND.findall(diff))
         total += left
-        fixed = corpus_table._fixed_count(first)
+        fixed = corpus_table.fixed_count(first)
         print(f"{corpus.name}: fixed {fixed}, broken {broken}, second pass {left}", flush=True)
     print(f"total second pass: {total}")
     return 0

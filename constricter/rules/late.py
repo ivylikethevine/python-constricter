@@ -1,22 +1,24 @@
 # SPDX-License-Identifier: MIT
 """A scope's late fixes: those that need the whole scope seen, run once it's checked (see `checker`).
 
-`optionals` (`None`, then one type), `rebinds` (a fix refitted to every later value), `fills` (an
-empty container typed by what's added to it), `shadowed` (a fix naming a value of its own scope,
+`optionals` (`None`, then one type), `rebinds` (a fix refitted to every later value), `extended`
+(a display widened to what's added to it later), `fills` (an empty container typed by what's added
+to it), `shadowed` (a fix naming a value of its own scope,
 dropped), `excused` (a fix of a name a `# type: ignore` line uses, dropped), `unchecked` (a guess
 its function's use of the name makes an error of, dropped), and `finals` (LVA012's `Final`).
 """
 
 import ast
+import bisect
 import re
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
 from functools import lru_cache
-from typing import Final, TypeAlias
+from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
 from constricter.fix.core.imports import imports_of
 from constricter.fix.core.known import ImportPlan, Inference
-from constricter.fix.values import callables, hinted
+from constricter.fix.values import callables, displays, hinted
 from constricter.fix.values import fills as filling
 from constricter.fix.values import unchecked as misused
 from constricter.fix.values.doubts import contains_inner, narrowing, spelled_self
@@ -42,14 +44,23 @@ from constricter.rules import widened
 from constricter.rules.annotations import node_name, roots
 from constricter.rules.flow import Binding, Lifetime, members
 from constricter.rules.rebinding import Refit, refit
-from constricter.rules.scope import FINAL_KIND, Late, Plain, Scope, guesses_in
+from constricter.rules.scope import FINAL_KIND, Scope, guesses_in
 from constricter.rules.syntax import FunctionDef
 from constricter.rules.walked import children
+
+if TYPE_CHECKING:
+    from constricter.rules.scoped import Late, Plain
 
 _DISCARD: Final = "_"
 _OPTIONAL: Final = "optional"  # the fix kind of a `None` default rebound to one type
 _DECLARING: Final = frozenset({UNANNOTATED, UNTYPED_TARGET})  # the codes whose fix declares a name's type
 _FILLED: Final = "filled"  # the fix kind (and guessing mechanism) of an empty container filled later
+_CONTAINER: Final = "container"  # the fix kind of a display
+_DICT: Final = "dict"
+_FILLABLE: Final = frozenset({"list", "set", _DICT})  # the displays `extended` widens
+# The builtin numbers, narrowest first: each takes the ones before it, as a type checker has it.
+_NUMBERS: Final = ("bool", "int", "float", "complex")
+_BAR: Final = " | "
 _CALLERS: Final = "callers"  # and of a parameter typed by what every call passes it
 _NONE: Final = "None"
 _FINAL: Final = "Final"
@@ -181,6 +192,111 @@ def _offered(scope: Scope, found: Refit) -> Fix | None:
 
     """
     return scope.offer(found.found, found.origins, unsafe=found.unsafe, edit=found.edit, span=found.span)
+
+
+def extended(scope: Scope) -> None:
+    """Widen a display's fix to what its function adds to it later: `xs = [0]`, then `xs.append(0.5)`.
+
+    A display is typed by its elements, as a type checker types it; what's added later may be more.
+    Each added value's type joins the display's: numbers as the widest of them (`int` and `float`,
+    a `float`), any others as their union, a guess (`displays.JOINED`); an addition whose type isn't
+    known leaves the name no fix. Not where a nested scope sees it, out of this function's sight.
+    """
+    index: int
+    o: Offence
+    body: filling.Uses | None = None  # read once, for the first display to judge
+    for index, o in enumerate(scope.offences):
+        lifetime: Lifetime | None = scope.flow.get(o.name)
+        fix: Fix | None = o.edit
+        if o.code != UNANNOTATED or fix is None or _CONTAINER not in fix.kinds:
+            continue
+        parts: tuple[str, list[str]] | None = _contained(fix.annotation)
+        if parts is None or lifetime is None or lifetime.escaped or len(lifetime.bindings) != 1:
+            continue
+        body = body or filling.uses(scope.kind.body())
+        additions: list[filling.Fill] = filling.additions(body, o.name, parts[0])
+        if not additions or o.name in body.nested:
+            continue
+        rows: list[list[Inference | None]] = [
+            filling.added(fill, parts[0], scope.settings.known, scope.inferred.types) for fill in additions
+        ]
+        if any(part is None for row in rows for part in row):
+            scope.offences[index] = replace(o, edit=None)
+            continue
+        scope.offences[index] = replace(
+            o,
+            edit=_widened(scope, o.name, fix, parts, cast("list[list[Inference]]", rows)),
+        )
+
+
+def _widened(
+    scope: Scope,
+    name: str,
+    fix: Fix,
+    parts: tuple[str, list[str]],
+    rows: list[list[Inference]],
+) -> Fix | None:
+    """Widen a display's `fix` (split into `parts`) to what's added to it: `rows`, one per addition.
+
+    Returns:
+      The widened fix, `fix` itself if what's added doesn't widen it, or `None` where the types
+      can't be joined.
+
+    """
+    found: list[tuple[str, bool] | None] = [
+        _joined([own, *(row[at].annotation for row in rows)]) for at, own in enumerate(parts[1])
+    ]
+    if None in found:
+        return None
+    joins: list[tuple[str, bool]] = cast("list[tuple[str, bool]]", found)
+    annotation: str
+    if (annotation := f"{parts[0]}[{', '.join(text for text, _ in joins)}]") == fix.annotation:
+        return fix
+    union: bool = any(each for _, each in joins)
+    origins: frozenset[str] = frozenset({displays.JOINED}) if union else frozenset()
+    kinds: frozenset[str] = fix.kinds.union(origins, *(part.kinds for row in rows for part in row))
+    reason: str = f"its display, and what the function adds to it ({len(rows)})"
+    return scope.placed(name, Inference(annotation, reason, kinds), origins, unsafe=fix.unsafe or union)
+
+
+def _contained(annotation: str) -> tuple[str, list[str]] | None:
+    """Split a `list[T]`, `set[T]` or `dict[K, V]` into its container and its arguments.
+
+    Returns:
+      Them, or `None` for any other annotation.
+
+    """
+    node: ast.expr = ast.parse(annotation, mode="eval").body
+    kind: str
+    key: ast.expr
+    value: ast.expr
+    element: ast.expr
+    match node:
+        case ast.Subscript(value=ast.Name(id=kind), slice=ast.Tuple(elts=[key, value])) if kind == _DICT:
+            return kind, [ast.unparse(key), ast.unparse(value)]
+        case ast.Subscript(value=ast.Name(id=kind), slice=element) if kind in _FILLABLE - {_DICT}:
+            return kind, [ast.unparse(element)]
+        case _:
+            return None
+
+
+def _joined(types: Sequence[str]) -> tuple[str, bool] | None:
+    """Join a display's type for one argument with those of what's added there.
+
+    A union among them is its members: so `extended`, run again, keeps what it widened.
+
+    Returns:
+      The type, and whether it's a union of several; `None` where they can't be joined (see
+      `displays.union`).
+
+    """
+    distinct: list[str] = list(dict.fromkeys(member for each in types for member in each.split(_BAR)))
+    if len(distinct) == 1:
+        return distinct[0], False
+    if all(each in _NUMBERS for each in distinct):
+        return max(distinct, key=_NUMBERS.index), False
+    found: str | None = displays.union(distinct)
+    return None if found is None else (found, True)
 
 
 def fills(scope: Scope) -> None:
@@ -325,6 +441,16 @@ def shadowed(scope: Scope) -> None:
             scope.offences[index] = replace(o, edit=None)
 
 
+def excusing(lines: Sequence[str]) -> tuple[int, ...]:
+    """Find the lines a comment excuses to a type checker (`# type: ignore`), once for a module's scopes.
+
+    Returns:
+      Where each is, from 0, in order.
+
+    """
+    return tuple(index for index, line in enumerate(lines) if _IGNORE.search(line))
+
+
 def excused(scope: Scope) -> None:
     """Drop each fix of a name a line of its function excuses to a type checker (`# type: ignore`).
 
@@ -332,17 +458,20 @@ def excused(scope: Scope) -> None:
     excuse, and a checker told to report unused comments reports that one. A module's or a class
     body's name, by any line of the file: it's read everywhere.
     """
+    on: tuple[int, ...]
+    if not (on := scope.settings.facts.excused):  # most modules: none of its lines is
+        return
     function: FunctionDef | None = scope.kind.function
     lines: Sequence[str] = scope.settings.lines
-    first: int = 0 if function is None else function.lineno - 1
-    last: int | None = None if function is None else function.end_lineno
-    excusing: list[str]
-    if not (excusing := [line.partition("#")[0] for line in lines[first:last] if _IGNORE.search(line)]):
+    first: int = 0 if function is None else bisect.bisect_left(on, function.lineno - 1)
+    last: int = len(on) if function is None else bisect.bisect_left(on, function.end_lineno or len(lines))
+    excused_code: list[str]
+    if not (excused_code := [lines[line].partition("#")[0] for line in on[first:last]]):
         return
     index: int
     o: Offence
     for index, o in enumerate(scope.offences):
-        if o.edit is not None and any(o.name in _WORD.findall(code) for code in excusing):
+        if o.edit is not None and any(o.name in _WORD.findall(code) for code in excused_code):
             scope.offences[index] = replace(o, edit=None)
 
 

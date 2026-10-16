@@ -7,11 +7,12 @@ versions = ["dev"]
 formats = ["json", "markdown"]
 
 [corpora]
-include = ["seven"]
+include = ["original"]
 install = false
 
 [steps]
 check = true
+every-level = true
 fix = []
 census = false
 coverage = false

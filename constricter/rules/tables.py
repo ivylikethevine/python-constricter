@@ -11,7 +11,7 @@ from constricter.fix.core.inherited import Lineage, lineage
 from constricter.fix.core.signatures import AWAIT
 from constricter.fix.values.targets import aliased_unions, named_tuples
 from constricter.rules import walked
-from constricter.rules.annotations import (
+from constricter.rules.declarations import (
     class_methods,
     classes,
     held,

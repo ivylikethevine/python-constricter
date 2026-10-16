@@ -14,7 +14,7 @@ checkout's results under the new version, and commit it with the bump. Between r
 
 ## Development
 
-With [uv](https://docs.astral.sh/uv/) installed (CI pins 0.12.17):
+With [uv](https://docs.astral.sh/uv/) installed (CI pins 0.12.24):
 
 ```bash
 export UV_PROJECT_ENVIRONMENT=local/.venv
@@ -25,17 +25,19 @@ uv pip install --python local/.venv --no-deps --no-build-isolation -e .
 
 Checks (as CI runs them), on `constricter stdlib_tables tests hatch_build.py` where they take paths:
 `ruff check .` (every rule, preview included), `ruff format --check .`, `basedpyright` (all), `mypy`
-(strict), `pylint` (every extension, and again for a warning on each module past 900 lines, 100
-short of the limit it fails one at), `flake8`, `typos`, `validate-pyproject pyproject.toml`,
-`lint-imports` (the layers `pyproject.toml` states), `uv lock --check`,
+(strict), `pyrefly check`, `pylint` (every extension, and again for a warning on each module past
+800 lines, 200 short of the limit it fails one at), `flake8` (with pydoclint's `DOC` checks of a
+docstring's `Returns:`, `Yields:` and `Raises:`), `typos`, `validate-pyproject pyproject.toml`,
+`lint-imports` (the layers `pyproject.toml` states), `deptry` (the package's imports held to its
+dependencies, then the rest's to the groups'), `uv lock --check`,
 `constricter --level=suffocate --all-scopes`,
 `constricter --coverage --all-scopes --fail-under=100`, `pytest --cov` (100% branch coverage; with
 `-n auto --dist loadgroup`, on every CPU). Everything generated goes in `local/`, but the
 standard-library tables `--fix` reads (`constricter/fix/tables/`) and the tests'
 `stdlib_tables/partial.json`, which git ignores: a build (`hatch_build.py`), the editable install
-included, generates them from the typeshed stubs of the basedpyright `uv.lock` pins, in about 12
-seconds on 4 cores (30 on one), wherever they're missing or stale. After changing the generator
-(`stdlib_tables/`) or the pinned basedpyright, run
+included, generates them from the typeshed stubs of the basedpyright `uv.lock` pins, read with the
+`typeshed-client` it pins, in about 12 seconds on 4 cores (30 on one), wherever they're missing or
+stale. After changing the generator (`stdlib_tables/`) or either pin, run
 `local/.venv/bin/python -m stdlib_tables --if-stale`; `tests/fix/libraries/test_stdlib_tables.py`
 fails until then. Python is indented with 4 spaces. An editor running Pyright or basedpyright
 (Pylance, Neovim's Mason) needs no setting of its own: `pyrightconfig.json` points both at
@@ -51,6 +53,13 @@ what only one interpreter breaks fails before CI. Name jobs to run only those
 (`tests/ci_local.py lint docs interpreters`), and add `--install-hook` once to run it before every
 `git push`.
 
+Three things pass on Python 3.14 and fail on 3.11, CI's oldest, and no linter says so. A quoted
+alias (`Record: TypeAlias = "dict[str, object]"`) in a signature's `Record | None` is `str | None`
+there, a `TypeError` at import, since only 3.14 leaves annotations unevaluated when a function is
+defined. A dataclass field defaulting to `MappingProxyType({})` raises at import, since 3.11's
+`dataclasses` takes any unhashable default for a mutable one. And 3.11 forks its worker processes,
+so a `ProcessPoolExecutor` first used while another thread runs can hang.
+
 After editing a dependency group, run `uv lock` (CI fails until you do). Nothing bumps a pin for
 you: `tool-versions.yml` lists `uv.lock`'s direct dependencies, the npm pins, the actions and the
 tools pinned by URL that are behind upstream in one tracking issue, and each bump is a hand edit
@@ -64,14 +73,16 @@ its corpora ([`corpora.toml`](../tests/corpus/corpora.toml)'s, or any directory)
 versions (releases, this checkout, or another checkout's by its Python), and its steps: a check at
 every level, each fix on a copy (every file still compiling, and nothing left for a second pass),
 `--infer-with` each type checker, the census, coverage, a check timed in one process and with every
-CPU, and one that `py-spy` samples from outside, with constricter's slowest modules and functions.
-CI runs the check, the fix and the profile, each in its own job (the profile's never fails the run),
-against the standard library and the clones, at their pinned tags, of `django`, `sqlalchemy`,
-`pydantic` and `pandas` (a web framework, an ORM, a runtime-validation library and a data library;
-their dependencies' types come from the pinned `corpus` dependency group), and against pure Python 2
-(Twisted 12.3.0) and pip 20.3.4 (2/3-era code whose `# type:` comments sit in modules with Python 2
-`__future__` imports), hash-pinned sdists `tests/corpus/corpus_sources.py` fetches, since neither
-installs as a dependency.
+CPU (by [`hyperfine`](https://github.com/sharkdp/hyperfine) where it's installed, which also counts
+each run's instructions, a far steadier measure than its seconds), and one that `py-spy` samples
+from outside, with constricter's slowest modules and functions. CI runs the check, the fix and the
+profile, each in its own job (the profile's never fails the run), against the standard library (the
+`Lib` of CPython's pinned source release, its tests included, whatever Python runs it) and the
+clones, at their pinned tags, of `django`, `sqlalchemy`, `pydantic` and `pandas` (a web framework,
+an ORM, a runtime-validation library and a data library; their dependencies' types come from the
+pinned `corpus` dependency group), and against pure Python 2 (Twisted 12.3.0) and pip 20.3.4
+(2/3-era code whose `# type:` comments sit in modules with Python 2 `__future__` imports),
+hash-pinned sdists `tests/corpus/corpus_sources.py` fetches, since neither installs as a dependency.
 
 For a corpus with a suite (cloned at its pinned tag, with its test dependencies as its CI installs
 them, in `local/corpus-suites/`), three more steps run on its checkout with each fix's patch
@@ -87,20 +98,32 @@ the network, once.
 
 Each execution writes a folder of its own under `local/corpus-runs/`, named by the run's label and
 the time: the run file, a record for each corpus, version and step, and `report.json`, `report.md`
-and `tables/*.csv` made from them. `--resume FOLDER` carries on a stopped run, and `--only NAME`
-keeps one to a corpus. Each step is a process of its own, started once the CPUs it's expected to
-keep busy and the memory it's expected to hold are free: what it took in the last run under the same
-output, which its record keeps (`tests/corpus/sizing.py`; `cpus` and `memory` in the run file share
-out less than the machine has). A step that fails leaves its traceback under `logs/`; the run exits
-1 for it, and for anything a fix broke.
+and `tables/*.csv` made from them. `--resume FOLDER` carries on a stopped run, `--only NAME` keeps
+one to a corpus or set, and `--minus NAME` leaves out a corpus's, a set's or a run file's corpora
+(`super.toml --minus original` measures only what `super` adds). Neither publishes. Each step is a
+process of its own, started once the CPUs it's expected to keep busy and the memory it's expected to
+hold are free: what it took in the last run under the same output, which its record keeps
+(`tests/corpus/sizing.py`; `cpus` and `memory` in the run file share out less than the machine has).
+A step that fails leaves its traceback under `logs/`; the run exits 1 for it, and for anything a fix
+broke.
 
 A run file with a `[publish]` table records a section per version in [`docs/RUNS.md`](RUNS.md):
 offences per code, errors and warnings at each level, fixes, guesses, anything a fix broke, and the
 share of bindings typed before and after fixing (by this checkout's `--coverage`). Its `versions`
 may name releases too, each installed in an environment of its own. With `section`, it records that
-one section of the whole run instead: `tests/corpus/runs/super.toml` and `mega.toml` ask every step
-of the seven corpora and of the 40 more packages, and write RUNS.md's `Super corpora` and
-`Mega corpora` sections, with the machine they ran on. Run both before a release, outside a sandbox.
+one section of the whole run instead: `tests/corpus/runs/basic.toml`, `super.toml` and `mega.toml`
+ask every step of their corpora (`basic`'s the `original` seven, so its rows compare with the other
+two's), and write RUNS.md's `Basic corpora`, `Super corpora` and `Mega corpora` sections, with the
+machine they ran on. Run super and mega before a release, outside a sandbox. `super-fast.toml` and
+`mega-fast.toml` measure the same corpora without publishing, a suite's tests only after each fix:
+the tests as released are the latest earlier run's at the suite's tag (`tests-released = false`),
+and nothing is traced.
+
+Run files name their corpora by `tests/corpus/corpora.toml`'s sets, which may name other sets. The
+tiers hold each other: `original`, the seven corpora a release records; `super`, those and every
+fast corpus; `mega`, every corpus. Every corpus is in one of `fast-small`, `fast-large`,
+`slow-small` and `slow-large`, split at the medians of its files and of its steps' seconds in a
+super or mega run (`scratch/corpus_quadrants.py FOLDER...` prints them).
 
 On a pull request that touches what `--fix` does, the Corpus coverage workflow comments with
 pydantic's share of bindings typed as released, after `--fix`, and after `--fix --unsafe-fixes`,
@@ -115,6 +138,33 @@ binding, as JSON lines.
 
 CI also runs the tests on PyPy 3.11 and free-threaded Python 3.14, which install only the `test`
 dependency group: every dev tool doesn't have wheels for them, and the tests don't need them all.
+
+A compiled wheel, mypyc's build of `constricter/rules` and `constricter/fix`, is built from the
+sdist, so nothing compiled lands beside the sources:
+`HATCH_BUILD_HOOK_ENABLE_MYPYC=1 python -m build --no-isolation`, with the dev group (it includes
+the `mypyc` group). CI's Compiled job builds one on Linux, macOS and Windows, on Python 3.11 and
+3.14, and runs the tests against it (`pytest --import-mode=append`, the wheel installed over the
+editable install); the release builds one for each platform and CPython (`build.yml`, by
+cibuildwheel) beside the pure wheel, which PyPy, free-threaded builds and musllinux take. Compiled,
+code runs as its annotations say, not as Python would, where the two differ and no type checker says
+so:
+
+- `frozenset & d.keys()` (or `-`, `|`) is a `set`, where typeshed says `frozenset`: write
+  `d.keys() & s`, or `frozenset.union` and `difference`.
+- A capture inside a star or an or-pattern with `None` (`[_, *_] as args`, `int() | None as x`) is
+  left unbound: capture the whole (`args=args`) and test it in the guard.
+- A name bound again by `:=` after an `if (x := ...) is not None: return x` is taken for `None`: use
+  another name.
+- A `bool` bound to a name declared `int` is an `int`: test for `bool()` in the pattern, before it.
+- `else:` after `if TYPE_CHECKING:` never runs (`constricter/overrides.py`, compiled by nothing, has
+  the one that must).
+- A frozen dataclass a worker is sent pickled defines `__getstate__` and `__setstate__`
+  (`known.pickled`).
+- A test that patches a module's global is marked `interpreted`: compiled callers call past it.
+
+`local/.venv-mypyc/bin/python -m scratch.mypyc_trial` compiles a copy in a few minutes (a C file a
+module, on every CPU, unoptimized) and runs the tests against it; `scratch/compiled_compare.py`
+compares a check by a compiled wheel with this checkout's.
 
 Markdown (markdownlint-cli2 and prettier, locked in `.github/package-lock.json`):
 
@@ -147,6 +197,6 @@ Everything else is on. Some of these may be revisited.
 | pylint             | `too-many-instance-attributes` on `Module` and `Outside`                           | Each is a record of one file's tables, a field a table, built by keyword.                                             |
 | typos              | the word `astroid`                                                                 | A real package name.                                                                                                  |
 | typos              | `constricter/fix/tables/*.json`, `stdlib_tables/partial.json`                      | Generated from typeshed: the standard library's own names, which typos takes for misspellings.                        |
-| harden-runner      | `egress-policy: audit` on macOS and Windows, and in the weekly external-link check | harden-runner supports only audit on GitHub's macOS and Windows runners; external links can go anywhere.              |
+| harden-runner      | `egress-policy: audit` on macOS and Windows, and in the weekly external-link check | macOS and Windows jobs need an allowlist from their audit runs first; external links can go anywhere.                 |
 | reuse              | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)            | No recent release ships a wheel for Python 3.11+, so installing it builds from source with an unpinned `poetry-core`. |
 | zizmor             | `self-repository` (`.github/zizmor.yml`)                                           | Scorecard reads the `$/` form it wants as an unpinned third-party action, so local actions stay `./`.                 |

@@ -18,11 +18,13 @@ from constricter.fix.libraries.opened import opened
 from constricter.fix.values import shapes
 from constricter.fix.values.doubts import bare
 from constricter.fix.values.entered import Entered, entered, entered_async, entering
-from constricter.fix.values.inference import LoopPart, inference, looped, looped_parts
+from constricter.fix.values.inference import inference
+from constricter.fix.values.loops import LoopPart, looped, looped_parts
 from constricter.fix.values.targets import iterated, unpacked
 from constricter.offences import COMMENT_TYPED_TARGET, UNTYPED_TARGET, VAGUE_TYPE, Edit, Fix, Offence, at
 from constricter.rules.flow import augmented, members
-from constricter.rules.scope import Bare, Late, Scope, certain_type, guessed_type, guesses_in
+from constricter.rules.scope import Scope, certain_type, guessed_type, guesses_in
+from constricter.rules.scoped import Bare, Late
 from constricter.rules.syntax import captures, comment_type, target_names, type_comment_span
 
 _COMMENT: Final = "comment"  # the fix kind of LVA003's declaration
@@ -141,6 +143,7 @@ def _bind_loop(scope: Scope, stmt: ast.For | ast.AsyncFor, target: ast.expr, val
         value,
         scope.settings.known,
         scope.inferred.types,
+        inference,
     )
     elements: list[ast.expr]
     match target:
@@ -159,7 +162,7 @@ def _bind_loop(scope: Scope, stmt: ast.For | ast.AsyncFor, target: ast.expr, val
                 scope,
                 stmt,
                 target,
-                looped(value, scope.settings.known, scope.inferred.types),
+                looped(value, scope.settings.known, scope.inferred.types, inference),
                 iterated(value),
             )
 
@@ -280,7 +283,7 @@ def _unpacked_whole(scope: Scope, stmt: ast.Assign, target: ast.expr, value: ast
     known: Known = scope.settings.known
     typed: Inference | None = inference(value, known, scope.inferred.types)
     element: Inference | None
-    if (element := None if typed else looped(value, known, scope.inferred.types)) is not None:
+    if (element := None if typed else looped(value, known, scope.inferred.types, inference)) is not None:
         typed = element._replace(annotation=f"tuple[{element.annotation}, ...]")
         yield from _split(scope, stmt, target, typed, iterated(value))
         return

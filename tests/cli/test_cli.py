@@ -2,65 +2,33 @@
 """The `constricter` command: file discovery, `# noqa`, output and exit status."""
 
 import concurrent.futures
-import hashlib
 import io
 import json
 import os
 import runpy
 import sys
-import textwrap
-import urllib.request
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Final, TypeAlias, cast
+from typing import Final, TypeAlias
 
-import fastjsonschema
 import pytest
 
 from constricter.cli import collecting, config, paths
 from constricter.cli import command as cli
+from tests.cli.sources import BROKEN, DEMO, DEMO_CODES, PLAIN, written
 
 # Each starts `--jobs` workers of its own: one at a time, where the tests run at once (`pytest -n`).
 JOBS: pytest.MarkDecorator = pytest.mark.xdist_group("jobs")
 
-BROKEN: Final = """
-def broken(items: list[int]) -> None:
-    plain = 1
-    other = 2  # noqa: LVA001
-    third = 3  # noqa
-    fourth = 4  # noqa: E501
-    for loop in items:
-        pass
-    for hushed in items:  # noqa: LVA002
-        pass
-"""
 ONE_CLEAN_FILE: Final = "Found 0 error(s) and 0 warning(s) in 1 file(s).\n"
-PLAIN: Final = "local variable 'plain' is not annotated where it's first bound"
 FOURTH: Final = "local variable 'fourth' is not annotated where it's first bound"
 LOOP: Final = "for/match variable 'loop' is untyped; declare it before the statement"
-_Json: TypeAlias = "str | int | float | bool | list[_Json] | dict[str, _Json] | None"
-_JsonObject: TypeAlias = dict[str, _Json]
-_Sarif: TypeAlias = dict[str, list[dict[str, list[dict[str, _Json]]]]]
-# SARIF 2.1.0's JSON schema, from SchemaStore at a pinned commit, fetched once into `local/` (not
-# distributed here) and checked against its SHA-256.
-SARIF_SCHEMA: Final = Path(__file__).resolve().parents[2] / "local" / "sarif-2.1.0.json"
-SARIF_SCHEMA_URL: Final = (
-    "https://raw.githubusercontent.com/SchemaStore/schemastore/"
-    "2aded6096789c43a722556cf5019464ee747e495/src/schemas/json/sarif-2.1.0.json"
-)
-SARIF_SCHEMA_SHA256: Final = "c96eb2d311c37b0a38cbd18c52d79a68f778bbd2d831abed7412d9850740f785"
-FIXES: Final = "fixes"
-RULES_URL: Final = "https://github.com/ivylikethevine/python-constricter#rules"
+_Entries: TypeAlias = Iterator[os.DirEntry[str]]  # what `os.scandir` lists of a directory
 CLEAN: Final = """
 def clean() -> None:
     fine: int = 1
 """
-
-
-def _write(path: Path, source: str) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    _ = path.write_text(textwrap.dedent(source), encoding="utf-8", newline="\n")
-    return path
 
 
 def test_reports_unsuppressed_offences_and_exits_1(
@@ -68,7 +36,7 @@ def test_reports_unsuppressed_offences_and_exits_1(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Unsuppressed offences print with their severity; an error exits 1."""
-    broken: Path = _write(tmp_path / "broken.py", BROKEN)
+    broken: Path = written(tmp_path / "broken.py", BROKEN)
     assert cli.main([str(broken)]) == cli.EXIT_FOUND
     assert capsys.readouterr().out == (
         f"{broken}:3:5: error: LVA001 {PLAIN}\n"
@@ -94,7 +62,7 @@ def test_level_sets_what_is_an_error(
     summary: str,
 ) -> None:
     """`--level` decides which codes are errors; warnings alone exit 0."""
-    broken: Path = _write(tmp_path / "broken.py", BROKEN)
+    broken: Path = written(tmp_path / "broken.py", BROKEN)
     assert cli.main([f"--level={level}", str(broken)]) == status
     assert capsys.readouterr().out.splitlines()[-1].startswith(summary)
 
@@ -104,7 +72,7 @@ def test_clean_files_exit_0_and_quiet_drops_the_summary(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """A clean file exits 0; `-q` drops the summary."""
-    clean: Path = _write(tmp_path / "clean.py", CLEAN)
+    clean: Path = written(tmp_path / "clean.py", CLEAN)
     assert cli.main([str(clean)]) == cli.EXIT_CLEAN
     assert capsys.readouterr().out == ONE_CLEAN_FILE
     assert cli.main(["-q", str(clean)]) == cli.EXIT_CLEAN
@@ -115,8 +83,8 @@ def test_directories_skip_hidden_and_tool_dirs_and_honour_exclude(tmp_path: Path
     """Directory walks skip hidden and tool directories and `--exclude` globs."""
     name: str
     for name in ("a.py", "pkg/b.py", "pkg/fixtures/c.py", ".venv/d.py", "pkg/__pycache__/e.py", "venv/f.py"):
-        _ = _write(tmp_path / name, CLEAN)
-    _ = _write(tmp_path / "notes.txt", "")
+        _ = written(tmp_path / name, CLEAN)
+    _ = written(tmp_path / "notes.txt", "")
     found: list[Path] = list(paths.python_files([tmp_path], ["*/fixtures/*"]))
     assert found == [tmp_path / "a.py", tmp_path / "pkg" / "b.py"]
     # A file named explicitly is checked even where a directory walk would skip it.
@@ -124,13 +92,22 @@ def test_directories_skip_hidden_and_tool_dirs_and_honour_exclude(tmp_path: Path
     assert not list(paths.python_files([tmp_path / "a.py"], ["a.py"]))
 
 
-def test_exclude_also_skips_a_directory_by_name(tmp_path: Path) -> None:
-    """`--exclude` prunes a directory walk by directory name too, like the built-in skip list."""
+def test_exclude_also_skips_a_directory_by_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--exclude` prunes a walk by directory name too, like the built-in skip list: none is entered."""
     name: str
-    for name in ("a.py", "pkg/b.py", "pkg/generated/c.py"):
-        _ = _write(tmp_path / name, CLEAN)
+    for name in ("a.py", "pkg/b.ipynb", "pkg/generated/deep/c.py", ".venv/lib/d.py"):
+        _ = written(tmp_path / name, CLEAN)
+    entered: list[Path] = []
+    scandir: Callable[[str], _Entries] = os.scandir
+
+    def listed(directory: str) -> _Entries:
+        entered.append(Path(directory))
+        return scandir(directory)
+
+    monkeypatch.setattr(os, "scandir", listed)
     found: list[Path] = list(paths.python_files([tmp_path], ["generated"]))
-    assert found == [tmp_path / "a.py", tmp_path / "pkg" / "b.py"]
+    assert found == [tmp_path / "a.py", tmp_path / "pkg" / "b.ipynb"]
+    assert sorted(entered) == [tmp_path, tmp_path / "pkg"]
 
 
 def test_defaults_to_the_current_directory(
@@ -139,7 +116,7 @@ def test_defaults_to_the_current_directory(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """With no paths it checks the current directory."""
-    _ = _write(tmp_path / "clean.py", CLEAN)
+    _ = written(tmp_path / "clean.py", CLEAN)
     monkeypatch.chdir(tmp_path)
     assert cli.main([]) == cli.EXIT_CLEAN
     assert capsys.readouterr().out == ONE_CLEAN_FILE
@@ -147,8 +124,8 @@ def test_defaults_to_the_current_directory(
 
 def test_unparsable_files_exit_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """An unparsable file is reported on stderr and exits 2; the rest are still checked."""
-    bad: Path = _write(tmp_path / "bad.py", "def (:\n")
-    broken: Path = _write(tmp_path / "broken.py", BROKEN)
+    bad: Path = written(tmp_path / "bad.py", "def (:\n")
+    broken: Path = written(tmp_path / "broken.py", BROKEN)
     assert cli.main([str(bad), str(broken)]) == cli.EXIT_ERROR
     out: str
     err: str
@@ -163,7 +140,7 @@ def test_runs_as_a_module(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """`python -m constricter` runs the command, and leaves with its status without the interpreter's exit."""
-    monkeypatch.setattr(sys, "argv", ["constricter", str(_write(tmp_path / "clean.py", CLEAN))])
+    monkeypatch.setattr(sys, "argv", ["constricter", str(written(tmp_path / "clean.py", CLEAN))])
     left: list[int] = []
     monkeypatch.setattr(os, "_exit", left.append)
     _ = runpy.run_module("constricter", run_name="__main__")
@@ -173,145 +150,10 @@ def test_runs_as_a_module(
 
 def test_type_comments_flag(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """`--type-comments` counts `x = 1  # type: int` as annotated."""
-    typed: Path = _write(tmp_path / "typed.py", "def f() -> None:\n    x = 1  # type: int\n")
+    typed: Path = written(tmp_path / "typed.py", "def f() -> None:\n    x = 1  # type: int\n")
     assert cli.main(["-q", str(typed)]) == cli.EXIT_FOUND
     assert cli.main(["-q", "--type-comments", str(typed)]) == cli.EXIT_CLEAN
     assert capsys.readouterr().out.count("LVA001") == 1
-
-
-def test_json_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """`--format=json` prints one object per offence."""
-    broken: Path = _write(tmp_path / "broken.py", BROKEN)
-    assert cli.main(["--format=json", str(broken)]) == cli.EXIT_FOUND
-    results: list[dict[str, _Json]] = cast("list[dict[str, _Json]]", json.loads(capsys.readouterr().out))
-    assert results[0] == {
-        "path": str(broken),
-        "line": 3,
-        "column": 5,
-        "code": "LVA001",
-        "severity": "error",
-        "message": PLAIN,
-        "cell": None,
-        "fixed": False,
-        "fix": {
-            "annotation": "int",
-            "reason": "a literal",
-            "unsafe": False,
-            "likely": False,
-            "kinds": ["literal"],
-            "imports": [],
-        },
-    }
-    assert [(r["code"], r["severity"]) for r in results] == [
-        ("LVA001", "error"),
-        ("LVA001", "error"),
-        ("LVA002", "warning"),
-    ]
-
-
-def test_github_format_escapes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """`--format=github` prints escaped workflow commands, one per offence."""
-    odd: Path = _write(
-        tmp_path / "a,b%c.py",
-        "def f(items: list[int]) -> None:\n    x = 1\n    for y in items:\n        pass\n",
-    )
-    assert cli.main(["--format=github", str(odd)]) == cli.EXIT_FOUND
-    escaped: str = str(odd).replace("%", "%25").replace(":", "%3A").replace(",", "%2C")
-    assert capsys.readouterr().out == (
-        f"::error file={escaped},line=2,col=5,title=LVA001::"
-        "local variable 'x' is not annotated where it's first bound\n"
-        f"::warning file={escaped},line=3,col=9,title=LVA002::"
-        "for/match variable 'y' is untyped; declare it before the statement\n"
-    )
-
-
-def test_sarif_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """`--format=sarif` prints a SARIF log with each result's level."""
-    broken: Path = _write(tmp_path / "broken.py", BROKEN)
-    assert cli.main(["--format=sarif", str(broken)]) == cli.EXIT_FOUND
-    sarif: _Sarif = cast("_Sarif", json.loads(capsys.readouterr().out))
-    results: list[dict[str, _Json]] = sarif["runs"][0]["results"]
-    assert [(r["ruleId"], r["level"]) for r in results] == [
-        ("LVA001", "error"),
-        ("LVA001", "error"),
-        ("LVA002", "warning"),
-    ]
-    assert results[0]["locations"] == [
-        {
-            "physicalLocation": {
-                "artifactLocation": {"uri": broken.as_posix()},
-                "region": {"startLine": 3, "startColumn": 5},
-            },
-        },
-    ]
-
-
-def _sarif_schema() -> bytes:
-    """Read the SARIF schema, fetching it the first time; offline, skip (never in CI).
-
-    Returns:
-      Its bytes, their SHA-256 checked.
-
-    Raises:
-      OSError: it can't be fetched, in CI.
-
-    """
-    if not SARIF_SCHEMA.exists():
-        SARIF_SCHEMA.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            _ = urllib.request.urlretrieve(SARIF_SCHEMA_URL, SARIF_SCHEMA)  # a pinned https URL
-        except OSError as error:  # URLError is one
-            if os.environ.get("CI"):
-                raise
-            pytest.skip(f"can't fetch the SARIF schema: {error}")
-    schema: bytes = SARIF_SCHEMA.read_bytes()
-    assert hashlib.sha256(schema).hexdigest() == SARIF_SCHEMA_SHA256
-    return schema
-
-
-def _replacement(result: dict[str, _Json]) -> tuple[_Json, _Json]:
-    fixes: list[_JsonObject] = cast("list[_JsonObject]", result[FIXES])
-    changes: list[_JsonObject] = cast("list[_JsonObject]", fixes[0]["artifactChanges"])
-    replacement: _JsonObject = cast("list[_JsonObject]", changes[0]["replacements"])[0]
-    return replacement["deletedRegion"], replacement["insertedContent"]
-
-
-def test_sarif_links_rules_and_offers_certain_fixes(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Each SARIF rule links to its docs; each certain fix is a SARIF fix, and the log is valid."""
-    source: Path = _write(
-        tmp_path / "fixable.py",
-        """
-        def fixable(items: list[int]) -> None:
-            plain = 1
-            for loop in items:
-                pass
-            é = "x"; ü = 2
-            guess = Thing()
-        """,
-    )
-    assert cli.main(["--format=sarif", str(source)]) == cli.EXIT_FOUND
-    out: str = capsys.readouterr().out
-    schema: _JsonObject = cast("_JsonObject", json.loads(_sarif_schema()))
-    log: _JsonObject = cast("_JsonObject", json.loads(out))  # a copy: validating fills in defaults
-    valid: _JsonObject = cast("_JsonObject", fastjsonschema.validate(schema, log))
-    assert valid == log
-    sarif: _Sarif = cast("_Sarif", json.loads(out))
-    run: _JsonObject = cast("_JsonObject", sarif["runs"][0])
-    driver: _JsonObject = cast("_JsonObject", cast("_JsonObject", run["tool"])["driver"])
-    rules: list[_JsonObject] = cast("list[_JsonObject]", driver["rules"])
-    assert all(rule["helpUri"] == RULES_URL for rule in rules)
-    results: list[_JsonObject] = cast("list[_JsonObject]", run["results"])
-    assert [_replacement(r) for r in results[:4]] == [
-        ({"startLine": 3, "startColumn": 10, "endLine": 3, "endColumn": 10}, {"text": ": int"}),
-        ({"startLine": 4, "startColumn": 1, "endLine": 4, "endColumn": 1}, {"text": "    loop: int\n"}),
-        # Columns count characters (`columnKind`), where the offence's count UTF-8 bytes.
-        ({"startLine": 6, "startColumn": 6, "endLine": 6, "endColumn": 6}, {"text": ": str"}),
-        ({"startLine": 6, "startColumn": 15, "endLine": 6, "endColumn": 15}, {"text": ": int"}),
-    ]
-    assert FIXES not in results[4]  # a guess (`--unsafe-fixes`) isn't offered
 
 
 def _pyproject(directory: Path, text: str) -> None:
@@ -337,8 +179,8 @@ all-scopes = true
     source: str = (
         "LIMIT = 1\ndef f(items: list[int]) -> None:\n  x = 1  # type: int\n  for y in items:\n    pass\n"
     )
-    _ = _write(tmp_path / "pkg" / "checked.py", source)
-    _ = _write(tmp_path / "pkg" / "skipped.py", "def f() -> None:\n  z = 1\n")
+    _ = written(tmp_path / "pkg" / "checked.py", source)
+    _ = written(tmp_path / "pkg" / "skipped.py", "def f() -> None:\n  z = 1\n")
     monkeypatch.chdir(tmp_path / "pkg")
     assert cli.main(["."]) == cli.EXIT_FOUND
     out: str = capsys.readouterr().out
@@ -450,15 +292,38 @@ def test_fix_checks_a_file_again_after_a_fix_made_late(
         "    for key in keys:\n"
         "        del held[key]\n"
     )
-    path: Path = _write(tmp_path / "late.py", source)
+    path: Path = written(tmp_path / "late.py", source)
     assert cli.main(["--fix", "--unsafe-fixes", "-q", str(path)]) == cli.EXIT_CLEAN
     fixed: str = path.read_text(encoding="utf-8")
     assert _LATE in fixed
     _ = capsys.readouterr()
     assert cli.main(["--diff", "--unsafe-fixes", "-q", str(path)]) == cli.EXIT_CLEAN
     assert not capsys.readouterr().out
-    plain: Path = _write(tmp_path / "plain.py", "def g() -> None:\n    n = 1\n")
+    plain: Path = written(tmp_path / "plain.py", "def g() -> None:\n    n = 1\n")
     assert cli.main(["--fix", "-q", str(plain)]) == cli.EXIT_CLEAN
+
+
+# What `--likely` writes in one run: a likely guess, then what rests on it alone.
+_RESTING: Final = "    thing: Thing = Thing()\n    held: Thing | None = thing"
+
+
+def test_fix_likely_checks_a_file_again_after_writing_a_guess(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """What rests on a likely guess and on no other is certain once it's declared: in the same run."""
+    source: str = (
+        "class Thing: ...\n\n\n"
+        "def f(flag: bool) -> None:\n"
+        "    thing = Thing()\n"
+        "    held = thing if flag else None\n"
+    )
+    path: Path = written(tmp_path / "likely.py", source)
+    assert cli.main(["--fix", "--likely", "-q", str(path)]) == cli.EXIT_CLEAN
+    assert _RESTING in path.read_text(encoding="utf-8")
+    _ = capsys.readouterr()
+    assert cli.main(["--diff", "--likely", "-q", str(path)]) == cli.EXIT_CLEAN
+    assert not capsys.readouterr().out
 
 
 def test_relaxed_hides_vague_and_nested_annotations(
@@ -466,7 +331,7 @@ def test_relaxed_hides_vague_and_nested_annotations(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """LVA005 and LVA006 aren't reported at `relaxed`; `--nesting` sets LVA006's depth."""
-    path: Path = _write(tmp_path / "vague.py", "def f() -> None:\n  x: list[list[Any]] = []\n")
+    path: Path = written(tmp_path / "vague.py", "def f() -> None:\n  x: list[list[Any]] = []\n")
     assert cli.main(["-q", "--level=relaxed", str(path)]) == cli.EXIT_CLEAN
     assert not capsys.readouterr().out
     assert cli.main(["-q", "--nesting=2", str(path)]) == cli.EXIT_CLEAN
@@ -489,10 +354,7 @@ def test_pyproject_nesting(tmp_path: Path) -> None:
     assert config.config_defaults(tmp_path) == {"nesting": 3}
 
 
-RDJSON_ERROR: Final = "ERROR"
-DEMO_CODES: Final = ("LVA001", "LVA001", "LVA002")
 ALL_BASELINED: Final = "Found 0 error(s) and 0 warning(s) in 1 file(s); 3 baselined.\n"
-DEMO: Final = "def f(items: list[int]) -> None:\n  a = 1\n  b = []\n  for c in items:\n    pass\n"
 
 
 @pytest.mark.parametrize("code", ["LVA001", "LVA002", "LVA003", "LVA004", "LVA005", "LVA006"])
@@ -509,7 +371,7 @@ def test_explain_prints_each_code(code: str, capsys: pytest.CaptureFixture[str])
 
 def test_statistics_counts_each_code(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """`--statistics` prints a count per code instead of each offence."""
-    path: Path = _write(tmp_path / "demo.py", DEMO)
+    path: Path = written(tmp_path / "demo.py", DEMO)
     assert cli.main(["--statistics", str(path)]) == cli.EXIT_FOUND
     assert capsys.readouterr().out.splitlines() == [
         "    2  LVA001  error",
@@ -520,7 +382,7 @@ def test_statistics_counts_each_code(tmp_path: Path, capsys: pytest.CaptureFixtu
 
 def test_select_and_ignore(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """`--select` keeps only matching codes or prefixes; `--ignore` drops them."""
-    path: Path = _write(tmp_path / "demo.py", DEMO)
+    path: Path = written(tmp_path / "demo.py", DEMO)
     assert cli.main(["-q", "--select", "lva002", str(path)]) == cli.EXIT_CLEAN
     assert [line.split(": ")[2][:6] for line in capsys.readouterr().out.splitlines()] == ["LVA002"]
     assert cli.main(["-q", "--select", "LVA00", "--ignore", "LVA001,LVA002", str(path)]) == cli.EXIT_CLEAN
@@ -547,7 +409,7 @@ def test_diff_prints_the_fixes_and_changes_nothing(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """`--diff` prints what `--fix` would change, exits 1 if anything would, and writes nothing."""
-    path: Path = _write(tmp_path / "demo.py", DEMO)
+    path: Path = written(tmp_path / "demo.py", DEMO)
     assert cli.main(["--diff", str(path)]) == cli.EXIT_FOUND
     assert capsys.readouterr().out == (
         f"--- {path}\n+++ {path}\n@@ -1,5 +1,6 @@\n"
@@ -555,10 +417,10 @@ def test_diff_prints_the_fixes_and_changes_nothing(
         "   b = []\n+  c: int\n   for c in items:\n     pass\n"
     )
     assert path.read_text(encoding="utf-8") == DEMO
-    clean: Path = _write(tmp_path / "clean.py", CLEAN)
+    clean: Path = written(tmp_path / "clean.py", CLEAN)
     assert cli.main(["--diff", str(clean)]) == cli.EXIT_CLEAN
     assert not capsys.readouterr().out
-    bad: Path = _write(tmp_path / "bad.py", "def (:\n")
+    bad: Path = written(tmp_path / "bad.py", "def (:\n")
     assert cli.main(["--diff", str(bad)]) == cli.EXIT_ERROR
 
 
@@ -580,8 +442,8 @@ def test_per_path_levels(
 ) -> None:
     """`per-path-levels` sets the level for files matching a glob; the first match wins."""
     _pyproject(tmp_path, '[tool.constricter.per-path-levels]\n"tests/*" = "relaxed"\n"*.py" = 2\n')
-    _ = _write(tmp_path / "tests" / "demo.py", DEMO)
-    _ = _write(tmp_path / "src" / "demo.py", DEMO)
+    _ = written(tmp_path / "tests" / "demo.py", DEMO)
+    _ = written(tmp_path / "src" / "demo.py", DEMO)
     monkeypatch.chdir(tmp_path)
     assert cli.main(["--statistics", "tests"]) == cli.EXIT_CLEAN
     assert capsys.readouterr().out.splitlines()[:2] == ["    2  LVA001  warning", "    1  LVA002  warning"]
@@ -599,7 +461,7 @@ def test_max_is_the_strictest_check(
 ) -> None:
     """`--max`: `suffocate` over `per-path-levels`, every scope, the opt-in LVA012; not in pyproject."""
     _pyproject(tmp_path, '[tool.constricter.per-path-levels]\n"*.py" = "relaxed"\n')
-    _ = _write(tmp_path / "demo.py", MAXED)
+    _ = written(tmp_path / "demo.py", MAXED)
     monkeypatch.chdir(tmp_path)
     assert cli.main(["--statistics", "--max", "demo.py"]) == cli.EXIT_FOUND
     assert set(capsys.readouterr().out.splitlines()[:3]) == {
@@ -622,8 +484,8 @@ def test_jobs_check_files_in_parallel_in_order(
     """`--jobs` checks files in parallel, and reports them in the same order as one at a time."""
     name: str
     for name in ("a.py", "b.py", "c.py"):
-        _ = _write(tmp_path / name, DEMO)
-    _ = _write(tmp_path / "bad.py", "def (:\n")
+        _ = written(tmp_path / name, DEMO)
+    _ = written(tmp_path / "bad.py", "def (:\n")
     assert cli.main(["--jobs=1", str(tmp_path)]) == cli.EXIT_ERROR
     serial: tuple[str, str] = capsys.readouterr()
     assert cli.main([f"--jobs={jobs}", str(tmp_path)]) == cli.EXIT_ERROR
@@ -639,9 +501,12 @@ def test_jobs_check_a_file_again_by_the_worker_that_checked_it(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """A file its callers type the parameters of is checked again where it was first: as one at a time."""
-    _ = _write(tmp_path / "called.py", "def scaled(size):\n    half = size\n    return half\n")
-    _ = _write(tmp_path / "caller.py", "from called import scaled\n\n\ndef f() -> None:\n    a = scaled(2)\n")
-    _ = _write(tmp_path / "other.py", "from called import scaled\n\nb = scaled(3)\n")
+    _ = written(tmp_path / "called.py", "def scaled(size):\n    half = size\n    return half\n")
+    _ = written(
+        tmp_path / "caller.py",
+        "from called import scaled\n\n\ndef f() -> None:\n    a = scaled(2)\n",
+    )
+    _ = written(tmp_path / "other.py", "from called import scaled\n\nb = scaled(3)\n")
     shown: list[str] = ["--show-fixes", "--unsafe-fixes", "--all-scopes", str(tmp_path)]
     assert cli.main(["--jobs=1", *shown]) == cli.EXIT_FOUND
     serial: tuple[str, str] = capsys.readouterr()
@@ -658,7 +523,7 @@ def test_jobs_workers_index_and_check_their_own_shares(
     """Each worker indexes its share of the files, then checks it, with the trees it kept: in threads here."""
     name: str
     for name in ("a.py", "b.py", "c.py"):
-        _ = _write(tmp_path / name, DEMO)
+        _ = written(tmp_path / name, DEMO)
     (tmp_path / "gone.py").symlink_to(tmp_path / "nowhere.py")  # no size to share it out by
     assert cli.main(["--jobs=1", "--diff", str(tmp_path)]) == cli.EXIT_ERROR
     serial: tuple[str, str] = capsys.readouterr()
@@ -688,7 +553,7 @@ def test_baseline_reports_only_new_offences(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """`--write-baseline` records every offence; `--baseline` then reports only ones beyond it."""
-    path: Path = _write(tmp_path / "src" / "demo.py", DEMO)
+    path: Path = written(tmp_path / "src" / "demo.py", DEMO)
     file: Path = tmp_path / "baseline.json"
     assert cli.main(["--baseline", str(file), "--write-baseline", str(path)]) == cli.EXIT_CLEAN
     assert capsys.readouterr().out == f"Wrote 3 offence(s) to {file}.\n"
@@ -715,7 +580,7 @@ def test_baseline_from_pyproject_is_relative_to_it(
     """`baseline` in `[tool.constricter]` is a path relative to that pyproject.toml."""
     _pyproject(tmp_path, '[tool.constricter]\nbaseline = "ci/baseline.json"\n')
     (tmp_path / "ci").mkdir()
-    _ = _write(tmp_path / "pkg" / "demo.py", DEMO)
+    _ = written(tmp_path / "pkg" / "demo.py", DEMO)
     monkeypatch.chdir(tmp_path / "pkg")
     assert cli.main(["--write-baseline", "."]) == cli.EXIT_CLEAN
     assert (tmp_path / "ci" / "baseline.json").is_file()
@@ -760,7 +625,7 @@ def test_the_default_baseline_file(
 ) -> None:
     """Without `--baseline`, `constricter-baseline.json` next to pyproject.toml is written and used."""
     _pyproject(tmp_path, '[project]\nname = "x"\n')
-    _ = _write(tmp_path / "pkg" / "demo.py", DEMO)
+    _ = written(tmp_path / "pkg" / "demo.py", DEMO)
     monkeypatch.chdir(tmp_path / "pkg")
     assert cli.main(["-q", "."]) == cli.EXIT_FOUND  # no baseline yet: everything is reported
     assert cli.main(["--write-baseline", "."]) == cli.EXIT_CLEAN
@@ -772,7 +637,7 @@ def test_the_default_baseline_file(
 
 def test_a_baseline_can_have_comments(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """A hand-edited baseline may have comments and trailing commas (JSONC)."""
-    path: Path = _write(tmp_path / "demo.py", DEMO)
+    path: Path = written(tmp_path / "demo.py", DEMO)
     file: Path = tmp_path / "baseline.json"
     _ = file.write_text(
         (
@@ -787,8 +652,8 @@ def test_a_baseline_can_have_comments(tmp_path: Path, capsys: pytest.CaptureFixt
 
 def test_coverage_reports_the_typed_share(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """`--coverage` prints each file's and the total typed share; `--format=json` too."""
-    demo: Path = _write(tmp_path / "demo.py", DEMO)
-    clean: Path = _write(tmp_path / "clean.py", CLEAN)
+    demo: Path = written(tmp_path / "demo.py", DEMO)
+    clean: Path = written(tmp_path / "clean.py", CLEAN)
     assert cli.main(["--coverage", str(tmp_path)]) == cli.EXIT_CLEAN
     assert capsys.readouterr().out == (
         f"{clean}: 1/1 typed (100.0%)\n{demo}: 0/3 typed (0.0%)\nTotal: 1/4 typed (25.0%) in 2 file(s).\n"
@@ -805,11 +670,11 @@ def test_coverage_reports_the_typed_share(tmp_path: Path, capsys: pytest.Capture
 
 def test_fail_under_sets_the_exit_status(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """`--fail-under PCT` implies `--coverage`, and exits 1 below PCT; an unparsable file exits 2."""
-    _ = _write(tmp_path / "demo.py", DEMO)
-    _ = _write(tmp_path / "clean.py", CLEAN)
+    _ = written(tmp_path / "demo.py", DEMO)
+    _ = written(tmp_path / "clean.py", CLEAN)
     assert cli.main(["--fail-under=25", str(tmp_path)]) == cli.EXIT_CLEAN
     assert cli.main(["--fail-under=25.1", str(tmp_path)]) == cli.EXIT_FOUND
-    _ = _write(tmp_path / "bad.py", "def (:\n")
+    _ = written(tmp_path / "bad.py", "def (:\n")
     assert cli.main(["--coverage", str(tmp_path)]) == cli.EXIT_ERROR
     assert capsys.readouterr().err.startswith(f"{tmp_path / 'bad.py'}: error: ")
 
@@ -877,12 +742,12 @@ def test_stdin_notebook_and_errors(
 
 def test_exit_zero_and_output_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """`--exit-zero` exits 0 despite errors (not for unreadable files); `--output-file` gets the report."""
-    demo: Path = _write(tmp_path / "demo.py", DEMO)
+    demo: Path = written(tmp_path / "demo.py", DEMO)
     report: Path = tmp_path / "report.txt"
     assert cli.main(["--exit-zero", "--output-file", str(report), str(demo)]) == cli.EXIT_CLEAN
     assert not capsys.readouterr().out
     assert report.read_text(encoding="utf-8").endswith("Found 2 error(s) and 1 warning(s) in 1 file(s).\n")
-    bad: Path = _write(tmp_path / "bad.py", "def (:\n")
+    bad: Path = written(tmp_path / "bad.py", "def (:\n")
     assert cli.main(["--exit-zero", str(bad)]) == cli.EXIT_ERROR
 
 
@@ -893,68 +758,8 @@ def test_per_file_ignores(
 ) -> None:
     """`per-file-ignores` drops codes (or prefixes) for files matching a glob."""
     _pyproject(tmp_path, '[tool.constricter.per-file-ignores]\n"tests/*" = ["LVA001"]\n')
-    _ = _write(tmp_path / "tests" / "demo.py", DEMO)
+    _ = written(tmp_path / "tests" / "demo.py", DEMO)
     monkeypatch.chdir(tmp_path)
     assert cli.main(["--statistics", "-q", "tests"]) == cli.EXIT_CLEAN
     assert capsys.readouterr().out.split() == ["1", *DEMO_CODES[2:], "warning"]
     assert config.config_defaults(tmp_path) == {"per_file_ignores": {"tests/*": ["LVA001"]}}
-
-
-def test_gitlab_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """`--format=gitlab` is Code Climate JSON with fingerprints unique per offence."""
-    demo: Path = _write(tmp_path / "demo.py", DEMO + "  a = 2\n")
-    assert cli.main(["--format=gitlab", str(demo)]) == cli.EXIT_FOUND
-    issues: list[dict[str, _Json]] = cast("list[dict[str, _Json]]", json.loads(capsys.readouterr().out))
-    assert [(i["check_name"], i["severity"], i["location"]) for i in issues] == [
-        ("LVA001", "major", {"path": demo.as_posix(), "lines": {"begin": 2}}),
-        ("LVA001", "major", {"path": demo.as_posix(), "lines": {"begin": 3}}),
-        ("LVA002", "minor", {"path": demo.as_posix(), "lines": {"begin": 4}}),
-    ]
-    assert len({str(i["fingerprint"]) for i in issues}) == len(issues)
-
-
-def test_junit_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """`--format=junit` is a test suite per file, with a failed test case per offence."""
-    demo: Path = _write(tmp_path / "demo.py", DEMO)
-    assert cli.main(["--format=junit", str(demo)]) == cli.EXIT_FOUND
-    out: str = capsys.readouterr().out
-    assert out.startswith(
-        "<?xml version='1.0' encoding='utf-8'?>\n<testsuites name=\"constricter\" tests=\"3\"",
-    )
-    assert f'<testcase name="LVA002 c" classname="{demo}">' in out
-    assert out.count("<failure ") == out.count("</testcase>") == len(DEMO_CODES)
-
-
-def test_rdjson_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """`--format=rdjson` is reviewdog's JSON; a certain fix is a suggestion at the name's end."""
-    demo: Path = _write(tmp_path / "demo.py", DEMO)
-    assert cli.main(["--format=rdjson", str(demo)]) == cli.EXIT_FOUND
-    report: dict[str, list[_JsonObject]] = cast(
-        "dict[str, list[_JsonObject]]",
-        json.loads(capsys.readouterr().out),
-    )
-    first: dict[str, _Json] = report["diagnostics"][0]
-    assert first["severity"] == RDJSON_ERROR
-    end: dict[str, int] = {"line": 2, "column": 4}
-    assert first["suggestions"] == [{"range": {"start": end, "end": end}, "text": ": int"}]
-    assert set(report["diagnostics"][1]) == set(first) - {"suggestions"}  # `b = []` has no fix
-
-
-def test_rdjson_declares_a_loop_target_on_a_line_of_its_own(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """A loop target's suggestion is a declaration before the loop, not `for x: T in ...`."""
-    loop: Path = _write(
-        tmp_path / "loop.py",
-        "def f(items: list[str]) -> None:\n    for x in items:\n        pass\n",
-    )
-    assert cli.main(["--format=rdjson", str(loop)]) == cli.EXIT_CLEAN
-    report: dict[str, list[_JsonObject]] = cast(
-        "dict[str, list[_JsonObject]]",
-        json.loads(capsys.readouterr().out),
-    )
-    start: dict[str, int] = {"line": 2, "column": 1}
-    assert report["diagnostics"][0]["suggestions"] == [
-        {"range": {"start": start, "end": start}, "text": "    x: str\n"},
-    ]

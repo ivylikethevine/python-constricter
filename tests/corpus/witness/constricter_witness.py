@@ -11,14 +11,21 @@ binding a fix annotates, then the name, to the annotation and the import stateme
 
 As a statement that binds such a name ends, the annotation is evaluated where the statement is (its
 function's globals and locals, with the fix's imports), once, and the value is held to it: it's an
-instance of the class, or of one of a union's; a subscripted class is held to the class alone, not
-to its arguments. Each process writes, for each binding, how many times the value fit, didn't, and
-couldn't be told (`FIT`, `DIFFER`, `UNKNOWN`): an annotation that can't be evaluated there, a
-protocol no `isinstance` checks, a type variable with no bound, a value that's a test's mock.
+instance of the class, or of one of a union's. A builtin container is held to its annotation's
+arguments too, by its first elements (`_elements`); any other subscripted class to the class alone.
+Each process writes, for each binding, how many times the value fit, didn't, and couldn't be told
+(`FIT`, `DIFFER`, `UNKNOWN`): an annotation that can't be evaluated there, a protocol no `isinstance`
+checks, a type variable with no bound, a value that's a test's mock, a `SimpleNamespace` or of a
+class a test module defines (`_stand_in`), and an annotation that names such a class: a module's
+name a test has patched (`humanize.datetime = MockDateTime`), as the annotation was evaluated. A class
+made again, by a function at each call or by a module imported anew, is the annotation's class where
+its module and its qualified name are (`_redefined`).
 """
 
+import collections
 import collections.abc
 import io
+import itertools
 import json
 import os
 import sys
@@ -52,7 +59,6 @@ FIT: Final = 0
 DIFFER: Final = 1
 UNKNOWN: Final = 2
 _MOST: Final = 50  # how many times one binding is judged
-_SUSPENDS: Final = 0x20 | 0x80 | 0x100 | 0x200  # a generator's or a coroutine's flags: it returns by yielding
 # What an annotation's class takes besides its own instances: a number's narrower numbers, and any
 # file object for `typing`'s, which none is an instance of.
 _TAKEN: Final = {
@@ -63,7 +69,16 @@ _TAKEN: Final = {
     typing.BinaryIO: (io.IOBase,),
 }
 _UNSET: Final = object()
+_FIRST: Final = 100  # how many of an ordered container's elements are held to its annotation's arguments
+# The containers read without running anything of the value's own: these classes themselves, no subclass.
+_SETS: Final = (set, frozenset)
+_SEQUENCES: Final = (list, collections.deque)
+_MAPPINGS: Final = (dict, collections.defaultdict, collections.OrderedDict)
+_TUPLES: Final = (tuple,)
+_PAIR: Final = 2  # a mapping's arguments: its keys' type and its values'
 _ALIASED: Final = "__value__"  # where a `type` statement's alias keeps what it names
+# A test module's name, by any of its parts: pytest's and unittest's ways of naming them.
+_TESTS: Final = frozenset({"test", "tests", "testing", "conftest"})
 _CALLABLE: Final = collections.abc.Callable
 # What makes a union: `X | Y`, and `Union[X, Y]` where that's another thing (before Python 3.14).
 _UNIONS: Final = frozenset({types.UnionType, cast("object", vars(typing)["Union"])})
@@ -79,29 +94,6 @@ class _Statement(Protocol):  # pylint: disable=too-few-public-methods
     @property
     def stores(self) -> list[tuple[int, str]]:
         """The names it binds, each with its line."""
-        raise NotImplementedError
-
-
-class _File(Protocol):  # pylint: disable=too-few-public-methods
-    """What a recorder keeps of a file."""
-
-    @property
-    def path(self) -> Path:
-        """Its path under the root."""
-        raise NotImplementedError
-
-
-class _Function(Protocol):
-    """What a recorder keeps of a function."""
-
-    @property
-    def file(self) -> _File:
-        """Its file."""
-        raise NotImplementedError
-
-    @property
-    def lines(self) -> Mapping[int, _Statement]:
-        """The statement each of its lines is of."""
         raise NotImplementedError
 
 
@@ -156,7 +148,48 @@ def _held(value: object, hint: object, origin: object, args: tuple[object, ...])
         return isinstance(value, type)
     if origin is _CALLABLE:
         return callable(value)
-    return _instance(value, hint if origin is None else origin)
+    found_class: bool | None = _instance(value, hint if origin is None else origin)
+    return _elements(value, origin, args) if found_class and origin is not None else found_class
+
+
+def _elements(value: object, origin: object, args: tuple[object, ...]) -> bool | None:
+    """Check a builtin container's elements against its annotation's arguments, `value` being of its class.
+
+    Its first `_FIRST`, in its order; a set's every one, whose order is no two runs'. A tuple's
+    parts one by one, where the annotation has them so. Not another class's (a subclass may run its
+    own code as it's read), nor one whose arguments aren't its elements' types.
+
+    Returns:
+      Whether they all are; `None` where one can't be told and none isn't, `True` for a container
+      this doesn't read.
+
+    """
+    found: list[bool | None]
+    if (
+        type(value) in _TUPLES and origin is tuple and args[-1:] != (Ellipsis,)
+    ):  # `tuple[()]` has no arguments
+        if len(cast("tuple[object, ...]", value)) != len(args):
+            return False
+        found = list(itertools.starmap(holds, zip(cast("tuple[object, ...]", value), args, strict=True)))
+    elif type(value) in _MAPPINGS and len(args) == _PAIR:
+        found = [
+            holds(each, arg)
+            for pair in itertools.islice(cast("dict[object, object]", value).items(), _FIRST)
+            for each, arg in zip(pair, args, strict=True)
+        ]
+    elif (
+        (type(value) in _SEQUENCES or type(value) in _SETS or type(value) in _TUPLES)
+        and args
+        and args[1:] in {(), (Ellipsis,)}
+    ):
+        most: int = len(cast("collections.abc.Sized", value)) if type(value) in _SETS else _FIRST
+        found = [
+            holds(each, args[0])
+            for each in itertools.islice(cast("collections.abc.Iterable[object]", value), most)
+        ]
+    else:
+        return True
+    return False if False in found else None if None in found else True
 
 
 def _stood_for(hint: object) -> object:
@@ -187,9 +220,49 @@ def _instance(value: object, hint: object) -> bool | None:
     if not isinstance(hint, type):
         return None
     try:
-        return isinstance(value, _TAKEN.get(hint, hint))
+        fit: bool = isinstance(value, _TAKEN.get(hint, hint)) or _redefined(type(value), hint)
     except TypeError:  # a protocol that isn't checked at run time
         return None
+    return True if fit else None if _stand_in(type(value)) else False
+
+
+def _redefined(kind: type, hint: type) -> bool:
+    """Check whether `kind` or a base of it is `hint` made again: by a function, or a module imported anew.
+
+    Returns:
+      Whether one has `hint`'s module and qualified name.
+
+    """
+    return any(
+        (base.__module__, base.__qualname__) == (hint.__module__, hint.__qualname__) for base in kind.__mro__
+    )
+
+
+def _stand_in(kind: type) -> bool:
+    """Check whether `kind` is a test's stand-in, which says nothing of the annotation.
+
+    Returns:
+      Whether it's `SimpleNamespace`, or a test module's (`_testing`).
+
+    """
+    return kind is types.SimpleNamespace or _testing(kind.__module__)
+
+
+def _testing(module: str) -> bool:
+    # Whether a part of a module's name is a test package's, or a test file's (`test_x`, `x_test`).
+    return any(
+        part in _TESTS or part.startswith("test_") or part.endswith("_test") for part in module.split(".")
+    )
+
+
+def patched(hint: object, module: str) -> bool:
+    """Check whether an annotation in `module` names a test's class: a name of the module's a test patched.
+
+    Returns:
+      Whether it does, `module` being no test module, whose own annotations name its classes.
+
+    """
+    return isinstance(hint, type) and _testing(hint.__module__) and not _testing(module)
 
 
 class Witness(recording.Recorder):
@@ -203,42 +276,52 @@ class Witness(recording.Recorder):
         self.expected, self.out = _settings()
         self.hints: dict[_Key, object] = {}  # each binding's annotation, evaluated; `_UNSET`: it can't be
         self.verdicts: dict[_Key, list[int]] = {}  # each binding's counts: fit, differing, unknown
+        # What's expected of each function's file (see `_told`), by the function's id, kept with it.
+        self.told: dict[int, tuple[recording.Function, tuple[str, _Expected] | None]] = {}
 
     @override
-    def line(self, frame: FrameType) -> None:
-        """Judge what the statement `frame` was in bound, as it arrives at another's line; then note it."""
-        function: _Function | None
-        if (function := self.functions.get(id(frame.f_code))) is not None:
-            at: _Statement | None = function.lines.get(frame.f_lineno)
-            if self.pending.get(id(frame), (None, at))[1] is not at:
-                self._judge(frame, function)
-        super().line(frame)
+    def ended(self, frame: FrameType, function: recording.Function) -> None:
+        """Judge what the statement `frame` was in bound, as it ends; then note it."""
+        told: tuple[str, _Expected] | None
+        if (told := self._told(function)) is not None:
+            self._judge(frame, *told)
+        super().ended(frame, function)
 
-    @override
-    def left(self, frame: FrameType) -> None:
-        """Judge what `frame`'s last statement bound, as its function returns; then note it."""
-        function: _Function | None = self.functions.get(id(frame.f_code))
-        if function is not None and not frame.f_code.co_flags & _SUSPENDS:
-            self._judge(frame, function)
-        super().left(frame)
+    def _told(self, function: recording.Function) -> tuple[str, _Expected] | None:
+        """Find what the settings expect of a function's file, read once a function.
 
-    def _judge(self, frame: FrameType, function: _Function) -> None:
+        Returns:
+          The file's path and its bindings' annotations; `None` for a file with none.
+
+        """
+        if id(function) not in self.told:
+            path: str = function.file.path.as_posix()
+            expected: _Expected | None = self.expected.get(path)
+            self.told[id(function)] = (function, None if expected is None else (path, expected))
+        return self.told[id(function)][1]
+
+    def _judge(self, frame: FrameType, path: str, expected: _Expected) -> None:
         # Hold each name the pending statement bound to its annotation, where one's expected.
-        path: str = function.file.path.as_posix()
-        expected: _Expected | None = self.expected.get(path)
         pending: tuple[CodeType | None, _Statement] | None = self.pending.get(id(frame))
-        if expected is None or pending is None or pending[0] is not frame.f_code:
+        if pending is None or pending[0] is not frame.f_code:
             return
         line: int
         name: str
         for line, name in pending[1].stores:
             said: list[str] | None = expected.get(str(line), {}).get(name)
             key: _Key = (path, line, name)
-            if said is None or name not in frame.f_locals or sum(self.verdicts.get(key, ())) >= _MOST:
-                continue
+            if said is not None and sum(self.verdicts.get(key, ())) < _MOST:
+                self._weighed(frame, key, said, frame.f_locals)
+
+    def _weighed(self, frame: FrameType, key: _Key, said: list[str], bound: Mapping[str, object]) -> None:
+        # Hold what a name is bound to in `frame` to its annotation `said`, and count the verdict.
+        if key[2] in bound:
             if key not in self.hints:
                 self.hints[key] = _evaluated(said, frame)
-            fits: bool | None = _fits(cast("object", frame.f_locals[name]), self.hints[key])
+            fits: bool | None = _fits(bound[key[2]], self.hints[key])
+            if patched(self.hints[key], _module(frame)):  # evaluated again once the test's done
+                fits = None
+                del self.hints[key]
             self.verdicts.setdefault(key, [0, 0, 0])[
                 UNKNOWN if fits is None else FIT if fits else DIFFER
             ] += 1
@@ -271,6 +354,11 @@ def _fits(value: object, hint: object) -> bool | None:
         return None if hint is _UNSET else holds(value, hint)
     except Exception:  # ruff: ignore[blind-except]  # pylint: disable=broad-exception-caught
         return None
+
+
+def _module(frame: FrameType) -> str:
+    # The name of the module `frame` runs in.
+    return str(cast("object", frame.f_globals.get("__name__", "")))
 
 
 def _evaluated(said: list[str], frame: FrameType) -> object:

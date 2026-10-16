@@ -39,15 +39,24 @@ from constricter.fix.core.signatures import (
     Variant,
 )
 from constricter.fix.libraries import stdlib
+from constricter.fix.libraries.receivers import (
+    MAYBE,
+    NO,
+    SELF_TYPE,
+    UNFOLLOWED,
+    YES,
+    Receiver,
+    both,
+    matches,
+    parsed,
+    receiver_of,
+)
 from constricter.rules.walked import walk
 
 SCALARS: Final = ("str", "LiteralString", "bytes", "bytearray", "int", "float", "complex", "bool", "None")
 _COLUMNS: Final = {scalar: index for index, scalar in enumerate(SCALARS)}
 _LITERAL_STRING: Final = "LiteralString"  # the type of a `str` literal
 _NONE: Final = "None"
-_YES: Final = "y"
-_NO: Final = "n"
-_MAYBE: Final = "?"
 _POSITIONAL: Final = frozenset({"p", "e"})
 _KEYWORD: Final = frozenset({"e", "k"})
 _STAR: Final = "a"
@@ -71,18 +80,11 @@ _CALL: Final = "call"  # the fix kind of a declared return
 CONTAINERS: Final = ("list", _TUPLE, "set", "frozenset", "dict")  # in the `scalars` table's order
 _CONTAINERS: Final = frozenset(CONTAINERS)
 _SELF: Final = "self"  # a signature's key for the type arguments its method's instance must have
-_SELF_TYPE: Final = "Self"  # a method's receiver's type, in `stdlib.Method.types`
-_ANY_PATH: Final = "typing.Any"  # a receiver pattern's anything
-_TUPLE_PATH: Final = "builtins.tuple"
-_BUILTINS_PATH: Final = "builtins."
 # The builtin classes, each a class as an argument (`assertRaises(ValueError)`).
 _BUILTIN_CLASSES: Final = frozenset(
     name for name in dir(builtins) if isinstance(cast("object", getattr(builtins, name)), type)
 )
-_UNFOLLOWED: Final = "?"  # a lineage's base that can't be followed
 _SEQUENCES: Final = frozenset({"list", "tuple", "set", "frozenset"})  # whose elements `own_e` is asked of
-_CLASHING: Final = "?"  # a type variable a receiver's type binds two ways
-_REPEATED: Final = 2  # `tuple[int, ...]`'s arguments
 _Infer: TypeAlias = Callable[[ast.expr], Inference | None]
 # A signature that may be the one: its return template and its type variables' types (`None`:
 # a return `--fix` can't write).
@@ -153,7 +155,12 @@ def chosen(
     picks: list[_Picked] = [
         _receiving(picked, method)
         for variant in variants
-        for picked in _picked(variant, read, instance, None if method is None else _receiver(method, known))
+        for picked in _picked(
+            variant,
+            read,
+            instance,
+            None if method is None else receiver_of(method, known),
+        )
     ]
     found: set[str | None] = {None if picked is None else write(picked, known) for picked in picks}
     if len(found) > 1 and None not in found:
@@ -241,7 +248,7 @@ def operated(method: stdlib.Method, operands: tuple[str, str], known: Known) -> 
             takes: str | None
             if (takes := signature.get("takes")) is None:
                 break
-            if any(_takes(member, left, right) for member in _members(_parsed(takes))):
+            if any(_takes(member, left, right) for member in _members(parsed(takes))):
                 returns = signature["returns"]
                 break
         found.add(None if returns is None else write((returns, method.types), known))
@@ -258,7 +265,7 @@ def _takes(member: str, left: str, right: str) -> bool:
       Whether it does.
 
     """
-    wanted: str = left if member == _SELF_TYPE else member
+    wanted: str = left if member == SELF_TYPE else member
     return right == wanted or right in _PROMOTED.get(wanted, ()) or stdlib.inherits(right, wanted)
 
 
@@ -308,7 +315,7 @@ def substituted(template: str, types: Mapping[str, str]) -> str:
     """
     if not types:
         return template
-    tree: ast.expr = _parsed(template)
+    tree: ast.expr = parsed(template)
     if isinstance(tree, ast.Name):
         return types.get(tree.id, template)
     node: ast.AST
@@ -328,7 +335,7 @@ def _replaced(value: object, types: Mapping[str, str]) -> object:
     """
     if isinstance(value, list):
         return [_replaced(item, types) for item in cast("list[object]", value)]
-    return _parsed(types[value.id]) if isinstance(value, ast.Name) and value.id in types else value
+    return parsed(types[value.id]) if isinstance(value, ast.Name) and value.id in types else value
 
 
 def _arguments(call: ast.Call, infer: _Infer, known: Known) -> Arguments | None:
@@ -353,9 +360,11 @@ def _argument(value: ast.expr, infer: _Infer, known: Known) -> Argument:
     constant: Constant
     written: str
     match value:
-        case ast.Constant(value=bool() | int() | float() | complex() | str() | bytes() | None as constant):
+        case ast.Constant(value=None):
+            return Argument(_NONE, (None,))
+        case ast.Constant(value=bool() | int() | float() | complex() | str() | bytes() as constant):
             kind: str = _LITERAL_STRING if isinstance(constant, str) else type(constant).__name__
-            return Argument(_NONE if constant is None else kind, (constant,))
+            return Argument(kind, (constant,))
         case ast.Name() | ast.Attribute() if (written := ast.unparse(value)) and (
             written in known.classes
             or written in known.names.classes
@@ -438,7 +447,10 @@ def _signatures(name: str) -> tuple[tuple[ReadSignature, ...], ...]:
     return tuple(
         tuple(
             ReadSignature(
-                tuple(_parameter(param) for param in signature["params"]),
+                # Each a list, as JSON holds it, where the tables' types say a tuple.
+                tuple(
+                    _parameter(param) for param in cast("list[Sequence[object] | str]", signature["params"])
+                ),
                 signature["returns"],
                 signature.get("self"),
             )
@@ -448,7 +460,7 @@ def _signatures(name: str) -> tuple[tuple[ReadSignature, ...], ...]:
     )
 
 
-def _parameter(written: Parameter | str) -> Parameter:
+def _parameter(written: Sequence[object] | str) -> Parameter:
     """Read a parameter as the tables write it (`"name kind="`: one every signature has alike).
 
     Returns:
@@ -456,7 +468,7 @@ def _parameter(written: Parameter | str) -> Parameter:
 
     """
     if not isinstance(written, str):
-        return written
+        return cast("Parameter", tuple(written))
     name: str
     kind: str
     name, _, kind = written.partition(" ")
@@ -467,13 +479,13 @@ def _picked(
     variant: Sequence[ReadSignature],
     read: Arguments,
     instance: Sequence[str] | None,
-    receiver: "_Receiver | None",
+    receiver: Receiver | None,
 ) -> Iterator[_Picked]:
     """Find the signatures a call may match: up to the first that certainly takes its arguments.
 
     `instance`: for a method, its receiver's type arguments (`Pattern[str]`'s), if it has them; a
     signature for another instance type (`self: Pattern[bytes]`) refuses it. An installed method's
-    signature declaring its `self` is matched against `receiver`'s type (see `_Receiver`).
+    signature declaring its `self` is matched against `receiver`'s type (see `Receiver`).
 
     Yields:
       Each one that doesn't certainly refuse them: its return template and type variables' types.
@@ -485,252 +497,25 @@ def _picked(
         bound: dict[str, str]
         verdict, bound = _matched(signature.params, read)
         if signature.instance is not None and signature.instance != instance:
-            verdict = _NO if instance is not None else _MAYBE if verdict == _YES else verdict
-        if signature.receiver is not None and verdict != _NO:
-            verdict = _both(verdict, _MAYBE if receiver is None else _matches(receiver, signature, bound))
-        if verdict != _NO:
+            verdict = NO if instance is not None else MAYBE if verdict == YES else verdict
+        if signature.receiver is not None and verdict != NO:
+            verdict = both(verdict, MAYBE if receiver is None else matches(receiver, signature, bound))
+        if verdict != NO:
             yield None if signature.returns is None else (signature.returns, bound)
-        if verdict == _YES:
+        if verdict == YES:
             return
-
-
-def _both(first: str, second: str) -> str:
-    """Combine two verdicts that must both hold.
-
-    Returns:
-      `_NO` if either is, `_MAYBE` if either is, else `_YES`.
-
-    """
-    return _NO if _NO in {first, second} else _MAYBE if _MAYBE in {first, second} else _YES
-
-
-class _Receiver(NamedTuple):
-    """A method call's receiver, matched against an installed method's `self` (`ReadSignature.receiver`).
-
-    Its type (`Self` in `stdlib.Method.types`), as the module writes it, or as the class an alias
-    stands for (`Method.matched`); and what the module knows, whose `LibraryNames.lineage` a class
-    it names is compared with a pattern's by (where each is defined, and its ancestors). `own`, for
-    an alias's: what a type variable may be bound to, the parts the module wrote; the alias's own
-    are paths, which it can't.
-    """
-
-    text: str | None
-    known: Known
-    own: frozenset[str] | None = None
-
-
-def _receiver(method: stdlib.Method, known: Known) -> _Receiver:
-    written: str | None = method.types.get(_SELF_TYPE)
-    if method.matched is None or written is None:
-        return _Receiver(written, known)
-    return _Receiver(
-        method.matched,
-        known,
-        frozenset(ast.unparse(node) for node in ast.walk(_parsed(written)) if isinstance(node, ast.expr)),
-    )
-
-
-def _matches(receiver: _Receiver, signature: ReadSignature, bound: dict[str, str]) -> str:
-    """Match the receiver's type against `signature`'s `self`, binding its type variables into `bound`.
-
-    Returns:
-      `_YES`, `_NO`, or `_MAYBE`.
-
-    """
-    found: dict[str, str] = {}
-    verdict: str = _unified(
-        receiver,
-        _parsed(cast("str", signature.receiver)),  # `_picked` asks only where there's one
-        _parsed(cast("str", receiver.text)),  # an installed method's receiver always has a type
-        dict(signature.bounds),
-        found,
-    )
-    # A variable bound two ways (by two parts, or by the arguments too) is left unbound: a type
-    # checker would widen it, or reject the call. So is one bound to what an alias wrote.
-    clashing: set[str] = {
-        name
-        for name, text in found.items()
-        if text == _CLASHING
-        or bound.get(name, text) != text
-        or (receiver.own is not None and text not in receiver.own)
-    }
-    name: str
-    for name in clashing:
-        _ = bound.pop(name, None)
-        del found[name]
-    bound.update(found)
-    return _MAYBE if clashing and verdict == _YES else verdict
-
-
-def _unified(
-    receiver: _Receiver,
-    pattern: ast.expr,
-    actual: ast.expr,
-    bounds: dict[str, str],
-    found: dict[str, str],
-) -> str:
-    """Match one part of the receiver's type against a pattern's.
-
-    Returns:
-      The verdict.
-
-    """
-    left: ast.expr
-    right: ast.expr
-    name: str
-    match pattern:
-        case ast.BinOp(left=left, op=ast.BitOr(), right=right):
-            return _either(receiver, [left, right], actual, bounds, found)
-        case ast.Name(id=name):  # a type variable: bound to it (see `_matches` for two ways)
-            text: str = ast.unparse(actual)
-            if found.setdefault(name, text) != text:
-                found[name] = _CLASHING
-            return _YES if name not in bounds else _either(receiver, [_parsed(bounds[name])], actual, {}, {})
-        case ast.Subscript():
-            return _subscript(receiver, pattern, actual, bounds, found)
-        case _:
-            return _class(receiver, ast.unparse(pattern), actual)
-
-
-def _either(
-    receiver: _Receiver,
-    members: Sequence[ast.expr],
-    actual: ast.expr,
-    bounds: dict[str, str],
-    found: dict[str, str],
-) -> str:
-    """Match against a union: `_YES` if a member matches (its bindings kept), `_NO` if none can.
-
-    Returns:
-      The verdict.
-
-    """
-    verdicts: set[str] = set()
-    member: ast.expr
-    for member in [part for each in members for part in _union(each)]:
-        bound: dict[str, str] = dict(found)
-        verdict: str
-        if (verdict := _unified(receiver, member, actual, bounds, bound)) == _YES:
-            found.update(bound)
-            return _YES
-        verdicts.add(verdict)
-    return _NO if verdicts == {_NO} else _MAYBE
-
-
-def _subscript(
-    receiver: _Receiver,
-    pattern: ast.Subscript,
-    actual: ast.expr,
-    bounds: dict[str, str],
-    found: dict[str, str],
-) -> str:
-    """Match a generic class's pattern (`ndarray[tuple[Any, ...], dtype[ScalarT]]`) argument by argument.
-
-    Returns:
-      The verdict: `_MAYBE` for a subclass, or the receiver's type without arguments.
-
-    """
-    related: str = _class(
-        receiver,
-        ast.unparse(pattern.value),
-        actual.value if isinstance(actual, ast.Subscript) else actual,
-    )
-    if (
-        related != _YES
-        or not isinstance(actual, ast.Subscript)
-        or ast.unparse(pattern.value) != _defined(receiver, actual.value)
-    ):
-        return _MAYBE if related == _YES else related
-    wanted: list[ast.expr] = _arguments_of(pattern)
-    given: list[ast.expr] = _arguments_of(actual)
-    if _repeated(wanted) and _repeated(given):  # `tuple[int, ...]` both: their elements
-        wanted, given = wanted[:1], given[:1]
-    elif _repeated(given):
-        return _MAYBE  # its length unknown
-    elif _repeated(wanted):
-        wanted = [wanted[0]] * len(given)
-    if len(wanted) != len(given):
-        return _NO if ast.unparse(pattern.value) == _TUPLE_PATH else _MAYBE
-    verdict: str = _YES
-    part: ast.expr
-    other: ast.expr
-    for part, other in zip(wanted, given, strict=True):
-        verdict = _both(verdict, _unified(receiver, part, other, bounds, found))
-    return verdict
-
-
-def _repeated(args: Sequence[ast.expr]) -> bool:
-    return len(args) == _REPEATED and isinstance(args[1], ast.Constant) and args[1].value is Ellipsis
-
-
-def _class(receiver: _Receiver, path: str, actual: ast.expr) -> str:
-    """Compare a pattern's class (`numpy.floating`) with the receiver's (`np.float64`), by its lineage.
-
-    Returns:
-      `_YES` if it's that class or a subclass, `_NO` if its lineage is known and doesn't have it.
-
-    """
-    if path == _ANY_PATH:
-        return _YES
-    lineage: tuple[str, ...] = _lineage(
-        receiver,
-        actual.value if isinstance(actual, ast.Subscript) else actual,
-    )
-    if path in lineage:
-        return _YES
-    return _MAYBE if not lineage or _UNFOLLOWED in lineage else _NO
-
-
-def _defined(receiver: _Receiver, actual: ast.expr) -> str:
-    lineage: tuple[str, ...] = _lineage(receiver, actual)
-    return lineage[0] if lineage else ""
-
-
-def _lineage(receiver: _Receiver, actual: ast.expr) -> tuple[str, ...]:
-    """Find where a class the receiver's type names is defined, and its ancestors.
-
-    Returns:
-      Them; none for anything else. A builtin's, just it and `object`.
-
-    """
-    text: str = ast.unparse(actual)
-    if isinstance(actual, ast.Name) and receiver.known.is_builtin(text):
-        return (f"builtins.{text}", "builtins.object")
-    if text.startswith(_BUILTINS_PATH):  # an alias's expansion's (`builtins.tuple`)
-        return (text, "builtins.object")
-    return tuple(receiver.known.names.lineage.get(text, ()))
-
-
-def _union(pattern: ast.expr) -> list[ast.expr]:
-    """Split a union pattern into its members.
-
-    Returns:
-      Them.
-
-    """
-    if isinstance(pattern, ast.BinOp) and isinstance(pattern.op, ast.BitOr):
-        return [*_union(pattern.left), *_union(pattern.right)]
-    return [pattern]
-
-
-def _arguments_of(node: ast.Subscript) -> list[ast.expr]:
-    return list(node.slice.elts) if isinstance(node.slice, ast.Tuple) else [node.slice]
-
-
-def _parsed(text: str) -> ast.expr:
-    return ast.parse(text, mode="eval").body
 
 
 def _matched(params: Sequence[Parameter], read: Arguments) -> tuple[str, dict[str, str]]:
     """Match a call's arguments to one signature's parameters.
 
     Returns:
-      Whether it takes them (`_YES`, `_NO`, `_MAYBE`), and the type variables they bind.
+      Whether it takes them (`YES`, `NO`, `MAYBE`), and the type variables they bind.
 
     """
     pairs: list[tuple[Parameter, Argument]] | None
     if (pairs := _bound(params, read)) is None:
-        return _NO, {}
+        return NO, {}
     verdicts: set[str] = set()
     types: dict[str, str] = {}
     clashing: set[str] = set()  # type variables two arguments bind differently: unwritable
@@ -740,16 +525,16 @@ def _matched(params: Sequence[Parameter], read: Arguments) -> tuple[str, dict[st
         verdict: str = _verdict(param[3], arg)
         verdicts.add(verdict)
         bound: tuple[str, str] | None
-        if (bound := None if verdict != _YES else _binding(param[3], arg)) is not None:
+        if (bound := None if verdict != YES else _binding(param[3], arg)) is not None:
             variable: str
             text: str
             variable, text = bound
             if types.setdefault(variable, text) != text:
-                verdicts.add(_MAYBE)
+                verdicts.add(MAYBE)
                 clashing.add(variable)
-    if _NO in verdicts:
-        return _NO, {}
-    return (_MAYBE if _MAYBE in verdicts else _YES), {
+    if NO in verdicts:
+        return NO, {}
+    return (MAYBE if MAYBE in verdicts else YES), {
         name: text for name, text in types.items() if name not in clashing
     }
 
@@ -833,18 +618,18 @@ def _verdict(accepts: Accepts | None, arg: Argument) -> str:
     """Decide whether a parameter takes an argument.
 
     Returns:
-      `_YES`, `_NO`, or `_MAYBE` (its type unknown, or not enough to tell).
+      `YES`, `NO`, or `MAYBE` (its type unknown, or not enough to tell).
 
     """
     if accepts is None:
-        return _YES
+        return YES
     if arg.klass is not None:
         # A builtin class may be outside a `type[T]`'s bound (`dtype=bool`, `T` a numpy scalar): the
         # signature that takes it then is another's.
         outside: bool = arg.klass in _BUILTIN_CLASSES and accepts.get(CLASS_BOUNDED, False)
-        return _MAYBE if outside else accepts.get(CLASS_VERDICT, _MAYBE)
+        return MAYBE if outside else accepts.get(CLASS_VERDICT, MAYBE)
     if arg.constant is not None and any(_same(arg.constant[0], value) for value in accepts.get("lit", [])):
-        return _YES
+        return YES
     table: str = accepts.get("c", accepts["v"]) if arg.constant is not None else accepts["v"]
     if arg.type is not None:
         return table[_COLUMNS[arg.type]]
@@ -853,7 +638,7 @@ def _verdict(accepts: Accepts | None, arg: Argument) -> str:
     line: tuple[str, ...]
     for wanted, line in ((accepts.get(OWN), arg.own), (accepts.get(OWN_ELEMENTS), arg.own_elements)):
         if wanted is not None and line:
-            return _YES if set(wanted) & set(line) else _MAYBE if _UNFOLLOWED in line else _NO
+            return YES if set(wanted) & set(line) else MAYBE if UNFOLLOWED in line else NO
     taken: bool = (
         (_ANYTHING in accepts and arg.text is not None)
         or (FUTURE_BINDS in accepts and arg.awaited is not None and arg.text is not None)
@@ -861,26 +646,26 @@ def _verdict(accepts: Accepts | None, arg: Argument) -> str:
         or (_RETURNED in accepts and arg.returns is not None)
         or (_AWAITED in accepts and arg.awaited is not None)
     )
-    return _YES if taken else _container_verdict(accepts, arg)
+    return YES if taken else _container_verdict(accepts, arg)
 
 
 def _container_verdict(accepts: Accepts, arg: Argument) -> str:
     """Decide whether a parameter takes a builtin container argument, by its elements' type where it says.
 
     Returns:
-      The verdict: `_MAYBE` for any other argument, or a parameter that doesn't say.
+      The verdict: `MAYBE` for any other argument, or a parameter that doesn't say.
 
     """
     elements: tuple[str, tuple[str, ...]] | None
     if (elements := arg.elements) is None:
         # A parameter bounded by a future takes no coroutine's call: awaitable, but no future.
-        return _NO if FUTURE_BINDS in accepts and arg.awaited is not None else _MAYBE
-    verdict: str = accepts.get(CONTAINER_VERDICTS, {}).get(elements[0], _MAYBE)
+        return NO if FUTURE_BINDS in accepts and arg.awaited is not None else MAYBE
+    verdict: str = accepts.get(CONTAINER_VERDICTS, {}).get(elements[0], MAYBE)
     of: str | None = accepts.get(ELEMENT_VERDICTS, {}).get(elements[0])
-    if verdict != _YES or of is None:
+    if verdict != YES or of is None:
         return verdict
     element: str = elements[1][0]
-    return of[_COLUMNS[element]] if element in _COLUMNS else _MAYBE
+    return of[_COLUMNS[element]] if element in _COLUMNS else MAYBE
 
 
 def _same(constant: Constant, value: Constant) -> bool:

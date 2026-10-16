@@ -8,8 +8,8 @@ from typing import Final, TypeAlias
 
 from constricter import Offence, check_source
 from constricter.cli import schedule
-from constricter.fix.index import project
-from constricter.rules import annotations
+from constricter.fix.index import crossed, project
+from constricter.rules import declarations
 
 _Fixes: TypeAlias = dict[str, tuple[str | None, bool]]
 _LOCAL: Final = """
@@ -131,7 +131,7 @@ def test_a_literal_key_of_a_typed_dict_is_its_declared_type() -> None:
 
 def test_a_typed_dicts_annotations_are_its_keys() -> None:
     """Under `TypedDict` or one of the module's; a generic one's, and a plain class's, are attributes."""
-    found: dict[str, dict[str, str]] = annotations.classes(ast.parse(textwrap.dedent(_LOCAL)))
+    found: dict[str, dict[str, str]] = declarations.classes(ast.parse(textwrap.dedent(_LOCAL)))
     assert found == {
         "Base": {"[name]": "str", "[tags]": "list[str]", "[note]": "str | None"},
         "Movie": {
@@ -159,7 +159,7 @@ def test_another_files_typed_dict_is_keyed_too(tmp_path: Path) -> None:
     _ = _write(tmp_path / "pkg" / "shapes.py", _SHAPES)
     main: Path = _write(tmp_path / "main.py", _MAIN)
     catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
-    imported: project.Imported = project.imported(catalog, main)
+    imported: project.Imported = crossed.imported(catalog, main)
     assert imported.classes.attributes["s.Shape"] == {
         "[kind]": "Literal['circle', 'square']",
         "[sides]": "int",

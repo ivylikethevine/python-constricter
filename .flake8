@@ -1,5 +1,12 @@
 [flake8]
 max-line-length = 110
 indent-size = 4
+# pydoclint (DOC): a docstring's `Returns:`, `Yields:` and `Raises:` held to what its function does.
+# Their types and the arguments, which no docstring lists, are the annotations'.
+style = google
+arg-type-hints-in-docstring = False
+check-return-types = False
+check-yield-types = False
+allow-init-docstring = True
 # `ruff format` puts a space before a slice's `:` after an expression.
-extend-ignore = E203
+extend-ignore = E203, DOC101, DOC103

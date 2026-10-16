@@ -20,6 +20,8 @@ if TYPE_CHECKING:
     from constricter.fix.core.known import Origin
 
 _DOT: Final = "."
+# The bases no class's binding of a name can hide: one a class above another binds is in sight.
+_ROOTS: Final = frozenset({classvars.OBJECT, *classvars.BUILTIN_BASES, *classvars.PASSED_OVER})
 
 
 def settled(catalog: Index, entries: Sequence[str] = ()) -> Index:
@@ -56,19 +58,96 @@ def settled(catalog: Index, entries: Sequence[str] = ()) -> Index:
         for module in catalog.modules.values()
         for name in module.bases
     }
-    return catalog._replace(
-        modules={
-            name: replace(
-                module,
-                plain=frozenset(
-                    each
-                    for each in module.bases
-                    if f"{name}.{each}" in plain and _unheld(f"{name}.{each}", module, found, declared)
-                ),
-            )
-            for name, module in catalog.modules.items()
-        },
+    return _named(
+        catalog._replace(
+            modules={
+                name: replace(
+                    module,
+                    plain=frozenset(
+                        each
+                        for each in module.bases
+                        if f"{name}.{each}" in plain and _unheld(f"{name}.{each}", module, found, declared)
+                    ),
+                )
+                for name, module in catalog.modules.items()
+            },
+        ),
+        found,
     )
+
+
+def _named(catalog: Index, found: Mapping[str, tuple[str, ...]]) -> Index:
+    """Type a plain class's variables bound to a checked file's class by name (see `classvars.named`).
+
+    `type[Name]`, where no class above or under it in the checked files binds the variable: a type
+    checker holds an override to its base's type once both are declared. Only where every class
+    above it is a checked file's, or a builtin or `object`: a framework's base, or one only a star
+    import re-exports, may bind it out of sight. `found`: each checked class's bases, resolved.
+
+    Returns:
+      The index, each such module with them among its `members`.
+
+    """
+    binds: dict[str, frozenset[str]] = {
+        f"{module.name}.{name}": names
+        for module in catalog.modules.values()
+        for name, names in module.bound.items()
+    }
+    under: dict[str, set[str]] | None = None
+    modules: dict[str, Module] = dict(catalog.modules)
+    module: Module
+    for module in catalog.modules.values():
+        added: dict[str, dict[str, str]] = {}
+        owner: str
+        bound: Mapping[str, str]
+        for owner, bound in module.named.items():
+            key: str = f"{module.name}.{owner}"
+            variable: str
+            value: str
+            for variable, value in bound.items() if owner in module.plain else ():
+                if resolved(catalog.modules, module, value) not in found or not _closed(key, found):
+                    continue
+                under = _under(found) if under is None else under
+                if not any(
+                    variable in binds.get(other, ())
+                    for other in (*classvars.ancestors(key, found), *under[key])
+                ):
+                    added.setdefault(owner, {})[variable] = f"type[{value}]"
+        if added:
+            typed: dict[str, Mapping[str, str]] = dict(module.members)
+            typed.update({owner: {**typed.get(owner, {}), **each} for owner, each in added.items()})
+            modules[module.name] = replace(module, members=typed)
+    return catalog._replace(modules=modules) if under is not None else catalog
+
+
+def _closed(key: str, found: Mapping[str, tuple[str, ...]]) -> bool:
+    """Check that every class above `key` is in sight: a checked file's, or a builtin or `object`.
+
+    Returns:
+      Whether it is.
+
+    """
+    return all(
+        base in found or base in _ROOTS
+        for owner in (key, *classvars.ancestors(key, found))
+        for base in found[owner]
+    )
+
+
+def _under(found: Mapping[str, tuple[str, ...]]) -> dict[str, set[str]]:
+    """Name every checked class under each one, however far.
+
+    Returns:
+      Them, by the class above.
+
+    """
+    under: dict[str, set[str]] = {name: set() for name in found}
+    name: str
+    for name in found:
+        above: str
+        for above in classvars.ancestors(name, found):
+            under[above].add(name)
+    return under
 
 
 def _unheld(
@@ -88,7 +167,7 @@ def _unheld(
     """
     typed: Mapping[str, str] = module.members.get(key.rpartition(_DOT)[2], {})
     above: list[Mapping[str, str]] = [declared[each] for each in classvars.ancestors(key, found)]
-    return not classvars.reserved(key, found) & typed.keys() and classvars.agreeing(typed, above) == typed
+    return not typed.keys() & classvars.reserved(key, found) and classvars.agreeing(typed, above) == typed
 
 
 def resolved(modules: Mapping[str, Module], module: Module, base: str) -> str:
@@ -112,6 +191,23 @@ def resolved(modules: Mapping[str, Module], module: Module, base: str) -> str:
     where: Origin = (_DOT.join(path[:-1]), path[-1])
     defined: tuple[Module, str] | None = definition(modules, where, CLASS)
     return _DOT.join(path) if defined is None else f"{defined[0].name}.{defined[1]}"
+
+
+def members(catalog: Index, path: Path) -> dict[str, Mapping[str, str]]:
+    """Find what the index types the variables of the plain classes of the file at `path` as.
+
+    What the file alone types them as, and those bound to a checked file's class by name (`_named`).
+
+    Returns:
+      Each class's, by its name; none for a file `catalog` doesn't have.
+
+    """
+    target: Module | None = catalog.modules.get(module_name(path)) if path.suffix == SUFFIX else None
+    return (
+        {}
+        if target is None
+        else {name: target.members[name] for name in target.plain if name in target.members}
+    )
 
 
 def classes(catalog: Index, path: Path) -> frozenset[str] | None:

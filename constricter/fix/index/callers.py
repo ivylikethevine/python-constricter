@@ -2,7 +2,7 @@
 """Unannotated parameters typed by their callers: what every call in the checked files passes each one.
 
 Once every file is checked, each module's `Observed` calls to the checked files' open functions (see
-`modules.open_functions`) are matched to their parameters, as Python binds them. A parameter left
+`params.open_functions`) are matched to their parameters, as Python binds them. A parameter left
 unannotated is typed when every call passes it, each an argument of the same known type
 (`rules.calls` says which count); not if a call leaves it to its default, can't be matched, or
 unpacks its arguments, nor if the function escapes (a callback), and never for a function no file
@@ -17,7 +17,8 @@ from typing import Final, TypeAlias
 
 from constricter.fix.core.known import Call, Callee, Observed, Origin, Passed, Seeds
 from constricter.fix.index import project
-from constricter.fix.index.modules import SUFFIX, Index, Param
+from constricter.fix.index.modules import SUFFIX, Index
+from constricter.fix.index.params import Param
 
 KIND: Final = "callers"  # the guessing mechanism (`FIX_KINDS`)
 # A module's functions' typed parameters: each one's type and what it rests on, by name, by function.

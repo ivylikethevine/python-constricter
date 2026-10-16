@@ -8,8 +8,8 @@ from typing import Final, TypeAlias
 
 from constricter import Checks, Offence, check_source
 from constricter.cli import schedule
-from constricter.fix.index import project
-from constricter.rules import annotations
+from constricter.fix.index import crossed, project
+from constricter.rules import declarations
 
 _Fixes: TypeAlias = dict[str, tuple[str | None, bool]]
 _LOCAL: Final = """
@@ -208,16 +208,16 @@ def test_an_unpacked_call_takes_the_parts_that_arent_vague() -> None:
 def test_partial_returns_are_those_with_a_vague_part() -> None:
     """Of any shape, all vague or in part; one with none is a plain return."""
     tree: ast.Module = ast.parse(textwrap.dedent(_LOCAL))
-    assert annotations.partial_returns(tree) == {
+    assert declarations.partial_returns(tree) == {
         "collect": "tuple[list[str], dict[str, Any]]",
         "all_vague": "Tuple[Any, dict[str, Any]]",
         "anything": "tuple[Any, ...]",
     }
-    assert annotations.partial_method_returns(tree) == {
+    assert declarations.partial_method_returns(tree) == {
         "Schema": {"common": "tuple[int, dict[str, Any]]", "info": "Tuple[Any, bool]"},
         "Child": {},
     }
-    assert annotations.returns(tree) == {"plain": "tuple[int, str]"}
+    assert declarations.returns(tree) == {"plain": "tuple[int, str]"}
 
 
 def _write(path: Path, source: str) -> Path:
@@ -232,7 +232,7 @@ def test_another_files_partial_return_is_unpacked_too(tmp_path: Path) -> None:
     _ = _write(tmp_path / "pkg" / "util.py", _UTIL)
     main: Path = _write(tmp_path / "main.py", _MAIN)
     catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
-    imported: project.Imported = project.imported(catalog, main)
+    imported: project.Imported = crossed.imported(catalog, main)
     assert imported.partial.calls == {
         "collect": "tuple[list[str], dict[str, Any]]",
         "u.collect": "tuple[list[str], dict[str, Any]]",

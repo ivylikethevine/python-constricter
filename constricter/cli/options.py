@@ -37,6 +37,7 @@ from constricter.offences import (
     FixPolicy,
     Level,
     Offence,
+    Tier,
 )
 
 _ALL: Final = 100  # percent
@@ -160,7 +161,7 @@ def _version(text: str) -> tuple[int, int]:
       It.
 
     Raises:
-      ArgumentTypeError: It isn't one.
+      argparse.ArgumentTypeError: It isn't one.
 
     """
     major: str
@@ -179,7 +180,7 @@ def _gigabytes(text: str) -> float:
       It.
 
     Raises:
-      ArgumentTypeError: It isn't one.
+      argparse.ArgumentTypeError: It isn't one.
 
     """
     try:
@@ -209,7 +210,7 @@ def _checkers(text: str) -> list[str]:
       Them.
 
     Raises:
-      ArgumentTypeError: One isn't a checker it knows.
+      argparse.ArgumentTypeError: One isn't a checker it knows.
 
     """
     checkers: list[str] = [checker.strip() for checker in text.split(",") if checker.strip()]
@@ -237,6 +238,12 @@ def _parser() -> argparse.ArgumentParser:
         default=[],
         metavar="GLOB",
         help="skip a path, file or directory matching this glob (repeatable), e.g. 'tests/fixtures/*'",
+    )
+    _ = parser.add_argument(
+        "--gitignore",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="in a git checkout, skip what git ignores under a directory (--no-gitignore walks it whole)",
     )
     _ = parser.add_argument(
         "--level",
@@ -479,6 +486,7 @@ class Input:
     exclude: list[str]
     stdin_name: Path = STDIN
     trace: Path | None = None  # the trace whose types `--fix` guesses with (`--infer-from`)
+    gitignore: bool = True  # under a directory in a git checkout, only what git tracks or would
 
     def name(self, path: Path) -> Path:
         """Name `path` for reports.
@@ -592,7 +600,12 @@ class Guesses(Enum):
           Whether it is: a certain one always.
 
         """
-        return self is Guesses.ALL or not offence.unsafe or (self is Guesses.LIKELY and offence.likely)
+        tier: Tier | None = offence.tier
+        return (
+            self is Guesses.ALL
+            or tier in {None, Tier.CERTAIN}
+            or (self is Guesses.LIKELY and tier is Tier.LIKELY)
+        )
 
 
 @dataclass(frozen=True)
@@ -637,6 +650,7 @@ class Options:
                 cast("list[str]", args.exclude),
                 cast("Path", args.stdin_filename),
                 _trace(parser, cast("Path | None", args.infer_from)),
+                gitignore=cast("bool", args.gitignore),
             ),
             checks=Checks(
                 type_comments=cast("bool", args.type_comments),

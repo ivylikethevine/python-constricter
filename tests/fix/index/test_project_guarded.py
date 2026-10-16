@@ -11,7 +11,7 @@ from constricter import Offence, check_source
 from constricter.cli import command as cli
 from constricter.fix.core import fixes
 from constricter.fix.core.known import Guarded, Outside
-from constricter.fix.index import project
+from constricter.fix.index import crossed, project
 
 # Each starts `--jobs` workers of its own: one at a time, where the tests run at once (`pytest -n`).
 JOBS: pytest.MarkDecorator = pytest.mark.xdist_group("jobs")
@@ -334,7 +334,7 @@ def test_a_name_the_file_binds_otherwise_isnt_imported(tmp_path: Path) -> None:
     _package(tmp_path)
     user: Path = _write(tmp_path / "user.py", CLASHING)
     catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
-    imported: project.Imported = project.imported(catalog, user)
+    imported: project.Imported = crossed.imported(catalog, user)
     assert imported.calls == {"again": "Again", "handle": "Handles[str]"}
     assert imported.guarded == {
         "Again": Guarded(("pkg.again", "Again"), "from pkg.again import Again"),
@@ -359,7 +359,7 @@ def test_a_type_is_written_as_the_file_can(tmp_path: Path, source: str, annotati
     """
     _package(tmp_path)
     user: Path = _write(tmp_path / "user.py", source)
-    imported: project.Imported = project.imported(project.index(sorted(tmp_path.rglob("*.py"))), user)
+    imported: project.Imported = crossed.imported(project.index(sorted(tmp_path.rglob("*.py"))), user)
     offences: list[Offence] = check_source(
         user.read_text(encoding="utf-8"),
         outside=Outside(calls=imported.calls, guarded=imported.guarded),
@@ -413,7 +413,7 @@ def test_a_name_quoted_inside_a_type_is_read_as_the_name(tmp_path: Path) -> None
     extra: str
     for extra in ("", "from pkg.other import Thing"):
         user: Path = _write(tmp_path / "user.py", using.format(extra))
-        imported: project.Imported = project.imported(project.index(sorted(tmp_path.rglob("*.py"))), user)
+        imported: project.Imported = crossed.imported(project.index(sorted(tmp_path.rglob("*.py"))), user)
         offences: list[Offence] = check_source(
             user.read_text(encoding="utf-8"),
             outside=Outside(calls=imported.calls, guarded=imported.guarded),
@@ -525,7 +525,7 @@ def test_another_files_generic_class_is_known_as_the_file_spells_it(tmp_path: Pa
         tmp_path / "user.py",
         "from pkg.handles import Handles as H, Plain\nimport pkg.handles\n",
     )
-    imported: project.Imported = project.imported(project.index(sorted(tmp_path.rglob("*.py"))), user)
+    imported: project.Imported = crossed.imported(project.index(sorted(tmp_path.rglob("*.py"))), user)
     assert imported.generics == {"H", "pkg.handles.Handles", "pkg.Handles"}  # the package's re-export too
 
 
@@ -534,7 +534,7 @@ def test_a_guarded_import_is_a_replacement_too(tmp_path: Path) -> None:
     _package(tmp_path)
     user: Path = _write(tmp_path / "user.py", "from pkg.handles import plain\n\ndef f():\n    x = plain()\n")
     catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
-    imported: project.Imported = project.imported(catalog, user)
+    imported: project.Imported = crossed.imported(catalog, user)
     text: list[str] = user.read_text(encoding="utf-8").splitlines(keepends=True)
     offences: list[Offence] = check_source(
         "".join(text),
@@ -695,3 +695,64 @@ def test_a_name_another_file_keeps_to_itself_or_imports_two_ways_isnt_imported(t
     for _ in range(2):
         _ = cli.main(["--fix", "-q", "--jobs=1", "--select=LVA001", str(tmp_path)])
         assert user.read_text(encoding="utf-8") == textwrap.dedent(_OWN_FIXED)
+
+
+OVERLOADED_FRAME: Final = """
+from __future__ import annotations
+
+from typing import Literal, overload
+
+
+class Frame:
+    def __init__(self, data: list[int] | None = None) -> None:
+        self.data = data
+
+    @overload
+    def set_index(self, key: str, *, inplace: Literal[False] = ...) -> Frame: ...
+    @overload
+    def set_index(self, key: str, *, inplace: Literal[True]) -> None: ...
+    def set_index(self, key: str, *, inplace: bool = False) -> Frame | None:
+        return None if inplace else self
+
+    def explode(self, column: str) -> Frame:
+        return self
+"""
+FRAMED: Final = """
+import frames as pd
+
+
+def use():
+    df = pd.Frame([1]).set_index("C")
+    result = df.explode("B")
+    print(result)
+    df = pd.Frame([2])
+    return df
+"""
+FRAMED_FIXED: Final = """
+import frames as pd
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from frames.core.frame import Frame
+
+
+def use():
+    df: Frame = pd.Frame([1]).set_index("C")
+    result: Frame = df.explode("B")
+    print(result)
+    df = pd.Frame([2])
+    return df
+"""
+
+
+def test_a_class_an_import_names_is_the_one_its_package_re_exports(tmp_path: Path) -> None:
+    """`Frame`, imported for an overload's return, is `pd.Frame`; its methods type what's read of it at once.
+
+    A second run has nothing left to fix.
+    """
+    _ = _write(tmp_path / "frames" / "__init__.py", "from frames.core.frame import Frame\n")
+    _ = _write(tmp_path / "frames" / "core" / "__init__.py", "")
+    _ = _write(tmp_path / "frames" / "core" / "frame.py", OVERLOADED_FRAME)
+    user: Path = _write(tmp_path / "user.py", FRAMED)
+    for _ in range(2):
+        _ = cli.main(["--fix", "--unsafe-fixes", "-q", *_SELECT, str(tmp_path)])
+        assert user.read_text(encoding="utf-8") == textwrap.dedent(FRAMED_FIXED)

@@ -247,6 +247,24 @@ class Fix(NamedTuple):
     mark: int = 0
 
 
+class Tier(StrEnum):
+    """How far a fix is trusted: what `--fix` applies it with."""
+
+    CERTAIN = "certain"  # always
+    LIKELY = "likely"  # a guess `--likely` applies too
+    GUESS = "guess"  # one only `--unsafe-fixes` does
+
+    @classmethod
+    def of(cls, *, unsafe: bool, likely: bool) -> "Tier":
+        """Name the tier of a fix that's a guess or not (`unsafe`), of a likely set or not.
+
+        Returns:
+          It.
+
+        """
+        return cls.CERTAIN if not unsafe else cls.LIKELY if likely else cls.GUESS
+
+
 class FixPolicy(NamedTuple):
     """Which `FIX_KINDS` `--fix` offers (`select`, empty for all, less `ignore`), and which guesses it trusts.
 
@@ -309,9 +327,16 @@ class Offence:
         return self.edit is not None and self.edit.unsafe
 
     @property
+    def tier(self) -> Tier | None:
+        """The fix's tier, a guess likely where its mechanisms are a set of `LIKELY`; `None` with no fix."""
+        if self.edit is None:
+            return None
+        return Tier.of(unsafe=self.edit.unsafe, likely=self.edit.kinds in LIKELY)
+
+    @property
     def likely(self) -> bool:
-        """Whether the fix is a guess `--likely` applies: one whose mechanisms are a set of `LIKELY`."""
-        return self.edit is not None and self.edit.unsafe and self.edit.kinds in LIKELY
+        """Whether the fix is a guess `--likely` applies."""
+        return self.tier is Tier.LIKELY
 
     @property
     def reason(self) -> str:
@@ -330,7 +355,7 @@ class Offence:
           Whether it's an error rather than a warning.
 
         """
-        return level >= _ERROR_FROM[self.code]
+        return errs(self.code, level)
 
     def is_reported(self, level: Level) -> bool:
         """Check whether `level` reports this offence.
@@ -339,7 +364,27 @@ class Offence:
           Whether it does at all.
 
         """
-        return level >= _REPORTED_FROM.get(self.code, Level.RELAXED)
+        return reports(self.code, level)
+
+
+def errs(code: str, level: Level) -> bool:
+    """Check whether an offence of `code` is an error at `level`.
+
+    Returns:
+      Whether it is: a warning otherwise.
+
+    """
+    return level >= _ERROR_FROM[code]
+
+
+def reports(code: str, level: Level) -> bool:
+    """Check whether `level` reports an offence of `code`.
+
+    Returns:
+      Whether it does at all.
+
+    """
+    return level >= _REPORTED_FROM.get(code, Level.RELAXED)
 
 
 # Bases whose class bodies `--fix` annotates as a plain class's (`fix-plain-bases` adds to them): a
