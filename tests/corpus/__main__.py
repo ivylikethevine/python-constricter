@@ -277,7 +277,13 @@ class Running(NamedTuple):
         port: _Held = (self.ports.get(entry.port) if name in _BOUND else None) or contextlib.nullcontext()
         asked: float = time.perf_counter()
         with port:
-            held: int = self.slots.take(wanted.cpus, wanted.memory, wanted.lasting, wanted.least)
+            held: int = self.slots.take(
+                wanted.cpus,
+                wanted.memory,
+                wanted.lasting,
+                wanted.least,
+                wanted.seconds,
+            )
             memory: int = self.slots.share(wanted.cpus, wanted.memory, held)
             hold: _Hold = _Hold(wanted._replace(cpus=held, memory=memory), (held, memory))
             start: float = time.perf_counter()

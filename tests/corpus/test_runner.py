@@ -320,27 +320,31 @@ def _waited(slots: sizing.Slots) -> bool:
 
 
 def test_a_step_that_waited_long_has_whats_free_kept_for_it(monkeypatch: pytest.MonkeyPatch) -> None:
-    """One that came after it doesn't start, though it fits; nor does one that lasts less than one waiting."""
+    """None after it starts, though it fits, but one whose last run took `_BESIDE` seconds at most."""
     monkeypatch.setattr(sizing, "_PATIENCE", 0.0)
     slots: sizing.Slots = sizing.Slots(4, 10)
     held: int = slots.take(2)
     started: list[str] = []
 
-    def step(name: str, cpus: int) -> None:
-        slots.give(slots.take(cpus))
+    def step(name: str, cpus: int, seconds: float = 0.0) -> None:
+        slots.give(slots.take(cpus, seconds=seconds))
         started.append(name)
 
-    large: threading.Thread = threading.Thread(target=step, args=("large", 3), daemon=True)
-    large.start()
+    threads: dict[str, threading.Thread] = {
+        name: threading.Thread(target=step, args=(name, cpus, seconds), daemon=True)
+        for name, cpus, seconds in (("large", 3, 0), ("small", 1, 0), ("long", 1, 600), ("brief", 1, 20))
+    }
+    threads["large"].start()
     assert _waited(slots)
-    small: threading.Thread = threading.Thread(target=step, args=("small", 1), daemon=True)
-    small.start()
-    small.join(0.3)
-    assert not started
+    for name in ("small", "long", "brief"):
+        threads[name].start()
+    threads["brief"].join(5)
+    threads["small"].join(0.3)
+    assert started == ["brief"]
     slots.give(held)
-    large.join()
-    small.join()
-    assert sorted(started) == ["large", "small"]
+    for each in threads.values():
+        each.join()
+    assert sorted(started) == ["brief", "large", "long", "small"]
     assert (slots.free, slots.running) == (4, 0)
 
 
@@ -510,14 +514,27 @@ def test_a_step_is_given_what_it_took_in_the_last_run(tmp_path: Path) -> None:
     # memory as in the last run; starting with half the CPUs.
     roomy: sizing.Plan = plan._replace(memory=64 * sizing.GIB)
     measured: sizing.Wanted = roomy.wanted(tree, pipeline.TESTS)
-    assert measured == sizing.Wanted(6, int(9.5 * sizing.GIB * 1.25 * 6 / 2), 10.0, measured=True, least=4)
+    assert measured == sizing.Wanted(
+        6,
+        int(9.5 * sizing.GIB * 1.25 * 6 / 2),
+        10.0,
+        measured=True,
+        least=4,
+        seconds=10.0,
+    )
     # As its tests', unmeasured; and its tests wait for it: their seconds are behind it.
-    assert roomy.wanted(tree, pipeline.TRACED) == measured._replace(measured=False)
+    assert roomy.wanted(tree, pipeline.TRACED) == measured._replace(measured=False, seconds=0.0)
     # A record that doesn't say how many workers ran: each its `worker-memory`.
     legacy: sizing.Plan = roomy._replace(
         before={("celery", pipeline.TESTS): before["celery", pipeline.TESTS]._replace(workers=0)},
     )
-    assert legacy.wanted(tree, pipeline.TESTS) == sizing.Wanted(6, int(6 * 4.6 * sizing.GIB), 10.0, least=4)
+    assert legacy.wanted(tree, pipeline.TESTS) == sizing.Wanted(
+        6,
+        int(6 * 4.6 * sizing.GIB),
+        10.0,
+        least=4,
+        seconds=10.0,
+    )
     assert plan.wanted(tree, pipeline.TYPES) == sizing.Wanted(2, 16 * sizing.GIB // 3)
     assert plan.wanted(tree, pipeline.CHECK) == sizing.Wanted(2, 2 * (sizing.GIB + sizing.GIB // 4), 10.0)
     assert plan.wanted(tree._replace(suite=None), pipeline.CHECK).lasting == 0
@@ -528,10 +545,12 @@ def test_a_step_is_given_what_it_took_in_the_last_run(tmp_path: Path) -> None:
     shared: sizing.Plan = plan._replace(
         before={("celery", pipeline.CHECK): read, ("celery", pipeline.CENSUS): ran},
     )
-    assert shared.wanted(tree, pipeline.CHECK) == sizing.Wanted(3, 5 * sizing.GIB, 0.4, measured=True)
-    assert shared.wanted(tree, pipeline.CENSUS) == sizing.Wanted(3, 5 * sizing.GIB, 74.0, measured=True)
+    assert (shared.wanted(tree, pipeline.CHECK), shared.wanted(tree, pipeline.CENSUS)) == (
+        sizing.Wanted(3, 5 * sizing.GIB, 0.4, measured=True, seconds=74.0),
+        sizing.Wanted(3, 5 * sizing.GIB, 74.0, measured=True, seconds=74.0),
+    )
     alone: sizing.Plan = plan._replace(before={("celery", pipeline.CENSUS): ran})
-    assert alone.wanted(tree, pipeline.CHECK) == sizing.Wanted(3, 5 * sizing.GIB, measured=True)
+    assert alone.wanted(tree, pipeline.CHECK) == sizing.Wanted(3, 5 * sizing.GIB, measured=True, seconds=74.0)
     unmeasured: sizing.Plan = plan._replace(before={})
     assert unmeasured.wanted(tree, pipeline.TESTS) == sizing.Wanted(1, int(4.6 * sizing.GIB), least=1)
     assert unmeasured.wanted(tree, pipeline.TESTS, heavy=True).memory == plan.memory

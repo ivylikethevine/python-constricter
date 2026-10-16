@@ -616,13 +616,17 @@ fix.
    type-check checkout is installed beside its corpus's first steps; and each step's record says
    when it started and how long it waited for its share, the run's `runner.log` each step's end
    (`scratch/run_timeline.py` lays a run out from them). Tested apart, and on pydantic's run alone.
-   The last mega run used 70% of its CPU seconds in 119 minutes, the last super run 46% in 48, both
-   on 16CPU/60GB, by the sampler's count, which misses most of a fork server's workers: a run now
-   counts them by control group. The mega run's last 15 minutes waited on `websockets`'s tests,
-   asleep, before the timed steps; the super run's minutes 17 to 24 kept 2 to 4 CPUs busy, its
-   suites' tests waiting for memory. Done when a mega run uses 85% of its CPU seconds, and one with
-   no earlier run under its output takes within a tenth of one sized by its own. About 2 hours
-   beside the runs; coverage unchanged.
+   The last mega run of 40 corpora used 70% of its CPU seconds in 119 minutes, by the sampler's
+   count, which misses most of a fork server's workers (a run now counts them by control group), its
+   last 15 minutes waiting on `websockets`'s tests, asleep. The first super run of 29 took 87
+   minutes, both on 16CPU/60GB: for 25 of them 1 to 3 CPUs were busy, pandas's checkers' steps each
+   past `_PATIENCE` and keeping what was free, and fastapi's and black's traced tests waited 68
+   minutes to run for 20s and 11s. `scratch/schedule_sim.py` replays it in 85 minutes as it was
+   sized, 72 with no wait keeping what's free from steps that fit, whatever the order, and 75 with a
+   step whose last run took 5 minutes at most starting beside one kept waiting, as one now does
+   (`_BESIDE`). Done when a mega run uses 85% of its CPU seconds, and one with no earlier run under
+   its output takes within a tenth of one sized by its own. About 2 hours beside the runs; coverage
+   unchanged.
 2. **The corpus runs' checks, on a prebuilt Python.** The standard-library corpus is CPython's
    pinned source release (see [Corpus](#corpus)), its 1,867 files found by the runner whatever
    Python runs it. `local/.venv` runs on uv's prebuilt 3.14.7, the suite passing there. Left: a full
@@ -633,11 +637,17 @@ fix.
    (`re.compile("x")`, `os.sep`) and a checked file's class it names (`form_class = LoginForm`, a
    `type[LoginForm]` where the class's whole line of bases is in sight and no class above or under
    binds the name: 42 more fixes on Django, 36 on the standard library, 2 on pandas). After
-   `--fix --unsafe-fixes`, `member` included, SQLAlchemy's and pandas's suites and type checkers
-   found nothing new before the last of these; Django's suite and pydantic's aren't run again. One
-   fix lost: a class's members reserve the names their types need imported (`multiprocessing`'s
-   `Process`), so asyncio's `proc: Process` has none. Done when every corpus package's suite and
-   type checker finds nothing new. About 2 hours beside the suites' runs; coverage unchanged.
+   `--fix --unsafe-fixes`, `member` included, the super corpora's suites and type checkers find
+   nothing new but pandas's one error and mcp's two, as before (What a guess breaks, below); the 18
+   slow corpora's wait for a mega run. One fix lost: a class's members reserve the names their types
+   need imported (`multiprocessing`'s `Process`), so asyncio's `proc: Process` has none. Done when
+   every corpus package's suite and type checker finds nothing new. About 2 hours beside the suites'
+   runs; coverage unchanged.
+4. **A checker's hang, given up on.** basedpyright hangs on pandas's
+   `tests/apply/test_series_apply.py` twice in each super run, and the file gets no hints: pandas's
+   `infer-basedpyright` took 746s in the last, 450s in the one before, with the hang in both. Find
+   what in the file hangs it, and leave such a file out at its first hang. Done when pandas's
+   `infer-basedpyright` takes under 450s with the same fixes. About 2 hours; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -691,13 +701,15 @@ fix.
    beside this checkout's (`versions`, `NAME=PATH`), and the release's first cibuildwheel builds.
    Done when a compiled wheel checks every corpus as the pure one does. About an hour beside the
    run; coverage unchanged.
-4. **What a hint breaks, by its cause.** With `--infer-with basedpyright,ty,pyrefly` the packages'
-   own type checkers find 215 new errors on litestar, 123 on pandas, 49 on sqlalchemy, 34 on mypy,
-   20 on narwhals, 19 on optuna and 10 on mcp, nearly all traced to a hint's own fix (`checker`).
-   litestar's weren't read: its Pyright is set to Python 3.8. Count them by cause, as the guesses'
-   are above, and hold a hint to what the cause says. Done when a hinted run's new errors are under
-   one for each hundred of its hints' fixes on the three corpora type-checked. About 8 hours;
-   coverage down by the hints withdrawn.
+4. **What a hint breaks, by its cause.** With `--infer-with` the packages' own type checkers find,
+   by the worst of basedpyright's, ty's and pyrefly's hints, 125 new errors on pandas, 49 on
+   sqlalchemy, 41 on streamlink, 12 on starlette, 10 on mcp, 9 on sphinx and 1 to 8 on eight more of
+   the super corpora; on the last mega run, 215 on litestar, 34 on mypy, 20 on narwhals and 19 on
+   optuna. Nearly all are traced to a hint's own fix (`checker`). litestar's weren't read: its
+   Pyright is set to Python 3.8. Count them by cause, as the guesses' are above, and hold a hint to
+   what the cause says. Done when a hinted run's new errors are under one for each hundred of its
+   hints' fixes on the three corpora type-checked. About 8 hours; coverage down by the hints
+   withdrawn.
 5. **The witness, past a test's own classes.** The corpora runs hold a fixed binding's value to its
    annotation as its package's traced tests bind it (`tests/corpus/witness`), and a test's own
    stand-in differs (`FakeProcess`, passed where a `ServerProcess` is declared: mcp's one certain

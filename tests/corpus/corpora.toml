@@ -381,10 +381,13 @@ install = ["pip -e .[trio] --group test"]
 tests = "-m 'not network'"
 checks = []
 
+# A tagged release waits 100 times its tests' unit of time (`tests/utils.py`), its CI 20, as here:
+# its tests spend most of their time waiting.
 [corpus.websockets]
 why = "`asyncio` code"
 version = "17.2"
 port = "8000"
+environment = { WEBSOCKETS_TESTS_TIMEOUT_FACTOR = "20" }
 
 [corpus.websockets.sdist]
 where = "01/89/3f825ab71c242fffb62ea8fe638741c290f62f8d7aadf8125ff897747af3"

@@ -24,7 +24,8 @@ a time.
 
 Of the steps waiting, the one with the most seconds still to come starts first: its own and those
 of its corpus's suite's steps after it, which wait for it. One that has waited `_PATIENCE` seconds
-for what smaller ones keep taking has what's free kept for it. And a running step's hold follows
+for what smaller ones keep taking has what's free kept for it, from all but those its last run says
+end within `_BESIDE` seconds. And a running step's hold follows
 what it's seen to use (`Plan.fitted`): an unmeasured one gives back what it isn't using, and any
 one takes what it uses over its share from the next to start.
 
@@ -76,6 +77,7 @@ _MOST_SHARE: Final = 2  # the most CPUs a step is given: the CPUs over this, or 
 TESTING: Final = frozenset({TESTS, TRACED})  # the steps that run a suite's tests, with so many workers
 _CHAIN: Final = (TRACED, TESTS, TYPES)  # a suite's steps, each waiting for the one before it
 _PATIENCE: Final = 300.0  # the seconds a step waits before what's free is kept for it
+_BESIDE: Final = 300.0  # but from a step expected to end within so many seconds
 _SLACK: Final = 2.0  # over what an unmeasured step holds a minute in: it may hold more later
 TIMED: Final = frozenset({TIMING, PROFILE})  # the steps nothing runs beside
 _AVAILABLE: Final = re.compile(r"^MemAvailable:\s*(\d+) kB", re.MULTILINE)
@@ -128,6 +130,7 @@ class _Waiter:
     cpus: int
     memory: int
     since: float
+    seconds: float = 0.0  # its own, as its last run took: 0 where none did
 
 
 def group(process: int | None = None) -> Path | None:
@@ -315,13 +318,23 @@ class Slots:
         kept: float = time.monotonic() - _PATIENCE
         # Those that came before it, by their place: a coarse clock gives two the same time.
         ahead: list[_Waiter] = self.waiting[: self.waiting.index(waiter)]
-        if any(other.since <= kept and not self._fits(other.cpus, other.memory) for other in ahead):
+        brief: bool = 0 < waiter.seconds <= _BESIDE
+        if not brief and any(
+            other.since <= kept and not self._fits(other.cpus, other.memory) for other in ahead
+        ):
             return False
         return not any(
             other.lasting > waiter.lasting and self._fits(other.cpus, other.memory) for other in self.waiting
         )
 
-    def take(self, wanted: int, memory: int = 0, lasting: float = 0.0, least: int = 0) -> int:
+    def take(
+        self,
+        wanted: int,
+        memory: int = 0,
+        lasting: float = 0.0,
+        least: int = 0,
+        seconds: float = 0.0,
+    ) -> int:
         """Wait until `wanted` CPUs and `memory` bytes are free, and hold them.
 
         All the CPUs, for more than there are. `least`: the fewest it may start with, then holding
@@ -329,7 +342,8 @@ class Slots:
         waits for it are expected to take; of the steps waiting, one that lasts longer and fits
         what's free goes before it, so the long steps aren't the last to start. One that wants all
         the memory goes before any that wants less: it runs once those running have ended. And one
-        that has waited `_PATIENCE` seconds without fitting goes before any that came after it.
+        that has waited `_PATIENCE` seconds without fitting goes before any that came after it, but one
+        whose `seconds`, its own as its last run took, are `_BESIDE` at most.
 
         Returns:
           How many CPUs are held, to `give` back with their `share` of the memory.
@@ -338,7 +352,13 @@ class Slots:
         most: int = max(1, min(wanted, self.cpus))
         held: int = max(1, min(least or most, most))
         with self.changed:
-            waiter: _Waiter = _Waiter(lasting, held, self.share(wanted, memory, held), time.monotonic())
+            waiter: _Waiter = _Waiter(
+                lasting,
+                held,
+                self.share(wanted, memory, held),
+                time.monotonic(),
+                seconds,
+            )
             self.waiting.append(waiter)
             _ = self.changed.wait_for(lambda: self._turn(waiter))
             self.waiting.remove(waiter)
@@ -451,6 +471,7 @@ class Wanted(NamedTuple):
     lasting: float = 0.0
     measured: bool = False  # by an earlier run: held to it, unless it uses more
     least: int = 0  # the fewest CPUs it may start with, `memory` shared out among them (`Slots.take`)
+    seconds: float = 0.0  # its own, as its last run took: 0 where none did
 
 
 class Plan(NamedTuple):
@@ -506,7 +527,14 @@ class Plan(NamedTuple):
             memory = self.memory // _UNSIZED_SHARE
         else:
             memory = (self.run.jobs or self.cpus) * _JOB_MEMORY
-        return Wanted(self.cpus if step in TIMED else cpus, memory, lasting, known is not None)
+        seconds: float = known.seconds if known is not None else 0.0
+        return Wanted(
+            self.cpus if step in TIMED else cpus,
+            memory,
+            lasting,
+            known is not None,
+            seconds=seconds,
+        )
 
     def _testing(
         self,
@@ -528,13 +556,15 @@ class Plan(NamedTuple):
         """
         workers: int = self.workers(suite)
         least: int = min(workers, max(_STEP_CPUS, self.cpus // _MOST_SHARE))
+        seconds: float = known[0].seconds if known[0] is not None else 0.0
         if heavy:
-            return Wanted(workers, self.memory, lasting, least=least)
+            return Wanted(workers, self.memory, lasting, least=least, seconds=seconds)
         runs: list[Before]
         if not (runs := [each for each in known if each is not None and each.workers]):
-            return Wanted(workers, int(workers * suite.worker_memory * GIB), lasting, least=least)
-        memory: int = int(runs[0].memory * _MARGIN * workers / runs[0].workers)
-        return Wanted(workers, memory, lasting, measured=runs[0] is known[0], least=least)
+            memory: int = int(workers * suite.worker_memory * GIB)
+            return Wanted(workers, memory, lasting, least=least, seconds=seconds)
+        memory = int(runs[0].memory * _MARGIN * workers / runs[0].workers)
+        return Wanted(workers, memory, lasting, measured=runs[0] is known[0], least=least, seconds=seconds)
 
     def fitted(self, wanted: Wanted, held: tuple[int, int], busy: float, peak: int) -> tuple[int, int]:
         """Fit a running step's hold to what it's seen to use: `busy` CPUs of late, `peak` bytes at most.

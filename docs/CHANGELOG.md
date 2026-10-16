@@ -6,6 +6,9 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- The corpus runner starts a step whose last run took 5 minutes at most beside one that has waited
+  past its patience, rather than keeping what's free from it: replayed, the last super run takes 75
+  minutes from 85, on 16CPU/60GB.
 - The corpora's sets nest: `full` (the seven a release records) within `super` (and every fast
   corpus) within `mega` (every corpus), and every corpus is in one of four sets by its size and its
   time (`fast-small`, `fast-large`, `slow-small`, `slow-large`). `--minus NAME` leaves a corpus's, a
