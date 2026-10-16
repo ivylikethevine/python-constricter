@@ -25,16 +25,15 @@ run of `full`. A resumed run is given the same `--minus`.
 
 Corpora are measured side by side, found (cloned, installed) `at-once` at a time. Each step is a
 process of its own (`--step`), started once the CPUs it's expected to keep busy and the memory it's
-expected to hold are free (`sizing`), and its record says what its processes used: a corpus's steps
-side by side, then its suite's own tests and checks one after another on their checkout (those of
-one port one suite at a time; its traced tests as soon as `fix-unsafe` has ended and the other
-steps have their copies); and once every corpus is measured, each one's timed checks, with nothing
-beside them. Every step starts
-constricter one way (`launch.run`) on one tree a corpus (`trees.Tree`), so a count in one table is
-the count in another.
+expected to hold are free (`sizing`), and its record says what its processes used. A corpus's steps
+start side by side; its suite's each once the fixes it reads are made (`suite_steps.needs`), on
+checkouts of the suite's own, taking their locks and its port's with its share of the machine, never
+holding one while it waits; and once every corpus is measured, each one's timed checks, with
+nothing beside them. Every step starts constricter one way (`launch.run`) on one tree a corpus
+(`trees.Tree`), so a count in one table is the count in another.
 """
 
-import contextlib
+import graphlib
 import itertools
 import os
 import platform
@@ -44,7 +43,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
@@ -55,12 +54,11 @@ from constricter import __version__
 from constricter.rules import parsed
 from tests.corpus import catalog, launch, pipeline, render, sizing, suite_steps, trees
 from tests.corpus.pipeline import Record
-from tests.corpus.run_config import UNSAFE, Run, percent, read
+from tests.corpus.run_config import Run, percent, read
 
 if TYPE_CHECKING:
     import resource
 
-_Held: TypeAlias = contextlib.AbstractContextManager[bool | None]  # a lock, or nothing to hold
 _Measured: TypeAlias = tuple[trees.Tree | None, list[str]]  # a corpus's tree, and its steps that failed
 _RESUME: Final = "--resume"
 _AT_ONCE: Final = "--at-once"  # then how many corpora are found side by side, whatever the file says
@@ -72,8 +70,6 @@ _ONLY: Final = "--only"  # then a corpus or a set: the run file's, on that alone
 _MINUS: Final = "--minus"  # then a corpus, a set or a run file: the run's corpora less its
 _STEP: Final = "--step"  # then a run's folder, a corpus, a version and a step: that step alone
 _ROOT: Final = Path(__file__).resolve().parents[2]
-_BOUND: Final = frozenset({pipeline.TESTS, pipeline.TRACED})  # the steps that bind a suite's port
-_DONE: Final = True  # what a future's `done` says once it is
 _POLL: Final = 0.2  # the seconds between looks at whether a step's process has ended
 _LOOK: Final = 60.0  # and between fittings of its hold to what it's using
 _MACOS: Final = "darwin"
@@ -180,9 +176,10 @@ class Running(NamedTuple):
     plan: sizing.Plan
     slots: sizing.Slots
     watcher: sizing.Watcher | None  # `None`: nothing counts a step's use
-    ports: dict[str, threading.Lock]  # each port's lock, held while a suite's tests have the port
+    ports: dict[str, threading.Lock]  # each port's lock, taken with its share of the machine (`Slots.take`)
     finding: threading.Semaphore  # the corpora found at once: cloned, installed
     scope: tuple[str, ...] = ()  # what starts a step in a scope of its own (`sizing.scope`): nothing, none
+    checkouts: dict[tuple[str, str], threading.Lock] | None = None  # each suite checkout's lock, as `ports`
 
     def process(self, entry: catalog.Entry, job: pipeline.Job, name: str, hold: "_Hold") -> sizing.Used:
         """Run one step in a process of its own, what it says kept in its log.
@@ -201,7 +198,7 @@ class Running(NamedTuple):
         """
         command: list[str] = [*self.scope, sys.executable, "-m", "tests.corpus", _STEP, str(self.store.root)]
         scoped: dict[str, str] = {sizing.SCOPED: "1"} if self.scope else {}
-        scoped |= {_SUITE_WORKERS: str(hold.held[0])} if name in sizing.TESTING else {}
+        scoped |= {_SUITE_WORKERS: str(hold.held[0])} if sizing.testing(name) else {}
         said: list[str] = [_LABEL, self.run.label, _JOBS, str(self.run.jobs)]  # what the run's command said
         file: IO[str]
         process: subprocess.Popen[bytes]
@@ -254,43 +251,34 @@ class Running(NamedTuple):
                 looked, before = now, seen.cpu
         return sizing.Used()
 
-    def step(
-        self,
-        entry: catalog.Entry,
-        job: pipeline.Job,
-        name: str,
-        ready: Mapping[str, Future[Path]] | None = None,
-    ) -> bool:
+    def step(self, entry: catalog.Entry, job: pipeline.Job, name: str) -> bool:
         """Run one step (`process`), once what it's expected to take is free (`sizing`).
 
-        Its tests' port first, if they bind one, and what it's `ready` for, if anything: waited for
-        holding nothing. What it used goes into the step's record (`_recorded`).
+        With the locks of the checkouts it works on and of its tests' port, if they bind one, taken
+        with the rest: waited for holding nothing. What it used goes into the step's record
+        (`_recorded`).
 
         Returns:
           Whether the step has a record: one that failed has none, and its log says why.
 
         """
-        first: Future[Path] | None
-        if (first := (ready or {}).get(name)) is not None:
-            _ = first.exception()  # it failing is the step's to say
         wanted: sizing.Wanted = self.plan.wanted(job.tree, name, heavy=entry.heavy)
-        port: _Held = (self.ports.get(entry.port) if name in _BOUND else None) or contextlib.nullcontext()
+        port: threading.Lock | None = self.ports.get(entry.port) if suite_steps.binds(name) else None
+        held_too: dict[tuple[str, str], threading.Lock] = self.checkouts if self.checkouts is not None else {}
+        locks: list[threading.Lock] = [
+            held_too.setdefault((entry.name, each), threading.Lock())
+            for each in (suite_steps.checkouts(job, name) if job.tree.suite is not None else ())
+        ]
+        locks += [port] if port is not None else []
         asked: float = time.perf_counter()
-        with port:
-            held: int = self.slots.take(
-                wanted.cpus,
-                wanted.memory,
-                wanted.lasting,
-                wanted.least,
-                wanted.seconds,
-            )
-            memory: int = self.slots.share(wanted.cpus, wanted.memory, held)
-            hold: _Hold = _Hold(wanted._replace(cpus=held, memory=memory), (held, memory))
-            start: float = time.perf_counter()
-            try:
-                used: sizing.Used = self.process(entry, job, name, hold)
-            finally:
-                self.slots.give(*hold.held)
+        held: int = self.slots.take(wanted, locks)
+        memory: int = self.slots.share(wanted.cpus, wanted.memory, held)
+        hold: _Hold = _Hold(wanted._replace(cpus=held, memory=memory), (held, memory))
+        start: float = time.perf_counter()
+        try:
+            used: sizing.Used = self.process(entry, job, name, hold)
+        finally:
+            self.slots.give(*hold.held, locks)
         return self.recorded(job, name, hold.wanted, used, (start - asked, time.perf_counter() - start))
 
     def recorded(
@@ -331,7 +319,7 @@ class Running(NamedTuple):
                 "memory": round(used.memory / sizing.GIB, 2),
                 "given": given,
                 "alone": wanted.memory >= self.plan.memory,
-            } | ({sizing.WORKERS: wanted.cpus} if name in sizing.TESTING else {})
+            } | ({sizing.WORKERS: wanted.cpus} if sizing.testing(name) else {})
             self.store.write(job.tree.name, job.recorded, name, record)
         said: str = (
             "failed" if record is None else f"{used.cpu:.0f} CPU seconds, {used.memory / sizing.GIB:.1f} GB"
@@ -344,44 +332,63 @@ class Running(NamedTuple):
             _ = file.write(f"{datetime.now().astimezone():%H:%M:%S} {line}")
         return record is not None
 
-    def steps(
-        self,
-        entry: catalog.Entry,
-        job: pipeline.Job,
-        names: Sequence[str],
-        at_once: int = 1,
-        ready: Mapping[str, Future[Path]] | None = None,
-    ) -> list[str]:
-        """Run each of `names`, the job's steps, that has no record yet, `at_once` of them side by side.
-
-        `ready`: what a step waits for before it asks for its share of the machine.
+    def steps(self, entry: catalog.Entry, job: pipeline.Job, names: Sequence[str]) -> list[str]:
+        """Run each of `names`, the job's steps, that has no record yet, one after another.
 
         Returns:
           Those that failed, each as the run's last lines say it.
 
         """
-        lacking: list[str] = [
-            name for name in names if self.store.read(job.tree.name, job.recorded, name) is None
-        ]
-        pool: ThreadPoolExecutor
-        with ThreadPoolExecutor(max(1, min(at_once, len(lacking)))) as pool:
-            done: list[bool] = list(pool.map(partial(self.step, entry, job, ready=ready), lacking))
+        done: list[bool] = [self._after(entry, job, name, [], []) for name in names]
+        return self._failed(entry, job, names, done)
+
+    def _failed(
+        self,
+        entry: catalog.Entry,
+        job: pipeline.Job,
+        names: Sequence[str],
+        done: Sequence[bool],
+    ) -> list[str]:
+        """Name the steps of `names` that failed, by `done`.
+
+        Returns:
+          Each as the run's last lines say it.
+
+        """
         log: Path = self.store.logged(job.tree.name, job.recorded, "").parent
         return [
             f"{entry.name}, {job.recorded}: {name} ({log / name}.log)"
-            for name, has in zip(lacking, done, strict=True)
+            for name, has in zip(names, done, strict=True)
             if not has
         ]
+
+    def _after(
+        self,
+        entry: catalog.Entry,
+        job: pipeline.Job,
+        name: str,
+        after: Sequence["Future[bool]"],
+        ready: Sequence["Future[Path]"],
+    ) -> bool:
+        """Run a step that has no record yet once the steps it comes `after` and its checkouts are `ready`.
+
+        Waited for holding nothing.
+
+        Returns:
+          Whether it has a record.
+
+        """
+        _ = wait(after)  # each one failing is the step's to say: it reads what's missing
+        _ = wait(ready)
+        if self.store.read(job.tree.name, job.recorded, name) is not None:
+            return True
+        return self.step(entry, job, name)
 
     def measured(self, entry: catalog.Entry) -> _Measured:
         """Measure one corpus with each of the run's versions.
 
-        Its steps side by side, each on a copy or reading the tree; then its suite's, which wait
-        for its fixes: its traced tests, then its tests beside its type checks, which have a
-        checkout of their own, installed beside the steps before them. Its traced tests start
-        sooner: they run the released source and want only `fix-unsafe`'s fixes, so they wait for
-        that step, and for each other to end or to have its copy of the tree (`_started`). Not the
-        timed ones (`timed`).
+        Its steps side by side, each on a copy or reading the tree; its suite's on checkouts of their
+        own, each once the fixes it reads are made (`_versioned`). Not the timed ones (`timed`).
 
         Returns:
           The corpus's tree, and the steps that failed: each has its traceback in its log, and no
@@ -402,57 +409,36 @@ class Running(NamedTuple):
     def _versioned(self, entry: catalog.Entry, job: pipeline.Job) -> list[str]:
         """Measure one corpus with one version (see `measured`).
 
+        Every step starts as soon as the steps it reads have ended (`suite_steps.needs`) and the
+        checkouts it works on are installed (`suite_steps.checkouts`): those of a suite's steps, a
+        kind each, one after another beside the steps before them.
+
         Returns:
           The steps that failed.
 
         """
         beside: list[str] = [name for name in pipeline.steps(self.run) if name not in sizing.TIMED]
-        waiting: list[str] = list(suite_steps.waiting(job))
-        early: list[str] = [name for name in waiting if name == pipeline.TRACED]
-        name: str
-        for name in beside:
-            (job.work(name) / launch.COPIED).unlink(missing_ok=True)  # an earlier attempt's
-        failed: list[str] = []
-        ran: list[str] = []
-        installing: ThreadPoolExecutor = ThreadPoolExecutor(1)
-        ready: dict[str, Future[Path]] = (
-            {pipeline.TYPES: installing.submit(suite_steps.apart, job)} if pipeline.TYPES in waiting else {}
-        )
+        suited: list[str] = list(suite_steps.waiting(job))
+        needs: dict[str, frozenset[str]] = suite_steps.needs(job)
+        names: list[str] = _ordered([*beside, *suited], needs)
+        ended: dict[str, Future[bool]] = {}
+        installing: ThreadPoolExecutor
         pool: ThreadPoolExecutor
-        with ThreadPoolExecutor(1) as pool:
-            sides: Future[list[str]] = pool.submit(self.steps, entry, job, beside, len(beside))
-            if early and self._started(job, beside, sides):
-                ran = early
-                failed += self.steps(entry, job, ran)
-            failed += sides.result()
-        failed += self.steps(entry, job, [name for name in early if name not in ran])
-        after: list[str] = [name for name in waiting if name not in early]
-        try:
-            return failed + self.steps(entry, job, after, len(after), ready)  # its tests, and its type checks
-        finally:
-            installing.shutdown()
-
-    def _started(self, job: pipeline.Job, beside: Sequence[str], sides: "Future[list[str]]") -> bool:
-        """Wait until a corpus's traced tests may start beside its other steps, `beside`, under way.
-
-        Until `fix-unsafe` has its record, and each other step has ended or has made its copy of
-        the tree (`launch.COPIED`): the traced tests write into the checkout the others read.
-
-        Returns:
-          Whether they may: not once the steps have all ended, which leaves them their turn after.
-
-        """
-        unsafe: str = f"{pipeline.FIX}{UNSAFE}"
-        for _ in iter(sides.done, _DONE):
-            ended: set[str] = {
-                name for name in beside if self.store.read(job.tree.name, job.recorded, name) is not None
+        # Each step waits on its own thread; the checkouts are installed one after another.
+        with ThreadPoolExecutor(1) as installing, ThreadPoolExecutor(max(1, len(names))) as pool:
+            installed: dict[str, Future[Path]] = {
+                each: installing.submit(suite_steps.prepared, job, each)
+                for each in dict.fromkeys(
+                    each for name in suited for each in suite_steps.checkouts(job, name)
+                )
             }
-            if unsafe in ended and all(
-                name in ended or (job.work(name) / launch.COPIED).exists() for name in beside
-            ):
-                return True
-            time.sleep(_POLL)
-        return False
+            name: str
+            for name in names:  # those a step waits for come before it
+                used: tuple[str, ...] = suite_steps.checkouts(job, name) if name in suited else ()
+                after: list[Future[bool]] = [ended[each] for each in needs.get(name, ()) if each in ended]
+                ready: list[Future[Path]] = [installed[each] for each in used]
+                ended[name] = pool.submit(self._after, entry, job, name, after, ready)
+        return self._failed(entry, job, names, [ended[name].result() for name in names])
 
     def timed(self, entry: catalog.Entry, tree: trees.Tree) -> list[str]:
         """Run a corpus's timed steps with each of the run's versions, one after another.
@@ -474,6 +460,18 @@ class Running(NamedTuple):
                 [name for name in pipeline.steps(self.run) if name in sizing.TIMED],
             )
         return failed
+
+
+def _ordered(names: Sequence[str], needs: Mapping[str, frozenset[str]]) -> list[str]:
+    """Order `names` so that each comes after those of them it `needs`.
+
+    Returns:
+      Them.
+
+    """
+    among: frozenset[str] = frozenset(names)
+    graph: dict[str, frozenset[str]] = {name: needs.get(name, frozenset()) & among for name in names}
+    return list(graphlib.TopologicalSorter(graph).static_order())
 
 
 def _counted(record: Record | None, used: sizing.Used) -> tuple[sizing.Used, str]:
@@ -638,6 +636,7 @@ def _all(run: Run, store: pipeline.Store) -> list[_Measured]:
         {entry.port: threading.Lock() for entry in entries if entry.port},
         threading.Semaphore(max(1, run.at_once)),
         scope,
+        {},
     )
     pool: ThreadPoolExecutor
     with ThreadPoolExecutor(max(1, len(entries))) as pool:

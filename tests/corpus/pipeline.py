@@ -74,6 +74,7 @@ TESTS: Final = "tests"
 TYPES: Final = "types"
 TRACED: Final = "traced"
 TRACE: Final = "trace"  # after `INFER`: the fix step by a suite's tests' trace
+RELEASED: Final = "released"  # names the part of a suite's tests or type checks with no fix (`part`)
 GUESS: Final = "guess"
 IMPLIED: Final = "implied"  # in a suite's fixed test run's record: the run that stands for it, as released
 _SUFFOCATE: Final = "--level=suffocate"
@@ -493,6 +494,31 @@ def fixing(run: Run) -> list[str]:
     tiers: list[str] = [f"{FIX}{mode}" for mode in run.steps.fix]
     hinted: list[str] = [f"{INFER}{checker}" for checker in run.steps.infer]
     return [*tiers, *hinted, *([f"{INFER}{TRACE}"] if run.steps.traced else [])]
+
+
+def part(kind: str, step: str) -> str:
+    """Name a part of a suite's tests (`TESTS`) or type checks (`TYPES`): as `RELEASED`, or after a fix step.
+
+    Each is a step of its own, which starts once what it reads is there; its kind's step gathers them.
+
+    Returns:
+      It: `tests-released`, `types-fix-unsafe`.
+
+    """
+    return f"{kind}-{step}"
+
+
+def parts(run: Run, kind: str) -> list[str]:
+    """List the parts of a suite's tests (`TESTS`) or type checks (`TYPES`) a run asks for.
+
+    Returns:
+      Their names: as released, then after each fix step; the tests' after no hints but where the
+      run asks for them (`tests-hinted`).
+
+    """
+    hinted: bool = kind != TESTS or run.steps.tests_hinted
+    made: list[str] = [step for step in fixing(run) if hinted or not step.startswith(INFER)]
+    return [part(kind, RELEASED), *(part(kind, step) for step in made)]
 
 
 class Timed(NamedTuple):

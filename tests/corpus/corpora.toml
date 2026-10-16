@@ -21,7 +21,9 @@
 #                       change the outcome of (or a file or a class of them), each with why; a
 #                       run reports them apart, and a difference in these alone is none. `parts`:
 #                       its tests' arguments, each part run after `tests` in a process of its own,
-#                       as many at once as it has workers, their outcomes added up.
+#                       as many at once as it has workers, their outcomes added up. `at-once`: how
+#                       many of its fixed runs go side by side, each on a checkout of its own (1),
+#                       for tests in one process that mostly wait; not where they bind a port.
 #
 # [sets]                each set's corpora, or other sets, which stand for theirs.
 #
@@ -380,6 +382,7 @@ source = "src/anyio"
 install = ["pip -e .[trio] --group test"]
 tests = "-m 'not network'"
 checks = []
+at-once = 7
 
 # A tagged release waits 100 times its tests' unit of time (`tests/utils.py`), its CI 20, as here:
 # its tests spend most of their time waiting.
@@ -634,6 +637,7 @@ source = "pint"
 install = ["pip -e .[test,numpy] pyright"]
 tests = "--benchmark-skip"
 checks = ["pyright"]
+at-once = 7
 
 [corpus.dask]
 why = "numpy's types"

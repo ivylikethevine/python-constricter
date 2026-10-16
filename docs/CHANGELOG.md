@@ -6,6 +6,15 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--infer-with` remembers a file a checker hung on by the checker's installed version, so an
+  install of the same version doesn't forget it, and by the file's path for an hour, so the pass
+  after `--fix` leaves out the text it fixed too.
+- The corpus runner starts a suite's work as soon as what it reads is there: its tests and type
+  checks are a part per fix, each on a checkout of the suite's own once that fix is made, a suite
+  with `at-once` running that many side by side. A step waiting for the machine holds no port or
+  checkout, and holds back none that could start. Its witness counts a test's own class as telling
+  nothing, and a class a function makes again at each call as the one it names; its tables are
+  written with LF line ends; and websockets' tests wait as long as its own CI's do.
 - The corpus runner starts a step whose last run took 5 minutes at most beside one that has waited
   past its patience, rather than keeping what's free from it: replayed, the last super run takes 75
   minutes from 85, on 16CPU/60GB.

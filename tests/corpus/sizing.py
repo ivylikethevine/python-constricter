@@ -51,8 +51,9 @@ import subprocess  # starts a scope, to see that it's counted
 import sys
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Final, NamedTuple, Protocol, cast
 
@@ -74,8 +75,23 @@ _MARGIN: Final = 1.25  # over the most a step was seen to hold: its readings are
 _JOB_MEMORY: Final = GIB + GIB // 4  # what a step holds for each of constricter's `--jobs`, unmeasured
 _UNSIZED_SHARE: Final = 3  # the unmeasured steps starting the type checkers that the memory is split among
 _MOST_SHARE: Final = 2  # the most CPUs a step is given: the CPUs over this, or it waits for most to be idle
-TESTING: Final = frozenset({TESTS, TRACED})  # the steps that run a suite's tests, with so many workers
-_CHAIN: Final = (TRACED, TESTS, TYPES)  # a suite's steps, each waiting for the one before it
+_CHAIN: Final = (TRACED, TESTS, TYPES)  # a suite's kinds of step: their parts wait for the kind before
+
+
+def testing(step: str) -> bool:
+    """Check whether a step runs a suite's tests, with so many workers: its traced tests, or a part.
+
+    Returns:
+      Whether it does.
+
+    """
+    return step in {TESTS, TRACED} or step.startswith(f"{TESTS}-")
+
+
+def _kind(step: str) -> str:  # a suite step's kind: a part's, or its own
+    return next((kind for kind in _CHAIN if step == kind or step.startswith(f"{kind}-")), step)
+
+
 _PATIENCE: Final = 300.0  # the seconds a step waits before what's free is kept for it
 _BESIDE: Final = 300.0  # but from a step expected to end within so many seconds
 _SLACK: Final = 2.0  # over what an unmeasured step holds a minute in: it may hold more later
@@ -131,6 +147,7 @@ class _Waiter:
     memory: int
     since: float
     seconds: float = 0.0  # its own, as its last run took: 0 where none did
+    locks: tuple[threading.Lock, ...] = ()  # its checkouts' and its port's, taken as it starts
 
 
 def group(process: int | None = None) -> Path | None:
@@ -309,67 +326,83 @@ class Slots:
           Whether it may.
 
         """
-        if not self._fits(waiter.cpus, waiter.memory):
+        if not self._ready(waiter):
             return False
         if waiter.memory >= self.memory:  # it runs alone: nothing is running
             return True
         if any(other.memory >= self.memory for other in self.waiting):
             return False
+        # One that lasts longer goes first, but only one that could start now: one held back itself
+        # would hold back the rest with it.
+        return not any(
+            other.lasting > waiter.lasting and self._ready(other) and not self._kept(other)
+            for other in self.waiting
+        ) and not self._kept(waiter)
+
+    def _ready(self, waiter: _Waiter) -> bool:
+        """Check that a waiting step fits what's free, its locks too: no other step holds one.
+
+        Returns:
+          Whether it does.
+
+        """
+        return self._fits(waiter.cpus, waiter.memory) and not any(lock.locked() for lock in waiter.locks)
+
+    def _kept(self, waiter: _Waiter) -> bool:
+        """Check whether one that came before a waiting step has waited `_PATIENCE` seconds without fitting.
+
+        What's free is kept for it, from all but a step whose last run ended within `_BESIDE` seconds.
+
+        Returns:
+          Whether it's held back so.
+
+        """
+        if 0 < waiter.seconds <= _BESIDE:
+            return False
         kept: float = time.monotonic() - _PATIENCE
         # Those that came before it, by their place: a coarse clock gives two the same time.
         ahead: list[_Waiter] = self.waiting[: self.waiting.index(waiter)]
-        brief: bool = 0 < waiter.seconds <= _BESIDE
-        if not brief and any(
-            other.since <= kept and not self._fits(other.cpus, other.memory) for other in ahead
-        ):
-            return False
-        return not any(
-            other.lasting > waiter.lasting and self._fits(other.cpus, other.memory) for other in self.waiting
-        )
+        return any(other.since <= kept and not self._ready(other) for other in ahead)
 
-    def take(
-        self,
-        wanted: int,
-        memory: int = 0,
-        lasting: float = 0.0,
-        least: int = 0,
-        seconds: float = 0.0,
-    ) -> int:
-        """Wait until `wanted` CPUs and `memory` bytes are free, and hold them.
+    def take(self, wanted: "Wanted", locks: Sequence[threading.Lock] = ()) -> int:
+        """Wait until the CPUs and the memory a step `wanted` are free, and its `locks`, and hold them.
 
-        All the CPUs, for more than there are. `least`: the fewest it may start with, then holding
-        as many more as are free, and `share` of the memory. `lasting`: the seconds the step and what
-        waits for it are expected to take; of the steps waiting, one that lasts longer and fits
-        what's free goes before it, so the long steps aren't the last to start. One that wants all
-        the memory goes before any that wants less: it runs once those running have ended. And one
-        that has waited `_PATIENCE` seconds without fitting goes before any that came after it, but one
-        whose `seconds`, its own as its last run took, are `_BESIDE` at most.
+        All the CPUs, for more than there are. Its `least`: the fewest it may start with, then holding
+        as many more as are free, and `share` of the memory. Its `lasting`: the seconds the step and what
+        waits for it are expected to take; of the steps waiting, one that lasts longer and could
+        start now goes before it, so the long steps aren't the last to start. One that wants all the
+        memory goes before any that wants less: it runs once those running have ended. And one that
+        has waited `_PATIENCE` seconds without fitting goes before any that came after it, but one
+        whose own `seconds`, as its last run took, are `_BESIDE` at most. `locks`: those of the
+        checkouts it works on and the port its tests bind, taken with the rest as it starts, none
+        held while it waits.
 
         Returns:
-          How many CPUs are held, to `give` back with their `share` of the memory.
+          How many CPUs are held, to `give` back with their `share` of the memory, and the locks.
 
         """
-        most: int = max(1, min(wanted, self.cpus))
-        held: int = max(1, min(least or most, most))
+        most: int = max(1, min(wanted.cpus, self.cpus))
+        held: int = max(1, min(wanted.least or most, most))
+        share: Callable[[int], int] = partial(self.share, wanted.cpus, wanted.memory)
         with self.changed:
             waiter: _Waiter = _Waiter(
-                lasting,
+                wanted.lasting,
                 held,
-                self.share(wanted, memory, held),
+                share(held),
                 time.monotonic(),
-                seconds,
+                wanted.seconds,
+                tuple(locks),
             )
             self.waiting.append(waiter)
             _ = self.changed.wait_for(lambda: self._turn(waiter))
             self.waiting.remove(waiter)
-            fitting: list[int] = [
-                count
-                for count in range(most, held, -1)
-                if self._fits(count, self.share(wanted, memory, count))
-            ]
+            lock: threading.Lock
+            for lock in locks:
+                _ = lock.acquire(blocking=False)  # free: only steps taken here hold one
+            fitting: list[int] = [count for count in range(most, held, -1) if self._fits(count, share(count))]
             held = fitting[0] if fitting else held  # as many as are free
             self.free -= held
-            self.held += self.share(wanted, memory, held)
+            self.held += share(held)
             self.running += 1
             self.changed.notify_all()  # one that waited behind this may fit what's left
         return held
@@ -398,12 +431,15 @@ class Slots:
             self.changed.notify_all()
         return now
 
-    def give(self, held: int, memory: int = 0) -> None:
-        """Free the CPUs and the memory a step held."""
+    def give(self, held: int, memory: int = 0, locks: Sequence[threading.Lock] = ()) -> None:
+        """Free the CPUs, the memory and the locks a step held."""
         with self.changed:
             self.free += held
             self.held -= memory
             self.running -= 1
+            lock: threading.Lock
+            for lock in locks:
+                lock.release()
             self.changed.notify_all()
 
 
@@ -509,13 +545,13 @@ class Plan(NamedTuple):
             ]
             if both:
                 known = Before(*(max(each) for each in zip(*both, strict=True)))
-        behind: tuple[str, ...] = _CHAIN[_CHAIN.index(step) + 1 :] if step in _CHAIN else _CHAIN
+        behind: tuple[str, ...] = _CHAIN[_CHAIN.index(_kind(step)) + 1 :] if _kind(step) in _CHAIN else _CHAIN
         lasting: float = sum(
             self.before[directory, each].seconds
             for each in (step, *(behind if tree.suite is not None else ()))
             if (directory, each) in self.before
         )
-        if step in TESTING and tree.suite is not None:
+        if testing(step) and tree.suite is not None:
             tested: Before | None = self.before.get((directory, TESTS)) if step == TRACED else None
             return self._testing(tree.suite, (known, tested), lasting, heavy=heavy)
         cpus: int = math.ceil(known.cpus) if known is not None else _STEP_CPUS

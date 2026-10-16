@@ -56,5 +56,7 @@ goes under `local/scratch/`.
   this checkout and by a compiled wheel's install, their output compared and timed.
 - `corpus_quadrants.py FOLDER ...`: each corpus's files and its steps' wall and CPU seconds in
   finished runs, and its size-and-time group at the medians.
-- `schedule_sim.py FOLDER [--cpus N] [--memory GB]`: a finished run's steps replayed under other
-  queueing orders, each order's length beside the recorded run's.
+- `schedule_sim.py FOLDER... [--cpus N] [--memory GB] [--given] [--sweep]`: finished runs' steps
+  replayed under other queueing orders, beside each run's length and the least any schedule could
+  take; `--sweep` searches the runner's order, `_PATIENCE` and `_BESIDE` for the fastest over them
+  all.

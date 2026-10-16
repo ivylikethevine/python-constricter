@@ -40,6 +40,7 @@ from tests.corpus.pipeline import (
     fixing,
     steps,
 )
+from tests.corpus.pipeline import parts as suite_parts
 from tests.corpus.run_config import CERTAIN, CSV, JSON, LIKELY, MARKDOWN, UNSAFE, Run
 from tests.corpus.sizing import USED
 from tests.corpus.trees import Tree
@@ -87,7 +88,8 @@ def _every(run: Run) -> list[str]:
       Their names, each once.
 
     """
-    return list(dict.fromkeys([*steps(run), *fixing(run), TRACED, TESTS, TYPES, TIMING]))
+    suited: list[str] = [TRACED, *suite_parts(run, TESTS), TESTS, *suite_parts(run, TYPES), TYPES]
+    return list(dict.fromkeys([*steps(run), *fixing(run), *suited, TIMING]))
 
 
 def gathered(run: Run, store: Store, trees: Sequence[Tree]) -> Records:
@@ -824,5 +826,5 @@ def write(records: Records, folder: Path, facts: Record) -> list[Path]:
                 written.append(folder / "tables" / f"{name}.csv")
                 file: IO[str]
                 with written[-1].open("w", encoding="utf-8", newline="") as file:
-                    csv.writer(file).writerows(table)
+                    csv.writer(file, lineterminator="\n").writerows(table)  # as git keeps text
     return written

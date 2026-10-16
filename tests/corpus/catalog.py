@@ -55,6 +55,9 @@ class Suite(NamedTuple):
     # once as it has workers: for tests that hold in one process more than a machine has (celery's,
     # 25 GB).
     parts: tuple[str, ...] = ()
+    # How many of its fixed test runs go side by side, each on a checkout of its own: for tests in
+    # one process that mostly wait (`suite_steps.tests`). Not a suite whose tests bind a port.
+    at_once: int = 1
 
 
 class Entry(NamedTuple):
@@ -115,6 +118,7 @@ def _suite(pinned: _Table) -> Suite:
         tuple(shlex.split(cast("str", pinned.get("script", "")))),
         tuple(cast("dict[str, str]", pinned.get("differs", {})).items()),
         parts,
+        cast("int", pinned.get("at-once", 1)),
     )
 
 

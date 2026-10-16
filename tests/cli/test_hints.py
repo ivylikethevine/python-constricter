@@ -196,6 +196,37 @@ def test_a_hang_is_remembered_by_the_checker_and_the_text(
     assert not remembered.hung("a", [str(server)], "x = 3\n")
 
 
+def test_a_hang_is_remembered_by_the_checkers_version(tmp_path: Path) -> None:
+    """Where its environment has its distribution: not again for an install of the same version."""
+    server: Path = tmp_path / "env" / "bin" / "a-server"
+    server.parent.mkdir(parents=True)
+    _ = server.write_text("", encoding="utf-8")
+    installed: Path = tmp_path / "env" / "lib" / "python3.14" / "site-packages" / "a-1.0.dist-info"
+    installed.mkdir(parents=True)
+    remembered.remember("a", [str(server)], "x = 1\n")
+    _ = server.write_text("written again", encoding="utf-8")
+    assert remembered.hung("a", [str(server)], "x = 1\n")
+    _ = installed.rename(installed.with_name("a-1.1.dist-info"))
+    assert not remembered.hung("a", [str(server)], "x = 1\n")
+
+
+def test_a_hang_is_remembered_by_the_files_path_of_late(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Whatever the file holds since, for `_RECENT` seconds; not another path's."""
+    server: Path = tmp_path / "server"
+    _ = server.write_text("", encoding="utf-8")
+    path: Path = tmp_path / "m.py"
+    remembered.remember("a", [str(server)], "x = 1\n", path)
+    assert remembered.hung("a", [str(server)], "x: int = 1\n", path)
+    assert not remembered.hung("a", [str(server)], "x: int = 1\n", tmp_path / "n.py")
+    assert not remembered.hung("a", [str(server)], "x: int = 1\n")
+    monkeypatch.setattr(remembered, "_RECENT", 0.0)  # as if it was long ago
+    assert not remembered.hung("a", [str(server)], "x: int = 1\n", path)
+    assert remembered.hung("a", [str(server)], "x = 1\n", path)
+
+
 def test_a_checker_that_hangs_on_too_many_files_stops_the_run(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

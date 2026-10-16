@@ -25,7 +25,6 @@ from tests.corpus.run_config import DEV, NAMED
 from tests.corpus.trees import Tree
 
 _SETTINGS: Final = ("pyproject.toml", "pyrightconfig.json", "pyrefly.toml")
-COPIED: Final = ".corpus-copied"  # in a copy's directory, once `copied` has made it
 _INSTALLING: Final = threading.Lock()
 _ROOT: Final = Path(__file__).resolve().parents[2]
 _PROBE: Final = "def f():\n    a = 1\n"
@@ -85,7 +84,6 @@ def copied(tree: Tree, to: Path) -> tuple[Place, list[Path]]:
     for name in _SETTINGS if tree.base else ():
         if (cast("Path", tree.base) / name).is_file():
             _ = shutil.copyfile(cast("Path", tree.base) / name, to / name)
-    (to / COPIED).touch()
     return Place(to, target, tree.environment), valid
 
 

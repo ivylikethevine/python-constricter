@@ -25,6 +25,7 @@ from tests.corpus.trees import Tree
 _Nested: TypeAlias = dict[str, dict[str, dict[str, Record]]]  # corpus, version, step
 _Rows: TypeAlias = list[list[str]]  # a CSV table, read back
 _WARNING: Final = "a warning\n"
+_CRLF: Final = b"\r\n"  # a line's end that git keeps as LF
 SHARE: Final = 75  # percent of the machine
 _GROUPS: Final = ("fast-small", "fast-large", "slow-small", "slow-large")  # by size and time
 _SLICED: Final = "--slice=constricter-corpus.slice"  # `systemd-run`'s, for a run with a share
@@ -208,14 +209,14 @@ def test_a_run_file_is_read_with_defaults_for_what_it_leaves_out() -> None:
 def test_a_step_waits_for_the_cpus_and_the_memory_it_wants() -> None:
     """One that fits starts beside those running; one that wants all the memory runs alone."""
     slots: sizing.Slots = sizing.Slots(4, 10)
-    held: int = slots.take(2, 6)
+    held: int = slots.take(sizing.Wanted(2, 6))
     assert (held, slots.free, slots.held) == (2, 2, 6)
-    second: int = slots.take(2, 4)
-    assert sizing.Slots(4, 10).take(9) == slots.cpus  # more CPUs than there are: every one
+    second: int = slots.take(sizing.Wanted(2, 4))
+    assert sizing.Slots(4, 10).take(sizing.Wanted(9, 0)) == slots.cpus  # more CPUs than there are: every one
     started: threading.Event = threading.Event()
 
     def alone() -> None:
-        slots.give(slots.take(1, 10), 10)
+        slots.give(slots.take(sizing.Wanted(1, 10)), 10)
         started.set()
 
     waiting: threading.Thread = threading.Thread(target=alone, daemon=True)
@@ -242,13 +243,13 @@ def test_a_step_waits_for_the_cpus_and_the_memory_it_wants() -> None:
 def test_a_suites_tests_start_with_half_the_cpus_they_want_and_take_whats_free() -> None:
     """With as much memory for each CPU as they wanted, the more they hold."""
     slots: sizing.Slots = sizing.Slots(8, 16)
-    first: int = slots.take(5, 5)
-    held: int = slots.take(8, 16, least=2)
+    first: int = slots.take(sizing.Wanted(5, 5))
+    held: int = slots.take(sizing.Wanted(8, 16, least=2))
     assert (held, slots.share(8, 16, held)) == (3, 6)
     assert (slots.free, slots.held) == (0, 11)
     slots.give(held, 6)
     slots.give(first, 5)
-    assert slots.take(8, 16, least=2) == slots.cpus
+    assert slots.take(sizing.Wanted(8, 16, least=2)) == slots.cpus
 
 
 def test_a_suites_parts_run_side_by_side(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -323,11 +324,11 @@ def test_a_step_that_waited_long_has_whats_free_kept_for_it(monkeypatch: pytest.
     """None after it starts, though it fits, but one whose last run took `_BESIDE` seconds at most."""
     monkeypatch.setattr(sizing, "_PATIENCE", 0.0)
     slots: sizing.Slots = sizing.Slots(4, 10)
-    held: int = slots.take(2)
+    held: int = slots.take(sizing.Wanted(2, 0))
     started: list[str] = []
 
     def step(name: str, cpus: int, seconds: float = 0.0) -> None:
-        slots.give(slots.take(cpus, seconds=seconds))
+        slots.give(slots.take(sizing.Wanted(cpus, 0, seconds=seconds)))
         started.append(name)
 
     threads: dict[str, threading.Thread] = {
@@ -336,12 +337,14 @@ def test_a_step_that_waited_long_has_whats_free_kept_for_it(monkeypatch: pytest.
     }
     threads["large"].start()
     assert _waited(slots)
+    name: str
     for name in ("small", "long", "brief"):
         threads[name].start()
     threads["brief"].join(5)
     threads["small"].join(0.3)
     assert started == ["brief"]
     slots.give(held)
+    each: threading.Thread
     for each in threads.values():
         each.join()
     assert sorted(started) == ["brief", "large", "long", "small"]
@@ -360,7 +363,7 @@ def test_a_running_steps_hold_follows_what_it_uses() -> None:
     alone: tuple[int, int] = (8, 4 * sizing.GIB)
     assert plan.fitted(sizing.Wanted(8, 4 * sizing.GIB), alone, 1.0, sizing.GIB) == alone
     slots: sizing.Slots = sizing.Slots(8, 16)
-    now: tuple[int, int] = slots.resize((slots.take(4, 8), 8), (6, 12))
+    now: tuple[int, int] = slots.resize((slots.take(sizing.Wanted(4, 8)), 8), (6, 12))
     assert (now, slots.free, slots.held) == ((6, 12), 2, 12)
     slots.give(*now)
     assert (slots.free, slots.held) == (8, 0)
@@ -780,6 +783,7 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
         "timing.csv",
         "steps.csv",
     ]
+    assert _CRLF not in (tmp_path / "tables" / "offences.csv").read_bytes()
     report: dict[str, _Nested] = cast(
         "dict[str, _Nested]",
         json.loads((tmp_path / "report.json").read_text(encoding="utf-8")),

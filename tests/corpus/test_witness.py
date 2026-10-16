@@ -82,6 +82,33 @@ def test_a_builtin_container_is_held_to_its_arguments(
     assert holds(value, hint) is held
 
 
+class _Framed:  # pylint: disable=too-few-public-methods
+    """A base the classes these tests make share, which names their type."""
+
+
+def _made() -> type[_Framed]:
+    class Frame(_Framed):  # pylint: disable=too-few-public-methods
+        """A class this function defines anew at each call."""
+
+    return Frame
+
+
+def test_a_class_a_function_makes_again_is_the_annotations(holds: _Holds) -> None:
+    """By its module and qualified name; another class of the same name is still another."""
+    first: type[_Framed] = _made()
+    assert holds(_made()(), first) is True
+    assert holds(type("Frame", (), {"__module__": "pkg.core"})(), first) is False
+
+
+def test_a_test_modules_class_says_nothing_of_the_annotation(holds: _Holds) -> None:
+    """A test's stand-in, passed where the package's class is declared, is neither fit nor differing."""
+    module: str
+    held: bool | None
+    for module, held in (("pkg.tests.test_core", None), ("test_core", None), ("pkg.core", False)):
+        stand_in: type[_Framed] = type("FakeProcess", (_Framed,), {"__module__": module})
+        assert holds(stand_in(), int) is held
+
+
 def test_only_a_builtin_containers_elements_are_read(holds: _Holds) -> None:
     """A subclass's own code may run as it's read: it's held to its class, and a long list by its first."""
     assert holds(_Rows([1, "a"]), list[int]) is True

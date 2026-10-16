@@ -277,7 +277,7 @@ class Checker:
         self.abandoned.update(
             path
             for path in files.keys() - self.assigned.keys() - self.abandoned
-            if remembered.hung(self.name, self.command, files[path])
+            if remembered.hung(self.name, self.command, files[path], path)
         )
         fresh: list[Path] = sorted(
             files.keys() - self.assigned.keys() - self.abandoned,
@@ -357,7 +357,7 @@ class Checker:
                 found.update(server.answers(server.ask({path: text})))
             except HungError as hung:
                 self.abandoned.add(path)
-                remembered.remember(self.name, self.command, text)
+                remembered.remember(self.name, self.command, text, path)
                 if len(self.abandoned) > _MOST_ABANDONED:
                     error: str = f"{self.name} hung on {len(self.abandoned)} file(s), each asked about alone"
                     raise HintError(error) from hung
