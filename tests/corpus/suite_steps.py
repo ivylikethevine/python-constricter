@@ -7,10 +7,11 @@ outputs count. None is the tree the run's other steps copy, so none waits for th
 
 - `traced`, for a suite whose tests can be traced, with this checkout: the tests under a witness
   told every fix of `fix-unsafe`, each fix's verdict kept; and `infer-trace`, a fix by their trace;
-- the parts of `tests` (`pipeline.part`): the package's own tests as released, and after each of
-  the run's fixes, the trace's too, each a step that starts once its fix is made; then `tests`,
-  which runs a fixed run that differs again, with the released tests, and keeps only what it fails
-  both times and no released run did as the fix's (`weighed`);
+- the parts of `tests` (`pipeline.part`): the package's own tests as released (or as an earlier
+  run found them, `earlier`), and after each of the run's fixes, the trace's too, each a step that
+  starts once its fix is made; then `tests`, which runs a fixed run that differs again, with the
+  released tests, and keeps only what it fails both times and no released run did as the fix's
+  (`weighed`);
 - the parts of `types`, for a suite with type checks: its own checkers' errors as released and after
   each fix, each new one traced to the fix it's about; then `types`, which gathers them.
 """
@@ -429,6 +430,34 @@ def _ran(record: Record) -> corpus_suite.Outcome:
 
 def _implied(step: str) -> bool:  # a tier's fix step, whose fixes are among the guesses' own
     return step != _WHOLE and step.startswith(FIX)
+
+
+def earlier(job: Job) -> Record | None:
+    """Find the suite's tests as released in the latest earlier run beside this one, at the suite's tag.
+
+    Any version's: the released tests don't run constricter. Not one stopped for running too long.
+
+    Returns:
+      Its record, saying whose run it is (`from`); `None` where no earlier run has one.
+
+    """
+    suite: corpus_suite.Suite = cast("corpus_suite.Suite", job.tree.suite)
+    name: str = part(TESTS, RELEASED)
+    corpus: str = job.tree.name.replace(" ", "-")
+    found: list[Path] = sorted(
+        job.store.root.parent.glob(f"*/records/{corpus}/*/{name}.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    path: Path
+    for path in found:
+        folder: Path = path.parents[3]  # the run's: `records/CORPUS/VERSION/` under it
+        if folder.resolve() == job.store.root.resolve():
+            continue
+        record: Record = cast("Record", json.loads(path.read_text(encoding="utf-8")))
+        if record.get("tag") == suite.tag and not record.get("stopped") and _COUNTS in record:
+            return record | {"from": folder.name}
+    return None
 
 
 def _tests_part(job: Job, name: str) -> Record:

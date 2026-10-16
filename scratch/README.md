@@ -60,8 +60,9 @@ goes under `local/scratch/`.
   replayed under other queueing orders, beside each run's length and the least any schedule could
   take; `--sweep` searches the runner's order, `_PATIENCE` and `_BESIDE` for the fastest over them
   all.
-- `compiled_venv.py`: builds the compiled wheel (mypyc) and installs it in `local/.venv-compiled`
-  beside the `corpus` group's packages, for `tests/corpus/runs/compiled.toml`.
+- `compiled_venv.py`: builds the pure wheel and the compiled one (mypyc), each installed in a venv
+  of its own beside the `corpus` group's packages (`local/.venv-pure`, `local/.venv-compiled`), for
+  `tests/corpus/runs/compiled.toml`.
 - `version_diff.py FOLDER [A B]`: two versions' findings and fixes in one run, corpus by corpus, and
   how much faster one is.
 - `schedule_solve.py FOLDER... [--given] [--seconds N]`: the shortest schedule of finished runs'

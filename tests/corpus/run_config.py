@@ -33,6 +33,8 @@
     timing = 3                       # a check timed that many times, in one process and with `jobs`
     profile = true                   # a check in one process `py-spy` samples
     tests-hinted = true              # false: no test run after a checker's hints or the trace's fix
+    tests-released = true            # false: the tests as released not run, their record the latest
+                                     # earlier run's at the suite's tag (`suite_steps.earlier`)
     every-level = false              # true: a check at each level, not one the levels are read from
 
     [publish]
@@ -92,6 +94,7 @@ _KEYS: Final = {
         "profile",
         "tests-hinted",
         "every-level",
+        "tests-released",
     },
 }
 _RUNS_MD: Final = "runs-md"
@@ -114,6 +117,7 @@ class Steps(NamedTuple):
     profile: bool = False
     tests_hinted: bool = True  # a suite's tests after each checker's hints and the trace's fix too
     every_level: bool = False  # a check at each level, not one at `suffocate` the others are read from
+    tests_released: bool = True  # a suite's tests as released run, not taken from an earlier run
 
 
 class Publish(NamedTuple):
@@ -224,6 +228,7 @@ def parse(data: _Table) -> Run:
             bool(steps.get("profile", default.steps.profile)),
             bool(steps.get("tests-hinted", default.steps.tests_hinted)),
             bool(steps.get("every-level", default.steps.every_level)),
+            bool(steps.get("tests-released", default.steps.tests_released)),
         ),
         cast("int", run.get("at-once", default.at_once)),
         Publish(

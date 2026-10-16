@@ -2,8 +2,8 @@
 
     python3 scratch/version_diff.py local/corpus-runs/FOLDER [A B]
 
-A and B are two of the run's recorded versions (`records/<corpus>/<version>/`); by default its
-first two, as `tests/corpus/runs/compiled.toml` names them: `<label>+dev` and `compiled`. For each
+A and B are two of the run's recorded versions (`records/<corpus>/<version>/`); by default the first
+two its run file names, in its order: `pure` and `compiled` for `tests/corpus/runs/compiled.toml`. For each
 corpus both measured, it compares the check's offences per code and per level and its files, and
 each fix step's fixes (`<step>.fixes.jsonl`: each binding's annotation and tier) and broken files;
 then their timed checks' seconds in one process and with every worker, and instructions, where both
@@ -14,6 +14,7 @@ exits 1 if any differs.
 import json
 import statistics
 import sys
+import tomllib
 from pathlib import Path
 
 
@@ -61,6 +62,19 @@ def _timed(folder: Path) -> dict[str, float]:
     return {key: float(record[key]) for key in _TIMED if isinstance(record.get(key), (int, float))}
 
 
+def _named(run: Path) -> list[str]:
+    """Name the versions a run's file lists, in its order, as its records do: `dev` as `<label>+dev`.
+
+    Returns:
+      Them.
+
+    """
+    said = tomllib.loads((run / "run.toml").read_text(encoding="utf-8"))["run"]
+    recorded = {version.name for corpus in (run / "records").iterdir() for version in corpus.iterdir()}
+    names = [str(each).partition("=")[0] for each in said.get("versions", [])]
+    return [next((each for each in sorted(recorded) if each.endswith("+dev")), name) if name == "dev" else name for name in names]
+
+
 def main() -> int:
     """Compare, print, and say whether anything differs.
 
@@ -69,7 +83,7 @@ def main() -> int:
     """
     run = Path(sys.argv[1])
     corpora = sorted(path for path in (run / "records").iterdir() if path.is_dir())
-    versions = sys.argv[2:4] or sorted({version.name for corpus in corpora for version in corpus.iterdir()})[:2]
+    versions = sys.argv[2:4] or _named(run)[:2]
     if len(versions) < 2:
         print(f"{run.name} has fewer than two versions: {versions}")
         return 1

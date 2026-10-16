@@ -247,7 +247,11 @@
   indexed gained nothing with every CPU (a hinted check of pandas 118s, from 117s: the workers index
   in a second or two), and a worker forked while the servers' threads ran hung on Python 3.11.
 - **A hung server is restarted**: one silent for 120s is restarted and each file it hadn't answered
-  asked about alone; a file it hangs on again has no hints, named on standard error.
+  asked about alone; a file it hangs on again has no hints, named on standard error. The hang is
+  remembered by the checker's installed version and, for an hour, by the file's path
+  (`remembered._RECENT`), so the second pass over the text it fixed leaves the file out from the
+  start: pandas's `infer-basedpyright`, which hangs on `tests/apply/test_series_apply.py`, took
+  380s, from 746s, the file's 89 fixes the same and the rest within what two runs differ by.
 - **No new type errors**: a corpus run's `types` step runs pydantic's, sqlalchemy's and pandas's own
   type checkers after `--fix` (none new but released errors in a new place) and
   `--fix --unsafe-fixes`. Where a checker would see a value otherwise, the fix is changed, made a
@@ -310,7 +314,12 @@
   Compiled code runs as its annotations say, so where Python and typeshed differ the code is written
   another way (CONTRIBUTING lists the kinds), and the two frozen dataclasses the workers are sent
   pickle by their fields. The whole suite runs on it in CI (Compiled), but for the six tests that
-  patch a compiled module's globals (`interpreted`).
+  patch a compiled module's globals (`interpreted`). On every corpus
+  (`tests/corpus/runs/compiled.toml`, the pure and the compiled wheel each beside the same packages,
+  `scratch/compiled_venv.py`) the findings and the fixes are the same, the check 1.37 times as fast
+  in one process and 1.26 times with 4 workers (the medians of 47 corpora, on 16CPU/60GB). A wheel
+  beside other packages fixes by their types too: against `dev`'s venv, which has the dev group's,
+  five corpora differed (docutils's types for sphinx, click's for uvicorn).
 
 ### Command and output
 
@@ -637,34 +646,26 @@ fix.
    each on a checkout of the suite's own once its fix is made (`suite_steps.needs`). Done when a
    mega run uses 85% of its CPU seconds, and one with no earlier run under its output takes within a
    tenth of one sized by its own. About 2 hours beside the runs; coverage unchanged.
-2. **A checker's hang, given up on.** basedpyright hangs on pandas's
-   `tests/apply/test_series_apply.py`, which gets no hints: pandas's `infer-basedpyright` took 746s
-   in the last super run, 450s in the one before. A hang is now remembered by the checker's
-   installed version, not its executable's size and time (an install of the same version forgot it),
-   and by the file's path for an hour (`remembered._RECENT`), so the second pass over the text it
-   fixed leaves the file out too. Left: what in the file hangs it. Done when pandas's
-   `infer-basedpyright` takes under 450s with the same fixes. About an hour; coverage unchanged.
-
-3. **ty on the project's own code.** A fourth type checker, beside basedpyright, mypy and pyrefly
+2. **ty on the project's own code.** A fourth type checker, beside basedpyright, mypy and pyrefly
    (`pyrefly check`, in CI's lint step since it found 10 errors, each a pattern or a cast the others
    pass), catching what they miss; the corpus runner already takes its hints. Add it to the dev
    group, settings of its own, and CI's lint step. Done when it finds nothing in
    `constricter stdlib_tables tests hatch_build.py`. About an hour; coverage unchanged.
-4. **The public API, wholly typed.** `basedpyright --verifytypes constricter` says what share of the
+3. **The public API, wholly typed.** `basedpyright --verifytypes constricter` says what share of the
    package's exported symbols have known types, but finds none through the editable install's import
    hook: run it on the built wheel, installed in a venv of its own, as CI's build job has it. Done
    when CI fails on a score under 100%. About 2 hours; coverage unchanged.
-5. **Each group's dependencies, as its code imports them.** deptry finds a dependency nothing
+4. **Each group's dependencies, as its code imports them.** deptry finds a dependency nothing
    imports, an import no group has, and one a group has that another's code needs: the corpus
    runner's optional `ortools` and `psutil`, `tests/`'s and `scratch/`'s own. Add it to the dev
    group and CI's lint step, the optional imports listed. Done when it finds nothing. About 2 hours;
    coverage unchanged.
-6. **Docstrings, held to the code.** pydoclint checks that a function's Google-style sections say
+5. **Docstrings, held to the code.** pydoclint checks that a function's Google-style sections say
    what it does: its `Returns:` where it returns, its `Raises:` for what it raises, its arguments
    where it lists them. Add it to the dev group and CI's lint step, as flake8's plugin or alone.
    Done when it finds nothing in `constricter stdlib_tables tests hatch_build.py`. About 3 hours;
    coverage unchanged.
-7. **mypy's signatures, from their callers.** `dmypy suggest FUNCTION` proposes an unannotated
+6. **mypy's signatures, from their callers.** `dmypy suggest FUNCTION` proposes an unannotated
    function's whole signature from the arguments its calls pass and the values it returns, through
    the daemon of the mypy already in the dev group; `dmypy inspect` answers one location at a time.
    Most bindings with no fix are in functions with no annotations. Measure it as `pyrefly infer`
@@ -672,6 +673,14 @@ fix.
    the new basedpyright errors, the seconds per function. Done when measured; a fourth hint source
    only if it brings clearly more than `pyrefly infer`'s 2,254 fixes for no more errors. About 3
    hours; coverage unchanged.
+7. **No module over 800 lines.** pylint's `too-many-lines` fails CI at 1,000 (`test_runner.py`, at
+   1,006, is split by topic now), and CI's lint warns from 800 on, without failing; eight warn:
+   `constricter/fix/index/modules.py` (907), `constricter/cli/command.py` (877),
+   `tests/fix/values/test_widened_fixes.py` (859), `stdlib_tables/reading.py` (847),
+   `tests/corpus/render.py` (830), `constricter/rules/checker.py` (830), `constricter/cli/hints.py`
+   (821) and `constricter/fix/index/stub_signatures.py` (815). Split each by what its parts do, the
+   package's imports and the compiled wheel's modules unchanged for callers. Done when CI's lint
+   warns of none. About 3 hours; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -720,16 +729,7 @@ fix.
    from where its first check ended when what it imports returns anew, as it is when its parameters
    are typed. Done when the standard library checks in under 9s with every CPU, its findings the
    same. About 8 hours; coverage unchanged.
-3. **The compiled wheel, on every corpus.** A compiled wheel is built and tested in CI, and gave
-   pydantic's findings and fixes as the pure build does (see [Done](#--fix)). The first trial,
-   before the changes that made it run right, found two of pandas's 77,931 findings differ (a type
-   alias's fix, a guess where it's certain). Ready to run: `scratch/compiled_venv.py` builds the
-   wheel into `local/.venv-compiled`, beside the `corpus` group's packages its fixes read the types
-   of; `tests/corpus/runs/compiled.toml` checks and fixes every corpus with it and this checkout,
-   each check timed; `scratch/version_diff.py` compares them. Left: that run, and the release's
-   first cibuildwheel builds. Done when a compiled wheel checks every corpus as the pure one does.
-   About an hour beside the run; coverage unchanged.
-4. **What a hint breaks, by its cause.** With `--infer-with` the packages' own type checkers find,
+3. **What a hint breaks, by its cause.** With `--infer-with` the packages' own type checkers find,
    by the worst of basedpyright's, ty's and pyrefly's hints, 125 new errors on pandas, 49 on
    sqlalchemy, 41 on streamlink, 12 on starlette, 10 on mcp, 9 on sphinx and 1 to 8 on eight more of
    the super corpora; on the slow ones, 215 on litestar, 42 on narwhals, 29 on mypy, 16 on optuna,
@@ -738,7 +738,7 @@ fix.
    are above, and hold a hint to what the cause says. Done when a hinted run's new errors are under
    one for each hundred of its hints' fixes on the three corpora type-checked. About 8 hours;
    coverage down by the hints withdrawn.
-5. **The witness, past a test's own classes.** The corpora runs hold a fixed binding's value to its
+4. **The witness, past a test's own classes.** The corpora runs hold a fixed binding's value to its
    annotation as its package's traced tests bind it (`tests/corpus/witness`), and a test's own
    stand-in differs (`FakeProcess`, passed where a `ServerProcess` is declared: mcp's one certain
    fix that differed, narwhals's too). On the mega corpora's suites 16 of the 20 `constructor`
@@ -749,27 +749,27 @@ fix.
    name (`constricter_witness`). Done when a certain fix that differs on the corpora is a
    declaration its package's tests contradict (pydantic's `multiple_of: Decimal | None`, bound to an
    `int`). About 3 hours; coverage unchanged.
-6. **A suite's fixed runs, side by side.** A suite's fixed test runs followed one another on one
+5. **A suite's fixed runs, side by side.** A suite's fixed test runs followed one another on one
    checkout: for a suite of one process that can't take workers, most of its time at under a CPU
    (anyio's 586s, pint's 219s in the last mega run). Done, not yet run: each is a part of its own on
    one of the suite's `at-once` checkouts (anyio's and pint's 7), so they go side by side; joblib's
    and pydantic's aren't set yet. Done when such a suite's `tests` step takes under twice its
    released run. About an hour beside the runs; coverage unchanged.
-7. **django's traced tests, in more than one process.** The tracer doesn't follow the processes
+6. **django's traced tests, in more than one process.** The tracer doesn't follow the processes
    `multiprocessing` starts, so django's suite is traced with `--parallel=1`: 812s traced, the
    longest step of a super run, to 79s untraced on its workers (timed before a generator's returns
    were counted: time it again first). celery's parts are traced one after another too. Record in a
    forked child as a pytest-xdist worker records itself, or trace a suite's `parts` side by side, a
    trace file each. Done when django's traced tests take under 300s, the fixes resting on the trace
    the same. About 4 hours; coverage unchanged.
-8. **A traced run, sampled.** The tracer follows every line of a recorded function until its
+7. **A traced run, sampled.** The tracer follows every line of a recorded function until its
    statements have ended 20 times with nothing new: django's traced tests take 812s, 79s untraced.
    Record in short windows at random times, with `sys.monitoring`'s events off between them, and
    stop reading a large container once new types stop turning up. Done when pydantic's and django's
    traced tests take under twice their untraced time, and the fixes resting on the trace are within
    a hundredth of today's. About 6 hours; coverage unchanged.
 
-9. **The runner's order, from a solver.** No library runs subprocess steps in a graph under CPUs and
+8. **The runner's order, from a solver.** No library runs subprocess steps in a graph under CPUs and
    memory as the runner does: Snakemake's scheduler comes nearest, choosing among its ready jobs as
    a knapsack, greedily or by PuLP's solver, but is a workflow engine whole, and Dask's and Ray's
    resources are their workers' Python tasks'. Done, not yet run: where OR-Tools is installed, the
@@ -780,14 +780,14 @@ fix.
    finished run's steps the same way and proves how short any schedule of them can be. Left:
    OR-Tools in the `corpus` group. Done when a super and a mega run each take within a tenth of the
    solver's shortest schedule of their own steps. About 2 hours beside the runs; coverage unchanged.
-10. **Signatures from a sampled run.** RightTyper runs a package's tests
-    (`python -m righttyper run -m pytest`) and annotates the parameters and returns of the functions
-    they called, sampling with `sys.monitoring` at a fraction of a full trace's cost. The traced
-    parameters' types as `callers`' seeds brought more errors than fixes (Large 1), so what's new is
-    the returns, written before `--fix` as `pyrefly infer`'s signatures were; its sampling is also a
-    model for item 8. Measure on pydantic's and django's tests: the time against the `traced`
-    step's, the fixes past the trace's, the new errors. Done when measured; a corpus step only if it
-    brings more fixes than the trace for no more errors. About 4 hours; coverage unchanged.
+9. **Signatures from a sampled run.** RightTyper runs a package's tests
+   (`python -m righttyper run -m pytest`) and annotates the parameters and returns of the functions
+   they called, sampling with `sys.monitoring` at a fraction of a full trace's cost. The traced
+   parameters' types as `callers`' seeds brought more errors than fixes (Large 1), so what's new is
+   the returns, written before `--fix` as `pyrefly infer`'s signatures were; its sampling is also a
+   model for item 7. Measure on pydantic's and django's tests: the time against the `traced` step's,
+   the fixes past the trace's, the new errors. Done when measured; a corpus step only if it brings
+   more fixes than the trace for no more errors. About 4 hours; coverage unchanged.
 
 ### Large: more than 8 hours
 

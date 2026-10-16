@@ -1,14 +1,17 @@
 # SPDX-License-Identifier: MIT
-"""The runner's queue for the machine (`sizing.Slots`): no step waiting holds back what could start."""
+"""The runner's sizing: what a step is given, and its queue for the machine (`sizing.Slots`)."""
 
 import math
 import threading
 import time
+from pathlib import Path
 from typing import Final
 
 import pytest
 
-from tests.corpus import sizing
+from tests.corpus import catalog, pipeline, sizing
+from tests.corpus.run_config import parse
+from tests.corpus.trees import Tree
 
 _RUNNING: Final = "running big: 2 CPUs"  # in the queue's report
 _KEPT: Final = "what's free is kept for"
@@ -151,3 +154,13 @@ def test_a_step_that_ends_before_a_kept_one_could_start_starts(monkeypatch: pyte
     for each in threads:
         each.join()
     assert sorted(started) == ["1", "2", "3"]
+
+
+def test_a_suite_traced_by_its_script_is_one_process(tmp_path: Path) -> None:
+    """Its tests' workers aren't kept for it: it's given what any other step is."""
+    celery: catalog.Entry = catalog.load().entries["celery"]
+    assert celery.suite is not None
+    suite: catalog.Suite = celery.suite._replace(script=("runtests.py",))
+    plan: sizing.Plan = sizing.Plan(parse({"run": {"jobs": 2}}), 8, 64 * sizing.GIB, {})
+    tree: Tree = Tree("celery", "1", tmp_path, tmp_path, suite=suite)
+    assert plan.wanted(tree, pipeline.TRACED) == sizing.Wanted(2, 2 * (sizing.GIB + sizing.GIB // 4))

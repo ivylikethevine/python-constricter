@@ -80,6 +80,7 @@ _MACOS: Final = "darwin"
 _LOG: Final = "runner.log"  # in a run's folder
 _QUEUE: Final = "queue.log"  # and its queue, each minute steps wait
 _SUITE_WORKERS: Final = "CORPUS_SUITE_WORKERS"  # in a step's environment: its suite's tests' processes
+_RELEASED: Final = pipeline.part(pipeline.TESTS, pipeline.RELEASED)  # a suite's tests as released
 _SAMPLED: Final = "sampled"  # what read a step's use outside a scope: the sampler, the waited count
 _MAXRSS: Final = (
     1 if sys.platform == _MACOS else 1024
@@ -379,7 +380,8 @@ class Running(NamedTuple):
     ) -> bool:
         """Run a step that has no record yet once the steps it comes `after` and its checkouts are `ready`.
 
-        Waited for holding nothing.
+        Waited for holding nothing. The tests as released, where the run takes them from an earlier
+        run (`tests-released`), are its record, not run; where none has one, they run.
 
         Returns:
           Whether it has a record.
@@ -388,6 +390,11 @@ class Running(NamedTuple):
         _ = wait(after)  # each one failing is the step's to say: it reads what's missing
         _ = wait(ready)
         if self.store.read(job.tree.name, job.recorded, name) is not None:
+            return True
+        taken: Record | None
+        if name == _RELEASED and not self.run.steps.tests_released and (taken := suite_steps.earlier(job)):
+            self.store.write(job.tree.name, job.recorded, name, taken)
+            _ = sys.stderr.write(f"{job.recorded} on {job.tree.name}: {name}: {taken['from']}'s\n")
             return True
         return self.step(entry, job, name)
 

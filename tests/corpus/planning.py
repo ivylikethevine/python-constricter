@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 _SECONDS: Final = 20.0  # the most the solver takes before the run starts
 _WORKERS: Final = 2  # its threads: the run's steps are what the machine is for
 _TENTHS: Final = 10  # memory in tenths of a gigabyte: the solver's demands are whole numbers
+_RELEASED: Final = pipeline.part(pipeline.TESTS, pipeline.RELEASED)
 
 
 class _Step:  # pylint: disable=too-few-public-methods
@@ -82,6 +83,8 @@ def _measured(
         needs: dict[str, frozenset[str]] = suite_steps.needs(job) if entry.suite is not None else {}
         name: str
         for name in names:
+            if name == _RELEASED and not run.steps.tests_released:
+                continue  # an earlier run's, most likely: not run
             known: sizing.Before | None
             if (known := before.get((entry.name.replace(" ", "-"), name))) is not None:
                 found.append(_Step(entry.name, name, known, needs.get(name, frozenset())))

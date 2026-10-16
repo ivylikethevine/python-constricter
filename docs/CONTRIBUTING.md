@@ -26,7 +26,7 @@ uv pip install --python local/.venv --no-deps --no-build-isolation -e .
 Checks (as CI runs them), on `constricter stdlib_tables tests hatch_build.py` where they take paths:
 `ruff check .` (every rule, preview included), `ruff format --check .`, `basedpyright` (all), `mypy`
 (strict), `pyrefly check`, `pylint` (every extension, and again for a warning on each module past
-900 lines, 100 short of the limit it fails one at), `flake8`, `typos`,
+800 lines, 200 short of the limit it fails one at), `flake8`, `typos`,
 `validate-pyproject pyproject.toml`, `lint-imports` (the layers `pyproject.toml` states),
 `uv lock --check`, `constricter --level=suffocate --all-scopes`,
 `constricter --coverage --all-scopes --fail-under=100`, `pytest --cov` (100% branch coverage; with
@@ -112,7 +112,10 @@ may name releases too, each installed in an environment of its own. With `sectio
 one section of the whole run instead: `tests/corpus/runs/basic.toml`, `super.toml` and `mega.toml`
 ask every step of their corpora (`basic`'s the `original` seven, so its rows compare with the other
 two's), and write RUNS.md's `Basic corpora`, `Super corpora` and `Mega corpora` sections, with the
-machine they ran on. Run super and mega before a release, outside a sandbox.
+machine they ran on. Run super and mega before a release, outside a sandbox. `super-fast.toml` and
+`mega-fast.toml` measure the same corpora without publishing, a suite's tests only after each fix:
+the tests as released are the latest earlier run's at the suite's tag (`tests-released = false`),
+and nothing is traced.
 
 Run files name their corpora by `tests/corpus/corpora.toml`'s sets, which may name other sets. The
 tiers hold each other: `original`, the seven corpora a release records; `super`, those and every

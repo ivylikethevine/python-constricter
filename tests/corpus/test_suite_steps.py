@@ -6,8 +6,9 @@ from typing import Final, cast
 
 import pytest
 
-from tests.corpus import corpus_suite, suite_steps
+from tests.corpus import catalog, corpus_suite, suite_steps
 from tests.corpus.catalog import PYTEST, Suite
+from tests.corpus.corpus_suite import Outcome
 from tests.corpus.pipeline import Job, Record, Store
 from tests.corpus.run_config import Run, parse
 from tests.corpus.trees import Tree
@@ -15,6 +16,7 @@ from tests.corpus.trees import Tree
 _SUITE: Final = Suite("https://example.invalid/a", "1", "src/a", (), PYTEST, (("mypy",),), at_once=2)
 _PASSED: Final[Record] = {"counts": {"passed": 2}, "failed": []}
 _FAILED: Final[Record] = {"counts": {"passed": 1, "failed": 1}, "failed": ["t::f"]}
+_FAILING: Final = "tests/test_a.py::test_a"  # a test a run failed
 _WHOLE: Final = "fix-unsafe"  # the guesses' fix step, whose run may stand for a tier's
 
 
@@ -63,6 +65,26 @@ def test_each_part_has_a_checkout_of_its_kind(tmp_path: Path) -> None:
     assert not suite_steps.binds("types-released")
 
 
+def test_the_tests_as_released_are_an_earlier_runs(tmp_path: Path) -> None:
+    """The latest at the suite's tag, of any version, saying whose; not one stopped, nor this run's."""
+    runs: Path = tmp_path / "runs"
+    job: Job = _job(runs / "this")
+    assert suite_steps.earlier(job) is None
+    found: Record = _PASSED | {"tag": "1", "seconds": 3.0, "stopped": False}
+    written: tuple[tuple[str, str, Record], ...] = (
+        ("old", "0.3.6", found),
+        ("other-tag", "dev", found | {"tag": "0"}),
+        ("stopped", "dev", found | {"stopped": True}),
+        ("this", "dev", found | {"seconds": 1.0}),
+    )
+    folder: str
+    version: str
+    record: Record
+    for folder, version, record in written:
+        Store(runs / folder).write("a", version, "tests-released", record)
+    assert suite_steps.earlier(job) == found | {"from": "old"}
+
+
 def test_the_tests_gather_their_parts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A tier the guesses' run stands for is theirs; a fixed run that differs runs again, as released does."""
     job: Job = _job(tmp_path)
@@ -104,3 +126,37 @@ def test_the_tests_gather_their_parts(tmp_path: Path, monkeypatch: pytest.Monkey
     assert list(fixed) == ["fix-certain", "fix-unsafe", "infer-ty"]
     assert fixed["fix-certain"]["implied"] == _WHOLE
     assert fixed["infer-ty"]["new"] == ["t::f"]
+
+
+def test_a_fixed_runs_failures_are_the_fixs_only_if_it_has_them_both_times() -> None:
+    """And no released run does; a test the catalog names is listed apart, and is no difference."""
+    released: Outcome = Outcome({"passed": 9, "skipped": 1}, frozenset())
+    failing: Outcome = Outcome({"passed": 8, "failed": 1, "skipped": 1}, frozenset({_FAILING}))
+    other: Outcome = Outcome({"passed": 8, "failed": 1, "skipped": 1}, frozenset({"tests/test_b.py::test_b"}))
+    assert suite_steps.weighed([released], [released], frozenset()) == {
+        "counts": released.counts,
+        "failed": [],
+        "same": True,
+        "new": [],
+    }
+    twice: Record = suite_steps.weighed([failing, failing], [released, released], frozenset())
+    assert (twice["same"], twice["new"], twice["differs"]) == (False, [_FAILING], True)
+    once: Record = suite_steps.weighed([failing, other], [released, released], frozenset())
+    assert (once["new"], once["differs"], len(cast("list[Record]", once["again"]))) == ([], False, 1)
+    named: Record = suite_steps.weighed([failing, failing], [released, released], frozenset({_FAILING}))
+    assert (named["new"], named["named"], named["differs"]) == ([], [_FAILING], False)
+    theirs: Record = suite_steps.weighed([failing, failing], [released, failing], frozenset())
+    assert (theirs["new"], theirs["gone"], theirs["differs"]) == ([], [], False)
+    gone: Record = suite_steps.weighed([released, released], [failing, failing], frozenset())
+    assert (gone["gone"], gone["differs"]) == ([_FAILING], True)
+    skipping: Outcome = Outcome({"passed": 8, "skipped": 2}, frozenset())
+    assert suite_steps.weighed([skipping, skipping], [released, released], frozenset())["differs"]
+    black: catalog.Suite | None = catalog.load().entries["black"].suite
+    assert black is not None
+    assert [test.rpartition("::")[2] for test, _ in black.differs] == ["test_piping"]
+    flaky: Outcome = Outcome({}, frozenset({"tests/test_black.py::BlackTestCase::test_piping", _FAILING}))
+    whole: catalog.Suite = black._replace(differs=(("tests/test_black.py", "its tests come and go"),))
+    assert suite_steps.told(black, [flaky]) == suite_steps.told(whole, [flaky]) == flaky.failed - {_FAILING}
+    assert corpus_suite.read("ERROR - 2026-10-13 - logged\nFAILED tests/test_a.py::test_a - x\n").failed == {
+        _FAILING,
+    }
