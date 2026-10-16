@@ -435,18 +435,18 @@
   narwhals's (74s, 19s), the same three times over. Not anyio's (8 tests of a main module fail in a
   worker), joblib's (the workers collect different tests) or websockets's (`unittest`), as
   `corpora.toml` says.
-- **`tests/corpus/runs/super.toml`** asks every step of the seven corpora and writes
-  [RUNS.md](RUNS.md)'s `Super corpora` section from the run's folder, with the machine it ran on;
-  **`mega.toml`** the same of 40 more packages `corpora.toml` pins (38 with a suite read from their
-  own CI): typed applications, `asyncio` code, pytest-heavy test trees, scientific packages on
-  numpy's types, `TypedDict`s and overloads of their own, and untyped ones. The scripts they replace
-  took 23 and 54 minutes on 16 CPUs (74 with every traceable suite's tests traced): their first runs
-  found a crash, four packages a second pass still changed and 17 type errors after `--fix`, each
-  fixed since: after `--fix` no corpus's or package's own checker finds a new error but one of
-  werkzeug's (`winreg`, another platform's: pydantic's 9 were Pyright reading this project's
-  settings, not its own); django's suite is the same after `fix-plain-bases`' guesses, and one
-  `--fix --unsafe-fixes` pass leaves a second nothing on any of the seven. Measured, with no gain:
-  the fixed copies on a `tmpfs`.
+- **`tests/corpus/runs/super.toml`** asks every step of the `super` corpora (the seven and every
+  fast one) and writes [RUNS.md](RUNS.md)'s `Super corpora` section from the run's folder, with the
+  machine it ran on; **`mega.toml`** the same of every corpus, the seven and 40 more packages
+  `corpora.toml` pins (38 with a suite read from their own CI): typed applications, `asyncio` code,
+  pytest-heavy test trees, scientific packages on numpy's types, `TypedDict`s and overloads of their
+  own, and untyped ones. The scripts they replace took 23 and 54 minutes on 16 CPUs (74 with every
+  traceable suite's tests traced): their first runs found a crash, four packages a second pass still
+  changed and 17 type errors after `--fix`, each fixed since: after `--fix` no corpus's or package's
+  own checker finds a new error but one of werkzeug's (`winreg`, another platform's: pydantic's 9
+  were Pyright reading this project's settings, not its own); django's suite is the same after
+  `fix-plain-bases`' guesses, and one `--fix --unsafe-fixes` pass leaves a second nothing on any of
+  the seven. Measured, with no gain: the fixed copies on a `tmpfs`.
 - **Profiles and timings that can be trusted**: **`tests/corpus/corpus_profile.py`** runs the check
   under `py-spy`, which samples it from outside, its workers too (`--jobs N`), and prints each
   module's and function's own and whole time; the runner's **`timing`** step checks each version of

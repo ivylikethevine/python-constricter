@@ -16,8 +16,9 @@ from typing import IO, Final, NamedTuple, TypeAlias, cast
 from tests.corpus import corpus_sources
 from tests.corpus.corpus_sources import CATALOG, Source
 
-SEVEN: Final = "seven"  # the set every released version is measured on
-MEGA: Final = "mega"  # and the packages the seven don't stand for
+FULL: Final = "full"  # the set every released version is measured on
+SUPER: Final = "super"  # and it with every fast corpus
+MEGA: Final = "mega"  # and every corpus
 WORKERS: Final = "{workers}"  # in a test command's word: how many processes to take
 PYTHON: Final = sys.executable
 VENV: Final = ("venv", "-q", "--allow-existing", "--python", PYTHON, ".venv")
@@ -123,25 +124,42 @@ class Catalog(NamedTuple):
     entries: dict[str, Entry]
     sets: dict[str, list[str]]
 
-    def names(self, include: list[str]) -> list[str]:
-        """Expand `include`, a run's corpora: a set's name stands for its corpora, a directory for itself.
+    def names(self, include: list[str], minus: list[str] | None = None) -> list[str]:
+        """Expand `include`, a run's corpora, less `minus`'s: a set stands for its corpora.
+
+        Returns:
+          The corpora's names, each once, in the order given.
+
+        """
+        gone: dict[str, None] = self._expanded(minus or [], ())
+        return [name for name in self._expanded(include, ()) if name not in gone]
+
+    def _expanded(self, names: list[str], within: tuple[str, ...]) -> dict[str, None]:
+        """Expand `names`, a set's names standing for its own, inside the sets `within`.
 
         Returns:
           The corpora's names, each once, in the order given.
 
         Raises:
-          ValueError: one is neither a corpus, a set, nor a directory.
+          ValueError: one is neither a corpus, a set, nor a directory, or a set names itself.
 
         """
         found: dict[str, None] = {}
         name: str
-        for name in include:
-            if name not in self.sets and name not in self.entries and not Path(name).is_dir():
-                known: str = ", ".join((*self.sets, *self.entries))
-                message: str = f"{name!r} is no directory, and no corpus or set of {CATALOG.name}: {known}"
+        for name in names:
+            message: str
+            if name in within:
+                message = f"the set {name!r} of {CATALOG.name} names itself, by {' > '.join((*within, name))}"
                 raise ValueError(message)
-            found.update(dict.fromkeys(self.sets.get(name, [name])))
-        return list(found)
+            if name in self.sets:
+                found.update(self._expanded(self.sets[name], (*within, name)))
+            elif name in self.entries or Path(name).is_dir():
+                found[name] = None
+            else:
+                known: str = ", ".join((*self.sets, *self.entries))
+                message = f"{name!r} is no directory, and no corpus or set of {CATALOG.name}: {known}"
+                raise ValueError(message)
+        return found
 
     def entry(self, name: str) -> Entry:
         """Find the entry of the corpus `name`: the catalog's, or one made for a directory.
@@ -170,7 +188,7 @@ class Catalog(NamedTuple):
         """
         found: dict[str, Suite] = {}
         name: str
-        for name in self.sets[among]:
+        for name in self.names([among]):
             suite: Suite | None
             if (suite := self.entries[name].suite) is not None:
                 found[name] = suite

@@ -66,7 +66,7 @@ def pinned(among: str | None = None) -> dict[str, Source]:
 
 
 # The seven corpora's: the standard library's, and Twisted's and pip's last lines for Python 2.
-SOURCES: Final = pinned("seven")
+SOURCES: Final = pinned("full")
 
 
 def fetch(name: str, work: Path = WORK, sources: Mapping[str, Source] | None = None) -> Path:

@@ -17,7 +17,7 @@
                                      # are held to where systemd starts them (`--share`): 0, as above
 
     [corpora]
-    include = ["seven"]              # corpora or sets of `corpora.toml`, or directories
+    include = ["full"]               # corpora or sets of `corpora.toml`, or directories
     install = true                   # false: a suite's corpus is cloned alone, with no environment
 
     [steps]
@@ -132,7 +132,7 @@ class Run(NamedTuple):
     versions: tuple[str, ...] = (DEV,)
     formats: tuple[str, ...] = FORMATS
     jobs: int = 0
-    include: tuple[str, ...] = ("seven",)
+    include: tuple[str, ...] = ("full",)
     steps: Steps = Steps()
     at_once: int = 1  # the corpora found side by side: their steps wait for the machine alone
     publish: Publish = Publish()
@@ -142,6 +142,7 @@ class Run(NamedTuple):
     cpus: int = 0  # the CPUs the steps share: 0 is the machine's
     memory: float = 0.0  # the gigabytes they share: 0 is most of what's free as the run starts
     share: int = 0  # the percent of the machine's CPUs and memory they share, held to it: 0, as above
+    minus: tuple[str, ...] = ()  # corpora or sets left out of `include`'s (`--minus`)
 
     def folder(self, now: datetime) -> Path:
         """Name the folder an execution started at `now` writes.

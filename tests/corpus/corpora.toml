@@ -23,53 +23,54 @@
 #                       its tests' arguments, each part run after `tests` in a process of its own,
 #                       as many at once as it has workers, their outcomes added up.
 #
+# [sets]                each set's corpora, or other sets, which stand for theirs.
+#
 # A corpus with a suite is checked in its checkout, with its settings and environment; one with an
 # sdist alone, in the unpacked sdist.
 
 [sets]
-seven = ["standard library", "django", "sqlalchemy", "pydantic", "pandas", "twisted", "pip"]
-mega = [
-  "black",
-  "pdm",
-  "tox",
-  "sphinx",
-  "mkdocs",
-  "streamlink",
-  "mypy",
-  "httpx",
-  "starlette",
-  "uvicorn",
-  "anyio",
-  "websockets",
-  "hypercorn",
-  "aiohttp",
-  "fastapi",
-  "textual",
-  "mcp",
-  "pytest",
-  "attrs",
-  "werkzeug",
-  "cattrs",
+# Each corpus by its size and its time: files over 124, and over 315s of steps in a super or mega
+# run on 16CPU/60GB, the medians of the 2026-10-14 runs (`scratch/corpus_quadrants.py` reprints them).
+fast-small = [
   "structlog",
-  "xarray",
-  "networkx",
-  "pint",
-  "dask",
-  "zarr",
-  "nibabel",
-  "seaborn",
-  "optuna",
-  "altair",
-  "stripe",
-  "strawberry-graphql",
-  "litestar",
-  "narwhals",
+  "attrs",
   "click",
-  "pygments",
-  "celery",
+  "hypercorn",
+  "starlette",
+  "werkzeug",
+  "mkdocs",
+  "httpx",
+  "black",
+  "fastapi",
+  "cattrs",
+  "pytest",
   "botocore",
-  "joblib",
+  "uvicorn",
+  "mcp",
 ]
+fast-large = ["textual", "pdm", "pip", "twisted", "strawberry-graphql", "pygments", "streamlink", "sphinx", "tox"]
+slow-small = ["pydantic", "pint", "altair", "seaborn", "aiohttp", "websockets", "anyio", "zarr", "joblib"]
+slow-large = [
+  "networkx",
+  "nibabel",
+  "narwhals",
+  "xarray",
+  "litestar",
+  "sqlalchemy",
+  "stripe",
+  "django",
+  "celery",
+  "standard library",
+  "optuna",
+  "dask",
+  "pandas",
+  "mypy",
+]
+# The tiers, each holding the one before it: `full`, what every released version is measured on;
+# `super`, with every fast corpus; `mega`, every corpus.
+full = ["standard library", "django", "sqlalchemy", "pydantic", "pandas", "twisted", "pip"]
+super = ["full", "fast-small", "fast-large"]
+mega = ["super", "slow-small", "slow-large"]
 
 # CPython's own source release (PSF-2.0), whose `Lib` has the `test` package a prebuilt Python
 # leaves out: the same 1,867 files on any interpreter, so long as it parses 3.14's syntax.

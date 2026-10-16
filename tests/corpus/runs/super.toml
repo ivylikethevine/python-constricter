@@ -1,5 +1,6 @@
-# The seven corpora, every way: every step, a suite's own tests, type checks and traced tests
-# after each fix, recorded as docs/RUNS.md's `Super corpora` section. The machine sizes it: each step
+# The `super` corpora (the seven, and every fast one), every way: every step, a suite's own tests,
+# type checks and traced tests after each fix, recorded as docs/RUNS.md's `Super corpora` section.
+# `--minus full` measures only the corpora it adds to the seven. The machine sizes it: each step
 # starts once the CPUs and the memory it took in the last run are free (`sizing`); `cpus` and `memory`
 # under `[run]` share out less. A stopped run carries on with `--resume FOLDER`.
 
@@ -10,7 +11,7 @@ jobs = 4
 at-once = 7
 
 [corpora]
-include = ["seven"]
+include = ["super"]
 
 [steps]
 check = true

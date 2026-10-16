@@ -6,6 +6,11 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- The corpora's sets nest: `full` (the seven a release records) within `super` (and every fast
+  corpus) within `mega` (every corpus), and every corpus is in one of four sets by its size and its
+  time (`fast-small`, `fast-large`, `slow-small`, `slow-large`). `--minus NAME` leaves a corpus's, a
+  set's or a run file's corpora out of a run: `super.toml --minus full` measures only what `super`
+  adds, and doesn't publish.
 - A plain class's variable bound by name to a checked file's class (`form_class = LoginForm`) is a
   `type[LoginForm]`, a guess, where every class above it is in sight and none above or under it
   binds the variable; what reads it is typed by it (`self.form_class()`). 42 fixes more on Django,

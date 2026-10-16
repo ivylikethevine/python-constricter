@@ -8,7 +8,7 @@ versions = ["dev", "base=local/base/local/.venv/bin/python"]
 formats = ["json"]
 
 [corpora]
-include = ["seven"]
+include = ["full"]
 install = false
 
 [steps]

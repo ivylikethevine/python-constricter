@@ -26,6 +26,7 @@ _Nested: TypeAlias = dict[str, dict[str, dict[str, Record]]]  # corpus, version,
 _Rows: TypeAlias = list[list[str]]  # a CSV table, read back
 _WARNING: Final = "a warning\n"
 SHARE: Final = 75  # percent of the machine
+_GROUPS: Final = ("fast-small", "fast-large", "slow-small", "slow-large")  # by size and time
 _SLICED: Final = "--slice=constricter-corpus.slice"  # `systemd-run`'s, for a run with a share
 _SET: Final = "set-property"  # `systemctl`'s, setting the slice's limits
 _PUBLISHED: Final = "\n## constricter rc\n"  # in RUNS.md: `dev` under the run's label
@@ -226,7 +227,7 @@ def test_a_step_waits_for_the_cpus_and_the_memory_it_wants() -> None:
     assert started.wait(5)
     waiting.join()
     assert (slots.free, slots.held, slots.running) == (4, 0, 0)
-    assert parse({"run": {"suite-seconds": 900, "suite-workers": 4, "cpus": 8, "memory": 12}})[-5:] == (
+    assert parse({"run": {"suite-seconds": 900, "suite-workers": 4, "cpus": 8, "memory": 12}})[-6:-1] == (
         900,
         4,
         8,
@@ -632,14 +633,47 @@ def test_each_execution_has_a_folder_named_by_its_label_and_time() -> None:
 def test_the_catalog_expands_sets_and_refuses_a_name_it_hasnt() -> None:
     """A set stands for its corpora, each named once, in order."""
     known: catalog.Catalog = catalog.load()
-    assert known.names(["pydantic", "seven"])[:2] == ["pydantic", "standard library"]
-    assert len(known.names(["seven", "pip"])) == len(known.sets["seven"])
-    assert all(name in known.entries for name in known.sets["seven"])
+    assert known.names(["pydantic", catalog.FULL])[:2] == ["pydantic", "standard library"]
+    assert len(known.names([catalog.FULL, "pip"])) == len(known.sets[catalog.FULL])
+    assert all(name in known.entries for name in known.sets[catalog.FULL])
     here: catalog.Entry = known.entry(str(Path(__file__).parent))
     assert (here.name, here.suite, known.names([here.path])) == ("corpus", None, [here.path])
     assert known.entry("pip") is known.entries["pip"]
     with pytest.raises(ValueError, match="'numpy' is no directory, and no corpus or set"):
         _ = known.names(["numpy"])
+
+
+def test_the_tiers_hold_each_other_and_the_groups_split_every_corpus() -> None:
+    """`full` within `super` within `mega`, every corpus; each corpus in one group of size and time."""
+    known: catalog.Catalog = catalog.load()
+    full: list[str] = known.names([catalog.FULL])
+    fast: list[str] = known.names([catalog.SUPER])
+    every: list[str] = known.names([catalog.MEGA])
+    assert set(full) < set(fast) < set(every) == set(known.entries)
+    grouped: list[str] = known.names(list(_GROUPS))
+    assert sorted(grouped) == sorted(known.entries)
+    assert sum(len(known.names([group])) for group in _GROUPS) == len(grouped)
+    assert known.names([catalog.SUPER], [catalog.FULL]) == [name for name in fast if name not in full]
+
+
+def test_a_set_that_names_itself_is_refused() -> None:
+    """Through another set as well as directly."""
+    looped: catalog.Catalog = catalog.Catalog({}, {"a": ["b"], "b": ["a"]})
+    with pytest.raises(ValueError, match="names itself, by a > b > a"):
+        _ = looped.names(["a"])
+
+
+def test_a_command_leaves_out_a_corpus_a_set_or_a_run_files(tmp_path: Path) -> None:
+    """`--minus NAME`, or `--minus RUN.toml`: that run's corpora."""
+    assert runner.commanded(Run(), ["--minus", catalog.FULL]).minus == (catalog.FULL,)
+    less: Path = tmp_path / "less.toml"
+    _ = less.write_text('[corpora]\ninclude = ["pip", "twisted"]\n', encoding="utf-8")
+    run: Run = runner.commanded(Run(include=(catalog.SUPER,)), ["--minus", str(less)])
+    assert run.minus == ("pip", "twisted")
+    known: catalog.Catalog = catalog.load()
+    left: list[str] = [name for name in known.names([catalog.SUPER]) if name not in run.minus]
+    assert known.names(list(run.include), list(run.minus)) == left
+    assert len(left) == len(known.names([catalog.SUPER])) - len(run.minus)
 
 
 def test_the_standard_library_is_cpythons_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

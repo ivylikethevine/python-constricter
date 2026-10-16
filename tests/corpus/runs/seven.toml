@@ -5,4 +5,4 @@ label = "0.3.7-rc.1"
 versions = ["dev"]
 
 [corpora]
-include = ["seven"]
+include = ["full"]

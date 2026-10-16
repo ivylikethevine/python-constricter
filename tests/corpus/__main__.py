@@ -4,6 +4,7 @@
     local/.venv/bin/python -m tests.corpus RUN.toml                   # a new folder, named by label and time
     local/.venv/bin/python -m tests.corpus RUN.toml --resume FOLDER   # carry on a stopped run in its folder
     local/.venv/bin/python -m tests.corpus RUN.toml --only NAME       # on that corpus or set alone
+    local/.venv/bin/python -m tests.corpus RUN.toml --minus NAME      # less that corpus, set or run file's
     local/.venv/bin/python -m tests.corpus RUN.toml --label NAME      # under that label
     local/.venv/bin/python -m tests.corpus RUN.toml --at-once N --jobs M   # sized for this machine
     local/.venv/bin/python -m tests.corpus RUN.toml --share 75        # 75% of its CPUs and memory
@@ -19,7 +20,8 @@ steps and the formats. Each execution writes `<output>/<label>-<month>-<day>-<ye
     report.json   report.md   tables/*.csv
 
 A run of all its corpora is published where its run file says (`render.publish`); one kept to some
-with `--only` isn't.
+with `--only` or `--minus` isn't: `super.toml --minus full` measures only what `super` adds, beside a
+run of `full`. A resumed run is given the same `--minus`.
 
 Corpora are measured side by side, found (cloned, installed) `at-once` at a time. Each step is a
 process of its own (`--step`), started once the CPUs it's expected to keep busy and the memory it's
@@ -67,6 +69,7 @@ _LABEL: Final = "--label"  # then the run's label, whatever its file says
 _SHARE: Final = "--share"  # then the percent of the machine its steps share, whatever its file says
 _SAID: Final = 2000  # the characters kept of why a corpus couldn't be had: the end of its build's output
 _ONLY: Final = "--only"  # then a corpus or a set: the run file's, on that alone
+_MINUS: Final = "--minus"  # then a corpus, a set or a run file: the run's corpora less its
 _STEP: Final = "--step"  # then a run's folder, a corpus, a version and a step: that step alone
 _ROOT: Final = Path(__file__).resolve().parents[2]
 _BOUND: Final = frozenset({pipeline.TESTS, pipeline.TRACED})  # the steps that bind a suite's port
@@ -104,6 +107,7 @@ def _facts(run: Run, started: datetime) -> Record:
         "jobs": run.jobs,
         "at-once": run.at_once,
         "corpora": list(run.include),
+        "minus": list(run.minus),
         "check": run.steps.check,
         "fix": list(run.steps.fix),
         "coverage": run.steps.coverage,
@@ -490,6 +494,11 @@ def commanded(run: Run, argv: Sequence[str]) -> Run:
     """
     if _ONLY in argv:
         run = run._replace(include=(argv[argv.index(_ONLY) + 1],))
+    if _MINUS in argv:
+        minus: str = argv[argv.index(_MINUS) + 1]
+        less: Run | None = read(Path(minus)) if minus.endswith(".toml") else None
+        names: list[str] = [minus] if less is None else catalog.load().names(list(less.include))
+        run = run._replace(minus=tuple(names))
     if _LABEL in argv:
         run = run._replace(label=argv[argv.index(_LABEL) + 1])
     if _AT_ONCE in argv:
@@ -559,7 +568,7 @@ def main(argv: Sequence[str]) -> int:
         facts[render.MINUTES] = round((time.perf_counter() - start) / 60)
     records: render.Records = render.gathered(run, store, [tree for tree, _ in measured if tree])
     written: list[Path] = render.write(records, folder, facts)
-    if _ONLY not in argv:  # a part of the run's corpora isn't what its section is of
+    if _ONLY not in argv and _MINUS not in argv:  # a part of its corpora isn't what its section is of
         render.publish(records, _ROOT, facts)
     _ = sys.stdout.write("".join(f"{path}\n" for path in written))
     failed: list[str] = [f"failed: {each}" for _, failures in measured for each in failures]
@@ -606,7 +615,8 @@ def _all(run: Run, store: pipeline.Store) -> list[_Measured]:
 
     """
     known: catalog.Catalog = catalog.load()
-    entries: list[catalog.Entry] = [known.entry(name) for name in known.names(list(run.include))]
+    names: list[str] = known.names(list(run.include), list(run.minus))
+    entries: list[catalog.Entry] = [known.entry(name) for name in names]
     version: str
     for version in run.versions:
         _ = launch.python(version)

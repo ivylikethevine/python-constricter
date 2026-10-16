@@ -54,3 +54,5 @@ goes under `local/scratch/`.
   file's class, and those no class above or under binds, with examples.
 - `compiled_compare.py SITE TREE ... [--runs N] [--jobs N] [--fix]`: a tree checked (or fixed) by
   this checkout and by a compiled wheel's install, their output compared and timed.
+- `corpus_quadrants.py FOLDER ...`: each corpus's files and its steps' wall and CPU seconds in finished
+  runs, and the size-and-time group it falls in at the medians (`corpora.toml`'s four sets).
