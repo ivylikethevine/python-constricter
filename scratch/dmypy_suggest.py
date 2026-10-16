@@ -24,6 +24,7 @@ import argparse
 import ast
 import builtins
 import collections
+import importlib.metadata
 import importlib.util
 import io
 import json
@@ -53,13 +54,10 @@ VENV = ROOT / "local" / ".venv"
 OUT = ROOT / "local" / "scratch" / "dmypy"
 _SITE = VENV / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
 _SOURCES = ROOT / "local" / "corpus-sources"
-# Each corpus: its source, the name its copy's package takes, and its version. Not the standard
-# library: mypy won't check a module named `typing` as the user's.
+# Each corpus: its source, the name its copy's package takes, and its version (an installed one's
+# from its metadata). Not the standard library: mypy won't check a module named `typing` as the user's.
 CORPORA: dict[str, tuple[Path, str, str]] = {
-    "pydantic": (_SITE / "pydantic", "pydantic", "2.13.5"),
-    "django": (_SITE / "django", "django", "5.2.17"),
-    "sqlalchemy": (_SITE / "sqlalchemy", "sqlalchemy", "2.0.54"),
-    "pandas": (_SITE / "pandas", "pandas", "3.0.6"),
+    **{name: (_SITE / name, name, importlib.metadata.version(name)) for name in ("pydantic", "django", "sqlalchemy", "pandas")},
     "pip": (_SOURCES / "pip-20.3.4" / "pip-20.3.4" / "src" / "pip", "pip", "20.3.4"),
 }
 _GIB = 2**30

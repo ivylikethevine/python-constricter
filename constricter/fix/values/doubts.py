@@ -100,7 +100,7 @@ class Facts(NamedTuple):
     positional: Mapping[str, tuple[str, ...]] = MappingProxyType({})
     # The classes defined in a class's body, and the class naming each (see `imports.nested_classes`).
     nested: Mapping[str, str] = MappingProxyType({})
-    excused: tuple[int, ...] = ()  # the lines (from 0) a `# type: ignore` is on, sorted (`late.excusing`)
+    excused: tuple[int, ...] = ()  # the lines (from 0) a type-ignore comment is on, sorted (`late.excusing`)
 
 
 def facts(
@@ -203,8 +203,11 @@ def doubts(value: ast.expr, found: Inference, *, constant: bool, narrowed: froze
         return frozenset({kind})
     if narrowed.intersection(found.reads):
         return frozenset({_READS[ast.Name]})
-    filtered: bool = isinstance(value, _COMPREHENSIONS) and any(g.ifs for g in value.generators)
-    if filtered and (_has_union(found) or _sifted(cast("_Comprehension", value))):
+    if (
+        isinstance(value, _COMPREHENSIONS)
+        and any(g.ifs for g in value.generators)
+        and (_has_union(found) or _sifted(value))
+    ):
         return frozenset({_COMPREHENSION})
     if constant and _literal(value):
         return frozenset({_LITERAL})

@@ -21,6 +21,7 @@ from constricter import recording, trace
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
+    from types import FunctionType
 
 # A script whose functions call a hook where the interpreter would report to a recorder: `tell` on a
 # line it arrives at, `leave` as it returns, `fail` before it raises.
@@ -533,7 +534,7 @@ def test_a_monitor_asks_for_its_functions_lines(tmp_path: Path) -> None:
     monitoring: _Monitoring = _Monitoring()
     monitor: trace.Monitor = trace.Monitor(recording.Recorder(tmp_path), monitoring)
     functions: _Functions = _steps(tmp_path / "steps.py")
-    begun: CodeType = functions["begun"].__code__
+    begun: CodeType = cast("FunctionType", functions["begun"]).__code__
     events: trace.Events = monitoring.events
     callbacks: list[_Callback] = [monitor.started, monitor.line, monitor.returned, monitor.raised]
     registered: list[int] = [events.PY_START, events.LINE, events.PY_RETURN, events.RAISE]

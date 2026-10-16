@@ -6,7 +6,7 @@ from typing import IO, NamedTuple, cast, final
 from astroid import nodes
 from pylint.checkers import BaseRawFileChecker
 from pylint.lint import PyLinter
-from pylint.typing import Options
+from pylint.typing import MessageDefinitionTuple, Options
 
 from constricter.jsonc import as_text
 from constricter.noqa import lines, unsuppressed
@@ -122,6 +122,8 @@ class ConstricterChecker(BaseRawFileChecker):
             },
         ),
     )
+
+    msgs: dict[str, MessageDefinitionTuple]
 
     def __init__(self, linter: PyLinter) -> None:
         """Register the messages with `linter`."""

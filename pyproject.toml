@@ -89,6 +89,7 @@ dev = [
     "pyyaml", # tests/ci_local.py reads CI's workflow for its steps
     "ruff",
     "twine",
+    "ty", # a fourth type checker (see [tool.ty])
     "types-psutil",
     "typos",
     "validate-pyproject",
@@ -197,7 +198,7 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 "tests/fix/core/test_known.py" = ["assert", "suspicious-pickle-import", "suspicious-pickle-usage"]
 # `--infer-with` starts the type checker's language server, from a fixed table of commands (and
 # asks it its version, to see it runs).
-"constricter/cli/{hints,guard,paths,protocol}.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
+"constricter/cli/{connection,guard,paths,protocol}.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The generator's modules import `constricter`'s without its `__init__`, which loads the tables.
 "stdlib_tables/__init__.py" = ["non-empty-init-module"]
 "tests/corpus/corpus_sources.py" = ["suspicious-url-open-usage"] # downloads only its pinned https URLs
@@ -346,6 +347,22 @@ follow_imports_for_stubs = true  # numpy ships `.pyi` stubs, which `follow_impor
 project-includes = ["constricter", "stdlib_tables", "tests", "hatch_build.py"]
 python-interpreter-path = "local/.venv/bin/python"
 python-version = "3.11"
+
+# A fourth checker, with the same venv and Python; a warning fails it too.
+[tool.ty.environment]
+python = "local/.venv"
+python-version = "3.11"
+
+[tool.ty.src]
+include = ["constricter", "stdlib_tables", "tests", "hatch_build.py"]
+
+[tool.ty.rules]
+# The casts narrow an `Any` basedpyright and mypy see (a module's attribute, `getattr`'s), which ty
+# infers itself.
+redundant-cast = "ignore"
+
+[tool.ty.terminal]
+error-on-warning = true
 
 [tool.basedpyright]
 typeCheckingMode = "all"

@@ -15,7 +15,7 @@ its type variable to it.
 import ast
 import builtins
 from collections.abc import Iterator, Mapping, Sequence
-from typing import Final, TypeAlias, cast
+from typing import Final, cast
 
 from constricter.fix.core.known import Origin
 from constricter.fix.core.signatures import (
@@ -70,48 +70,20 @@ from constricter.fix.index.atoms import (
 from constricter.fix.index.declared import Alias, Class, Declarations, Signature, Variable
 from constricter.fix.index.modules import Module
 from constricter.fix.index.read import MEMO, Asked, Expanded
+from constricter.fix.index.stub_names import ALIAS_DEPTH, ARG, Resolved, Resolver
 from constricter.fix.libraries.overloads import CONTAINERS, SCALARS, substituted
 
 # What an atom is (see `Atom`).
 _NONE_ATOM: Final = "none"
 _LITERAL_ATOM: Final = "literal"
-_ARG: Final = "arg"
 _OPTIONAL: Final = "Optional"
 _LITERAL: Final = "Literal"
 _ANNOTATED: Final = "Annotated"
-_BUILTINS: Final = frozenset(dir(builtins))
 _UNIONS: Final = frozenset({"Union", "Optional"})  # `_OPTIONAL` too
-_MAX_DEPTH: Final = 20  # aliases followed before giving up
 _TYPE_VARIABLE: Final = "t"  # `Accepts`' key for an unbounded type variable
 _SELF: Final = "Self"
 _ANY: Final = "typing.Any"  # a pattern's anything
-_UNFOLLOWED: Final = "?"  # a lineage's base that can't be followed
 _RENAMED: Final = "_alias"  # an alias's type parameter, renamed apart (see `Expansion`)
-
-
-_Resolved: TypeAlias = Atom | tuple[Alias, Scope, Origin]
-
-
-def call_origin(modules: Mapping[str, Module], target: Module, callee: str) -> Origin | None:
-    """Find what a call's name refers to: `f`, `np.empty`, `pkg.util.f` through the module's imports.
-
-    A package's attribute, re-exported from anywhere (`numpy.empty`), not just what it defines.
-
-    Returns:
-      Its origin, or `None`.
-
-    """
-    head: str
-    parts: list[str]
-    head, *parts = callee.split(".")
-    origin: Origin | None = classnames.as_module(modules, target.names.get(head))
-    part: str
-    for part in parts:
-        if origin is None or origin[1] is not None:
-            return None
-        submodule: str = f"{origin[0]}.{part}"
-        origin = (submodule, None) if submodule in modules else (origin[0], part)
-    return origin
 
 
 def read_all(
@@ -175,12 +147,12 @@ def _names_any(annotation: str | None, names: frozenset[str]) -> bool:
     return False
 
 
-class Reader:
+class Reader(Resolver):
     """Reads one function's signatures (see the module docstring)."""
 
     def __init__(self, modules: Mapping[str, Module]) -> None:
         """Read in `modules`."""
-        self.modules: Mapping[str, Module] = modules
+        super().__init__(modules)
         self.matching: bool = False  # writing a pattern to match a receiver against (see `pattern`)
 
     def signature(
@@ -366,7 +338,7 @@ class Reader:
         """
         verdict: str = scalar_verdict(atom, container, constant=False)
         elements: tuple[Atom, ...] | None = None
-        if atom.kind == VAR and atom.bound not in {None, PARAM_SPEC} and hops < _MAX_DEPTH:
+        if atom.kind == VAR and atom.bound not in {None, PARAM_SPEC} and hops < ALIAS_DEPTH:
             each: list[Taken] = [self._container(inner, container, hops + 1) for inner in atom.inner]
             taking: list[tuple[Atom, ...] | None] = [inner for taken, inner in each if taken != NO]
             verdict = combined({taken for taken, _ in each})
@@ -390,7 +362,7 @@ class Reader:
         text: str
         left: ast.expr
         right: ast.expr
-        if hops > _MAX_DEPTH:
+        if hops > ALIAS_DEPTH:
             yield UNKNOWN
             return
         match expr:
@@ -421,7 +393,7 @@ class Reader:
           Its atoms: an alias's, bound by `args`; else the one it is.
 
         """
-        resolved: _Resolved | None
+        resolved: Resolved | None
         if (resolved := self.resolve(expr, scope)) is None:
             yield UNKNOWN
         elif not isinstance(resolved, Atom):
@@ -429,7 +401,7 @@ class Reader:
             where: Scope
             alias, where, _ = resolved
             yield from self._atoms(parse_text(alias.value), bound_alias(alias, where, args, scope), hops + 1)
-        elif resolved.kind == _ARG:
+        elif resolved.kind == ARG:
             yield from self._atoms(*argument_of(resolved), hops + 1)
         elif resolved.kind == VAR and resolved.scope is not None and resolved.bound not in {None, PARAM_SPEC}:
             bound: ast.expr = parse_text(resolved.bound or "")
@@ -468,32 +440,10 @@ class Reader:
           Its dotted path, or `None` if it's an installed module's, or unknown.
 
         """
-        resolved: _Resolved | None = self.resolve(expr, scope)
+        resolved: Resolved | None = self.resolve(expr, scope)
         if not isinstance(resolved, Atom) or resolved.kind != CLASS or resolved.module is not None:
             return None
         return atom_path(resolved)
-
-    def resolve(self, expr: ast.Name | ast.Attribute, scope: Scope) -> _Resolved | None:
-        """Resolve a name an annotation uses: a type parameter, a class, an alias, a type variable.
-
-        Returns:
-          It as an atom (`arg`: a parameter an alias's argument binds), or an alias with the scope
-          its value is read in; or `None` if it's none of them.
-
-        """
-        origin: Origin | None
-        if isinstance(expr, ast.Name) and expr.id in scope.params:
-            param: str | tuple[ast.expr, Scope] | None = scope.params[expr.id]
-            if isinstance(param, tuple):
-                return Atom(_ARG, name=ast.unparse(param[0]), scope=param[1])
-            return Atom(VAR, name=expr.id, bound=param, scope=scope)
-        if (origin := self._origin(expr, scope.module)) is None or origin[1] is None:
-            return None
-        origin = project.canonical_origin(self.modules, origin)
-        defining: Module | None = self.modules.get(origin[0])
-        if defining is None or not defining.reads(origin[1]):
-            return Atom(CLASS, origin=origin)
-        return self._declared(defining, origin)
 
     def method(self, module: Module, klass: Class, name: str, hops: int) -> tuple[ReadSignature, ...] | None:
         """Read a class's method (its own, else its nearest base's that has it) as a function's are.
@@ -512,14 +462,8 @@ class Reader:
                 dict(klass.params),
             )
         base: str
-        for base in klass.bases if hops < _MAX_DEPTH else ():
-            parsed: ast.expr = parse_text(base)
-            parsed = parsed.value if isinstance(parsed, ast.Subscript) else parsed
-            resolved: _Resolved | None = (
-                self.resolve(parsed, Scope(module, {}, module.name))
-                if isinstance(parsed, ast.Name | ast.Attribute)
-                else None
-            )
+        for base in klass.bases if hops < ALIAS_DEPTH else ():
+            resolved: Resolved | None = self.resolved_base(base, module)
             if (
                 isinstance(resolved, Atom)
                 and resolved.module is not None
@@ -552,7 +496,7 @@ class Reader:
                 pass
             case _:
                 return None
-        head: _Resolved | None = self.resolve(base, own)
+        head: Resolved | None = self.resolve(base, own)
         if not isinstance(head, Atom) or head.kind != CLASS or head.module is None:
             return None
         klass: Class | None = cast("Declarations", head.module.declared).classes.get(head.origin[1] or "")
@@ -611,110 +555,6 @@ class Reader:
                 found[path] = where
         return tuple(found.items())
 
-    def lineage(self, origin: Origin, hops: int) -> Iterator[str]:
-        """Walk an installed class and its ancestors, depth first (see `Methods.lineage`).
-
-        Yields:
-          Where each is defined (`numpy.float64`), then `?` if a base can't be followed.
-
-        """
-        yield f"{origin[0]}.{origin[1]}"
-        module: Module = self.modules[origin[0]]
-        klass: Class | None
-        # No class: a checked file's protocol, or one its module defines twice (attrs's `AttrsInstance_`).
-        if module.declared is None or (klass := module.declared.classes.get(origin[1] or "")) is None:
-            yield _UNFOLLOWED
-            return
-        base: str
-        for base in klass.bases:
-            parsed: ast.expr = parse_text(base)
-            parsed = parsed.value if isinstance(parsed, ast.Subscript) else parsed
-            resolved: _Resolved | None = (
-                self.resolve(parsed, Scope(module, {}, module.name))
-                if isinstance(parsed, ast.Name | ast.Attribute)
-                else None
-            )
-            if not isinstance(resolved, Atom) or resolved.kind != CLASS:
-                yield _UNFOLLOWED
-            elif resolved.module is None:
-                yield atom_path(resolved)
-            elif hops < _MAX_DEPTH:
-                yield from self.lineage(resolved.origin, hops + 1)
-            else:  # a cycle of bases
-                yield _UNFOLLOWED
-
-    def is_class(self, target: Module, name: str) -> bool:
-        """Check whether a dotted name the module writes (`np.float64`) is an installed class or its alias.
-
-        Returns:
-          Whether it is.
-
-        """
-        origin: Origin | None = call_origin(self.modules, target, name)
-        resolved: _Resolved | None = (
-            None
-            if origin is None or origin[1] is None
-            else self._declared_of(project.canonical_origin(self.modules, origin))
-        )
-        if resolved is not None and not isinstance(resolved, Atom):  # an alias: of a class?
-            value: ast.expr = parse_text(resolved[0].value)
-            base: ast.expr = value.value if isinstance(value, ast.Subscript) else value
-            resolved = self.resolve(base, resolved[1]) if isinstance(base, ast.Name | ast.Attribute) else None
-        return isinstance(resolved, Atom) and resolved.kind == CLASS and resolved.module is not None
-
-    def _declared_of(self, origin: Origin) -> _Resolved | None:
-        defining: Module | None = self.modules.get(origin[0])
-        return None if defining is None or not defining.reads(origin[1]) else self._declared(defining, origin)
-
-    @staticmethod
-    def _declared(module: Module, origin: Origin) -> _Resolved | None:
-        """Read what an installed module defines under `origin`'s name: an alias, a type variable, a class.
-
-        Returns:
-          It, or `None` for anything else (a function, a variable).
-
-        """
-        name: str = origin[1] or ""
-        declared: Declarations | None = module.typing
-        own: Scope = Scope(module, {}, module.name)
-        if declared is not None and name in declared.aliases:
-            return declared.aliases[name], own, origin
-        variable: Variable | None
-        if (variable := None if declared is None else declared.variables.get(name)) is not None:
-            return Atom(VAR, name=name, bound=variable.bound, scope=own, constrained=variable.constrained)
-        if (
-            name in module.classes
-            or name in module.generics
-            or (declared is not None and name in declared.protocols)
-        ):
-            return Atom(CLASS, origin=origin, module=module)
-        return None
-
-    def _origin(self, expr: ast.Name | ast.Attribute, module: Module) -> Origin | None:
-        """Find what a (dotted) name refers to in `module`: an import, its own, or a builtin.
-
-        Returns:
-          Its origin (a module's: `(name, None)`), or `None`.
-
-        """
-        if isinstance(expr, ast.Name):
-            declared: Declarations | None = module.typing
-            return (
-                ((module.name, expr.id) if declared is not None and expr.id in declared.aliases else None)
-                or module.names.get(expr.id)
-                or module.guarded.get(expr.id)
-                or ((BUILTINS_MODULE, expr.id) if expr.id in _BUILTINS else None)
-            )
-        if not isinstance(expr.value, ast.Name | ast.Attribute):
-            return None
-        base: Origin | None
-        if (base := self._origin(expr.value, module)) is None:
-            return None
-        if base[1] is None:  # a module's attribute, or its submodule
-            submodule: str = f"{base[0]}.{expr.attr}"
-            return (submodule, None) if submodule in self.modules else (base[0], expr.attr)
-        return None
-
     def _template(self, expr: ast.expr, scope: Scope, hops: int) -> str | None:
         """Write an annotation as a template: classes by their public dotted paths, type variables bare.
 
@@ -731,7 +571,7 @@ class Reader:
         base: ast.Name | ast.Attribute
         found: str | None = None
         match expr:
-            case _ if hops > _MAX_DEPTH:
+            case _ if hops > ALIAS_DEPTH:
                 pass
             case ast.Constant(value=None):
                 found = NONE
@@ -765,7 +605,7 @@ class Reader:
           It, or `None`.
 
         """
-        resolved: _Resolved | None = self.resolve(expr, scope)
+        resolved: Resolved | None = self.resolve(expr, scope)
         written: str | None
         if resolved is None:
             return None
@@ -785,7 +625,7 @@ class Reader:
                 )
             else:  # another name for a generic class (`_dtype = dtype`): its arguments are the class's
                 written = self._template(parse_text(alias.value), where, hops + 1)
-        elif resolved.kind == _ARG:
+        elif resolved.kind == ARG:
             return self._template(*argument_of(resolved), hops + 1)
         elif resolved.kind == VAR:
             written = resolved.name if owned(resolved, scope.owner) else _ANY if self.matching else None

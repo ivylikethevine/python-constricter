@@ -10,7 +10,8 @@ from collections.abc import Iterator, Sequence
 from typing import Final
 
 from constricter.fix.core.signatures import Constant
-from stdlib_tables.reading import ARITY, TYPING_GENERICS, ClassRef, Reading, usable
+from stdlib_tables.forms import ClassRef, usable
+from stdlib_tables.reading import ARITY, TYPING_GENERICS, Reading
 from stdlib_tables.stubs import Alias, Found, Klass, TypeVariable
 
 BUILTINS: Final = "builtins"

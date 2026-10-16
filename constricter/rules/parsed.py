@@ -64,7 +64,7 @@ def sized(available: int | None) -> int:
 
 BUDGET: Final = sized(memory())  # bytes of source whose trees a run keeps, over all its processes
 # A kept tree, and the module's own tables the index read from it (the check reads the same).
-Kept: TypeAlias = "tuple[ast.Module, Tables]"
+Kept: TypeAlias = tuple[ast.Module, "Tables"]
 
 
 @dataclass

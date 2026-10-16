@@ -8,7 +8,7 @@ from typing import IO, Final, TypeAlias, cast
 
 import pytest
 
-from tests.corpus import pipeline, render
+from tests.corpus import pipeline, render, report_tables
 from tests.corpus.pipeline import Measured, Record, Store
 from tests.corpus.recorded import SHARE, USED
 from tests.corpus.run_config import CERTAIN, JSON, LIKELY, MARKDOWN, Run, parse
@@ -202,7 +202,7 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
     assert (tmp_path / "logs" / "standard-library" / "rc+dev" / "check.log").read_text(
         encoding="utf-8",
     ) == _WARNING
-    records: render.Records = render.gathered(run, store, [tree])
+    records: report_tables.Records = render.gathered(run, store, [tree])
     written: list[Path] = render.write(records, tmp_path, {"label": "rc"})
     assert [path.name for path in written] == [
         "report.json",

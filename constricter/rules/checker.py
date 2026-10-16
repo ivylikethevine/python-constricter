@@ -16,7 +16,7 @@ from constricter.fix.core.known import (
     Returned,
     Returns,
 )
-from constricter.fix.values import ordered, returned, stored
+from constricter.fix.values import returned, stored
 from constricter.jsonc import as_text
 from constricter.offences import (
     DEFAULT_CHECKS,
@@ -26,43 +26,24 @@ from constricter.offences import (
     Checks,
     Offence,
 )
-from constricter.rules import binding, late, parsed, recorded
-from constricter.rules.annotations import node_name
-from constricter.rules.calls import keyed, observed, seed_parameters, unshadowed
-from constricter.rules.declarations import (
-    imported_from,
-)
+from constricter.rules import late, parsed, recorded
+from constricter.rules.calls import keyed, observed
 from constricter.rules.flow import Finding
-from constricter.rules.narrowing import flow_offences, module_flow, module_names
-from constricter.rules.quoted import written
+from constricter.rules.narrowing import flow_offences, module_flow
 from constricter.rules.redundant import redundant
 from constricter.rules.scope import Scope
-from constricter.rules.scoped import Kind, Late, Seeded, Settings
+from constricter.rules.scoped import Seeded, Settings
+from constricter.rules.scoping import body_scopes, bound_once, finish, function_scope, module_scopes
 from constricter.rules.settings import module_settings
 from constricter.rules.syntax import (
-    BRANCHING,
     FUNCTION_DEFS,
     FunctionDef,
-    Start,
-    arm_ends,
     child_statements,
-    collect_functions,
-    expressions,
-    has_within,
-    target_names,
 )
 from constricter.rules.tables import Tables, module_tables
-from constricter.rules.walked import classes
 
-# The node class of `type X = ...` statements, by name: Python 3.11's `ast` has no `TypeAlias`.
-_TYPE_ALIAS: Final = "TypeAlias"
-_CLASSMETHOD: Final = "classmethod"
 _KEPT: Final = "_constricter_kept"  # the attribute a tree holds its last check in
 _ROUNDS: Final = 5  # how many times to re-check what calls an unannotated function, at most
-# Enum members mustn't be annotated: a base imported from here is one, however it's aliased.
-_ENUM_MODULES: Final = frozenset({"enum"})
-# The conventional name of an instance method's first parameter: typed as its class, for `--fix`.
-_SELF: Final = "self"
 _TYPE_CHECKING: Final = "TYPE_CHECKING"
 
 
@@ -178,7 +159,7 @@ def checked_tree(
     settings: Settings = done.settings
     scopes: list[Scope] = done.scopes()
     # A finding's kind is the code that reports it (LVA008, LVA009, LVA010).
-    _finished(tree, [scope for scope in scopes if id(scope) not in finished])
+    finish(tree, [scope for scope in scopes if id(scope) not in finished])
     finals: list[Offence] = [o for scope in scopes for o in late.finals(scope)] if checks.final else []
     reported: list[Offence] = [o for scope in scopes for o in scope.reported()]
     exported: Returns = returned.exported(done.found, settings.known.class_side.lineage)
@@ -228,7 +209,7 @@ def _started(
     """
     first: Settings = module_settings(tree, checks, lines, own, outside)
     imported: Returns = Returns() if outside is None else outside.returned
-    return _settled(tree, first, imported, _module_names(tree, first))
+    return _settled(tree, first, imported, bound_once(tree, first))
 
 
 class _Round(NamedTuple):
@@ -296,7 +277,7 @@ def _resumed(tree: ast.Module, checks: Checks, outside: Outside | None) -> _Roun
     }
     settings: Settings = replace(kept.done.settings, parameters=seeded._replace(callers=passed))
     done: _Round = _rounds(tree, kept.done._replace(settings=settings), outside.returned, again)
-    return done if _module_names(tree, done.settings) == seeded.module else None
+    return done if bound_once(tree, done.settings) == seeded.module else None
 
 
 def _settled(
@@ -306,7 +287,7 @@ def _settled(
     names: dict[str, Passed],
     rounds: int = _ROUNDS,
 ) -> _Round:
-    """Check the module's scopes, its functions reading its top level's `names` as typed (`_module_names`).
+    """Check the module's scopes, its functions reading its top level's `names` as typed (`bound_once`).
 
     A name the module binds to what an unannotated function returns is typed only once that
     function is checked: the scopes are then checked once more, knowing it, until no name's type
@@ -325,8 +306,8 @@ def _settled(
         known=replace(first.known, returned=table.returned),
         parameters=seeded._replace(module=names),
     )
-    checked: _Round = _returned(tree, settings, _scopes(tree, settings, table), table, imported)
-    latest: dict[str, Passed] = _module_names(tree, checked.settings)
+    checked: _Round = _returned(tree, settings, module_scopes(tree, settings, table), table, imported)
+    latest: dict[str, Passed] = bound_once(tree, checked.settings)
     return checked if latest == names or rounds <= 1 else _settled(tree, first, imported, latest, rounds - 1)
 
 
@@ -359,285 +340,11 @@ def annotation_coverage(source: str | bytes, checks: Checks = DEFAULT_CHECKS) ->
     """
     tree: ast.Module = _parse(source, "<unknown>")[0]
     settings: Settings = module_settings(tree, checks, as_text(source).splitlines(), module_tables(tree))
-    scopes: list[Scope] = _scopes(tree, settings)
+    scopes: list[Scope] = module_scopes(tree, settings)
     total: int = sum(len(scope.bound()) for scope in scopes)
     untyped: int = sum(o.code in _UNTYPED for scope in scopes for o in scope.reported())
     wider: int = sum(len(scope.assignments.widened.intersection(scope.bound())) for scope in scopes)
     return Coverage(total - untyped - wider, total, wider)
-
-
-def _module_names(tree: ast.Module, settings: Settings) -> dict[str, Passed]:
-    """Type the names the module binds once, anywhere in it, at its top level: what its functions read.
-
-    `LIMIT = 10` is an `int` in every function, and `NAMES: Final = ["a"]` a `list[str]`: a name bound
-    once means the same thing throughout (see `imports.rebound_names`), and a type checker takes its
-    one value's type for its own. As the module's body types it, before its functions are checked.
-
-    Returns:
-      Each such name's type, and what it rests on if it's a guess.
-
-    """
-    scope: Scope = _body_scope(tree.body, settings, Kind(UNANNOTATED_MEMBER, fixable=True))
-    rebound: Mapping[str, list[Start]] = imports.rebound_names(tree)
-    return {
-        name: (held, scope.inferred.origins.get(name, frozenset()))
-        for name, held in scope.inferred.types.items()
-        if name not in rebound
-    }
-
-
-def _scopes(tree: ast.Module, settings: Settings, table: returned.Table | None = None) -> list["Scope"]:
-    """Collect the scopes to check.
-
-    With a `table` (see `returned.Table`), the functions are checked callees first, each one's
-    return type recorded as soon as it's checked: a caller checked later knows it the first time.
-
-    Returns:
-      Every function's scope, and with `all_scopes` every module and class body's.
-
-    """
-    functions: list[FunctionDef] = []
-    collect_functions(tree.body, functions)
-    if table is not None:
-        functions = ordered.in_call_order(tree, functions)
-    scopes: list[Scope] = _function_scopes(functions, settings, table)
-    if settings.checks.all_scopes:
-        scopes += _body_scopes(tree, settings)
-    return scopes
-
-
-def _body_scopes(tree: ast.Module, settings: Settings) -> list["Scope"]:
-    """Collect the module and class bodies (LVA004).
-
-    Returns:
-      Their scopes, but for an enum's.
-
-    """
-    imported: frozenset[str] = imported_from(tree, _ENUM_MODULES)
-    # A class body isn't fixed: annotating a dataclass's variable makes it a field. A plain class's
-    # variable typed by its value is (see `Scope.assign`).
-    return [
-        _body_scope(tree.body, settings, Kind(UNANNOTATED_MEMBER, fixable=True)),
-        *(
-            _body_scope(node.body, settings, Kind(UNANNOTATED_MEMBER, fixable=False, owner=node.name))
-            for node in classes(tree)
-            if not _is_enum(node, imported)
-        ),
-    ]
-
-
-def _body_scope(body: list[ast.stmt], settings: Settings, kind: Kind) -> "Scope":
-    """Check one module's or class's body.
-
-    Returns:
-      Its scope.
-
-    """
-    scope: Scope = Scope({"_"}, [], settings, kind)
-    stmt: ast.stmt
-    for stmt in body:
-        _visit(scope, stmt)
-    return scope
-
-
-def _is_enum(node: ast.ClassDef, imported: frozenset[str]) -> bool:
-    """Check whether a base is an enum: enum members mustn't be annotated.
-
-    Returns:
-      Whether a base is imported from `enum` (`imported`, however it's aliased), or else its name
-      ends in `Enum` or `Flag` (for one imported some other way).
-
-    """
-    return any(
-        node_name(base) in imported or node_name(base).endswith(("Enum", "Flag")) for base in node.bases
-    )
-
-
-def _function_scopes(
-    functions: list[FunctionDef],
-    settings: Settings,
-    table: returned.Table | None = None,
-) -> list["Scope"]:
-    """Check `functions` and every function defined inside them (recording each in `table`).
-
-    Returns:
-      Their scopes.
-
-    """
-    scopes: list[Scope] = []
-    func: FunctionDef
-    for func in functions:
-        nested: list[FunctionDef] = []
-        scope: Scope = _function_scope(func, nested, settings)
-        scopes.append(scope)
-        if table is not None:
-            _finished(table.module, [scope])
-            # Its returns are typed as it's checked; but one with late types (`None` rebound, ...) is
-            # checked again knowing them (`_returned`), and until then nothing's recorded: a caller
-            # would take its type too soon (`int`, for `None` rebound to `int`: `int | None`).
-            settled: bool = not scope.inferred.late.keys() - scope.inferred.seeded.keys()
-            table.checked(
-                func,
-                recorded.returns(scope, func, table.module) if settled else [],
-                (recorded.assigned(scope), recorded.used(scope, func, table.module)) if settled else ([], []),
-            )
-        scopes += _function_scopes(nested, scope.settings, table)
-    return scopes
-
-
-def _function_scope(
-    func: FunctionDef,
-    functions: list[FunctionDef],
-    settings: Settings,
-    seed: Mapping[str, Late] | None = None,
-) -> "Scope":
-    """Check one function; functions defined in it are collected into `functions`.
-
-    `seed`: names already known to be typed late (see `Inferred.late`), known from the start.
-
-    Returns:
-      Its scope.
-
-    """
-    settings = unshadowed(settings, func)
-    args: ast.arguments = func.args
-    named: tuple[ast.arg, ...] = (*args.posonlyargs, *args.args, *args.kwonlyargs)
-    params: set[str] = {a.arg for a in named}
-    params.update(extra.arg for extra in (args.vararg, args.kwarg) if extra is not None)
-    # `_` is a discard.
-    scope: Scope = Scope(
-        params | {"_"},
-        functions,
-        settings,
-        Kind(UNANNOTATED, fixable=True, function=func),
-    )
-    # A copy of a plain, annotated parameter (`*args`/`**kwargs` aren't the type they're annotated
-    # with) can be typed the same way, the moment it's assigned.
-    scope.inferred.types.taking(
-        {arg.arg: written(arg.annotation) for arg in named if arg.annotation is not None},
-    )
-    # A method's `self` is its class's instance; so is the `self` a function defined in it reads.
-    owner: str | None = settings.owners.get(id(func))
-    if owner is not None and (_SELF not in params or [arg.arg for arg in named[:1]] == [_SELF]):
-        _ = scope.inferred.types.setdefault(_SELF, owner)
-    # A classmethod's first parameter is its class (`type[C]`), whatever it's called.
-    if owner is not None and named and [node_name(d) for d in func.decorator_list] == [_CLASSMETHOD]:
-        _ = scope.inferred.types.setdefault(named[0].arg, f"type[{owner}]")
-    seed_parameters(scope, func, named)
-    # What the module's top level binds once, the function reads as it's typed there.
-    name: str
-    passed: Passed
-    for name, passed in (settings.parameters or Seeded()).module.items():
-        scope.inferred.learn(name, passed[0], passed[1] or None)
-    arg: ast.arg
-    for arg in named:
-        # A parameter holds whatever its callers pass: its declared type, as far as value flow knows.
-        if arg.annotation is not None:
-            scope.lifetime(arg.arg).declare(ast.unparse(arg.annotation), (arg.lineno, arg.col_offset))
-        scope.lifetime(arg.arg).bind(
-            (arg.lineno, arg.col_offset),
-            None if arg.annotation is None else ast.unparse(arg.annotation),
-        )
-    scope.opaque(extra.arg for extra in (args.vararg, args.kwarg) if extra is not None)
-    typed: Late
-    for name, typed in (seed or {}).items():
-        scope.inferred.seeded[name] = typed
-        scope.inferred.learn(name, typed[0], typed[1] or None)
-    stmt: ast.stmt
-    for stmt in func.body:
-        _visit(scope, stmt)
-    return scope
-
-
-def _visit(scope: Scope, stmt: ast.stmt, head: ast.stmt | None = None) -> None:
-    """Bind the names `stmt` binds, as Python would, then visit its nested statements.
-
-    `head`: for an `elif`, the `if` it belongs to, which a declaration of its `:=`'s goes before.
-    """
-    part: ast.AST
-    walruses: tuple[Start, ...]
-    if walruses := scope.settings.walruses:  # most modules have no `:=`: none of their parts need a look
-        for part in expressions(stmt):
-            if has_within(walruses, part):  # a `:=` in it
-                binding.walruses(scope, part, head or stmt)
-    _declare(scope, stmt)
-    binding.bind(scope, stmt)
-    if isinstance(stmt, ast.Return):
-        scope.inferred.returns.append(stmt.value)
-    elif isinstance(stmt, ast.Assign):
-        scope.inferred.assigned.extend(
-            (target.attr, stmt.value)
-            for target in stmt.targets
-            if isinstance(target, ast.Attribute)
-            and isinstance(target.value, ast.Name)
-            and target.value.id == _SELF
-        )
-    # A loop's body runs again and again (not its `else`), for LVA012.
-    body: set[int] = (
-        {id(s) for s in stmt.body} if isinstance(stmt, ast.For | ast.AsyncFor | ast.While) else set()
-    )
-    before: dict[str, str] | None = dict(scope.inferred.types) if isinstance(stmt, BRANCHING) else None
-    # What has no known type before it, or where one of its arms ends: it may still, past it.
-    untyped: set[str] = set() if before is None else scope.declared - scope.inferred.types.keys()
-    ends: frozenset[int] = frozenset() if before is None else arm_ends(stmt)
-    child: ast.stmt
-    for child in child_statements(stmt):
-        scope.assignments.looping += id(child) in body
-        _visit(scope, child, (head or stmt) if _is_elif(stmt, child) else None)
-        scope.assignments.looping -= id(child) in body
-        if before is not None and id(child) in ends:
-            untyped |= scope.declared - scope.inferred.types.keys() - before.keys()
-    if before is not None:
-        scope.inferred.rejoined(before, frozenset(untyped))
-
-
-def _is_elif(stmt: ast.stmt, child: ast.stmt) -> bool:
-    """Check whether `child` is `stmt`'s `elif`: an `if`'s only `else` statement, an `if` at its own column.
-
-    Returns:
-      Whether it is.
-
-    """
-    return (
-        isinstance(stmt, ast.If)
-        and isinstance(child, ast.If)
-        and stmt.orelse == [child]
-        and child.col_offset == stmt.col_offset
-    )
-
-
-def _declare(scope: Scope, stmt: ast.stmt) -> None:
-    """Bind the names `stmt` binds that need no annotation, or carry their own."""
-    aliases: list[ast.alias]
-    names: list[str]
-    handlers: list[ast.ExceptHandler]
-    target: ast.Name
-    match stmt:
-        case ast.FunctionDef() | ast.AsyncFunctionDef():
-            scope.declared.add(stmt.name)
-            scope.opaque([stmt.name])
-            scope.nested.append(stmt)  # its body is its own scope
-        case ast.ClassDef():
-            scope.declared.add(stmt.name)
-            scope.opaque([stmt.name])
-            collect_functions(stmt.body, scope.nested)  # methods of a class defined in a function
-        case ast.Import(names=aliases) | ast.ImportFrom(names=aliases):
-            names = [(alias.asname or alias.name).split(".")[0] for alias in aliases]
-            scope.declared.update(names)
-            scope.opaque(names)
-        case ast.Global(names=names) | ast.Nonlocal(names=names):
-            scope.declared.update(names)
-        case ast.AnnAssign(target=ast.Name() as target):
-            binding.annotated(scope, stmt, target)
-        case _ if type(stmt).__name__ == _TYPE_ALIAS:
-            alias: ast.expr = cast("ast.expr", next(ast.iter_child_nodes(stmt)))  # its first field, the name
-            scope.declared.update(name.id for name in target_names(alias))
-        case ast.Try(handlers=handlers) | ast.TryStar(handlers=handlers):
-            names = [handler.name for handler in handlers if handler.name]
-            scope.declared.update(names)
-            scope.opaque(names)
-        case _:
-            pass
 
 
 def _returned(
@@ -649,7 +356,7 @@ def _returned(
 ) -> _Round:
     """Check again what the first pass, in call order, couldn't type the first time.
 
-    That pass typed each function knowing its callees' returns (see `_scopes`); what's left is a
+    That pass typed each function knowing its callees' returns (see `module_scopes`); what's left is a
     function checked before a callee of its was typed (a cycle, `table.stale`), or with a late-typed
     name it didn't know from the start: `_rounds` checks those again.
 
@@ -739,12 +446,12 @@ def _checked_again(
 
     """
     fresh: list[tuple[Scope, FunctionDef]] = [
-        (_function_scope(func, [], settings, scope.inferred.late), func)
+        (function_scope(func, [], settings, scope.inferred.late), func)
         for scope, func in functions
         if id(scope) in again
     ]
     renewed: dict[int, Scope] = {id(func): scope for scope, func in fresh}
-    _finished(tree, [scope for scope, _ in fresh])
+    finish(tree, [scope for scope, _ in fresh])
     table.recorded.update((id(func), recorded.returns(scope, func, tree)) for scope, func in fresh)
     table.assigned.update((id(func), recorded.assigned(scope)) for scope, func in fresh)
     table.used.update((id(func), recorded.used(scope, func, tree)) for scope, func in fresh)
@@ -778,7 +485,7 @@ def _bodies(
             for stmt in _body_statements(tree.body)
         )
     ):
-        return _body_scopes(tree, settings)
+        return body_scopes(tree, settings)
     return bodies
 
 
@@ -798,27 +505,6 @@ def _body_statements(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
             yield from _body_statements(child_statements(stmt))
 
 
-def _finished(tree: ast.Module, scopes: Sequence[Scope]) -> None:
-    """Finish `scopes` for their late fixes (`None` rebound, filled containers, shadowed types).
-
-    Those need the names written out of sight marked first. Safe to run again: marking is
-    idempotent, and no fix redoes one it made.
-    """
-    scope: Scope
-    for scope in scopes:
-        scope.mark_escaped(module_names(tree)[0])
-        late.optionals(scope)
-        late.rebinds(scope)
-        late.extended(scope)
-        late.fills(scope)
-        late.lambdas(scope)
-        late.widens(scope, tree)
-        binding.redeclared(scope)
-        late.shadowed(scope)
-        late.excused(scope)
-        late.unchecked(scope, tree)
-
-
 def value_flow(
     source: str | bytes,
     filename: str = "<unknown>",
@@ -835,4 +521,4 @@ def value_flow(
     tree: ast.Module = _parse(source, filename)[0]
     # Its lines place a `**rest` capture at its name, as `check_source` does.
     settings: Settings = module_settings(tree, checks, as_text(source).splitlines(), module_tables(tree))
-    return module_flow(tree, _scopes(tree, settings))
+    return module_flow(tree, module_scopes(tree, settings))

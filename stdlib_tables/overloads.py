@@ -33,12 +33,8 @@ from stdlib_tables.accepting import (
     Accepting,
     Verdicts,
 )
-from stdlib_tables.reading import (
-    OPERATORS,
-    ClassRef,
-    Defs,
-    readable,
-)
+from stdlib_tables.forms import ClassRef, Defs
+from stdlib_tables.reading import OPERATORS, readable
 from stdlib_tables.stubs import (
     Binding,
     Found,

@@ -16,7 +16,8 @@ from constricter.fix.core.signatures import Expansion, ReadSignature
 from constricter.fix.index import chained, classnames, own_overloads, project
 from constricter.fix.index.modules import SUFFIX, Index, Module, module_name
 from constricter.fix.index.read import MEMO, Expanded, Memo
-from constricter.fix.index.stub_signatures import Reader, call_origin, read_all
+from constricter.fix.index.stub_names import call_origin
+from constricter.fix.index.stub_signatures import Reader, read_all
 
 if TYPE_CHECKING:
     from constricter.fix.index.declared import Class, Declarations, Signature

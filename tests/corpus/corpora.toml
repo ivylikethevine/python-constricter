@@ -90,11 +90,11 @@ package = "Python-3.14.7/Lib"
 # pylibmc needs libmemcached's headers, and its tests need a memcached server, so they skip anyway.
 [corpus.django]
 why = "a framework with no annotations: the 5.2 LTS"
-version = "5.2.17"
+version = "5.2.18"
 
 [corpus.django.suite]
 repository = "https://github.com/django/django"
-tag = "5.2.17"
+tag = "5.2.18"
 source = "django"
 install = ["pip -e . -r tests/requirements/py3.txt --excludes -"]
 tests = "!python -Wall -c \"import multiprocessing, runpy, sys; multiprocessing.set_start_method('fork'); sys.argv[0] = 'tests/runtests.py'; sys.path.insert(0, 'tests'); runpy.run_path('tests/runtests.py', run_name='__main__')\" --parallel={workers}"
@@ -107,11 +107,11 @@ script = "tests/runtests.py --parallel=1"
 # and its `pep484` session (`mypy noxfile.py ./lib/sqlalchemy`, strict for the package).
 [corpus.sqlalchemy]
 why = "a typed library with generic classes of its own"
-version = "2.0.54"
+version = "2.1.4"
 
 [corpus.sqlalchemy.suite]
 repository = "https://github.com/sqlalchemy/sqlalchemy"
-tag = "rel_2_0_54"
+tag = "rel_2_1_4"
 source = "lib/sqlalchemy"
 install = ["pip -e . --group tests --group tests-sqlite-asyncio --group mypy"]
 tests = "-n {workers} -m 'not memory_intensive and not mypy' --db sqlite --dbdriver sqlite --dbdriver pysqlite_numeric --dbdriver aiosqlite"
@@ -122,11 +122,11 @@ most = 16
 # of pydantic-core, its Rust core, which `--fix` doesn't touch, are left out.
 [corpus.pydantic]
 why = "a typed library on a compiled core"
-version = "2.13.5"
+version = "2.14.0"
 
 [corpus.pydantic.suite]
 repository = "https://github.com/pydantic/pydantic"
-tag = "v2.13.5"
+tag = "v2.14.0"
 source = "pydantic"
 install = ["sync --locked --all-packages --all-extras --group testing-extra --group linting"]
 tests = "-p no:pretty --ignore=tests/pydantic_core"

@@ -499,17 +499,21 @@
   signatures first, by `pyrefly infer` before `--fix`: 2,254 more certain fixes on the six Python 3
   corpora (19.8% of their untyped bindings fixed, then 20.8%), since it annotates 8% of the
   unannotated parameters, most of the returns it adds are `-> None`, and it left one of pydantic's
-  files unparsable; and an unannotated function's `return`s of two types, or of one and `None`,
-  joined into a union: 275 more fixes, and 38 new basedpyright errors (a union one of whose types is
-  wrong, or that the caller never narrows); and a class variable or an attribute first `None`, set
-  in another method (`timeout = None` in a class body, `self.conn = None` in `__init__`): of the 894
-  class-body `name = None`s on the Python 3 corpora, 402 aren't in a plain class, 275 are never
-  stored by their module (a subclass's to set), 131 are stored another way or from outside the
-  class, and 82 are assigned no literal, only values that are mostly parameters; an attribute's
-  `T | None` types no read its function tests or stores, since that isn't offered; and a name a
-  plain class's body binds more than once: of 594 on Django, pandas, SQLAlchemy and the standard
-  library, 425 are a method or a class too, 122 are bound in an `if`'s or a `try`'s branches, and 14
-  by two plain assignments.
+  files unparsable; and the same from mypy's daemon (`dmypy suggest`, `scratch/dmypy_suggest.py`,
+  500 functions of each corpus but the standard library, which mypy won't check as a project's own):
+  it stops on every one of sqlalchemy's and pandas's, takes 30s to 90s a function on 16CPU/60GB with
+  14 daemons, and on django, the one with no type comments, brings 19 certain fixes for 415 new
+  basedpyright errors, most an `X | None` read without a check; and an unannotated function's
+  `return`s of two types, or of one and `None`, joined into a union: 275 more fixes, and 38 new
+  basedpyright errors (a union one of whose types is wrong, or that the caller never narrows); and a
+  class variable or an attribute first `None`, set in another method (`timeout = None` in a class
+  body, `self.conn = None` in `__init__`): of the 894 class-body `name = None`s on the Python 3
+  corpora, 402 aren't in a plain class, 275 are never stored by their module (a subclass's to set),
+  131 are stored another way or from outside the class, and 82 are assigned no literal, only values
+  that are mostly parameters; an attribute's `T | None` types no read its function tests or stores,
+  since that isn't offered; and a name a plain class's body binds more than once: of 594 on Django,
+  pandas, SQLAlchemy and the standard library, 425 are a method or a class too, 122 are bound in an
+  `if`'s or a `try`'s branches, and 14 by two plain assignments.
 - **Why `name = self.method()` has no fix** (8,195 bindings, before the inherited methods): the
   method is the class's own (46%), a base's in the file (12%) or in another (10%), a class attribute
   a subclass sets (`self.type2test()`, `self.dumps()`: 28%, left alone), or a library base's (5%).
@@ -534,6 +538,15 @@
   those before them, the rules and the fixes to importing neither the command nor the plugins, and
   `rules.walked` to nothing of constricter's (`[tool.importlinter]`; `lint-imports` in the Lint
   job).
+- **ty, a fourth type checker**, beside basedpyright, mypy and pyrefly on the project's own code
+  (`ty check`, `[tool.ty]`): it found a quoted alias it couldn't join with `| None`, a method read
+  off a `Callable`, and a comment it took for a `type: ignore`; a warning fails it, but for
+  `redundant-cast`, the casts being the other checkers'.
+- **The public API, wholly typed**: `basedpyright --verifytypes constricter` on the built wheel, in
+  the Build job, fails under a 100% completeness score (it exits 0 whatever the score). It reads the
+  package of the `python` first on PATH, ignoring `--pythonpath` and a venv config: the smoke
+  venv's, from outside the checkout. It found two: a discarded `signal` handler and the pylint
+  plugin's `msgs`, inferred from the base class.
 - **Dependencies and docstrings, checked**: deptry holds the package's imports to its dependencies
   and extras, and the rest's to what some group declares (`[tool.deptry]`, two runs in the Lint job:
   deptry takes every group for a dev one). pydoclint, as a flake8 plugin, holds a docstring's
@@ -565,14 +578,16 @@
 - **Layout**: `constricter/` in `rules/`, `fix/`, `cli/` and `plugins/`; `fix/` in four layers, each
   importing only those before it: `core/` (what every part shares), `libraries/` (the standard
   library's and installed packages' types), `values/` (what a value makes its type) and `index/`
-  (the cross-file index), its tests laid out the same. Every module is under 900 lines, split along
-  what each grouped (a reader of stubs' signatures out of `stubbed.py`, what a file takes of
-  another's classes out of `project.py`, loops out of `inference.py`, what a module declares out of
-  `rules/annotations.py`, where a module's names come from and its open functions out of
-  `fix/index/modules.py`, the hint rounds out of `cli/command.py`); all but six under 800, past
-  which the Lint job warns, and all of `constricter/`'s but eight under 750 (`cli/hints.py` and
-  `options.py`, `fix/index/project.py` and `stub_signatures.py`, `fix/libraries/overloads.py`, and
-  `rules/checker.py`, `late.py` and `scope.py`); the standard-library tables in
+  (the cross-file index), its tests laid out the same. Every module is under 800 lines, past which
+  the Lint job warns, split along what each grouped (a reader of stubs' signatures out of
+  `stubbed.py`, and its names' resolution out of `stub_signatures.py`; what a file takes of
+  another's classes out of `project.py`; loops out of `inference.py`; what a module declares out of
+  `rules/annotations.py`; where a module's names come from and its open functions out of
+  `fix/index/modules.py`; the hint rounds out of `cli/command.py`; the language server's connection
+  out of `cli/hints.py`; building the scopes out of `rules/checker.py`; the annotation forms out of
+  `stdlib_tables/reading.py`; a run report's tables out of `tests/corpus/render.py`), and all of
+  `constricter/`'s but five under 750 (`cli/options.py`, `fix/index/project.py`,
+  `fix/libraries/overloads.py`, and `rules/late.py` and `scope.py`); the standard-library tables in
   `constricter/fix/tables/`, their generator in `stdlib_tables/`; docs in `docs/` (changelog,
   contributing, security, integrations, fixes, likely, runs), release notes grouped by
   `.github/release.yml`, issue and PR templates, CODEOWNERS.
@@ -668,34 +683,6 @@ fix.
    takes under 93 minutes, or 100 held to what each was given. Done when a mega run uses 85% of its
    CPU seconds, and one with no earlier run under its output takes within a tenth of one sized by
    its own. About 2 hours beside the runs; coverage unchanged.
-2. **ty on the project's own code.** A fourth type checker, beside basedpyright, mypy and pyrefly
-   (`pyrefly check`, in CI's lint step since it found 10 errors, each a pattern or a cast the others
-   pass), catching what they miss; the corpus runner already takes its hints. Add it to the dev
-   group, settings of its own, and CI's lint step. Done when it finds nothing in
-   `constricter stdlib_tables tests hatch_build.py`. About an hour; coverage unchanged.
-3. **The public API, wholly typed.** `basedpyright --verifytypes constricter` says what share of the
-   package's exported symbols have known types, but finds none through the editable install's import
-   hook: run it on the built wheel, installed in a venv of its own, as CI's build job has it. Done
-   when CI fails on a score under 100%. About 2 hours; coverage unchanged.
-4. **mypy's signatures, from their callers.** `dmypy suggest FUNCTION` proposes an unannotated
-   function's whole signature from the arguments its calls pass and the values it returns, through
-   the daemon of the mypy already in the dev group; `dmypy inspect` answers one location at a time.
-   Most bindings with no fix are in functions with no annotations. Measure it as `pyrefly infer`
-   was: its signatures written before `--fix` on the six Python 3 corpora, the certain fixes gained,
-   the new basedpyright errors, the seconds per function. Done when measured; a fourth hint source
-   only if it brings clearly more than `pyrefly infer`'s 2,254 fixes for no more errors. Measured on
-   pydantic (`scratch/dmypy_suggest.py`): of its 49 functions with anything unannotated, 34 returns
-   written (30 of them `-> None`) and 2 parameters, 10.4s a function on 16CPU/60GB, and no fix
-   gained or error brought; 12 got no signature (a decorator it can't handle, or a `ValueError` that
-   stops the daemon). Left: the other five corpora, whose unannotated code is what it's for. About
-   an hour beside the runs; coverage unchanged.
-5. **No module over 800 lines.** pylint's `too-many-lines` fails CI at 1,000, and CI's lint warns
-   from 800 on, without failing; six warn: `tests/fix/values/test_widened_fixes.py` (859),
-   `stdlib_tables/reading.py` (847), `constricter/rules/checker.py` (838), `tests/corpus/render.py`
-   (830), `constricter/cli/hints.py` (821) and `constricter/fix/index/stub_signatures.py` (815).
-   Split each by what its parts do, the package's imports and the compiled wheel's modules unchanged
-   for callers (`scratch/module_outline.py`, `scratch/split_module.py`). Done when CI's lint warns
-   of none. About 2 hours; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
