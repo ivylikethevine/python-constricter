@@ -6,6 +6,8 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- The flake8 plugin no longer breaks another plugin that deep-copies a node, as pydoclint's does:
+  the check it keeps on a module's tree isn't copied with it.
 - `--fix` types a list, set or dict display its function adds to later by what's added too: numbers
   as the widest of them (`xs = [0]`, then `xs.append(0.5)`, a `list[float]`), others as their union
   (a guess), and nothing where what's added isn't known. An integer's `**` by an integer that isn't

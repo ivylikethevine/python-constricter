@@ -18,7 +18,7 @@ import pytest
 
 from constricter import check_source
 from constricter.cli import command as cli
-from constricter.cli import guard, hints, protocol, remembered
+from constricter.cli import guard, hints, protocol, remembered, rounds
 from constricter.cli.options import Options
 from constricter.fix.core.known import Hints, Offered
 from tests.cli.sources import FAKE_SERVER
@@ -435,7 +435,7 @@ def test_fix_stops_after_its_last_round(
     assert cli.main([*options, *[str(path) for path in paths]]) == cli.EXIT_FOUND
     assert capsys.readouterr().out.count("LVA001") == len(paths)
     for path in paths:
-        assert path.read_text(encoding="utf-8").count("x: int = q()") == cli.HINT_ROUNDS
+        assert path.read_text(encoding="utf-8").count("x: int = q()") == rounds.HINT_ROUNDS
 
 
 def test_hints_are_guesses_only_unsafe_fixes_apply(

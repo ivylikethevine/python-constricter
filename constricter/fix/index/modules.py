@@ -23,6 +23,8 @@ from constricter.fix.core.imports import taken_names
 from constricter.fix.core.known import Origin, Passed, Returns, Takers, pickled, unpickled
 from constricter.fix.core.signatures import AWAIT
 from constricter.fix.index.declared import Declarations, Signature, declarations, kinds, overloads
+from constricter.fix.index.origins import guarded_origins, origins_of
+from constricter.fix.index.params import Param, open_functions
 from constricter.fix.values import classvars, entered, fills
 from constricter.fix.values.bodies import yields_itself
 from constricter.fix.values.returned import unannotated
@@ -51,14 +53,6 @@ _CLASS: Final = "class"  # `project.CLASS`: the kind of name `classes_under` spe
 _ANNOTATION: Final = 200  # the longest string read for the names a type in it is written with
 _DOTTED: Final = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+")
 STUB: Final = ".pyi"
-
-
-# A function's parameter: its name, kind (`p` positional only, `e` either, `k` keyword only), and
-# whether it has a default and an annotation.
-Param: TypeAlias = tuple[str, str, bool, bool]
-_POSITIONAL: Final = "p"
-_EITHER: Final = "e"
-_KEYWORD: Final = "k"
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -248,108 +242,6 @@ def module_name(path: Path) -> str:
     )
 
 
-def absolute(name: str, module: str | None, level: int, *, is_package: bool) -> str:
-    """Resolve `from <.level><module> import ...` in module `name`.
-
-    Returns:
-      The absolute module name.
-
-    """
-    if not level:
-        return module or ""
-    package: list[str] = name.split(".") if is_package else name.split(".")[:-1]
-    base: list[str] = package[: len(package) - (level - 1)] if level > 1 else package
-    return ".".join([*base, *([module] if module else [])])
-
-
-def _names(tree: ast.Module, name: str, *, is_package: bool) -> dict[str, Origin]:
-    """Map module `name`'s top-level names (the last binding wins).
-
-    Returns:
-      What each refers to.
-
-    """
-    names: dict[str, Origin] = {}
-    stmt: ast.stmt
-    for stmt in tree.body:
-        match stmt:
-            case ast.Import() | ast.ImportFrom():
-                names.update(_imported(stmt, name, is_package=is_package))
-            case _:
-                names.update((bound, (name, bound)) for bound in _bound(stmt))
-    return names
-
-
-def _imported(stmt: ast.Import | ast.ImportFrom, name: str, *, is_package: bool) -> dict[str, Origin]:
-    """Map the names one import in module `name` binds.
-
-    Returns:
-      What each refers to.
-
-    """
-    names: dict[str, Origin] = {}
-    alias: ast.alias
-    if isinstance(stmt, ast.Import):
-        for alias in stmt.names:
-            if alias.asname:
-                names[alias.asname] = (alias.name, None)
-            else:  # `import a.b` binds `a`
-                names[alias.name.split(".")[0]] = (alias.name.split(".")[0], None)
-        return names
-    for alias in stmt.names:
-        names[alias.asname or alias.name] = (
-            absolute(name, stmt.module, stmt.level, is_package=is_package),
-            alias.name,
-        )
-    return names
-
-
-def _guarded(tree: ast.Module, name: str, *, is_package: bool) -> dict[str, Origin]:
-    """Map the names module `name` imports under a top-level `if` or `try` (`if TYPE_CHECKING:`).
-
-    Not what it binds at run time (`_names`): a type variable imported only for the checker is a type
-    variable all the same. Not a name two of them bind to different things (one in each branch of an
-    `if`): which it is, another file can't say.
-
-    Returns:
-      What each refers to.
-
-    """
-    found: dict[str, Origin] = {}
-    either: set[str] = set()
-    node: ast.AST
-    bound: str
-    origin: Origin
-    for node in (
-        n for stmt in tree.body if isinstance(stmt, ast.If | ast.Try | ast.TryStar) for n in ast.walk(stmt)
-    ):
-        if isinstance(node, ast.Import | ast.ImportFrom):
-            for bound, origin in _imported(node, name, is_package=is_package).items():
-                if found.setdefault(bound, origin) != origin:
-                    either.add(bound)
-    return {bound: origin for bound, origin in found.items() if bound not in either}
-
-
-def _bound(stmt: ast.stmt) -> Iterator[str]:
-    """Walk a top-level statement other than an import.
-
-    Yields:
-      Each name it binds.
-
-    """
-    node: ast.AST
-    match stmt:
-        case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
-            yield stmt.name
-        case ast.Assign() | ast.AnnAssign() | ast.AugAssign():
-            targets: list[ast.expr] = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
-            for node in (n for target in targets for n in ast.walk(target)):
-                if isinstance(node, ast.Name):
-                    yield node.id
-        case _:
-            pass
-
-
 def index(paths: Sequence[Path]) -> Index:
     """Read each `.py` file in `paths` (one that can't be read or parsed is left out).
 
@@ -433,7 +325,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
     if name is None:
         parsed.keep(source, (tree, own))  # for the check to take, rather than parse it and read it again
     named: str = name or module_name(path)
-    names: dict[str, Origin] = _names(tree, named, is_package=path.stem == _PACKAGE)
+    names: dict[str, Origin] = origins_of(tree, named, is_package=path.stem == _PACKAGE)
     return Module(
         name=named,
         returns=own.returns,
@@ -441,7 +333,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         classes=own.classes,
         methods=own.order.flattened(own.methods),
         type_vars=defined_type_vars(tree),
-        guarded=_guarded(tree, named, is_package=path.stem == _PACKAGE),
+        guarded=guarded_origins(tree, named, is_package=path.stem == _PACKAGE),
         unannotated=unannotated(tree.body),
         called=_called(tree, names),
         generics=generic_classes(tree),
@@ -716,72 +608,6 @@ def _assigned(body: Sequence[ast.stmt]) -> Counter[str]:
 
 def _names_any(value: ast.expr, names: frozenset[str]) -> bool:
     return any(node_name(node) in names for node in ast.walk(value))
-
-
-def open_functions(tree: ast.Module) -> dict[str, tuple[Param, ...]]:
-    """Find a module's plain top-level functions with a parameter left unannotated.
-
-    Plain: not decorated (a decorator may change how it's called), without `*args` or `**kwargs`
-    (whose arguments can't be matched), and defined once.
-
-    Returns:
-      Each one's parameters, by its name.
-
-    """
-    counts: dict[str, int] = {}
-    stmt: ast.stmt
-    for stmt in tree.body:
-        if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            counts[stmt.name] = counts.get(stmt.name, 0) + 1
-    return {
-        stmt.name: _params(stmt.args)
-        for stmt in tree.body
-        if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef)
-        and counts[stmt.name] == 1
-        and _plain(stmt)
-    }
-
-
-def _plain(function: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Check a function is undecorated, without `*args` or `**kwargs`, and has an unannotated parameter.
-
-    Returns:
-      Whether it is.
-
-    """
-    args: ast.arguments = function.args
-    return (
-        not function.decorator_list
-        and args.vararg is None
-        and args.kwarg is None
-        and any(arg.annotation is None for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs))
-    )
-
-
-def _params(args: ast.arguments) -> tuple[Param, ...]:
-    """Read a function's parameters (see `Param`).
-
-    Returns:
-      Them, in order.
-
-    """
-    positional: list[ast.arg] = [*args.posonlyargs, *args.args]
-    first_default: int = len(positional) - len(args.defaults)
-    return (
-        *(
-            (
-                arg.arg,
-                _POSITIONAL if at < len(args.posonlyargs) else _EITHER,
-                at >= first_default,
-                arg.annotation is not None,
-            )
-            for at, arg in enumerate(positional)
-        ),
-        *(
-            (arg.arg, _KEYWORD, default is not None, arg.annotation is not None)
-            for arg, default in zip(args.kwonlyargs, args.kw_defaults, strict=True)
-        ),
-    )
 
 
 def _called(tree: ast.Module, names: Mapping[str, Origin]) -> frozenset[str]:

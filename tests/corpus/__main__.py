@@ -270,13 +270,7 @@ class Running(NamedTuple):
 
         """
         wanted: sizing.Wanted = self.plan.wanted(job.tree, name, heavy=entry.heavy)
-        port: threading.Lock | None = self.ports.get(entry.port) if suite_steps.binds(name) else None
-        held_too: dict[tuple[str, str], threading.Lock] = self.checkouts if self.checkouts is not None else {}
-        locks: list[threading.Lock] = [
-            held_too.setdefault((entry.name, each), threading.Lock())
-            for each in (suite_steps.checkouts(job, name) if job.tree.suite is not None else ())
-        ]
-        locks += [port] if port is not None else []
+        locks: list[threading.Lock] = self.locks(entry, job, name)
         asked: float = time.perf_counter()
         rank: float = (self.ranks or {}).get((entry.name, name), math.inf)
         held: int = self.slots.take(wanted, locks, f"{entry.name}/{name}", rank)
@@ -289,6 +283,21 @@ class Running(NamedTuple):
         finally:
             self.slots.give(*hold.held, locks, f"{entry.name}/{name}")
         return self.recorded(job, name, hold.wanted, used, (start - asked, time.perf_counter() - start))
+
+    def locks(self, entry: catalog.Entry, job: pipeline.Job, name: str) -> list[threading.Lock]:
+        """Find the locks a step (`step`) takes: of the checkouts it works on, and of its tests' port.
+
+        Returns:
+          Them, the port's last if it binds one.
+
+        """
+        port: threading.Lock | None = self.ports.get(entry.port) if suite_steps.binds(name) else None
+        held_too: dict[tuple[str, str], threading.Lock] = self.checkouts if self.checkouts is not None else {}
+        locks: list[threading.Lock] = [
+            held_too.setdefault((entry.name, each), threading.Lock())
+            for each in (suite_steps.checkouts(job, name) if job.tree.suite is not None else ())
+        ]
+        return locks + ([port] if port is not None else [])
 
     def recorded(
         self,

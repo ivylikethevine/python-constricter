@@ -18,7 +18,8 @@ from typing import Final, NamedTuple
 from constricter.empty import Empty
 from constricter.fix.core.known import Guarded, Hints, Offered, Origin
 from constricter.fix.index import project
-from constricter.fix.index.modules import SUFFIX, absolute
+from constricter.fix.index.modules import SUFFIX
+from constricter.fix.index.origins import absolute
 from constricter.fix.libraries import stdlib
 
 _PACKAGE: Final = "__init__"

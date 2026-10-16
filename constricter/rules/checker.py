@@ -262,6 +262,13 @@ class _Kept(NamedTuple):
     checks: Checks
     done: _Round
 
+    def __deepcopy__(self, _memo: dict[int, object]) -> None:
+        """Keep nothing in a copied tree: its nodes are new, so its check starts over.
+
+        Any node's deep copy can reach the tree: `ast.Load()` is one object every tree shares, and
+        pyflakes gives it a parent.
+        """
+
 
 def _resumed(tree: ast.Module, checks: Checks, outside: Outside | None) -> _Round | None:
     """Check a module again from where its last check ended, where only its parameters are typed anew.

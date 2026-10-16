@@ -161,7 +161,7 @@ def _version(text: str) -> tuple[int, int]:
       It.
 
     Raises:
-      ArgumentTypeError: It isn't one.
+      argparse.ArgumentTypeError: It isn't one.
 
     """
     major: str
@@ -180,7 +180,7 @@ def _gigabytes(text: str) -> float:
       It.
 
     Raises:
-      ArgumentTypeError: It isn't one.
+      argparse.ArgumentTypeError: It isn't one.
 
     """
     try:
@@ -210,7 +210,7 @@ def _checkers(text: str) -> list[str]:
       Them.
 
     Raises:
-      ArgumentTypeError: One isn't a checker it knows.
+      argparse.ArgumentTypeError: One isn't a checker it knows.
 
     """
     checkers: list[str] = [checker.strip() for checker in text.split(",") if checker.strip()]

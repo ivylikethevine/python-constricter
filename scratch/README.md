@@ -67,3 +67,5 @@ goes under `local/scratch/`.
   how much faster one is.
 - `schedule_solve.py FOLDER... [--given] [--seconds N]`: the shortest schedule of finished runs'
   steps by OR-Tools' CP-SAT, and the least it proves any can take; `uv run --with ortools` runs it.
+- `dmypy_suggest.py [--limit N]`: `dmypy suggest`'s signatures written into a copy of pydantic, each
+  call timed, and `--fix`'s fixes and basedpyright's errors on it against a plain copy's.

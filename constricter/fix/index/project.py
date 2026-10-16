@@ -69,7 +69,7 @@ _TYPE_VAR: Final = "type variable"
 _RETURNED: Final = "returned"  # an unannotated function its `return`s type
 UNANNOTATED: Final = "unannotated"  # an unannotated function, typed or not
 PARTIAL: Final = "partial"  # a function whose declared return only an unpacking can use
-OPEN: Final = "open"  # a function with a parameter left unannotated (see `modules.open_functions`)
+OPEN: Final = "open"  # a function with a parameter left unannotated (see `params.open_functions`)
 
 
 class Imported(NamedTuple):

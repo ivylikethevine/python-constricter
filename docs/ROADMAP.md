@@ -534,6 +534,11 @@
   those before them, the rules and the fixes to importing neither the command nor the plugins, and
   `rules.walked` to nothing of constricter's (`[tool.importlinter]`; `lint-imports` in the Lint
   job).
+- **Dependencies and docstrings, checked**: deptry holds the package's imports to its dependencies
+  and extras, and the rest's to what some group declares (`[tool.deptry]`, two runs in the Lint
+  job: deptry takes every group for a dev one). pydoclint, as a flake8 plugin, holds a docstring's
+  `Returns:`, `Yields:` and `Raises:` to its function; no docstring lists its arguments, and the
+  annotations give the types (`.flake8`).
 - **The tests, in parallel**: `pytest -n auto --dist loadgroup` (pytest-xdist, as
   `tests/ci_local.py` runs them) takes 16s with coverage on 16 CPUs, from 50s in one process; the
   eight that start `--jobs` workers of their own share a worker. The floor is the fuzz test, 11s in
@@ -560,12 +565,15 @@
 - **Layout**: `constricter/` in `rules/`, `fix/`, `cli/` and `plugins/`; `fix/` in four layers, each
   importing only those before it: `core/` (what every part shares), `libraries/` (the standard
   library's and installed packages' types), `values/` (what a value makes its type) and `index/`
-  (the cross-file index), its tests laid out the same. Every module is under 900 lines, which the
-  Lint job warns past, split along what each grouped (a reader of stubs' signatures out of
-  `stubbed.py`, what a file takes of another's classes out of `project.py`, loops out of
-  `inference.py`, what a module declares out of `rules/annotations.py`); all but seven under 750
-  (`cli/command.py`, `hints.py` and `options.py`, `fix/index/modules.py` and `stub_signatures.py`,
-  and `rules/checker.py` and `scope.py`); the standard-library tables in `constricter/fix/tables/`,
+  (the cross-file index), its tests laid out the same. Every module is under 900 lines, split along
+  what each grouped (a reader of stubs' signatures out of `stubbed.py`, what a file takes of
+  another's classes out of `project.py`, loops out of `inference.py`, what a module declares out of
+  `rules/annotations.py`, where a module's names come from and its open functions out of
+  `fix/index/modules.py`, the hint rounds out of `cli/command.py`); all but six under 800, past
+  which the Lint job warns, and all of `constricter/`'s but eight under 750 (`cli/hints.py` and
+  `options.py`, `fix/index/project.py` and `stub_signatures.py`, `fix/libraries/overloads.py`, and
+  `rules/checker.py`, `late.py` and `scope.py`); the standard-library tables in
+  `constricter/fix/tables/`,
   their generator in `stdlib_tables/`; docs in `docs/` (changelog, contributing, security,
   integrations, fixes, likely, runs), release notes grouped by `.github/release.yml`, issue and PR
   templates, CODEOWNERS.
@@ -670,32 +678,25 @@ fix.
    package's exported symbols have known types, but finds none through the editable install's import
    hook: run it on the built wheel, installed in a venv of its own, as CI's build job has it. Done
    when CI fails on a score under 100%. About 2 hours; coverage unchanged.
-4. **Each group's dependencies, as its code imports them.** deptry finds a dependency nothing
-   imports, an import no group has, and one a group has that another's code needs: the corpus
-   runner's optional `ortools` and `psutil`, `tests/`'s and `scratch/`'s own. Add it to the dev
-   group and CI's lint step, the optional imports listed. Done when it finds nothing. About 2 hours;
-   coverage unchanged.
-5. **Docstrings, held to the code.** pydoclint checks that a function's Google-style sections say
-   what it does: its `Returns:` where it returns, its `Raises:` for what it raises, its arguments
-   where it lists them. Add it to the dev group and CI's lint step, as flake8's plugin or alone.
-   Done when it finds nothing in `constricter stdlib_tables tests hatch_build.py`. About 3 hours;
-   coverage unchanged.
-6. **mypy's signatures, from their callers.** `dmypy suggest FUNCTION` proposes an unannotated
+4. **mypy's signatures, from their callers.** `dmypy suggest FUNCTION` proposes an unannotated
    function's whole signature from the arguments its calls pass and the values it returns, through
    the daemon of the mypy already in the dev group; `dmypy inspect` answers one location at a time.
    Most bindings with no fix are in functions with no annotations. Measure it as `pyrefly infer`
    was: its signatures written before `--fix` on the six Python 3 corpora, the certain fixes gained,
    the new basedpyright errors, the seconds per function. Done when measured; a fourth hint source
-   only if it brings clearly more than `pyrefly infer`'s 2,254 fixes for no more errors. About 3
-   hours; coverage unchanged.
-7. **No module over 800 lines.** pylint's `too-many-lines` fails CI at 1,000 (`test_runner.py`, at
-   1,006, is split by topic now), and CI's lint warns from 800 on, without failing; eight warn:
-   `constricter/fix/index/modules.py` (907), `constricter/cli/command.py` (877),
-   `tests/fix/values/test_widened_fixes.py` (859), `stdlib_tables/reading.py` (847),
-   `tests/corpus/render.py` (830), `constricter/rules/checker.py` (830), `constricter/cli/hints.py`
-   (821) and `constricter/fix/index/stub_signatures.py` (815). Split each by what its parts do, the
-   package's imports and the compiled wheel's modules unchanged for callers. Done when CI's lint
-   warns of none. About 3 hours; coverage unchanged.
+   only if it brings clearly more than `pyrefly infer`'s 2,254 fixes for no more errors. Measured
+   on pydantic (`scratch/dmypy_suggest.py`): of its 49 functions with anything unannotated, 34
+   returns written (30 of them `-> None`) and 2 parameters, 10.4s a function on 16CPU/60GB, and
+   no fix gained or error brought; 12 got no signature (a decorator it can't handle, or a
+   `ValueError` that stops the daemon). Left: the other five corpora, whose unannotated code is
+   what it's for. About an hour beside the runs; coverage unchanged.
+5. **No module over 800 lines.** pylint's `too-many-lines` fails CI at 1,000, and CI's lint warns
+   from 800 on, without failing; six warn: `tests/fix/values/test_widened_fixes.py` (859),
+   `stdlib_tables/reading.py` (847), `constricter/rules/checker.py` (838), `tests/corpus/render.py`
+   (830), `constricter/cli/hints.py` (821) and `constricter/fix/index/stub_signatures.py` (815).
+   Split each by what its parts do, the package's imports and the compiled wheel's modules
+   unchanged for callers (`scratch/module_outline.py`, `scratch/split_module.py`). Done when CI's
+   lint warns of none. About 2 hours; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 

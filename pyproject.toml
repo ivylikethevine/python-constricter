@@ -75,6 +75,7 @@ dev = [
     "basedpyright",
     "build",
     "check-wheel-contents",
+    "deptry", # each group's dependencies, held to what its code imports (see [tool.deptry])
     "hypothesmith",
     "import-linter", # the layers' contracts (see [tool.importlinter])
     "mypy",
@@ -82,6 +83,7 @@ dev = [
     "pip-audit",
     "pyrefly", # a third type checker, beside basedpyright and mypy
     "pre-commit",
+    "pydoclint", # docstrings' sections, held to the signatures (see [tool.pydoclint])
     "psutil", # tests/corpus/corpora_cpu.py: a step's process tree, its CPU seconds and memory
     "pytest-xdist",
     "pyyaml", # tests/ci_local.py reads CI's workflow for its steps
@@ -310,6 +312,16 @@ forbidden_modules = [
     "constricter.offences",
     "constricter.plugins",
 ]
+
+# What `deptry constricter` holds the package's imports to: its dependencies (none) and extras. CI's
+# lint runs it again over the code only a checkout runs, for an import no group declares: deptry
+# takes every dependency group for a dev one, so it can't tell one group's code from another's.
+[tool.deptry]
+known_first_party = ["constricter", "hatch_build", "stdlib_tables", "tests"]
+
+[tool.deptry.per_rule_ignores]
+DEP002 = ["flake8"] # the flake8 extra's plugin is an entry point, importing flake8 for its types alone
+DEP003 = ["astroid"] # pylint's AST, the API a pylint plugin is written against, versioned by pylint
 
 [tool.coverage.run]
 data_file = "local/.coverage"

@@ -56,7 +56,8 @@ _OPTIONAL: Final = "optional"  # the fix kind of a `None` default rebound to one
 _DECLARING: Final = frozenset({UNANNOTATED, UNTYPED_TARGET})  # the codes whose fix declares a name's type
 _FILLED: Final = "filled"  # the fix kind (and guessing mechanism) of an empty container filled later
 _CONTAINER: Final = "container"  # the fix kind of a display
-_FILLABLE: Final = frozenset({"list", "set", "dict"})  # the displays `extended` widens
+_DICT: Final = "dict"
+_FILLABLE: Final = frozenset({"list", "set", _DICT})  # the displays `extended` widens
 # The builtin numbers, narrowest first: each takes the ones before it, as a type checker has it.
 _NUMBERS: Final = ("bool", "int", "float", "complex")
 _BAR: Final = " | "
@@ -213,36 +214,49 @@ def extended(scope: Scope) -> None:
         if parts is None or lifetime is None or lifetime.escaped or len(lifetime.bindings) != 1:
             continue
         body = body or filling.uses(scope.kind.body())
-        fills: list[filling.Fill] = filling.additions(body, o.name, parts[0])
-        if not fills or o.name in body.nested:
+        additions: list[filling.Fill] = filling.additions(body, o.name, parts[0])
+        if not additions or o.name in body.nested:
             continue
         rows: list[list[Inference | None]] = [
-            filling.added(fill, parts[0], scope.settings.known, scope.inferred.types) for fill in fills
+            filling.added(fill, parts[0], scope.settings.known, scope.inferred.types) for fill in additions
         ]
         if any(part is None for row in rows for part in row):
             scope.offences[index] = replace(o, edit=None)
             continue
-        found: list[tuple[str, bool] | None] = [
-            _joined([own, *(cast("Inference", row[at]).annotation for row in rows)])
-            for at, own in enumerate(parts[1])
-        ]
-        if None in found:
-            scope.offences[index] = replace(o, edit=None)
-            continue
-        joins: list[tuple[str, bool]] = cast("list[tuple[str, bool]]", found)
-        annotation: str = f"{parts[0]}[{', '.join(text for text, _ in joins)}]"
-        if annotation == fix.annotation:
-            continue
-        union: bool = any(each for _, each in joins)
-        origins: frozenset[str] = frozenset({displays.JOINED}) if union else frozenset()
-        added: list[frozenset[str]] = [cast("Inference", part).kinds for row in rows for part in row]
-        kinds: frozenset[str] = fix.kinds.union(origins, *added)
-        reason: str = f"its display, and what the function adds to it ({len(fills)})"
-        widened_fix: Inference = Inference(annotation, reason, kinds)
         scope.offences[index] = replace(
             o,
-            edit=scope.placed(o.name, widened_fix, origins, unsafe=fix.unsafe or union),
+            edit=_widened(scope, o.name, fix, parts, cast("list[list[Inference]]", rows)),
         )
+
+
+def _widened(
+    scope: Scope,
+    name: str,
+    fix: Fix,
+    parts: tuple[str, list[str]],
+    rows: list[list[Inference]],
+) -> Fix | None:
+    """Widen a display's `fix` (split into `parts`) to what's added to it: `rows`, one per addition.
+
+    Returns:
+      The widened fix, `fix` itself if what's added doesn't widen it, or `None` where the types
+      can't be joined.
+
+    """
+    found: list[tuple[str, bool] | None] = [
+        _joined([own, *(row[at].annotation for row in rows)]) for at, own in enumerate(parts[1])
+    ]
+    if None in found:
+        return None
+    joins: list[tuple[str, bool]] = cast("list[tuple[str, bool]]", found)
+    annotation: str
+    if (annotation := f"{parts[0]}[{', '.join(text for text, _ in joins)}]") == fix.annotation:
+        return fix
+    union: bool = any(each for _, each in joins)
+    origins: frozenset[str] = frozenset({displays.JOINED}) if union else frozenset()
+    kinds: frozenset[str] = fix.kinds.union(origins, *(part.kinds for row in rows for part in row))
+    reason: str = f"its display, and what the function adds to it ({len(rows)})"
+    return scope.placed(name, Inference(annotation, reason, kinds), origins, unsafe=fix.unsafe or union)
 
 
 def _contained(annotation: str) -> tuple[str, list[str]] | None:
@@ -258,9 +272,9 @@ def _contained(annotation: str) -> tuple[str, list[str]] | None:
     value: ast.expr
     element: ast.expr
     match node:
-        case ast.Subscript(value=ast.Name(id=kind), slice=ast.Tuple(elts=[key, value])) if kind == "dict":
+        case ast.Subscript(value=ast.Name(id=kind), slice=ast.Tuple(elts=[key, value])) if kind == _DICT:
             return kind, [ast.unparse(key), ast.unparse(value)]
-        case ast.Subscript(value=ast.Name(id=kind), slice=element) if kind in _FILLABLE - {"dict"}:
+        case ast.Subscript(value=ast.Name(id=kind), slice=element) if kind in _FILLABLE - {_DICT}:
             return kind, [ast.unparse(element)]
         case _:
             return None

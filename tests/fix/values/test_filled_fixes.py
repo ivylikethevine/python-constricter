@@ -338,7 +338,7 @@ def f(r: int, x: float, s: str, unknown) -> None:
     many = [0]
     many.append(s)
     many.append(b"")
-    many.append(None)
+    many.append(x)
 
     def inner() -> None:
         seen.append(s)

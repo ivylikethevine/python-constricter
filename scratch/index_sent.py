@@ -4,7 +4,7 @@
   local/.venv/bin/python -m scratch.index_sent [CORPUS ...] [--jobs 2 4 8 16] [--runs 3]
 
 For each corpus (the standard library and pandas by default), the index a run's first round
-builds (read in this process, then with installed packages, as `command._checked_all` has it),
+builds (read in this process, then with installed packages, as `rounds.checked_all` has it),
 pickled as `schedule.sent` does; one `pickle.loads` of it, what each worker pays; then for each
 worker count, workers started as a run starts them and told the index, `--runs` times: the median
 seconds of the telling, and the most memory this process held during it above what it held before
