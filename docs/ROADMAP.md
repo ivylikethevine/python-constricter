@@ -387,10 +387,11 @@
   most either took.
 - **The standard library, pinned**: the standard-library corpus is CPython 3.14.7's source release's
   `Lib` (`corpora.toml`, fetched and hash-checked as Twisted's sdist is), not the running Python's
-  own, which a prebuilt Python ships without its `test` package (1,205 of the 1,867 files). Any
-  Python 3.14 runs the corpora: uv's prebuilt 3.14.7 checks pandas in 55.3s in one process and 9.3s
-  with every CPU, a source build with profile-guided and link-time optimization and no shared
-  library 57.9s and 9.5s, and pyenv's `python-build` (`-O3 --enable-shared` alone) 68.5s and 11.7s.
+  own, which a prebuilt Python ships without its `test` package (1,205 of the 1,867 files): CI's
+  check of it on uv's prebuilt 3.14.7, which has none, counts all 1,867. Any Python 3.14 runs the
+  corpora: uv's prebuilt 3.14.7 checks pandas in 55.3s in one process and 9.3s with every CPU, a
+  source build with profile-guided and link-time optimization and no shared library 57.9s and 9.5s,
+  and pyenv's `python-build` (`-O3 --enable-shared` alone) 68.5s and 11.7s.
 - **The witness, past a container's class**: a builtin container is held to its annotation's
   arguments, not its class alone: a list's, a deque's or a tuple's first 100 elements, a set's every
   one, a dict's keys and values, a tuple's parts one by one. Only a value of the builtin class
@@ -627,12 +628,7 @@ fix.
    (`_BESIDE`). Done when a mega run uses 85% of its CPU seconds, and one with no earlier run under
    its output takes within a tenth of one sized by its own. About 2 hours beside the runs; coverage
    unchanged.
-2. **The corpus runs' checks, on a prebuilt Python.** The standard-library corpus is CPython's
-   pinned source release (see [Corpus](#corpus)), its 1,867 files found by the runner whatever
-   Python runs it. `local/.venv` runs on uv's prebuilt 3.14.7, the suite passing there. Left: a full
-   run on it. Done when that run counts the standard library's 1,867 files. Under an hour beside the
-   run; coverage unchanged.
-3. **Class bodies' fixes, held to the suites.** A plain class's variable is typed past a literal: a
+2. **Class bodies' fixes, held to the suites.** A plain class's variable is typed past a literal: a
    test case's own (`maxDiff = 80`, typeshed's `int | None`), a value the standard library types
    (`re.compile("x")`, `os.sep`) and a checked file's class it names (`form_class = LoginForm`, a
    `type[LoginForm]` where the class's whole line of bases is in sight and no class above or under
@@ -643,7 +639,7 @@ fix.
    need imported (`multiprocessing`'s `Process`), so asyncio's `proc: Process` has none. Done when
    every corpus package's suite and type checker finds nothing new. About 2 hours beside the suites'
    runs; coverage unchanged.
-4. **A checker's hang, given up on.** basedpyright hangs on pandas's
+3. **A checker's hang, given up on.** basedpyright hangs on pandas's
    `tests/apply/test_series_apply.py` twice in each super run, and the file gets no hints: pandas's
    `infer-basedpyright` took 746s in the last, 450s in the one before, with the hang in both. Find
    what in the file hangs it, and leave such a file out at its first hang. Done when pandas's
