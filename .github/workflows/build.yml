@@ -72,8 +72,9 @@ jobs:
       attestations: write # store the attestation
     steps:
       # block on Linux; macOS and Windows audit until each has an allowlist from its audit runs.
-      # The hosts: uv, the build's artifact, cibuildwheel and its manylinux images, the
-      # hash-checked build dependencies, Sigstore and the attestation.
+      # The hosts: uv (setup-uv reads its version manifest from raw.githubusercontent.com), the
+      # build's artifact, cibuildwheel and its manylinux images, the hash-checked build
+      # dependencies, Sigstore and the attestation.
       - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         if: runner.os == 'Linux'
         with:
@@ -81,6 +82,7 @@ jobs:
           allowed-endpoints: >
             github.com:443
             api.github.com:443
+            raw.githubusercontent.com:443
             releases.astral.sh:443
             pypi.org:443
             files.pythonhosted.org:443
@@ -98,9 +100,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
-          version: "0.12.24"
+          version: "0.13.0"
           enable-cache: false
       - shell: bash
         run: uv export --locked --only-group mypyc --no-emit-project --format requirements.txt --output-file mypyc.txt

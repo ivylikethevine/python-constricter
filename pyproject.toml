@@ -55,18 +55,18 @@ test = [
 # Pure Python 2 code (Twisted 12.3.0) can't be installed on 3.11+: tests/corpus/corpus_sources.py fetches it.
 corpus = [
     { include-group = "build" }, # for the setup action's editable `-e .` install
-    "django==5.2.17", # 6.x needs Python 3.12+; 5.2 is the current LTS and still supports 3.11
+    "django==5.2.18", # 6.x needs Python 3.12+; 5.2 is the current LTS and still supports 3.11
     "pandas==3.0.6", # a large, partly annotated data library: overloads, generics, TYPE_CHECKING imports
-    "pydantic==2.13.5",
+    "pydantic==2.14.0",
     "py-spy", # the corpus runner's `profile` step samples the check from outside
-    "sqlalchemy==2.0.54",
+    "sqlalchemy==2.1.4",
 ]
 # What a compiled wheel's build from the sdist needs, without build isolation
 # (`HATCH_BUILD_HOOK_ENABLE_MYPYC=1`): the backend, and the mypyc hook's `dependencies`, pinned the same.
 mypyc = [
     "hatchling>=1.27,<2",
     "hatch-mypyc==0.16.0",
-    "mypy==2.3.1",
+    "mypy==2.4.0",
     "setuptools==84.0.0",
 ]
 dev = [
@@ -127,7 +127,7 @@ packages = ["constricter"]
 # Built from the sdist (`python -m build`), so nothing compiled lands beside the checkout's sources.
 [tool.hatch.build.targets.wheel.hooks.mypyc]
 enable-by-default = false
-dependencies = ["hatch-mypyc==0.16.0", "mypy==2.3.1", "setuptools==84.0.0"] # the `mypyc` group's
+dependencies = ["hatch-mypyc==0.16.0", "mypy==2.4.0", "setuptools==84.0.0"] # the `mypyc` group's
 include = ["/constricter/rules", "/constricter/fix"]
 options = { debug_level = "0" }
 
