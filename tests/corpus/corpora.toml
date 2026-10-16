@@ -68,10 +68,10 @@ slow-large = [
   "pandas",
   "mypy",
 ]
-# The tiers, each holding the one before it: `full`, what every released version is measured on;
+# The tiers, each holding the one before it: `original`, what every released version is measured on;
 # `super`, with every fast corpus; `mega`, every corpus.
-full = ["standard library", "django", "sqlalchemy", "pydantic", "pandas", "twisted", "pip"]
-super = ["full", "fast-small", "fast-large"]
+original = ["standard library", "django", "sqlalchemy", "pydantic", "pandas", "twisted", "pip"]
+super = ["original", "fast-small", "fast-large"]
 mega = ["super", "slow-small", "slow-large"]
 
 # CPython's own source release (PSF-2.0), whose `Lib` has the `test` package a prebuilt Python

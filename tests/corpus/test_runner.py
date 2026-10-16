@@ -655,9 +655,9 @@ def test_each_execution_has_a_folder_named_by_its_label_and_time() -> None:
 def test_the_catalog_expands_sets_and_refuses_a_name_it_hasnt() -> None:
     """A set stands for its corpora, each named once, in order."""
     known: catalog.Catalog = catalog.load()
-    assert known.names(["pydantic", catalog.FULL])[:2] == ["pydantic", "standard library"]
-    assert len(known.names([catalog.FULL, "pip"])) == len(known.sets[catalog.FULL])
-    assert all(name in known.entries for name in known.sets[catalog.FULL])
+    assert known.names(["pydantic", catalog.ORIGINAL])[:2] == ["pydantic", "standard library"]
+    assert len(known.names([catalog.ORIGINAL, "pip"])) == len(known.sets[catalog.ORIGINAL])
+    assert all(name in known.entries for name in known.sets[catalog.ORIGINAL])
     here: catalog.Entry = known.entry(str(Path(__file__).parent))
     assert (here.name, here.suite, known.names([here.path])) == ("corpus", None, [here.path])
     assert known.entry("pip") is known.entries["pip"]
@@ -666,16 +666,16 @@ def test_the_catalog_expands_sets_and_refuses_a_name_it_hasnt() -> None:
 
 
 def test_the_tiers_hold_each_other_and_the_groups_split_every_corpus() -> None:
-    """`full` within `super` within `mega`, every corpus; each corpus in one group of size and time."""
+    """`original` within `super` within `mega`, every corpus; each corpus in one group of size and time."""
     known: catalog.Catalog = catalog.load()
-    full: list[str] = known.names([catalog.FULL])
+    original: list[str] = known.names([catalog.ORIGINAL])
     fast: list[str] = known.names([catalog.SUPER])
     every: list[str] = known.names([catalog.MEGA])
-    assert set(full) < set(fast) < set(every) == set(known.entries)
+    assert set(original) < set(fast) < set(every) == set(known.entries)
     grouped: list[str] = known.names(list(_GROUPS))
     assert sorted(grouped) == sorted(known.entries)
     assert sum(len(known.names([group])) for group in _GROUPS) == len(grouped)
-    assert known.names([catalog.SUPER], [catalog.FULL]) == [name for name in fast if name not in full]
+    assert known.names([catalog.SUPER], [catalog.ORIGINAL]) == [name for name in fast if name not in original]
 
 
 def test_a_set_that_names_itself_is_refused() -> None:
@@ -687,7 +687,7 @@ def test_a_set_that_names_itself_is_refused() -> None:
 
 def test_a_command_leaves_out_a_corpus_a_set_or_a_run_files(tmp_path: Path) -> None:
     """`--minus NAME`, or `--minus RUN.toml`: that run's corpora."""
-    assert runner.commanded(Run(), ["--minus", catalog.FULL]).minus == (catalog.FULL,)
+    assert runner.commanded(Run(), ["--minus", catalog.ORIGINAL]).minus == (catalog.ORIGINAL,)
     less: Path = tmp_path / "less.toml"
     _ = less.write_text('[corpora]\ninclude = ["pip", "twisted"]\n', encoding="utf-8")
     run: Run = runner.commanded(Run(include=(catalog.SUPER,)), ["--minus", str(less)])

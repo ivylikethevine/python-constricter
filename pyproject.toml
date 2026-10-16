@@ -78,7 +78,9 @@ dev = [
     "hypothesmith",
     "import-linter", # the layers' contracts (see [tool.importlinter])
     "mypy",
+    "ortools", # tests/corpus/planning.py: plans a run's steps with CP-SAT
     "pip-audit",
+    "pyrefly", # a third type checker, beside basedpyright and mypy
     "pre-commit",
     "psutil", # tests/corpus/corpora_cpu.py: a step's process tree, its CPU seconds and memory
     "pytest-xdist",
@@ -326,6 +328,13 @@ follow_imports = "skip"
 follow_imports_for_stubs = true  # numpy ships `.pyi` stubs, which `follow_imports` alone doesn't cover
 
 # What only basedpyright has: pyrightconfig.json, which both it and Pyright read, extends this.
+[tool.pyrefly]
+# Beside basedpyright and mypy: what neither finds. The dev venv's packages (see CONTRIBUTING,
+# Development), and the oldest Python the project supports.
+project-includes = ["constricter", "stdlib_tables", "tests", "hatch_build.py"]
+python-interpreter-path = "local/.venv/bin/python"
+python-version = "3.11"
+
 [tool.basedpyright]
 typeCheckingMode = "all"
 # astroid (pylint's AST) and fastjsonschema (the SARIF test's validator) ship no annotations.

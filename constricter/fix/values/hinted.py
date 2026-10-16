@@ -192,7 +192,7 @@ def type_alias(known: Known, before: int) -> str | None:
     if not (named := [name for origin in _ALIAS_ORIGINS if (name := plan.named(origin)) is not None]):
         return plan.spell(_ALIAS_ORIGINS[0])
     bound: list[str] = [each for each in named if plan.defined.get(each.partition(".")[0], before) < before]
-    return min(bound, key=lambda each: _DOT in each, default=None)
+    return min(bound, key=lambda each: _DOT in each) if bound else None
 
 
 def renames(name: str, annotation: str, *, local: bool) -> bool:

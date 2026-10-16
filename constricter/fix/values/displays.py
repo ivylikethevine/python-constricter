@@ -76,7 +76,11 @@ def _joint(elements: Sequence[ast.expr | None], parts: Sequence[Inference | None
 
     """
     found: list[str | None] = [
-        _NONE if isinstance(element, ast.Constant) and element.value is None else part and part.annotation
+        _NONE
+        if isinstance(element, ast.Constant) and element.value is None
+        else None
+        if part is None
+        else part.annotation
         for element, part in zip(elements, parts, strict=True)
     ]
     types: list[str] = list(dict.fromkeys(each for each in found if each is not None))

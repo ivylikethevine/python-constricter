@@ -222,7 +222,7 @@ def test_a_hang_is_remembered_by_the_files_path_of_late(
     assert remembered.hung("a", [str(server)], "x: int = 1\n", path)
     assert not remembered.hung("a", [str(server)], "x: int = 1\n", tmp_path / "n.py")
     assert not remembered.hung("a", [str(server)], "x: int = 1\n")
-    monkeypatch.setattr(remembered, "_RECENT", 0.0)  # as if it was long ago
+    monkeypatch.setattr(remembered, "_RECENT", -1.0)  # long ago, past a coarse clock (Windows')
     assert not remembered.hung("a", [str(server)], "x: int = 1\n", path)
     assert remembered.hung("a", [str(server)], "x = 1\n", path)
 

@@ -223,12 +223,7 @@ class Overloads(Accepting):
         index: int
         for index, (node, one) in enumerate(zip(defs, each, strict=True)):
             signature: Signature = Signature(
-                params=[
-                    _shared(p)
-                    if _key(p) in shared and not self._variable_in(p.annotation, module)
-                    else (p.name, p.kind, p.default, self._accepted(p, module, alone=len(defs) == 1))
-                    for p in one
-                ],
+                params=self._params(one, shared, module, alone=len(defs) == 1),
                 returns=constructed
                 if constructed is not None and (node.name == _INIT or self._is_self(node.returns, module))
                 else self.template(node.returns, module),
@@ -238,6 +233,27 @@ class Overloads(Accepting):
                 signature["self"] = instance
             found.append(signature)
         return found if any(signature["returns"] is not None for signature in found) else None
+
+    def _params(
+        self,
+        one: Sequence[Param],
+        shared: set[_Key],
+        module: str,
+        *,
+        alone: bool,
+    ) -> list[str | tuple[str, str, bool, Accepts | None]]:
+        """Lay one signature's parameters out: `"name kind="` where every signature has it alike (`shared`).
+
+        Returns:
+          Each one's.
+
+        """
+        return [
+            _shared(p)
+            if _key(p) in shared and not self._variable_in(p.annotation, module)
+            else (p.name, p.kind, p.default, self._accepted(p, module, alone=alone))
+            for p in one
+        ]
 
     def constructor(self, klass: ClassRef) -> list[Signature] | None:
         """Read a generic class's constructor as a function returning its instance, typed by its arguments.

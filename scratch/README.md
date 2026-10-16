@@ -60,3 +60,5 @@ goes under `local/scratch/`.
   replayed under other queueing orders, beside each run's length and the least any schedule could
   take; `--sweep` searches the runner's order, `_PATIENCE` and `_BESIDE` for the fastest over them
   all.
+- `schedule_solve.py FOLDER... [--given] [--seconds N]`: the shortest schedule of finished runs'
+  steps by OR-Tools' CP-SAT, and the least it proves any can take; `uv run --with ortools` runs it.

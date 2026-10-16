@@ -6,6 +6,10 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- The corpus runner plans its steps' order with OR-Tools' CP-SAT from what they took in the last
+  runs, where it's installed (the dev group has it), and lets a step start beside one kept waiting
+  when it ends before that one could start; `queue.log` in a run's folder says each minute what's
+  running and why each step waits.
 - `--infer-with` remembers a file a checker hung on by the checker's installed version, so an
   install of the same version doesn't forget it, and by the file's path for an hour, so the pass
   after `--fix` leaves out the text it fixed too.
@@ -18,11 +22,12 @@ Notable changes, newest first. Each release's full notes are generated from its 
 - The corpus runner starts a step whose last run took 5 minutes at most beside one that has waited
   past its patience, rather than keeping what's free from it: replayed, the last super run takes 75
   minutes from 85, on 16CPU/60GB.
-- The corpora's sets nest: `full` (the seven a release records) within `super` (and every fast
+- The corpora's sets nest: `original` (the seven a release records) within `super` (and every fast
   corpus) within `mega` (every corpus), and every corpus is in one of four sets by its size and its
   time (`fast-small`, `fast-large`, `slow-small`, `slow-large`). `--minus NAME` leaves a corpus's, a
-  set's or a run file's corpora out of a run: `super.toml --minus full` measures only what `super`
-  adds, and doesn't publish.
+  set's or a run file's corpora out of a run: `super.toml --minus original` measures only what
+  `super` adds, and doesn't publish. `runs/basic.toml` measures the seven every way `super.toml` and
+  `mega.toml` measure theirs, as RUNS.md's `Basic corpora` section.
 - A plain class's variable bound by name to a checked file's class (`form_class = LoginForm`) is a
   `type[LoginForm]`, a guess, where every class above it is in sight and none above or under it
   binds the variable; what reads it is typed by it (`self.form_class()`). 42 fixes more on Django,

@@ -1,0 +1,30 @@
+# The `original` corpora (the seven every release is measured on), every way, as `super` and `mega`
+# measure theirs: every step, a suite's own tests, type checks and traced tests after each fix,
+# recorded as docs/RUNS.md's `Basic corpora` section, so its rows compare with theirs. The machine
+# sizes it: each step starts once the CPUs and the memory it took in the last run are free
+# (`sizing`); `cpus` and `memory` under `[run]` share out less. A stopped run carries on with
+# `--resume FOLDER`.
+
+[run]
+label = "basic"
+versions = ["dev"]
+jobs = 4
+at-once = 7
+
+[corpora]
+include = ["original"]
+
+[steps]
+check = true
+fix = ["certain", "likely", "unsafe"]
+infer-with = ["basedpyright", "ty", "pyrefly"]
+census = true
+coverage = true
+timing = 1
+tests = true
+types = true
+traced = true
+
+[publish]
+runs-md = "docs/RUNS.md"
+section = "Basic corpora"

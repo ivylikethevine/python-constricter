@@ -407,9 +407,10 @@ def _read_taken_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]
                 | ast.arg(arg=name)
                 | ast.FunctionDef(name=name)
                 | ast.AsyncFunctionDef(name=name)
-                | ast.ExceptHandler(name=str() as name)
-                | ast.MatchAs(name=str() as name)
             ):
+                names.add(name)
+                values.add(name)
+            case ast.ExceptHandler(name=str() as name) | ast.MatchAs(name=str() as name):
                 names.add(name)
                 values.add(name)
             case _:
@@ -448,9 +449,9 @@ def _read_rebound_names(tree: ast.Module) -> dict[str, list[Start]]:
                 | ast.FunctionDef(name=name)
                 | ast.AsyncFunctionDef(name=name)
                 | ast.ClassDef(name=name)
-                | ast.ExceptHandler(name=str() as name)
-                | ast.MatchAs(name=str() as name)
             ):
+                found.setdefault(name, []).append((node.lineno, node.col_offset))
+            case ast.ExceptHandler(name=str() as name) | ast.MatchAs(name=str() as name):
                 found.setdefault(name, []).append((node.lineno, node.col_offset))
             case _:
                 pass

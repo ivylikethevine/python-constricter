@@ -16,7 +16,7 @@ from typing import IO, Final, NamedTuple, TypeAlias, cast
 from tests.corpus import corpus_sources
 from tests.corpus.corpus_sources import CATALOG, Source
 
-FULL: Final = "full"  # the set every released version is measured on
+ORIGINAL: Final = "original"  # the set every released version is measured on
 SUPER: Final = "super"  # and it with every fast corpus
 MEGA: Final = "mega"  # and every corpus
 WORKERS: Final = "{workers}"  # in a test command's word: how many processes to take

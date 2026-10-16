@@ -59,7 +59,7 @@ from typing import Final, NamedTuple, Protocol, cast
 
 from constricter.rules import parsed
 from tests.corpus.catalog import Suite
-from tests.corpus.pipeline import INFER, PROFILE, SHARING, TESTS, TIMING, TRACED, TYPES, Record
+from tests.corpus.pipeline import INFER, PROFILE, SHARING, TESTS, TIMING, TRACED, TYPES, Record, parts
 from tests.corpus.run_config import Run
 from tests.corpus.trees import Tree
 
@@ -148,6 +148,18 @@ class _Waiter:
     since: float
     seconds: float = 0.0  # its own, as its last run took: 0 where none did
     locks: tuple[threading.Lock, ...] = ()  # its checkouts' and its port's, taken as it starts
+    name: str = ""  # its corpus and step, as the queue's log names it
+    rank: float = math.inf  # when the run's plan starts it (`planning`): `inf` for one not planned
+
+
+def _ahead(one: _Waiter, other: _Waiter) -> bool:
+    """Check whether a waiting step goes before another: ranked first by the run's plan, else lasting longer.
+
+    Returns:
+      Whether it does.
+
+    """
+    return (one.rank, -one.lasting) < (other.rank, -other.lasting)
 
 
 def group(process: int | None = None) -> Path | None:
@@ -309,6 +321,8 @@ class Slots:
         self.running: int = 0
         self.changed: threading.Condition = threading.Condition()
         self.waiting: list[_Waiter] = []
+        # Each running step's expected end (`inf` where nothing says), CPUs and bytes, by its name.
+        self.ran: dict[str, tuple[float, int, int]] = {}
 
     def _fits(self, cpus: int, memory: int) -> bool:
         """Check that `cpus` are free and `memory` bytes are; a step alone has the memory, whatever it wants.
@@ -332,11 +346,10 @@ class Slots:
             return True
         if any(other.memory >= self.memory for other in self.waiting):
             return False
-        # One that lasts longer goes first, but only one that could start now: one held back itself
+        # One ranked first goes first, but only one that could start now: one held back itself
         # would hold back the rest with it.
         return not any(
-            other.lasting > waiter.lasting and self._ready(other) and not self._kept(other)
-            for other in self.waiting
+            _ahead(other, waiter) and self._ready(other) and not self._kept(other) for other in self.waiting
         ) and not self._kept(waiter)
 
     def _ready(self, waiter: _Waiter) -> bool:
@@ -349,22 +362,109 @@ class Slots:
         return self._fits(waiter.cpus, waiter.memory) and not any(lock.locked() for lock in waiter.locks)
 
     def _kept(self, waiter: _Waiter) -> bool:
-        """Check whether one that came before a waiting step has waited `_PATIENCE` seconds without fitting.
-
-        What's free is kept for it, from all but a step whose last run ended within `_BESIDE` seconds.
+        """Check whether a waiting step is held back for one before it (`_keeping`).
 
         Returns:
-          Whether it's held back so.
+          Whether it is.
+
+        """
+        return self._keeping(waiter) is not None
+
+    def _keeping(self, waiter: _Waiter) -> _Waiter | None:
+        """Find one that came before a waiting step and has waited `_PATIENCE` seconds without fitting.
+
+        What's free is kept for it, from all but a step whose last run ended within `_BESIDE` seconds,
+        or that's expected to end before what's running frees enough for it (`_shadow`): starting
+        such a step doesn't keep the other waiting longer.
+
+        Returns:
+          The step it's held back for; `None` where none holds it back.
 
         """
         if 0 < waiter.seconds <= _BESIDE:
-            return False
-        kept: float = time.monotonic() - _PATIENCE
+            return None
+        now: float = time.monotonic()
         # Those that came before it, by their place: a coarse clock gives two the same time.
-        ahead: list[_Waiter] = self.waiting[: self.waiting.index(waiter)]
-        return any(other.since <= kept and not self._ready(other) for other in ahead)
+        other: _Waiter
+        for other in self.waiting[: self.waiting.index(waiter)]:
+            if other.since <= now - _PATIENCE and not self._ready(other):
+                shadow: float = self._shadow(other)  # `inf`: a step it waits on has no expected end
+                if waiter.seconds and now + waiter.seconds <= shadow < math.inf:
+                    continue  # it ends before the other could start
+                return other
+        return None
 
-    def take(self, wanted: "Wanted", locks: Sequence[threading.Lock] = ()) -> int:
+    def _shadow(self, waiter: _Waiter) -> float:
+        """Find when what's running is expected to have freed enough for a waiting step to fit.
+
+        Returns:
+          The time (`time.monotonic`'s); `inf` where a step it waits on has no expected end.
+
+        """
+        free: int = self.free
+        held: int = self.held
+        end: float
+        cpus: int
+        memory: int
+        for end, cpus, memory in sorted(self.ran.values()):
+            if free >= waiter.cpus and held + waiter.memory <= self.memory:
+                break
+            free, held = free + cpus, held - memory
+            if end == math.inf or (free >= waiter.cpus and held + waiter.memory <= self.memory):
+                return end
+        return time.monotonic() if free >= waiter.cpus and held + waiter.memory <= self.memory else math.inf
+
+    def report(self) -> list[str]:
+        """Say what's running, and why each step waiting waits: for the run's queue log.
+
+        Returns:
+          A line each.
+
+        """
+        now: float = time.monotonic()
+        with self.changed:
+            lines: list[str] = [
+                f"running {name}: {cpus} CPUs, {memory / GIB:.1f} GB, "
+                + ("end unknown" if end == math.inf else f"ends in {end - now:.0f}s")
+                for name, (end, cpus, memory) in sorted(self.ran.items(), key=lambda each: each[1][0])
+            ]
+            lines.append(f"free: {self.free} of {self.cpus} CPUs, {(self.memory - self.held) / GIB:.1f} GB")
+            lines += [
+                f"waiting {each.name} {now - each.since:.0f}s: {self._why(each)}" for each in self.waiting
+            ]
+        return lines
+
+    def _why(self, waiter: _Waiter) -> str:
+        """Say why a waiting step waits (`_turn`).
+
+        Returns:
+          It.
+
+        """
+        if not self._fits(waiter.cpus, waiter.memory):
+            return f"wants {waiter.cpus} CPUs and {waiter.memory / GIB:.1f} GB"
+        if any(lock.locked() for lock in waiter.locks):
+            return "its checkout or its port is in use"
+        whole: list[_Waiter] = [other for other in self.waiting if other.memory >= self.memory]
+        if waiter.memory < self.memory and whole:
+            return f"{whole[0].name} wants all the memory"
+        keeping: _Waiter | None
+        if (keeping := self._keeping(waiter)) is not None:
+            return f"what's free is kept for {keeping.name}"
+        longer: list[_Waiter] = [
+            other
+            for other in self.waiting
+            if _ahead(other, waiter) and self._ready(other) and not self._kept(other)
+        ]
+        return f"{longer[0].name} goes first" if longer else "starting"
+
+    def take(
+        self,
+        wanted: "Wanted",
+        locks: Sequence[threading.Lock] = (),
+        name: str = "",
+        rank: float = math.inf,
+    ) -> int:
         """Wait until the CPUs and the memory a step `wanted` are free, and its `locks`, and hold them.
 
         All the CPUs, for more than there are. Its `least`: the fewest it may start with, then holding
@@ -373,9 +473,12 @@ class Slots:
         start now goes before it, so the long steps aren't the last to start. One that wants all the
         memory goes before any that wants less: it runs once those running have ended. And one that
         has waited `_PATIENCE` seconds without fitting goes before any that came after it, but one
-        whose own `seconds`, as its last run took, are `_BESIDE` at most. `locks`: those of the
-        checkouts it works on and the port its tests bind, taken with the rest as it starts, none
-        held while it waits.
+        whose own `seconds`, as its last run took, are `_BESIDE` at most, or that's expected to end
+        before the other could start. `locks`: those of the checkouts it works on and the port its
+        tests bind, taken with the rest as it starts, none held while it waits. `name`: what the
+        queue's log calls it (`report`), and `give` frees by. `rank`: when the run's plan starts it
+        (`planning`); of the steps that could start, the one ranked first does, then the one that
+        lasts longest.
 
         Returns:
           How many CPUs are held, to `give` back with their `share` of the memory, and the locks.
@@ -392,6 +495,8 @@ class Slots:
                 time.monotonic(),
                 wanted.seconds,
                 tuple(locks),
+                name,
+                rank,
             )
             self.waiting.append(waiter)
             _ = self.changed.wait_for(lambda: self._turn(waiter))
@@ -404,6 +509,8 @@ class Slots:
             self.free -= held
             self.held += share(held)
             self.running += 1
+            end: float = time.monotonic() + wanted.seconds if wanted.seconds else math.inf
+            self.ran[name] = (end, held, share(held))
             self.changed.notify_all()  # one that waited behind this may fit what's left
         return held
 
@@ -416,8 +523,8 @@ class Slots:
         """
         return memory * held // max(1, min(wanted, self.cpus))
 
-    def resize(self, held: tuple[int, int], now: tuple[int, int]) -> tuple[int, int]:
-        """Change what a running step holds, its CPUs and its bytes, from `held` to `now`.
+    def resize(self, held: tuple[int, int], now: tuple[int, int], name: str = "") -> tuple[int, int]:
+        """Change what a running step, `name`d, holds: its CPUs and its bytes, from `held` to `now`.
 
         More than is free too: the next step then waits for it.
 
@@ -428,15 +535,18 @@ class Slots:
         with self.changed:
             self.free += held[0] - now[0]
             self.held += now[1] - held[1]
+            if name in self.ran:
+                self.ran[name] = (self.ran[name][0], *now)
             self.changed.notify_all()
         return now
 
-    def give(self, held: int, memory: int = 0, locks: Sequence[threading.Lock] = ()) -> None:
-        """Free the CPUs, the memory and the locks a step held."""
+    def give(self, held: int, memory: int = 0, locks: Sequence[threading.Lock] = (), name: str = "") -> None:
+        """Free the CPUs, the memory and the locks a step `name`d held."""
         with self.changed:
             self.free += held
             self.held -= memory
             self.running -= 1
+            _ = self.ran.pop(name, None)
             lock: threading.Lock
             for lock in locks:
                 lock.release()
@@ -538,7 +648,7 @@ class Plan(NamedTuple):
 
         """
         directory: str = tree.name.replace(" ", "-")
-        known: Before | None = self.before.get((directory, step))
+        known: Before | None = self.before.get((directory, step)) or self._parted(directory, step)
         if step in SHARING:  # either may run their one check: the most either took
             both: list[Before] = [
                 self.before[directory, each] for each in sorted(SHARING) if (directory, each) in self.before
@@ -601,6 +711,21 @@ class Plan(NamedTuple):
             return Wanted(workers, memory, lasting, least=least, seconds=seconds)
         memory = int(runs[0].memory * _MARGIN * workers / runs[0].workers)
         return Wanted(workers, memory, lasting, measured=runs[0] is known[0], least=least, seconds=seconds)
+
+    def _parted(self, directory: str, step: str) -> Before | None:
+        """Estimate a part of a suite's tests or type checks no run has measured, by its kind's last whole.
+
+        Each part as much as the kind's every run took, its seconds shared among its parts.
+
+        Returns:
+          It; `None` for another step, or a kind no run has measured.
+
+        """
+        kind: str = _kind(step)
+        whole: Before | None
+        if kind == step or (whole := self.before.get((directory, kind))) is None:
+            return None
+        return whole._replace(seconds=whole.seconds / max(1, len(parts(self.run, kind))))
 
     def fitted(self, wanted: Wanted, held: tuple[int, int], busy: float, peak: int) -> tuple[int, int]:
         """Fit a running step's hold to what it's seen to use: `busy` CPUs of late, `peak` bytes at most.

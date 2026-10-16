@@ -15,13 +15,14 @@ steps and the formats. Each execution writes `<output>/<label>-<month>-<day>-<ye
     run.toml      the run file, copied
     facts.toml    the run as it was read, the commit and the machine
     runner.log    each step's end: its seconds, what it used, what it was given and how long it waited
+    queue.log     each minute steps wait: what's running, and why each waits (`sizing.Slots.report`)
     records/      <corpus>/<version>/<step>.json, and each fix's patch: what every output is made from
     logs/         what each step's constricter wrote to standard error
     report.json   report.md   tables/*.csv
 
 A run of all its corpora is published where its run file says (`render.publish`); one kept to some
-with `--only` or `--minus` isn't: `super.toml --minus full` measures only what `super` adds, beside a
-run of `full`. A resumed run is given the same `--minus`.
+with `--only` or `--minus` isn't: `super.toml --minus original` measures only what `super` adds, beside
+a run of `original`. A resumed run is given the same `--minus`.
 
 Corpora are measured side by side, found (cloned, installed) `at-once` at a time. Each step is a
 process of its own (`--step`), started once the CPUs it's expected to keep busy and the memory it's
@@ -33,8 +34,10 @@ nothing beside them. Every step starts constricter one way (`launch.run`) on one
 (`trees.Tree`), so a count in one table is the count in another.
 """
 
+import contextlib
 import graphlib
 import itertools
+import math
 import os
 import platform
 import shutil
@@ -42,7 +45,7 @@ import subprocess  # asks git for the commit, and runs each step
 import sys
 import threading
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Generator, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from datetime import datetime
@@ -52,7 +55,7 @@ from typing import IO, TYPE_CHECKING, Final, NamedTuple, TypeAlias, cast
 
 from constricter import __version__
 from constricter.rules import parsed
-from tests.corpus import catalog, launch, pipeline, render, sizing, suite_steps, trees
+from tests.corpus import catalog, launch, pipeline, planning, render, sizing, suite_steps, trees
 from tests.corpus.pipeline import Record
 from tests.corpus.run_config import Run, percent, read
 
@@ -72,8 +75,10 @@ _STEP: Final = "--step"  # then a run's folder, a corpus, a version and a step: 
 _ROOT: Final = Path(__file__).resolve().parents[2]
 _POLL: Final = 0.2  # the seconds between looks at whether a step's process has ended
 _LOOK: Final = 60.0  # and between fittings of its hold to what it's using
+_DONE: Final = True  # what an event's `wait` says once it's set
 _MACOS: Final = "darwin"
 _LOG: Final = "runner.log"  # in a run's folder
+_QUEUE: Final = "queue.log"  # and its queue, each minute steps wait
 _SUITE_WORKERS: Final = "CORPUS_SUITE_WORKERS"  # in a step's environment: its suite's tests' processes
 _SAMPLED: Final = "sampled"  # what read a step's use outside a scope: the sampler, the waited count
 _MAXRSS: Final = (
@@ -180,6 +185,7 @@ class Running(NamedTuple):
     finding: threading.Semaphore  # the corpora found at once: cloned, installed
     scope: tuple[str, ...] = ()  # what starts a step in a scope of its own (`sizing.scope`): nothing, none
     checkouts: dict[tuple[str, str], threading.Lock] | None = None  # each suite checkout's lock, as `ports`
+    ranks: Mapping[tuple[str, str], float] | None = None  # each step's planned start (`planning.ranks`)
 
     def process(self, entry: catalog.Entry, job: pipeline.Job, name: str, hold: "_Hold") -> sizing.Used:
         """Run one step in a process of its own, what it says kept in its log.
@@ -214,14 +220,14 @@ class Running(NamedTuple):
         ):
             if self.watcher is not None:
                 self.watcher.watch(process.pid)
-            counted: sizing.Used = self._waited(process, hold)
+            counted: sizing.Used = self._waited(process, hold, f"{entry.name}/{name}")
         if self.watcher is None:
             return sizing.Used()
         used: sizing.Used = sizing.Used(*self.watcher.used(process.pid))
         return sizing.Used(max(used.cpu, counted.cpu), max(used.memory, counted.memory))
 
-    def _waited(self, process: subprocess.Popen[bytes], hold: "_Hold") -> sizing.Used:
-        """Wait for a step's process, fitting its hold to what it's using as it runs (`Plan.fitted`).
+    def _waited(self, process: subprocess.Popen[bytes], hold: "_Hold", named: str) -> sizing.Used:
+        """Wait for a step's process, `named` in the queue, its hold fitted to what it uses (`Plan.fitted`).
 
         Returns:
           What the system counted for it and the processes it waited for: their CPU seconds, and
@@ -247,7 +253,7 @@ class Running(NamedTuple):
                     (seen.cpu - before) / (now - looked),
                     seen.memory,
                 )
-                hold.held = self.slots.resize(hold.held, fitted)
+                hold.held = self.slots.resize(hold.held, fitted, named)
                 looked, before = now, seen.cpu
         return sizing.Used()
 
@@ -271,14 +277,15 @@ class Running(NamedTuple):
         ]
         locks += [port] if port is not None else []
         asked: float = time.perf_counter()
-        held: int = self.slots.take(wanted, locks)
+        rank: float = (self.ranks or {}).get((entry.name, name), math.inf)
+        held: int = self.slots.take(wanted, locks, f"{entry.name}/{name}", rank)
         memory: int = self.slots.share(wanted.cpus, wanted.memory, held)
         hold: _Hold = _Hold(wanted._replace(cpus=held, memory=memory), (held, memory))
         start: float = time.perf_counter()
         try:
             used: sizing.Used = self.process(entry, job, name, hold)
         finally:
-            self.slots.give(*hold.held, locks)
+            self.slots.give(*hold.held, locks, f"{entry.name}/{name}")
         return self.recorded(job, name, hold.wanted, used, (start - asked, time.perf_counter() - start))
 
     def recorded(
@@ -474,6 +481,36 @@ def _ordered(names: Sequence[str], needs: Mapping[str, frozenset[str]]) -> list[
     return list(graphlib.TopologicalSorter(graph).static_order())
 
 
+@contextlib.contextmanager
+def _queue_logged(slots: sizing.Slots, log: Path) -> Generator[None]:
+    """Log the queue's state to `log` while the block runs (`_queued`).
+
+    Yields:
+      Nothing, once the logging's begun.
+
+    """
+    stop: threading.Event = threading.Event()
+    watching: threading.Thread = threading.Thread(target=_queued, args=(slots, log, stop), daemon=True)
+    watching.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        watching.join()
+
+
+def _queued(slots: sizing.Slots, log: Path, stop: threading.Event) -> None:
+    """Write the queue's state to `log` each `_LOOK` seconds a step waits (`Slots.report`), until `stop`."""
+    _tick: bool
+    file: IO[str]
+    for _tick in iter(partial(stop.wait, _LOOK), _DONE):
+        if slots.waiting:
+            lines: list[str] = slots.report()
+            stamp: str = datetime.now().astimezone().strftime("%H:%M:%S")
+            with log.open("a", encoding="utf-8") as file:
+                _ = file.write("".join(f"{stamp} {line}\n" for line in lines) + "\n")
+
+
 def _counted(record: Record | None, used: sizing.Used) -> tuple[sizing.Used, str]:
     """Take a step's control group's count out of its record, where the step put one (`_step`).
 
@@ -637,9 +674,10 @@ def _all(run: Run, store: pipeline.Store) -> list[_Measured]:
         threading.Semaphore(max(1, run.at_once)),
         scope,
         {},
+        planning.ranks(run, entries, plan),
     )
     pool: ThreadPoolExecutor
-    with ThreadPoolExecutor(max(1, len(entries))) as pool:
+    with _queue_logged(running.slots, store.root / _QUEUE), ThreadPoolExecutor(max(1, len(entries))) as pool:
         measured: list[_Measured] = list(pool.map(running.measured, entries))
     entry: catalog.Entry
     tree: trees.Tree | None

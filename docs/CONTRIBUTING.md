@@ -25,10 +25,10 @@ uv pip install --python local/.venv --no-deps --no-build-isolation -e .
 
 Checks (as CI runs them), on `constricter stdlib_tables tests hatch_build.py` where they take paths:
 `ruff check .` (every rule, preview included), `ruff format --check .`, `basedpyright` (all), `mypy`
-(strict), `pylint` (every extension, and again for a warning on each module past 900 lines, 100
-short of the limit it fails one at), `flake8`, `typos`, `validate-pyproject pyproject.toml`,
-`lint-imports` (the layers `pyproject.toml` states), `uv lock --check`,
-`constricter --level=suffocate --all-scopes`,
+(strict), `pyrefly check`, `pylint` (every extension, and again for a warning on each module past
+900 lines, 100 short of the limit it fails one at), `flake8`, `typos`,
+`validate-pyproject pyproject.toml`, `lint-imports` (the layers `pyproject.toml` states),
+`uv lock --check`, `constricter --level=suffocate --all-scopes`,
 `constricter --coverage --all-scopes --fail-under=100`, `pytest --cov` (100% branch coverage; with
 `-n auto --dist loadgroup`, on every CPU). Everything generated goes in `local/`, but the
 standard-library tables `--fix` reads (`constricter/fix/tables/`) and the tests'
@@ -98,7 +98,7 @@ Each execution writes a folder of its own under `local/corpus-runs/`, named by t
 the time: the run file, a record for each corpus, version and step, and `report.json`, `report.md`
 and `tables/*.csv` made from them. `--resume FOLDER` carries on a stopped run, `--only NAME` keeps
 one to a corpus or set, and `--minus NAME` leaves out a corpus's, a set's or a run file's corpora
-(`super.toml --minus full` measures only what `super` adds). Neither publishes. Each step is a
+(`super.toml --minus original` measures only what `super` adds). Neither publishes. Each step is a
 process of its own, started once the CPUs it's expected to keep busy and the memory it's expected to
 hold are free: what it took in the last run under the same output, which its record keeps
 (`tests/corpus/sizing.py`; `cpus` and `memory` in the run file share out less than the machine has).
@@ -109,15 +109,16 @@ A run file with a `[publish]` table records a section per version in [`docs/RUNS
 offences per code, errors and warnings at each level, fixes, guesses, anything a fix broke, and the
 share of bindings typed before and after fixing (by this checkout's `--coverage`). Its `versions`
 may name releases too, each installed in an environment of its own. With `section`, it records that
-one section of the whole run instead: `tests/corpus/runs/super.toml` and `mega.toml` ask every step
-of their corpora, and write RUNS.md's `Super corpora` and `Mega corpora` sections, with the machine
-they ran on. Run both before a release, outside a sandbox.
+one section of the whole run instead: `tests/corpus/runs/basic.toml`, `super.toml` and `mega.toml`
+ask every step of their corpora (`basic`'s the `original` seven, so its rows compare with the other
+two's), and write RUNS.md's `Basic corpora`, `Super corpora` and `Mega corpora` sections, with the
+machine they ran on. Run super and mega before a release, outside a sandbox.
 
 Run files name their corpora by `tests/corpus/corpora.toml`'s sets, which may name other sets. The
-tiers hold each other: `full`, the seven corpora a release records; `super`, those and every fast
-corpus; `mega`, every corpus. Every corpus is in one of `fast-small`, `fast-large`, `slow-small` and
-`slow-large`, split at the medians of its files and of its steps' seconds in a super or mega run
-(`scratch/corpus_quadrants.py FOLDER...` prints them).
+tiers hold each other: `original`, the seven corpora a release records; `super`, those and every
+fast corpus; `mega`, every corpus. Every corpus is in one of `fast-small`, `fast-large`,
+`slow-small` and `slow-large`, split at the medians of its files and of its steps' seconds in a
+super or mega run (`scratch/corpus_quadrants.py FOLDER...` prints them).
 
 On a pull request that touches what `--fix` does, the Corpus coverage workflow comments with
 pydantic's share of bindings typed as released, after `--fix`, and after `--fix --unsafe-fixes`,

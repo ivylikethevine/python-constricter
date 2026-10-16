@@ -25,7 +25,7 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[1]
 _TIMED = {"timing", "profile"}
-_SUITE = {"tests", "traced"}
+_SUITE = {"tests", "traced"}  # and a part of the tests: each binds the suite's port
 _MARGIN = 1.25
 _PATIENCE = 300.0  # the runner's: a step waits so long before what's free is kept for it
 _BESIDE = 300.0  # and a step whose last run took so long at most starts beside it
@@ -71,13 +71,24 @@ def read(folder: Path, *, given: bool = False) -> list[Step]:
     for step in steps:
         own = names[step.corpus]
         fixes = {name for name in own if name.startswith(("fix-", "infer-"))}
+        kind, _, part = step.name.partition("-")
+        split = f"{kind}-released" in own  # a run that splits a suite's tests and checks into parts
         if step.name == "traced":
             step.after = {"fix-unsafe"} & own
         elif step.name == "infer-trace":
             step.after = {"traced"} & own
         elif step.name in {"tests", "types"}:
-            step.after = fixes | ({"traced"} & own)
+            parted = {name for name in own if name.startswith(f"{step.name}-")}
+            step.after = parted if split else fixes | ({"traced"} & own)
+        elif kind in {"tests", "types"} and part and part != "released":
+            made = "traced" if part == "infer-trace" else part
+            step.after = {made, f"{kind}-released"} & own
     return steps
+
+
+def binds(name: str) -> bool:
+    """Check whether a step runs a suite's tests, which bind its port: the traced, the tests, a part of them."""
+    return name in _SUITE or name.startswith("tests-")
 
 
 def groups(steps: list[Step]) -> None:
@@ -159,12 +170,12 @@ def simulate(
                 continue
             ready_at.setdefault(id(step), now)
             fits = step.cpus <= free_cpus and step.memory <= free_memory
-            busy = step.name in _SUITE and port.get(step.corpus) in bound
+            busy = binds(step.name) and port.get(step.corpus) in bound
             if fits and not busy and (not held or step.seconds <= beside):
                 waiting.remove(step)
                 free_cpus -= step.cpus
                 free_memory -= step.memory
-                if step.name in _SUITE and step.corpus in port:
+                if binds(step.name) and step.corpus in port:
                     bound.add(port[step.corpus])
                 heapq.heappush(running, (now + step.seconds, id(step), step))
             elif patience is not None and not fits and now - ready_at[id(step)] >= patience:
@@ -174,7 +185,7 @@ def simulate(
         now, _, ended = heapq.heappop(running)
         free_cpus += ended.cpus
         free_memory += ended.memory
-        if ended.name in _SUITE and ended.corpus in port:
+        if binds(ended.name) and ended.corpus in port:
             bound.discard(port[ended.corpus])
         done.setdefault(ended.corpus, set()).add(ended.name)
     return now + sum(step.seconds for step in steps if step.name in _TIMED)

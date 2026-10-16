@@ -17,7 +17,7 @@
                                      # are held to where systemd starts them (`--share`): 0, as above
 
     [corpora]
-    include = ["full"]               # corpora or sets of `corpora.toml`, or directories
+    include = ["original"]           # corpora or sets of `corpora.toml`, or directories
     install = true                   # false: a suite's corpus is cloned alone, with no environment
 
     [steps]
@@ -132,7 +132,7 @@ class Run(NamedTuple):
     versions: tuple[str, ...] = (DEV,)
     formats: tuple[str, ...] = FORMATS
     jobs: int = 0
-    include: tuple[str, ...] = ("full",)
+    include: tuple[str, ...] = ("original",)
     steps: Steps = Steps()
     at_once: int = 1  # the corpora found side by side: their steps wait for the machine alone
     publish: Publish = Publish()

@@ -333,13 +333,12 @@ def assign(stmt: ast.stmt, space: Namespace) -> None:
             bound: ast.expr | None = next((k.value for k in keywords if k.arg == _BOUND), None)
             default: ast.expr | None = next((k.value for k in keywords if k.arg == _DEFAULT), None)
             bind(space, name, TypeVariable(name, tuple(args[1:]), bound, default))
-        case (
-            ast.Assign(targets=[ast.Name(id=name)], value=value)
-            | ast.AnnAssign(
-                target=ast.Name(id=name),
-                annotation=ast.Name(id="TypeAlias") | ast.Attribute(attr="TypeAlias"),
-                value=ast.expr() as value,
-            )
+        case ast.Assign(targets=[ast.Name(id=name)], value=value):
+            bind(space, name, Alias(value))
+        case ast.AnnAssign(
+            target=ast.Name(id=name),
+            annotation=ast.Name(id="TypeAlias") | ast.Attribute(attr="TypeAlias"),
+            value=ast.expr() as value,
         ):
             bind(space, name, Alias(value))
         case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation):

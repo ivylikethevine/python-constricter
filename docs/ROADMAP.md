@@ -645,6 +645,26 @@ fix.
    fixed leaves the file out too. Left: what in the file hangs it. Done when pandas's
    `infer-basedpyright` takes under 450s with the same fixes. About an hour; coverage unchanged.
 
+3. **ty on the project's own code.** A fourth type checker, beside basedpyright, mypy and pyrefly
+   (`pyrefly check`, in CI's lint step since it found 10 errors, each a pattern or a cast the others
+   pass), catching what they miss; the corpus runner already takes its hints. Add it to the dev
+   group, settings of its own, and CI's lint step. Done when it finds nothing in
+   `constricter stdlib_tables tests hatch_build.py`. About an hour; coverage unchanged.
+4. **The public API, wholly typed.** `basedpyright --verifytypes constricter` says what share of the
+   package's exported symbols have known types, but finds none through the editable install's import
+   hook: run it on the built wheel, installed in a venv of its own, as CI's build job has it. Done
+   when CI fails on a score under 100%. About 2 hours; coverage unchanged.
+5. **Each group's dependencies, as its code imports them.** deptry finds a dependency nothing
+   imports, an import no group has, and one a group has that another's code needs: the corpus
+   runner's optional `ortools` and `psutil`, `tests/`'s and `scratch/`'s own. Add it to the dev
+   group and CI's lint step, the optional imports listed. Done when it finds nothing. About 2 hours;
+   coverage unchanged.
+6. **Docstrings, held to the code.** pydoclint checks that a function's Google-style sections say
+   what it does: its `Returns:` where it returns, its `Raises:` for what it raises, its arguments
+   where it lists them. Add it to the dev group and CI's lint step, as flake8's plugin or alone.
+   Done when it finds nothing in `constricter stdlib_tables tests hatch_build.py`. About 3 hours;
+   coverage unchanged.
+
 ### Medium: 4 to 8 hours
 
 1. **What a guess breaks, by its cause.** After `--fix --unsafe-fixes` the packages' own type
@@ -738,6 +758,18 @@ fix.
    stop reading a large container once new types stop turning up. Done when pydantic's and django's
    traced tests take under twice their untraced time, and the fixes resting on the trace are within
    a hundredth of today's. About 6 hours; coverage unchanged.
+
+9. **The runner's order, from a solver.** No library runs subprocess steps in a graph under CPUs and
+   memory as the runner does: Snakemake's scheduler comes nearest, choosing among its ready jobs as
+   a knapsack, greedily or by PuLP's solver, but is a workflow engine whole, and Dask's and Ray's
+   resources are their workers' Python tasks'. Done, not yet run: where OR-Tools is installed, the
+   runner plans its steps with CP-SAT before it starts (`tests/corpus/planning.py`: the CPUs and
+   memory each took in the last runs held at once, ports, each step after those it reads), and of
+   the steps that could start, starts the one planned first; a step no run has measured keeps the
+   rules (the longest chain first, `_PATIENCE`, backfilling). `scratch/schedule_solve.py` plans a
+   finished run's steps the same way and proves how short any schedule of them can be. Left:
+   OR-Tools in the `corpus` group. Done when a super and a mega run each take within a tenth of the
+   solver's shortest schedule of their own steps. About 2 hours beside the runs; coverage unchanged.
 
 ### Large: more than 8 hours
 

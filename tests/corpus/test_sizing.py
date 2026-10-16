@@ -3,10 +3,14 @@
 
 import threading
 import time
+from typing import Final
 
 import pytest
 
 from tests.corpus import sizing
+
+_RUNNING: Final = "running big: 2 CPUs"  # in the queue's report
+_KEPT: Final = "what's free is kept for"
 
 
 def _waiting(slots: sizing.Slots, count: int) -> bool:
@@ -80,3 +84,34 @@ def test_a_port_is_taken_as_its_step_starts() -> None:
     second.join(5)
     assert started == ["1", "2"]
     assert not port.locked()
+
+
+def test_a_step_that_ends_before_a_kept_one_could_start_starts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Beside one past its patience, a step ending before what's running frees enough for it; no longer."""
+    monkeypatch.setattr(sizing, "_PATIENCE", 0.0)
+    monkeypatch.setattr(sizing, "_BESIDE", 0.0)
+    slots: sizing.Slots = sizing.Slots(4, 10)
+    held: int = slots.take(sizing.Wanted(2, 0, seconds=600.0), (), "big")
+    started: list[str] = []
+    waits: list[sizing.Wanted] = [
+        sizing.Wanted(3, 0, 3.0),  # waits for `big`, which ends in 600s
+        sizing.Wanted(1, 0, 2.0, seconds=900.0),  # would end after it: kept waiting
+        sizing.Wanted(1, 0, 1.0, seconds=60.0),  # ends before it: starts
+    ]
+    threads: list[threading.Thread] = []
+    count: int
+    wanted: sizing.Wanted
+    for count, wanted in enumerate(waits, 1):
+        threads.append(threading.Thread(target=_started, args=(slots, wanted, (), started), daemon=True))
+        threads[-1].start()
+        assert _waiting(slots, count) or started
+    threads[-1].join(5)
+    assert started == ["1"]
+    report: str = "\n".join(slots.report())
+    assert _RUNNING in report
+    assert _KEPT in report
+    slots.give(held, 0, (), "big")
+    each: threading.Thread
+    for each in threads:
+        each.join()
+    assert sorted(started) == ["1", "2", "3"]

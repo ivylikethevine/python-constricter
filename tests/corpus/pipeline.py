@@ -373,7 +373,8 @@ def sets(made: Sequence[_Entry]) -> dict[str, dict[str, int]]:
     found: dict[str, Counter[str]] = {}
     each: _Entry
     for each in made:
-        found.setdefault("+".join(cast("list[str]", each["kinds"])), Counter())[tier(each)] += 1
+        kinds: list[str] = cast("list[str]", each["kinds"])
+        found.setdefault("+".join(kinds), Counter())[tier(each)] += 1
     return {kinds: dict(tiers) for kinds, tiers in found.items()}
 
 

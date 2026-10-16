@@ -89,6 +89,7 @@ jobs:
       - run: ruff format --check .
       - run: basedpyright
       - run: mypy
+      - run: pyrefly check
       - run: pylint constricter stdlib_tables tests hatch_build.py
       # A warning for each module past 900 lines, which never fails: pylint's own limit, 1,000, does
       # (`too-many-lines`), and a module is easier to split before it's there.

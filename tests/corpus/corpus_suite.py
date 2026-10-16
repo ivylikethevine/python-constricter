@@ -93,7 +93,7 @@ _STOPPED: Final = "(stopped:"
 _TIMED_OUT: Final = f"ERROR {_STOPPED} it ran too long)"  # read as a failure (see `_FAILED`)
 _GIGABYTE: Final = 2**30
 _MEMORY_SHARE: Final = 2  # the tests' workers' part of the machine's memory: a half
-SUITES: Final = catalog.load().suites(catalog.FULL)  # the seven corpora's, as `corpora.toml` has them
+SUITES: Final = catalog.load().suites(catalog.ORIGINAL)  # the seven corpora's, as `corpora.toml` has them
 # Written once every install command has succeeded: a hash of them, so changed ones are run again.
 _INSTALLED: Final = ".venv/corpus-suite-installed"
 # Each checker's settings file, what an empty one holds, and the `pyproject.toml` sections that stand
