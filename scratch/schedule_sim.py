@@ -54,8 +54,9 @@ def read(folder: Path, *, given: bool = False, only: str = "") -> list[Step]:
     """
     steps: list[Step] = []
     for record in sorted(folder.glob("records/*/*/*.json")):
-        used = json.loads(record.read_text()).get("used") or {}
-        if not used.get("seconds"):
+        read = json.loads(record.read_text())
+        used = read.get("used") or {}
+        if not used.get("seconds") or "from" in read:  # taken from an earlier run, not run here
             continue
         seconds = float(used["seconds"])
         cpu = float(used.get("cpu", 0))

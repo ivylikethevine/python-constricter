@@ -802,6 +802,7 @@ def _finished(tree: ast.Module, scopes: Sequence[Scope]) -> None:
         scope.mark_escaped(module_names(tree)[0])
         late.optionals(scope)
         late.rebinds(scope)
+        late.extended(scope)
         late.fills(scope)
         late.lambdas(scope)
         late.widens(scope, tree)

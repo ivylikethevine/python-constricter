@@ -83,9 +83,19 @@ def _joint(elements: Sequence[ast.expr | None], parts: Sequence[Inference | None
         else part.annotation
         for element, part in zip(elements, parts, strict=True)
     ]
-    types: list[str] = list(dict.fromkeys(each for each in found if each is not None))
-    if None in found or not 1 < len(types) <= _MOST_JOINED:
-        return None
-    if not all(_PLAIN.fullmatch(each) for each in types):
+    return None if None in found else union(list(dict.fromkeys(each for each in found if each is not None)))
+
+
+def union(types: Sequence[str]) -> str | None:
+    """Join several types as one: `int | str`, `None` last.
+
+    Up to `_MOST_JOINED` of them, each a plain name (a builtin's, a class's): a union of unions or of
+    containers is better left to the author.
+
+    Returns:
+      The union, or `None` if they're too many, too few, or not plain.
+
+    """
+    if not 1 < len(types) <= _MOST_JOINED or not all(_PLAIN.fullmatch(each) for each in types):
         return None
     return _UNION_BAR.join(sorted(types, key=lambda each: each == _NONE))

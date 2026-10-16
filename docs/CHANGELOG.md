@@ -6,6 +6,10 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types a list, set or dict display its function adds to later by what's added too: numbers
+  as the widest of them (`xs = [0]`, then `xs.append(0.5)`, a `list[float]`), others as their union
+  (a guess), and nothing where what's added isn't known. An integer's `**` by an integer that isn't
+  a literal is a `float`, which takes the `int` it may be too.
 - `--fix` types an index into a `list` or a `tuple[T, ...]` as its element only where the index is
   typed `int`: one of another or no known type may be a slice (`list(range(n))[key]`, `key` an
   `int | slice`, isn't an `int`).

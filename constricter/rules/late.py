@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: MIT
 """A scope's late fixes: those that need the whole scope seen, run once it's checked (see `checker`).
 
-`optionals` (`None`, then one type), `rebinds` (a fix refitted to every later value), `fills` (an
-empty container typed by what's added to it), `shadowed` (a fix naming a value of its own scope,
+`optionals` (`None`, then one type), `rebinds` (a fix refitted to every later value), `extended`
+(a display widened to what's added to it later), `fills` (an empty container typed by what's added
+to it), `shadowed` (a fix naming a value of its own scope,
 dropped), `excused` (a fix of a name a `# type: ignore` line uses, dropped), `unchecked` (a guess
 its function's use of the name makes an error of, dropped), and `finals` (LVA012's `Final`).
 """
@@ -13,11 +14,11 @@ import re
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
 from functools import lru_cache
-from typing import TYPE_CHECKING, Final, TypeAlias
+from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
 from constricter.fix.core.imports import imports_of
 from constricter.fix.core.known import ImportPlan, Inference
-from constricter.fix.values import callables, hinted
+from constricter.fix.values import callables, displays, hinted
 from constricter.fix.values import fills as filling
 from constricter.fix.values import unchecked as misused
 from constricter.fix.values.doubts import contains_inner, narrowing, spelled_self
@@ -54,6 +55,11 @@ _DISCARD: Final = "_"
 _OPTIONAL: Final = "optional"  # the fix kind of a `None` default rebound to one type
 _DECLARING: Final = frozenset({UNANNOTATED, UNTYPED_TARGET})  # the codes whose fix declares a name's type
 _FILLED: Final = "filled"  # the fix kind (and guessing mechanism) of an empty container filled later
+_CONTAINER: Final = "container"  # the fix kind of a display
+_FILLABLE: Final = frozenset({"list", "set", "dict"})  # the displays `extended` widens
+# The builtin numbers, narrowest first: each takes the ones before it, as a type checker has it.
+_NUMBERS: Final = ("bool", "int", "float", "complex")
+_BAR: Final = " | "
 _CALLERS: Final = "callers"  # and of a parameter typed by what every call passes it
 _NONE: Final = "None"
 _FINAL: Final = "Final"
@@ -185,6 +191,98 @@ def _offered(scope: Scope, found: Refit) -> Fix | None:
 
     """
     return scope.offer(found.found, found.origins, unsafe=found.unsafe, edit=found.edit, span=found.span)
+
+
+def extended(scope: Scope) -> None:
+    """Widen a display's fix to what its function adds to it later: `xs = [0]`, then `xs.append(0.5)`.
+
+    A display is typed by its elements, as a type checker types it; what's added later may be more.
+    Each added value's type joins the display's: numbers as the widest of them (`int` and `float`,
+    a `float`), any others as their union, a guess (`displays.JOINED`); an addition whose type isn't
+    known leaves the name no fix. Not where a nested scope sees it, out of this function's sight.
+    """
+    index: int
+    o: Offence
+    body: filling.Uses | None = None  # read once, for the first display to judge
+    for index, o in enumerate(scope.offences):
+        lifetime: Lifetime | None = scope.flow.get(o.name)
+        fix: Fix | None = o.edit
+        if o.code != UNANNOTATED or fix is None or _CONTAINER not in fix.kinds:
+            continue
+        parts: tuple[str, list[str]] | None = _contained(fix.annotation)
+        if parts is None or lifetime is None or lifetime.escaped or len(lifetime.bindings) != 1:
+            continue
+        body = body or filling.uses(scope.kind.body())
+        fills: list[filling.Fill] = filling.additions(body, o.name, parts[0])
+        if not fills or o.name in body.nested:
+            continue
+        rows: list[list[Inference | None]] = [
+            filling.added(fill, parts[0], scope.settings.known, scope.inferred.types) for fill in fills
+        ]
+        if any(part is None for row in rows for part in row):
+            scope.offences[index] = replace(o, edit=None)
+            continue
+        found: list[tuple[str, bool] | None] = [
+            _joined([own, *(cast("Inference", row[at]).annotation for row in rows)])
+            for at, own in enumerate(parts[1])
+        ]
+        if None in found:
+            scope.offences[index] = replace(o, edit=None)
+            continue
+        joins: list[tuple[str, bool]] = cast("list[tuple[str, bool]]", found)
+        annotation: str = f"{parts[0]}[{', '.join(text for text, _ in joins)}]"
+        if annotation == fix.annotation:
+            continue
+        union: bool = any(each for _, each in joins)
+        origins: frozenset[str] = frozenset({displays.JOINED}) if union else frozenset()
+        added: list[frozenset[str]] = [cast("Inference", part).kinds for row in rows for part in row]
+        kinds: frozenset[str] = fix.kinds.union(origins, *added)
+        reason: str = f"its display, and what the function adds to it ({len(fills)})"
+        widened_fix: Inference = Inference(annotation, reason, kinds)
+        scope.offences[index] = replace(
+            o,
+            edit=scope.placed(o.name, widened_fix, origins, unsafe=fix.unsafe or union),
+        )
+
+
+def _contained(annotation: str) -> tuple[str, list[str]] | None:
+    """Split a `list[T]`, `set[T]` or `dict[K, V]` into its container and its arguments.
+
+    Returns:
+      Them, or `None` for any other annotation.
+
+    """
+    node: ast.expr = ast.parse(annotation, mode="eval").body
+    kind: str
+    key: ast.expr
+    value: ast.expr
+    element: ast.expr
+    match node:
+        case ast.Subscript(value=ast.Name(id=kind), slice=ast.Tuple(elts=[key, value])) if kind == "dict":
+            return kind, [ast.unparse(key), ast.unparse(value)]
+        case ast.Subscript(value=ast.Name(id=kind), slice=element) if kind in _FILLABLE - {"dict"}:
+            return kind, [ast.unparse(element)]
+        case _:
+            return None
+
+
+def _joined(types: Sequence[str]) -> tuple[str, bool] | None:
+    """Join a display's type for one argument with those of what's added there.
+
+    A union among them is its members: so `extended`, run again, keeps what it widened.
+
+    Returns:
+      The type, and whether it's a union of several; `None` where they can't be joined (see
+      `displays.union`).
+
+    """
+    distinct: list[str] = list(dict.fromkeys(member for each in types for member in each.split(_BAR)))
+    if len(distinct) == 1:
+        return distinct[0], False
+    if all(each in _NUMBERS for each in distinct):
+        return max(distinct, key=_NUMBERS.index), False
+    found: str | None = displays.union(distinct)
+    return None if found is None else (found, True)
 
 
 def fills(scope: Scope) -> None:

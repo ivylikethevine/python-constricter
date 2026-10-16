@@ -246,14 +246,24 @@ def added_names(found: Uses, name: str, kind: str) -> frozenset[str]:
       The names.
 
     """
-    fills: list[Fill] = [
-        fill
-        for fill in (_use(node, kind, found.parents) for node in found.names.get(name, []))
-        if isinstance(fill, Fill) and not fill.spread
-    ]
+    fills: list[Fill] = [fill for fill in additions(found, name, kind) if not fill.spread]
     return frozenset(
         part.id for fill in fills for given in (fill.key, fill.value) for part in displayed(given)
     )
+
+
+def additions(found: Uses, name: str, kind: str) -> list[Fill]:
+    """List what the body (`found`) adds to container `name` of `kind`: its fills, in order.
+
+    Returns:
+      Them.
+
+    """
+    return [
+        fill
+        for fill in (_use(node, kind, found.parents) for node in found.names.get(name, []))
+        if isinstance(fill, Fill)
+    ]
 
 
 def stored(body: Sequence[ast.stmt], kinds: Mapping[str, str]) -> Iterator[tuple[str, Fill | bool]]:

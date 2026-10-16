@@ -3,8 +3,9 @@
 
 Numbers: `/` gives a `float`; `+`, `-`, `*`, `//` and `%` a `float` if either side is one, else an
 `int`; `<<` and `>>` of integers an `int`, as their `&`, `|` and `^` are (of two `bool`s, a `bool`);
-`**` an `int` by a literal exponent (never negative, which gives a `float`), and a `float`'s by an
-integer a `float`. `str` and `bytes`: `+` of two, `*` by an integer on either side, and `%`
+`**` an `int` by a literal exponent that isn't negative, and by any other integer a `float`, which
+takes the `int` it may be as well as the `float` a negative one gives; a `float`'s by an integer a
+`float`. `str` and `bytes`: `+` of two, `*` by an integer on either side, and `%`
 formatting give the same type back; so do a `list[T]`'s `+` of another and `*` by an integer.
 Tuples: `+` gives both sides' parts, and `*` by an integer a `tuple[T, ...]` of the one type they
 have. A `set[T]`'s or a `frozenset[T]`'s `|`, `&`, `-` and `^` with another, and a `dict[K, V]`'s
@@ -94,17 +95,18 @@ def _number(value: ast.BinOp, left: str, right: str) -> str | None:
 
 
 def _power(exponent: ast.expr, left: str, right: str) -> str | None:
-    """Type `left ** right`: an integer's by a literal that isn't negative, or a `float`'s by an integer.
+    """Type `left ** right`: an integer's by a literal that isn't negative, or by another integer.
 
     Returns:
-      The annotation, or `None`: an integer's by a negative one is a `float`, and a negative
-      number's by a `float` a `complex`.
+      The annotation: `int` by such a literal; by another integer, which may be negative, a `float`,
+      which takes an `int` too; `None` where the exponent is a `float`: a negative number's gives a
+      `complex`.
 
     """
-    if left == _FLOAT:
-        return _FLOAT if right in _INTEGERS else None
+    if right not in _INTEGERS:
+        return None
     natural: bool = isinstance(exponent, ast.Constant) and isinstance(exponent.value, int)
-    return _INT if natural else None
+    return _INT if left in _INTEGERS and natural else _FLOAT
 
 
 def _repeated(sequence: str, count: str) -> str | None:

@@ -655,9 +655,12 @@ fix.
    was given, no schedule of them takes under 147 minutes; to the memory alone, 127. A suite's tests
    kept 5 of 8 CPUs busy (mypy's), and of the 11 CPU hours held and idle, its tests held 3.9, the
    timed checks 2.5. Done, not yet run: a suite's measured tests hold the CPUs they kept busy, a
-   margin over, with as many workers as before (141 minutes, replayed). Done when a mega run uses
-   85% of its CPU seconds, and one with no earlier run under its output takes within a tenth of one
-   sized by its own. About 2 hours beside the runs; coverage unchanged.
+   margin over, with as many workers as before (141 minutes, replayed). The mega-fast run after it
+   (no released or traced tests) took 109 minutes and used 80% of its CPU seconds before its timed
+   checks, 73% with them, 13 to 14 CPUs busy until its last half hour; no schedule of its steps
+   takes under 93 minutes, or 100 held to what each was given. Done when a mega run uses 85% of its
+   CPU seconds, and one with no earlier run under its output takes within a tenth of one sized by
+   its own. About 2 hours beside the runs; coverage unchanged.
 2. **ty on the project's own code.** A fourth type checker, beside basedpyright, mypy and pyrefly
    (`pyrefly check`, in CI's lint step since it found 10 errors, each a pattern or a cast the others
    pass), catching what they miss; the corpus runner already takes its hints. Add it to the dev
@@ -766,13 +769,13 @@ fix.
    `DataFrame | Series` for any value pickled, pytest's `FSHookProxy` for a `HookRelay`. Two were
    `--fix`'s own: an index of no known type into a list typed as its element (pandas's `ilkey`, a
    slice), since fixed; and a display typed by its elements alone (networkx's `probs = [0]`, then
-   `probs.append(d**-r)`, a `float`), as type checkers type it. Done, not yet run: the witness tells
+   `probs.append(d**-r)`, a `float`), as type checkers type it, since widened by what's added (a
+   `list[float]`; an `int`'s `**` by an `int` is a `float`). Done, not yet run: the witness tells
    nothing of a `SimpleNamespace` (pdm's stand-ins) or of an annotation naming a test's class
    outside the tests (django's `datetime`, patched to `MockDateTime`), and takes a module's class
-   imported anew as the one it names (sphinx's `CitationDomain`). Left: a display that's added to
-   later, by a value not known to fit. Done when a certain fix that differs on the corpora is a
-   declaration its package's tests contradict (pydantic's `multiple_of: Decimal | None`, bound to an
-   `int`). About 3 hours; coverage unchanged.
+   imported anew as the one it names (sphinx's `CitationDomain`). Done when a certain fix that
+   differs on the corpora is a declaration its package's tests contradict (pydantic's
+   `multiple_of: Decimal | None`, bound to an `int`). About 3 hours; coverage unchanged.
 5. **django's traced tests, in more than one process.** The tracer doesn't follow the processes
    `multiprocessing` starts, so django's suite is traced with `--parallel=1`: 812s traced, the
    longest step of a super run, to 79s untraced on its workers (timed before a generator's returns
