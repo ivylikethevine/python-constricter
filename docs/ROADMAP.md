@@ -535,8 +535,8 @@
   `rules.walked` to nothing of constricter's (`[tool.importlinter]`; `lint-imports` in the Lint
   job).
 - **Dependencies and docstrings, checked**: deptry holds the package's imports to its dependencies
-  and extras, and the rest's to what some group declares (`[tool.deptry]`, two runs in the Lint
-  job: deptry takes every group for a dev one). pydoclint, as a flake8 plugin, holds a docstring's
+  and extras, and the rest's to what some group declares (`[tool.deptry]`, two runs in the Lint job:
+  deptry takes every group for a dev one). pydoclint, as a flake8 plugin, holds a docstring's
   `Returns:`, `Yields:` and `Raises:` to its function; no docstring lists its arguments, and the
   annotations give the types (`.flake8`).
 - **The tests, in parallel**: `pytest -n auto --dist loadgroup` (pytest-xdist, as
@@ -573,10 +573,9 @@
   which the Lint job warns, and all of `constricter/`'s but eight under 750 (`cli/hints.py` and
   `options.py`, `fix/index/project.py` and `stub_signatures.py`, `fix/libraries/overloads.py`, and
   `rules/checker.py`, `late.py` and `scope.py`); the standard-library tables in
-  `constricter/fix/tables/`,
-  their generator in `stdlib_tables/`; docs in `docs/` (changelog, contributing, security,
-  integrations, fixes, likely, runs), release notes grouped by `.github/release.yml`, issue and PR
-  templates, CODEOWNERS.
+  `constricter/fix/tables/`, their generator in `stdlib_tables/`; docs in `docs/` (changelog,
+  contributing, security, integrations, fixes, likely, runs), release notes grouped by
+  `.github/release.yml`, issue and PR templates, CODEOWNERS.
 - **`Module` and `Outside`, by name**: frozen dataclasses with slots, every field given by keyword
   (they were tuples of 25 to 40 fields built by position). A check is no slower: the standard
   library's 48.3s in one process and 13.0s on 16 CPUs (48.5s and 13.0s before), pandas's 51.6s and
@@ -684,19 +683,19 @@ fix.
    Most bindings with no fix are in functions with no annotations. Measure it as `pyrefly infer`
    was: its signatures written before `--fix` on the six Python 3 corpora, the certain fixes gained,
    the new basedpyright errors, the seconds per function. Done when measured; a fourth hint source
-   only if it brings clearly more than `pyrefly infer`'s 2,254 fixes for no more errors. Measured
-   on pydantic (`scratch/dmypy_suggest.py`): of its 49 functions with anything unannotated, 34
-   returns written (30 of them `-> None`) and 2 parameters, 10.4s a function on 16CPU/60GB, and
-   no fix gained or error brought; 12 got no signature (a decorator it can't handle, or a
-   `ValueError` that stops the daemon). Left: the other five corpora, whose unannotated code is
-   what it's for. About an hour beside the runs; coverage unchanged.
+   only if it brings clearly more than `pyrefly infer`'s 2,254 fixes for no more errors. Measured on
+   pydantic (`scratch/dmypy_suggest.py`): of its 49 functions with anything unannotated, 34 returns
+   written (30 of them `-> None`) and 2 parameters, 10.4s a function on 16CPU/60GB, and no fix
+   gained or error brought; 12 got no signature (a decorator it can't handle, or a `ValueError` that
+   stops the daemon). Left: the other five corpora, whose unannotated code is what it's for. About
+   an hour beside the runs; coverage unchanged.
 5. **No module over 800 lines.** pylint's `too-many-lines` fails CI at 1,000, and CI's lint warns
    from 800 on, without failing; six warn: `tests/fix/values/test_widened_fixes.py` (859),
    `stdlib_tables/reading.py` (847), `constricter/rules/checker.py` (838), `tests/corpus/render.py`
    (830), `constricter/cli/hints.py` (821) and `constricter/fix/index/stub_signatures.py` (815).
-   Split each by what its parts do, the package's imports and the compiled wheel's modules
-   unchanged for callers (`scratch/module_outline.py`, `scratch/split_module.py`). Done when CI's
-   lint warns of none. About 2 hours; coverage unchanged.
+   Split each by what its parts do, the package's imports and the compiled wheel's modules unchanged
+   for callers (`scratch/module_outline.py`, `scratch/split_module.py`). Done when CI's lint warns
+   of none. About 2 hours; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
