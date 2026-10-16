@@ -14,7 +14,7 @@ checkout's results under the new version, and commit it with the bump. Between r
 
 ## Development
 
-With [uv](https://docs.astral.sh/uv/) installed (CI pins 0.12.17):
+With [uv](https://docs.astral.sh/uv/) installed (CI pins 0.12.24):
 
 ```bash
 export UV_PROJECT_ENVIRONMENT=local/.venv

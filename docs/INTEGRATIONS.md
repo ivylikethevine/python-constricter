@@ -95,7 +95,7 @@ Its `sarif-file` output is the same check as a SARIF log, for code scanning (the
 - uses: ivylikethevine/python-constricter@v0.3.7
   id: constricter
 - if: ${{ !cancelled() }} # upload the findings even when the check failed on them
-  uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
+  uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
   with:
     sarif_file: ${{ steps.constricter.outputs.sarif-file }}
     category: constricter

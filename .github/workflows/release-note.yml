@@ -27,8 +27,8 @@ jobs:
   release-note:
     name: release note (pr body)
     if: >-
-      github.event.pull_request.draft != true && github.event.pull_request.user.login !=
-      'dependabot[bot]'
+      github.event.pull_request.draft != true &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -36,7 +36,7 @@ jobs:
     steps:
       # block, not audit: a sparse checkout and one local script are all this
       # job reaches.
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -65,6 +65,5 @@ jobs:
           {
             echo "### Release note"
             echo
-            echo "package: <https://pypi.org/project/python-constricter/>"
             printf '%s\n' "${note:-_none - this PR adds nothing to the release page_}"
           } >>"$GITHUB_STEP_SUMMARY"
