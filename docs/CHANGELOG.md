@@ -11,7 +11,9 @@ Notable changes, newest first. Each release's full notes are generated from its 
   (`code = table.get(code) or SYNTAX`), or to an empty display of another class (`flag = any(xs)`,
   then `store[key] = flag = {}`), when that value's type isn't known: on the 0.4.0-rc.2 mega run,
   pint's 4 new type errors after `--unsafe-fixes` and 3 of mypy's 17 were theirs. Nor a loop's
-  target bound again past the loop to a value of no known type (mcp's `value`).
+  target bound again past the loop to a value of no known type (mcp's `value`). A loop's target
+  taken from a guessed container (`for k in d`, then `for k, v in d.items()`) keeps the guess's
+  type, as a second pass sees it once the container is declared.
 - `--infer-with` drops a hint that names something other than what the checker meant: a module
   written bare (`import socket`, then `socket`), a well-known class's name the module binds to its
   own class (starlette's `Match`), a builtin given type arguments (ty's `bool[bool]`, numpy's

@@ -84,15 +84,14 @@ def load(name: str, root: Path, paths: Iterable[Path]) -> tuple[Found, frozenset
     """
     entry: Path = _entry(name)
     named: dict[str, Path] = {_relative(path, root): path for path in paths}
+    read: tuple[Found, frozenset[Path]]
     try:
-        kept: _Round = cast("_Round", json.loads(entry.read_text(encoding="utf-8")))
-        found: Found = {path: _hints(kept["found"].get(each, {})) for each, path in named.items()}
-        hung: frozenset[Path] = frozenset(named[each] for each in kept["hung"])
+        read = _read(entry, named)
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return None
     with contextlib.suppress(OSError):
         entry.touch()
-    return found, hung
+    return read
 
 
 def store(name: str, root: Path, found: Found, hung: frozenset[Path]) -> None:
@@ -113,6 +112,18 @@ def store(name: str, root: Path, found: Found, hung: frozenset[Path]) -> None:
             with contextlib.suppress(OSError):
                 if now - old.stat().st_mtime > _KEPT:
                     old.unlink()
+
+
+def _read(entry: Path, named: Mapping[str, Path]) -> tuple[Found, frozenset[Path]]:
+    """Read a stored round's hints for the paths `named` by the store's names for them.
+
+    Returns:
+      Each path's hints, and those the checker hung on.
+
+    """
+    kept: _Round = cast("_Round", json.loads(entry.read_text(encoding="utf-8")))
+    found: Found = {path: _hints(kept["found"].get(each, {})) for each, path in named.items()}
+    return found, frozenset(named[each] for each in kept["hung"])
 
 
 def _entry(name: str) -> Path:

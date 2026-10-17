@@ -545,11 +545,24 @@ _GENERATOR: Final = "from collections.abc import Generator\n"
             Offered("types.GeneratorType[str, None, None]"),
             "import types\n" + _GENERATOR + _USE.replace("x =", "x: Generator[str, None, None] ="),
         ),
+        (
+            "from types import GeneratorType\n" + _USE,
+            Offered("GeneratorType[int, None, None]"),
+            "from types import GeneratorType\n"
+            + _GENERATOR
+            + _USE.replace("x =", "x: Generator[int, None, None] ="),
+        ),
     ],
 )
 def test_a_generators_class_is_as_checkers_type_one(source: str, offered: Offered, fixed: str) -> None:
     """A generator's class as ty prints it (`GeneratorType[...]`) is `Generator[...]`, as others type it."""
     assert _applied(source, _offering(source, {"x": offered}, shown=offered.text)) == fixed
+
+
+def test_a_generators_class_nothing_imports_is_no_fix() -> None:
+    """Neither the module nor the hint's edits say where `GeneratorType` is from."""
+    unbound: Offered = Offered("GeneratorType[int, None, None]")
+    assert [o.fix for o in _offering(_USE, {"x": unbound}, shown=unbound.text)] == [None]
 
 
 def test_an_edit_importing_a_module_names_no_class() -> None:

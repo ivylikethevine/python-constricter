@@ -22,6 +22,7 @@ from constricter.cli import rounds
 from constricter.cli.lsp import connection, guard, hints, protocol, remembered, stored
 from constricter.cli.options import Options
 from constricter.fix.core.known import Hints, Offered
+from constricter.fix.index.stubs.installed import cache_directory
 from tests.cli.sources import FAKE_SERVER
 
 # Each starts `--jobs` workers of its own: one at a time, where the tests run at once (`pytest -n`).
@@ -129,6 +130,16 @@ def test_a_stored_round_keeps_its_hints_and_hung_files(tmp_path: Path) -> None:
     stored.store("round", tmp_path, found, hung)
     assert stored.load("round", tmp_path, found) == (found, hung)
     assert stored.load("other", tmp_path, found) is None
+
+
+def test_a_stored_round_unread_of_late_is_removed(tmp_path: Path) -> None:
+    """Writing a round removes the entries no run has read for longer than they're kept."""
+    stored.store("old", tmp_path, {}, frozenset())
+    stored.store("recent", tmp_path, {}, frozenset())
+    entries: Path = cache_directory().with_name("hints")
+    os.utime(entries / "old.json", (0, 0))
+    stored.store("round", tmp_path, {}, frozenset())
+    assert sorted(path.name for path in entries.iterdir()) == ["recent.json", "round.json"]
 
 
 def _no_servers(_files: Mapping[Path, str], checkers: list[hints.Checker]) -> None:

@@ -9,6 +9,9 @@ goes under `local/scratch/`.
   run made on the suites, by mechanism, with the type errors blamed on it and what its binding held
   at run time. `guess_report.py --likely` lists the sets that pass `docs/LIKELY.md`'s bars.
 - `widen_pass.py`: what a second pass still fixes on each corpus after every `fix-widen` kind.
+- `second_pass.py [CORPUS ...] [--likely | --certain]`: what a second pass still fixes on each
+  corpus after `--fix --unsafe-fixes` (or `--likely`, or neither), as CI's `ci-fix` run counts it,
+  each diff kept.
 - `widen_suites.py`: each suite's tests as released and after every `fix-widen` kind.
 - `widen_one.py`: one suite's tests after every `fix-widen` kind, their output and the diff kept.
 - `witness_checkers.py`, with `typeguard` and `beartype` on `PYTHONPATH`: values held to annotations

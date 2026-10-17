@@ -762,8 +762,8 @@ class Plan(NamedTuple):
           It; `None` for another step, or a kind no run has measured.
 
         """
-        kind: str = _kind(step)
-        if kind == step:
+        kind: str
+        if (kind := _kind(step)) == step:
             return None
         measured: list[Before] = [
             known

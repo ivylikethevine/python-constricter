@@ -732,8 +732,8 @@ def _union_run(job: Job, released: Sequence[corpus_suite.Outcome], named: frozen
       Its record: the run weighed, where it ran; else why it didn't (`skipped`, or the patch refused).
 
     """
-    got: Record | None = _read(job, part(TESTS, _UNION))
-    if got is None:
+    got: Record | None
+    if (got := _read(job, part(TESTS, _UNION))) is None:
         return {_SKIPPED: "it failed"}
     return weighed([_ran(got)], released, named) if _COUNTS in got else got
 

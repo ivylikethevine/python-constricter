@@ -50,7 +50,7 @@ from typing import Final, TypeAlias
 
 from constricter.fix.core.known import Hints, ImportPlan, Inference, Known, Offered
 from constricter.fix.libraries import stdlib
-from constricter.rules.annotations import ABSTRACT, depth, length, vague_fits
+from constricter.rules.annotations import ABSTRACT, depth, dotted, length, vague_fits
 
 KIND: Final = "checker"  # the fix kind, and what the guess rests on
 TRACED: Final = "traced"  # the same, for a traced run's types (`--infer-from`)
@@ -496,11 +496,8 @@ def _dotted(node: ast.expr) -> list[str]:
       Them, the root first; empty for an attribute of anything but a name.
 
     """
-    parts: list[str] = []
-    while isinstance(node, ast.Attribute):
-        parts.insert(0, node.attr)
-        node = node.value
-    return [node.id, *parts] if isinstance(node, ast.Name) else []
+    spelled: str | None = dotted(node)
+    return [] if spelled is None else spelled.split(_DOT)
 
 
 def _plain(text: str) -> str:

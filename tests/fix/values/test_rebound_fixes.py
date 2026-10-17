@@ -213,6 +213,24 @@ def test_a_loops_target_bound_again_past_the_loop_has_no_fix() -> None:
     }
 
 
+def test_a_loops_target_bound_again_from_a_guessed_container_keeps_its_guess() -> None:
+    """The later loop's values are the guess's too: as a second pass sees them once it's declared."""
+    source: str = """
+    def g() -> None:
+        d = {"one": 1, 1j: 2j}
+        for k in d:
+            print(k)
+        for k, v in d.items():
+            print(k, v)
+    """
+    found: list[Offence] = check_source(textwrap.dedent(source))
+    assert {o.name: (o.fix, o.unsafe) for o in found} == {
+        "d": ("dict[str | complex, int | complex]", True),
+        "k": ("str | complex", True),
+        "v": ("int | complex", True),
+    }
+
+
 def test_a_name_bound_again_to_an_empty_display_of_another_class_has_no_fix() -> None:
     """`flag = any(xs)`, then `flag = {}`: a checker holds the `{}` to `bool`; one of its class fits."""
     source: str = """
@@ -223,12 +241,15 @@ def test_a_name_bound_again_to_an_empty_display_of_another_class_has_no_fix() ->
         b = set()
         c = [1]
         c = []
+        d = any(xs)
+        d = ()
     """
     found: list[Offence] = check_source(textwrap.dedent(source))
     assert {o.name: (o.fix, o.unsafe) for o in found} == {
         "a": (None, False),
         "b": (None, False),
         "c": ("list[int]", True),
+        "d": (None, False),
     }
 
 

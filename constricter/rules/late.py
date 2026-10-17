@@ -712,14 +712,22 @@ def _on_itself(name: str, value: ast.expr) -> bool:
         case ast.IfExp(body=body, orelse=orelse):
             return _on_itself(name, body) or _on_itself(name, orelse)
         case ast.Call(func=func, args=args, keywords=keywords):
-            while isinstance(func, ast.Attribute):
-                func = func.value
             return any(
                 isinstance(each, ast.Name) and each.id == name
-                for each in (func, *args, *(keyword.value for keyword in keywords))
+                for each in (_base(func), *args, *(keyword.value for keyword in keywords))
             )
         case _:
             return False
+
+
+def _base(node: ast.expr) -> ast.expr:
+    """Find what a chain of attributes is read from: `self` in `self.table.get`.
+
+    Returns:
+      It; `node` itself, if it isn't an attribute.
+
+    """
+    return _base(node.value) if isinstance(node, ast.Attribute) else node
 
 
 # The classes whose call with no arguments is an empty display.

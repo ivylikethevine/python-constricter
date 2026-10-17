@@ -614,7 +614,7 @@ class Guesses(Enum):
 
 
 @dataclass(frozen=True)
-class Options:
+class Options:  # pylint: disable=too-many-instance-attributes
     """The command's parsed options."""
 
     input: Input

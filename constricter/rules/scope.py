@@ -108,18 +108,20 @@ class Scope:
         where: tuple[int, int],
         code: str | None,
         fix: Fix | None = None,
-        typed: str | None = None,
+        typed: str | Late | None = None,
     ) -> None:
         """Bind `name` to a value value flow can't see; unless it's already bound, report `code`.
 
         `code` is reported at `(line, col)` (`None` means typed), offering `fix` if there's one.
-        `typed`: the value's certain type, if `--fix` knows it (a loop's element), which a name
-        declared already is then bound to, and which a fix for the name's first binding is held to
-        (see `rebinding`).
+        `typed`: the value's type, if `--fix` knows it (a loop's element), which a fix for the name's
+        first binding is held to (see `rebinding`): its text where it's certain, which a name
+        declared already is then bound to; else the guess and what it rests on, as `assign` binds one.
         """
-        self.lifetime(name).bind(where, None, None if typed is None else (typed, frozenset()))
+        certain: str | None = typed if isinstance(typed, str) else None
+        guess: Late | None = (typed, frozenset()) if isinstance(typed, str) else typed
+        self.lifetime(name).bind(where, None, guess)
         if name in self.declared:
-            self.inferred.rebound(name, typed)
+            self.inferred.rebound(name, certain)
         self._first(name, where, code, fix)
 
     def assign(
