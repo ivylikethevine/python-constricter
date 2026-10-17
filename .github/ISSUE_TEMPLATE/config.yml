@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-blank_issues_enabled: false
+blank_issues_enabled: true
 contact_links:
   - name: Report a vulnerability
     url: https://github.com/ivylikethevine/python-constricter/security/advisories/new
@@ -15,3 +15,8 @@ contact_links:
     about: >-
       Questions, setup help, and ideas that aren't a bug report or a concrete
       feature request.
+  - name: Getting help
+    url: https://github.com/ivylikethevine/python-constricter/blob/main/docs/SUPPORT.md
+    about: >-
+      Where to ask, what to include, and what to expect from a one-maintainer
+      project.
