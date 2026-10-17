@@ -786,9 +786,9 @@ def _samples(job: Job, released: Record) -> dict[str, corpus_suite.Outcome]:
     trace: Record | None = _read(job, TRACED)
     if trace is not None and _COUNTS in trace and not trace.get("stopped"):
         found[TRACED] = _ran(trace)
-    environment: object = released.get(_ENVIRONMENT)
+    environment: str | None = cast("str | None", released.get(_ENVIRONMENT))
     record: Record
-    for record in earlier(job, str(environment)) if environment is not None else ():
+    for record in earlier(job, environment) if environment is not None else ():
         _ = found.setdefault(str(record[FROM]), _ran(record))
     return found
 

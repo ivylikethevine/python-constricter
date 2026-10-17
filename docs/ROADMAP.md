@@ -557,10 +557,11 @@
   (`ty check`, `[tool.ty]`): it found a quoted alias it couldn't join with `| None`, a method read
   off a `Callable`, and a comment it took for a `type: ignore`; a warning fails it, but for
   `redundant-cast`, the casts being the other checkers'.
-- **The public API, wholly typed**: `basedpyright --verifytypes constricter` on the built wheel, in
-  the Build job, fails under a 100% completeness score (it exits 0 whatever the score) and names
-  each symbol that isn't. It reads the package of the `python` first on PATH, ignoring
-  `--pythonpath` and a venv config: the smoke venv's, from outside the checkout. It found three: a
+- **The public API, wholly typed**: `basedpyright --verifytypes constricter`, in the Lint job with
+  the other checks (a release's build is no place to learn of a symbol), fails under a 100%
+  completeness score (it exits 0 whatever the score) and names each symbol that isn't. It reads the
+  package as the `python` first on PATH has it installed, ignoring `--pythonpath` and a venv
+  config: the dev venv's editable install. It found three: a
   discarded `signal` handler; the pylint plugin's `msgs`, inferred from the base class; and its
   `process_module`'s parameter, astroid's `Module`, which astroid (no `py.typed`) leaves unknown
   under Python 3.11's semantics where `--ignoreexternal` excuses it under 3.14's: now a Protocol of

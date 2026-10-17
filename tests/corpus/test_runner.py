@@ -24,6 +24,7 @@ _SLICED: Final = "--slice=constricter-corpus.slice"  # `systemd-run`'s, for a ru
 _SET: Final = "set-property"  # `systemctl`'s, setting the slice's limits
 _BASE: Final = "base"  # a version that names another Python
 _PYREFLY: Final = "pyrefly"
+_WINDOWS: Final = "nt"  # `os.name`'s
 
 
 def test_a_run_file_is_read_with_defaults_for_what_it_leaves_out() -> None:
@@ -522,8 +523,11 @@ def test_a_runs_facts_name_each_checkers_version_and_the_parsers(
 ) -> None:
     """The first line of `--version`, with the checker's name; `(not found)` where it isn't installed."""
     run: Run = parse({"steps": {"infer-with": ["ty", "pyrefly"]}})
-    fake: Path = tmp_path / _PYREFLY
-    _ = fake.write_text("#!/bin/sh\necho 'pyrefly 0.40.0'\n", encoding="utf-8")
+    # A batch file on Windows: `CreateProcess` runs no shebang script.
+    windows: bool = os.name == _WINDOWS
+    fake: Path = tmp_path / (f"{_PYREFLY}.cmd" if windows else _PYREFLY)
+    script: str = "@echo pyrefly 0.40.0\n" if windows else "#!/bin/sh\necho 'pyrefly 0.40.0'\n"
+    _ = fake.write_text(script, encoding="utf-8")
     fake.chmod(0o755)
 
     def which(name: str, **_kwargs: object) -> str | None:

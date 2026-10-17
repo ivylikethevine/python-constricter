@@ -14,20 +14,3 @@ runs:
         python -m venv "$RUNNER_TEMP/smoke"
         "$RUNNER_TEMP/smoke/bin/pip" install --no-deps --no-index dist/*.whl
         "$RUNNER_TEMP/smoke/bin/constricter" constricter
-        # Every symbol the wheel exports has a known type. `--verifytypes` reads the package of the
-        # `python` first on PATH (it ignores `--pythonpath` and a venv config): the smoke venv's, from
-        # outside the checkout, with the dev venv's packages behind it for the plugins' bases (pylint's,
-        # flake8's). A score under 100% fails; basedpyright exits 0 whatever it is.
-        python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])' > "$("$RUNNER_TEMP/smoke/bin/python" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')/dev.pth"
-        env -C "$RUNNER_TEMP" PATH="$RUNNER_TEMP/smoke/bin:$PATH" basedpyright --verifytypes constricter --ignoreexternal --outputjson > "$RUNNER_TEMP/verifytypes.json" || true
-        python - "$RUNNER_TEMP/verifytypes.json" <<'PY'
-        import json
-        import sys
-
-        found = json.load(open(sys.argv[1], encoding="utf-8"))["typeCompleteness"]
-        for symbol in found["symbols"]:
-            if not symbol.get("isTypeKnown", True) or symbol.get("isTypeAmbiguous"):
-                print(symbol["category"], symbol["name"], *(each.get("message", "") for each in symbol.get("diagnostics", [])), sep=": ")
-        print(f"type completeness {found['completenessScore']:.1%}")
-        sys.exit(found["completenessScore"] < 1)
-        PY

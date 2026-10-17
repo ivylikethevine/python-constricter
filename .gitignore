@@ -2,6 +2,8 @@
 
 # Everything generated on this machine (scratch, tool caches, local builds).
 local/
+# The build action's export of the `mypyc` dependency group, carried by the sdist.
+mypyc.txt
 
 # npm installs, the pinned CI Markdown tools' (.github/package.json) included.
 node_modules/

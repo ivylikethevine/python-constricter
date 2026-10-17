@@ -89,6 +89,23 @@ jobs:
       - run: ruff check --output-format=github .
       - run: ruff format --check .
       - run: basedpyright
+      # Every symbol the package exports has a known type. `--verifytypes` reads the package as the
+      # `python` first on PATH has it installed (the dev venv's editable install; it ignores
+      # `--pythonpath` and a venv config), and exits 0 whatever the score: a score under 100% fails
+      # here, naming each symbol that isn't.
+      - run: |
+          basedpyright --verifytypes constricter --ignoreexternal --outputjson > local/verifytypes.json || true
+          python - local/verifytypes.json <<'PY'
+          import json
+          import sys
+
+          found = json.load(open(sys.argv[1], encoding="utf-8"))["typeCompleteness"]
+          for symbol in found["symbols"]:
+              if not symbol.get("isTypeKnown", True) or symbol.get("isTypeAmbiguous"):
+                  print(symbol["category"], symbol["name"], *(each.get("message", "") for each in symbol.get("diagnostics", [])), sep=": ")
+          print(f"type completeness {found['completenessScore']:.1%}")
+          sys.exit(found["completenessScore"] < 1)
+          PY
       - run: mypy
       - run: pyrefly check
       - run: ty check

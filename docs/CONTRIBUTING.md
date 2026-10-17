@@ -31,8 +31,8 @@ checks of a docstring's `Returns:`, `Yields:` and `Raises:`), `typos`,
 `validate-pyproject pyproject.toml`, `lint-imports` (the layers `pyproject.toml` states), `deptry`
 (the package's imports held to its dependencies, then the rest's to the groups'), `uv lock --check`,
 `constricter --level=suffocate --all-scopes`,
-`constricter --coverage --all-scopes --fail-under=100`, `basedpyright --verifytypes` on the built
-wheel (every exported symbol typed; the Build job), `pytest --cov` (100% branch coverage; with
+`constricter --coverage --all-scopes --fail-under=100`, `basedpyright --verifytypes` (every
+exported symbol typed), `pytest --cov` (100% branch coverage; with
 `-n auto --dist loadgroup`, on every CPU). Everything generated goes in `local/`, but the
 standard-library tables `--fix` reads (`constricter/fix/tables/`) and the tests'
 `stdlib_tables/partial.json`, which git ignores: a build (`hatch_build.py`), the editable install
