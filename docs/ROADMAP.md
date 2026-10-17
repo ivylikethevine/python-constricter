@@ -543,10 +543,13 @@
   off a `Callable`, and a comment it took for a `type: ignore`; a warning fails it, but for
   `redundant-cast`, the casts being the other checkers'.
 - **The public API, wholly typed**: `basedpyright --verifytypes constricter` on the built wheel, in
-  the Build job, fails under a 100% completeness score (it exits 0 whatever the score). It reads the
-  package of the `python` first on PATH, ignoring `--pythonpath` and a venv config: the smoke
-  venv's, from outside the checkout. It found two: a discarded `signal` handler and the pylint
-  plugin's `msgs`, inferred from the base class.
+  the Build job, fails under a 100% completeness score (it exits 0 whatever the score) and names
+  each symbol that isn't. It reads the package of the `python` first on PATH, ignoring
+  `--pythonpath` and a venv config: the smoke venv's, from outside the checkout. It found three: a
+  discarded `signal` handler; the pylint plugin's `msgs`, inferred from the base class; and its
+  `process_module`'s parameter, astroid's `Module`, which astroid (no `py.typed`) leaves unknown
+  under Python 3.11's semantics where `--ignoreexternal` excuses it under 3.14's: now a Protocol of
+  the two members the checker reads.
 - **Dependencies and docstrings, checked**: deptry holds the package's imports to its dependencies
   and extras, and the rest's to what some group declares (`[tool.deptry]`, two runs in the Lint job:
   deptry takes every group for a dev one). pydoclint, as a flake8 plugin, holds a docstring's

@@ -10,7 +10,7 @@ Each job's `run:` steps are taken from the workflow, so the list can't drift fro
 parallel with `local/.venv/bin` first on `PATH`. A step fails by its exit status, never its output
 (pylint still rates a run with one finding 10.00/10), and every failing step's output is printed
 in full at the end; the command exits 1 if any failed. A passing step's warnings (the `::warning`
-commands it prints for the runner: a module past 900 lines) are listed after. What only makes
+commands it prints for the runner: a module past 800 lines) are listed after. What only makes
 sense on a runner is adapted: `npm ci` runs only when `.github/node_modules` is missing, lychee is
 the one on `PATH` (the step is skipped without it), and the Test job's `COVERAGE` is `--cov`.
 
