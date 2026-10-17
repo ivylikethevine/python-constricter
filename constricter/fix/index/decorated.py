@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: MIT
-"""Declared returns under decorators another module defines: kept where it gives the function back.
+"""Returns under decorators another module defines: kept where it gives the function back.
 
 A module alone vouches for the standard library's such decorators and its own (see
 `constricter.rules.decorators`); with the index, for those it imports from a checked file or an
 installed package too (`@set_module("pandas")`, declared `-> Callable[[F], F]`), once the type
-variables their signatures name are found to be ones.
+variables their signatures name are found to be ones. A declared return is kept, and an unannotated
+function's `return`s may type its calls (`unannotated`), as an undecorated one's do.
 """
 
 from collections.abc import Iterator, Mapping
@@ -24,37 +25,55 @@ if TYPE_CHECKING:
 def passed(catalog: Index) -> Index:
     """Add to each module's functions' declared returns those under decorators the index vouches for.
 
-    Its classes' classmethods' and staticmethods' too.
+    Its classes' classmethods' and staticmethods' too; and its unannotated functions under such
+    decorators (`decorated`) join those a `return` could type (`unannotated`).
 
     Returns:
-      The index, with them among each module's `returns` and `sides`, and named in its `vouched`
-      and `vouched_sides`.
+      The index, with them among each module's `returns`, `sides` and `unannotated`, and named in
+      its `vouched` and `vouched_sides`.
 
     """
     found: dict[str, Module] = {}
     module: Module
     for module in catalog.modules.values():
-        if not (module.held or module.held_sides):
+        if not (module.held or module.held_sides or module.decorated):
             continue
-        vouched: frozenset[str] = frozenset(_vouched(catalog, module))
+        trusted: frozenset[str] = frozenset(_vouched(catalog, module))
         more: dict[str, str] = {
-            name: held.returns for name, held in module.held.items() if vouched.issuperset(held.decorators)
+            name: held.returns for name, held in module.held.items() if trusted.issuperset(held.decorators)
         }
         sides: dict[tuple[str, str], str] = {
             (owner, name): held.returns
             for owner, methods in module.held_sides.items()
             for name, held in methods.items()
-            if vouched.issuperset(held.decorators)
+            if trusted.issuperset(held.decorators)
         }
-        if more or sides:
+        freed: frozenset[str] = frozenset(
+            name for name, spellings in module.decorated.items() if trusted.issuperset(spellings)
+        )
+        if more or sides or freed:
             found[module.name] = replace(
                 module,
                 returns={**module.returns, **more},
                 vouched=frozenset(more),
                 sides=_with_sides(module.sides, sides),
                 vouched_sides=frozenset(sides),
+                unannotated=module.unannotated | freed,
             )
     return catalog._replace(modules={**catalog.modules, **found}) if found else catalog
+
+
+def vouched(catalog: Index, path: Path) -> frozenset[str]:
+    """Spell the decorators the file at `path` uses that give a function back, by the index.
+
+    Returns:
+      Each, as `decorators.spelled` reads its use; nothing for a file `catalog` doesn't have.
+
+    """
+    module: Module | None
+    if path.suffix != SUFFIX or (module := catalog.modules.get(module_name(path))) is None:
+        return frozenset()
+    return frozenset(_vouched(catalog, module))
 
 
 def _with_sides(

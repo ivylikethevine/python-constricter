@@ -57,6 +57,7 @@ _ITERATOR_KEYWORDS: Final = {
 # `tuple[T, ...]`'s two parts: the element type and the ellipsis.
 _ANY_LENGTH: Final = 2
 _NAMED_TUPLE: Final = ["NamedTuple"]  # the one base of a class whose annotated variables are its fields
+_PAIR: Final = 2  # a functional `NamedTuple`'s field: its name and type
 _TUPLES: Final = frozenset({"tuple", "Tuple"})
 _UNIONS: Final = frozenset({"Union", "Optional"})
 _UNION: Final = re.compile(r"\||\b(?:Union|Optional)\[")  # in a quoted alias
@@ -68,9 +69,10 @@ def named_tuples(tree: ast.Module) -> dict[str, str]:
     """Map each tuple type the module names to the tuple unpacking one gives.
 
     A class defined once, directly under `NamedTuple` alone, with two fields or more: its fields'
-    types. A type alias of a tuple (`Pair: TypeAlias = tuple[int, str]`, `Pair = tuple[int, str]`,
-    `type Pair = tuple[int, str]`) at the module's top level, bound once there and naming none of
-    its type variables: the tuple.
+    types; or under a `NamedTuple("P", [("x", int), ...])` call alone, the call's. A type alias of a
+    tuple (`Pair: TypeAlias = tuple[int, str]`, `Pair = tuple[int, str]`, `type Pair = tuple[int,
+    str]`) at the module's top level, bound once there and naming none of its type variables: the
+    tuple.
 
     Returns:
       Each one's name, and the tuple's type as text.
@@ -81,15 +83,44 @@ def named_tuples(tree: ast.Module) -> dict[str, str]:
     counts: Counter[str] = Counter(node.name for node in nodes)
     node: ast.ClassDef
     for node in nodes:
+        fields: list[str] | None = None
         if counts[node.name] == 1 and [node_name(base) for base in node.bases] == _NAMED_TUPLE:
-            fields: list[str] = [
+            fields = [
                 written(stmt.annotation)
                 for stmt in node.body
                 if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name)
             ]
-            if len(fields) > 1:
-                found[node.name] = f"tuple[{', '.join(fields)}]"
+        elif counts[node.name] == 1 and len(node.bases) == 1:
+            fields = _called_fields(node.bases[0])
+        if fields is not None and len(fields) > 1:
+            found[node.name] = f"tuple[{', '.join(fields)}]"
     return found
+
+
+def _called_fields(base: ast.expr) -> list[str] | None:
+    """Read the fields of a `NamedTuple("P", [("x", int), ("y", str)])` call as a base.
+
+    Returns:
+      Their types as written, in order; `None` for any other base, a `namedtuple(...)` call's
+      untyped fields included.
+
+    """
+    func: ast.expr
+    elts: list[ast.expr]
+    match base:
+        case ast.Call(
+            func=func,
+            args=[ast.Constant(value=str()), ast.List(elts=elts) | ast.Tuple(elts=elts)],
+            keywords=[],
+        ) if node_name(func) == _NAMED_TUPLE[0]:
+            pairs: list[list[ast.expr]] = [
+                list(elt.elts) for elt in elts if isinstance(elt, ast.Tuple) and len(elt.elts) == _PAIR
+            ]
+            if len(pairs) != len(elts) or any(not isinstance(name, ast.Constant) for name, _ in pairs):
+                return None
+            return [written(annotation) for _, annotation in pairs]
+        case _:
+            return None
 
 
 def _aliased_tuples(tree: ast.Module) -> dict[str, str]:

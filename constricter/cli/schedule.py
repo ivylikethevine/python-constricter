@@ -107,6 +107,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         untyped=linked.untyped(modules, path),
         unions=tuples.unions(modules, path, guarded),
         managers=managed.calls(modules, path, guarded),
+        vouched=decorated.vouched(modules, path),
         takers=taken.calls(modules, path, guarded),
         emptied=beyond.emptied(modules, path),
     )

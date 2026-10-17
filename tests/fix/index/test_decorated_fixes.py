@@ -11,6 +11,7 @@ import pytest
 from constricter import Offence, check_source
 from constricter.fix.core.known import Guarded, Outside
 from constricter.fix.index import decorated, project
+from constricter.fix.values import returned
 from constricter.rules import decorators
 from constricter.rules.decorators import Held, Pass
 
@@ -257,6 +258,124 @@ def f() -> None:
     c = other()
     d = echo(f)
 """
+_INFERRED: Final = """
+import unittest
+from unittest import skipIf
+
+HAS_NET: bool = True
+
+
+def _id(obj):
+    return obj
+
+
+def requires(resource):
+    if resource == "gui":
+        return unittest.skip("no gui")
+    if HAS_NET:
+        return _id
+    return unittest.skip("no " + resource)
+
+
+def only(test):
+    return requires("cpu")(test)
+
+
+def wrapped(func):
+    def inner():
+        return func()
+
+    return inner
+
+
+def nothing(resource):
+    pass
+
+
+def partly(func) -> None:
+    return func
+
+
+@requires("net")
+def fetch():
+    return 1
+
+
+@only
+@unittest.skipUnless(HAS_NET, "net")
+def count():
+    return "x"
+
+
+@skipIf(False, "never")
+@unittest.expectedFailure
+def flaky():
+    return b""
+
+
+@wrapped
+def hidden():
+    return 1.5
+
+
+@registry["x"]
+def unspelled():
+    return 1
+
+
+def use() -> None:
+    a = fetch()
+    b = count()
+    c = flaky()
+    d = hidden()
+    e = unspelled()
+"""
+
+_SUPPORT: Final = """
+import unittest
+
+HAS_SUBPROCESS: bool = True
+
+
+def _id(obj):
+    return obj
+
+
+def requires_subprocess():
+    return unittest.skipUnless(HAS_SUBPROCESS, "requires subprocess support")
+
+
+def requires_resource(resource):
+    if resource == "gui":
+        return unittest.skip("no gui")
+    return _id
+"""
+
+_HELPER: Final = """
+from pkg import support
+
+
+@support.requires_subprocess()
+def run():
+    return 3
+
+
+@support.requires_resource("cpu")
+def heavy():
+    return "h"
+
+
+@support.unknown()
+def hidden():
+    return 1.5
+
+
+def use() -> None:
+    x = run()
+    y = heavy()
+    z = hidden()
+"""
+
 _MAIN: Final = """
 from pkg.api import kept, other, ranged
 
@@ -349,3 +468,49 @@ def test_an_index_with_nothing_held_is_left_as_it_is(tmp_path: Path) -> None:
     plain: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
     assert plain.modules["plain"].held == {"f": Held("int", ("other.deco",))}
     assert decorated.passed(plain) is plain
+
+
+def test_a_decorator_read_from_its_body_gives_the_function_back() -> None:
+    """Unannotated: one parameter returned, or a factory's decorator applied to it; a factory, a decorator.
+
+    An unannotated function under such decorators alone has its `return`s type its calls; under one
+    that wraps it, not.
+    """
+    tree: ast.Module = ast.parse(textwrap.dedent(_INFERRED))
+    assert decorators.passes(tree) == {
+        "_id": Pass(called=False, type_vars=frozenset()),
+        "requires": Pass(called=True, type_vars=frozenset()),
+        "only": Pass(called=False, type_vars=frozenset()),
+    }
+    # What another module might vouch for: not a function under a decorator that can't be spelled.
+    assert returned.held_back(tree.body) == {
+        "fetch": ("requires()",),
+        "count": ("only", "unittest.skipUnless()"),
+        "flaky": ("skipIf()", "unittest.expectedFailure"),
+        "hidden": ("wrapped",),
+    }
+    fixes: _Fixes = {o.name: o.fix for o in check_source(textwrap.dedent(_INFERRED))}
+    assert {name: fixes.get(name) for name in "abcde"} == {
+        "a": "int",
+        "b": "str",
+        "c": "bytes",
+        "d": None,
+        "e": None,
+    }
+
+
+def test_another_modules_decorator_read_from_its_body_is_vouched_for(tmp_path: Path) -> None:
+    """The index vouches for an imported decorator read from its body, as for one read from its signature."""
+    _ = _write(tmp_path / "pkg" / "__init__.py", "")
+    _ = _write(tmp_path / "pkg" / "support.py", _SUPPORT)
+    helper: Path = _write(tmp_path / "pkg" / "helper.py", _HELPER)
+    catalog: project.Index = decorated.passed(project.index(sorted(tmp_path.rglob("*.py"))))
+    vouched: frozenset[str] = decorated.vouched(catalog, helper)
+    assert vouched == {"support.requires_subprocess()", "support.requires_resource()"}
+    assert decorated.vouched(catalog, tmp_path / "missing.py") == frozenset()
+    assert catalog.modules["pkg.helper"].unannotated == {"run", "heavy"}
+    fixes: _Fixes = {
+        o.name: o.fix
+        for o in check_source(helper.read_text(encoding="utf-8"), outside=Outside(vouched=vouched))
+    }
+    assert {name: fixes.get(name) for name in "xyz"} == {"x": "int", "y": "str", "z": None}

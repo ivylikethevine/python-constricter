@@ -427,6 +427,8 @@ class Known:
     names: LibraryNames = field(default_factory=LibraryNames)
     limits: Limits = field(default_factory=Limits)
     returned: Returned = field(default_factory=Returned)
+    # The decorators that give a function back, as the module spells them (see `rules.decorators`).
+    vouched: frozenset[str] = frozenset()
 
     def is_builtin(self, name: str) -> bool:
         """Check that `name` still means the builtin: nothing in the module binds it (a parameter, say).
@@ -608,6 +610,8 @@ class Outside:  # pylint: disable=too-many-instance-attributes
     takers: Mapping[str, Takers] = field(default_factory=dict[str, Takers])
     # What `with` gives of each call it makes to their `@contextmanager` functions (see `index.managed`).
     managers: Mapping[str, Passed] = field(default_factory=dict[str, Passed])
+    # The decorators it uses that give a function back, by the index (see `index.decorated.vouched`).
+    vouched: frozenset[str] = frozenset()
 
     @override
     def __getstate__(self) -> dict[str, object]:
@@ -694,6 +698,7 @@ class Outside:  # pylint: disable=too-many-instance-attributes
                 name: {param: taken for param, taken in takers.items() if not roots(taken[2]) & clashing}
                 for name, takers in self.takers.items()
             },
+            vouched=self.vouched,
         )
 
 

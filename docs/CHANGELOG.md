@@ -6,13 +6,45 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` types a test case's `with self.assertRaises((OSError, ValueError)) as cm:` as an
+  `_AssertRaisesContext[OSError | ValueError]`: a tuple of classes binds a `type[_E]`'s `_E` to
+  their union where the parameter takes a tuple of them too (the tables now say which do). And the
+  standard-library tables hold a class attribute declared `type[C]` of a builtin class, so
+  `with self.assertRaises(self.failureException) as cm:` is an `_AssertRaisesContext[BaseException]`.
+- A class whose base is a call to a functional `namedtuple`, `NamedTuple` or `TypedDict`
+  (`class Result(collections.namedtuple("Result", "rc out err"))`) is plain: its body's variables
+  are fixed, and constructing it is typed as its instance (a guess, as every constructor's call is),
+  so `res = assert_python_ok(...)` on the standard library's tests is a `_PythonRunResult`. A
+  `NamedTuple("P", [("x", int), ("y", str)])` call's class is unpacked by its fields, a
+  `TypedDict("D", {"a": int})` call's read by its keys; a `namedtuple(...)`'s fields stay untyped, as
+  they are to every checker.
+- The corpus runner no longer reads a suite's captured log records (`ERROR    logger:file.py:141
+  message`) as tests that errored: sphinx's three such lines counted as three new failures after every
+  fix, since the fix moved the line number.
+- `--fix` types a call to an unannotated function decorated only by decorators that give it back:
+  `unittest.skip`, `skipIf`, `skipUnless` and `expectedFailure`, and a function the module or
+  another checked file defines whose body says so, with no annotation (`def _id(obj): return obj`;
+  a factory each of whose `return`s is such a decorator, `return unittest.skipUnless(ok, "why")` or
+  `return _id`; or one that applies a factory's to its parameter, `return impl_detail(**g)(test)`).
+  Before, any decorator but a pytest fixture's hid a function's `return`s from its callers:
+  `test.support`'s `requires_subprocess()`, `requires_resource(...)` and `cpython_only` kept the
+  standard library's test helpers under them untyped, `script_helper.assert_python_ok` among them.
+- `--fix` types a test case's `with self.assertRaises(csv.Error) as cm:` by a standard-library
+  exception class as the module names it (`sqlite.OperationalError` under `import sqlite3 as
+  sqlite`, `ArgumentError` from `ctypes`), and by a value typed `type[C]`, an
+  `_AssertRaisesContext[C]`: before, only a builtin class, one of the module's own or an installed
+  package's bound `_E`. To a parameter that isn't a `type[T]`, such a class is the value it was. By
+  the 0.3.8-rc.1 census, about 45 of the standard library's tests' `cm` bindings with no fix, to be
+  recounted.
 - The release's compiled wheels build again: cibuildwheel builds in the unpacked sdist, so the
   `mypyc` group's hash-checked requirements it installs first (`mypyc.txt`) are now exported into
   the sdist by the build action, not left in the checkout, where the 0.3.7 and 0.3.8 releases'
   builds couldn't find them and neither reached PyPI.
 - `--fix --unsafe-fixes` no longer guesses the type of a number bound again by an augmented
   assignment with an operand of no known type (`factor = 1.5`, then `factor *= other`): a `Quantity`
-  once `other` is one. A text or a container stays one by `+=`. One guess fewer on pydantic.
+  once `other` is one. A text or a container stays one by `+=`. One guess fewer on pydantic; on
+  the 47 corpora, the 0.3.9-rc.1 mega run guessed 401 bindings fewer than 0.3.7-rc.1's, 336 of them
+  constants bound again, and its guesses the suites' traces contradicted fell from 408 to 401.
 - The flake8 plugin no longer breaks another plugin that deep-copies a node, as pydoclint's does:
   the check it keeps on a module's tree isn't copied with it.
 - `--fix` types a list, set or dict display its function adds to later by what's added too: numbers

@@ -27,13 +27,13 @@ from constricter.fix.index.origins import guarded_origins, origins_of
 from constricter.fix.index.params import Param, open_functions
 from constricter.fix.values import classvars, entered, fills
 from constricter.fix.values.bodies import yields_itself
-from constricter.fix.values.returned import unannotated
+from constricter.fix.values.returned import held_back, unannotated
 from constricter.fix.values.stored import untouched
 from constricter.overrides import override
 from constricter.rules import parsed
 from constricter.rules.annotations import dotted, is_composite, node_name
 from constricter.rules.declarations import awaited_returns, defined_type_vars, generic_classes
-from constricter.rules.decorators import Held, Pass, is_fixture
+from constricter.rules.decorators import Held, Pass, is_fixture, passing
 from constricter.rules.keys import key, optional
 from constricter.rules.syntax import child_statements, top_level
 from constricter.rules.tables import Tables, module_tables
@@ -72,6 +72,9 @@ class Module:  # pylint: disable=too-many-instance-attributes
     # What it imports under a top-level `if` or `try` (`if TYPE_CHECKING:`), for `type_vars` alone.
     guarded: Mapping[str, Origin] = field(default_factory=dict[str, Origin])
     unannotated: frozenset[str] = frozenset()  # its functions a `return` could type (`returned`)
+    # Those a `return` could type but for their decorators, with them spelled: the index may vouch
+    # for them (see `decorated.passed`), and they join `unannotated`.
+    decorated: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
     called: frozenset[str] = frozenset()  # what it calls through its top-level names (`f`, `u.f`)
     passed: frozenset[str] = frozenset()  # what it passes as an argument through them (`np.float64`)
     method_calls: frozenset[str] = frozenset()  # the methods it calls on anything (`astype` in `a.astype(x)`)
@@ -334,7 +337,8 @@ def read(path: Path, name: str | None = None) -> Module | None:
         methods=own.order.flattened(own.methods),
         type_vars=defined_type_vars(tree),
         guarded=guarded_origins(tree, named, is_package=path.stem == _PACKAGE),
-        unannotated=unannotated(tree.body),
+        unannotated=unannotated(tree.body, passing(tree, defined_type_vars(tree))),
+        decorated=held_back(tree.body),
         called=_called(tree, names),
         generics=generic_classes(tree),
         loose=frozenset[str]().union(*(_loose(node.body) for node in walked_classes(tree))),

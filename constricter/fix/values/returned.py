@@ -44,6 +44,7 @@ from constricter.rules.syntax import FunctionDef, Start, within
 from constricter.rules.walked import classes, of_type
 
 _NONE: Final = "None"
+_UNVOUCHED: Final[frozenset[str]] = frozenset()  # no decorator vouched for: a module read alone
 # What a call calls: a name (`f()`), or an attribute (`x.m()`), the other `None`.
 _Callee: TypeAlias = tuple[str | None, str | None]
 _Call: TypeAlias = tuple[tuple[int, int], _Callee]  # where a call starts (line, column), and what it calls
@@ -54,11 +55,13 @@ def returned(
     recorded: Mapping[int, Sequence[Recorded]],
     assigned: Mapping[int, Sequence[Assigned]],
     used: Mapping[int, Sequence[Used]],
+    vouched: frozenset[str] = _UNVOUCHED,
 ) -> Returned:
     """Read what the module's unannotated functions and methods return, and what its classes assign.
 
     `recorded` holds each checked function's `return` statements, `assigned` its `self.x = value`
-    assignments and `used` its reads of `self`'s empty containers, by the function's `id()`.
+    assignments and `used` its reads of `self`'s empty containers, by the function's `id()`;
+    `vouched` spells the decorators that give a function back (see `constricter.rules.decorators`).
 
     Returns:
       Their return types: the module's functions', and each class's methods'; and each class's
@@ -71,14 +74,14 @@ def returned(
     name: str
     annotation: str
     origins: frozenset[str]
-    for name, annotation, origins in _typed(tree, tree.body, recorded):
+    for name, annotation, origins in _typed(tree, tree.body, recorded, vouched):
         calls[name] = annotation
         if origins:
             guesses[name] = origins
     attributes: dict[str, dict[str, str]] = {}
     node: ast.ClassDef
     for node in classes(tree):
-        for name, annotation, origins in _typed(tree, node.body, recorded):
+        for name, annotation, origins in _typed(tree, node.body, recorded, vouched):
             methods.setdefault(node.name, {})[name] = annotation
             if origins:
                 guesses[f"{node.name}.{name}"] = origins
@@ -136,18 +139,38 @@ def exported(own: Returned, lineage: Lineage) -> Returns:
     return Returns(dict(own.calls), guesses, methods=methods)
 
 
-def unannotated(body: Sequence[ast.stmt]) -> frozenset[str]:
+def unannotated(body: Sequence[ast.stmt], vouched: frozenset[str] = _UNVOUCHED) -> frozenset[str]:
     """Name the functions in `body` whose `return`s could type their calls (see `_return_type`).
 
     Returns:
-      Each plain function's name that has no decorator or declared return.
+      Each plain function's name that has no declared return, nor a decorator but those `vouched`
+      spells (see `constricter.rules.decorators`).
 
     """
     return frozenset(
         func.name
         for func in _plain(body)
-        if isinstance(func, ast.FunctionDef) and not _decorated(func) and func.returns is None
+        if isinstance(func, ast.FunctionDef) and not _decorated(func, vouched) and func.returns is None
     )
+
+
+def held_back(body: Sequence[ast.stmt]) -> dict[str, tuple[str, ...]]:
+    """Name the functions in `body` whose `return`s could type their calls, but for their decorators.
+
+    Returns:
+      Each plain function's name that has no declared return, with its decorators as spelled: another
+      module may vouch for them (see `constricter.fix.index.decorated`). Not one with a decorator
+      that can't be spelled.
+
+    """
+    found: dict[str, tuple[str, ...]] = {}
+    func: FunctionDef
+    for func in _plain(body):
+        if isinstance(func, ast.FunctionDef) and func.returns is None and _decorated(func, _UNVOUCHED):
+            spellings: list[str | None] = [spelled(each) for each in func.decorator_list]
+            if None not in spellings:
+                found[func.name] = tuple(text for text in spellings if text is not None)
+    return found
 
 
 def called(module: ast.Module, node: ast.AST, found: Returned) -> bool:
@@ -232,16 +255,17 @@ def _key(func: FunctionDef) -> str:
     return f"{entered.ENTERED}{func.name}" if entered.is_manager(func) else func.name
 
 
-def _decorated(func: FunctionDef) -> bool:
+def _decorated(func: FunctionDef, vouched: frozenset[str]) -> bool:
     """Check whether a function has a decorator that may change what calling it gives.
 
-    Not a pytest fixture's alone: the fixture's value is what the function returns (or yields).
+    Not a pytest fixture's: the fixture's value is what the function returns (or yields). Nor one
+    `vouched` spells, which gives the function back.
 
     Returns:
       Whether it has.
 
     """
-    return bool(func.decorator_list) and not all(spelled(each) in FIXTURES for each in func.decorator_list)
+    return any(spelled(each) not in FIXTURES and spelled(each) not in vouched for each in func.decorator_list)
 
 
 def _plain(body: Sequence[ast.stmt]) -> list[FunctionDef]:
@@ -277,10 +301,19 @@ class Table:
     are checked: what reads them later knows them the first time.
     """
 
-    def __init__(self, module: ast.Module, imported: Returns | None = None) -> None:
-        """Start a table for `module`, with what the functions it imports from other files return."""
+    def __init__(
+        self,
+        module: ast.Module,
+        imported: Returns | None = None,
+        vouched: frozenset[str] = _UNVOUCHED,
+    ) -> None:
+        """Start a table for `module`, with what the functions it imports from other files return.
+
+        `vouched` spells the decorators that give a function back (see `constricter.rules.decorators`).
+        """
         imported = imported or Returns()
         self.module: ast.Module = module
+        self.vouched: frozenset[str] = vouched
         self.recorded: dict[int, list[Recorded]] = {}
         self.assigned: dict[int, list[Assigned]] = {}  # each checked function's `self.x = value`s
         self.used: dict[int, list[Used]] = {}  # each checked function's reads of `self`'s empty containers
@@ -307,7 +340,7 @@ class Table:
         self._completed(func)
         slot: Slot | None = slots(self.module).get(id(func))
         found: tuple[str, frozenset[str]] | None
-        if slot is None or (found := _return_type(self.module, func, returns)) is None:
+        if slot is None or (found := _return_type(self.module, func, returns, self.vouched)) is None:
             return
         annotation: str
         origins: frozenset[str]
@@ -394,6 +427,7 @@ def _typed(
     module: ast.Module,
     body: Sequence[ast.stmt],
     recorded: Mapping[int, Sequence[Recorded]],
+    vouched: frozenset[str],
 ) -> Iterator[tuple[str, str, frozenset[str]]]:
     """Find the plain unannotated functions directly in `body` whose `return`s decide their type.
 
@@ -404,7 +438,7 @@ def _typed(
     func: FunctionDef
     for func in _plain(body):
         found: tuple[str, frozenset[str]] | None
-        if (found := _return_type(module, func, recorded.get(id(func), ()))) is not None:
+        if (found := _return_type(module, func, recorded.get(id(func), ()), vouched)) is not None:
             yield _key(func), *found
 
 
@@ -412,6 +446,7 @@ def _return_type(
     module: ast.Module,
     func: FunctionDef,
     returns: Sequence[Recorded],
+    vouched: frozenset[str],
 ) -> tuple[str, frozenset[str]] | None:
     """Type a plain function from its recorded `return`s.
 
@@ -430,7 +465,7 @@ def _return_type(
         if is_generator(module, func)
         else terminates(func.body) and not manager
     )
-    if (_decorated(func) and not manager) or declared or not returns or not decided:
+    if (_decorated(func, vouched) and not manager) or declared or not returns or not decided:
         return None
     types: set[str | None] = {None if found is None else found.annotation for found, _ in returns}
     found: str | None

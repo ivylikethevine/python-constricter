@@ -690,15 +690,27 @@ each item sized the same way.
    takes under 93 minutes, or 100 held to what each was given. The basic run of 0.3.8-rc.1, with the
    three suites at new tags and so no record to size their steps by, took 58 minutes and used 66% of
    its CPU seconds (about 72% before its timed checks): django's tests kept 6.5 CPUs busy on the 1
-   given, and pandas's `infer-pyrefly` waited 31 minutes for 20 GB. Done when a mega run uses 85% of
-   its CPU seconds, and one with no earlier run under its output takes within a tenth of one sized
-   by its own. About 2 hours beside the runs; coverage unchanged.
+   given, and pandas's `infer-pyrefly` waited 31 minutes for 20 GB. The mega run of 0.3.9-rc.1,
+   the first with the suites' tests holding what they kept busy, took 161 minutes (replayed at 141)
+   and used 78% of its CPU seconds, 13 to 15 CPUs busy until minute 150: every step but the suites'
+   tests had ended by minute 132; the tests (378 steps, 232 step-minutes, 1,336 CPU-minutes) ran two
+   at a time on the 8 CPUs each held, keeping 5 to 10 busy, until 150, mypy's traced and type-checked
+   tests after waits of 50 minutes and sqlalchemy's 9-minute tests starting at 138; and the 47 timed
+   checks took the last 11 minutes alone with 1 to 3 CPUs busy (10 step-minutes). The suites' tests
+   are the tail now, and the order they start in the lever: the longest (mypy's, sqlalchemy's,
+   pandas's, dask's, optuna's) waited for the fixes and checkers before them. Done when a mega run
+   uses 85% of its CPU seconds, and one with no earlier run under its output takes within a tenth of
+   one sized by its own. About 2 hours beside the runs; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
 1. **What a guess breaks, by its cause.** After `--fix --unsafe-fixes` the packages' own type
    checkers find one new error on pandas (from 42), and none on sqlalchemy or pydantic; of the mega
-   corpora's 38, 17 on mypy, 10 on pint, 2 on mcp and one on each of narwhals, nibabel and optuna.
+   corpora's 30 on the 0.3.9-rc.1 run (38 before), 17 on mypy, 5 on mcp, 4 on pint (from 10, by the
+   augmented assignment below) and one on each of narwhals, nibabel and optuna. mcp's 3 new ones are
+   a dict display's guess: `headers = {"a": x}` typed `dict[str, str | None]` by what the function
+   adds to it later (`container` with `joined`), then passed where a `Mapping[str, str]` is wanted;
+   a display's guess from its later additions should not widen what a call already takes.
    By the fixes' sets of mechanisms ([LIKELY.md](LIKELY.md)), those with `rebound` are blamed for an
    error 0.30 times in each 100 guesses a checker read, a `constructor` 0.06 times; on the mega
    corpora's suites and pydantic alone, 0.70 (6 of 853) and 0.31 (14 of 4,517, each mypy's `lxml`),
@@ -988,39 +1000,25 @@ among the 252,056 offences: each adds offences of its own.
 
 Gaps the census exposes in what `--fix` infers, smallest first.
 
-1. **`with self.assertRaises(...) as cm`.** `cm` is the 19th commonest name with no fix on the seven
-   corpora (627 of the 2026-10-02 rows): 451 are `self.assertRaises(...)`, the rest `assertWarns`,
-   `assertRaisesRegex`, `assertWarnsRegex` and `support.catch_unraisable_exception`. typeshed
-   declares them `_AssertRaisesContext[_E]`, `_E` bound through `type[_E] | tuple[type[_E], ...]`,
-   and their `__enter__` returns `Self`. Find which step loses it (the union parameter, the
-   inherited method on a test case, the `with` target's `Self`) before any new mechanism. Done when
-   `cm` is an `_AssertRaisesContext[ValueError]`. About 3 hours; coverage about 0.2%.
-2. **A class whose base is a `namedtuple(...)` call.** `test.support.script_helper` defines
-   `class _PythonRunResult(collections.namedtuple(...))`; 852 calls to `assert_python_ok` and
-   `assert_python_failure` on the standard library's tests have no fix (the census's commonest
-   standard-library functions), though the chain is machinery that exists: a tuple display of a
-   constructor and a list, unpacked, a local returned. A base that's a call to a functional
-   `namedtuple`, `NamedTuple` or `TypedDict` is a class with those fields. Done when
-   `rc, out, err = assert_python_ok(...)` types its three names. About 3 hours; coverage about 0.4%.
-3. **`getattr` by a literal name.** 576 of the 1,268 `getattr(...)` bindings with no fix on the
+1. **`getattr` by a literal name.** 576 of the 1,268 `getattr(...)` bindings with no fix on the
    seven corpora name the attribute as a literal, 521 of them with a default: on a receiver whose
    type is known that's `obj.name`'s type, with a default `T | D`; today an `Any`, or an `Any | T`
    (`fix/values/shapes.py`). Done when `getattr(self.conn, "timeout", None)` is typed as
    `self.conn.timeout` is. About 3 hours; coverage up to 0.2%.
-4. **An assignment's `# type:` comment as its fix.** With `type-comments` off, `x = v  # type: T` is
+2. **An assignment's `# type:` comment as its fix.** With `type-comments` off, `x = v  # type: T` is
    LVA001 and its fix is inferred from `v`, the author's `T` ignored (`rules/binding.py` reads the
    comment only to decide whether the name is annotated); a loop's comment (LVA003) is already the
    declaration written, and dropped. The same for an assignment and a `with` target: `T` as the
    annotation, certain, the comment dropped, where `T` parses and names what the module can.
    Unmeasured: the census doesn't see comments. Done when pip's modules without `__future__` imports
    keep their comments' types under `--fix`. About 3 hours; coverage unmeasured.
-5. **`pytest.importorskip("mod")` as an import.** 272 bindings on the seven corpora are its `Any`,
+3. **`pytest.importorskip("mod")` as an import.** 272 bindings on the seven corpora are its `Any`,
    and what's read of them (`pa.array(...)` in pandas's tests) has no fix either. The name is the
    module the literal names: known as `import mod as name` is for what's read of it, the binding
    itself left (an annotation would hide the module from a checker). Done when
    `pa = pytest.importorskip("pyarrow")`, then `arr = pa.array(...)`, types `arr`. About 3 hours;
    coverage unmeasured.
-6. **`defaultdict` and `Counter` through `filled`.** 229 `collections.defaultdict(...)` calls have
+4. **`defaultdict` and `Counter` through `filled`.** 229 `collections.defaultdict(...)` calls have
    no fix on the 47 corpora ([Done](#--fix) states the limitation, with no item): `filled` types an
    empty container by what the function adds to it, so `defaultdict(list)` is a
    `defaultdict[K, list[V]]` by its `d[k].append(v)`, `Counter()` a `Counter[K]` by its `c[k] += 1`

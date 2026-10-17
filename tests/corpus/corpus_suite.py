@@ -106,8 +106,10 @@ _PYRIGHTS: Final = frozenset({"pyright", "basedpyright"})
 _PROJECT: Final = frozenset({"-p", "--project"})  # Pyright's option naming its settings
 # pytest's `-rfE` lines (the test, then ` - ` and why; a parametrized id may hold a space), and
 # unittest's (Django's runner's) headers of each failure and error: not a logged line
-# (`ERROR - 2026-10-13 ... - litestar - ...`), nor unittest's summary (`FAILED (failures=2)`).
-_FAILED: Final = re.compile(r"^(?:FAILED |ERROR (?!- )|FAIL: |ERROR: )(?!\()(.+?)(?= - |$)", re.MULTILINE)
+# (`ERROR - 2026-10-13 ... - litestar - ...`), nor a captured log record, its level padded to eight
+# columns (`ERROR    sphinx.util:logging.py:141 Duplicate target name`, whose line a fix moves), nor
+# unittest's summary (`FAILED (failures=2)`).
+_FAILED: Final = re.compile(r"^(?:FAILED |ERROR (?![-\s])|FAIL: |ERROR: )(?!\()(.+?)(?= - |$)", re.MULTILINE)
 # pytest's summary's counts, but its warnings': those come and go between runs of the same code.
 _COUNTS: Final = re.compile(r"(\d+) (passed|failed|skipped|xfailed|xpassed|errors?)")
 # pytest's summary line, bare (`-q`) or between `=`s: its counts, before how long it took

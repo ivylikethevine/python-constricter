@@ -74,6 +74,7 @@ _CLASS_GETITEM: Final = "__class_getitem__"
 _TYPING: Final = frozenset({"typing", "typing_extensions"})
 # Builtins spelled as themselves; `object` and `type` are vague, `function` and `ellipsis` internal.
 _BUILTIN_SKIPPED: Final = frozenset({"object", "type", "function", "ellipsis"})
+_TYPE_OF: Final = "type"  # subscripted, a class as a value: `type[C]`
 # The builtin containers, however spelled, and how many type parameters each takes (`None`: any).
 _GENERICS: Final = {"list": "list", "set": "set", "frozenset": "frozenset", "dict": "dict", _TUPLE: _TUPLE}
 TYPING_GENERICS: Final = {
@@ -258,7 +259,9 @@ class Reading:
             return self._special(found.name, args, module, owner, hops)
         name: str | None = (TYPING_GENERICS if found.module in _TYPING else _GENERICS).get(found.name)
         if name is None or (found.module != _BUILTINS and found.module not in _TYPING):
-            return None
+            # A class as a value (`failureException: type[BaseException]`): of a builtin class alone.
+            typed: bool = found.module == _BUILTINS and found.name == _TYPE_OF and len(args) == 1
+            return self._type_of(args[0], module, owner, hops) if typed else None
         if name == _TUPLE and len(args) == _SEQUENCE and _is_ellipsis(args[1]):
             element: Form | None = self.form(args[0], module, owner, hops + 1)
             return Text(f"tuple[{element.text}, ...]") if isinstance(element, Text) else None
@@ -267,6 +270,20 @@ class Reading:
         if not texts or len(texts) != len(parts) or ARITY.get(name, len(parts)) != len(parts):
             return None
         return Text(f"{name}[{', '.join(texts)}]")
+
+    def _type_of(self, arg: ast.expr, module: str, owner: ClassRef | None, hops: int) -> Form | None:
+        """Read `type[C]`'s form: a text, where `C` is a builtin class.
+
+        Returns:
+          It, or `None`.
+
+        """
+        klass: Form | None = self.form(arg, module, owner, hops + 1)
+        return (
+            Text(f"{_TYPE_OF}[{klass.text}]")
+            if isinstance(klass, Text) and klass.text.isidentifier()
+            else None
+        )
 
     def _special(
         self,

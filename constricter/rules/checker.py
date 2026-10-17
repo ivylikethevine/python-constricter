@@ -298,7 +298,7 @@ def _settled(
       return.
 
     """
-    table: returned.Table = returned.Table(tree, imported)
+    table: returned.Table = returned.Table(tree, imported, first.known.vouched)
     seeded: Seeded = first.parameters or Seeded()
     # The table, filled in as the functions are checked in call order, is what they all read.
     settings: Settings = replace(
@@ -364,7 +364,13 @@ def _returned(
       The check (see `_Round`), its settings with what the functions it imports return too.
 
     """
-    found: Returned = returned.returned(tree, table.recorded, table.assigned, table.used)
+    found: Returned = returned.returned(
+        tree,
+        table.recorded,
+        table.assigned,
+        table.used,
+        settings.known.vouched,
+    )
     settings = replace(settings, known=replace(settings.known, returned=returned.joined(imported, found)))
     functions: list[tuple[Scope, FunctionDef]] = [
         (scope, scope.kind.function) for scope in scopes if scope.kind.function is not None
@@ -403,7 +409,13 @@ def _rounds(tree: ast.Module, start: _Round, imported: Returns, again: set[int])
         if not again:
             break
         functions = _checked_again(tree, functions, again, settings, table)
-        latest: Returned = returned.returned(tree, table.recorded, table.assigned, table.used)
+        latest: Returned = returned.returned(
+            tree,
+            table.recorded,
+            table.assigned,
+            table.used,
+            settings.known.vouched,
+        )
         typed: bool = latest != found and returned.called(tree, tree, latest)  # even if only a body calls one
         # Attributes typed anew: what reads one, of any value, may be typed now.
         newly: set[str] = returned.retyped(found, latest)

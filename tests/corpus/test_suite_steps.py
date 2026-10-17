@@ -174,10 +174,14 @@ def test_a_unittest_summary_names_its_failures_and_not_its_counts() -> None:
 
 
 def test_a_pytest_failure_is_named_whole_before_its_reason() -> None:
-    """A parametrized id may hold a space (`test_x[a b]`); the ` - reason` after it varies between runs."""
+    """A parametrized id may hold a space (`test_x[a b]`); the ` - reason` after it varies between runs.
+
+    A captured log record (its level padded to eight columns, then `logger:file:line`) names no test.
+    """
     output: str = (
         "FAILED tests/test_a.py::test_x[a b] - AssertionError: 1 != 2\n"
         "ERROR tests/test_a.py::test_y - RuntimeError\nERROR - 2026-10-13 12:00:00 - pkg - a logged line\n"
+        'ERROR    sphinx.util.docutils:logging.py:141 Duplicate target name: "section"\n'
         "=== 1 failed, 1 error, 2 passed in 0.10s ===\n"
     )
     found: Outcome = corpus_suite.read(output)

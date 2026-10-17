@@ -9,7 +9,8 @@ from typing import Final, TypeAlias
 from constricter import Offence, check_source
 from constricter.cli import schedule
 from constricter.fix.index import project
-from constricter.fix.values import entered, targets
+from constricter.fix.values import classvars, entered, targets
+from constricter.rules import declarations
 
 # Each offence's fix and whether it's a guess.
 _Fixes: TypeAlias = dict[str, tuple[str | None, bool]]
@@ -182,6 +183,45 @@ def f(pair: shapes.Namespaces, other: Namespaces, plain: Plain) -> None:
     left, right = pair()
     raw, ratio = plain
 """
+_CALLED: Final = """
+import collections
+from typing import NamedTuple, TypedDict
+
+
+class Result(collections.namedtuple("Result", ("rc", "out", "err"))):
+    limit = 3
+
+    def fail(self):
+        return self.out
+
+
+class Point(NamedTuple("Point", [("x", int), ("y", str)])):
+    pass
+
+
+class Options(TypedDict("Options", {"name": str, "size": int})):
+    pass
+
+
+class Made(make("Made")):
+    pass
+
+
+class Loose(NamedTuple("Loose", [("x", int), "y"])):
+    pass
+
+
+def run():
+    return Result(0, b"", b"")
+
+
+def f(options: Options) -> None:
+    res = run()
+    x, y = Point(1, "")
+    name = options["name"]
+    rc, out, err = res
+"""
+
 _SMALL: Final = """
 class _stack:
     pass
@@ -320,3 +360,22 @@ def test_a_call_to_a_class_the_module_defines_constructs_it() -> None:
     (`config or Config()`, declared `Config | None`).
     """
     assert _fixes(_SMALL) == {"made": ("_stack", True), "called": (None, False), "copied": ("Config", True)}
+
+
+def test_a_class_under_a_functional_namedtuple_call_is_plain_with_its_fields() -> None:
+    """A `namedtuple(...)`, `NamedTuple(...)` or `TypedDict(...)` base: a plain class, typed fields unpacked.
+
+    A `namedtuple(...)`'s fields are untyped; another call's base keeps the class from being plain. A
+    constructor's call is a guess, and so is what's unpacked from it.
+    """
+    tree: ast.Module = ast.parse(textwrap.dedent(_CALLED))
+    assert targets.named_tuples(tree) == {"Point": "tuple[int, str]"}
+    assert classvars.plain(tree, classvars.imported(tree)) == {"Result", "Point", "Options", "Loose"}
+    assert declarations.classes(tree)["Options"] == {"[name]": "str", "[size]": "int"}
+    assert _fixes(_CALLED) == {
+        "res": ("Result", True),
+        "x": ("int", True),
+        "y": ("str", True),
+        "name": ("str", False),
+        **dict.fromkeys(("rc", "out", "err"), (None, False)),
+    }

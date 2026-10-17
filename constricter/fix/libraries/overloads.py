@@ -24,6 +24,7 @@ from constricter.fix.core.signatures import (
     AWAIT,
     CLASS_BINDS,
     CLASS_BOUNDED,
+    CLASS_TUPLE,
     CLASS_VERDICT,
     CONTAINER_BINDS,
     CONTAINER_VERDICTS,
@@ -85,6 +86,7 @@ _BUILTIN_CLASSES: Final = frozenset(
     name for name in dir(builtins) if isinstance(cast("object", getattr(builtins, name)), type)
 )
 _SEQUENCES: Final = frozenset({"list", "tuple", "set", "frozenset"})  # whose elements `own_e` is asked of
+_TYPE_OF: Final = "type["  # the annotation of a class as a value
 _Infer: TypeAlias = Callable[[ast.expr], Inference | None]
 # A signature that may be the one: its return template and its type variables' types (`None`:
 # a return `--fix` can't write).
@@ -113,6 +115,11 @@ class Argument(NamedTuple):
     awaited: Inference | None = None
     own: tuple[str, ...] = ()  # its class's lineage, for a class the module names (`LibraryNames.lineage`)
     own_elements: tuple[str, ...] = ()  # a builtin sequence's or set's elements' class's
+    # Whether `klass` is a library's class (a standard-library one, or what a value typed `type[C]`
+    # is), which may be outside a `type[T]`'s bound as a builtin one may, and is a class only to a
+    # parameter that speaks of classes: to another, it's the value `found` says.
+    library: bool = False
+    several: bool = False  # whether `klass` is the union of a tuple of classes (`(OSError, ValueError)`)
 
     @property
     def text(self) -> str | None:
@@ -358,40 +365,93 @@ def _arguments(call: ast.Call, infer: _Infer, known: Known) -> Arguments | None:
 
 def _argument(value: ast.expr, infer: _Infer, known: Known) -> Argument:
     constant: Constant
-    written: str
+    named: tuple[str, bool] | None = _class_named(value, known)
+    elts: list[ast.expr]
     match value:
         case ast.Constant(value=None):
             return Argument(_NONE, (None,))
         case ast.Constant(value=bool() | int() | float() | complex() | str() | bytes() as constant):
             kind: str = _LITERAL_STRING if isinstance(constant, str) else type(constant).__name__
             return Argument(kind, (constant,))
-        case ast.Name() | ast.Attribute() if (written := ast.unparse(value)) and (
-            written in known.classes
-            or written in known.names.classes
-            or (written in _BUILTIN_CLASSES and known.is_builtin(written))
-        ):
-            return Argument(None, reads=(written,), klass=written)
+        case ast.Name() | ast.Attribute() if named is not None and not named[1]:
+            return Argument(None, reads=(named[0],), klass=named[0])
+        case ast.Name() | ast.Attribute() if named is not None:
+            # A standard-library class, as the module writes it (`csv.Error`, `sqlite.OperationalError`).
+            return _inferred(value, infer, known, klass=named[0])
+        case ast.Tuple(elts=elts) if elts and all(_class_named(elt, known) is not None for elt in elts):
+            # A tuple of classes (`(OSError, ValueError)`): their union, to a parameter that takes one.
+            found: list[tuple[str, bool]] = [
+                cast("tuple[str, bool]", _class_named(elt, known)) for elt in elts
+            ]
+            union: str = " | ".join(dict.fromkeys(text for text, _ in found))
+            return _inferred(value, infer, known, klass=union)._replace(several=True)
         case _:
-            found: Inference | None = infer(value)
-            typed: str | None = None if found is None else found.annotation
-            held: tuple[str, tuple[str, ...]] | None = None if typed is None else _elements(typed, known)
-            lineage: Mapping[str, tuple[str, ...]] = known.names.lineage
-            return Argument(
-                typed if typed in _COLUMNS and typed != _LITERAL_STRING else None,
-                found=found,
-                elements=held,
-                own=lineage.get(typed or "", ()),
-                own_elements=lineage.get(held[1][0], ())
-                if held and held[0] in _SEQUENCES and held[1]
-                else (),
-                reads=tuple(
-                    ast.unparse(node)
-                    for node in walk(value)
-                    if isinstance(node, ast.Name | ast.Attribute | ast.Subscript)
-                ),
-                returns=_function_return(value, known),
-                awaited=infer(ast.Await(value)) if isinstance(value, ast.Call | ast.Name) else None,
-            )
+            return _inferred(value, infer, known)
+
+
+def _class_named(value: ast.expr, known: Known) -> tuple[str, bool] | None:
+    """Read a name or dotted path as a class the module knows, as written.
+
+    Returns:
+      It, and whether it's a library's (a standard-library class, which may be outside a `type[T]`'s
+      bound), or `None` for anything else: the module's own class, an installed package's or a
+      builtin, else the standard library's.
+
+    """
+    if not isinstance(value, ast.Name | ast.Attribute):
+        return None
+    written: str = ast.unparse(value)
+    if (
+        written in known.classes
+        or written in known.names.classes
+        or (written in _BUILTIN_CLASSES and known.is_builtin(written))
+    ):
+        return written, False
+    return (written, True) if stdlib.class_argument(value, known) is not None else None
+
+
+def _inferred(value: ast.expr, infer: _Infer, known: Known, klass: str | None = None) -> Argument:
+    """Read an argument by what `--fix` infers it to be.
+
+    Returns:
+      It; `klass` is the class it is where that's known already, else the class a value typed
+      `type[C]` is (`self.failureException`, a `type[BaseException]`).
+
+    """
+    found: Inference | None = infer(value)
+    typed: str | None = None if found is None else found.annotation
+    held: tuple[str, tuple[str, ...]] | None = None if typed is None else _elements(typed, known)
+    lineage: Mapping[str, tuple[str, ...]] = known.names.lineage
+    return Argument(
+        typed if typed in _COLUMNS and typed != _LITERAL_STRING else None,
+        found=found,
+        elements=held,
+        own=lineage.get(typed or "", ()),
+        own_elements=lineage.get(held[1][0], ()) if held and held[0] in _SEQUENCES and held[1] else (),
+        reads=tuple(
+            ast.unparse(node)
+            for node in walk(value)
+            if isinstance(node, ast.Name | ast.Attribute | ast.Subscript)
+        ),
+        returns=_function_return(value, known),
+        awaited=infer(ast.Await(value)) if isinstance(value, ast.Call | ast.Name) else None,
+        klass=_class_of(typed) if klass is None else klass,
+        library=True,
+    )
+
+
+def _class_of(typed: str | None) -> str | None:
+    """Read the class a value typed `type[C]` is.
+
+    Returns:
+      `C`, if `typed` is `type[C]` with `C` a name or dotted path; else `None`.
+
+    """
+    if typed is None or not typed.startswith(_TYPE_OF) or not typed.endswith("]"):
+        return None
+    inner: str = typed[len(_TYPE_OF) : -1]
+    named: bool = bool(inner) and inner != SELF_TYPE and all(part.isidentifier() for part in inner.split("."))
+    return inner if named else None
 
 
 def _function_return(value: ast.expr, known: Known) -> Inference | None:
@@ -551,7 +611,10 @@ def _binding(accepts: Accepts | None, arg: Argument) -> tuple[str, str] | None:
 
     """
     kind: str | None = arg.type
-    if accepts is None or arg.klass is not None:  # a class binds `type[T]`'s `T` (`kv`), or nothing
+    if accepts is None or (arg.klass is not None and (CLASS_BINDS in accepts or not arg.library)):
+        # A class binds `type[T]`'s `T` (`kv`), or nothing; a library's is a value to any other
+        # parameter; a tuple of classes binds it to their union (one taking no tuple refused it, see
+        # `_verdict`).
         variable: str | None = None if accepts is None else accepts.get(CLASS_BINDS)
         return None if variable is None or arg.klass is None else (variable, arg.klass)
     if kind is not None:
@@ -623,11 +686,12 @@ def _verdict(accepts: Accepts | None, arg: Argument) -> str:
     """
     if accepts is None:
         return YES
-    if arg.klass is not None:
-        # A builtin class may be outside a `type[T]`'s bound (`dtype=bool`, `T` a numpy scalar): the
-        # signature that takes it then is another's.
-        outside: bool = arg.klass in _BUILTIN_CLASSES and accepts.get(CLASS_BOUNDED, False)
-        return MAYBE if outside else accepts.get(CLASS_VERDICT, MAYBE)
+    if arg.klass is not None and (CLASS_VERDICT in accepts or CLASS_BOUNDED in accepts or not arg.library):
+        # A builtin or library class may be outside a `type[T]`'s bound (`dtype=bool`, `T` a numpy
+        # scalar): the signature that takes it then is another's.
+        outside: bool = (arg.library or arg.klass in _BUILTIN_CLASSES) and accepts.get(CLASS_BOUNDED, False)
+        untaken: bool = arg.several and not accepts.get(CLASS_TUPLE, False)  # a tuple, where one class is
+        return NO if untaken else MAYBE if outside else accepts.get(CLASS_VERDICT, MAYBE)
     if arg.constant is not None and any(_same(arg.constant[0], value) for value in accepts.get("lit", [])):
         return YES
     table: str = accepts.get("c", accepts["v"]) if arg.constant is not None else accepts["v"]

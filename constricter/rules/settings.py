@@ -41,6 +41,7 @@ from constricter.rules.declarations import (
     factories,
     self_returns,
 )
+from constricter.rules.decorators import passing
 from constricter.rules.flow import Hierarchy
 from constricter.rules.scoped import Seeded, Settings
 from constricter.rules.syntax import (
@@ -127,6 +128,9 @@ def module_settings(
                 checks.min_python is not None and checks.min_python >= STARRED_SUBSCRIPTS,
             ),
             Limits(checks.max_length, checks.vague, widened.marks(lines)),
+            vouched=passing(tree, defined_type_vars(tree)).union(
+                frozenset() if outside is None else outside.vouched,
+            ),
         ),
         Hierarchy.for_module(
             tree,

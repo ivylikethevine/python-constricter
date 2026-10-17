@@ -463,7 +463,11 @@ def test_a_variable_a_test_case_declares_has_that_type() -> None:
         ("maxDiff", "maxDiff = 3"): "int",  # its own
         ("maxDiff", "maxDiff = 4"): "int",
     }
-    assert classvars.HELD == {"longMessage": "bool", "maxDiff": "int | None"}
+    assert classvars.HELD == {
+        "failureException": "type[BaseException]",
+        "longMessage": "bool",
+        "maxDiff": "int | None",
+    }
     assert stdlib.attributes("unittest.IsolatedAsyncioTestCase") == stdlib.attributes("unittest.TestCase")
 
 

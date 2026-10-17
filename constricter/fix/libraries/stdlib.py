@@ -574,6 +574,18 @@ def held_whole(path: str) -> str | None:
     return own if CLASSES.get(own) == own else None
 
 
+def class_argument(node: ast.expr, known: Known) -> str | None:
+    """Resolve a name or dotted path passed as an argument (`csv.Error`, `sqlite.OperationalError`).
+
+    Returns:
+      The standard-library class's own path, if the tables hold it whole and the module imports the
+      name it starts with; `None` otherwise.
+
+    """
+    path: str | None = resolved(node, known.names.stdlib)
+    return None if path is None else held_whole(path)
+
+
 def defines_class(path: str) -> bool:
     """Check whether `path` is a class the tables know: a plain one, or a generic one.
 

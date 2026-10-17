@@ -151,7 +151,7 @@ def test_a_function_is_typed_by_its_returns() -> None:
         "h": ("int", False),  # `try`, its handler re-raising
         "i": ("int", False),  # `try`/`except`/`else`
         "j": ("float", False),  # `with`
-        "k": (None, False),  # decorated
+        "k": ("int", False),  # `functools.cache` gives the function back
         "m": (None, False),  # redefined
         "n": ("float", False),  # its declaration, as before
         "p": (None, False),  # `async`
