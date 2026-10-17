@@ -738,8 +738,8 @@ each item sized the same way.
    process and 10 to 17% with jobs, with the spread up from under 1% to 2 to 10%, so the timed checks
    stay one at a time. The instructions didn't move side by side (0.04 to 0.15%): the table could
    compare them across runs instead of seconds, which would free the tail to run beside other steps.
-   Done when a mega run's tail is under 5 minutes with the timing table's run-to-run noise unchanged;
-   not yet run. About 1 hour; coverage unchanged.
+   Done when a mega run's tail is under 5 minutes with the timing table's run-to-run noise unchanged:
+   the 0.4.0-rc.2 mega run's took 5.3 minutes, from 10.5. About 1 hour; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -893,16 +893,21 @@ each item sized the same way.
     parts run as today. The fixes conflict on a few bindings in 37 of 42 suites (1 to 30; pandas 464,
     mypy 73, xarray 71): a priority (unsafe's annotation, then the trace's, then the checkers in a
     fixed order), or the fallback. The same assumption the tiers' implication makes: fewer
-    annotations don't fail where more passed. Done, not yet run: the union is a fix step of its own
+    annotations don't fail where more passed. Done: the union is a fix step of its own
     (`infer-union`: `--fix --unsafe-fixes --infer-with` every checker `--infer-from` the trace, so
     the priority is constricter's own, the guesses, then the checkers in the run's order, then the
     trace), and its tests' part runs before every fix's, which stand on it where it was the
     released tests' (`patch: union`) and run as before where it wasn't. On the 0.4.0-rc.1 mega run
-    no fix broke a test on any of the 42 suites, whose 178 fixed runs took 812 CPU-minutes; the
-    union step costs about a checker's `infer-*` step a suite (their three took 170 CPU-minutes over
-    the suites, 288 over every corpus), which caching the first round's hints would mostly save.
-    Done when a mega run's tests table reads the same with the parts marked implied and the run is
-    25 minutes shorter. About 5 hours; coverage unchanged.
+    no fix broke a test on any of the 42 suites, whose 178 fixed runs took 812 CPU-minutes. The
+    0.4.0-rc.2 mega run, the first with the union, took 91 minutes on 16CPU/60GB (rc.1's 134) and
+    1,098 CPU-minutes (1,655), with the same fixes, tests table and no test a fix broke: the union's
+    run was the released tests' on 38 suites, and 266 fixed parts stood on it, 22 ran. On django,
+    nibabel, black and sphinx it wasn't, by a timing test (django's `test_crafted_xml_performance`)
+    and tests no fix's own run failed: flaky under load, so their 28 parts ran. The fixed parts took
+    286 CPU-minutes and the union steps 148. Its first run had no record to size the union's steps
+    by: its fix step was held 11.7 GB (dask's took 18.2) and waited up to 9 minutes, its tests 1 CPU
+    (mypy's kept 5.6 busy), so the next run, sized by this one's, should be quicker still. About 5
+    hours; coverage unchanged.
 11. **First-round hints cached across runs.** The `infer-*` steps used 290 CPU-minutes and 114
     step-minutes of the 0.3.9-rc.1 mega run (stripe's basedpyright 22.6 minutes, the standard
     library's 21.4 at 12.3 GB), and their memory, not the CPUs, kept the early steps waiting
