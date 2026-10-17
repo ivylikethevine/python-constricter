@@ -18,7 +18,8 @@ import warnings
 from collections import Counter
 
 from constricter.cli import schedule
-from constricter.fix.index import decorated, installed, plain, project
+from constricter.fix.index import decorated, plain, project
+from constricter.fix.index.stubs import installed
 from tests.corpus import corpus_table
 
 
@@ -48,11 +49,16 @@ def main() -> int:
                 fields[field] += len(pickle.dumps(getattr(known, field), pickle.HIGHEST_PROTOCOL))
     total = sum(size for size, _ in sizes)
     median = statistics.median(size for size, _ in sizes)
-    print(f"worked out in {time.perf_counter() - start:.0f}s: {total / 2**20:.1f} MiB, median {median / 1024:.0f} KiB")
+    print(
+        f"worked out in {time.perf_counter() - start:.0f}s: {total / 2**20:.1f} MiB, median {median / 1024:.0f} KiB"
+    )
     for size, name in sorted(sizes, reverse=True)[: args.top]:
         print(f"  {size / 1024:7.0f} KiB  {name}")
     if fields:
-        print("past 1 MB, by field:", ", ".join(f"{name} {size / 2**20:.0f} MiB" for name, size in fields.most_common(8)))
+        print(
+            "past 1 MB, by field:",
+            ", ".join(f"{name} {size / 2**20:.0f} MiB" for name, size in fields.most_common(8)),
+        )
     return 0
 
 

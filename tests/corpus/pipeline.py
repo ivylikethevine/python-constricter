@@ -76,7 +76,9 @@ TRACED: Final = "traced"
 TRACE: Final = "trace"  # after `INFER`: the fix step by a suite's tests' trace
 RELEASED: Final = "released"  # names the part of a suite's tests or type checks with no fix (`part`)
 GUESS: Final = "guess"
-IMPLIED: Final = "implied"  # in a suite's fixed test run's record: the run that stands for it, as released
+IMPLIED: Final = "implied"  # in a suite's part's record after a fix: the fix step whose part stands for it
+PATCH: Final = "patch"  # and how that fix's patch relates to its own: the same, or one that holds it
+FROM: Final = "from"  # in a record taken from an earlier run: that run's folder
 _SUFFOCATE: Final = "--level=suffocate"
 _SHARED: Final = "suffocate"  # where a job's one check at `suffocate` runs, and is kept (`suffocated`)
 SHARING: Final = frozenset({CHECK, CENSUS})  # the steps that read it: the first to start runs it

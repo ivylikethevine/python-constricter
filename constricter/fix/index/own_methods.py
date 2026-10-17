@@ -10,12 +10,13 @@ from typing import TYPE_CHECKING, Final
 
 from constricter.fix.core.known import Guarded
 from constricter.fix.core.signatures import ReadSignature
-from constricter.fix.index import crossed, own_overloads, stubbed
+from constricter.fix.index import crossed, own_overloads
 from constricter.fix.index.modules import SUFFIX, Index, Module, module_name
+from constricter.fix.index.stubs import stubbed
 from constricter.rules.annotations import roots
 
 if TYPE_CHECKING:
-    from constricter.fix.index.declared import Signature
+    from constricter.fix.index.stubs.declared import Signature
 
 _SELF: Final = "Self"
 

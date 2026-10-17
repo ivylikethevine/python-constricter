@@ -18,7 +18,8 @@ import pytest
 
 from constricter import check_source
 from constricter.cli import command as cli
-from constricter.cli import connection, guard, hints, protocol, remembered, rounds
+from constricter.cli import rounds
+from constricter.cli.lsp import connection, guard, hints, protocol, remembered
 from constricter.cli.options import Options
 from constricter.fix.core.known import Hints, Offered
 from tests.cli.sources import FAKE_SERVER

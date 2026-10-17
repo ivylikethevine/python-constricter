@@ -3,7 +3,7 @@
 
 A class, or a function returning one (`library_class`); a function with a fixed builtin result, one
 whose arguments decide its type (`constricter.fix.libraries.overloads`), an installed package's too (see
-`constricter.fix.index.stubbed`), or `os.environ.get` (`library_call`).
+`constricter.fix.index.stubs.stubbed`), or `os.environ.get` (`library_call`).
 """
 
 import ast
@@ -119,8 +119,8 @@ def installed_call(
 ) -> Inference | None:
     """Infer a call to an installed package's function whose arguments decide its type (`np.empty`).
 
-    By the signature its arguments certainly match (see `constricter.fix.index.stubbed`); `infer` types an
-    argument.
+    By the signature its arguments certainly match (see `constricter.fix.index.stubs.stubbed`); `infer`
+    types an argument.
 
     Returns:
       The inference, or `None` for any other call, or arguments that don't decide it.
@@ -198,7 +198,7 @@ def installed_chain(
 ) -> Inference | None:
     """Infer an attribute of what an installed class's method returns, off the call (`cap.readouterr().out`).
 
-    By the entry the index wrote for it beside the method's (see `constricter.fix.index.chained`),
+    By the entry the index wrote for it beside the method's (see `constricter.fix.index.stubs.chained`),
     the receiver's type arguments binding it as they do the method's own return.
 
     Returns:

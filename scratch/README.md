@@ -29,6 +29,9 @@ goes under `local/scratch/`.
   by hand. Prints the references elsewhere to fix.
 - `retarget_imports.py OLD NEW NAME ...`: each `from OLD import ...` of a moved name, split to
   import it from NEW; a use through the module printed.
+- `move_modules.py OLD.PACKAGE NEW.PACKAGE MODULE[=NEWNAME] ...`: `git mv` modules into a
+  subpackage and retarget every import and dotted mention of them; path forms in pyproject.toml and
+  the docs printed for a hand edit.
 - `tables_unchanged.py`: the standard-library tables this checkout's generator writes, compared with
   `constricter/fix/tables/`, byte for byte (`source.json`'s stamp left out).
 - `mypyc_trial.py [--opt 0] [--exclude PATH ...] [-- PYTEST_ARGS]`, with `local/.venv-mypyc`: a copy
@@ -37,6 +40,13 @@ goes under `local/scratch/`.
 - `run_timeline.py FOLDER [--top N] [--every MINUTES]`: a corpus run's timeline from its records:
   the share of the machine's CPU seconds used, the CPUs busy and the steps running in each bucket,
   the longest steps and how long each waited, and the corpora that ended last.
+- `rerun_census.py FOLDER`: a corpus run's fixed test runs that weren't the released tests': each
+  one's counts, what was new or gone, whether it was calm, how many times it ran again and the
+  samples the run had of the released tests. For checking what the `tests` step ran again, and why.
+- `run_eta.py FOLDER REFERENCE [--err FILE]`: where a running corpus run is and when it should end,
+  each step done weighted by the seconds the same step took in a finished run.
+- `run_tick.sh HH:MM NAME.err NAME.out [SECONDS]`: wait for a run's next update mark, its end, a new
+  `problem:` line or a cap, for a session's timed updates.
 - `outside_size.py [CORPUS] [--top N]`: what a check knows of each file from outside it, by its
   pickled size: the total, the median, the largest files, and the fields that hold the most.
 - `second_round.py [CORPUS ...]`: a check's second rounds, where a file is checked again knowing its

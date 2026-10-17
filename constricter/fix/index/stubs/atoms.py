@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """What an installed package's annotations are made of, and which arguments each part takes.
 
-An annotation is read (by `constricter.fix.index.stub_signatures`) into its union's members (`Atom`s):
+An annotation is read (by `constricter.fix.index.stubs.signatures`) into its union's members (`Atom`s):
 `None`, a `Literal`'s values, a type variable (with its bound's members), a `type[...]`, a class, or something
 unread. Each takes a builtin scalar or container argument, or a class passed as one, by the verdicts
 here: a standard-library class by the `scalars` table, an installed protocol by its members, and no
@@ -16,8 +16,8 @@ from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.core.known import Origin
 from constricter.fix.core.signatures import Constant
-from constricter.fix.index.declared import Alias, Declarations, Protocol, Variable
 from constricter.fix.index.modules import Module
+from constricter.fix.index.stubs.declared import Alias, Declarations, Protocol, Variable
 from constricter.fix.libraries import stdlib
 from constricter.fix.libraries.overloads import CONTAINERS, SCALARS
 

@@ -21,7 +21,8 @@ from pathlib import Path
 from constricter.cli import schedule
 from constricter.cli.paths import python_files
 from constricter.cli.workers import Workers
-from constricter.fix.index import decorated, installed, plain, project
+from constricter.fix.index import decorated, plain, project
+from constricter.fix.index.stubs import installed
 from tests.corpus import catalog, trees
 
 
@@ -44,14 +45,18 @@ def _resident() -> int:
 def measure(name: str, counts: list[int], runs: int) -> None:
     tree = trees.found(catalog.load().entry(name), settle=False)
     paths = list(python_files([tree.root]))
-    modules = plain.settled(decorated.passed(installed.with_installed(project.index(paths), installed.search_path())))
+    modules = plain.settled(
+        decorated.passed(installed.with_installed(project.index(paths), installed.search_path()))
+    )
     start = time.perf_counter()
     told = schedule.sent(modules)
     pickled = time.perf_counter() - start
     start = time.perf_counter()
     _ = pickle.loads(told)
     loaded = time.perf_counter() - start
-    print(f"{name}: {len(paths)} files, index {len(told) / 1e6:.1f} MB pickled in {pickled:.2f}s, loaded in {loaded:.2f}s")
+    print(
+        f"{name}: {len(paths)} files, index {len(told) / 1e6:.1f} MB pickled in {pickled:.2f}s, loaded in {loaded:.2f}s"
+    )
     for count in counts:
         seconds: list[float] = []
         held: list[int] = []

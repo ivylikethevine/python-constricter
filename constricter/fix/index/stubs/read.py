@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""What `constricter.fix.index.stubbed` has read of the installed modules, kept from one file to the next."""
+"""What `constricter.fix.index.stubs.stubbed` read of the installed modules, kept from file to file."""
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -7,8 +7,8 @@ from typing import Final, TypeAlias
 
 from constricter.fix.core.known import Origin
 from constricter.fix.core.signatures import Accepts, Expansion, ReadSignature
-from constricter.fix.index.classnames import Packaged
 from constricter.fix.index.modules import Module
+from constricter.fix.index.stubs.classnames import Packaged
 
 # An alias of an installed generic class: the class, the alias's expansion, and each installed class
 # its pattern names, by its path there and where it's defined.

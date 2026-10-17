@@ -28,7 +28,9 @@ one process (`Suite.script`: Django's `runtests.py`).
 
 import ast
 import difflib
+import functools
 import hashlib
+import inspect
 import json
 import os
 import re
@@ -106,8 +108,10 @@ _PYRIGHTS: Final = frozenset({"pyright", "basedpyright"})
 _PROJECT: Final = frozenset({"-p", "--project"})  # Pyright's option naming its settings
 # pytest's `-rfE` lines (the test, then ` - ` and why; a parametrized id may hold a space), and
 # unittest's (Django's runner's) headers of each failure and error: not a logged line
-# (`ERROR - 2026-10-13 ... - litestar - ...`), nor unittest's summary (`FAILED (failures=2)`).
-_FAILED: Final = re.compile(r"^(?:FAILED |ERROR (?!- )|FAIL: |ERROR: )(?!\()(.+?)(?= - |$)", re.MULTILINE)
+# (`ERROR - 2026-10-13 ... - litestar - ...`), nor a captured log record, its level padded to eight
+# columns (`ERROR    sphinx.util:logging.py:141 Duplicate target name`, whose line a fix moves), nor
+# unittest's summary (`FAILED (failures=2)`).
+_FAILED: Final = re.compile(r"^(?:FAILED |ERROR (?![-\s])|FAIL: |ERROR: )(?!\()(.+?)(?= - |$)", re.MULTILINE)
 # pytest's summary's counts, but its warnings': those come and go between runs of the same code.
 _COUNTS: Final = re.compile(r"(\d+) (passed|failed|skipped|xfailed|xpassed|errors?)")
 # pytest's summary line, bare (`-q`) or between `=`s: its counts, before how long it took
@@ -334,6 +338,24 @@ def checkout(
     return root
 
 
+def installed(root: Path) -> str:
+    """Hash a checkout's installed environment: its Python's version and every package's.
+
+    A record of its tests is comparable with another's only on a checkout installed the same.
+
+    Returns:
+      The hash; of nothing, for a clone with no environment.
+
+    """
+    python: Path = root / ".venv" / "bin" / "python"
+    if not python.exists():
+        return hashlib.sha256(b"").hexdigest()
+    uv: str = os.environ.get("UV") or shutil.which("uv") or "uv"
+    version: str = _output([str(python), "--version"], root)
+    listed: str = _output([uv, "pip", "freeze", "--python", str(python)], root)
+    return hashlib.sha256(f"{version}\n{listed}".encode()).hexdigest()
+
+
 def workers(suite: Suite) -> int:
     """Size a suite's tests' processes: what it can keep busy, within the CPUs and memory it may take.
 
@@ -446,6 +468,22 @@ def read(output: str) -> Outcome:
         }
     )
     return Outcome(counts, frozenset(cast("list[str]", _FAILED.findall(output))))
+
+
+@functools.cache
+def parser() -> str:
+    """Name the version of what reads a test run's output: `read`, `_summary`, `_added` and their patterns.
+
+    A record read by another version isn't comparable with one read by this.
+
+    Returns:
+      A hash of their source.
+
+    """
+    patterns: tuple[re.Pattern[str], ...] = (_FAILED, _COUNTS, _SUMMARY, _PRETTY, _COLOUR, _RAN, _RAN_SUMMARY)
+    source: str = "".join(inspect.getsource(each) for each in (read, _summary, _added))
+    source += "".join(each.pattern for each in (*patterns, _UNITTEST)) + _TIMED_OUT
+    return hashlib.sha256(source.encode()).hexdigest()[:12]
 
 
 def _traceable(suite: Suite) -> _Traceable | None:

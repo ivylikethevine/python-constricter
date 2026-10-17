@@ -10,7 +10,8 @@ from typing import Final
 import pytest
 
 from constricter.cli import command as cli
-from constricter.fix.index import installed, project
+from constricter.fix.index import project
+from constricter.fix.index.stubs import installed
 
 # Each installed file, under the site directory: a typed package (its source and a stub), a stub
 # package for an untyped one, a lone stub module, an untyped package, and a broken stub.
@@ -138,7 +139,7 @@ def test_a_read_is_cached_until_its_file_changes(tmp_path: Path, monkeypatch: py
         reads.append(path)
         return project.read(path, name)
 
-    monkeypatch.setattr("constricter.fix.index.installed.read", counted)
+    monkeypatch.setattr("constricter.fix.index.stubs.installed.read", counted)
     first: project.Module | None = installed.cached(stub, "lone")
     assert installed.cached(stub, "lone") == first
     assert len(reads) == 1
@@ -161,9 +162,9 @@ def test_a_read_is_cached_until_constricter_changes(tmp_path: Path, monkeypatch:
         reads.append(path)
         return project.read(path, name)
 
-    monkeypatch.setattr("constricter.fix.index.installed.read", counted)
+    monkeypatch.setattr("constricter.fix.index.stubs.installed.read", counted)
     _ = installed.cached(site / "lone.pyi", "lone")
-    monkeypatch.setattr("constricter.fix.index.installed._code", lambda: "changed")
+    monkeypatch.setattr("constricter.fix.index.stubs.installed._code", lambda: "changed")
     _ = installed.cached(site / "lone.pyi", "lone")
     assert reads == [site / "lone.pyi"] * 2
 

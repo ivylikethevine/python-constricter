@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""What an installed package's stub declares for its overloads: `constricter.fix.index.declared`."""
+"""What an installed package's stub declares for its overloads: `constricter.fix.index.stubs.declared`."""
 
 import ast
 import sys
@@ -8,7 +8,14 @@ from typing import Final
 
 import pytest
 
-from constricter.fix.index.declared import Alias, Declarations, Protocol, Signature, Variable, declarations
+from constricter.fix.index.stubs.declared import (
+    Alias,
+    Declarations,
+    Protocol,
+    Signature,
+    Variable,
+    declarations,
+)
 
 STUB: Final = """
 from typing import Protocol, TypeAlias, TypeVar, overload

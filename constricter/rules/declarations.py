@@ -13,7 +13,7 @@ from weakref import WeakKeyDictionary
 
 from constricter.rules.annotations import is_vague, node_name, words
 from constricter.rules.decorators import Held, passing, spelled
-from constricter.rules.keys import keys
+from constricter.rules.keys import key, keys
 from constricter.rules.quoted import written
 from constricter.rules.syntax import child_statements, declared_return, top_level
 
@@ -168,8 +168,12 @@ def classes(tree: ast.Module) -> dict[str, dict[str, str]]:
     found: dict[str, dict[str, str]] = {}
     keyed: set[str] = set()
     node: ast.ClassDef
+    called: dict[str, str] | None
     for node in _class_nodes(tree):
-        if not _generic(node) and any(
+        if (called := _called_keys(node)) is not None:
+            keyed.add(node.name)
+            found[node.name] = called
+        elif not _generic(node) and any(
             node_name(base) == _TYPED_DICT or (isinstance(base, ast.Name) and base.id in keyed)
             for base in node.bases
         ):
@@ -182,6 +186,33 @@ def classes(tree: ast.Module) -> dict[str, dict[str, str]]:
                 **_attributes(node),
             }
     return found
+
+
+def _called_keys(node: ast.ClassDef) -> dict[str, str] | None:
+    """Read the keys of a class whose one base is a `TypedDict("D", {"a": int, ...})` call.
+
+    Returns:
+      Each key's type as written; `None` for a class under anything else.
+
+    """
+    func: ast.expr
+    names: list[ast.expr | None]
+    values: list[ast.expr]
+    match node.bases:
+        case [
+            ast.Call(
+                func=func,
+                args=[ast.Constant(value=str()), ast.Dict(keys=names, values=values)],
+            ),
+        ] if node_name(func) == _TYPED_DICT and all(
+            isinstance(name, ast.Constant) and isinstance(name.value, str) for name in names
+        ):
+            return {
+                key(str(cast("ast.Constant", name).value)): written(value)
+                for name, value in zip(names, values, strict=True)
+            }
+        case _:
+            return None
 
 
 def class_attributes(tree: ast.Module) -> dict[str, dict[str, str]]:

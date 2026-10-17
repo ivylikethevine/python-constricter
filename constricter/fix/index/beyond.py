@@ -15,13 +15,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from constricter.fix.core.inherited import SEVERAL, Beyond
-from constricter.fix.index import installed, plain
+from constricter.fix.index import plain
 from constricter.fix.index.modules import SUFFIX, Index, Module, module_name, takes
+from constricter.fix.index.stubs import installed
 from constricter.fix.libraries import stdlib
 from constricter.fix.values import classvars
 
 if TYPE_CHECKING:
-    from constricter.fix.index.declared import Class
+    from constricter.fix.index.stubs.declared import Class
 
 _DOT: Final = "."
 _OBJECT: Final = "object"

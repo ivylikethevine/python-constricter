@@ -152,22 +152,34 @@ async def g(node: Node) -> None:
 """
 
 _TESTS: Final = """
+import ctypes
+import csv
+import sqlite3 as sqlite
 import subprocess
 import tarfile
 import tempfile
 import unittest
 import warnings
+from ctypes import ArgumentError
 
 
 class Case(unittest.TestCase):
     def test(self, path: str) -> None:
         with self.assertRaises(ValueError) as raised:
             pass
+        with self.assertRaises(csv.Error) as malformed:
+            pass
+        with self.assertRaises(sqlite.OperationalError) as locked:
+            pass
+        with self.assertRaises(ArgumentError) as wrong:
+            pass
         with self.assertRaisesRegex(OSError, "k") as matched:
             pass
         with self.assertWarns(UserWarning) as warned:
             pass
         with self.assertRaises((OSError, ValueError)) as either:
+            pass
+        with self.assertRaises(self.failureException) as failed:
             pass
         error = raised.exception
         with tempfile.TemporaryDirectory() as folder:
@@ -185,10 +197,17 @@ class Case(unittest.TestCase):
         with subprocess.Popen([path], text=True) as proc:
             pass
         same = self.addCleanup(print)
+        casted = ctypes.cast(0, ctypes.c_char_p)
+        several = ctypes.cast(0, (ctypes.c_char_p, ctypes.c_void_p))
 
 
 def f(KeyError, case: unittest.TestCase):
     with case.assertRaises(KeyError) as shadowed:
+        pass
+
+
+def g(exc: type[KeyError], case: unittest.TestCase):
+    with case.assertRaises(exc) as given:
         pass
 """
 
@@ -293,13 +312,18 @@ def test_a_managers_arguments_decide_what_it_enters() -> None:
     """A test case's `assertRaises`, a constructor whose overloads declare its instance, `tarfile.open`.
 
     A class passed as an argument binds a `type[_E]`'s `_E`: a builtin one too, unless the module
-    binds the name.
+    binds the name; a standard-library one as the module writes it; a value typed `type[C]`; a tuple
+    of classes, their union, where a tuple is taken too.
     """
     assert _fixes(_TESTS) == {
         "raised": ("_AssertRaisesContext[ValueError]", False),
+        "malformed": ("_AssertRaisesContext[csv.Error]", False),
+        "locked": ("_AssertRaisesContext[sqlite.OperationalError]", False),
+        "wrong": ("_AssertRaisesContext[ArgumentError]", False),
         "matched": ("_AssertRaisesContext[OSError]", False),
         "warned": ("_AssertWarnsContext", False),
-        "either": (None, False),  # a tuple of classes: no one type
+        "either": ("_AssertRaisesContext[OSError | ValueError]", False),  # a tuple of classes: their union
+        "failed": ("_AssertRaisesContext[BaseException]", False),  # declared `type[BaseException]`
         "error": ("ValueError", False),
         "folder": ("str", False),
         "binary": ("tempfile._TemporaryFileWrapper[bytes]", False),
@@ -309,7 +333,10 @@ def test_a_managers_arguments_decide_what_it_enters() -> None:
         "quiet": (None, False),  # it enters as `None`
         "proc": ("subprocess.Popen[str]", False),
         "same": (None, False),
+        "casted": ("ctypes.c_char_p", False),
+        "several": (None, False),  # a tuple of classes, where `type[_CastT]` alone is taken
         "shadowed": (None, False),  # the module's own `KeyError`, a parameter
+        "given": ("_AssertRaisesContext[KeyError]", False),
     }
 
 

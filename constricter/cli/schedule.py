@@ -35,11 +35,11 @@ from constricter.fix.index import (
     plain,
     project,
     sides,
-    stubbed,
     taken,
     tuples,
 )
 from constricter.fix.index.modules import Memo
+from constricter.fix.index.stubs import stubbed
 
 if TYPE_CHECKING:
     from constricter.fix.core.signatures import ReadSignature
@@ -107,6 +107,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         untyped=linked.untyped(modules, path),
         unions=tuples.unions(modules, path, guarded),
         managers=managed.calls(modules, path, guarded),
+        vouched=decorated.vouched(modules, path),
         takers=taken.calls(modules, path, guarded),
         emptied=beyond.emptied(modules, path),
     )

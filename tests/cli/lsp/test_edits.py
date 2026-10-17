@@ -6,8 +6,8 @@ from typing import Final
 
 import pytest
 
-from constricter.cli import edits
-from constricter.cli.protocol import Json, Object
+from constricter.cli.lsp import edits
+from constricter.cli.lsp.protocol import Json, Object
 from constricter.fix.core.known import Offered
 
 _SOURCE: Final = (

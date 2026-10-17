@@ -9,7 +9,8 @@ from typing import Final
 import pytest
 
 from constricter.cli import command as cli
-from constricter.fix.index import beyond, installed, project
+from constricter.fix.index import beyond, project
+from constricter.fix.index.stubs import installed
 
 _TESTING: Final = """
 import unittest

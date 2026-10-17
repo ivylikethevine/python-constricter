@@ -16,6 +16,7 @@ from tests.corpus.pipeline import (
     CHECK,
     COVERAGE,
     FIX,
+    FROM,
     GUESS,
     IMPLIED,
     LOOP,
@@ -145,7 +146,8 @@ def _tests(records: Records) -> Rows:
             record: Record
             if record := records.of(tree, version, TESTS):
                 released: str = _summary(cast("Record", record["released"]))
-                rows.append([tree.name, version, "released", "", released, "", "", ""])
+                whose: str = f" (from {record[FROM]})" if FROM in record else ""
+                rows.append([tree.name, version, f"released{whose}", "", released, "", "", ""])
                 step: str
                 ran: Record
                 for step, ran in cast("dict[str, Record]", record["fixed"]).items():

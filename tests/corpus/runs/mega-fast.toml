@@ -1,6 +1,6 @@
 # Every corpus as `mega.toml` measures them, faster: a suite's own tests run only after
-# each fix, the tests as released taken from the latest earlier run at the suite's tag
-# (`tests-released`; run where none has them), and no traced tests, so no fix by the trace. Not
+# each fix, the tests as released taken from the latest earlier run at the suite's tag on the same
+# checkout (`tests-released`; run where none has them), and no traced tests, so no fix by the trace. Not
 # published: its fixes and tests aren't `mega.toml`'s. A stopped run carries on with
 # `--resume FOLDER`.
 

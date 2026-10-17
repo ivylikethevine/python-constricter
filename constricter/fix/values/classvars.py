@@ -61,6 +61,21 @@ _VALUES: Final = frozenset(
 )
 # The standard library's bases that read no annotation in a class body, and bind nothing there.
 PASSED_OVER: Final = frozenset({"abc.ABC", "typing.Generic", "typing_extensions.Generic"})
+# The functions a call to which, as a base, makes a class of the call's fields: its body is plain.
+# `bases` spells such a base with `CALLED` after the function (`collections.namedtuple()`): the class
+# under `NamedTuple` itself has fields in its body, and isn't plain.
+FUNCTIONAL: Final = frozenset({"namedtuple", "NamedTuple", "TypedDict"})
+CALLED: Final = "()"
+FUNCTIONAL_BASES: Final = frozenset(
+    {
+        f"collections.namedtuple{CALLED}",
+        *(
+            f"{module}.{name}{CALLED}"
+            for module in ("typing", "typing_extensions")
+            for name in ("NamedTuple", "TypedDict")
+        ),
+    },
+)
 Bases: TypeAlias = Mapping[str, tuple[str, ...]]  # each class's bases as written (see `bases`)
 SPECIAL: Final = ""  # a base no class has: what makes a class one that can't be plain
 # Each module's classes' bases and variables, for as long as its tree lives: read for the index,
@@ -161,9 +176,10 @@ def bases(tree: ast.Module) -> dict[str, tuple[str, ...]]:
     """Map each class the module defines once to its bases, as written.
 
     Returns:
-      Each one's bases (`object` left out, a subscripted one by its name); with `SPECIAL` among
-      them for a class that can't be plain: decorated, given a metaclass or another keyword, or with
-      a base that isn't a name (`make()`) or is a builtin's the module binds itself.
+      Each one's bases (`object` left out, a subscripted one by its name, a call to a functional
+      `namedtuple`, `NamedTuple` or `TypedDict` by the function's: a class with those fields); with
+      `SPECIAL` among them for a class that can't be plain: decorated, given a metaclass or another
+      keyword, or with a base that isn't a name (`make()`) or is a builtin's the module binds itself.
 
     """
     found: dict[str, tuple[str, ...]] | None
@@ -181,9 +197,7 @@ def _read_bases(tree: ast.Module) -> dict[str, tuple[str, ...]]:
     found: dict[str, tuple[str, ...]] = {}
     for node in classes(tree):
         if counts[node.name] == 1:
-            names: list[str | None] = [
-                dotted(base.value) if isinstance(base, ast.Subscript) else dotted(base) for base in node.bases
-            ]
+            names: list[str | None] = [_base_name(base) for base in node.bases]
             shadowed: bool = any(name in BUILTIN_BASES and name in taken for name in names)
             special: bool = bool(node.keywords or node.decorator_list) or None in names or shadowed
             found[node.name] = (
@@ -191,6 +205,27 @@ def _read_bases(tree: ast.Module) -> dict[str, tuple[str, ...]]:
                 *(name for name in names if name and name != OBJECT),
             )
     return found
+
+
+def _base_name(base: ast.expr) -> str | None:
+    """Spell a base: a name, a subscripted one's, or a functional `namedtuple`-like call's function.
+
+    Returns:
+      It, or `None` for a base that's anything else (`make()`).
+
+    """
+    name: str | None
+    value: ast.expr
+    func: ast.expr
+    match base:
+        case ast.Subscript(value=value):
+            return dotted(value)
+        case ast.Call(func=func) if (name := dotted(func)) is not None and name.rpartition(".")[
+            2
+        ] in FUNCTIONAL:
+            return f"{name}{CALLED}"
+        case _:
+            return dotted(base)
 
 
 def imported(tree: ast.Module) -> dict[str, str]:
@@ -224,7 +259,13 @@ def allowed(base: str, entries: Sequence[str] = ()) -> bool:
       (`PASSED_OVER`) or a listed one (`listed`), by its origin.
 
     """
-    return base in TEST_CASES or base in BUILTIN_BASES or base in PASSED_OVER or listed(base, entries)
+    return (
+        base in TEST_CASES
+        or base in BUILTIN_BASES
+        or base in PASSED_OVER
+        or base in FUNCTIONAL_BASES
+        or listed(base, entries)
+    )
 
 
 def listed(base: str, entries: Sequence[str]) -> bool:
@@ -311,9 +352,10 @@ def _resolved(base: str, origins: Mapping[str, str]) -> str:
     """
     first: str
     rest: str
-    first, _, rest = base.partition(".")
+    called: str = CALLED if base.endswith(CALLED) else ""
+    first, _, rest = base.removesuffix(CALLED).partition(".")
     origin: str = origins.get(first, first)
-    return f"{origin}.{rest}" if rest else origin
+    return f"{origin}.{rest}{called}" if rest else f"{origin}{called}"
 
 
 def variables(

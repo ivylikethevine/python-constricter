@@ -22,6 +22,7 @@ from typing import Final, NamedTuple, TypeAlias
 from constricter.fix.core.signatures import (
     AWAIT,
     CLASS_BINDS,
+    CLASS_TUPLE,
     CLASS_VERDICT,
     Accepts,
     Signature,
@@ -60,6 +61,8 @@ _SELF_TYPE: Final = "Self"
 _PROPERTIES: Final = frozenset({"property", "cached_property"})
 _INIT: Final = "__init__"
 _TYPE: Final = "type"
+_TUPLE: Final = "tuple"
+_SEQUENCE: Final = 2  # `tuple[X, ...]`'s two parts
 _NEW: Final = "__new__"
 _ENTER: Final = "__enter__"
 
@@ -73,22 +76,27 @@ class Param(NamedTuple):
     annotation: ast.expr | None
 
 
-def _classes(annotation: ast.expr) -> Iterator[ast.expr]:
+def _classes(annotation: ast.expr) -> Iterator[tuple[ast.expr, bool]]:
     """Find what a parameter's annotation takes a class of: `_E` in `type[_E] | tuple[type[_E], ...]`.
 
     Yields:
-      Each `type[...]` member of its union's argument.
+      Each `type[...]` member of its union's argument, and whether it's in a `tuple[..., ...]`.
 
     """
     if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
         yield from _classes(annotation.left)
         yield from _classes(annotation.right)
-    elif (
-        isinstance(annotation, ast.Subscript)
-        and isinstance(annotation.value, ast.Name)
-        and annotation.value.id == _TYPE
-    ):
-        yield annotation.slice
+    elif isinstance(annotation, ast.Subscript) and isinstance(annotation.value, ast.Name):
+        if annotation.value.id == _TYPE:
+            yield annotation.slice, False
+        elif (
+            annotation.value.id == _TUPLE
+            and isinstance(annotation.slice, ast.Tuple)
+            and len(annotation.slice.elts) == _SEQUENCE
+            and isinstance(annotation.slice.elts[1], ast.Constant)
+            and annotation.slice.elts[1].value is Ellipsis
+        ):
+            yield from ((inner, True) for inner, _ in _classes(annotation.slice.elts[0]))
 
 
 def parameters(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[Param]:
@@ -456,9 +464,17 @@ class Overloads(Accepting):
             found["r"] = verdicts.returned
         if verdicts.awaited is not None:
             found["w"] = verdicts.awaited
+        if parameter.annotation is not None:
+            self._classes_accepted(found, parameter.annotation, module)
+        return found
+
+    def _classes_accepted(self, found: Accepts, annotation: ast.expr, module: str) -> None:
+        """Add what a parameter takes a class of (`type[_E]`, a tuple of them too) and what it binds."""
         inner: ast.expr
-        for inner in () if parameter.annotation is None else _classes(parameter.annotation):
+        several: bool
+        for inner, several in _classes(annotation):
             found[CLASS_VERDICT] = YES
+            if several:
+                found[CLASS_TUPLE] = True
             if isinstance(inner, ast.Name) and inner.id in self._variables(inner, module):
                 found[CLASS_BINDS] = inner.id
-        return found

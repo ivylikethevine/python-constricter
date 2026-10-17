@@ -13,7 +13,7 @@ The run file (`run_config`) names the corpora (`corpora.toml`'s), the constricte
 steps and the formats. Each execution writes `<output>/<label>-<month>-<day>-<year>-<time>/`:
 
     run.toml      the run file, copied
-    facts.toml    the run as it was read, the commit and the machine
+    facts.toml    the run as it was read, the commit, the machine, and the checkers' and parser's versions
     runner.log    each step's end: its seconds, what it used, what it was given and how long it waited
     queue.log     each minute steps wait: what's running, and why each waits (`sizing.Slots.report`)
     records/      <corpus>/<version>/<step>.json, and each fix's patch: what every output is made from
@@ -57,6 +57,7 @@ from constricter import __version__
 from constricter.rules import parsed
 from tests.corpus import (
     catalog,
+    corpus_suite,
     launch,
     pipeline,
     planning,
@@ -97,11 +98,13 @@ _MAXRSS: Final = (
 )  # the bytes `ru_maxrss` counts in: kilobytes, but there
 
 
-def _facts(run: Run, started: datetime) -> Record:
+def run_facts(run: Run, started: datetime) -> Record:
     """Gather what a run's outputs say of the run itself.
 
     Returns:
-      The run file's values, this checkout's version and commit, and the machine's CPUs and memory.
+      The run file's values, this checkout's version and commit, the machine's CPUs and memory,
+      and the keys a record is comparable across runs by: each type checker's version, and the
+      version of what reads a suite's tests' output.
 
     """
     commit: str = subprocess.run(
@@ -140,7 +143,31 @@ def _facts(run: Run, started: datetime) -> Record:
         "cpus": os.cpu_count() or 1,
         "share": run.share,
         "gigabytes": round((parsed.memory() or 0) / sizing.GIB),
+        "checkers": checkers(run),
+        "parser": corpus_suite.parser(),
     }
+
+
+def checkers(run: Run) -> list[str]:
+    """Name each type checker the run's `infer-with` starts, with its version: `--version`'s first line.
+
+    Found as `--infer-with` finds it: on the path, or beside this Python.
+
+    Returns:
+      Them; `(not found)` for one that isn't installed.
+
+    """
+    found: list[str] = []
+    name: str
+    for name in run.steps.infer:
+        path: str | None
+        if (path := shutil.which(name) or shutil.which(name, path=str(Path(sys.executable).parent))) is None:
+            found.append(f"{name} (not found)")
+            continue
+        said: str = subprocess.run([path, "--version"], capture_output=True, text=True, check=False).stdout
+        line: str = said.strip().partition("\n")[0]
+        found.append(line if line.startswith(name) else f"{name} {line}")
+    return found
 
 
 def _toml(facts: Record) -> str:
@@ -400,8 +427,9 @@ class Running(NamedTuple):
     ) -> bool:
         """Run a step that has no record yet once the steps it comes `after` and its checkouts are `ready`.
 
-        Waited for holding nothing. The tests as released, where the run takes them from an earlier
-        run (`tests-released`), are its record, not run; where none has one, they run.
+        Waited for holding nothing. The tests as released, where an earlier run's record of them
+        may be taken (`suite_steps.taken`: the run doesn't run them, or the traced tests confirm
+        it), are that record, not run.
 
         Returns:
           Whether it has a record.
@@ -412,9 +440,14 @@ class Running(NamedTuple):
         if self.store.read(job.tree.name, job.recorded, name) is not None:
             return True
         taken: Record | None
-        if name == _RELEASED and not self.run.steps.tests_released and (taken := suite_steps.earlier(job)):
+        if name == _RELEASED and (taken := suite_steps.taken(job)) is not None:
             self.store.write(job.tree.name, job.recorded, name, taken)
-            _ = sys.stderr.write(f"{job.recorded} on {job.tree.name}: {name}: {taken['from']}'s\n")
+            said: str = (
+                f", as {taken[suite_steps.CONFIRMED]} found them" if suite_steps.CONFIRMED in taken else ""
+            )
+            _ = sys.stderr.write(
+                f"{job.recorded} on {job.tree.name}: {name}: {taken[pipeline.FROM]}'s{said}\n",
+            )
             return True
         return self.step(entry, job, name)
 
@@ -627,7 +660,7 @@ def main(argv: Sequence[str]) -> int:
         return _step(argv[1:])
     start: float = time.perf_counter()
     run: Run = commanded(read(Path(argv[0])), argv)
-    facts: Record = _facts(run, datetime.now().astimezone())
+    facts: Record = run_facts(run, datetime.now().astimezone())
     folder: Path = _folder(argv, run, facts)
     store: pipeline.Store = pipeline.Store(folder)
     measured: list[_Measured] = _all(run, store)

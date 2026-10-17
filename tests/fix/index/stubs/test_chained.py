@@ -9,8 +9,9 @@ from typing import Final
 from constricter import Offence, check_source
 from constricter.cli import command as cli
 from constricter.cli import schedule
-from constricter.fix.index import chained, modules, project
-from constricter.fix.index.declared import Class, declarations
+from constricter.fix.index import modules, project
+from constricter.fix.index.stubs import chained
+from constricter.fix.index.stubs.declared import Class, declarations
 
 _STUB: Final = """
 from typing import TYPE_CHECKING, AnyStr, Generic, NamedTuple, overload

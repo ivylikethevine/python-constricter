@@ -1,16 +1,20 @@
 # SPDX-License-Identifier: MIT
-"""Decorators that give back the function they decorate, whose declared return still types its calls.
+"""Decorators that give back the function they decorate, whose return still types its calls.
 
-One the standard library has (`functools.cache`, `abc.abstractmethod`, ...), or a function whose own
-signature says so: it takes `F` and returns `F`, or (a factory, called to decorate) returns a
-`Callable[[F], F]`, where `F` is a type variable, or a `Callable[P, T]` returning one.
+One the standard library has (`functools.cache`, `abc.abstractmethod`, `unittest.skipIf(...)`,
+...), or a function whose own signature says so: it takes `F` and returns `F`, or (a factory, called
+to decorate) returns a `Callable[[F], F]`, where `F` is a type variable, or a `Callable[P, T]`
+returning one. Or, unannotated, one whose body says so: every `return` gives its one parameter back
+(`def _id(obj): return obj`), or what such a decorator gives (`return impl_detail(**g)(test)`); a
+factory's each gives such a decorator (`return unittest.skipUnless(ok, "why")`, `return _id`).
 """
 
 import ast
 import re
+from collections.abc import Mapping, Sequence
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.rules.syntax import import_bindings
+from constricter.rules.syntax import child_statements, import_bindings
 
 _CALLED: Final = "()"  # after a decorator's name, as it's spelled when it's called to decorate
 # How a pytest fixture's decorator is spelled (see `spelled`).
@@ -29,7 +33,9 @@ _LIBRARY: Final[dict[str, _Uses]] = {
     "typing": {"final": _BARE, "override": _BARE},
     "typing_extensions": {"final": _BARE, "override": _BARE, "deprecated": _FACTORY},
     "warnings": {"deprecated": _FACTORY},
+    "unittest": {"expectedFailure": _BARE, "skip": _FACTORY, "skipIf": _FACTORY, "skipUnless": _FACTORY},
 }
+_NO_TYPE_VARS: Final = frozenset[str]()  # an unannotated pass's: its body, not a signature, says so
 
 
 class Pass(NamedTuple):
@@ -103,7 +109,9 @@ def passes(tree: ast.Module) -> dict[str, Pass]:
     """Find the module's own top-level functions that give back the function they decorate.
 
     A plain `def`, defined once, undecorated: one parameter annotated as its return is (bare), or a
-    return of `Callable[[A], A]` (a factory), where `A` is a name or a `Callable[..., T]`.
+    return of `Callable[[A], A]` (a factory), where `A` is a name or a `Callable[..., T]`. Or one
+    with no annotation at all whose every `return` says so (see `_inferred`), by the standard
+    library's decorators the module imports and its own found before it, until no more are.
 
     Returns:
       Each one's name, and how it's used (see `Pass`).
@@ -111,6 +119,7 @@ def passes(tree: ast.Module) -> dict[str, Pass]:
     """
     counts: dict[str, int] = {}
     found: dict[str, Pass] = {}
+    plain: list[ast.FunctionDef] = []
     stmt: ast.stmt
     for stmt in tree.body:
         if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef):
@@ -118,7 +127,147 @@ def passes(tree: ast.Module) -> dict[str, Pass]:
             read: Pass | None = _pass(stmt) if isinstance(stmt, ast.FunctionDef) else None
             if read is not None and not stmt.decorator_list:
                 found[stmt.name] = read
-    return {name: read for name, read in found.items() if counts[name] == 1}
+            elif isinstance(stmt, ast.FunctionDef) and not stmt.decorator_list and _unannotated(stmt):
+                plain.append(stmt)
+    found = {name: read for name, read in found.items() if counts[name] == 1}
+    library: frozenset[str] = _library(tree)
+    pending: list[ast.FunctionDef] = [func for func in plain if counts[func.name] == 1]
+    for _ in pending:  # each pass reads at least one more, or ends: as many passes as functions at most
+        more: dict[str, Pass] = {}
+        func: ast.FunctionDef
+        for func in pending:
+            if func.name not in found and (read := _inferred(func, library, found)) is not None:
+                more[func.name] = read
+        if not more:
+            break
+        found.update(more)
+    return found
+
+
+def _unannotated(func: ast.FunctionDef) -> bool:
+    """Check whether a function annotates nothing: no parameter, and no return.
+
+    Returns:
+      Whether it does.
+
+    """
+    args: ast.arguments = func.args
+    stars: list[ast.arg] = [arg for arg in (args.vararg, args.kwarg) if arg is not None]
+    named: list[ast.arg] = [*args.posonlyargs, *args.args, *args.kwonlyargs, *stars]
+    return func.returns is None and all(arg.annotation is None for arg in named)
+
+
+def _inferred(func: ast.FunctionDef, library: frozenset[str], found: Mapping[str, Pass]) -> Pass | None:
+    """Read an unannotated function's `return`s as a decorator's that gives back what it's given.
+
+    `library` spells the standard library's such decorators as the module imports them, `found` the
+    module's own read so far. A bare one has one parameter and returns it, or a factory's call's
+    call on it; a factory returns a factory's call, or a bare one's name. Every `return` of its own
+    (not a nested function's) must, and it must have one.
+
+    Returns:
+      How it's used, or `None` if its `return`s don't say so.
+
+    """
+    returns: list[ast.Return] = _returns(func.body)
+    if not returns or any(stmt.value is None for stmt in returns):
+        return None
+    factories: frozenset[str] = frozenset(
+        {text for text in library if text.endswith(_CALLED)}
+        | {read.spelled(name) for name, read in found.items() if read.called},
+    )
+    bare: frozenset[str] = frozenset(name for name, read in found.items() if not read.called)
+    args: ast.arguments = func.args
+    named: list[ast.arg] = [*args.posonlyargs, *args.args]
+    alone: bool = len(named) == 1 and not (args.kwonlyargs or args.vararg or args.kwarg)
+    param: str | None = named[0].arg if alone else None
+    values: list[ast.expr] = [stmt.value for stmt in returns if stmt.value is not None]
+    if param is not None and all(_gives_back(value, param, factories) for value in values):
+        return Pass(called=False, type_vars=_NO_TYPE_VARS)
+    if all(_gives_decorator(value, factories, bare) for value in values):
+        return Pass(called=True, type_vars=_NO_TYPE_VARS)
+    return None
+
+
+def _returns(body: Sequence[ast.stmt]) -> list[ast.Return]:
+    """Find a function's own `return` statements: not a nested function's or class's.
+
+    Returns:
+      Them, in source order.
+
+    """
+    found: list[ast.Return] = []
+    stmt: ast.stmt
+    for stmt in body:
+        if isinstance(stmt, ast.Return):
+            found.append(stmt)
+        elif not isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            found.extend(_returns(child_statements(stmt)))
+    return found
+
+
+def _gives_back(value: ast.expr, param: str, factories: frozenset[str]) -> bool:
+    """Check whether a `return`'s value is the parameter itself, or a factory's decorator applied to it.
+
+    Returns:
+      Whether it is (`return test`, `return impl_detail(cpython=True)(test)`).
+
+    """
+    name: str
+    inner: ast.Call
+    match value:
+        case ast.Name(id=name):
+            return name == param
+        case ast.Call(func=ast.Call() as inner, args=[ast.Name(id=name)], keywords=[]):
+            return name == param and spelled(inner) in factories
+        case _:
+            return False
+
+
+def _gives_decorator(value: ast.expr, factories: frozenset[str], bare: frozenset[str]) -> bool:
+    """Check whether a `return`'s value is a decorator that gives a function back.
+
+    Returns:
+      Whether it is: a factory's call (`unittest.skip("why")`), or a bare one's name (`_id`).
+
+    """
+    name: str
+    match value:
+        case ast.Call():
+            return spelled(value) in factories
+        case ast.Name(id=name):
+            return name in bare
+        case _:
+            return False
+
+
+def _library(tree: ast.Module) -> frozenset[str]:
+    """Spell the standard library's decorators that give a function back, as the module imports them.
+
+    Returns:
+      Each one as `spelled` reads it: `cache`, `functools.lru_cache()`.
+
+    """
+    found: set[str] = set()
+    bound: str
+    origin: str
+    for bound, origin, _ in import_bindings(tree.body):
+        module: str
+        name: str
+        module, _, name = origin.rpartition(".")
+        uses: _Uses = (
+            {f"{bound}.{known}": use for known, use in _LIBRARY[origin].items()}
+            if origin in _LIBRARY
+            else {bound: _LIBRARY[module][name]}
+            if name in _LIBRARY.get(module, {})
+            else {}
+        )
+        text: str
+        bare: bool
+        called: bool
+        for text, (bare, called) in uses.items():
+            found.update([text] * bare + [f"{text}{_CALLED}"] * called)
+    return frozenset(found)
 
 
 def _pass(func: ast.FunctionDef) -> Pass | None:
@@ -197,25 +346,6 @@ def passing(tree: ast.Module, type_vars: frozenset[str]) -> frozenset[str]:
       Each one as `spelled` reads it: `cache`, `functools.lru_cache()`.
 
     """
-    found: set[str] = {
+    return _library(tree) | {
         read.spelled(name) for name, read in passes(tree).items() if read.type_vars <= type_vars
     }
-    bound: str
-    origin: str
-    for bound, origin, _ in import_bindings(tree.body):
-        module: str
-        name: str
-        module, _, name = origin.rpartition(".")
-        uses: _Uses = (
-            {f"{bound}.{known}": use for known, use in _LIBRARY[origin].items()}
-            if origin in _LIBRARY
-            else {bound: _LIBRARY[module][name]}
-            if name in _LIBRARY.get(module, {})
-            else {}
-        )
-        text: str
-        bare: bool
-        called: bool
-        for text, (bare, called) in uses.items():
-            found.update([text] * bare + [f"{text}{_CALLED}"] * called)
-    return frozenset(found)

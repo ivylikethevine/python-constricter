@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """The installed classes and aliases a module names, and the methods a class's lineage declares.
 
-For `constricter.fix.index.stubbed`, which reads their methods' signatures.
+For `constricter.fix.index.stubs.stubbed`, which reads their methods' signatures.
 """
 
 from collections.abc import Iterator, Mapping, Sequence
@@ -12,7 +12,7 @@ from constricter.fix.index import project
 from constricter.fix.index.modules import Module
 
 if TYPE_CHECKING:
-    from constricter.fix.index.declared import Class, Declarations
+    from constricter.fix.index.stubs.declared import Class, Declarations
 
 # A package's classes (or aliases): each as written after the package's name, and where it's defined.
 Packaged: TypeAlias = tuple[tuple[str, Origin], ...]

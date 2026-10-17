@@ -77,6 +77,9 @@ jobs:
           sha256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
           binary: actionlint
       - run: '"$RUNNER_TEMP/bin/actionlint"'
+      # the conventions neither zizmor nor actionlint has a rule for (timeouts, checkout
+      # credentials, top-level permissions, SHA pins, harden-runner first); yq and jq are on the runner
+      - run: .github/scripts/lint_workflows.sh
 
   dependencies:
     name: Dependency audit

@@ -22,8 +22,8 @@ from constricter.cli.config import (
     widen_kinds,
 )
 from constricter.cli.explain import explain
+from constricter.cli.lsp.protocol import SERVERS, runs
 from constricter.cli.paths import STDIN, excluded
-from constricter.cli.protocol import SERVERS, runs
 from constricter.cli.report import Format, Result
 from constricter.offences import (
     LEVELS,

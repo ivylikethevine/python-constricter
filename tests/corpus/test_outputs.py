@@ -25,7 +25,8 @@ _FIXES: Final = "| 2 (33.3%) | 1 (16.7%) | 2 (33.3%) |      0 |    0 |          
 _COUNTED: Final[Record] = {"untyped": 6, "guessed": 2, "unfixed": 2, "unparsed": 0, "shapes": {"call": 2}}
 _INFERRED: Final = "| standard library | infer-ty |     5 |       2 |      1 |     2 |      0 |    0 |"
 _TESTED_ROW: Final = (
-    "| fix-unsafe  | False            | 1 failed, 8 passed        |            1 |    0 |     0 |"
+    "| fix-unsafe                  | False            | 1 failed, 8 passed        |"
+    "            1 |    0 |     0 |"
 )
 _SUPER: Final = "## Super corpora\n"
 _SET_ROW: Final = "| unsafe  | constructor |     2 |         |      2 |       |"
@@ -40,6 +41,7 @@ _COUNTED_ROW: Final = "| standard library |       6 |       2 |       2 |       
 _FAILED: Final = "tests/test_a.py::test_a"
 _TESTED: Final[Record] = {
     "seconds": 8.0,
+    "from": "earlier-run",
     "released": {"counts": {"passed": 9, "skipped": 1}, "failed": []},
     "fixed": {
         "fix-unsafe": {
@@ -271,7 +273,7 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
     assert _INFERRED in text
     assert _COUNTED_ROW in text
     assert tables["tests"][1:] == [
-        ["standard library", "rc+dev", "released", "", "9 passed, 1 skipped", "", "", ""],
+        ["standard library", "rc+dev", "released (from earlier-run)", "", "9 passed, 1 skipped", "", "", ""],
         ["standard library", "rc+dev", "fix-certain", "True", "as fix-unsafe's (implied)", "0", "0", "0"],
         ["standard library", "rc+dev", "fix-unsafe", "False", "1 failed, 8 passed", "1", "0", "0"],
         ["standard library", "rc+dev", "infer-ty", "True", "error: patch failed", "0", "0", "0"],

@@ -3,13 +3,13 @@
 
 What each parameter takes (`Accepts`), and a signature as the tables hold it (`Signature`) and as
 it's matched (`ReadSignature`); see `constricter.fix.libraries.overloads`, which matches them,
-`constricter.fix.libraries.stdlib`, whose tables hold them, and `constricter.fix.index.stubbed`,
+`constricter.fix.libraries.stdlib`, whose tables hold them, and `constricter.fix.index.stubs.stubbed`,
 which reads an installed package's.
 """
 
 from typing import Final, NamedTuple, NotRequired, Required, TypeAlias, TypedDict
 
-# `Accepts`' keys for an installed package's parameter (see `constricter.fix.index.stub_signatures`): a
+# `Accepts`' keys for an installed package's parameter (see `constricter.fix.index.stubs.signatures`): a
 # class passed as the argument, and a builtin container.
 # Before a path, an `async def`'s entry for `overloads.chosen`; before a method's name in
 # `method_overloads`, an `async def` method's: its signatures' returns are what awaiting a call gives.
@@ -17,6 +17,7 @@ AWAIT: Final = "await "
 CLASS_VERDICT: Final = "k"
 CLASS_BINDS: Final = "kv"
 CLASS_BOUNDED: Final = "kb"
+CLASS_TUPLE: Final = "kt"
 CONTAINER_VERDICTS: Final = "b"
 ELEMENT_VERDICTS: Final = "be"
 CONTAINER_BINDS: Final = "bc"
@@ -42,8 +43,10 @@ class Accepts(TypedDict, total=False):
     an awaitable parameter gives awaited (`Coroutine[Any, Any, _T]`), which a coroutine's call binds
     to what awaiting it gives (`asyncio.run(main())`). `k`: for an installed
     package's parameter, a verdict for a class passed as the argument (`dtype=np.float64`), `kv`
-    the type variable it binds to that class (`type[_T]`'s `_T`), and `kb` whether that variable
-    is bounded: a builtin class may be outside its bound, and another signature's to take. `b`: a
+    the type variable it binds to that class (`type[_T]`'s `_T`), `kb` whether that variable
+    is bounded: a builtin class may be outside its bound, and another signature's to take; and `kt`
+    whether a tuple of classes is taken too (`type[_E] | tuple[type[_E], ...]`), which binds the
+    variable to their union. `b`: a
     verdict per builtin container argument (`tuple`), and `be`, where the parameter says what its
     elements must be, a verdict per `SCALARS` type for them; `bc`: the bounded type variable a
     container argument it takes binds. `f`: the type variable the parameter is, bounded by a future
@@ -66,6 +69,7 @@ class Accepts(TypedDict, total=False):
     k: str
     kv: str
     kb: bool
+    kt: bool
     b: dict[str, str]
     be: dict[str, str]
     bc: str
@@ -106,7 +110,7 @@ class ReadSignature(NamedTuple):
     instance: list[str] | None
     # An installed class's method declaring its `self`: the type its receiver must have, as a pattern
     # (classes by where they're defined, `typing.Any` for anything, type variables bare), and those
-    # variables' bounds, likewise (see `constricter.fix.index.stub_signatures`).
+    # variables' bounds, likewise (see `constricter.fix.index.stubs.signatures`).
     receiver: str | None = None
     bounds: tuple[tuple[str, str], ...] = ()
 

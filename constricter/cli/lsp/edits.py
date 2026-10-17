@@ -17,7 +17,7 @@ from typing import Final, TypeAlias, cast
 from urllib.parse import urlsplit
 from urllib.request import url2pathname
 
-from constricter.cli.protocol import Json, Object
+from constricter.cli.lsp.protocol import Json, Object
 from constricter.fix.core.known import Offered
 from constricter.fix.index.modules import SUFFIX, module_name
 from constricter.rules import parsed

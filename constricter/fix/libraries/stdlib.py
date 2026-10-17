@@ -118,7 +118,7 @@ def _scalar_members() -> Mapping[str, frozenset[str]]:
 def scalar_verdicts(path: str) -> str | None:
     """Look up which builtin scalars a standard-library class or alias takes (`typing.SupportsIndex`).
 
-    Read the first time an installed package's overloads need it (see `constricter.fix.index.stubbed`).
+    Read the first time an installed package's overloads need it (see `constricter.fix.index.stubs.stubbed`).
 
     Returns:
       Its verdict per `overloads.SCALARS` type, in order; or `None` if the tables don't have it.
@@ -572,6 +572,18 @@ def held_whole(path: str) -> str | None:
     """
     own: str = _ALIASES.get(path, path)
     return own if CLASSES.get(own) == own else None
+
+
+def class_argument(node: ast.expr, known: Known) -> str | None:
+    """Resolve a name or dotted path passed as an argument (`csv.Error`, `sqlite.OperationalError`).
+
+    Returns:
+      The standard-library class's own path, if the tables hold it whole and the module imports the
+      name it starts with; `None` otherwise.
+
+    """
+    path: str | None = resolved(node, known.names.stdlib)
+    return None if path is None else held_whole(path)
 
 
 def defines_class(path: str) -> bool:

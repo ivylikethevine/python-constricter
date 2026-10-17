@@ -34,7 +34,8 @@
     profile = true                   # a check in one process `py-spy` samples
     tests-hinted = true              # false: no test run after a checker's hints or the trace's fix
     tests-released = true            # false: the tests as released not run, their record the latest
-                                     # earlier run's at the suite's tag (`suite_steps.earlier`)
+                                     # earlier run's at the suite's tag on the same checkout; true:
+                                     # run, unless the traced tests confirm it (`suite_steps.taken`)
     every-level = false              # true: a check at each level, not one the levels are read from
 
     [publish]
@@ -117,7 +118,7 @@ class Steps(NamedTuple):
     profile: bool = False
     tests_hinted: bool = True  # a suite's tests after each checker's hints and the trace's fix too
     every_level: bool = False  # a check at each level, not one at `suffocate` the others are read from
-    tests_released: bool = True  # a suite's tests as released run, not taken from an earlier run
+    tests_released: bool = True  # the tests as released run, unless the traced tests confirm an earlier run's
 
 
 class Publish(NamedTuple):
