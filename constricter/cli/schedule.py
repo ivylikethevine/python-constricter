@@ -97,7 +97,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         checking=own.guarded,
         plain=plain.classes(modules, path),
         members={**imported.members, **plain.members(modules, path)},
-        same=linked.same(modules, path, guarded),
+        same=linked.same(modules, path, {**offers.imported(path, hints), **guarded}),
         partial=imported.partial,
         tuples=tuples.fields(modules, path, guarded),
         fixtures=seeds,

@@ -12,6 +12,8 @@ goes under `local/scratch/`.
 - `second_pass.py [CORPUS ...] [--likely | --certain]`: what a second pass still fixes on each
   corpus after `--fix --unsafe-fixes` (or `--likely`, or neither), as CI's `ci-fix` run counts it,
   each diff kept.
+- `hinted_second_pass.py CHECKER CORPUS ...`: the same after a run's `infer-CHECKER` step, on a
+  copy laid out as the corpus's checkout with its environment, the listing and the diff kept.
 - `widen_suites.py`: each suite's tests as released and after every `fix-widen` kind.
 - `widen_one.py`: one suite's tests after every `fix-widen` kind, their output and the diff kept.
 - `witness_checkers.py`, with `typeguard` and `beartype` on `PYTHONPATH`: values held to annotations

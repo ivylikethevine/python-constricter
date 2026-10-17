@@ -131,13 +131,47 @@ def test_an_installed_packages_private_module_isnt_imported_from(tmp_path: Path)
     """A class a hint places in an installed package's private module may move with its next release."""
     paths: list[Path] = _package(tmp_path)
     private: Path = paths[1].with_name("_plane.py")
-    _ = private.write_text("class Line: ...\n", encoding="utf-8")
+    _ = private.write_text("class Plane: ...\n", encoding="utf-8")
     catalog: project.Index = project.index([*paths, private])
-    offered: Offered = Offered("Line", ("from pkg._plane import Line",))
-    hints: tuple[Hints, ...] = (Hints("pyrefly", {_AT: "Line"}, {_AT: offered}),)
+    offered: Offered = Offered("Plane", ("from pkg._plane import Plane",))
+    hints: tuple[Hints, ...] = (Hints("pyrefly", {_AT: "Plane"}, {_AT: offered}),)
     assert offers.vetted(catalog, paths[-1], hints)[0].offered == {_AT: offered}  # a checked file's
     catalog.modules["pkg._plane"] = replace(catalog.modules["pkg._plane"], installed=True)
     assert offers.vetted(catalog, paths[-1], hints)[0].offered == {}
+
+
+def test_one_class_two_edits_import_by_two_statements_is_imported_by_the_first(tmp_path: Path) -> None:
+    """A class re-exported (`pint`'s `Unit`, `pint.registry`'s) is one import, as the file writes it once."""
+    paths: list[Path] = _package(tmp_path)
+    first: Offered = Offered("Shape", ("from .shapes import Shape",))
+    second: Offered = Offered("Shape", ("from pkg.shapes import Shape",))
+    hints: tuple[Hints, ...] = (
+        Hints("basedpyright", {_AT: "Shape", (2, 1): "Shape"}, {(2, 1): second, _AT: first}),
+    )
+    assert offers.vetted(project.index(paths), paths[-1], hints)[0].offered == {_AT: first, (2, 1): first}
+
+
+def test_a_hint_importing_a_namesake_of_a_guarded_class_is_dropped(tmp_path: Path) -> None:
+    """The file imports `Shape` for type checking: another module's, judged by what it shows, would be it."""
+    paths: list[Path] = _package(tmp_path)
+    other: Path = paths[1].with_name("plane.py")
+    _ = other.write_text("class Shape: ...\n", encoding="utf-8")
+    offered: Offered = Offered("Shape", ("from pkg.plane import Shape",))
+    hints: tuple[Hints, ...] = (Hints("ty", {_AT: "Shape", (2, 1): "int"}, {_AT: offered}),)
+    found: Hints = offers.vetted(project.index([*paths, other]), paths[-1], hints)[0]
+    assert (found.types, found.offered) == ({(2, 1): "int"}, {})
+
+
+def test_what_the_edits_import_is_each_name_one_statement_binds(tmp_path: Path) -> None:
+    """A spelling of its class beside the file's own (`linked.same`): not a name two statements bind."""
+    path: Path = _package(tmp_path)[-1]
+    hints: tuple[Hints, ...] = (
+        Hints("ty", {}, {_AT: Offered("Shape", ("from .shapes import Shape", "from .shapes import Line"))}),
+        Hints("pyrefly", {}, {_AT: Offered("Line", ("from elsewhere import Line",))}),
+    )
+    assert offers.imported(path, hints) == {
+        "Shape": Guarded(("pkg.shapes", "Shape"), "from .shapes import Shape"),
+    }
 
 
 def test_hints_without_edits_are_left_as_they_are(tmp_path: Path) -> None:

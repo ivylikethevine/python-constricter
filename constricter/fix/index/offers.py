@@ -13,7 +13,7 @@ import re
 import sys
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Final, NamedTuple
+from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.empty import Empty
 from constricter.fix.core.known import Guarded, Hints, Offered, Origin
@@ -24,6 +24,7 @@ from constricter.fix.libraries import stdlib
 
 _PACKAGE: Final = "__init__"
 _STDLIB: Final = sys.stdlib_module_names
+_Defined: TypeAlias = tuple[str, str]  # where the index defines a class: its module, and its name there
 
 
 class Own(NamedTuple):
@@ -67,16 +68,127 @@ def vetted(catalog: project.Index, path: Path, hints: tuple[Hints, ...]) -> tupl
     if not any(found.offered for found in hints):
         return hints
     module: tuple[str, bool] = (project.module_name(path), path.stem == _PACKAGE)
+    target: project.Module | None = catalog.modules.get(module[0])
+    checking: Mapping[str, Origin] = Empty() if target is None else target.guarded
+    found: dict[str, _Defined | None] = {name: _defined(catalog, origin) for name, origin in checking.items()}
+    guarded: dict[str, _Defined] = {name: defined for name, defined in found.items() if defined is not None}
     return tuple(
-        found._replace(
-            offered={
-                where: offered
-                for where, offered in found.offered.items()
-                if _sound(catalog, module, offered, found.types.get(where, ""))
-            },
+        _shared(
+            catalog,
+            module,
+            found._replace(
+                offered={
+                    where: offered
+                    for where, offered in found.offered.items()
+                    if _sound(catalog, module, offered, found.types.get(where, ""))
+                },
+            ),
+            guarded,
         )
         for found in hints
     )
+
+
+def _shared(
+    catalog: project.Index,
+    module: tuple[str, bool],
+    found: Hints,
+    guarded: Mapping[str, _Defined],
+) -> Hints:
+    """Import one class by one statement in all of a file's hints' edits, the first's, as it's written once.
+
+    A checker's edits may import a class by any module that re-exports it (`pint`'s `Unit`, then
+    `pint.registry`'s): the first made the second's an import of a name taken, and its fix waited
+    for a second pass, which reads the name as the file's. A hint whose edits import another class
+    by a name the file imports for type checking (`guarded`, each where it's defined) is
+    dropped: judged by what it shows, it would be taken for that one. Only a class the index
+    defines: it doesn't follow the standard library's re-exports (`typing`'s `Callable`).
+
+    Returns:
+      The hints so.
+
+    """
+    first: dict[str, tuple[_Defined, str]] = {}  # each name's class, and its statement
+    types: dict[tuple[int, int], str] = dict(found.types)
+    offered: dict[tuple[int, int], Offered] = {}
+    where: tuple[int, int]
+    each: Offered
+    for where, each in sorted(found.offered.items()):
+        statements: list[str] = []
+        statement: str
+        for statement in each.imports:
+            name: str
+            origin: Origin
+            name, origin = _bound(module, statement)
+            defined: _Defined | None
+            if (defined := _defined(catalog, origin)) is None:
+                statements.append(statement)
+                continue
+            if name in guarded and guarded[name] != defined:
+                break
+            was: tuple[_Defined, str] = first.setdefault(name, (defined, statement))
+            statements.append(was[1] if was[0] == defined else statement)
+        else:
+            offered[where] = each._replace(imports=tuple(statements))
+            continue
+        _ = types.pop(where, None)
+    return found._replace(types=types, offered=offered)
+
+
+def imported(path: Path, hints: tuple[Hints, ...]) -> dict[str, Guarded]:
+    """Find what the file at `path`'s vetted hints' edits import for type checking alone.
+
+    For `linked.same`: a class an edit imports (`DataFrame`, from `pandas.core.frame`) is a spelling
+    of it beside the file's own (`pd.DataFrame`) in the pass that writes the import, as in the next.
+
+    Returns:
+      Each name one statement binds in every edit, with it.
+
+    """
+    module: tuple[str, bool] = (project.module_name(path), path.stem == _PACKAGE)
+    found: dict[str, Guarded] = {}
+    clashing: set[str] = set()
+    statement: str
+    for statement in {
+        statement for each in hints for offered in each.offered.values() for statement in offered.imports
+    }:
+        name: str
+        origin: Origin
+        name, origin = _bound(module, statement)
+        if name in found:
+            clashing.add(name)
+        found[name] = Guarded(origin, statement)
+    return {name: guarded for name, guarded in found.items() if name not in clashing}
+
+
+def _bound(module: tuple[str, bool], statement: str) -> tuple[str, Origin]:
+    """Read what a `from` import of a hint's edits binds, from the hinted file's `module`.
+
+    Returns:
+      The name it binds, and what that is.
+
+    """
+    node: ast.ImportFrom = cast("ast.ImportFrom", ast.parse(statement).body[0])
+    alias: ast.alias = node.names[0]
+    return alias.asname or alias.name, (
+        absolute(module[0], node.module, node.level, is_package=module[1]),
+        alias.name,
+    )
+
+
+def _defined(catalog: project.Index, origin: Origin) -> _Defined | None:
+    """Find where the index defines a class or a type alias, through re-exports.
+
+    Returns:
+      Its module and its name there; `None` where it doesn't.
+
+    """
+    kind: str
+    for kind in (project.CLASS, project.ALIAS):
+        found: tuple[project.Module, str] | None
+        if (found := project.definition(catalog.modules, origin, kind)) is not None:
+            return found[0].name, found[1]
+    return None
 
 
 def _sound(catalog: project.Index, module: tuple[str, bool], offered: Offered, shown: str) -> bool:

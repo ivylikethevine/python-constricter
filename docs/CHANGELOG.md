@@ -18,6 +18,14 @@ Notable changes, newest first. Each release's full notes are generated from its 
   (`headers[key] = self.session_id` in `if self.session_id:`): a checker adds the narrowed `str`,
   not the declared `str | None`, so the display has no fix. mcp's 3 new type errors after
   `--unsafe-fixes` beside its `name` were these.
+- `--fix --infer-with` leaves less for a second pass. A class its hints' edits import by two modules
+  that re-export it (pint's `Unit`, from `pint` and from `pint.registry`) is imported once, by the
+  first, and fixed at every binding, where the second's waited for the next pass; the class an edit
+  imports is a spelling of it beside the file's own (`DataFrame` and `pd.DataFrame`, which a name
+  bound to both then takes); and a hint whose edits import another class the index defines, by a
+  name the file imports already, has no fix, as it had none while the import was only planned.
+  What a second pass left: pint's 12 lines to none, pandas's 11, 11 and 13 (basedpyright, ty,
+  pyrefly) to 6, 3 and 9.
 - `--infer-with` drops a hint that names something other than what the checker meant: a module
   written bare (`import socket`, then `socket`), a well-known class's name the module binds to its
   own class (starlette's `Match`), a builtin given type arguments (ty's `bool[bool]`, numpy's
