@@ -19,7 +19,15 @@ Notable changes, newest first. Each release's full notes are generated from its 
   (`Parser.read.Dialect`); writes ty's `GeneratorType[...]` as `Generator[...]`; and imports
   `TypeAlias` from `typing` only where `min-python` is 3.10 or later. On the 0.4.0-rc.2 mega run
   these were 165 of the 454 new type errors blamed on a hint, besides 182 that litestar's
-  `typing.TypeAlias` imports set off on its Python 3.8.
+  `typing.TypeAlias` imports set off on its Python 3.8. Nor is a hint with `Never` in it a fix, or
+  one naming `Self` in a function whose signature doesn't (pyrefly's, for `type(self)(...)`, which
+  mypy reads as the class): 29 more.
+- `--infer-with` keeps each round's hints in the cache, and reads a round from there instead of
+  starting the checkers while nothing it rests on has changed: the checker's build, the files asked
+  about, the workspace's settings files and the installed distributions. `--infer-fresh` asks the
+  checkers again.
+- The corpus runner sizes an unmeasured suite part by its kind's largest measured part, not by the
+  whole step's record, and an unmeasured `infer-union` by its checkers' steps together.
 - The language-server modules (`connection`, `protocol`, `guard`, `hints`, `edits`, `remembered`)
   live in `constricter/cli/lsp/`, and the installed packages' stub readers (`atoms`, `chained`,
   `classnames`, `declared`, `installed`, `read`, `stubbed`, and `stub_names` and `stub_signatures` as

@@ -721,7 +721,12 @@ each item sized the same way.
    throughout and mypy's, dask's and optuna's suites all ending in the last minute of them; the 47
    timed checks took the last 10.5 minutes with 1.5 CPUs busy. Its steps' CPU seconds over every CPU
    are 113 minutes, and no schedule of them takes under 123: the scheduling is within 10% of its
-   floor, and the tail is what's left of the 85%. Done when a mega run uses 85% of its CPU seconds,
+   floor, and the tail is what's left of the 85%. The 0.4.0-rc.2 run's new `infer-union` steps,
+   unmeasured, were held a third of the memory, as any checker's step is (dask's took 18.2 GB), and
+   its tests' parts what the tests' whole step had held, which only reads its parts' (1 CPU; mypy's
+   kept 5.6 busy). Done, not yet run: an unmeasured part takes its kind's largest measured part
+   (the released tests'), and an unmeasured `infer-union` its checkers' steps together, no more
+   than twice the largest's memory. Done when a mega run uses 85% of its CPU seconds,
    and one with no earlier run under its output takes within a tenth of one sized by its own. About
    2 hours beside the runs; coverage unchanged.
 
@@ -825,9 +830,14 @@ each item sized the same way.
    member. Done, not yet run: a hint naming a module bare, a well-known class's name the module
    binds to its own class, a builtin given type arguments, a private part of a dotted name or a
    function's class is dropped, ty's `GeneratorType` is written `Generator`, and `TypeAlias` is
-   imported from `typing` only from `min-python` 3.10: 165 of the 454, and litestar's 182. Left: the
-   narrower annotations, the same names imported from elsewhere (`Image`, `ValidationError`, which
-   only the checker's definition link can tell apart), and pandas's. Done when a hinted run's new
+   imported from `typing` only from `min-python` 3.10: 165 of the 454, and litestar's 182. Of the
+   narrower annotations, 25 were pyrefly's `Self` for a local in a method whose signature doesn't
+   say `Self` (`type(self)(...)`, `self[mask]`, `super().drop_duplicates()`), which mypy reads as the
+   class there; and 4 a `Never` (`list[Never]`, an empty display's). Done, not yet run: neither is
+   a fix, 194 of the 454 in all. Left: a hint narrower than the package's own checker reads the
+   same value (`message.get("more_body")`, `bool` to basedpyright and `bool | None` to mypy;
+   pyrefly's `bool` for numpy's), the same names imported from elsewhere (`Image`,
+   `ValidationError`, which only the checker's definition link can tell apart), and pandas's. Done when a hinted run's new
    errors are under one for each hundred of its hints' fixes on the three corpora type-checked.
    About 8 hours; coverage down by the hints withdrawn.
 4. **The witness, past a test's own classes.** The corpora runs hold a fixed binding's value to its
@@ -940,9 +950,14 @@ each item sized the same way.
     20 GB). The first round asks the checker about the released text (`cli/lsp/hints.py`), which
     constricter's version doesn't change: keep its hints by file text, checker build and environment,
     as `remembered.py` keeps hung-file markers, and ask only for the later rounds' fixed text. 44 of
-    47 tags were unchanged between the mega runs. Done when a mega run's `infer-*` steps read the
-    first round from the store and the hints are the same; the steps' seconds then measure less of
-    the checker, so the timing table says so. About 6 hours; coverage unchanged.
+    47 tags were unchanged between the mega runs. Done, not yet run: every round is kept whole in
+    the cache (`cli/lsp/stored.py`), by the checker's build, the text of every file asked about, the
+    workspace's settings files, the environments' installed distributions and the code that asks;
+    a round kept starts no server, and `--infer-fresh` asks again. Not a workspace file that isn't
+    asked about: walking the tree cost as much as a round. A later round is kept too, for the next
+    run with the same fixes. Left: the steps' seconds then measure less of the checker, which the
+    report doesn't say yet. Done when a mega run's `infer-*` steps read the first round from the
+    store and the hints are the same. About 6 hours; coverage unchanged.
 
 ### Large: more than 8 hours
 

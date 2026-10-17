@@ -13,6 +13,12 @@ first of them to start runs: each is expected to do the most either did. Unmeasu
   Measured, they hold what they held for each worker then, and the CPUs they kept busy, a margin
   over, with as many workers as then. Traced by its `script`, in one process,
   as any other step;
+- a part of a suite's tests or type checks takes what its kind's largest measured part took (the
+  released tests', say), or else its kind's whole step, its seconds shared among its parts;
+- the fix with every checker at once (`infer-union`) takes what its corpus's checkers' steps took
+  together, no more than `_UNITED` times the largest's memory (each server of a checker reads the
+  program again, but the steps' every margin isn't taken at once: 1.4 to 2.2 times on 0.4.0-rc.2's
+  mega run), the most CPUs any kept busy, and their seconds together;
 - a step that starts the type checkers (`infer-CHECKER`, a suite's type checks) keeps `_STEP_CPUS`
   busy and holds `_UNSIZED_SHARE` of the memory: their servers', of no known size;
 - any other keeps `_STEP_CPUS` busy (a check runs in bursts between stretches in one process) and
@@ -61,7 +67,7 @@ from typing import Final, NamedTuple, Protocol, cast
 
 from constricter.rules import parsed
 from tests.corpus.catalog import Suite
-from tests.corpus.pipeline import INFER, PROFILE, SHARING, TESTS, TIMING, TRACED, TYPES, Record, parts
+from tests.corpus.pipeline import INFER, PROFILE, SHARING, TESTS, TIMING, TRACED, TYPES, UNION, Record, parts
 from tests.corpus.run_config import Run
 from tests.corpus.trees import Tree
 
@@ -76,6 +82,8 @@ _MEMORY_SHARE: Final = 0.8  # of the memory free as the run starts: the rest is 
 _MARGIN: Final = 1.25  # over the most a step was seen to hold: its readings are seconds apart
 _JOB_MEMORY: Final = GIB + GIB // 4  # what a step holds for each of constricter's `--jobs`, unmeasured
 _UNSIZED_SHARE: Final = 3  # the unmeasured steps starting the type checkers that the memory is split among
+_UNITED: Final = 2  # times its largest checker's step's memory the unmeasured `infer-union` holds at most
+_UNION_STEP: Final = f"{INFER}{UNION}"
 _MOST_SHARE: Final = 2  # the most CPUs a step is given: the CPUs over this, or it waits for most to be idle
 _CHAIN: Final = (TRACED, TESTS, TYPES)  # a suite's kinds of step: their parts wait for the kind before
 
@@ -662,7 +670,11 @@ class Plan(NamedTuple):
 
         """
         directory: str = tree.name.replace(" ", "-")
-        known: Before | None = self.before.get((directory, step)) or self._parted(directory, step)
+        known: Before | None = (
+            self.before.get((directory, step))
+            or self._parted(directory, step)
+            or self._united(directory, step)
+        )
         if step in SHARING:  # either may run their one check: the most either took
             both: list[Before] = [
                 self.before[directory, each] for each in sorted(SHARING) if (directory, each) in self.before
@@ -740,19 +752,50 @@ class Plan(NamedTuple):
         )
 
     def _parted(self, directory: str, step: str) -> Before | None:
-        """Estimate a part of a suite's tests or type checks no run has measured, by its kind's last whole.
+        """Estimate a part of a suite's tests or type checks no run has measured, by its kind's others.
 
-        Each part as much as the kind's every run took, its seconds shared among its parts.
+        As much as the kind's largest measured part took, by CPU seconds (the released tests'): a
+        whole step's record holds what it did itself, little more than read its parts'. Else as much
+        as the kind's whole took, its seconds shared among its parts.
 
         Returns:
           It; `None` for another step, or a kind no run has measured.
 
         """
         kind: str = _kind(step)
+        if kind == step:
+            return None
+        measured: list[Before] = [
+            known
+            for (where, each), known in self.before.items()
+            if where == directory and each.startswith(f"{kind}-")
+        ]
+        if measured:
+            return max(measured, key=lambda known: known.cpus * known.seconds)
         whole: Before | None
-        if kind == step or (whole := self.before.get((directory, kind))) is None:
+        if (whole := self.before.get((directory, kind))) is None:
             return None
         return whole._replace(seconds=whole.seconds / max(1, len(parts(self.run, kind))))
+
+    def _united(self, directory: str, step: str) -> Before | None:
+        """Estimate the fix with every checker at once (`infer-union`), unmeasured, by its checkers' steps.
+
+        Returns:
+          It (see the module docstring); `None` for another step, or where no checker's is measured.
+
+        """
+        checkers: list[Before] = [
+            self.before[directory, each]
+            for each in (f"{INFER}{checker}" for checker in self.run.steps.infer)
+            if (directory, each) in self.before
+        ]
+        if step != _UNION_STEP or not checkers:
+            return None
+        memory: int = min(
+            sum(each.memory for each in checkers),
+            _UNITED * max(each.memory for each in checkers),
+        )
+        return Before(max(each.cpus for each in checkers), sum(each.seconds for each in checkers), memory)
 
     def fitted(self, wanted: Wanted, held: tuple[int, int], busy: float, peak: int) -> tuple[int, int]:
         """Fit a running step's hold to what it's seen to use: `busy` CPUs of late, `peak` bytes at most.

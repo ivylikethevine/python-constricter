@@ -393,6 +393,11 @@ def _parser() -> argparse.ArgumentParser:
         help="with --infer-with: the most memory each checker's servers use together (default: 8)",
     )
     _ = parser.add_argument(
+        "--infer-fresh",
+        action="store_true",
+        help="with --infer-with: ask the checkers again, not for hints kept from an earlier run",
+    )
+    _ = parser.add_argument(
         "--infer-from",
         type=Path,
         metavar="FILE",
@@ -621,6 +626,7 @@ class Options:
     jobs: int
     infer_with: tuple[str, ...] = ()  # the type checkers whose inferred types `--fix` guesses with
     infer_memory: int | None = None  # bytes each checker's servers may use together (`--infer-memory`)
+    infer_fresh: bool = False  # ask the checkers again, not for hints kept from an earlier run
 
     @classmethod
     def parse(cls, argv: Sequence[str] | None) -> "Options":
@@ -688,6 +694,7 @@ class Options:
             jobs=1 if paths == [STDIN] else cast("int", args.jobs) or os.cpu_count() or 1,
             infer_with=tuple(cast("list[str]", args.infer_with)),
             infer_memory=_bytes(cast("float | None", args.infer_memory)),
+            infer_fresh=cast("bool", args.infer_fresh),
         )
 
 

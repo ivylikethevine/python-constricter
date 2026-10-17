@@ -30,14 +30,14 @@ def _marker(checker: str, command: Sequence[str], named: str) -> Path:
       Its path in the cache.
 
     """
-    build: str = ""
+    made: str = ""
     with contextlib.suppress(OSError):
-        build = _build(checker, Path(command[0]))
-    key: str = "\0".join((checker, command[0], build, named))
+        made = build(checker, Path(command[0]))
+    key: str = "\0".join((checker, command[0], made, named))
     return cache_directory().with_name("hung") / hashlib.sha256(key.encode("utf-8", "replace")).hexdigest()
 
 
-def _build(checker: str, executable: Path) -> str:
+def build(checker: str, executable: Path) -> str:
     """Say which build of `checker` `executable` starts: its distribution's, where its environment has one.
 
     Not the executable's own where there is: an install writes the script again for the same version.

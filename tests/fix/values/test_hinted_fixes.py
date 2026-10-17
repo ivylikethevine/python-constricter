@@ -106,6 +106,8 @@ def _fixes(source: str, hinted: dict[str, str]) -> _Fixes:
         ("os._Environ[str]", None),  # private
         ("Box.Inner", "Box.Inner"),  # a class's own class
         ("Box.make.Inner", None),  # a function's: no annotation can name it
+        ("list[Never]", None),  # an empty display's: the type of no value
+        ("typing.NoReturn", None),
     ],
 )
 def test_a_hint_is_widened_spelled_or_dropped(hint: str, fix: str | None) -> None:
@@ -176,6 +178,25 @@ def test_a_union_is_a_fix_only_for_a_name_its_function_tests() -> None:
     assert [o.fix for o in _checked("x = find()\n", {"x": "int | None"}, Checks(all_scopes=True))] == [
         "int | None",
     ]
+
+
+def test_self_is_a_fix_only_where_the_signature_says_self() -> None:
+    """A checker may take `self` for `Self` in any method, as pyrefly does; mypy only where it's declared."""
+    source: str = """
+    from typing import Self
+
+
+    class C:
+        def plain(self) -> None:
+            a = self.made()
+            print(a)
+
+        def selfish(self) -> Self:
+            b = self.made()
+            print(b)
+            return self
+    """
+    assert _fixes(source, {"a": "Self", "b": "Self"}) == [("a", None, False), ("b", "Self", True)]
 
 
 def test_a_name_returned_as_self_has_no_fix() -> None:

@@ -14,8 +14,9 @@ the checker printed it:
 - a `Literal` is widened to its values' types (`Literal[1, 2]` is `int`, `Literal[Color.RED]` is
   `Color`), and `LiteralString` to `str`, then a union's repeated members dropped;
 - anything that isn't an annotation (`Module("os")`, a callable's signature, `Self@C`) is dropped,
-  as is a vague one (`Any`, `list[Unknown]`), a bare `None`, one nested as deep as LVA006 reports,
-  or a tuple as long as LVA011 does;
+  as is a vague one (`Any`, `list[Unknown]`), a bare `None`, one with `Never` or `NoReturn` in it
+  (an empty display's `list[Never]`, or code the checker takes not to run), one nested as deep as
+  LVA006 reports, or a tuple as long as LVA011 does;
 - a special form alone (`type[Generic]`) is dropped, as is a union inside the hint
   (`dict[str, int | bytes]`), and a `Literal` in a class's own arguments, which may be bound to it
   (a union for a name its function doesn't narrow, a name it returns as `Self` and one bound again
@@ -166,6 +167,7 @@ _RUNTIME: Final = {
     "AsyncGeneratorType": "AsyncGenerator",
 }
 _TYPES: Final = "types"
+_BOTTOM: Final = frozenset({"Never", "NoReturn"})  # the type of no value: never a variable's
 
 
 def hinted(
@@ -312,7 +314,7 @@ def _spelled(
     root = _abstract(root, plan, origins)
     lone: set[str] = _lone(root)
     # `TypeAlias` is `type_alias`'s to write. A special form alone isn't a type.
-    if _aliases(root) or lone & _FORMS or _misnamed(root, plan):
+    if _aliases(root) or lone & _FORMS or _misnamed(root, plan) or _bottom(root):
         return None
     names: list[str] = sorted(
         {
@@ -407,6 +409,20 @@ def _runtime(node: ast.expr, plan: ImportPlan, origins: _Origins) -> str | None:
             return _RUNTIME[name]
         case _:
             return None
+
+
+def _bottom(root: ast.expr) -> bool:
+    """Check whether an annotation has `Never` or `NoReturn` in it, however it's spelled.
+
+    Returns:
+      Whether it does.
+
+    """
+    return any(
+        (isinstance(node, ast.Name) and node.id in _BOTTOM)
+        or (isinstance(node, ast.Attribute) and node.attr in _BOTTOM)
+        for node in ast.walk(root)
+    )
 
 
 def _misnamed(root: ast.expr, plan: ImportPlan) -> bool:

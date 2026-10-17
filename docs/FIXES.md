@@ -679,7 +679,8 @@ A hint is used only as an annotation the file can hold:
 - a type variable of the module's is a fix only where the function's signature, or its class's
   bases, name it: anywhere else it's unbound;
 - anything vague (`Any`, `list[Unknown]`), not an annotation (`Module("os")`, a signature), as deep
-  as LVA006 reports or as long a tuple as LVA011 does, or a bare `None`, is dropped;
+  as LVA006 reports or as long a tuple as LVA011 does, a bare `None`, or one with `Never` or
+  `NoReturn` in it (an empty display's `list[Never]`), is dropped;
 - every name in it must be a builtin, a name the module binds at its top level (before the binding,
   in a module body), a class it imports under `if TYPE_CHECKING:`, a class the checker prints bare
   that `--fix` can import (`collections.abc`'s, `Path`, `deque`, `Decimal`, `UUID`, ...: one is
@@ -699,7 +700,8 @@ A hint is used only as an annotation the file can hold:
 - a `Literal` isn't widened inside a class's own arguments (`Reader[Literal["frame"]]`), which may
   be bound to the literals: the hint is dropped. A builtin's or `collections.abc`'s are;
 - a name its function returns has no fix where the function's signature says `Self`: the checker
-  hints the class;
+  hints the class. And a hint naming `Self` is a fix only where the signature says `Self`: elsewhere
+  mypy takes `self` for its class, where pyrefly hints `Self` (`type(self)(...)`, `self[mask]`);
 - a name bound again later has no fix unless every later value is known to fit the hint: the hint is
   the first value's type alone (`n = values.mean()`, hinted `np.float64`, then `n = len(values)`);
 - `TypeAlias`, which a checker hints an alias's assignment as, declares a module body's alias
@@ -746,6 +748,14 @@ hold what they're asked about (pandas: 1.2 GB in one `ty` server and 2.5 GB in f
 GB for pyrefly). `--infer-memory GB` (`infer-memory`) caps what a checker's servers use together: by
 default 8 GB, or half the memory available if that's less; set, never more than is available. One
 server a checker always gets.
+
+A round's hints are kept in the cache (`~/.cache/constricter/hints`, two weeks from their last use)
+and read from there while nothing they rest on has changed: the checker's build, the text of every
+file asked about, the workspace's settings files (`pyproject.toml`, `pyrightconfig.json`, `ty.toml`,
+...) and the installed distributions of the environments a checker may read. A project's first round
+at the same commit then starts no server. A file of the workspace that isn't asked about isn't
+counted: one only it changed, and that a checked file imports, can leave its hints a run behind.
+`--infer-fresh` asks the checkers again.
 
 Each server runs behind a small guard process, which passes its input and output through and kills
 it (and anything it started: a venv's `basedpyright-langserver` starts `node`) once constricter has

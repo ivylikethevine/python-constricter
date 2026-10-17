@@ -375,6 +375,7 @@ def _check_rounds(options: Options) -> tuple[list[Path], list[FileRun]]:
         Path.cwd(),
         options.jobs,
         options.infer_memory,
+        kept=not options.infer_fresh,
     ) as session:
         runs: list[FileRun] = settled(paths, check, options, session)
         checker: str

@@ -12,7 +12,8 @@ A server that can't be started, exits or answers an error stops the run: the opt
 types, and silently offering none would look like a checker that found nothing. One that hangs is
 restarted and asked about each of its unanswered files alone; a file it hangs on again gets no hints
 (`Session.abandoned`, which the command reports), and a checker that hangs on more than
-`_MOST_ABANDONED` files stops the run.
+`_MOST_ABANDONED` files stops the run. A round of files whose hints are kept from an earlier run,
+nothing they rest on changed since, is read from the store instead (see `stored`).
 """
 
 import contextlib
@@ -25,7 +26,7 @@ from functools import partial
 from pathlib import Path
 from typing import Final, Self, TypeAlias
 
-from constricter.cli.lsp import protocol, remembered
+from constricter.cli.lsp import protocol, remembered, stored
 from constricter.cli.lsp.connection import Connection, FileHints, Found, Sent
 from constricter.cli.lsp.protocol import SERVERS, HintError, HungError, Server
 from constricter.fix.core.known import Hints
@@ -54,12 +55,16 @@ class Session:
         root: Path,
         servers: int = 1,
         memory: int | None = None,
+        *,
+        kept: bool = True,
     ) -> None:
         """Get ready to start `checkers`' servers, with `root` as their workspace.
 
-        Each checker gets up to `servers`, within `memory` bytes (see `Checker`).
+        Each checker gets up to `servers`, within `memory` bytes (see `Checker`). With `kept`, a round's
+        hints are read from the store where it has them, and kept there where it doesn't.
         """
         self.checkers: list[Checker] = [Checker(checker, root, servers, memory) for checker in checkers]
+        self.kept: bool = kept
 
     def __enter__(self) -> Self:
         """Use the servers.
@@ -87,20 +92,35 @@ class Session:
           Each file's hints, one per checker, in the order the checkers were named.
 
         """
-        self._start(files)
+        names: dict[str, str] = {}
+        found: dict[str, Found] = {}
+        checker: Checker
+        for checker in self.checkers if self.kept else ():
+            names[checker.name] = stored.key(checker.name, checker.command, checker.root, files)
+            read: tuple[Found, frozenset[Path]] | None
+            if (read := stored.load(names[checker.name], checker.root, files)) is not None:
+                found[checker.name] = read[0]
+                checker.abandoned |= read[1]
+        asking: list[Checker] = [checker for checker in self.checkers if checker.name not in found]
+        _start(files, asking)
         work: list[tuple[Checker, _Task]] = [
-            (checker, task) for checker in self.checkers for task in checker.tasks(files)
+            (checker, task) for checker in asking for task in checker.tasks(files)
         ]
-        found: dict[str, Found] = {
-            checker.name: {path: {} for path in checker.abandoned & files.keys()} for checker in self.checkers
-        }
-        pool: ThreadPoolExecutor
-        with ThreadPoolExecutor(len(work)) as pool:
-            futures: list[Future[Found]] = [pool.submit(task) for _, task in work]
-            checker: Checker
-            future: Future[Found]
-            for (checker, _), future in zip(work, futures, strict=True):
-                found[checker.name].update(future.result())
+        found |= {checker.name: {path: {} for path in checker.abandoned & files.keys()} for checker in asking}
+        if work:
+            pool: ThreadPoolExecutor
+            with ThreadPoolExecutor(len(work)) as pool:
+                futures: list[Future[Found]] = [pool.submit(task) for _, task in work]
+                future: Future[Found]
+                for (checker, _), future in zip(work, futures, strict=True):
+                    found[checker.name].update(future.result())
+        for checker in asking if self.kept else ():
+            stored.store(
+                names[checker.name],
+                checker.root,
+                found[checker.name],
+                frozenset(checker.abandoned & files.keys()),
+            )
         return {
             path: tuple(_hints(checker.name, found[checker.name][path]) for checker in self.checkers)
             for path in files
@@ -116,31 +136,32 @@ class Session:
         """
         return [(checker.name, path) for checker in self.checkers for path in sorted(checker.abandoned)]
 
-    def _start(self, files: Mapping[Path, str]) -> None:
-        """Start the servers `files` need that aren't running yet, all at once.
 
-        Raises `HintError` if one can't be started; those that could be are shut down with the session.
-        """
-        starting: list[Checker] = [
-            checker for checker in self.checkers for _ in range(checker.wanted(files) - len(checker.servers))
+def _start(files: Mapping[Path, str], checkers: Sequence["Checker"]) -> None:
+    """Start the servers `checkers` need for `files` that aren't running yet, all at once.
+
+    Raises `HintError` if one can't be started; those that could be are shut down with the session.
+    """
+    starting: list[Checker] = [
+        checker for checker in checkers for _ in range(checker.wanted(files) - len(checker.servers))
+    ]
+    if not starting:
+        return
+    pool: ThreadPoolExecutor
+    with ThreadPoolExecutor(len(starting)) as pool:
+        futures: list[Future[Connection]] = [
+            pool.submit(Connection, checker.command, checker.root) for checker in starting
         ]
-        if not starting:
-            return
-        pool: ThreadPoolExecutor
-        with ThreadPoolExecutor(len(starting)) as pool:
-            futures: list[Future[Connection]] = [
-                pool.submit(Connection, checker.command, checker.root) for checker in starting
-            ]
-        failures: list[HintError] = []
-        checker: Checker
-        future: Future[Connection]
-        for checker, future in zip(starting, futures, strict=True):
-            try:
-                checker.servers.append(future.result())
-            except HintError as failure:
-                failures.append(failure)
-        if failures:
-            raise failures[0]
+    failures: list[HintError] = []
+    checker: Checker
+    future: Future[Connection]
+    for checker, future in zip(starting, futures, strict=True):
+        try:
+            checker.servers.append(future.result())
+        except HintError as failure:
+            failures.append(failure)
+    if failures:
+        raise failures[0]
 
 
 def _hints(checker: str, found: FileHints) -> Hints:
