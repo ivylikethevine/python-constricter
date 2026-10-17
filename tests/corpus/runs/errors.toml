@@ -1,0 +1,19 @@
+# The corpora the error goals are judged on, by their own type checks after each fix: pint, mcp and
+# mypy for the `rebound` guesses, the three original corpora checked and litestar for the hints. Run
+# twice on one machine, the second's `infer-*` steps read the first round from the hint cache.
+
+[run]
+label = "errors"
+versions = ["dev"]
+at-once = 4
+
+[corpora]
+include = ["sqlalchemy", "pydantic", "pandas", "pint", "mcp", "mypy", "litestar"]
+
+[steps]
+check = false
+fix = ["unsafe"]
+infer-with = ["basedpyright", "ty", "pyrefly"]
+census = false
+coverage = false
+types = true

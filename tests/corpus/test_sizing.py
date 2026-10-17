@@ -10,7 +10,7 @@ from typing import Final
 import pytest
 
 from tests.corpus import catalog, pipeline, sizing
-from tests.corpus.run_config import parse
+from tests.corpus.run_config import Run, parse
 from tests.corpus.trees import Tree
 
 _RUNNING: Final = "running big: 2 CPUs"  # in the queue's report
@@ -164,3 +164,47 @@ def test_a_suite_traced_by_its_script_is_one_process(tmp_path: Path) -> None:
     plan: sizing.Plan = sizing.Plan(parse({"run": {"jobs": 2}}), 8, 64 * sizing.GIB, {})
     tree: Tree = Tree("celery", "1", tmp_path, tmp_path, suite=suite)
     assert plan.wanted(tree, pipeline.TRACED) == sizing.Wanted(2, 2 * (sizing.GIB + sizing.GIB // 4))
+
+
+def test_an_unmeasured_part_takes_its_kinds_largest_measured_one(tmp_path: Path) -> None:
+    """Not the whole step's record, which holds little more than reading its parts'."""
+    entry: catalog.Entry = catalog.load().entries["celery"]
+    assert entry.suite is not None
+    tree: Tree = Tree("celery", "1", tmp_path, tmp_path, suite=entry.suite)
+    released: sizing.Before = sizing.Before(5.0, 300.0, 6 * sizing.GIB, 8)
+    reading: sizing.Before = sizing.Before(0.5, 0.2, sizing.GIB // 32, 8)
+    plan: sizing.Plan = sizing.Plan(
+        parse({}),
+        16,
+        64 * sizing.GIB,
+        {("celery", "tests"): reading, ("celery", "tests-released"): released},
+    )
+    measured: sizing.Plan = plan._replace(before={("celery", "tests-union"): released})
+    union: sizing.Wanted = plan.wanted(tree, "tests-infer-union")
+    assert (union.cpus, union.memory) == (
+        measured.wanted(tree, "tests-union").cpus,
+        measured.wanted(tree, "tests-union").memory,
+    )
+    assert union.cpus > 1
+
+
+def test_an_unmeasured_union_takes_its_checkers_together(tmp_path: Path) -> None:
+    """Their memory together, no more than twice the largest's; the most CPUs any kept busy."""
+    tree: Tree = Tree("dask", "1", tmp_path, tmp_path)
+    run: Run = parse({"steps": {"infer-with": ["basedpyright", "ty", "pyrefly"]}})
+    checkers: dict[tuple[str, str], sizing.Before] = {
+        ("dask", "infer-basedpyright"): sizing.Before(4.0, 120.0, 10 * sizing.GIB),
+        ("dask", "infer-ty"): sizing.Before(3.0, 60.0, 4 * sizing.GIB),
+        ("dask", "infer-pyrefly"): sizing.Before(2.0, 90.0, 9 * sizing.GIB),
+    }
+    plan: sizing.Plan = sizing.Plan(run, 16, 64 * sizing.GIB, checkers)
+    measured: sizing.Plan = plan._replace(
+        before={("dask", "infer-union"): sizing.Before(4.0, 270.0, 20 * sizing.GIB)},
+    )
+    union: sizing.Wanted = plan.wanted(tree, "infer-union")
+    assert (union.cpus, union.memory) == (
+        measured.wanted(tree, "infer-union").cpus,
+        measured.wanted(tree, "infer-union").memory,
+    )
+    unmeasured: sizing.Plan = plan._replace(before={})
+    assert unmeasured.wanted(tree, "infer-union").memory == unmeasured.wanted(tree, "infer-ty").memory

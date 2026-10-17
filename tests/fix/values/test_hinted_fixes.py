@@ -102,6 +102,12 @@ def _fixes(source: str, hinted: dict[str, str]) -> _Fixes:
         ("Color & Sized", None),  # any other intersection isn't an annotation
         ("~AlwaysFalsy", None),
         ("tuple[str, *tuple[str, ...]]", None),  # Python 3.11's syntax, and no `Unpack` to write it with
+        ("list[bool[bool]]", None),  # a builtin's name for another class: numpy's `bool`, printed bare
+        ("os._Environ[str]", None),  # private
+        ("Box.Inner", "Box.Inner"),  # a class's own class
+        ("Box.make.Inner", None),  # a function's: no annotation can name it
+        ("list[Never]", None),  # an empty display's: the type of no value
+        ("typing.NoReturn", None),
     ],
 )
 def test_a_hint_is_widened_spelled_or_dropped(hint: str, fix: str | None) -> None:
@@ -129,6 +135,35 @@ def test_a_hint_is_widened_spelled_or_dropped(hint: str, fix: str | None) -> Non
     assert _fixes(source, {"x": hint}) == [("x", fix, fix is not None)]
 
 
+@pytest.mark.parametrize(
+    ("module", "fix"),
+    [
+        ("from re import Match", "Match[str]"),
+        ("class Match: ...", None),  # its own class of that name: the checker's may be `re`'s
+        ("Match = dict", None),
+    ],
+)
+def test_a_well_known_name_the_module_binds_to_another_thing_is_no_fix(module: str, fix: str | None) -> None:
+    """A checker prints `re.Match` as `Match`: a module's own `Match` may be what it means, or not."""
+    source: str = f"{module}\n\n\ndef f(q) -> None:\n    x = q.make()\n"
+    assert _fixes(source, {"x": "Match[str]"}) == [("x", fix, fix is not None)]
+
+
+@pytest.mark.parametrize(
+    ("hint", "fix"),
+    [
+        ("datetime", None),  # `import datetime` binds the module: the hint's is the class
+        ("socket", None),
+        ("datetime.date", "datetime.date"),  # through the module
+        ("list[datetime.date]", "list[datetime.date]"),
+    ],
+)
+def test_a_module_for_its_class_is_no_fix(hint: str, fix: str | None) -> None:
+    """A name `import` binds is a module, never the class of the same name a checker prints."""
+    source: str = "import datetime\nimport socket\n\n\ndef f(q) -> None:\n    x = q.make()\n"
+    assert _fixes(source, {"x": hint}) == [("x", fix, fix is not None)]
+
+
 def test_a_union_is_a_fix_only_for_a_name_its_function_tests() -> None:
     """Untested, the name is used as one member of the union, which declared would be an error."""
     untested: str = "def f(q) -> None:\n    x = q.find()\n    x.run()\n"
@@ -143,6 +178,25 @@ def test_a_union_is_a_fix_only_for_a_name_its_function_tests() -> None:
     assert [o.fix for o in _checked("x = find()\n", {"x": "int | None"}, Checks(all_scopes=True))] == [
         "int | None",
     ]
+
+
+def test_self_is_a_fix_only_where_the_signature_says_self() -> None:
+    """A checker may take `self` for `Self` in any method, as pyrefly does; mypy only where it's declared."""
+    source: str = """
+    from typing import Self
+
+
+    class C:
+        def plain(self) -> None:
+            a = self.made()
+            print(a)
+
+        def selfish(self) -> Self:
+            b = self.made()
+            print(b)
+            return self
+    """
+    assert _fixes(source, {"a": "Self", "b": "Self"}) == [("a", None, False), ("b", "Self", True)]
 
 
 def test_a_name_returned_as_self_has_no_fix() -> None:
@@ -475,6 +529,42 @@ def test_a_class_the_hints_edits_import_is_imported_for_type_checking(offered: O
     assert _applied(_USE, _offering(_USE, {"x": offered}, shown=offered.text)) == expected
 
 
+_GENERATOR: Final = "from collections.abc import Generator\n"
+
+
+@pytest.mark.parametrize(
+    ("source", "offered", "fixed"),
+    [
+        (
+            _USE,
+            Offered("GeneratorType[int, None, None]", ("from types import GeneratorType",)),
+            _GENERATOR + _USE.replace("x =", "x: Generator[int, None, None] ="),
+        ),
+        (
+            "import types\n" + _USE,
+            Offered("types.GeneratorType[str, None, None]"),
+            "import types\n" + _GENERATOR + _USE.replace("x =", "x: Generator[str, None, None] ="),
+        ),
+        (
+            "from types import GeneratorType\n" + _USE,
+            Offered("GeneratorType[int, None, None]"),
+            "from types import GeneratorType\n"
+            + _GENERATOR
+            + _USE.replace("x =", "x: Generator[int, None, None] ="),
+        ),
+    ],
+)
+def test_a_generators_class_is_as_checkers_type_one(source: str, offered: Offered, fixed: str) -> None:
+    """A generator's class as ty prints it (`GeneratorType[...]`) is `Generator[...]`, as others type it."""
+    assert _applied(source, _offering(source, {"x": offered}, shown=offered.text)) == fixed
+
+
+def test_a_generators_class_nothing_imports_is_no_fix() -> None:
+    """Neither the module nor the hint's edits say where `GeneratorType` is from."""
+    unbound: Offered = Offered("GeneratorType[int, None, None]")
+    assert [o.fix for o in _offering(_USE, {"x": unbound}, shown=unbound.text)] == [None]
+
+
 def test_an_edit_importing_a_module_names_no_class() -> None:
     """`import shapes` says the module, not which of its names is a class: no fix."""
     module: Offered = Offered("shapes.Shape", ("import shapes",))
@@ -674,6 +764,12 @@ def test_an_alias_is_declared_only_where_typealias_is_bound_by_then() -> None:
     offences: list[Offence] = _checked(source, names, Checks(all_scopes=True))
     assert [(o.name, o.fix) for o in offences] == [("Pair", None), ("Json", "TypeAlias")]
     assert type_alias(Known({}, frozenset(), {}, {}), 1) is None  # a module not read for its imports
+    old: list[Offence] = _checked(
+        "Pair = tuple[int, str]\n",
+        {"Pair": "TypeAlias"},
+        Checks(all_scopes=True, min_python=(3, 9)),
+    )
+    assert [o.fix for o in old] == [None]  # `typing.TypeAlias` is 3.10's
     spelled: list[Offence] = _offering(
         "import typing\ndef f(q) -> None:\n    x = q.kind\n",
         {"x": Offered("typing.TypeAlias")},

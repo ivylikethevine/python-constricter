@@ -28,15 +28,19 @@ from tests.corpus.pipeline import (
     CHECK,
     COVERAGE,
     FIX,
+    INFER,
     TESTS,
     TIMING,
     TRACED,
     TYPES,
+    UNION,
     Record,
     Store,
     fixing,
     steps,
+    united,
 )
+from tests.corpus.pipeline import part as suite_part
 from tests.corpus.pipeline import parts as suite_parts
 from tests.corpus.report_tables import SECTIONS, TABLES, Records, Rows, Table, differs, typed_share
 from tests.corpus.run_config import CERTAIN, CSV, JSON, LIKELY, MARKDOWN, UNSAFE, Run
@@ -62,7 +66,8 @@ def _every(run: Run) -> list[str]:
       Their names, each once.
 
     """
-    suited: list[str] = [TRACED, *suite_parts(run, TESTS), TESTS, *suite_parts(run, TYPES), TYPES]
+    union: list[str] = [f"{INFER}{UNION}", suite_part(TESTS, f"{INFER}{UNION}")] if united(run) else []
+    suited: list[str] = [TRACED, *suite_parts(run, TESTS), *union, TESTS, *suite_parts(run, TYPES), TYPES]
     return list(dict.fromkeys([*steps(run), *fixing(run), *suited, TIMING]))
 
 

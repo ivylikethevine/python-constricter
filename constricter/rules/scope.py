@@ -2,6 +2,7 @@
 """One scope being checked: what it binds and reports, what `--fix` knows of it, and its late fixes."""
 
 import ast
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from typing import Final
@@ -63,6 +64,7 @@ _SELF: Final = "self"
 _NONE: Final = "None"
 _CLASSMETHOD: Final = "classmethod"
 _STATICMETHOD: Final = "staticmethod"
+_SELF_WORD: Final = re.compile(r"\bSelf\b")  # `Self` in an annotation, `typing.Self` too
 FINAL_KIND: Final = "final"  # the fix kind of LVA012's `Final`
 _TYPING_FINAL: Final = "typing.Final"
 _LITERAL_DOUBT: Final = frozenset({"literal"})  # a constant's literal, which `doubts` makes a guess
@@ -106,18 +108,20 @@ class Scope:
         where: tuple[int, int],
         code: str | None,
         fix: Fix | None = None,
-        typed: str | None = None,
+        typed: str | Late | None = None,
     ) -> None:
         """Bind `name` to a value value flow can't see; unless it's already bound, report `code`.
 
         `code` is reported at `(line, col)` (`None` means typed), offering `fix` if there's one.
-        `typed`: the value's certain type, if `--fix` knows it (a loop's element), which a name
-        declared already is then bound to, and which a fix for the name's first binding is held to
-        (see `rebinding`).
+        `typed`: the value's type, if `--fix` knows it (a loop's element), which a fix for the name's
+        first binding is held to (see `rebinding`): its text where it's certain, which a name
+        declared already is then bound to; else the guess and what it rests on, as `assign` binds one.
         """
-        self.lifetime(name).bind(where, None, None if typed is None else (typed, frozenset()))
+        certain: str | None = typed if isinstance(typed, str) else None
+        guess: Late | None = (typed, frozenset()) if isinstance(typed, str) else typed
+        self.lifetime(name).bind(where, None, guess)
         if name in self.declared:
-            self.inferred.rebound(name, typed)
+            self.inferred.rebound(name, certain)
         self._first(name, where, code, fix)
 
     def assign(
@@ -441,7 +445,9 @@ class Scope:
         A union for a name it never tests: used as it is, it's taken for one of its members
         (`opt.cb`, hinted `Option | None`), which the union declared would make an error; tested
         (`if opt is None`), a checker narrows it. And any hint for a name it returns where its
-        signature says `Self`: the checker hints the class, which isn't `Self`.
+        signature says `Self`: the checker hints the class, which isn't `Self`. And a hint naming
+        `Self` where its signature doesn't: pyrefly takes `self` for `Self` everywhere
+        (`type(self)(...)`, `self[mask]`), mypy only there, and for its class elsewhere.
 
         Returns:
           Whether it is.
@@ -450,6 +456,8 @@ class Scope:
         function: FunctionDef | None
         if (function := self.kind.function) is None:
             return False
+        if _SELF_WORD.search(annotation) is not None and not says_self(function):
+            return True
         if len(members(annotation) or ()) > 1:
             return name not in narrowing(function)
         return says_self(function) and any(

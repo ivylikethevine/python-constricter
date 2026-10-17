@@ -174,6 +174,12 @@ def test_a_name_bound_again_to_a_call_on_itself_has_no_fix() -> None:
         c = proper(flag=c)
         d = 1
         d = abs(d)
+        e = "x"
+        e = e.convert()
+        f = "x"
+        f = proper.table.get(f) or proper.default
+        h = "x"
+        h = proper(h) if text else None
     """
     found: list[Offence] = check_source(textwrap.dedent(source))
     assert {o.name: (o.fix, o.unsafe) for o in found} == {
@@ -181,6 +187,69 @@ def test_a_name_bound_again_to_a_call_on_itself_has_no_fix() -> None:
         "b": ("str", True),
         "c": (None, False),
         "d": ("int", False),  # of a known type: it fits
+        "e": (None, False),  # its method
+        "f": (None, False),  # an operand of `or`
+        "h": (None, False),  # of a conditional expression
+    }
+
+
+def test_a_loops_target_bound_again_past_the_loop_has_no_fix() -> None:
+    """Another use of the name: the loop's values say nothing of it. Inside the loop, it's a guess."""
+    source: str = """
+    def g(headers: dict[str, str], paths: list[str], read) -> None:
+        for key, value in headers.items():
+            print(key)
+        for path in paths:
+            value = read(path)
+        for item in paths:
+            item = read(paths)
+    """
+    found: list[Offence] = check_source(textwrap.dedent(source))
+    assert {o.name: (o.fix, o.unsafe) for o in found} == {
+        "key": ("str", False),
+        "value": (None, False),
+        "path": ("str", False),
+        "item": ("str", True),
+    }
+
+
+def test_a_loops_target_bound_again_from_a_guessed_container_keeps_its_guess() -> None:
+    """The later loop's values are the guess's too: as a second pass sees them once it's declared."""
+    source: str = """
+    def g() -> None:
+        d = {"one": 1, 1j: 2j}
+        for k in d:
+            print(k)
+        for k, v in d.items():
+            print(k, v)
+    """
+    found: list[Offence] = check_source(textwrap.dedent(source))
+    assert {o.name: (o.fix, o.unsafe) for o in found} == {
+        "d": ("dict[str | complex, int | complex]", True),
+        "k": ("str | complex", True),
+        "v": ("int | complex", True),
+    }
+
+
+def test_a_name_bound_again_to_an_empty_display_of_another_class_has_no_fix() -> None:
+    """`flag = any(xs)`, then `flag = {}`: a checker holds the `{}` to `bool`; one of its class fits."""
+    source: str = """
+    def g(xs: list[int], store: dict[int, dict[str, int]]) -> None:
+        a = any(xs)
+        store[0] = a = {}
+        b = any(xs)
+        b = set()
+        c = [1]
+        c = []
+        d = any(xs)
+        d = ()
+    """
+    found: list[Offence] = check_source(textwrap.dedent(source))
+    assert {o.name: (o.fix, o.unsafe) for o in found} == {
+        "a": (None, False),
+        "b": (None, False),
+        "c": ("list[int]", True),
+        "d": (None, False),
     }
 
 

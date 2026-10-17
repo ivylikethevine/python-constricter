@@ -306,7 +306,9 @@ class LibraryNames(NamedTuple):
     receiver's type is matched by; `aliases`: the public aliases of installed generic classes it
     names, whose methods are their classes' (see `constricter.fix.index.stubs.stubbed`). `starred`: whether
     every Python the module runs on parses an unpacked tuple in a subscript (`tuple[int, *Ts]`,
-    3.11's syntax), so an annotation may be written with one.
+    3.11's syntax), so an annotation may be written with one. `aliased`: whether `typing` has
+    `TypeAlias` on every Python the module runs on (3.10's; yes where that isn't known), so a new
+    import may name it.
     """
 
     casts: frozenset[str] = frozenset()
@@ -318,6 +320,7 @@ class LibraryNames(NamedTuple):
     lineage: Mapping[str, tuple[str, ...]] = MappingProxyType({})
     aliases: Mapping[str, Expansion] = MappingProxyType({})
     starred: bool = False
+    aliased: bool = True
 
 
 class Returned(NamedTuple):

@@ -65,7 +65,8 @@ def main() -> int:
     facts = tomllib.loads((args.folder / "facts.toml").read_text(encoding="utf-8"))
     cpus = int(facts.get("cpus", 1))
     started = datetime.fromisoformat(str(facts["started"])).timestamp()
-    found = steps(args.folder)
+    # A record taken from an earlier run (the tests as released, `from`) keeps that run's `used`.
+    found = [each for each in steps(args.folder) if each.start >= started - 60]
     if not found:
         print("no measured steps")
         return 1

@@ -9,6 +9,11 @@ goes under `local/scratch/`.
   run made on the suites, by mechanism, with the type errors blamed on it and what its binding held
   at run time. `guess_report.py --likely` lists the sets that pass `docs/LIKELY.md`'s bars.
 - `widen_pass.py`: what a second pass still fixes on each corpus after every `fix-widen` kind.
+- `second_pass.py [CORPUS ...] [--likely | --certain]`: what a second pass still fixes on each
+  corpus after `--fix --unsafe-fixes` (or `--likely`, or neither), as CI's `ci-fix` run counts it,
+  each diff kept.
+- `hinted_second_pass.py CHECKER CORPUS ...`: the same after a run's `infer-CHECKER` step, on a
+  copy laid out as the corpus's checkout with its environment, the listing and the diff kept.
 - `widen_suites.py`: each suite's tests as released and after every `fix-widen` kind.
 - `widen_one.py`: one suite's tests after every `fix-widen` kind, their output and the diff kept.
 - `witness_checkers.py`, with `typeguard` and `beartype` on `PYTHONPATH`: values held to annotations
@@ -17,6 +22,13 @@ goes under `local/scratch/`.
 - `timing_trial.py [CORPUS ...] [--runs N] [--jobs N]`: a corpus's check timed as the `timing` step
   times it, by `hyperfine` and by `pyperf command`, in one process and with `--jobs`: each method's
   medians and spread, and hyperfine's instruction counts.
+- `timed_tail_trial.py [CORPUS ...] [--runs N] [--jobs N] [--cpus-each N]`: corpora timed as the
+  `timing` step times them with no warm-up, each alone and then all at once on disjoint CPU sets
+  (`taskset`): each way's runs, spread and first-run effect, and the side-by-side medians against the
+  alone ones.
+- `timing_noise.py FOLDER FOLDER`: two corpus runs' timing tables side by side, each corpus's change
+  in seconds and instructions and the medians of them: the run-to-run noise a timing change has to
+  clear.
 - `worker_start.py [ROOT ...] [--jobs N] [--runs N]`: a `--jobs` check of one-line files, mostly its
   workers' start, as `python -m constricter` and as the `constricter` script, against `--jobs=1`, by
   `hyperfine`, for each checkout given.
@@ -71,6 +83,12 @@ goes under `local/scratch/`.
   sample of each corpus's unannotated functions, written into a copy by daemons that start while the
   memory holds them, and `--fix`'s fixes and basedpyright's errors on it against a plain copy's. It
   counts `# type:` comments as no annotation, and writes mypy's `module:Name` spellings as given.
+- `hint_errors.py FOLDER [--step STEP] [--corpus NAME] [--samples N]`: the new type errors a corpus
+  run's hinted fixes caused, by step, corpus, checker code and fix kind, and the distinct blamed
+  fixes by code with samples; every error as JSON lines for grouping by hand.
+- `rebound_shapes.py FOLDER`: a run's `rebound` guesses by two shapes of the later binding (a loop's
+  target bound again past the loop; a `None` filled in an `if` testing the name), each shape's
+  guesses, errors and witness verdicts: a rule's cost before writing it.
 - `rebound_census.py REPORT.json ROOT`: a tree's `rebound` guesses from a `--format=json` report,
   counted by whether an augmented assignment binds the name again later, each one listed.
 - `widen_census.py [CORPUS ...]`: what `fix-widen` writes on a corpus as docs/FIXES.md reports it

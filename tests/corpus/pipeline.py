@@ -74,6 +74,9 @@ TESTS: Final = "tests"
 TYPES: Final = "types"
 TRACED: Final = "traced"
 TRACE: Final = "trace"  # after `INFER`: the fix step by a suite's tests' trace
+UNION: Final = (
+    "union"  # after `INFER`: the fix step with every source at once, for a suite's tests (`united`)
+)
 RELEASED: Final = "released"  # names the part of a suite's tests or type checks with no fix (`part`)
 GUESS: Final = "guess"
 IMPLIED: Final = "implied"  # in a suite's part's record after a fix: the fix step whose part stands for it
@@ -524,6 +527,20 @@ def parts(run: Run, kind: str) -> list[str]:
     return [part(kind, RELEASED), *(part(kind, step) for step in made)]
 
 
+def united(run: Run) -> bool:
+    """Check whether a run fixes a copy with every source at once (`infer-union`), for a suite's tests.
+
+    Where the tests run after each checker's hints: one run after every fix's at once stands for
+    each fix's where it's the released tests' (`suite_steps.standing`); with no checker, the
+    guesses' fix is that already. Not among `fixing`'s or `parts`': no table lists it.
+
+    Returns:
+      Whether it does.
+
+    """
+    return run.steps.tests and run.steps.tests_union and run.steps.tests_hinted and bool(run.steps.infer)
+
+
 class Timed(NamedTuple):
     """One way's runs of a timed check."""
 
@@ -534,9 +551,10 @@ class Timed(NamedTuple):
 def timing(job: Job) -> Record:
     """Time a check of the corpus at `suffocate`, in one process and with the run's `jobs`, several times.
 
-    By `hyperfine` where it's installed, each way's runs after one to warm up, with the instructions
-    each took (hyperfine 2's counters), whose spread is a quarter of the seconds' or less; its output
-    is kept beside the record (`timing.one.json`, `timing.every.json`). Otherwise in a loop of its own.
+    By `hyperfine` where it's installed, with no warm-up (the `check` step warmed the installed-modules
+    cache), with the instructions each took (hyperfine 2's counters), whose spread is a quarter of the
+    seconds' or less; its output is kept beside the record (`timing.one.json`, `timing.every.json`).
+    Otherwise in a loop of its own.
 
     Returns:
       The step's record: what timed it, each way's seconds and instructions, a run each, and their
@@ -576,7 +594,8 @@ def _by_hyperfine(job: Job, where: launch.Place, options: list[str], hyperfine: 
     jobs: int
     for way, jobs in (("one", 1), ("every", job.run.jobs)):
         exported: Path = job.store.path(job.tree.name, job.recorded, TIMING, f".{way}.json")
-        command: list[str] = [hyperfine, "-N", "-i", "--warmup", "1", "--runs", str(job.run.steps.timing)]
+        # No warm-up: `check` warmed the installed-modules cache, so a first run is within 1% of the rest.
+        command: list[str] = [hyperfine, "-N", "-i", "--runs", str(job.run.steps.timing)]
         command += ["--style", "none", "--export-json", str(exported)]
         # `-i`: the standard library's check exits 2 whatever `--exit-zero` says (some files don't parse).
         command.append(shlex.join(launch.command(job.version, where, options, jobs)))

@@ -19,9 +19,10 @@ import pytest
 from constricter import check_source
 from constricter.cli import command as cli
 from constricter.cli import rounds
-from constricter.cli.lsp import connection, guard, hints, protocol, remembered
+from constricter.cli.lsp import connection, guard, hints, protocol, remembered, stored
 from constricter.cli.options import Options
 from constricter.fix.core.known import Hints, Offered
+from constricter.fix.index.stubs.installed import cache_directory
 from tests.cli.sources import FAKE_SERVER
 
 # Each starts `--jobs` workers of its own: one at a time, where the tests run at once (`pytest -n`).
@@ -114,6 +115,66 @@ def test_a_file_asked_about_again_is_changed(monkeypatch: pytest.MonkeyPatch, tm
     with hints.Session([_CHECKER], tmp_path) as session:
         assert session.hints({path: "x = 1  # hint: int\n"})[path][0].types == {(1, 1): "int"}
         assert session.hints({path: "x: int = 1  # hint: int\n"})[path][0].types == {}
+
+
+def test_a_stored_round_keeps_its_hints_and_hung_files(tmp_path: Path) -> None:
+    """Each file's hints and edits, and the files the checker hung on, by the paths asked about."""
+    found: connection.Found = {
+        tmp_path / "a.py": {
+            (2, 1): ("Shape", Offered("Shape", ("from shapes import Shape",))),
+            (3, 5): ("int", None),
+        },
+        tmp_path / "b.py": {},
+    }
+    hung: frozenset[Path] = frozenset({tmp_path / "b.py"})
+    stored.store("round", tmp_path, found, hung)
+    assert stored.load("round", tmp_path, found) == (found, hung)
+    assert stored.load("other", tmp_path, found) is None
+
+
+def test_a_stored_round_unread_of_late_is_removed(tmp_path: Path) -> None:
+    """Writing a round removes the entries no run has read for longer than they're kept."""
+    stored.store("old", tmp_path, {}, frozenset())
+    stored.store("recent", tmp_path, {}, frozenset())
+    entries: Path = cache_directory().with_name("hints")
+    os.utime(entries / "old.json", (0, 0))
+    stored.store("round", tmp_path, {}, frozenset())
+    assert sorted(path.name for path in entries.iterdir()) == ["recent.json", "round.json"]
+
+
+def _no_servers(_files: Mapping[Path, str], checkers: list[hints.Checker]) -> None:
+    """Stand in for `hints._start` where no server may be started: none is needed."""
+    assert not checkers
+
+
+def test_a_round_asked_before_is_read_from_the_store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The same files, settings and checker: no server is started. A changed file is asked about."""
+    _fake(monkeypatch)
+    path: Path = tmp_path / "hinted.py"  # as `_session_hints` asks
+    text: str = "from shapes import make\nx = make()  # edits: Shape @ 0:23 , Shape\n"
+    _ = (tmp_path / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    first: Hints = _session_hints(tmp_path, text)
+    assert first.types == {(2, 1): "Shape"}
+    session: hints.Session
+    patched: pytest.MonkeyPatch
+    with monkeypatch.context() as patched:
+        patched.setattr(hints, "_start", _no_servers)
+        assert _session_hints(tmp_path, text) == first
+        with hints.Session([_CHECKER], tmp_path) as session:  # by a path relative to the workspace
+            patched.chdir(tmp_path)
+            assert session.hints({Path("hinted.py"): text})[Path("hinted.py")][0] == first
+    assert _session_hints(tmp_path, text.replace("Shape", "Box")).types == {(2, 1): "Box"}
+    _ = (tmp_path / "pyproject.toml").write_text("[project]\nname = 'other'\n", encoding="utf-8")
+    with monkeypatch.context() as patched:
+        patched.setattr(hints, "_start", _no_servers)
+        with pytest.raises(AssertionError):  # the settings changed: asked again
+            _ = _session_hints(tmp_path, text)
+    with hints.Session([_CHECKER], tmp_path, kept=False) as session:
+        assert session.hints({path: text})[path][0] == first
+    with monkeypatch.context() as patched:
+        patched.setattr(hints, "_start", _no_servers)
+        with hints.Session([_CHECKER], tmp_path, kept=False) as session, pytest.raises(AssertionError):
+            _ = session.hints({path: text})
 
 
 @pytest.mark.parametrize(
@@ -709,6 +770,12 @@ def test_a_server_reporting_progress_is_waited_for(monkeypatch: pytest.MonkeyPat
         _ = session.hints({path: "x = 1  # hint: int\n"})  # started: starting isn't what's timed
         monkeypatch.setattr(connection, "_TIMEOUT", 0.5)
         assert session.hints({path: "x = 2  # hint: str\n"})[path][0].types == {(1, 1): "str"}
+
+
+def test_infer_fresh_asks_the_checkers_again() -> None:
+    """`--infer-fresh`: no hints kept from an earlier run."""
+    assert not Options.parse([]).infer_fresh
+    assert Options.parse(["--infer-fresh"]).infer_fresh
 
 
 def test_infer_memory_is_an_option_and_a_setting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

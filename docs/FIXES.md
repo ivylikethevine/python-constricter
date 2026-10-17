@@ -564,7 +564,12 @@ than the fix says, the fix is changed, made a guess, or not offered:
   untyped. A later value whose type isn't known may be anything, which makes the fix a guess, and no
   fix where it's bound in another arm of the first one's `if`, `try` or `match` (`dtype = "None"`,
   `else: dtype = self.categories.dtype`): only one arm runs, and a checker that knows the other's
-  type holds it to the first's. A class or alias the file spells two ways is one type (`CoreSchema`
+  type holds it to the first's. Nor where it's bound again to a call on itself of no known type
+  (`item = proper(item)`, `match = match.groupdict()`, `code = table.get(code) or SYNTAX`), a
+  conversion as often as not; a number by an augmented assignment with an operand of no known type
+  (`factor *= other`); an empty display of another class (`flag = any(xs)`, then `flag = {}`),
+  which a checker holds to the first's; or, for a loop's target, any value of no known type past
+  the loop: another use of the name, which the loop's values say nothing of. A class or alias the file spells two ways is one type (`CoreSchema`
   and `core_schema.CoreSchema`, after importing the name and its module; the CLI only, whose index
   says where each is defined);
 - after it's bound again, a name is what it was bound to: certain where that's a member of its
@@ -662,7 +667,10 @@ A hint is used only as an annotation the file can hold:
   `Literal[Color.RED]` is `Color`), and `LiteralString` to `str`;
 - ty's own spellings are read: a class object (`<class 'Point'>`) is `type[Point]`, a type variable
   printed with its scope (`Model@create_model`) the variable, and an intersection with a truthiness
-  (`str & ~AlwaysFalsy`) its other member; any other intersection is dropped. An unpacked tuple
+  (`str & ~AlwaysFalsy`) its other member; any other intersection is dropped. A generator's,
+  coroutine's or async generator's class as `types` has it (ty's `GeneratorType[str, None, None]`)
+  is `collections.abc`'s (`Generator[str, None, None]`), as every checker types the expression that
+  makes one. An unpacked tuple
   (`tuple[str, *tuple[str, ...]]`, Python 3.11's syntax) is kept where the project's oldest Python
   parses it: `min-python` (`--min-python`), which defaults to the lower bound of the nearest
   `pyproject.toml`'s `requires-python`. Where it's older, or not known (the plugins), it's written
@@ -671,12 +679,18 @@ A hint is used only as an annotation the file can hold:
 - a type variable of the module's is a fix only where the function's signature, or its class's
   bases, name it: anywhere else it's unbound;
 - anything vague (`Any`, `list[Unknown]`), not an annotation (`Module("os")`, a signature), as deep
-  as LVA006 reports or as long a tuple as LVA011 does, or a bare `None`, is dropped;
+  as LVA006 reports or as long a tuple as LVA011 does, a bare `None`, or one with `Never` or
+  `NoReturn` in it (an empty display's `list[Never]`), is dropped;
 - every name in it must be a builtin, a name the module binds at its top level (before the binding,
   in a module body), a class it imports under `if TYPE_CHECKING:`, a class the checker prints bare
   that `--fix` can import (`collections.abc`'s, `Path`, `deque`, `Decimal`, `UUID`, ...: one is
   added as other fixes add theirs), or a class the hint's own edits import. Otherwise nothing says
-  what the name means, and the hint is dropped;
+  what the name means, and the hint is dropped. So is one whose name the module binds to another
+  thing than the checker prints it for: a module written bare (`import socket`, then `socket`), one
+  of those bare classes bound to the module's own class (`class Match`), a builtin given type
+  arguments it takes none of (numpy's `bool[bool]`, printed bare), a private part of a dotted name
+  (`np._NBitIntP`), or a class a function defines (`Parser.read.Dialect`), which no annotation can
+  name;
 - a generic class without its arguments is dropped (a checker prints one so when it doesn't know
   them), as is a special form alone (`type[Generic]`, `Annotated`);
 - a union (`Option | None`, `Series | bool`) is a fix only for a name its function narrows somewhere
@@ -686,13 +700,14 @@ A hint is used only as an annotation the file can hold:
 - a `Literal` isn't widened inside a class's own arguments (`Reader[Literal["frame"]]`), which may
   be bound to the literals: the hint is dropped. A builtin's or `collections.abc`'s are;
 - a name its function returns has no fix where the function's signature says `Self`: the checker
-  hints the class;
+  hints the class. And a hint naming `Self` is a fix only where the signature says `Self`: elsewhere
+  mypy takes `self` for its class, where pyrefly hints `Self` (`type(self)(...)`, `self[mask]`);
 - a name bound again later has no fix unless every later value is known to fit the hint: the hint is
   the first value's type alone (`n = values.mean()`, hinted `np.float64`, then `n = len(values)`);
 - `TypeAlias`, which a checker hints an alias's assignment as, declares a module body's alias
   written as a subscript or a union (`Json: TypeAlias = dict[str, "Json"] | str`): named as the
-  module's imports can (`typing`'s or `typing_extensions`'s), else imported from `typing`. Never a
-  bare class's alias (`Alias = Class`), which declared one loses the class's type parameters, nor a
+  module's imports can (`typing`'s or `typing_extensions`'s), else imported from `typing` unless
+  `min-python` is older than 3.10, where the import would fail. Never a bare class's alias (`Alias = Class`), which declared one loses the class's type parameters, nor a
   function's local.
 
 A hint carries the edits an editor applies to accept it: the annotation, and an import for each
@@ -733,6 +748,14 @@ hold what they're asked about (pandas: 1.2 GB in one `ty` server and 2.5 GB in f
 GB for pyrefly). `--infer-memory GB` (`infer-memory`) caps what a checker's servers use together: by
 default 8 GB, or half the memory available if that's less; set, never more than is available. One
 server a checker always gets.
+
+A round's hints are kept in the cache (`~/.cache/constricter/hints`, two weeks from their last use)
+and read from there while nothing they rest on has changed: the checker's build, the text of every
+file asked about, the workspace's settings files (`pyproject.toml`, `pyrightconfig.json`, `ty.toml`,
+...) and the installed distributions of the environments a checker may read. A project's first round
+at the same commit then starts no server. A file of the workspace that isn't asked about isn't
+counted: one only it changed, and that a checked file imports, can leave its hints a run behind.
+`--infer-fresh` asks the checkers again.
 
 Each server runs behind a small guard process, which passes its input and output through and kills
 it (and anything it started: a venv's `basedpyright-langserver` starts `node`) once constricter has

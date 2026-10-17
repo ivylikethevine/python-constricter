@@ -715,20 +715,36 @@ each item sized the same way.
    tests after waits of 50 minutes and sqlalchemy's 9-minute tests starting at 138; and the 47 timed
    checks took the last 11 minutes alone with 1 to 3 CPUs busy (10 step-minutes). The suites' tests
    are the tail now, and the order they start in the lever: the longest (mypy's, sqlalchemy's,
-   pandas's, dask's, optuna's) waited for the fixes and checkers before them. Done when a mega run
-   uses 85% of its CPU seconds, and one with no earlier run under its output takes within a tenth of
-   one sized by its own. About 2 hours beside the runs; coverage unchanged.
+   pandas's, dask's, optuna's) waited for the fixes and checkers before them. The mega run of
+   0.4.0-rc.1, the first with them, took 134 minutes on 16CPU/60GB (replayed at 126) and used 77.5%
+   of its CPU seconds: 83.3% over the 123 minutes before its timed checks, with 12 to 15 CPUs busy
+   throughout and mypy's, dask's and optuna's suites all ending in the last minute of them; the 47
+   timed checks took the last 10.5 minutes with 1.5 CPUs busy. Its steps' CPU seconds over every CPU
+   are 113 minutes, and no schedule of them takes under 123: the scheduling is within 10% of its
+   floor, and the tail is what's left of the 85%. The 0.4.0-rc.2 run's new `infer-union` steps,
+   unmeasured, were held a third of the memory, as any checker's step is (dask's took 18.2 GB), and
+   its tests' parts what the tests' whole step had held, which only reads its parts' (1 CPU; mypy's
+   kept 5.6 busy). Done, not yet run: an unmeasured part takes its kind's largest measured part
+   (the released tests'), and an unmeasured `infer-union` its checkers' steps together, no more
+   than twice the largest's memory. Done when a mega run uses 85% of its CPU seconds,
+   and one with no earlier run under its output takes within a tenth of one sized by its own. About
+   2 hours beside the runs; coverage unchanged.
 
 2. **The timed tail.** The 47 timed checks ran alone over the 0.3.9-rc.1 mega run's last 11 minutes
    with 1.4 of 16 CPUs busy, 2.49 idle CPU-hours, the largest idle hold of any step kind; pandas's
-   (136s) and the standard library's (117s) are 41% of it. With `timing = 1`, drop hyperfine's
-   `--warmup 1` (the `check` step warmed the installed-modules cache; it doubles each check), and run
-   two or three timed corpora at once on disjoint CPU sets (`taskset`, `jobs + 1` CPUs each). Between
-   two runs at the same commit the single-sample seconds differed by a median 0.13% in one process
-   and 0.59% with every CPU, instructions by 0.09%: the published table compares seconds across runs,
-   so measure the noise beside other work before keeping it. Done when the tail is under 5 minutes
-   with the timing table's run-to-run noise unchanged. About 2 hours beside the runs; coverage
-   unchanged.
+   (136s) and the standard library's (117s) are 41% of it, and 0.4.0-rc.1's tail was the same 10.5
+   minutes. Between two runs at the same commit the single-sample seconds differed by a median 0.13%
+   in one process and 0.59% with every CPU, instructions by 0.09%; between the two mega runs, a
+   version bump apart with the tail alone each time, by a median 0.9% in one process and 1.2% with
+   jobs, up to 4%, and instructions by 1% too (`scratch/timing_noise.py`; some corpora moved tag).
+   Measured on django, sqlalchemy and twisted, 5 runs a way (`scratch/timed_tail_trial.py`): with no
+   warm-up the first run is within 0.8% of the rest, so hyperfine's `--warmup 1` is dropped, which
+   halves each timed check; three corpora at once on disjoint 5-CPU sets run 4 to 5% slower in one
+   process and 10 to 17% with jobs, with the spread up from under 1% to 2 to 10%, so the timed checks
+   stay one at a time. The instructions didn't move side by side (0.04 to 0.15%): the table could
+   compare them across runs instead of seconds, which would free the tail to run beside other steps.
+   Done when a mega run's tail is under 5 minutes with the timing table's run-to-run noise unchanged:
+   the 0.4.0-rc.2 mega run's took 5.3 minutes, from 10.5. About 1 hour; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -751,8 +767,19 @@ each item sized the same way.
      98.7% of the time (13 of 1,019 told differed), so withholding them all would cost more than it
      saves. Done: a name bound again to a call on itself (`groupdict()`'s case), or a number bound
      again by an augmented assignment with an operand of no known type (`factor *= other`), gets no
-     guess; pydantic loses one (`scratch/rebound_census.py` counts them). Left, on the next mega
-     run: `units_overlay`'s and `code`'s, and whether pint's and mcp's errors are gone.
+     guess; pydantic loses one (`scratch/rebound_census.py` counts them). The 0.4.0-rc.2 mega run
+     still had pint's 4 and mypy's 3: the call on itself was only one taking the name, not its
+     method (`match = match.groupdict()`) or one behind `or` (`code = codes.get(code) or SYNTAX`).
+     Done, not yet run: those, a name bound again to an empty display of another class
+     (`units_overlay = {}`, a chained assignment's), and a loop's target bound again past the loop
+     to a value of no known type (mcp's `value: str`, then `value = _value_at_path(...)`), get no
+     guess either; the last withdraws 25 guesses on the rc.2 run's sources at hand
+     (`scratch/rebound_shapes.py`), one blamed for an error. Left as it is: mcp's `name`, a copy of a
+     `str | None` parameter filled in `if not name:` by a value the checker sees as `Any` and narrows
+     to the declared type; withdrawing that shape would take 23 guesses for that one error. A run of
+     `tests/corpus/runs/errors.toml` after them had none of pint's or mypy's left, and mcp's 3 others
+     were a display widened by a value narrowed where it's added (`headers[key] = self.session_id`
+     in `if self.session_id:`); done since: no fix, 4 of mcp's guesses withdrawn, pydantic's none.
    - A type from a package the suite's own checker can't follow (`etree.Element`, of `lxml`): 14 of
      mypy's. Its environment's; listed, not fixed.
    - A `None`, then only an `Index`, by an unannotated function's `return`s: declared, an argument
@@ -766,8 +793,9 @@ each item sized the same way.
      `str-bytes-safe`): nibabel's one, a likely `method` guess.
 
    Done when each package's errors left are its environment's, or under one for each hundred of its
-   guesses, on the seven and on the mega corpora's. About 6 hours; coverage down by the guesses
-   withdrawn.
+   guesses, on the seven and on the mega corpora's: on the 0.4.0-rc.2 mega run every package was,
+   by the guesses blamed for an error in each hundred a checker read (mcp 0.54, pint 0.27, mypy
+   0.24, the rest under 0.1). About 6 hours; coverage down by the guesses withdrawn.
 
 2. **A parallel check, past its longest chain.** With every CPU the standard library checks in 12.9s
    and pandas in 11.3s (14.4s and 11.4s before the workers were kept for a run's rounds): 46s and
@@ -791,9 +819,30 @@ each item sized the same way.
    the super corpora; on the slow ones, 215 on litestar, 42 on narwhals, 29 on mypy, 16 on optuna,
    13 on pint and 2 to 8 on four more. Nearly all are traced to a hint's own fix (`checker`).
    litestar's weren't read: its Pyright is set to Python 3.8. Count them by cause, as the guesses'
-   are above, and hold a hint to what the cause says. Done when a hinted run's new errors are under
-   one for each hundred of its hints' fixes on the three corpora type-checked. About 8 hours;
-   coverage down by the hints withdrawn.
+   are above, and hold a hint to what the cause says. On the 0.4.0-rc.2 mega run the hinted steps'
+   868 new errors were 454 blamed on a hint's own fix, 195 on `--fix`'s own guesses beside them and
+   219 on no fix, 182 of those litestar's, set off by the hints' `from typing import TypeAlias` on
+   its Python 3.8 (`scratch/hint_errors.py` groups them). The hints' by cause: an annotation
+   narrower than a later value (95, and 16 a later `None`): the hint is the first value's type, the
+   checker knows the later ones' and `--fix` doesn't; ty's `GeneratorType[...]` for a generator
+   (44); numpy's `bool[bool]` as ty prints it, read as the builtin (43); another class of the same
+   name (43: starlette's own `Match`, pydantic's `ValidationError` for jsonschema's); `TypeAlias` on
+   Python 3.8 (23); a module's name for its class (16: `import datetime`, PIL's `Image`); a private
+   or stub-only name (13: `np._NBitIntP`, `sys.OptExcInfo`); `Never` (4); a class a function
+   defines (4); and 153 others, most of them pandas's `ArrayLike` and `Manager` unions read as one
+   member. Done, not yet run: a hint naming a module bare, a well-known class's name the module
+   binds to its own class, a builtin given type arguments, a private part of a dotted name or a
+   function's class is dropped, ty's `GeneratorType` is written `Generator`, and `TypeAlias` is
+   imported from `typing` only from `min-python` 3.10: 165 of the 454, and litestar's 182. Of the
+   narrower annotations, 25 were pyrefly's `Self` for a local in a method whose signature doesn't
+   say `Self` (`type(self)(...)`, `self[mask]`, `super().drop_duplicates()`), which mypy reads as the
+   class there; and 4 a `Never` (`list[Never]`, an empty display's). Done, not yet run: neither is
+   a fix, 194 of the 454 in all. Left: a hint narrower than the package's own checker reads the
+   same value (`message.get("more_body")`, `bool` to basedpyright and `bool | None` to mypy;
+   pyrefly's `bool` for numpy's), the same names imported from elsewhere (`Image`,
+   `ValidationError`, which only the checker's definition link can tell apart), and pandas's. Done when a hinted run's new
+   errors are under one for each hundred of its hints' fixes on the three corpora type-checked.
+   About 8 hours; coverage down by the hints withdrawn.
 4. **The witness, past a test's own classes.** The corpora runs hold a fixed binding's value to its
    annotation as its package's traced tests bind it (`tests/corpus/witness`), and a test's own
    stand-in differs (`FakeProcess`, passed where a `ServerProcess` is declared: mcp's one certain
@@ -882,8 +931,21 @@ each item sized the same way.
     parts run as today. The fixes conflict on a few bindings in 37 of 42 suites (1 to 30; pandas 464,
     mypy 73, xarray 71): a priority (unsafe's annotation, then the trace's, then the checkers in a
     fixed order), or the fallback. The same assumption the tiers' implication makes: fewer
-    annotations don't fail where more passed. Done when a mega run's tests table reads the same with
-    the parts marked implied and the run is 25 minutes shorter. About 5 hours; coverage unchanged.
+    annotations don't fail where more passed. Done: the union is a fix step of its own
+    (`infer-union`: `--fix --unsafe-fixes --infer-with` every checker `--infer-from` the trace, so
+    the priority is constricter's own, the guesses, then the checkers in the run's order, then the
+    trace), and its tests' part runs before every fix's, which stand on it where it was the
+    released tests' (`patch: union`) and run as before where it wasn't. On the 0.4.0-rc.1 mega run
+    no fix broke a test on any of the 42 suites, whose 178 fixed runs took 812 CPU-minutes. The
+    0.4.0-rc.2 mega run, the first with the union, took 91 minutes on 16CPU/60GB (rc.1's 134) and
+    1,098 CPU-minutes (1,655), with the same fixes, tests table and no test a fix broke: the union's
+    run was the released tests' on 38 suites, and 266 fixed parts stood on it, 22 ran. On django,
+    nibabel, black and sphinx it wasn't, by a timing test (django's `test_crafted_xml_performance`)
+    and tests no fix's own run failed: flaky under load, so their 28 parts ran. The fixed parts took
+    286 CPU-minutes and the union steps 148. Its first run had no record to size the union's steps
+    by: its fix step was held 11.7 GB (dask's took 18.2) and waited up to 9 minutes, its tests 1 CPU
+    (mypy's kept 5.6 busy), so the next run, sized by this one's, should be quicker still. About 5
+    hours; coverage unchanged.
 11. **First-round hints cached across runs.** The `infer-*` steps used 290 CPU-minutes and 114
     step-minutes of the 0.3.9-rc.1 mega run (stripe's basedpyright 22.6 minutes, the standard
     library's 21.4 at 12.3 GB), and their memory, not the CPUs, kept the early steps waiting
@@ -891,9 +953,14 @@ each item sized the same way.
     20 GB). The first round asks the checker about the released text (`cli/lsp/hints.py`), which
     constricter's version doesn't change: keep its hints by file text, checker build and environment,
     as `remembered.py` keeps hung-file markers, and ask only for the later rounds' fixed text. 44 of
-    47 tags were unchanged between the mega runs. Done when a mega run's `infer-*` steps read the
-    first round from the store and the hints are the same; the steps' seconds then measure less of
-    the checker, so the timing table says so. About 6 hours; coverage unchanged.
+    47 tags were unchanged between the mega runs. Done, not yet run: every round is kept whole in
+    the cache (`cli/lsp/stored.py`), by the checker's build, the text of every file asked about, the
+    workspace's settings files, the environments' installed distributions and the code that asks;
+    a round kept starts no server, and `--infer-fresh` asks again. Not a workspace file that isn't
+    asked about: walking the tree cost as much as a round. A later round is kept too, for the next
+    run with the same fixes. Left: the steps' seconds then measure less of the checker, which the
+    report doesn't say yet. Done when a mega run's `infer-*` steps read the first round from the
+    store and the hints are the same. About 6 hours; coverage unchanged.
 
 ### Large: more than 8 hours
 

@@ -10,7 +10,7 @@ module's own code writes with a type variable it imports is left out: `--fix` se
 import ast
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
-from typing import cast
+from typing import Final, cast
 
 from constricter.fix.core import imports, inherited
 from constricter.fix.core.known import (
@@ -50,6 +50,8 @@ from constricter.rules.syntax import (
 )
 from constricter.rules.tables import Tables
 from constricter.rules.walked import of_type
+
+TYPING_ALIAS: Final = (3, 10)  # the first Python whose `typing` has `TypeAlias`
 
 
 def module_settings(
@@ -126,6 +128,7 @@ def module_settings(
                 {} if outside is None else outside.installed_lineage,
                 {} if outside is None else outside.installed_aliases,
                 checks.min_python is not None and checks.min_python >= STARRED_SUBSCRIPTS,
+                checks.min_python is None or checks.min_python >= TYPING_ALIAS,
             ),
             Limits(checks.max_length, checks.vague, widened.marks(lines)),
             vouched=passing(tree, defined_type_vars(tree)).union(

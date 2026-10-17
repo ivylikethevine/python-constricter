@@ -103,10 +103,21 @@ def test_a_step_waits_for_the_cpus_and_the_memory_it_wants() -> None:
         12.0,
         0,
     )
-    switched: Record = {"tests-hinted": False, "every-level": True, "tests-released": False}
+    switched: Record = {
+        "tests-hinted": False,
+        "every-level": True,
+        "tests-released": False,
+        "tests-union": False,
+    }
     asked: Steps = parse({"steps": switched}).steps
-    assert (asked.tests_hinted, asked.every_level, asked.tests_released) == (False, True, False)
+    assert (asked.tests_hinted, asked.every_level, asked.tests_released, asked.tests_union) == (
+        False,
+        True,
+        False,
+        False,
+    )
     assert (Steps().tests_hinted, Steps().every_level, Steps().tests_released) == (True, False, True)
+    assert Steps().tests_union
 
 
 def test_a_suites_tests_start_with_half_the_cpus_they_want_and_take_whats_free() -> None:

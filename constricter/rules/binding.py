@@ -405,8 +405,10 @@ def _bind_declaration(
     if (source := None if fix or name.id in scope.declared else _source(stmt, name)) is not None:
         scope.assignments.plain[name.id] = (name, source, found)
         scope.assignments.chained[name.id] = (stmt.lineno, stmt.col_offset)
-    certain: bool = found is not None and not unsafe and scope.writable(found)
-    scope.bind(name.id, at(name), code, fix, found.annotation if found is not None and certain else None)
+    typed_as: str | Late | None = None
+    if found is not None and scope.writable(found):
+        typed_as = (found.annotation, origins) if unsafe else found.annotation
+    scope.bind(name.id, at(name), code, fix, typed_as)
 
 
 def _bind_commented(scope: Scope, stmt: ast.For | ast.AsyncFor, target: ast.expr, comment: str) -> None:

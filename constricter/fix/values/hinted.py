@@ -14,21 +14,28 @@ the checker printed it:
 - a `Literal` is widened to its values' types (`Literal[1, 2]` is `int`, `Literal[Color.RED]` is
   `Color`), and `LiteralString` to `str`, then a union's repeated members dropped;
 - anything that isn't an annotation (`Module("os")`, a callable's signature, `Self@C`) is dropped,
-  as is a vague one (`Any`, `list[Unknown]`), a bare `None`, one nested as deep as LVA006 reports,
-  or a tuple as long as LVA011 does;
+  as is a vague one (`Any`, `list[Unknown]`), a bare `None`, one with `Never` or `NoReturn` in it
+  (an empty display's `list[Never]`, or code the checker takes not to run), one nested as deep as
+  LVA006 reports, or a tuple as long as LVA011 does;
 - a special form alone (`type[Generic]`) is dropped, as is a union inside the hint
   (`dict[str, int | bytes]`), and a `Literal` in a class's own arguments, which may be bound to it
   (a union for a name its function doesn't narrow, a name it returns as `Self` and one bound again
   are `constricter.rules`' to drop);
 - `TypeAlias`, hinted for an alias's assignment, declares a module's alias written as a subscript or
   a union (see `type_alias`), and is dropped anywhere else;
+- a generator's, coroutine's or async generator's class as `types` has it at run time (ty's
+  `GeneratorType[str, None, None]`) is `collections.abc`'s, as every checker types the expression
+  that makes one (`Generator[str, None, None]`);
 - every name in it must be one the file can use: a builtin, a name the module binds at its top
   level (before the binding, in a module body, where the annotation is evaluated), a class or
   alias it imports under `if TYPE_CHECKING:` or the hint's own edits import (`Offered`: imported
   for type checking alone, as the checker says from where; see `constricter.fix.index.offers` for which
   are taken), or a class the checker prints by its bare name from a module `ImportPlan.spell` can
   import (`Callable`, `Iterator`, `Path`, `deque`, ...). Anything else, it can't be sure what the
-  name means.
+  name means. Nor where the file binds a name to another thing than the checker prints it for: one
+  of those well-known classes bound to its own class or a module (`class Match`, `import datetime`),
+  a builtin that takes no type arguments given some (numpy's `bool[bool]`, printed bare), a dotted
+  name with a private part (`np._NBitIntP`), or a class a function defines (`Parser.read.Dialect`).
 
 A hint with edits is judged as it shows first (`Thing[str]`), then as they'd write it
 (`things.Thing[str]`, through a module the file imports).
@@ -43,7 +50,7 @@ from typing import Final, TypeAlias
 
 from constricter.fix.core.known import Hints, ImportPlan, Inference, Known, Offered
 from constricter.fix.libraries import stdlib
-from constricter.rules.annotations import ABSTRACT, depth, length, vague_fits
+from constricter.rules.annotations import ABSTRACT, depth, dotted, length, vague_fits
 
 KIND: Final = "checker"  # the fix kind, and what the guess rests on
 TRACED: Final = "traced"  # the same, for a traced run's types (`--infer-from`)
@@ -130,6 +137,37 @@ _DOT: Final = "."
 _OWN: Final = "own"  # the module imports it under `if TYPE_CHECKING:`
 _OFFERED: Final = "offered"  # the hint's edits import it
 _KNOWN: Final = "known"  # `WELL_KNOWN` says where it's from
+# The builtins that take type arguments: another of a builtin's names given some is another class.
+_GENERIC_BUILTINS: Final = frozenset(
+    {
+        "BaseExceptionGroup",
+        "ExceptionGroup",
+        "classmethod",
+        "dict",
+        "enumerate",
+        "filter",
+        "frozenset",
+        "list",
+        "map",
+        "memoryview",
+        "reversed",
+        "set",
+        "slice",
+        "staticmethod",
+        "tuple",
+        "type",
+        "zip",
+    },
+)
+# `types`' classes for what a generator, a coroutine and an async generator make, and how checkers
+# type those: as `collections.abc`'s classes.
+_RUNTIME: Final = {
+    "GeneratorType": "Generator",
+    "CoroutineType": "Coroutine",
+    "AsyncGeneratorType": "AsyncGenerator",
+}
+_TYPES: Final = "types"
+_BOTTOM: Final = frozenset({"Never", "NoReturn"})  # the type of no value: never a variable's
 
 
 def hinted(
@@ -178,7 +216,7 @@ def type_alias(known: Known, before: int) -> str | None:
 
     As an import the module has names it (`typing`'s, or `typing_extensions`'s), if it runs by then,
     the name itself before one through its module (`TypeAlias`, then `typing.TypeAlias`); else by a
-    new import from `typing`.
+    new import from `typing`, where every Python the module runs on has it there (`aliased`).
 
     Returns:
       The name, or `None` if the module can't name it there.
@@ -190,7 +228,7 @@ def type_alias(known: Known, before: int) -> str | None:
     name: str | None
     named: list[str]
     if not (named := [name for origin in _ALIAS_ORIGINS if (name := plan.named(origin)) is not None]):
-        return plan.spell(_ALIAS_ORIGINS[0])
+        return plan.spell(_ALIAS_ORIGINS[0]) if known.names.aliased else None
     bound: list[str] = [each for each in named if plan.defined.get(each.partition(".")[0], before) < before]
     return min(bound, key=lambda each: _DOT in each) if bound else None
 
@@ -272,11 +310,12 @@ def _spelled(
         root = _unstarred(root, plan)
     if plan is None or root is None or not _annotation(root) or not _fits(root, nesting, known):
         return None
+    origins: _Origins = _origins(imports)
+    root = _abstract(root, plan, origins)
     lone: set[str] = _lone(root)
     # `TypeAlias` is `type_alias`'s to write. A special form alone isn't a type.
-    if _aliases(root) or lone & _FORMS:
+    if _aliases(root) or lone & _FORMS or _misnamed(root, plan) or _bottom(root):
         return None
-    origins: _Origins = _origins(imports)
     names: list[str] = sorted(
         {
             node.id
@@ -332,6 +371,133 @@ def _unstarred(root: ast.expr, plan: ImportPlan) -> ast.expr | None:
         if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Tuple) and node.slice in lone:
             node.slice = node.slice.elts[0]
     return root
+
+
+def _abstract(root: ast.expr, plan: ImportPlan, origins: _Origins) -> ast.expr:
+    """Write `types`' generator, coroutine and async generator classes as `collections.abc`'s.
+
+    Where the name is `types`' (`GeneratorType` that the module or the hint's edits import from it,
+    `types.GeneratorType` through the module): see `_RUNTIME`.
+
+    Returns:
+      The annotation.
+
+    """
+    node: ast.AST
+    abstract: str | None
+    for node in ast.walk(root):
+        if isinstance(node, ast.Subscript) and (abstract := _runtime(node.value, plan, origins)) is not None:
+            node.value = ast.Name(abstract)
+    return root if (abstract := _runtime(root, plan, origins)) is None else ast.Name(abstract)
+
+
+def _runtime(node: ast.expr, plan: ImportPlan, origins: _Origins) -> str | None:
+    """Name the `collections.abc` class for `types`' class `node` names, if it names one of `_RUNTIME`'s.
+
+    Returns:
+      It, or `None`.
+
+    """
+    name: str
+    module: str
+    match node:
+        case ast.Name(id=name) if name in _RUNTIME and _origin(name, plan, origins) == f"{_TYPES}.{name}":
+            return _RUNTIME[name]
+        case ast.Attribute(value=ast.Name(id=module), attr=name) if (
+            name in _RUNTIME and plan.bound.get(module) == _TYPES
+        ):
+            return _RUNTIME[name]
+        case _:
+            return None
+
+
+def _bottom(root: ast.expr) -> bool:
+    """Check whether an annotation has `Never` or `NoReturn` in it, however it's spelled.
+
+    Returns:
+      Whether it does.
+
+    """
+    return any(
+        (isinstance(node, ast.Name) and node.id in _BOTTOM)
+        or (isinstance(node, ast.Attribute) and node.attr in _BOTTOM)
+        for node in ast.walk(root)
+    )
+
+
+def _misnamed(root: ast.expr, plan: ImportPlan) -> bool:
+    """Check whether an annotation names what the file binds to another thing than the checker means.
+
+    A module, written bare (`import socket`, then `socket`: the checker's is a class), a well-known
+    class's name (`Match`) the module binds to its own class, a builtin it doesn't rebind given type
+    arguments it takes none of (numpy's `bool`, printed bare), a private part of a dotted name
+    (`np._NBitIntP`), or a class a function defines, named through it (`Parser.read.Dialect`).
+
+    Returns:
+      Whether it does.
+
+    """
+    node: ast.AST
+    name: str
+    # A dotted name's root (`datetime` in `datetime.date`) is a module's, rightly.
+    roots: set[int] = {id(node.value) for node in ast.walk(root) if isinstance(node, ast.Attribute)}
+    for node in ast.walk(root):
+        match node:
+            case ast.Name(id=name) if id(node) not in roots and (
+                plan.bound.get(name) == name
+                or (name in WELL_KNOWN and name in plan.defined and not _imported(name, plan))
+            ):
+                return True
+            case ast.Subscript(value=ast.Name(id=name)) if (
+                name in _BUILTINS and name not in plan.defined and name not in _GENERIC_BUILTINS
+            ):
+                return True
+            case ast.Attribute():
+                parts: list[str] = _dotted(node)
+                if parts and (
+                    any(part.startswith("_") for part in parts[1:])
+                    or (parts[0] not in plan.bound and any(part[:1].islower() for part in parts[1:-1]))
+                ):
+                    return True
+            case _:
+                pass
+    return False
+
+
+def _origin(name: str, plan: ImportPlan, origins: _Origins) -> str | None:
+    """Find what a hint's bare `name` is: what the module's import binds, else the hint's edits'.
+
+    Returns:
+      Its qualified name; `None` where the module binds it otherwise, or nothing says.
+
+    """
+    if name in plan.bound:
+        return plan.bound[name]
+    if name in plan.defined or name not in origins:
+        return None
+    return f"{origins[name][1]}.{origins[name][2]}"
+
+
+def _imported(name: str, plan: ImportPlan) -> bool:
+    """Check whether the module binds `name` by importing a class of that name (`from re import Match`).
+
+    Returns:
+      Whether it does: not by `import name` (a module), nor under another name, nor otherwise.
+
+    """
+    bound: str | None = plan.bound.get(name)
+    return bound is not None and _DOT in bound and bound.rpartition(_DOT)[2] == name
+
+
+def _dotted(node: ast.expr) -> list[str]:
+    """Split a dotted name into its parts: `np.ma.MaskedArray`'s `np`, `ma` and `MaskedArray`.
+
+    Returns:
+      Them, the root first; empty for an attribute of anything but a name.
+
+    """
+    spelled: str | None = dotted(node)
+    return [] if spelled is None else spelled.split(_DOT)
 
 
 def _plain(text: str) -> str:

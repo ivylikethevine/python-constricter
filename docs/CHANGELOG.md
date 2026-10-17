@@ -6,6 +6,42 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix --unsafe-fixes` no longer guesses the type of a name bound again to a method call on
+  itself (`match = match.groupdict()`), to a call on itself behind `or` or a conditional expression
+  (`code = table.get(code) or SYNTAX`), or to an empty display of another class (`flag = any(xs)`,
+  then `store[key] = flag = {}`), when that value's type isn't known: on the 0.4.0-rc.2 mega run,
+  pint's 4 new type errors after `--unsafe-fixes` and 3 of mypy's 17 were theirs. Nor a loop's
+  target bound again past the loop to a value of no known type (mcp's `value`). A loop's target
+  taken from a guessed container (`for k in d`, then `for k, v in d.items()`) keeps the guess's
+  type, as a second pass sees it once the container is declared.
+- `--fix` no longer widens a display by a value a test around the addition narrows
+  (`headers[key] = self.session_id` in `if self.session_id:`): a checker adds the narrowed `str`,
+  not the declared `str | None`, so the display has no fix. mcp's 3 new type errors after
+  `--unsafe-fixes` beside its `name` were these.
+- `--fix --infer-with` leaves less for a second pass. A class its hints' edits import by two modules
+  that re-export it (pint's `Unit`, from `pint` and from `pint.registry`) is imported once, by the
+  first, and fixed at every binding, where the second's waited for the next pass; the class an edit
+  imports is a spelling of it beside the file's own (`DataFrame` and `pd.DataFrame`, which a name
+  bound to both then takes); and a hint whose edits import another class the index defines, by a
+  name the file imports already, has no fix, as it had none while the import was only planned.
+  What a second pass left: pint's 12 lines to none, pandas's 11, 11 and 13 (basedpyright, ty,
+  pyrefly) to 6, 3 and 9.
+- `--infer-with` drops a hint that names something other than what the checker meant: a module
+  written bare (`import socket`, then `socket`), a well-known class's name the module binds to its
+  own class (starlette's `Match`), a builtin given type arguments (ty's `bool[bool]`, numpy's
+  `bool`), a private part of a dotted name (`np._NBitIntP`) and a class a function defines
+  (`Parser.read.Dialect`); writes ty's `GeneratorType[...]` as `Generator[...]`; and imports
+  `TypeAlias` from `typing` only where `min-python` is 3.10 or later. On the 0.4.0-rc.2 mega run
+  these were 165 of the 454 new type errors blamed on a hint, besides 182 that litestar's
+  `typing.TypeAlias` imports set off on its Python 3.8. Nor is a hint with `Never` in it a fix, or
+  one naming `Self` in a function whose signature doesn't (pyrefly's, for `type(self)(...)`, which
+  mypy reads as the class): 29 more.
+- `--infer-with` keeps each round's hints in the cache, and reads a round from there instead of
+  starting the checkers while nothing it rests on has changed: the checker's build, the files asked
+  about, the workspace's settings files and the installed distributions. `--infer-fresh` asks the
+  checkers again.
+- The corpus runner sizes an unmeasured suite part by its kind's largest measured part, not by the
+  whole step's record, and an unmeasured `infer-union` by its checkers' steps together.
 - The language-server modules (`connection`, `protocol`, `guard`, `hints`, `edits`, `remembered`)
   live in `constricter/cli/lsp/`, and the installed packages' stub readers (`atoms`, `chained`,
   `classnames`, `declared`, `installed`, `read`, `stubbed`, and `stub_names` and `stub_signatures` as
@@ -26,11 +62,15 @@ Notable changes, newest first. Each release's full notes are generated from its 
 - The corpus runner runs fewer of a suite's tests for the same answer. A part after a fix whose
   patch another fix's part already ran is that part's (`implied`, `patch: same`), and so is one
   whose patch a clean run's holds (`within`): `infer-trace`'s patch was `fix-unsafe`'s on 22 of the
-  0.3.9-rc.1 mega run's 42 suites. One fixed run per outcome with a failure new or gone runs again,
-  weighed against every released run (this run's, the traced tests', earlier runs' on the same
-  checkout), and none whose failures are the released tests' (sqlalchemy's skips move by two from
-  run to run): `differs` now says a test not named differs, `calm` whether the other counts are
-  some released run's. A `mega` run takes the tests as released from the latest earlier run on the
+  0.3.9-rc.1 mega run's 42 suites. The tests run first after every source's fixes at once
+  (`infer-union`, a fix step with every checker's hints and the trace's), and where that run is the
+  released tests' it stands for each fix's (`patch: union`): none of the 0.4.0-rc.1 mega run's 42
+  suites had a fix break a test, and the per-fix runs were 812 CPU-minutes of it
+  (`tests-union = false` runs them as before). One fixed run per outcome with a failure new or gone
+  runs again, weighed against every released run (this run's, the traced tests', earlier runs' on
+  the same checkout), and none whose failures are the released tests' (sqlalchemy's skips move by
+  two from run to run): `differs` now says a test not named differs, `calm` whether the other
+  counts are some released run's. A `mega` run takes the tests as released from the latest earlier run on the
   same checkout where the traced tests' outcome equals them (`from`, `confirmed`), and the tests
   table says so. A record is taken only with the same tag, checkout environment (`environment`, a
   hash of what's installed) and parser (`parser`, a hash of what reads a run's output); `facts.toml`
