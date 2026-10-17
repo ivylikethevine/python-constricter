@@ -5,6 +5,9 @@ runs:
   steps:
     - shell: bash
       run: |
+        # What a compiled wheel's build installs before it (build.yml's cibuildwheel step, which
+        # builds in the unpacked sdist): the `mypyc` group, hash-checked, carried by the sdist.
+        uv export --locked --only-group mypyc --no-emit-project --format requirements.txt --output-file mypyc.txt
         python -m build --no-isolation --outdir dist
         twine check --strict dist/*
         check-wheel-contents dist/*.whl

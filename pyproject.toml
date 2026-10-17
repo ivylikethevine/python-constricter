@@ -133,8 +133,10 @@ include = ["/constricter/rules", "/constricter/fix"]
 options = { debug_level = "0" }
 
 [tool.hatch.build.targets.sdist]
-# The generator too: a wheel built from the sdist checks the tables it carries are current.
-only-include = ["constricter", "stdlib_tables", "hatch_build.py", "README.md", "LICENSE.md"]
+# The generator too: a wheel built from the sdist checks the tables it carries are current. `mypyc.txt`
+# is the `mypyc` group exported from uv.lock by CI's build action, for the compiled wheels cibuildwheel
+# builds in the unpacked sdist; a build from a checkout without it leaves it out.
+only-include = ["constricter", "stdlib_tables", "hatch_build.py", "README.md", "LICENSE.md", "mypyc.txt"]
 
 [tool.ruff]
 line-length = 110

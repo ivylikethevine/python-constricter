@@ -645,7 +645,11 @@ tagged run (0.3.6) found on the corpora, a guess from the item's reach, not a me
 own breakdown may predate the latest fixes: what it cites from the census (`corpus_untyped`) is
 current, its finer counts are as first measured. Where an item cites a sample, it's 41 directories
 of the standard library, pandas, django and sqlalchemy, each checked alone: 28,931 bindings with no
-fix.
+fix. After the sized items, four groups of avenues read from the 0.3.7-rc.1 census of 47 corpora
+(2026-10-16) and the census rows of 2026-10-02 on the seven: what the rules don't see
+([Scope](#scope)), gaps in what `--fix` infers ([Inference](#inference)), guess mechanisms the
+witness can measure ([Guesses](#guesses)) and what to measure first ([Measurement](#measurement)),
+each item sized the same way.
 
 ### Small: under 4 hours
 
@@ -931,6 +935,127 @@ fix.
    where `isinstance` can't. `typeguard` does the last two, as an optional extra there: the package
    has no dependency. Done when a traced run of this project's own tests reports no annotation of
    its own. About 14 hours; coverage unchanged: it finds wrong annotations, not missing ones.
+
+### Scope
+
+What the rules never see. Both are the largest gaps against every line typed, and neither counts
+among the 252,056 offences: each adds offences of its own.
+
+1. **Instance attributes.** `self.x = value` in a method is no binding the rules report:
+   `rules/scoping.py` collects the stores only to feed the `assigned` guess for reads of `self.x`.
+   Of the 47 corpora's bindings with no fix, 5,999 are a read of `self.x`, 1,660 of them in
+   annotated functions, and each traces back to an untyped store the census never counts. A code for
+   an attribute first stored in a method, unannotated there and undeclared in the class body, fixed
+   as a local is (`self.x: int = 0`, which a type checker takes as the attribute's declaration): by
+   the value's type, widened over the class's other stores as `rebound` widens a local's, and
+   counted by `--coverage`. Count the stores first: the census sees only name targets. Done when a
+   plain class's untyped stores are reported and fixed, the corpus suites the same after and no new
+   type error. About 12 hours.
+2. **Signatures from the project's own inference.** `returned` decides a function's return where its
+   `return`s agree, `callers` an unannotated parameter every call passes one type and `fixture` a
+   test's, but each types only the locals bound to them: no edit writes `-> T` on the def or `: T`
+   on the parameter (`Edit` has `annotate`, `replace` and `declare`). `pyrefly infer` and
+   `dmypy suggest` were measured for signatures ([Done](#corpus)), never constricter's own certain
+   returns written back, which turn every caller's `returned` guess in other files into a certain
+   fix and give ruff's ANN201 a fix it lacks. An edit kind for the signature; `-> T` where the
+   function's `return`s decide one type (a method's a guess: a subclass may return another),
+   `-> None` where none returns a value, a parameter's by `callers` and `fixture` as the guesses
+   they are; opt-in codes, as LVA012 is, since ruff's ANN reports the offences already. Done when
+   the corpora's own type checkers find no new error after the returns alone, and `--fix` on pandas
+   gains the callers' fixes the written returns make certain. About 10 hours; coverage unmeasured:
+   it moves guesses to certain more than it adds fixes.
+
+### Inference
+
+Gaps the census exposes in what `--fix` infers, smallest first.
+
+1. **`with self.assertRaises(...) as cm`.** `cm` is the 19th commonest name with no fix on the seven
+   corpora (627 of the 2026-10-02 rows): 451 are `self.assertRaises(...)`, the rest `assertWarns`,
+   `assertRaisesRegex`, `assertWarnsRegex` and `support.catch_unraisable_exception`. typeshed
+   declares them `_AssertRaisesContext[_E]`, `_E` bound through `type[_E] | tuple[type[_E], ...]`,
+   and their `__enter__` returns `Self`. Find which step loses it (the union parameter, the
+   inherited method on a test case, the `with` target's `Self`) before any new mechanism. Done when
+   `cm` is an `_AssertRaisesContext[ValueError]`. About 3 hours; coverage about 0.2%.
+2. **A class whose base is a `namedtuple(...)` call.** `test.support.script_helper` defines
+   `class _PythonRunResult(collections.namedtuple(...))`; 852 calls to `assert_python_ok` and
+   `assert_python_failure` on the standard library's tests have no fix (the census's commonest
+   standard-library functions), though the chain is machinery that exists: a tuple display of a
+   constructor and a list, unpacked, a local returned. A base that's a call to a functional
+   `namedtuple`, `NamedTuple` or `TypedDict` is a class with those fields. Done when
+   `rc, out, err = assert_python_ok(...)` types its three names. About 3 hours; coverage about 0.4%.
+3. **`getattr` by a literal name.** 576 of the 1,268 `getattr(...)` bindings with no fix on the
+   seven corpora name the attribute as a literal, 521 of them with a default: on a receiver whose
+   type is known that's `obj.name`'s type, with a default `T | D`; today an `Any`, or an `Any | T`
+   (`fix/values/shapes.py`). Done when `getattr(self.conn, "timeout", None)` is typed as
+   `self.conn.timeout` is. About 3 hours; coverage up to 0.2%.
+4. **An assignment's `# type:` comment as its fix.** With `type-comments` off, `x = v  # type: T` is
+   LVA001 and its fix is inferred from `v`, the author's `T` ignored (`rules/binding.py` reads the
+   comment only to decide whether the name is annotated); a loop's comment (LVA003) is already the
+   declaration written, and dropped. The same for an assignment and a `with` target: `T` as the
+   annotation, certain, the comment dropped, where `T` parses and names what the module can.
+   Unmeasured: the census doesn't see comments. Done when pip's modules without `__future__` imports
+   keep their comments' types under `--fix`. About 3 hours; coverage unmeasured.
+5. **`pytest.importorskip("mod")` as an import.** 272 bindings on the seven corpora are its `Any`,
+   and what's read of them (`pa.array(...)` in pandas's tests) has no fix either. The name is the
+   module the literal names: known as `import mod as name` is for what's read of it, the binding
+   itself left (an annotation would hide the module from a checker). Done when
+   `pa = pytest.importorskip("pyarrow")`, then `arr = pa.array(...)`, types `arr`. About 3 hours;
+   coverage unmeasured.
+6. **`defaultdict` and `Counter` through `filled`.** 229 `collections.defaultdict(...)` calls have
+   no fix on the 47 corpora ([Done](#--fix) states the limitation, with no item): `filled` types an
+   empty container by what the function adds to it, so `defaultdict(list)` is a
+   `defaultdict[K, list[V]]` by its `d[k].append(v)`, `Counter()` a `Counter[K]` by its `c[k] += 1`
+   and `update`. Done when both are fixes, guesses as `filled` is. About 4 hours; coverage under
+   0.1%.
+
+### Guesses
+
+Each is measured as every guess is: held to the corpora's type checkers and traced suites
+([LIKELY.md](LIKELY.md)), and kept only where it passes the bars.
+
+1. **The text overload.** The overload matcher leaves an argument of unknown type open and needs the
+   open signatures to agree, so `os.path.join(dir, name)` fails on `str` against `bytes`: `os.path`
+   has 688 calls with no fix on the 47 corpora, `os` 246. A guess for a function overloaded on
+   `AnyStr` alone, with no argument known: its `str` signature's return. Done when measured; kept
+   where the witness finds `bytes` under one in a hundred. About 4 hours; coverage about 0.3%.
+2. **Name consistency.** A parameter or local with no fix whose name is annotated with one type
+   everywhere else in the checked files, at least three times and never another
+   (`request: HttpRequest`, `df: DataFrame`), takes it. The 2026-10-02 rows show the names
+   concentrated (`result` 9,213, `expected` 3,609, `df` 663, `parser` 580), and the agreement bar
+   decides the precision: size it from the rows and the index's annotations first. Done when
+   measured; a mechanism if it passes the bars. About 8 hours; coverage unmeasured.
+3. **A receiver by what's read of it.** 13,077 of the seven corpora's 149,972 bindings with no fix
+   are a copy, a member or a method call of an unannotated parameter. The methods and attributes a
+   function reads of a parameter often name exactly one class in the index (the checked files, the
+   standard-library tables and the installed packages; `loose.needs` already indexes method names
+   for the scheduler): where they do, the parameter is that class, a guess, and what's read of it
+   follows. Done when measured; kept where the witness agrees. About 14 hours; coverage unmeasured,
+   up to 5%.
+
+### Measurement
+
+What to measure before building, smallest first.
+
+1. **A `vague = 0` run.** The runs use the default, no `Any` anywhere, which rejects `NDArray[Any]`,
+   `dict[str, Any]`, `pickle.loads` and `json.loads`: `numpy` alone is 4,320 calls with no fix on
+   the 47 corpora. One run at `vague = 0` says what the default costs on the scientific corpora
+   (xarray, dask, networkx, pandas). Done when the census is read at both. About an hour beside the
+   run; coverage unchanged.
+2. **Two checkers agreeing, likely.** `checker` is one set to LIKELY.md's bars, by checker; a hint
+   basedpyright, ty and pyrefly agree on (two of them, or all three) is a set of its own, measured
+   the same way, and `--likely` applies it where one checker's hint alone doesn't pass. Done when
+   the mechanisms table counts the agreeing sets. About 3 hours; coverage unchanged (`--likely`
+   gains what passes).
+3. **Why a call has no fix.** The census classifies the shape of a value with no fix, never why the
+   fix failed: a vague return, open overloads that disagree, a receiver of no type, an import it
+   can't resolve, an untyped callee. A column for it, read from the check (`--format=json` gains the
+   reason a call's fix was refused), so the items above are sized in one run, not from the rows by
+   hand. Done when `census.md` has the table by reason. About 4 hours; coverage unchanged.
+4. **One type at run time, no fix.** The traced suites already know what each binding held; for each
+   binding with no fix, whether the run saw one type is both the upper bound of any inference and a
+   bug finder (it would have named `cm` above). A table by shape in the `traced` step: bindings with
+   no fix, those the run bound to one type, and the commonest sources. Done when the table is in a
+   run's report. About 4 hours; coverage unchanged.
 
 ## Ongoing
 
