@@ -8,10 +8,10 @@ outputs count. None is the tree the run's other steps copy, so none waits for th
 - `traced`, for a suite whose tests can be traced, with this checkout: the tests under a witness
   told every fix of `fix-unsafe`, each fix's verdict kept; and `infer-trace`, a fix by their trace;
 - the parts of `tests` (`pipeline.part`): the package's own tests as released (or as an earlier
-  run found them, `earlier`), and after each of the run's fixes, the trace's too, each a step that
-  starts once its fix is made; then `tests`, which runs a fixed run that differs again, with the
-  released tests, and keeps only what it fails both times and no released run did as the fix's
-  (`weighed`);
+  run found them, `taken`), and after each of the run's fixes, the trace's too, each a step that
+  starts once its fix is made, unless another fix's part stands for it (`standing`); then `tests`,
+  which runs one fixed run again for each outcome with a failure new or gone, and keeps only what
+  it fails both times and no released run did as the fix's (`weighed`);
 - the parts of `types`, for a suite with type checks: its own checkers' errors as released and after
   each fix, each new one traced to the fix it's about; then `types`, which gathers them.
 """
@@ -33,8 +33,10 @@ from constricter.offences import Tier
 from tests.corpus import corpus_guesses, corpus_suite
 from tests.corpus.pipeline import (
     FIX,
+    FROM,
     IMPLIED,
     INFER,
+    PATCH,
     RELEASED,
     TESTS,
     TRACE,
@@ -50,11 +52,21 @@ from tests.corpus.pipeline import (
 from tests.corpus.run_config import CERTAIN, DEV, LIKELY, UNSAFE
 
 _Entry: TypeAlias = dict[str, object]
+_Fixes: TypeAlias = frozenset[
+    tuple[str, int, str, str, tuple[str, ...]]
+]  # a fix step's, as `_fixes` reads them
+_Key: TypeAlias = tuple[tuple[tuple[str, int], ...], frozenset[str]]  # an outcome, hashable (`_key`)
 _WHOLE: Final = f"{FIX}{UNSAFE}"  # the fix step that makes every guess: the tiers' fixes are among its own
+_TRACE: Final = f"{INFER}{TRACE}"  # the fix step by the traced tests, which holds the guesses' fixes (mostly)
 _RUN: Final = "run"  # numbered, names the checkouts a suite's tests run on (`Suite.at_once` of them)
 _SKIPPED: Final = "skipped"  # in a part's record: why it has no run
 _REFUSED: Final = "error"  # and why a fix's patch wasn't applied
 _COUNTS: Final = "counts"  # and a test run's outcome's counts, where it has one
+_SAME: Final = "same"  # a part's `patch`: the standing fix's is the same as its own
+_WITHIN: Final = "within"  # or holds its own, and its run was the released tests'
+_ENVIRONMENT: Final = "environment"  # in a released part's record: its checkout's (`corpus_suite.installed`)
+_PARSER: Final = "parser"  # and what read the tests' output (`corpus_suite.parser`)
+CONFIRMED: Final = "confirmed"  # in a taken record: the step whose outcome equals it (the traced tests)
 _TRACED_KIND: Final = "traced"  # the mechanism of a fix that rests on a trace
 # The counts a test moves between, failing where it passed or passing where it was expected to fail
 # (altair's does from run to run): a run's others say what else changed.
@@ -82,16 +94,19 @@ def weighed(
 ) -> Record:
     """Lay a fixed run's outcome out beside the released tests', and say what of it is the fix's.
 
-    `runs`: the fixed run's outcomes, a second where its first differed from the first of
-    `released`, the released tests' (run again then too). A suite's own failures come and go, so a
+    `runs`: the fixed run's outcomes, a second where its first had a failure new or gone against
+    `released`, the released tests': this run's, those of earlier runs on the same checkout, the
+    traced tests' and the released tests' run again. A suite's own failures come and go, so a
     failure is the fix's only if every fixed run has it and no released run does (`new`), and a
     released failure is gone only if every released run has it and no fixed run does (`gone`).
     `named`: the tests the catalog says a fix may change (`Suite.differs`), listed apart.
 
     Returns:
       The first run's counts and failures, and whether it's the released tests' (`same`); where it
-      isn't, what's new and gone, the tests named among them, and whether the run differs by more
-      than those: by a test not named, or by its other counts (the skipped, say).
+      isn't, what's new and gone, the tests named among them, whether the run differs by a test not
+      named (`differs`), and whether its other counts (the skipped, say) are some released run's
+      (`calm`): where they aren't and no failure is new or gone, they moved as the released tests'
+      own do between runs (sqlalchemy's skips, by its drivers' order).
 
     """
     none: list[str] = []
@@ -107,9 +122,78 @@ def weighed(
         "new": sorted(new - named),
         "gone": sorted(gone - named),
         "named": sorted((new | gone) & named),
-        "differs": bool(new - named or gone - named or not calm),
+        "differs": bool(new - named or gone - named),
+        "calm": calm,
         "again": [_outcome(each) for each in runs[1:]],
     }
+
+
+def _key(outcome: corpus_suite.Outcome) -> _Key:
+    return tuple(sorted(outcome.counts.items())), outcome.failed
+
+
+def _fixes(job: Job, step: str) -> _Fixes | None:
+    """Read the fixes a fix step listed, as a set: where, the name, the annotation, the imports it adds.
+
+    Returns:
+      Them; `None` where the version lists none.
+
+    """
+    if not job.store.path(job.tree.name, job.recorded, step, ".fixes.jsonl").exists():
+        return None
+    return frozenset(
+        (each.path, each.line, each.name, each.annotation, each.imports)
+        for each in itertools.chain.from_iterable(_made(job, step).values())
+    )
+
+
+def _within(step: str, other: str, mine: _Fixes | None, theirs: _Fixes | None) -> bool:
+    """Check whether the fix `other` made holds every fix `step` made, and more.
+
+    By the fixes each listed; where the version lists none, a tier's are among the guesses' own.
+
+    Returns:
+      Whether it does.
+
+    """
+    if mine is not None and theirs is not None:
+        return mine < theirs
+    return _implied(step) and other == _WHOLE
+
+
+def standing(job: Job, kind: str, step: str, clean: Callable[[Record], bool]) -> Record | None:
+    """Find a part of `kind` that stands for the fix `step`'s, which then needn't run.
+
+    One after a fix whose patch is the same, whatever its run gave; or one after a fix whose
+    patch holds this one's and whose run was the released tests' or checks' (`clean`): fewer
+    annotations don't fail where more passed. A part that is itself implied stands by the one it's
+    implied by.
+
+    Returns:
+      The part's record: the fix step whose part stands for it, and how (`patch`); `None` where
+      none does.
+
+    """
+    mine: _Fixes | None = _fixes(job, step)
+    within: list[str] = []
+    seen: set[str] = set()
+    name: str
+    for name in parts(job.run, kind)[1:]:
+        other: str = name.removeprefix(f"{kind}-")
+        record: Record | None = _read(job, name)
+        if other == step or record is None or _SKIPPED in record or _REFUSED in record:
+            continue
+        target: str = str(record[IMPLIED]) if IMPLIED in record else other
+        ran: Record | None = _read(job, part(kind, target)) if target != other else record
+        if target == step or target in seen or ran is None:
+            continue
+        seen.add(target)
+        theirs: _Fixes | None = _fixes(job, target)
+        if mine is not None and mine == theirs:
+            return {IMPLIED: target, PATCH: _SAME}
+        if _within(step, target, mine, theirs) and clean(ran):
+            within.append(target)
+    return {IMPLIED: within[0], PATCH: _WITHIN} if within else None
 
 
 def _patched(job: Job, step: str, base: Path | None = None) -> str | None:
@@ -246,8 +330,9 @@ def _types_part(job: Job, name: str) -> Record:
     about (`corpus_suite.blamed`).
 
     Returns:
-      As released, its errors; after a fix, their count, those gone and each new one; why it has
-      none (`skipped`), or why the fix's patch wasn't applied.
+      As released, its errors and its checkout's environment; after a fix, their count, those gone
+      and each new one; the part that stands for it (`implied`); why it has none (`skipped`), or
+      why the fix's patch wasn't applied.
 
     """
     suite: corpus_suite.Suite = cast("corpus_suite.Suite", job.tree.suite)
@@ -258,12 +343,21 @@ def _types_part(job: Job, name: str) -> Record:
     if (step := name.removeprefix(f"{TYPES}-")) == RELEASED:
         start: float = time.perf_counter()
         found: list[corpus_suite.Complaint] = corpus_suite.complaints(base, suite)
-        return {"seconds": round(time.perf_counter() - start, 1), "errors": [list(each) for each in found]}
+        return {
+            "seconds": round(time.perf_counter() - start, 1),
+            "errors": [list(each) for each in found],
+            _ENVIRONMENT: corpus_suite.installed(base),
+        }
     released: Record | None
     if (released := _read(job, part(TYPES, RELEASED))) is None:
         return {_SKIPPED: "the checks as released have no record"}
     if not job.store.path(job.tree.name, job.recorded, step, ".patch").exists():
         return {_SKIPPED: "the fix made no patch"}
+    stood: Record | None
+    if (
+        stood := standing(job, TYPES, step, lambda ran: not ran.get("new") and not ran.get("gone"))
+    ) is not None:
+        return stood
     refused: str | None
     if (refused := _patched(job, step, base)) is not None:
         return {_REFUSED: refused}
@@ -296,7 +390,7 @@ def types(job: Job) -> Record:
 
     Returns:
       The step's record: the released errors' count, and each fixed run's, with those gone and
-      each new one.
+      each new one; a part another stands for (`implied`) as that one's.
 
     Raises:
       RuntimeError: the checks as released have no record: their part failed.
@@ -307,18 +401,34 @@ def types(job: Job) -> Record:
     if (released := _read(job, part(TYPES, RELEASED))) is None:
         message: str = "the checks as released have no record"
         raise RuntimeError(message)
-    fixed: dict[str, Record] = {}
-    name: str
-    for name in parts(job.run, TYPES)[1:]:
-        got: Record | None = _read(job, name)
-        if got is not None and _SKIPPED not in got:
-            fixed[name.removeprefix(f"{TYPES}-")] = got
+    steps: list[str] = [name.removeprefix(f"{TYPES}-") for name in parts(job.run, TYPES)[1:]]
+    got: dict[str, Record] = {}
+    step: str
+    for step in steps:
+        read: Record | None = _read(job, part(TYPES, step))
+        if read is not None and _SKIPPED not in read:
+            got[step] = read
+    fixed: dict[str, Record] = {step: record for step, record in got.items() if IMPLIED not in record}
+    for step in steps:
+        if step in got and IMPLIED in got[step]:
+            fixed[step] = _stood(fixed, got[step], {})
     return {
         "checks": [" ".join(check) for check in suite.checks],
         "released": len(cast("list[object]", released["errors"])),
         "seconds": released["seconds"],
-        "fixed": fixed,
+        "fixed": {step: fixed[step] for step in steps if step in fixed},
     }
+
+
+def _stood(fixed: dict[str, Record], record: Record, default: Record) -> Record:
+    """Lay an implied part out as the record of the part that stands for it, saying so.
+
+    Returns:
+      That part's record (`default` where it has none), with the step it's implied by and how.
+
+    """
+    target: str = str(record[IMPLIED])
+    return fixed.get(target, default) | {IMPLIED: target, PATCH: record.get(PATCH, _WITHIN)}
 
 
 def traced(job: Job) -> Record:
@@ -432,43 +542,84 @@ def _implied(step: str) -> bool:  # a tier's fix step, whose fixes are among the
     return step != _WHOLE and step.startswith(FIX)
 
 
-def earlier(job: Job) -> Record | None:
-    """Find the suite's tests as released in the latest earlier run beside this one, at the suite's tag.
+def earlier(job: Job, environment: str | None = None) -> list[Record]:
+    """Find the suite's tests as released in earlier runs beside this one, at the suite's tag.
 
-    Any version's: the released tests don't run constricter. Not one stopped for running too long.
+    Any version's: the released tests don't run constricter. Each read by this parser
+    (`corpus_suite.parser`) and, where `environment` is given, run on a checkout installed the same
+    (`corpus_suite.installed`); not one stopped for running too long.
 
     Returns:
-      Its record, saying whose run it is (`from`); `None` where no earlier run has one.
+      Their records, the latest first, each saying whose run it is (`from`): the run that ran the
+      tests, where a run took its record from another.
 
     """
     suite: corpus_suite.Suite = cast("corpus_suite.Suite", job.tree.suite)
     name: str = part(TESTS, RELEASED)
     corpus: str = job.tree.name.replace(" ", "-")
-    found: list[Path] = sorted(
+    paths: list[Path] = sorted(
         job.store.root.parent.glob(f"*/records/{corpus}/*/{name}.json"),
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
+    found: list[Record] = []
     path: Path
-    for path in found:
+    for path in paths:
         folder: Path = path.parents[3]  # the run's: `records/CORPUS/VERSION/` under it
         if folder.resolve() == job.store.root.resolve():
             continue
         record: Record = cast("Record", json.loads(path.read_text(encoding="utf-8")))
-        if record.get("tag") == suite.tag and not record.get("stopped") and _COUNTS in record:
-            return record | {"from": folder.name}
-    return None
+        keyed: bool = record.get("tag") == suite.tag and record.get(_PARSER) == corpus_suite.parser()
+        if environment is not None and record.get(_ENVIRONMENT) != environment:
+            continue
+        if keyed and not record.get("stopped") and _COUNTS in record:
+            found.append(
+                {key: each for key, each in record.items() if key != CONFIRMED}
+                | {FROM: record.get(FROM, folder.name)},
+            )
+    return found
+
+
+def confirmed(job: Job, record: Record) -> bool:
+    """Check whether the traced tests' outcome equals a released `record`'s, from an earlier run.
+
+    Returns:
+      Whether it does: the released tests then need no run of their own.
+
+    """
+    trace: Record | None = _read(job, TRACED)
+    return trace is not None and _COUNTS in trace and not trace.get("stopped") and _ran(trace) == _ran(record)
+
+
+def taken(job: Job) -> Record | None:
+    """Take the suite's tests as released from the latest earlier run on the same checkout (`earlier`).
+
+    Where the run doesn't run them (`tests-released = false`); or where it does, but the traced
+    tests' outcome equals the record's (`confirmed`): the tests haven't changed.
+
+    Returns:
+      The record, saying whose it is and what confirmed it; `None` where they run.
+
+    """
+    base: Path = prepared(job, checkouts(job, part(TESTS, RELEASED))[0])
+    found: list[Record]
+    if not (found := earlier(job, corpus_suite.installed(base))):
+        return None
+    if not job.run.steps.tests_released:
+        return found[0]
+    return found[0] | {CONFIRMED: TRACED} if confirmed(job, found[0]) else None
 
 
 def _tests_part(job: Job, name: str) -> Record:
     """Run a part of a suite's own tests on its checkout (`checkouts`): as released, or after a fix.
 
-    None runs after tests stopped as released for running too long. A tier's doesn't where the
-    guesses' run was the released tests': it stands for theirs, whose fixes are among its own.
+    None runs after tests stopped as released for running too long, nor one another fix's part
+    stands for (`standing`).
 
     Returns:
-      Its outcome, as released with how long it took; why it has none (`skipped`), or why the fix's
-      patch wasn't applied.
+      Its outcome, as released with how long it took and the keys a later run may take it by
+      (the tag, the checkout's environment, the parser); the part that stands for it (`implied`);
+      why it has none (`skipped`), or why the fix's patch wasn't applied.
 
     """
     suite: corpus_suite.Suite = cast("corpus_suite.Suite", job.tree.suite)
@@ -481,15 +632,20 @@ def _tests_part(job: Job, name: str) -> Record:
         kept: Path = job.store.logged(job.tree.name, job.recorded, TESTS).with_name("tests-released.txt")
         ran: corpus_suite.Outcome = corpus_suite.tested(base, suite, kept)
         took: float = round(time.perf_counter() - start, 1)
-        return {"tag": suite.tag, "seconds": took, "stopped": corpus_suite.stopped(ran)} | _outcome(ran)
+        keys: Record = {_ENVIRONMENT: corpus_suite.installed(base), _PARSER: corpus_suite.parser()}
+        return (
+            {"tag": suite.tag, "seconds": took, "stopped": corpus_suite.stopped(ran)} | keys | _outcome(ran)
+        )
     released: Record | None = _read(job, part(TESTS, RELEASED))
     if released is None or released["stopped"]:
         return {_SKIPPED: "the tests as released have no record, or ran too long"}
     if not job.store.path(job.tree.name, job.recorded, step, ".patch").exists():
         return {_SKIPPED: "the fix made no patch"}
-    whole: Record | None = _read(job, part(TESTS, _WHOLE)) if _implied(step) else None
-    if whole is not None and _COUNTS in whole and _ran(whole) == _ran(released):
-        return {IMPLIED: _WHOLE}
+    stood: Record | None
+    if (
+        stood := standing(job, TESTS, step, lambda ran: _COUNTS in ran and _ran(ran) == _ran(released))
+    ) is not None:
+        return stood
     fixed: corpus_suite.Outcome | str = _fixed_run(job, step, "", base)
     corpus_suite.reset(base, suite)
     return {_REFUSED: fixed} if isinstance(fixed, str) else _outcome(fixed)
@@ -498,12 +654,16 @@ def _tests_part(job: Job, name: str) -> Record:
 def tests(job: Job) -> Record:
     """Gather the parts of a suite's own tests: as released, and after each fix the run made.
 
-    Where a fixed run differs, the released tests run once more, and so does each fixed run that
-    differed, side by side on the tests' checkouts: what differs between the two says whose a
-    failure is (`weighed`). Tests stopped as released for running too long have no fixed run.
+    The released tests' other runs are samples of them too (`_samples`): the traced tests', and
+    the released tests' in earlier runs on the same checkout. Where a fixed run has a failure new
+    or gone against them all, one fixed run with that outcome runs once more, side by side on the
+    tests' checkouts, and the released tests too where no other run of theirs is there: what
+    differs between the two says whose a failure is (`weighed`). A fixed run whose failures are the
+    released tests' doesn't run again, whatever its other counts. Tests stopped as released for
+    running too long have no fixed run.
 
     Returns:
-      The step's record: each run's outcome, and whether the released tests vary.
+      The step's record: each run's outcome, the samples, and whether the released tests vary.
 
     Raises:
       RuntimeError: the tests as released have no record: their part failed.
@@ -516,22 +676,88 @@ def tests(job: Job) -> Record:
         raise RuntimeError(message)
     released: list[corpus_suite.Outcome] = [_ran(released_record)]
     record: Record = {"tag": suite.tag, "seconds": released_record["seconds"]}
+    record |= {FROM: released_record[FROM]} if FROM in released_record else {}
     if released_record["stopped"]:
         return record | {"released": _outcome(released[0]), "fixed": {}, "stopped": True}
+    samples: dict[str, corpus_suite.Outcome] = _samples(job, released_record)
+    released += samples.values()
     patched: list[str]
     first: dict[str, corpus_suite.Outcome | str]
-    patched, first = _gathered(job)
-    differ: list[str] = [
-        step for step, ran in first.items() if not isinstance(ran, str) and ran != released[0]
-    ]
-    again: dict[str, corpus_suite.Outcome | str] = {}
-    if differ:
-        runs: dict[str, corpus_suite.Outcome | str] = _again(job, [RELEASED, *differ])
-        released.append(cast("corpus_suite.Outcome", runs.pop(RELEASED)))
-        again = runs
-        record["varies"] = released[1] != released[0]
-        record["again"] = _outcome(released[1])
-    named: frozenset[str] = told(suite, [*released, *_both(*first.values(), *again.values())])
+    implied: dict[str, Record]
+    patched, first, implied = _gathered(job)
+    runs: dict[str, corpus_suite.Outcome] = {
+        step: ran for step, ran in first.items() if isinstance(ran, corpus_suite.Outcome)
+    }
+    named: frozenset[str] = told(suite, [*released, *runs.values()])
+    again: dict[str, corpus_suite.Outcome | str]
+    once: corpus_suite.Outcome | None
+    again, once = _reruns(job, runs, released, named)
+    if once is not None:
+        released.append(once)
+        record["again"] = _outcome(once)
+    if again:
+        named = told(suite, [*released, *runs.values(), *_both(*again.values())])
+    record["varies"] = any(each != released[0] for each in released[1:])
+    record["samples"] = {name: _outcome(each) for name, each in samples.items()}
+    return record | {
+        "released": _outcome(released[0]),
+        "fixed": _fixed((patched, first, implied), again, released, named),
+    }
+
+
+def _reruns(
+    job: Job,
+    runs: dict[str, corpus_suite.Outcome],
+    released: Sequence[corpus_suite.Outcome],
+    named: frozenset[str],
+) -> tuple[dict[str, corpus_suite.Outcome | str], corpus_suite.Outcome | None]:
+    """Run one of `runs`, the fixed runs, again for each outcome with a failure new or gone.
+
+    Against `released`, the released tests' runs; and those once more, where no other run of
+    theirs is there.
+
+    Returns:
+      Each fixed run with such an outcome's second run (the one run for its outcome): its outcome,
+      or why its patch wasn't applied; and the released tests', where they ran.
+
+    """
+    chosen: dict[_Key, str] = {}  # the fixed run that runs again for each outcome
+    step: str
+    ran: corpus_suite.Outcome
+    for step, ran in runs.items():
+        found: Record = weighed([ran], released, named)
+        if found.get("new") or found.get("gone"):
+            _ = chosen.setdefault(_key(ran), step)
+    if not chosen:
+        return {}, None
+    more: dict[str, corpus_suite.Outcome | str] = _again(
+        job,
+        [*([RELEASED] if len(released) == 1 else []), *chosen.values()],
+    )
+    once: corpus_suite.Outcome | None = (
+        cast("corpus_suite.Outcome", more.pop(RELEASED)) if RELEASED in more else None
+    )
+    return {step: more[chosen[_key(ran)]] for step, ran in runs.items() if _key(ran) in chosen}, once
+
+
+def _fixed(
+    gathered: tuple[list[str], dict[str, corpus_suite.Outcome | str], dict[str, Record]],
+    again: dict[str, corpus_suite.Outcome | str],
+    released: Sequence[corpus_suite.Outcome],
+    named: frozenset[str],
+) -> dict[str, Record]:
+    """Lay each fixed run out beside the released tests' (`weighed`), as `_gathered` read the parts.
+
+    A part another stands for is laid out as that one's, saying so.
+
+    Returns:
+      Each one's record, by its fix step, in the parts' order.
+
+    """
+    patched: list[str]
+    first: dict[str, corpus_suite.Outcome | str]
+    implied: dict[str, Record]
+    patched, first, implied = gathered
     fixed: dict[str, Record] = {
         step: {"error": ran}
         if isinstance(ran, str)
@@ -539,23 +765,45 @@ def tests(job: Job) -> Record:
         for step, ran in first.items()
     }
     none: list[str] = []
-    same: Record = _outcome(released[0]) | {"same": True, "new": none, IMPLIED: _WHOLE}
-    return record | {
-        "released": _outcome(released[0]),
-        "fixed": {step: fixed.get(step, same) for step in patched},
-    }
+    same: Record = _outcome(released[0]) | {"same": True, "new": none}
+    step: str
+    for step in patched:
+        if step in implied:
+            fixed[step] = _stood(fixed, implied[step], same)
+    return {step: fixed.get(step, same) for step in patched}
 
 
-def _gathered(job: Job) -> tuple[list[str], dict[str, corpus_suite.Outcome | str]]:
+def _samples(job: Job, released: Record) -> dict[str, corpus_suite.Outcome]:
+    """Find the released tests' other runs: traced in this run, and as released in earlier runs.
+
+    Those on a checkout installed as this run's `released` record's was (`earlier`).
+
+    Returns:
+      Each by whose it is: `traced`, or the earlier run's folder.
+
+    """
+    found: dict[str, corpus_suite.Outcome] = {}
+    trace: Record | None = _read(job, TRACED)
+    if trace is not None and _COUNTS in trace and not trace.get("stopped"):
+        found[TRACED] = _ran(trace)
+    environment: object = released.get(_ENVIRONMENT)
+    record: Record
+    for record in earlier(job, str(environment)) if environment is not None else ():
+        _ = found.setdefault(str(record[FROM]), _ran(record))
+    return found
+
+
+def _gathered(job: Job) -> tuple[list[str], dict[str, corpus_suite.Outcome | str], dict[str, Record]]:
     """Read the parts of a suite's tests after a fix.
 
     Returns:
-      Each fix step that made a patch, and each one's run: its outcome, or why its patch wasn't
-      applied; none where the guesses' run stands for it.
+      Each fix step that made a patch; each one's run: its outcome, or why its patch wasn't
+      applied; and the record of each one another's part stands for.
 
     """
     patched: list[str] = []
     first: dict[str, corpus_suite.Outcome | str] = {}
+    implied: dict[str, Record] = {}
     name: str
     for name in parts(job.run, TESTS)[1:]:
         got: Record = _read(job, name) or {_SKIPPED: "it failed"}
@@ -565,7 +813,9 @@ def _gathered(job: Job) -> tuple[list[str], dict[str, corpus_suite.Outcome | str
             first[patched[-1]] = str(got[_REFUSED])
         elif _COUNTS in got:
             first[patched[-1]] = _ran(got)
-    return patched, first
+        elif IMPLIED in got:
+            implied[patched[-1]] = got
+    return patched, first, implied
 
 
 def _again(job: Job, steps: Sequence[str]) -> dict[str, corpus_suite.Outcome | str]:
@@ -648,8 +898,10 @@ def needs(job: Job) -> dict[str, frozenset[str]]:
     """Say which steps each suite step waits for: those whose records or patches it reads.
 
     A part after a fix waits for the fix (`infer-trace`'s, for the traced tests) and for its kind's
-    part as released; a tier's tests for the guesses', whose run may stand for theirs. Each kind's
-    step waits for its parts, and the traced tests for `fix-unsafe`, whose fixes they hold.
+    part as released; a tier's for the guesses', and the guesses' for the trace's, whose run may
+    stand for theirs (`standing`). The tests as released wait for the traced tests where those may
+    confirm an earlier run's record of them (`taken`). Each kind's step waits for its parts, and
+    the traced tests for `fix-unsafe`, whose fixes they hold.
 
     Returns:
       Each step's, by its name: only steps the run has.
@@ -658,17 +910,19 @@ def needs(job: Job) -> dict[str, frozenset[str]]:
     names: dict[str, Callable[[Job], Record]] = waiting(job)
     every: frozenset[str] = frozenset((*names, *fixing(job.run)))
     found: dict[str, frozenset[str]] = {TRACED: frozenset({_WHOLE})} if TRACED in names else {}
+    confirmable: bool = TRACED in names and job.run.steps.tests_released and bool(earlier(job))
     kind: str
     for kind in (TESTS, TYPES):
         if kind not in names:
             continue
         own: list[str] = parts(job.run, kind)
         found[kind] = frozenset(own)
-        found[own[0]] = frozenset()
+        found[own[0]] = frozenset({TRACED}) if kind == TESTS and confirmable else frozenset()
         name: str
         for name in own[1:]:
             step: str = name.removeprefix(f"{kind}-")
-            standing: str = part(kind, _WHOLE) if kind == TESTS and _implied(step) else ""
-            made: str = TRACED if step == f"{INFER}{TRACE}" else step
-            found[name] = frozenset({made, own[0], standing}) & every
+            stands: str = part(kind, _WHOLE) if _implied(step) else ""
+            stands = part(kind, _TRACE) if step == _WHOLE and TRACED in names else stands
+            made: str = TRACED if step == _TRACE else step
+            found[name] = frozenset({made, own[0], stands}) & every
     return found

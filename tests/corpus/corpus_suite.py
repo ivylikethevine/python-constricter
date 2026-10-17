@@ -28,7 +28,9 @@ one process (`Suite.script`: Django's `runtests.py`).
 
 import ast
 import difflib
+import functools
 import hashlib
+import inspect
 import json
 import os
 import re
@@ -336,6 +338,24 @@ def checkout(
     return root
 
 
+def installed(root: Path) -> str:
+    """Hash a checkout's installed environment: its Python's version and every package's.
+
+    A record of its tests is comparable with another's only on a checkout installed the same.
+
+    Returns:
+      The hash; of nothing, for a clone with no environment.
+
+    """
+    python: Path = root / ".venv" / "bin" / "python"
+    if not python.exists():
+        return hashlib.sha256(b"").hexdigest()
+    uv: str = os.environ.get("UV") or shutil.which("uv") or "uv"
+    version: str = _output([str(python), "--version"], root)
+    listed: str = _output([uv, "pip", "freeze", "--python", str(python)], root)
+    return hashlib.sha256(f"{version}\n{listed}".encode()).hexdigest()
+
+
 def workers(suite: Suite) -> int:
     """Size a suite's tests' processes: what it can keep busy, within the CPUs and memory it may take.
 
@@ -448,6 +468,22 @@ def read(output: str) -> Outcome:
         }
     )
     return Outcome(counts, frozenset(cast("list[str]", _FAILED.findall(output))))
+
+
+@functools.cache
+def parser() -> str:
+    """Name the version of what reads a test run's output: `read`, `_summary`, `_added` and their patterns.
+
+    A record read by another version isn't comparable with one read by this.
+
+    Returns:
+      A hash of their source.
+
+    """
+    patterns: tuple[re.Pattern[str], ...] = (_FAILED, _COUNTS, _SUMMARY, _PRETTY, _COLOUR, _RAN, _RAN_SUMMARY)
+    source: str = "".join(inspect.getsource(each) for each in (read, _summary, _added))
+    source += "".join(each.pattern for each in (*patterns, _UNITTEST)) + _TIMED_OUT
+    return hashlib.sha256(source.encode()).hexdigest()[:12]
 
 
 def _traceable(suite: Suite) -> _Traceable | None:

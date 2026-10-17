@@ -23,6 +23,18 @@ Notable changes, newest first. Each release's full notes are generated from its 
   `NamedTuple("P", [("x", int), ("y", str)])` call's class is unpacked by its fields, a
   `TypedDict("D", {"a": int})` call's read by its keys; a `namedtuple(...)`'s fields stay untyped, as
   they are to every checker.
+- The corpus runner runs fewer of a suite's tests for the same answer. A part after a fix whose
+  patch another fix's part already ran is that part's (`implied`, `patch: same`), and so is one
+  whose patch a clean run's holds (`within`): `infer-trace`'s patch was `fix-unsafe`'s on 22 of the
+  0.3.9-rc.1 mega run's 42 suites. One fixed run per outcome with a failure new or gone runs again,
+  weighed against every released run (this run's, the traced tests', earlier runs' on the same
+  checkout), and none whose failures are the released tests' (sqlalchemy's skips move by two from
+  run to run): `differs` now says a test not named differs, `calm` whether the other counts are
+  some released run's. A `mega` run takes the tests as released from the latest earlier run on the
+  same checkout where the traced tests' outcome equals them (`from`, `confirmed`), and the tests
+  table says so. A record is taken only with the same tag, checkout environment (`environment`, a
+  hash of what's installed) and parser (`parser`, a hash of what reads a run's output); `facts.toml`
+  names each checker's version and the parser's.
 - The corpus runner no longer reads a suite's captured log records (`ERROR    logger:file.py:141
 message`) as tests that errored: sphinx's three such lines counted as three new failures after every
   fix, since the fix moved the line number.

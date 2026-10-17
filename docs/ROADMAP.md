@@ -525,6 +525,21 @@
   server has no inlay hints (they're Pylance's and basedpyright's), mypy has no server
   (`dmypy inspect` answers one location at a time), and pytype is discontinued.
 
+- **Fewer of a suite's test runs for the same answer**: a part after a fix whose patch another
+  fix's part ran is that part's (`implied`, `patch: same`), and one whose patch a clean run's holds
+  is that run's (`within`): `infer-trace`'s patch was `fix-unsafe`'s on 22 of the 0.3.9-rc.1 mega
+  run's 42 suites, and held it on 41. The `tests` step runs one fixed run again for each outcome
+  with a failure new or gone, weighed against every released run (this run's, the traced tests',
+  earlier runs' on the same checkout), and the released tests only where no other run of theirs is
+  there; a fixed run whose failures are the released tests' doesn't run again, whatever its other
+  counts (`calm` says whether they're some released run's). A `mega` run takes the tests as
+  released from the latest earlier run on the same checkout where the traced tests' outcome equals
+  them (`from`, `confirmed`), running them where it doesn't; a record is taken only with the same
+  tag, checkout environment (`environment`: a hash of its Python and packages) and parser
+  (`parser`: a hash of what reads a run's output), which `facts.toml` names with each checker's
+  version. Expected of the 0.3.9-rc.1 mega run: 85 CPU-minutes of implied parts and 58 more, 178
+  of the released tests' 200, and sqlalchemy's 9-minute rerun off the critical path; not yet run.
+
 ### CI, security and releases
 
 - **CI** (`ci.yml`): every check in [CONTRIBUTING](CONTRIBUTING.md#development), the pre-commit
@@ -703,43 +718,7 @@ each item sized the same way.
    uses 85% of its CPU seconds, and one with no earlier run under its output takes within a tenth of
    one sized by its own. About 2 hours beside the runs; coverage unchanged.
 
-2. **A suite's part implied by an identical patch.** On the 0.3.9-rc.1 mega run, `infer-trace`'s
-   patch was byte for byte `fix-unsafe`'s on 22 of the 42 suites, and their `tests-infer-trace` and
-   `types-infer-trace` parts ran anyway: 85 CPU-minutes, some in the run's last minutes (cattrs,
-   tox, fastapi, strawberry-graphql). Where two fixes' patches are identical, the later part is
-   implied by the earlier's record, as `suite_steps._implied` already implies the certain and likely
-   tiers' by a clean `fix-unsafe`; a patch that's a superset of another's (`infer-trace` ⊇
-   `fix-unsafe` in 41 of 42) implies the subset's part where its own run is clean, 58 CPU-minutes
-   more. Done when a mega run records those parts as implied and the tests table reads the same.
-   About 1 hour; coverage unchanged.
-3. **The reruns, targeted.** The `tests` step (a suite's fixed runs run again where they differ from
-   its released ones, since failures come and go) used 190 CPU-minutes of the 0.3.9-rc.1 mega run:
-   sqlalchemy 98 (its skip count 973 or 971 against released's 975, every rerun back at 975, no
-   failure anywhere; the 0.3.8-rc.1 run's released record at the same tag had 973, as did this run's
-   traced one), django 54, sphinx 14 (the log-line misparse, since fixed), black 6 (`new` and `gone`
-   empty on the first run, so a rerun could change nothing). `weighed` takes the earlier released
-   records at the suite's tag and the traced run as released samples too, reruns one fixed run per
-   distinct first outcome (sqlalchemy had 3 among 7) instead of every differing step, and skips the
-   rerun where nothing can shrink. Done when sqlalchemy's 9-minute rerun is gone from a mega run's
-   critical path and no rerun runs with `new` and `gone` empty. About 2 hours; coverage unchanged.
-4. **Released tests from an earlier run, confirmed by the trace.** `mega` reruns every suite's tests
-   as released (200 CPU-minutes), and `mega-fast` takes them from the latest earlier run at the
-   suite's tag (`tests-released = false`) without checking. Between the two mega runs, 37 of 39
-   same-tag released records were identical by outcome, and this run's `traced` outcome matched its
-   released one on 38 of 42 suites. `mega` starts `traced` first and keeps the earlier released
-   record where the trace's counts and failures equal it, running released only where they don't
-   (django, nibabel, sqlalchemy, structlog, pydantic: 22 of the 200 CPU-minutes). Keyed by the tag,
-   the checkout's environment hash and the failure parser's version (item 5): a rebuilt checkout
-   runs again. fastapi's and strawberry-graphql's released tests waited 128 minutes to start, their
-   whole chains behind them. Done when a mega run's tests table reads as before with the released
-   rows marked `from`. About 3 hours; coverage unchanged.
-5. **A run's cache keys in its facts.** A run's `facts.toml` and records name constricter's version
-   and the tag, not the type checkers' versions (only `uv.lock` does: `ty` changed between the two
-   mega runs), a suite checkout's environment, or the failure parser's version. Record a hash of each
-   checkout's installed environment, each checker's version and a parser version, so a record reused
-   from an earlier run (item 4, Medium 10) is known to be comparable. Done when `facts.toml` has
-   them and `earlier` refuses a record whose keys differ. About 1 hour; coverage unchanged.
-6. **The timed tail.** The 47 timed checks ran alone over the 0.3.9-rc.1 mega run's last 11 minutes
+2. **The timed tail.** The 47 timed checks ran alone over the 0.3.9-rc.1 mega run's last 11 minutes
    with 1.4 of 16 CPUs busy, 2.49 idle CPU-hours, the largest idle hold of any step kind; pandas's
    (136s) and the standard library's (117s) are 41% of it. With `timing = 1`, drop hyperfine's
    `--warmup 1` (the `check` step warmed the installed-modules cache; it doubles each check), and run

@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: MIT
 """A suite's steps: each part starts once the fixes it reads are made, on checkouts of the suite's own."""
 
+import hashlib
+import json
+import os
 from pathlib import Path
 from typing import Final, cast
 
@@ -18,6 +21,8 @@ _PASSED: Final[Record] = {"counts": {"passed": 2}, "failed": []}
 _FAILED: Final[Record] = {"counts": {"passed": 1, "failed": 1}, "failed": ["t::f"]}
 _FAILING: Final = "tests/test_a.py::test_a"  # a test a run failed
 _WHOLE: Final = "fix-unsafe"  # the guesses' fix step, whose run may stand for a tier's
+_KEY: Final = 12  # the characters of a parser's key
+_AGAIN: Final = "again"  # in a tests record: the released tests run once more
 
 
 def _job(tmp_path: Path) -> Job:
@@ -33,14 +38,21 @@ def _job(tmp_path: Path) -> Job:
 
 
 def test_each_part_waits_for_what_it_reads(tmp_path: Path) -> None:
-    """Its fix (the trace's, for the traced tests), its kind as released; a tier's tests the guesses'."""
-    needs: dict[str, frozenset[str]] = suite_steps.needs(_job(tmp_path))
+    """Its fix (the trace's, for the traced tests), its kind as released, and the part that may stand for it.
+
+    The tests as released wait for the traced tests where an earlier run's record of them is there
+    to confirm, and the run would run them.
+    """
+    job: Job = _job(tmp_path / "this")
+    needs: dict[str, frozenset[str]] = suite_steps.needs(job)
     assert needs["traced"] == {"fix-unsafe"}
     assert needs["tests-released"] == frozenset()
-    assert needs["tests-fix-unsafe"] == {"fix-unsafe", "tests-released"}
+    assert needs["tests-fix-unsafe"] == {"fix-unsafe", "tests-released", "tests-infer-trace"}
     assert needs["tests-fix-certain"] == {"fix-certain", "tests-released", "tests-fix-unsafe"}
     assert needs["tests-infer-trace"] == {"traced", "tests-released"}
-    assert needs["types-fix-certain"] == {"fix-certain", "types-released"}
+    assert needs["tests-infer-ty"] == {"infer-ty", "tests-released"}
+    assert needs["types-fix-certain"] == {"fix-certain", "types-released", "types-fix-unsafe"}
+    assert needs["types-fix-unsafe"] == {"fix-unsafe", "types-released", "types-infer-trace"}
     assert needs["tests"] == {
         "tests-released",
         "tests-fix-certain",
@@ -48,6 +60,22 @@ def test_each_part_waits_for_what_it_reads(tmp_path: Path) -> None:
         "tests-infer-ty",
         "tests-infer-trace",
     }
+    Store(tmp_path / "old").write("a", "0.3.6", "tests-released", _keyed(_PASSED))
+    assert suite_steps.needs(job)["tests-released"] == {"traced"}
+    untraced: Job = job._replace(run=parse({"steps": {"tests": True, "tests-released": False}}))
+    assert suite_steps.needs(untraced)["tests-released"] == frozenset()
+    assert suite_steps.needs(untraced)["tests-fix-unsafe"] == {"fix-unsafe", "tests-released"}
+
+
+def _keyed(record: Record, environment: str = "e1") -> Record:
+    """Give a released part's record the keys an earlier run's is taken by.
+
+    Returns:
+      It, at the suite's tag, read by this parser, on a checkout with `environment`.
+
+    """
+    keys: Record = {"tag": "1", "seconds": 3.0, "stopped": False, "parser": corpus_suite.parser()}
+    return record | keys | {"environment": environment}
 
 
 def test_each_part_has_a_checkout_of_its_kind(tmp_path: Path) -> None:
@@ -66,23 +94,132 @@ def test_each_part_has_a_checkout_of_its_kind(tmp_path: Path) -> None:
 
 
 def test_the_tests_as_released_are_an_earlier_runs(tmp_path: Path) -> None:
-    """The latest at the suite's tag, of any version, saying whose; not one stopped, nor this run's."""
+    """Those at the suite's tag, of any version, read by this parser, on the same checkout, latest first.
+
+    Each says whose run it is: the run that ran them, where a run took its record from another.
+    Not one stopped, nor this run's.
+    """
     runs: Path = tmp_path / "runs"
     job: Job = _job(runs / "this")
-    assert suite_steps.earlier(job) is None
-    found: Record = _PASSED | {"tag": "1", "seconds": 3.0, "stopped": False}
+    assert not suite_steps.earlier(job)
+    found: Record = _keyed(_PASSED)
     written: tuple[tuple[str, str, Record], ...] = (
         ("old", "0.3.6", found),
         ("other-tag", "dev", found | {"tag": "0"}),
+        ("other-parser", "dev", found | {"parser": "0"}),
+        ("other-checkout", "dev", _keyed(_FAILED, "e2")),
         ("stopped", "dev", found | {"stopped": True}),
+        ("copied", "dev", found | {"from": "older", "confirmed": "traced"}),
         ("this", "dev", found | {"seconds": 1.0}),
     )
+    when: int
     folder: str
     version: str
     record: Record
-    for folder, version, record in written:
+    for when, (folder, version, record) in enumerate(written):
         Store(runs / folder).write("a", version, "tests-released", record)
-    assert suite_steps.earlier(job) == found | {"from": "old"}
+        os.utime(runs / folder / "records" / "a" / version / "tests-released.json", (when, when))
+    assert suite_steps.earlier(job) == [
+        found | {"from": "older"},
+        _keyed(_FAILED, "e2") | {"from": "other-checkout"},
+        found | {"from": "old"},
+    ]
+    assert suite_steps.earlier(job, "e2") == [_keyed(_FAILED, "e2") | {"from": "other-checkout"}]
+
+
+def test_an_earlier_runs_tests_are_taken_where_the_run_skips_them_or_the_trace_confirms_them(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """On the same checkout; the traced tests' outcome must equal the record's, where they ran."""
+    runs: Path = tmp_path / "runs"
+    job: Job = _job(runs / "this")
+
+    def prepared(_job: Job, name: str) -> Path:
+        return tmp_path / name
+
+    def installed(_root: Path) -> str:
+        return "e1"
+
+    monkeypatch.setattr(suite_steps, "prepared", prepared)
+    monkeypatch.setattr(corpus_suite, "installed", installed)
+    assert suite_steps.taken(job) is None
+    Store(runs / "old").write("a", "0.3.6", "tests-released", _keyed(_PASSED))
+    assert suite_steps.taken(job) is None  # the run runs them, and nothing confirms the record
+    job.store.write("a", job.recorded, "traced", _FAILED | {"stopped": False})
+    assert suite_steps.taken(job) is None
+    job.store.write("a", job.recorded, "traced", _PASSED | {"stopped": False})
+    assert suite_steps.taken(job) == _keyed(_PASSED) | {"from": "old", "confirmed": "traced"}
+    Store(runs / "old").write("a", "0.3.6", "tests-released", _keyed(_PASSED, "e2"))
+    assert suite_steps.taken(job) is None  # another checkout's
+    skipping: Job = job._replace(run=parse({"steps": {"tests": True, "tests-released": False}}))
+    job.store.write("a", job.recorded, "traced", _FAILED | {"stopped": False})
+    Store(runs / "old").write("a", "0.3.6", "tests-released", _keyed(_PASSED))
+    assert suite_steps.taken(skipping) == _keyed(_PASSED) | {"from": "old"}
+
+
+def _listed(job: Job, step: str, fixes: tuple[str, ...]) -> None:
+    """Keep the fixes a fix step made (`<step>.fixes.jsonl`), each named, and its patch."""
+    lines: list[str] = [
+        json.dumps(
+            {
+                "path": "a.py",
+                "line": index,
+                "name": name,
+                "annotation": "int",
+                "tier": "certain",
+                "kinds": ["literal"],
+                "imports": [],
+            },
+        )
+        for index, name in enumerate(fixes)
+    ]
+    _ = job.store.path("a", job.recorded, step, ".fixes.jsonl").write_text(
+        "".join(f"{line}\n" for line in lines),
+    )
+    _ = job.store.path("a", job.recorded, step, ".patch").write_text("patch\n")
+
+
+def test_a_part_stands_for_another_by_its_fixes_patch(tmp_path: Path) -> None:
+    """The same patch, whatever its run gave; or one that holds its own and ran as released."""
+    job: Job = _job(tmp_path)
+    job.store.path("a", job.recorded, "x").parent.mkdir(parents=True)
+    _listed(job, "fix-unsafe", ("a", "b"))
+    _listed(job, "infer-trace", ("a", "b", "c"))
+    _listed(job, "infer-ty", ("a", "b"))
+    _listed(job, "infer-basedpyright", ("d",))
+    _listed(job, "fix-certain", ("a",))
+    _listed(job, "fix-likely", ("a", "b", "c"))
+    job.store.write("a", job.recorded, "tests-fix-unsafe", _FAILED)
+    job.store.write("a", job.recorded, "tests-infer-trace", _PASSED)
+    job.store.write("a", job.recorded, "tests-fix-likely", {"implied": "infer-trace", "patch": "same"})
+
+    def clean(record: Record) -> bool:
+        return record["counts"] == _PASSED["counts"]
+
+    assert suite_steps.standing(job, "tests", "fix-certain", clean) == {
+        "implied": "infer-trace",
+        "patch": "within",
+    }
+    assert suite_steps.standing(job, "tests", "infer-ty", clean) == {"implied": "fix-unsafe", "patch": "same"}
+    assert suite_steps.standing(job, "tests", "infer-basedpyright", clean) is None
+    assert suite_steps.standing(job, "types", "fix-certain", clean) is None  # no types part has run
+    job.store.write("a", job.recorded, "tests-infer-trace", _FAILED)
+    assert suite_steps.standing(job, "tests", "fix-certain", clean) is None
+    bare: Job = _job(tmp_path / "bare")  # a version that lists no fixes: a tier's are the guesses'
+    bare.store.write("a", bare.recorded, "tests-fix-unsafe", _PASSED)
+    assert suite_steps.standing(bare, "tests", "fix-certain", clean) == {
+        "implied": "fix-unsafe",
+        "patch": "within",
+    }
+    assert suite_steps.standing(bare, "tests", "infer-ty", clean) is None
+
+
+def test_a_checkouts_environment_and_the_parser_key_a_record(tmp_path: Path) -> None:
+    """A clone with no environment hashes to nothing's; the parser's key is its source's."""
+    assert corpus_suite.installed(tmp_path) == hashlib.sha256(b"").hexdigest()
+    assert len(corpus_suite.parser()) == _KEY
+    assert corpus_suite.parser() == corpus_suite.parser()
 
 
 def test_the_tests_gather_their_parts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -93,7 +230,7 @@ def test_the_tests_gather_their_parts(tmp_path: Path, monkeypatch: pytest.Monkey
         "tests-fix-unsafe": _PASSED,
         "tests-fix-certain": {"implied": _WHOLE},
         "tests-infer-ty": _FAILED,
-        "tests-infer-trace": {"skipped": "the fix made no patch"},
+        "tests-infer-trace": {"implied": "infer-ty", "patch": "same"},
     }
     name: str
     record: Record
@@ -121,11 +258,73 @@ def test_the_tests_gather_their_parts(tmp_path: Path, monkeypatch: pytest.Monkey
     gathered: Record = suite_steps.tests(job)
     assert again == ["infer-ty-again"]
     assert gathered["seconds"] == parts["tests-released"]["seconds"]
-    assert gathered["varies"] is False
+    assert (gathered["varies"], gathered["samples"]) == (False, {})
     fixed: dict[str, Record] = cast("dict[str, Record]", gathered["fixed"])
-    assert list(fixed) == ["fix-certain", "fix-unsafe", "infer-ty"]
+    assert list(fixed) == ["fix-certain", "fix-unsafe", "infer-ty", "infer-trace"]
     assert fixed["fix-certain"]["implied"] == _WHOLE
     assert fixed["infer-ty"]["new"] == ["t::f"]
+    assert fixed["infer-trace"] == fixed["infer-ty"] | {"implied": "infer-ty", "patch": "same"}
+
+
+def test_one_fixed_run_runs_again_for_each_outcome_with_a_failure_new_or_gone(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Against every released run: this run's, the traced tests' and earlier runs' on the same checkout.
+
+    Not one whose failures are theirs, whatever its other counts; nor the released tests, where
+    another run of theirs is there.
+    """
+    runs: Path = tmp_path / "runs"
+    job: Job = _job(runs / "this")
+    skipping: Record = {"counts": {"passed": 1, "skipped": 1}, "failed": []}
+    parts: dict[str, Record] = {
+        "tests-released": _keyed(_PASSED),
+        "traced": _FAILED | {"stopped": False},
+        "tests-fix-certain": {"implied": _WHOLE},
+        "tests-fix-unsafe": _FAILED,
+        "tests-infer-ty": _FAILED | {"failed": ["t::g"]},
+        "tests-infer-trace": _FAILED | {"failed": ["t::g"]},
+    }
+    name: str
+    record: Record
+    for name, record in parts.items():
+        job.store.write("a", job.recorded, name, record)
+    Store(runs / "old").write("a", "0.3.6", "tests-released", _keyed(skipping))
+    Store(runs / "other").write("a", "0.3.6", "tests-released", _keyed(_PASSED, "e2"))
+    again: list[str] = []
+
+    def fixed_run(_job: Job, step: str, kept: str, _base: Path) -> corpus_suite.Outcome:
+        again.append(f"{step}{kept}")
+        return corpus_suite.Outcome({"passed": 2}, frozenset())
+
+    def tested(_root: Path, _suite: Suite, _keep: Path | None) -> corpus_suite.Outcome:
+        raise AssertionError
+
+    def prepared(_job: Job, name: str) -> Path:
+        return tmp_path / name
+
+    def reset(_root: Path, _suite: Suite) -> None:
+        pass
+
+    monkeypatch.setattr(suite_steps, "prepared", prepared)
+    monkeypatch.setattr(suite_steps, "_fixed_run", fixed_run)
+    monkeypatch.setattr(corpus_suite, "reset", reset)
+    monkeypatch.setattr(corpus_suite, "tested", tested)
+    gathered: Record = suite_steps.tests(job)
+    assert again == ["infer-ty-again"]  # `t::f` is the traced tests' own; one run for `t::g`'s outcome
+    assert gathered["samples"] == {"traced": _FAILED, "old": skipping}
+    assert gathered["varies"] is True
+    assert _AGAIN not in gathered
+    fixed: dict[str, Record] = cast("dict[str, Record]", gathered["fixed"])
+    assert (fixed["fix-unsafe"]["differs"], fixed["fix-unsafe"]["calm"]) == (False, True)
+    assert fixed["fix-unsafe"]["again"] == []
+    assert fixed["infer-ty"]["new"] == fixed["infer-trace"]["new"] == []
+    assert (
+        fixed["infer-ty"]["again"]
+        == fixed["infer-trace"]["again"]
+        == [{"counts": {"passed": 2}, "failed": []}]
+    )
 
 
 def test_a_fixed_runs_failures_are_the_fixs_only_if_it_has_them_both_times() -> None:
@@ -150,7 +349,8 @@ def test_a_fixed_runs_failures_are_the_fixs_only_if_it_has_them_both_times() -> 
     gone: Record = suite_steps.weighed([released, released], [failing, failing], frozenset())
     assert (gone["gone"], gone["differs"]) == ([_FAILING], True)
     skipping: Outcome = Outcome({"passed": 8, "skipped": 2}, frozenset())
-    assert suite_steps.weighed([skipping, skipping], [released, released], frozenset())["differs"]
+    moved: Record = suite_steps.weighed([skipping, skipping], [released, released], frozenset())
+    assert (moved["differs"], moved["calm"]) == (False, False)
     black: catalog.Suite | None = catalog.load().entries["black"].suite
     assert black is not None
     assert [test.rpartition("::")[2] for test, _ in black.differs] == ["test_piping"]

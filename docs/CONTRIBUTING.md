@@ -91,10 +91,13 @@ applied: `tests`, the package's own tests as released and after each fix; `types
 checker as its CI runs it, each new error traced to the fix behind it, a certain one, a likely guess
 or another guess; and `traced`, its tests under a witness that holds each fixed binding's value to
 its annotation, then a fix by their trace (`python -m constricter.trace`, where pytest runs them, or
-a script the suite names does in one process: Django's `runtests.py`). A fixed run whose tests
-differ is run again, with the released tests: only what it fails both times and no released run did
-is the fix's, and a test `corpora.toml` names under the suite's `differs`, with why, is reported
-apart. They need `git`, `uv`, a C compiler, Rust (a default toolchain: `rustup default stable`) and
+a script the suite names does in one process: Django's `runtests.py`). A part after a fix whose
+patch another fix's part ran, or whose patch a clean run's holds, is that part's (`implied`). A
+fixed run with a failure new or gone against every released run (this run's, the traced tests',
+earlier runs' on the same checkout) is run again, one for each such outcome, and the released tests
+where no other run of theirs is there: only what it fails both times and no released run did is the
+fix's, and a test `corpora.toml` names under the suite's `differs`, with why, is reported apart.
+They need `git`, `uv`, a C compiler, Rust (a default toolchain: `rustup default stable`) and
 the network, once.
 
 Each execution writes a folder of its own under `local/corpus-runs/`, named by the run's label and
@@ -117,8 +120,10 @@ ask every step of their corpora (`basic`'s the `original` seven, so its rows com
 two's), and write RUNS.md's `Basic corpora`, `Super corpora` and `Mega corpora` sections, with the
 machine they ran on. Run super and mega before a release, outside a sandbox. `super-fast.toml` and
 `mega-fast.toml` measure the same corpora without publishing, a suite's tests only after each fix:
-the tests as released are the latest earlier run's at the suite's tag (`tests-released = false`),
-and nothing is traced.
+the tests as released are the latest earlier run's at the suite's tag on the same checkout
+(`tests-released = false`), and nothing is traced. `mega.toml` takes them too, where the traced
+tests' outcome equals that record's (`from`, `confirmed` in it). A record is taken only with the
+same tag, checkout environment and parser version, which it and `facts.toml` keep.
 
 Run files name their corpora by `tests/corpus/corpora.toml`'s sets, which may name other sets. The
 tiers hold each other: `original`, the seven corpora a release records; `super`, those and every

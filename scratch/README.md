@@ -40,6 +40,9 @@ goes under `local/scratch/`.
 - `run_timeline.py FOLDER [--top N] [--every MINUTES]`: a corpus run's timeline from its records:
   the share of the machine's CPU seconds used, the CPUs busy and the steps running in each bucket,
   the longest steps and how long each waited, and the corpora that ended last.
+- `rerun_census.py FOLDER`: a corpus run's fixed test runs that weren't the released tests': each
+  one's counts, what was new or gone, whether it was calm, how many times it ran again and the
+  samples the run had of the released tests. For checking what the `tests` step ran again, and why.
 - `run_eta.py FOLDER REFERENCE [--err FILE]`: where a running corpus run is and when it should end,
   each step done weighted by the seconds the same step took in a finished run.
 - `run_tick.sh HH:MM NAME.err NAME.out [SECONDS]`: wait for a run's next update mark, its end, a new

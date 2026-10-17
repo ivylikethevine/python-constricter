@@ -2,6 +2,7 @@
 """The corpus runner's own parts that need no corpus: its run file, and how it runs and sizes its steps."""
 
 import os
+import shutil
 import threading
 import time
 from datetime import UTC, datetime
@@ -13,7 +14,7 @@ import pytest
 
 from constricter import Level
 from tests.corpus import __main__ as runner
-from tests.corpus import catalog, corpus_suite, pipeline, sizing
+from tests.corpus import catalog, corpus_suite, pipeline, sizing, suite_steps
 from tests.corpus.pipeline import Record, Store
 from tests.corpus.recorded import SHARE, USED
 from tests.corpus.run_config import CERTAIN, CSV, DEV, LIKELY, Run, Steps, parse
@@ -22,6 +23,7 @@ from tests.corpus.trees import Tree
 _SLICED: Final = "--slice=constricter-corpus.slice"  # `systemd-run`'s, for a run with a share
 _SET: Final = "set-property"  # `systemctl`'s, setting the slice's limits
 _BASE: Final = "base"  # a version that names another Python
+_PYREFLY: Final = "pyrefly"
 
 
 def test_a_run_file_is_read_with_defaults_for_what_it_leaves_out() -> None:
@@ -469,3 +471,66 @@ def test_a_fix_is_certain_likely_or_a_guess() -> None:
     assert pipeline.tier({"unsafe": False}) == CERTAIN
     assert pipeline.tier({"unsafe": True, "likely": True}) == LIKELY
     assert pipeline.tier({"unsafe": True, "likely": False}) == pipeline.GUESS
+
+
+def test_the_tests_as_released_are_an_earlier_runs_record_where_one_may_be_taken(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Written as the step's, not run, and said in the run's output; else the step runs."""
+    run: Run = parse({"steps": {"tests": True}})
+    store: Store = Store(tmp_path)
+    plan: sizing.Plan = sizing.Plan(run, 8, 16 * sizing.GIB, {})
+    running: runner.Running = runner.Running(
+        run,
+        store,
+        plan,
+        sizing.Slots(8, 16),
+        None,
+        {},
+        threading.Semaphore(),
+    )
+    job: pipeline.Job = pipeline.Job(run, store, Tree("celery", "1", tmp_path), DEV)
+    entry: catalog.Entry = catalog.load().entry("celery")
+    ran: list[str] = []
+    found: Record = {"counts": {"passed": 1}, "failed": [], "from": "old", "confirmed": "traced"}
+
+    def step(_self: runner.Running, _entry: catalog.Entry, _job: pipeline.Job, name: str) -> bool:
+        ran.append(name)
+        return True
+
+    def none(_job: pipeline.Job) -> Record | None:
+        return None
+
+    def some(_job: pipeline.Job) -> Record | None:
+        return found
+
+    monkeypatch.setattr(runner.Running, "step", step)
+    monkeypatch.setattr(suite_steps, "taken", none)
+    assert running.steps(entry, job, ["tests-released"]) == []
+    monkeypatch.setattr(suite_steps, "taken", some)
+    assert running.steps(entry, job, ["tests-fix-unsafe"]) == []
+    assert ran == ["tests-released", "tests-fix-unsafe"]
+    assert running.steps(entry, job, ["tests-released"]) == []
+    assert store.read("celery", job.recorded, "tests-released") == found
+    assert ran == ["tests-released", "tests-fix-unsafe"]
+
+
+def test_a_runs_facts_name_each_checkers_version_and_the_parsers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The first line of `--version`, with the checker's name; `(not found)` where it isn't installed."""
+    run: Run = parse({"steps": {"infer-with": ["ty", "pyrefly"]}})
+    fake: Path = tmp_path / _PYREFLY
+    _ = fake.write_text("#!/bin/sh\necho 'pyrefly 0.40.0'\n", encoding="utf-8")
+    fake.chmod(0o755)
+
+    def which(name: str, **_kwargs: object) -> str | None:
+        return str(fake) if name == _PYREFLY else None
+
+    monkeypatch.setattr(shutil, "which", which)
+    assert runner.checkers(run) == ["ty (not found)", "pyrefly 0.40.0"]
+    facts: Record = runner.run_facts(run, datetime(2026, 10, 16, tzinfo=UTC))
+    assert facts["checkers"] == ["ty (not found)", "pyrefly 0.40.0"]
+    assert facts["parser"] == corpus_suite.parser()
