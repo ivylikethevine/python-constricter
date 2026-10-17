@@ -21,8 +21,8 @@ from functools import partial
 from pathlib import Path
 from typing import IO, Final, NamedTuple, TypeAlias, cast
 
-from constricter.cli import edits, guard, protocol
-from constricter.cli.protocol import HintError, HungError
+from constricter.cli.lsp import edits, guard, protocol
+from constricter.cli.lsp.protocol import HintError, HungError
 from constricter.fix.core.known import Offered
 
 _Json: TypeAlias = protocol.Json

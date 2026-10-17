@@ -4,7 +4,7 @@
 `declarations` reads, from a module's top level: each function whose arguments decide its return
 (`@overload`s, or a return naming a type variable) with its signatures as written; type aliases
 (`X: TypeAlias = ...`, `type X[T] = ...`, `X = A | B`); type variables' bounds and constraints; and
-protocols' members. All as source text, for `constricter.fix.index.stub_signatures` to resolve across modules
+protocols' members. All as source text, for `constricter.fix.index.stubs.signatures` to resolve across modules
 when a call needs them (`Module` keeps them, pickled into the installed modules' cache).
 """
 

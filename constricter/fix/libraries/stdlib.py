@@ -118,7 +118,7 @@ def _scalar_members() -> Mapping[str, frozenset[str]]:
 def scalar_verdicts(path: str) -> str | None:
     """Look up which builtin scalars a standard-library class or alias takes (`typing.SupportsIndex`).
 
-    Read the first time an installed package's overloads need it (see `constricter.fix.index.stubbed`).
+    Read the first time an installed package's overloads need it (see `constricter.fix.index.stubs.stubbed`).
 
     Returns:
       Its verdict per `overloads.SCALARS` type, in order; or `None` if the tables don't have it.

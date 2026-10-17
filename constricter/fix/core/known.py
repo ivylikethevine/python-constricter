@@ -36,7 +36,7 @@ _NAME: Final = re.compile(r"[A-Za-z_]\w*")  # each name in a return's template
 # What a name refers to: a module and an attribute of it (`None`: the module itself).
 Origin: TypeAlias = tuple[str, str | None]
 # How a return template starts that's the type itself, as the module calling it writes it: a
-# checked file's overload's (see `constricter.fix.index.stubbed.overloaded`).
+# checked file's overload's (see `constricter.fix.index.stubs.stubbed.overloaded`).
 SPELLED: Final = "="
 # After a fixture's `request` parameter's name: the key its `request.param` is typed under (see `Typed`).
 PARAM: Final = ".param"
@@ -304,7 +304,7 @@ class LibraryNames(NamedTuple):
     `parameters`: those methods' classes' type parameters, which a receiver's type binds; `lineage`:
     the installed classes it names, each with where it and its ancestors are defined, which a
     receiver's type is matched by; `aliases`: the public aliases of installed generic classes it
-    names, whose methods are their classes' (see `constricter.fix.index.stubbed`). `starred`: whether
+    names, whose methods are their classes' (see `constricter.fix.index.stubs.stubbed`). `starred`: whether
     every Python the module runs on parses an unpacked tuple in a subscript (`tuple[int, *Ts]`,
     3.11's syntax), so an annotation may be written with one.
     """
@@ -405,7 +405,7 @@ class Limits(NamedTuple):
 
 
 @dataclass(frozen=True)
-class Known:
+class Known:  # pylint: disable=too-many-instance-attributes
     """What a module declares that `--fix` can infer a value's type from.
 
     `calls`: its functions' return types (`returns`, plus other modules', see `project.calls`).

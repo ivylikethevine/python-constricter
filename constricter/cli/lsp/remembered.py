@@ -16,7 +16,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Final
 
-from constricter.fix.index.installed import cache_directory
+from constricter.fix.index.stubs.installed import cache_directory
 
 _RECENT: Final = 3600.0  # seconds a hang is remembered by the file's path, as well as by its text
 # Where an executable's environment keeps its distributions, from its `bin` (or `Scripts`) directory.

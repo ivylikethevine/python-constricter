@@ -35,11 +35,11 @@ from constricter.fix.index import (
     plain,
     project,
     sides,
-    stubbed,
     taken,
     tuples,
 )
 from constricter.fix.index.modules import Memo
+from constricter.fix.index.stubs import stubbed
 
 if TYPE_CHECKING:
     from constricter.fix.core.signatures import ReadSignature

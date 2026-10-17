@@ -8,7 +8,7 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
-from constricter.cli.protocol import SERVERS
+from constricter.cli.lsp.protocol import SERVERS
 from constricter.jsonc import is_int
 from constricter.offences import FIX_KINDS, LEVELS, MESSAGES, WIDEN_KINDS
 

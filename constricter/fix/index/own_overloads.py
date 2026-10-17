@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """A checked file's functions defined with `@overload`, for the calls their arguments decide.
 
-Their signatures are read as an installed package's are (see `constricter.fix.index.stubbed`), but
+Their signatures are read as an installed package's are (see `constricter.fix.index.stubs.stubbed`), but
 for what each returns: a type the calling file writes as it would any other checked file's.
 """
 
@@ -10,8 +10,8 @@ import ast
 from constricter.fix.core.known import SPELLED, Guarded
 from constricter.fix.core.signatures import ReadSignature
 from constricter.fix.index import project
-from constricter.fix.index.declared import Signature
 from constricter.fix.index.modules import Index, Module
+from constricter.fix.index.stubs.declared import Signature
 
 
 def written(module: Module, name: str) -> tuple[Signature, ...]:

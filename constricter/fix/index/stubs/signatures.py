@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """An installed function's signatures, read from its stub as the standard library's tables hold theirs.
 
-A stub's overloads (see `constricter.fix.index.declared`) are resolved across the installed modules the
+A stub's overloads (see `constricter.fix.index.stubs.declared`) are resolved across the installed modules the
 index holds, into the signatures of `constricter.fix.libraries.overloads`: which argument types each
 parameter certainly takes or refuses, the type variables they bind, and the return as a template
 naming classes by their public dotted paths. What they take is worked out from the parameter's
@@ -31,8 +31,10 @@ from constricter.fix.core.signatures import (
     Parameter,
     ReadSignature,
 )
-from constricter.fix.index import classnames, own_types, project
-from constricter.fix.index.atoms import (
+from constricter.fix.index import own_types, project
+from constricter.fix.index.modules import Module
+from constricter.fix.index.stubs import classnames
+from constricter.fix.index.stubs.atoms import (
     ANYTHING,
     BUILTINS_MODULE,
     CLASS,
@@ -67,10 +69,9 @@ from constricter.fix.index.atoms import (
     scalar_verdict,
     verdict_of,
 )
-from constricter.fix.index.declared import Alias, Class, Declarations, Signature, Variable
-from constricter.fix.index.modules import Module
-from constricter.fix.index.read import MEMO, Asked, Expanded
-from constricter.fix.index.stub_names import ALIAS_DEPTH, ARG, Resolved, Resolver
+from constricter.fix.index.stubs.declared import Alias, Class, Declarations, Signature, Variable
+from constricter.fix.index.stubs.names import ALIAS_DEPTH, ARG, Resolved, Resolver
+from constricter.fix.index.stubs.read import MEMO, Asked, Expanded
 from constricter.fix.libraries.overloads import CONTAINERS, SCALARS, substituted
 
 # What an atom is (see `Atom`).

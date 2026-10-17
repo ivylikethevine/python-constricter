@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING, Final
 import pytest
 
 from constricter.cli import command as cli
-from constricter.fix.index import installed, project, stubbed
+from constricter.fix.index import project
+from constricter.fix.index.stubs import installed, stubbed
 
 if TYPE_CHECKING:
     from constricter.fix.core.signatures import ReadSignature

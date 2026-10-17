@@ -2,9 +2,9 @@
 """Installed packages' functions whose arguments decide their type: their signatures, read for a call.
 
 The functions and methods a file calls, and the classes it passes, found through its imports;
-their stubs' overloads read by `constricter.fix.index.stub_signatures` into the signatures the
+their stubs' overloads read by `constricter.fix.index.stubs.signatures` into the signatures the
 standard library's tables hold (see `constricter.fix.libraries.overloads`), so a call is matched
-the same way, and kept from one file to the next (`constricter.fix.index.read`).
+the same way, and kept from one file to the next (`constricter.fix.index.stubs.read`).
 """
 
 from collections.abc import Mapping
@@ -13,14 +13,15 @@ from typing import TYPE_CHECKING, Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.core.known import Guarded, Origin
 from constricter.fix.core.signatures import Expansion, ReadSignature
-from constricter.fix.index import chained, classnames, own_overloads, project
+from constricter.fix.index import own_overloads, project
 from constricter.fix.index.modules import SUFFIX, Index, Module, module_name
-from constricter.fix.index.read import MEMO, Expanded, Memo
-from constricter.fix.index.stub_names import call_origin
-from constricter.fix.index.stub_signatures import Reader, read_all
+from constricter.fix.index.stubs import chained, classnames
+from constricter.fix.index.stubs.names import call_origin
+from constricter.fix.index.stubs.read import MEMO, Expanded, Memo
+from constricter.fix.index.stubs.signatures import Reader, read_all
 
 if TYPE_CHECKING:
-    from constricter.fix.index.declared import Class, Declarations, Signature
+    from constricter.fix.index.stubs.declared import Class, Declarations, Signature
 
 _KIND: Final = "signatures"
 

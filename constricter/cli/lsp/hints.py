@@ -25,9 +25,9 @@ from functools import partial
 from pathlib import Path
 from typing import Final, Self, TypeAlias
 
-from constricter.cli import protocol, remembered
-from constricter.cli.connection import Connection, FileHints, Found, Sent
-from constricter.cli.protocol import SERVERS, HintError, HungError, Server
+from constricter.cli.lsp import protocol, remembered
+from constricter.cli.lsp.connection import Connection, FileHints, Found, Sent
+from constricter.cli.lsp.protocol import SERVERS, HintError, HungError, Server
 from constricter.fix.core.known import Hints
 
 _Task: TypeAlias = Callable[[], Found]  # one server's work: the hints of each file it's asked about

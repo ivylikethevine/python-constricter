@@ -10,13 +10,13 @@ import ast
 import re
 from typing import TYPE_CHECKING, Final
 
-from constricter.fix.index.atoms import parse_text
+from constricter.fix.index.stubs.atoms import parse_text
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from constricter.fix.index.declared import Class, Signature
     from constricter.fix.index.modules import Module
+    from constricter.fix.index.stubs.declared import Class, Signature
 
 _WORD: Final = re.compile(r"\b\w+\b")
 

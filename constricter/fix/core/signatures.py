@@ -3,13 +3,13 @@
 
 What each parameter takes (`Accepts`), and a signature as the tables hold it (`Signature`) and as
 it's matched (`ReadSignature`); see `constricter.fix.libraries.overloads`, which matches them,
-`constricter.fix.libraries.stdlib`, whose tables hold them, and `constricter.fix.index.stubbed`,
+`constricter.fix.libraries.stdlib`, whose tables hold them, and `constricter.fix.index.stubs.stubbed`,
 which reads an installed package's.
 """
 
 from typing import Final, NamedTuple, NotRequired, Required, TypeAlias, TypedDict
 
-# `Accepts`' keys for an installed package's parameter (see `constricter.fix.index.stub_signatures`): a
+# `Accepts`' keys for an installed package's parameter (see `constricter.fix.index.stubs.signatures`): a
 # class passed as the argument, and a builtin container.
 # Before a path, an `async def`'s entry for `overloads.chosen`; before a method's name in
 # `method_overloads`, an `async def` method's: its signatures' returns are what awaiting a call gives.
@@ -110,7 +110,7 @@ class ReadSignature(NamedTuple):
     instance: list[str] | None
     # An installed class's method declaring its `self`: the type its receiver must have, as a pattern
     # (classes by where they're defined, `typing.Any` for anything, type variables bare), and those
-    # variables' bounds, likewise (see `constricter.fix.index.stub_signatures`).
+    # variables' bounds, likewise (see `constricter.fix.index.stubs.signatures`).
     receiver: str | None = None
     bounds: tuple[tuple[str, str], ...] = ()
 

@@ -44,7 +44,7 @@ comes out the same for all twelve:
   each class or alias takes, by every path an installed package's stub may import it from
   (`typing.SupportsIndex`, `_typeshed.StrPath`), and `scalar_members`: each of those types'
   members, for its protocols; installed packages' overloads are matched with them
-  (`constricter.fix.index.stubbed`).
+  (`constricter.fix.index.stubs.stubbed`).
 
 A return that names a `TypeVar` (but `AnyStr`), or anything vague but `Any` alone (`json.loads`'s,
 under `returns`, for `vague` to judge), differs between overloads, or is spelled with a class inside

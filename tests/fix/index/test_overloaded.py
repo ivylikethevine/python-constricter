@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Final
 
 from constricter.cli import command as cli
-from constricter.fix.index import own_methods, project, stubbed
+from constricter.fix.index import own_methods, project
+from constricter.fix.index.stubs import stubbed
 
 FRAME: Final = """
 from typing import Generic, Literal, TypeVar, overload

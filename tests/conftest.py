@@ -2,7 +2,7 @@
 """Test collection and isolation.
 
 The fuzz tests need hypothesmith, which the `test` group leaves out; every test caches installed
-modules' reads (`constricter.fix.index.installed`) in a directory of its own, never the user's; and
+modules' reads (`constricter.fix.index.stubs.installed`) in a directory of its own, never the user's; and
 on a build mypyc compiled, a test marked `interpreted` is skipped: it patches a module whose callers,
 compiled, call past the patch.
 

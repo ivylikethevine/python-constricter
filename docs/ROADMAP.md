@@ -119,7 +119,7 @@
   stub package, a lone stub module) are typed by their declared returns as a checked file's are,
   found as the import system would on this Python's path and `VIRTUAL_ENV`'s; types are imported
   from a public module that re-exports them. Functions whose overloads or type variables their
-  arguments decide are matched as the tables' are (`constricter.fix.index.stubbed`), through the
+  arguments decide are matched as the tables' are (`constricter.fix.index.stubs.stubbed`), through the
   package's aliases, type variables and protocols, the standard-library classes it names by the
   `scalars` table, and a class argument binding `type[T]`: 83 more fixes on pandas
   (`np.empty(n, dtype=np.float64)`), no new type error. They're read at run time through the index,
@@ -519,7 +519,7 @@
   a subclass sets (`self.type2test()`, `self.dumps()`: 28%, left alone), or a library base's (5%).
   Of the 5,479 found, 4,078 have a `return` whose value has no type: a name (1,779: an unannotated
   parameter, or a local with no fix), a call on another value (823), another `self.method()` (408).
-- **Other type checkers' servers**, driven through `constricter.cli.hints` on pydantic, sqlalchemy
+- **Other type checkers' servers**, driven through `constricter.cli.lsp.hints` on pydantic, sqlalchemy
   and django (26,716 bindings with no fix): the share of them each one's hints type, as `--fix`
   judges hints now, is 8.2% for ty, 10.7% for basedpyright and 13.7% for pyrefly. Plain Pyright's
   server has no inlay hints (they're Pylance's and basedpyright's), mypy has no server
@@ -583,15 +583,16 @@
   library's and installed packages' types), `values/` (what a value makes its type) and `index/`
   (the cross-file index), its tests laid out the same. Every module is under 800 lines, past which
   the Lint job warns, split along what each grouped (a reader of stubs' signatures out of
-  `stubbed.py`, and its names' resolution out of `stub_signatures.py`; what a file takes of
+  `stubbed.py`, and its names' resolution out of `stubs/signatures.py`; what a file takes of
   another's classes out of `project.py`; loops out of `inference.py`; what a module declares out of
   `rules/annotations.py`; where a module's names come from and its open functions out of
   `fix/index/modules.py`; the hint rounds out of `cli/command.py`; the language server's connection
-  out of `cli/hints.py`; building the scopes out of `rules/checker.py`; the annotation forms out of
+  out of `cli/lsp/hints.py`; building the scopes out of `rules/checker.py`; the annotation forms out of
   `stdlib_tables/reading.py`; a run report's tables out of `tests/corpus/render.py`), and all of
   `constricter/`'s but five under 750 (`cli/options.py`, `fix/index/project.py`,
   `fix/libraries/overloads.py`, and `rules/late.py` and `scope.py`); the standard-library tables in
-  `constricter/fix/tables/`, their generator in `stdlib_tables/`; docs in `docs/` (changelog,
+  `constricter/fix/tables/`, their generator in `stdlib_tables/`; the language servers' modules
+  under `cli/lsp/`, the installed packages' stub readers under `fix/index/stubs/`; docs in `docs/` (changelog,
   contributing, security, integrations, fixes, likely, runs), release notes grouped by
   `.github/release.yml`, issue and PR templates, CODEOWNERS.
 - **`Module` and `Outside`, by name**: frozen dataclasses with slots, every field given by keyword
@@ -600,7 +601,7 @@
   10.8s (51.0s and 11.0s).
 - **Packages weighed and left out.** constricter has no runtime dependency, and installs where only
   pure Python does (PyPy, free-threaded builds). `pygls` or `lsprotocol` for the checkers' servers
-  (`cli/hints.py`): the protocol's types are the small part, and the rest (servers sized by memory,
+  (`cli/lsp/hints.py`): the protocol's types are the small part, and the rest (servers sized by memory,
   a hung one found, restarted and asked again) no library has. `LibCST` for the edits: a native
   parser, for edits already proven on 59 packages. `platformdirs` for one function of ten lines.
   `networkx` or `graphlib` for the files' order: `graphlib` refuses the cycles it's there to find.
@@ -701,6 +702,53 @@ each item sized the same way.
    pandas's, dask's, optuna's) waited for the fixes and checkers before them. Done when a mega run
    uses 85% of its CPU seconds, and one with no earlier run under its output takes within a tenth of
    one sized by its own. About 2 hours beside the runs; coverage unchanged.
+
+2. **A suite's part implied by an identical patch.** On the 0.3.9-rc.1 mega run, `infer-trace`'s
+   patch was byte for byte `fix-unsafe`'s on 22 of the 42 suites, and their `tests-infer-trace` and
+   `types-infer-trace` parts ran anyway: 85 CPU-minutes, some in the run's last minutes (cattrs,
+   tox, fastapi, strawberry-graphql). Where two fixes' patches are identical, the later part is
+   implied by the earlier's record, as `suite_steps._implied` already implies the certain and likely
+   tiers' by a clean `fix-unsafe`; a patch that's a superset of another's (`infer-trace` ⊇
+   `fix-unsafe` in 41 of 42) implies the subset's part where its own run is clean, 58 CPU-minutes
+   more. Done when a mega run records those parts as implied and the tests table reads the same.
+   About 1 hour; coverage unchanged.
+3. **The reruns, targeted.** The `tests` step (a suite's fixed runs run again where they differ from
+   its released ones, since failures come and go) used 190 CPU-minutes of the 0.3.9-rc.1 mega run:
+   sqlalchemy 98 (its skip count 973 or 971 against released's 975, every rerun back at 975, no
+   failure anywhere; the 0.3.8-rc.1 run's released record at the same tag had 973, as did this run's
+   traced one), django 54, sphinx 14 (the log-line misparse, since fixed), black 6 (`new` and `gone`
+   empty on the first run, so a rerun could change nothing). `weighed` takes the earlier released
+   records at the suite's tag and the traced run as released samples too, reruns one fixed run per
+   distinct first outcome (sqlalchemy had 3 among 7) instead of every differing step, and skips the
+   rerun where nothing can shrink. Done when sqlalchemy's 9-minute rerun is gone from a mega run's
+   critical path and no rerun runs with `new` and `gone` empty. About 2 hours; coverage unchanged.
+4. **Released tests from an earlier run, confirmed by the trace.** `mega` reruns every suite's tests
+   as released (200 CPU-minutes), and `mega-fast` takes them from the latest earlier run at the
+   suite's tag (`tests-released = false`) without checking. Between the two mega runs, 37 of 39
+   same-tag released records were identical by outcome, and this run's `traced` outcome matched its
+   released one on 38 of 42 suites. `mega` starts `traced` first and keeps the earlier released
+   record where the trace's counts and failures equal it, running released only where they don't
+   (django, nibabel, sqlalchemy, structlog, pydantic: 22 of the 200 CPU-minutes). Keyed by the tag,
+   the checkout's environment hash and the failure parser's version (item 5): a rebuilt checkout
+   runs again. fastapi's and strawberry-graphql's released tests waited 128 minutes to start, their
+   whole chains behind them. Done when a mega run's tests table reads as before with the released
+   rows marked `from`. About 3 hours; coverage unchanged.
+5. **A run's cache keys in its facts.** A run's `facts.toml` and records name constricter's version
+   and the tag, not the type checkers' versions (only `uv.lock` does: `ty` changed between the two
+   mega runs), a suite checkout's environment, or the failure parser's version. Record a hash of each
+   checkout's installed environment, each checker's version and a parser version, so a record reused
+   from an earlier run (item 4, Medium 10) is known to be comparable. Done when `facts.toml` has
+   them and `earlier` refuses a record whose keys differ. About 1 hour; coverage unchanged.
+6. **The timed tail.** The 47 timed checks ran alone over the 0.3.9-rc.1 mega run's last 11 minutes
+   with 1.4 of 16 CPUs busy, 2.49 idle CPU-hours, the largest idle hold of any step kind; pandas's
+   (136s) and the standard library's (117s) are 41% of it. With `timing = 1`, drop hyperfine's
+   `--warmup 1` (the `check` step warmed the installed-modules cache; it doubles each check), and run
+   two or three timed corpora at once on disjoint CPU sets (`taskset`, `jobs + 1` CPUs each). Between
+   two runs at the same commit the single-sample seconds differed by a median 0.13% in one process
+   and 0.59% with every CPU, instructions by 0.09%: the published table compares seconds across runs,
+   so measure the noise beside other work before keeping it. Done when the tail is under 5 minutes
+   with the timing table's run-to-run noise unchanged. About 2 hours beside the runs; coverage
+   unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -845,6 +893,27 @@ each item sized the same way.
    not a named check. Done when every workflow has one green run on a pull request, including a
    weekly `link-check.yml` by hand, `tool-versions.yml` reports the same four tools from the new
    roster, and the sync has nothing left to send. About 5 hours; coverage unchanged.
+10. **One test run on the union of the fixes.** Of the 0.3.9-rc.1 mega run's 294 fixed test runs (42
+    suites by 7 fixes), 259 matched the released tests, 74 of them implied and never run, and none
+    found a genuine new failure: 36 suites were clean after every fix and spent 180 runs, 747
+    CPU-minutes (mypy 170, optuna 130, dask 91), to learn it. The suites' tests are 79% of the run's
+    2,010 CPU-minutes, and the seven fixed parts 946. Build one patch from the seven fixes' records
+    and run the tests once on it: equal to released, every part is implied by it; else the per-fix
+    parts run as today. The fixes conflict on a few bindings in 37 of 42 suites (1 to 30; pandas 464,
+    mypy 73, xarray 71): a priority (unsafe's annotation, then the trace's, then the checkers in a
+    fixed order), or the fallback. The same assumption the tiers' implication makes: fewer
+    annotations don't fail where more passed. Done when a mega run's tests table reads the same with
+    the parts marked implied and the run is 25 minutes shorter. About 5 hours; coverage unchanged.
+11. **First-round hints cached across runs.** The `infer-*` steps used 290 CPU-minutes and 114
+    step-minutes of the 0.3.9-rc.1 mega run (stripe's basedpyright 22.6 minutes, the standard
+    library's 21.4 at 12.3 GB), and their memory, not the CPUs, kept the early steps waiting
+    (pandas's basedpyright waited 22 minutes for 16 GB; the 0.3.8-rc.1 basic run's pyrefly 31 for
+    20 GB). The first round asks the checker about the released text (`cli/lsp/hints.py`), which
+    constricter's version doesn't change: keep its hints by file text, checker build and environment,
+    as `remembered.py` keeps hung-file markers, and ask only for the later rounds' fixed text. 44 of
+    47 tags were unchanged between the mega runs. Done when a mega run's `infer-*` steps read the
+    first round from the store and the hints are the same; the steps' seconds then measure less of
+    the checker, so the timing table says so. About 6 hours; coverage unchanged.
 
 ### Large: more than 8 hours
 
@@ -1073,6 +1142,27 @@ What to measure before building, smallest first.
    bug finder (it would have named `cm` above). A table by shape in the `traced` step: bindings with
    no fix, those the run bound to one type, and the commonest sources. Done when the table is in a
    run's report. About 4 hours; coverage unchanged.
+5. **Test results as data.** A suite's tests are read from pytest's and unittest's text (`-rfE`
+   lines, the summary), which misread sphinx's captured log lines as failures and spelled 4 suites'
+   failure ids two ways between runs. pytest's `--junitxml` or `--report-log` (and unittest's
+   verbose output, for django's runner) in `corpus_suite.tested` gives exact test and skip ids,
+   skip reasons and per-test durations: sqlalchemy's skip-count flake by name, with no rerun, and
+   what test-level sampling or sharding would later need. Done when the records hold each run's
+   test ids and durations and the tests table is read from them. About 3 hours; coverage unchanged.
+6. **What the records hold and no table shows.** The 0.3.9-rc.1 mega run's records have: likely
+   fixes absent from unsafe (networkx 13, pandas 216: the fixes interact, so likely isn't unsafe
+   filtered); a fix's `typed` count off by one from coverage plus its fixes on mypy and sphinx (a fix
+   that didn't make its binding typed); and `traced` against released, a flakiness sample for free
+   (equal on 38 of 42). Tables for the three, from the records alone. Done when `report.md` has
+   them. About 2 hours; coverage unchanged.
+7. **Tier the runs by what moves.** On the 44 corpora whose tag held between the two mega runs, the
+   fix counts moved on 31 to 36 by a median -0.14% (certain), -0.13% (likely) and -0.32% (unsafe),
+   the fast sets giving the right sign at about twice the size (`infer-ty` noisier: -1.74% against
+   -0.38%), offences not at all, and the whole-set gains came from pydantic's and sqlalchemy's tag
+   bumps. For a change's direction, a run of `fast-small`, `fast-large` and one slow-large corpus a
+   quadrant; the suites at full breadth, and every size, in the release mega runs alone. Done when
+   `runs/` has that file and CONTRIBUTING says when each run is the one. About 1 hour; coverage
+   unchanged.
 
 ## Ongoing
 

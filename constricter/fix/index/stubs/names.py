@@ -12,8 +12,10 @@ from collections.abc import Iterator, Mapping
 from typing import Final, TypeAlias
 
 from constricter.fix.core.known import Origin
-from constricter.fix.index import classnames, project
-from constricter.fix.index.atoms import (
+from constricter.fix.index import project
+from constricter.fix.index.modules import Module
+from constricter.fix.index.stubs import classnames
+from constricter.fix.index.stubs.atoms import (
     BUILTINS_MODULE,
     CLASS,
     VAR,
@@ -22,8 +24,7 @@ from constricter.fix.index.atoms import (
     atom_path,
     parse_text,
 )
-from constricter.fix.index.declared import Alias, Class, Declarations, Variable
-from constricter.fix.index.modules import Module
+from constricter.fix.index.stubs.declared import Alias, Class, Declarations, Variable
 
 ARG: Final = "arg"
 _BUILTINS: Final = frozenset(dir(builtins))

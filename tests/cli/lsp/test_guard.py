@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""`constricter.cli.guard`: a type checker's server, and what it started, stopped when constricter goes."""
+"""`constricter.cli.lsp.guard`: a type checker's server, and what it started, stopped as constricter goes."""
 
 import io
 import os
@@ -14,7 +14,7 @@ from typing import IO, Final, cast
 
 import pytest
 
-from constricter.cli import guard
+from constricter.cli.lsp import guard
 from tests.cli.sources import FAKE_SERVER
 
 _STATUS: Final = 3  # a server's exit status, passed on
@@ -33,7 +33,7 @@ def test_a_server_goes_when_constricter_is_killed(tmp_path: Path) -> None:
         f"""
         import sys, time
         from pathlib import Path
-        from constricter.cli import guard, hints
+        from constricter.cli.lsp import guard, hints
         guard.GRACE = 0.5
         hints.command = lambda _checker: [sys.executable, {str(FAKE_SERVER)!r}, "clingy"]
         with hints.Session(["ty"], Path({str(tmp_path)!r})) as session:
@@ -119,7 +119,7 @@ def test_the_guard_stops_passing_input_to_a_server_that_has_gone() -> None:
 
 
 def test_the_guard_runs_as_a_module(monkeypatch: pytest.MonkeyPatch) -> None:
-    """`python -m constricter.cli.guard` exits with the server's status, ignoring interrupts."""
+    """`python -m constricter.cli.lsp.guard` exits with the server's status, ignoring interrupts."""
     monkeypatch.setattr(sys, "argv", ["guard", "5", sys.executable, "-c", f"raise SystemExit({_STATUS})"])
     monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(b""), encoding="utf-8"))
     monkeypatch.delitem(sys.modules, guard.__name__)  # run afresh, as `-m` does

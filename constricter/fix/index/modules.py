@@ -22,9 +22,9 @@ from constricter.empty import Empty
 from constricter.fix.core.imports import taken_names
 from constricter.fix.core.known import Origin, Passed, Returns, Takers, pickled, unpickled
 from constricter.fix.core.signatures import AWAIT
-from constricter.fix.index.declared import Declarations, Signature, declarations, kinds, overloads
 from constricter.fix.index.origins import guarded_origins, origins_of
 from constricter.fix.index.params import Param, open_functions
+from constricter.fix.index.stubs.declared import Declarations, Signature, declarations, kinds, overloads
 from constricter.fix.values import classvars, entered, fills
 from constricter.fix.values.bodies import yields_itself
 from constricter.fix.values.returned import held_back, unannotated

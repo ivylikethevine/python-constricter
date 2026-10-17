@@ -168,9 +168,9 @@ def classes(tree: ast.Module) -> dict[str, dict[str, str]]:
     found: dict[str, dict[str, str]] = {}
     keyed: set[str] = set()
     node: ast.ClassDef
+    called: dict[str, str] | None
     for node in _class_nodes(tree):
-        called: dict[str, str] | None = _called_keys(node)
-        if called is not None:
+        if (called := _called_keys(node)) is not None:
             keyed.add(node.name)
             found[node.name] = called
         elif not _generic(node) and any(

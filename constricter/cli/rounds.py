@@ -19,11 +19,12 @@ from constricter.cli.runs import CheckRun, FileRun, merged
 from constricter.cli.workers import Workers, running, started
 from constricter.empty import Empty
 from constricter.fix.core.known import Callee, Hints, Outside
-from constricter.fix.index import callers, decorated, installed, loose, plain, project
+from constricter.fix.index import callers, decorated, loose, plain, project
+from constricter.fix.index.stubs import installed
 from constricter.offences import Fix
 
 if TYPE_CHECKING:  # slow to import, and only needed for `--infer-with`
-    from constricter.cli import hints
+    from constricter.cli.lsp import hints
 
 _PY: Final = ".py"  # a module the index names (not a notebook)
 _Hinted: TypeAlias = dict[Path, tuple[Hints, ...]]  # each file's hints, a checker's each

@@ -4,7 +4,7 @@
 A parameter typed as nothing but checked files' classes (`frame: DataFrame`), or as an iterable of
 them (`objs: Iterable[DataFrame] | Mapping[K, DataFrame]`), takes an argument by its class's
 lineage: its own path and its bases', through the checked files, as an installed class's is
-matched (see `constricter.fix.index.stubbed`). `concat([df, df])` then picks the overload taking
+matched (see `constricter.fix.index.stubs.stubbed`). `concat([df, df])` then picks the overload taking
 `DataFrame`s, and not the one taking `Series`.
 """
 
@@ -17,8 +17,8 @@ from typing import Final, NamedTuple, TypeAlias
 from constricter.fix.core.known import Guarded, Origin
 from constricter.fix.core.signatures import OWN, OWN_ELEMENTS, Accepts
 from constricter.fix.index import plain, project
-from constricter.fix.index.atoms import BUILTINS_MODULE, CLASS, Atom, Scope
 from constricter.fix.index.modules import SUFFIX, Index, Memo, Module, classes_under, exported, module_name
+from constricter.fix.index.stubs.atoms import BUILTINS_MODULE, CLASS, Atom, Scope
 from constricter.fix.libraries import stdlib
 from constricter.fix.values import classvars
 from constricter.overrides import override

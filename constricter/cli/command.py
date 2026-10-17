@@ -15,9 +15,9 @@ from typing import TYPE_CHECKING, Final, NamedTuple, TextIO, TypeAlias, cast
 
 from constricter import notebook
 from constricter.cli import baseline, collecting, schedule
+from constricter.cli.lsp.protocol import HintError
 from constricter.cli.options import Mode, Options, Output
 from constricter.cli.paths import STDIN, python_files
-from constricter.cli.protocol import HintError
 from constricter.cli.reading import encoding_of, read_text
 from constricter.cli.report import Format, Result, fix_reasons, render, statistics
 from constricter.cli.rounds import checked_all, settled
@@ -36,7 +36,7 @@ from constricter.rules import parsed
 from constricter.rules.checker import Checked, Coverage, annotation_coverage, checked_source
 
 if TYPE_CHECKING:  # slow to import, and only needed for `--infer-with`
-    from constricter.cli import hints
+    from constricter.cli.lsp import hints
 
 EXIT_CLEAN: Final = 0
 EXIT_FOUND: Final = 1
@@ -370,7 +370,7 @@ def _check_rounds(options: Options) -> tuple[list[Path], list[FileRun]]:
         return names, settled(paths, check, options, None)
     session: hints.Session
     # Imported only for `--infer-with`: it's slow to import, for every run's start.
-    with cast("type[hints.Session]", importlib.import_module("constricter.cli.hints").Session)(
+    with cast("type[hints.Session]", importlib.import_module("constricter.cli.lsp.hints").Session)(
         options.infer_with,
         Path.cwd(),
         options.jobs,
