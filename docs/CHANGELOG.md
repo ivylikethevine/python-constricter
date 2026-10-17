@@ -6,6 +6,10 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- The release's compiled wheels build again: cibuildwheel builds in the unpacked sdist, so the
+  `mypyc` group's hash-checked requirements it installs first (`mypyc.txt`) are now exported into
+  the sdist by the build action, not left in the checkout, where the 0.3.7 and 0.3.8 releases'
+  builds couldn't find them and neither reached PyPI.
 - `--fix --unsafe-fixes` no longer guesses the type of a number bound again by an augmented
   assignment with an operand of no known type (`factor = 1.5`, then `factor *= other`): a `Quantity`
   once `other` is one. A text or a container stays one by `+=`. One guess fewer on pydantic.
