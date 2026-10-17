@@ -6,6 +6,9 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix --unsafe-fixes` no longer guesses the type of a number bound again by an augmented
+  assignment with an operand of no known type (`factor = 1.5`, then `factor *= other`): a `Quantity`
+  once `other` is one. A text or a container stays one by `+=`. One guess fewer on pydantic.
 - The flake8 plugin no longer breaks another plugin that deep-copies a node, as pydoclint's does:
   the check it keeps on a module's tree isn't copied with it.
 - `--fix` types a list, set or dict display its function adds to later by what's added too: numbers

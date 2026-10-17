@@ -159,10 +159,17 @@ def rebinds(scope: Scope) -> None:
             continue
         function: FunctionDef | None = scope.kind.function
         if function is not None and any(
-            binding.value is None and binding.guess is None and binding.at in _converted(function)
+            binding.value is None
+            and binding.guess is None
+            and (
+                binding.at in _converted(function)
+                or (fix.annotation in _NUMBERS and binding.at in _operated(function))
+            )
             for binding in rest
         ):
-            # Bound again to a call on itself, of a type that isn't known: a conversion, as often as not.
+            # Bound again to a call on itself, or a number by an operator with an operand, of a type
+            # that isn't known: a conversion, as often as not (`factor *= other`, a `Quantity` once
+            # `other` is one). A text or a container stays one by `+=`.
             scope.offences[index] = replace(o, edit=None)
             continue
         if function is not None and any(
@@ -673,6 +680,26 @@ def _converted(function: FunctionDef) -> frozenset[tuple[int, int]]:
                 isinstance(arg, ast.Name) and arg.id == name
                 for arg in (*call.args, *(keyword.value for keyword in call.keywords))
             ):
+                found.add(at(target))
+            case _:
+                pass
+    return frozenset(found)
+
+
+@lru_cache(maxsize=1024)  # asked of each of a function's names bound again
+def _operated(function: FunctionDef) -> frozenset[tuple[int, int]]:
+    """Find where a function binds a name by an augmented assignment: `factor *= other`.
+
+    Returns:
+      Where each such name is bound.
+
+    """
+    node: ast.AST
+    target: ast.Name
+    found: set[tuple[int, int]] = set()
+    for node in ast.walk(function):
+        match node:
+            case ast.AugAssign(target=ast.Name() as target):
                 found.add(at(target))
             case _:
                 pass

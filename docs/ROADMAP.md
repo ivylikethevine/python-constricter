@@ -683,9 +683,12 @@ fix.
    margin over, with as many workers as before (141 minutes, replayed). The mega-fast run after it
    (no released or traced tests) took 109 minutes and used 80% of its CPU seconds before its timed
    checks, 73% with them, 13 to 14 CPUs busy until its last half hour; no schedule of its steps
-   takes under 93 minutes, or 100 held to what each was given. Done when a mega run uses 85% of its
-   CPU seconds, and one with no earlier run under its output takes within a tenth of one sized by
-   its own. About 2 hours beside the runs; coverage unchanged.
+   takes under 93 minutes, or 100 held to what each was given. The basic run of 0.3.8-rc.1, with the
+   three suites at new tags and so no record to size their steps by, took 58 minutes and used 66% of
+   its CPU seconds (about 72% before its timed checks): django's tests kept 6.5 CPUs busy on the 1
+   given, and pandas's `infer-pyrefly` waited 31 minutes for 20 GB. Done when a mega run uses 85% of
+   its CPU seconds, and one with no earlier run under its output takes within a tenth of one sized
+   by its own. About 2 hours beside the runs; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -699,9 +702,13 @@ fix.
    - A name typed by its first values and bound again to what `--fix` can't type (`rebound`):
      `units_overlay: bool`, then a `dict`; `factor: float | None`, then `factor *= other`; a
      `re.Match[str]`, then its `groupdict()`. pint's 10 (3 bindings), mcp's 2, 3 of mypy's
-     (`code = error.get("code")`, then `if code is None: code = SYNTAX`). Not offered where a later
-     binding's type isn't known would end them, and the guesses that are right with them: count both
-     on the corpora first.
+     (`code = error.get("code")`, then `if code is None: code = SYNTAX`). Counted on the basic run
+     of 0.3.8-rc.1: the seven corpora's 1,262 `rebound` guesses are blamed for no error and hold
+     98.7% of the time (13 of 1,019 told differed), so withholding them all would cost more than it
+     saves. Done: a name bound again to a call on itself (`groupdict()`'s case), or a number bound
+     again by an augmented assignment with an operand of no known type (`factor *= other`), gets no
+     guess; pydantic loses one (`scratch/rebound_census.py` counts them). Left, on the next mega
+     run: `units_overlay`'s and `code`'s, and whether pint's and mcp's errors are gone.
    - A type from a package the suite's own checker can't follow (`etree.Element`, of `lxml`): 14 of
      mypy's. Its environment's; listed, not fixed.
    - A `None`, then only an `Index`, by an unannotated function's `return`s: declared, an argument

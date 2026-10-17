@@ -160,3 +160,26 @@ def test_a_fixed_runs_failures_are_the_fixs_only_if_it_has_them_both_times() -> 
     assert corpus_suite.read("ERROR - 2026-10-13 - logged\nFAILED tests/test_a.py::test_a - x\n").failed == {
         _FAILING,
     }
+
+
+def test_a_unittest_summary_names_its_failures_and_not_its_counts() -> None:
+    """Django's runner heads each failure and error; its `FAILED (failures=N, ...)` line names none."""
+    output: str = (
+        "FAIL: test_a (pkg.tests.Case.test_a)\nTraceback...\n\nERROR: test_b (pkg.tests.Case.test_b)\n"
+        "Traceback...\n\nRan 3 tests in 0.1s\n\nFAILED (failures=1, errors=1, skipped=1)\n"
+    )
+    found: Outcome = corpus_suite.read(output)
+    assert found.failed == {"test_a (pkg.tests.Case.test_a)", "test_b (pkg.tests.Case.test_b)"}
+    assert found.counts == {"ran": 3, "failures": 1, "errors": 1, "skipped": 1}
+
+
+def test_a_pytest_failure_is_named_whole_before_its_reason() -> None:
+    """A parametrized id may hold a space (`test_x[a b]`); the ` - reason` after it varies between runs."""
+    output: str = (
+        "FAILED tests/test_a.py::test_x[a b] - AssertionError: 1 != 2\n"
+        "ERROR tests/test_a.py::test_y - RuntimeError\nERROR - 2026-10-13 12:00:00 - pkg - a logged line\n"
+        "=== 1 failed, 1 error, 2 passed in 0.10s ===\n"
+    )
+    found: Outcome = corpus_suite.read(output)
+    assert found.failed == {"tests/test_a.py::test_x[a b]", "tests/test_a.py::test_y"}
+    assert found.counts == {"failed": 1, "error": 1, "passed": 2}
