@@ -762,8 +762,16 @@ each item sized the same way.
      98.7% of the time (13 of 1,019 told differed), so withholding them all would cost more than it
      saves. Done: a name bound again to a call on itself (`groupdict()`'s case), or a number bound
      again by an augmented assignment with an operand of no known type (`factor *= other`), gets no
-     guess; pydantic loses one (`scratch/rebound_census.py` counts them). Left, on the next mega
-     run: `units_overlay`'s and `code`'s, and whether pint's and mcp's errors are gone.
+     guess; pydantic loses one (`scratch/rebound_census.py` counts them). The 0.4.0-rc.2 mega run
+     still had pint's 4 and mypy's 3: the call on itself was only one taking the name, not its
+     method (`match = match.groupdict()`) or one behind `or` (`code = codes.get(code) or SYNTAX`).
+     Done, not yet run: those, a name bound again to an empty display of another class
+     (`units_overlay = {}`, a chained assignment's), and a loop's target bound again past the loop
+     to a value of no known type (mcp's `value: str`, then `value = _value_at_path(...)`), get no
+     guess either; the last withdraws 25 guesses on the rc.2 run's sources at hand
+     (`scratch/rebound_shapes.py`), one blamed for an error. Left as it is: mcp's `name`, a copy of a
+     `str | None` parameter filled in `if not name:` by a value the checker sees as `Any` and narrows
+     to the declared type; withdrawing that shape would take 23 guesses for that one error.
    - A type from a package the suite's own checker can't follow (`etree.Element`, of `lxml`): 14 of
      mypy's. Its environment's; listed, not fixed.
    - A `None`, then only an `Index`, by an unannotated function's `return`s: declared, an argument
@@ -777,8 +785,9 @@ each item sized the same way.
      `str-bytes-safe`): nibabel's one, a likely `method` guess.
 
    Done when each package's errors left are its environment's, or under one for each hundred of its
-   guesses, on the seven and on the mega corpora's. About 6 hours; coverage down by the guesses
-   withdrawn.
+   guesses, on the seven and on the mega corpora's: on the 0.4.0-rc.2 mega run every package was,
+   by the guesses blamed for an error in each hundred a checker read (mcp 0.54, pint 0.27, mypy
+   0.24, the rest under 0.1). About 6 hours; coverage down by the guesses withdrawn.
 
 2. **A parallel check, past its longest chain.** With every CPU the standard library checks in 12.9s
    and pandas in 11.3s (14.4s and 11.4s before the workers were kept for a run's rounds): 46s and
@@ -802,9 +811,25 @@ each item sized the same way.
    the super corpora; on the slow ones, 215 on litestar, 42 on narwhals, 29 on mypy, 16 on optuna,
    13 on pint and 2 to 8 on four more. Nearly all are traced to a hint's own fix (`checker`).
    litestar's weren't read: its Pyright is set to Python 3.8. Count them by cause, as the guesses'
-   are above, and hold a hint to what the cause says. Done when a hinted run's new errors are under
-   one for each hundred of its hints' fixes on the three corpora type-checked. About 8 hours;
-   coverage down by the hints withdrawn.
+   are above, and hold a hint to what the cause says. On the 0.4.0-rc.2 mega run the hinted steps'
+   868 new errors were 454 blamed on a hint's own fix, 195 on `--fix`'s own guesses beside them and
+   219 on no fix, 182 of those litestar's, set off by the hints' `from typing import TypeAlias` on
+   its Python 3.8 (`scratch/hint_errors.py` groups them). The hints' by cause: an annotation
+   narrower than a later value (95, and 16 a later `None`): the hint is the first value's type, the
+   checker knows the later ones' and `--fix` doesn't; ty's `GeneratorType[...]` for a generator
+   (44); numpy's `bool[bool]` as ty prints it, read as the builtin (43); another class of the same
+   name (43: starlette's own `Match`, pydantic's `ValidationError` for jsonschema's); `TypeAlias` on
+   Python 3.8 (23); a module's name for its class (16: `import datetime`, PIL's `Image`); a private
+   or stub-only name (13: `np._NBitIntP`, `sys.OptExcInfo`); `Never` (4); a class a function
+   defines (4); and 153 others, most of them pandas's `ArrayLike` and `Manager` unions read as one
+   member. Done, not yet run: a hint naming a module bare, a well-known class's name the module
+   binds to its own class, a builtin given type arguments, a private part of a dotted name or a
+   function's class is dropped, ty's `GeneratorType` is written `Generator`, and `TypeAlias` is
+   imported from `typing` only from `min-python` 3.10: 165 of the 454, and litestar's 182. Left: the
+   narrower annotations, the same names imported from elsewhere (`Image`, `ValidationError`, which
+   only the checker's definition link can tell apart), and pandas's. Done when a hinted run's new
+   errors are under one for each hundred of its hints' fixes on the three corpora type-checked.
+   About 8 hours; coverage down by the hints withdrawn.
 4. **The witness, past a test's own classes.** The corpora runs hold a fixed binding's value to its
    annotation as its package's traced tests bind it (`tests/corpus/witness`), and a test's own
    stand-in differs (`FakeProcess`, passed where a `ServerProcess` is declared: mcp's one certain

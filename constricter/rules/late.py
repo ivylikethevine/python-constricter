@@ -131,6 +131,9 @@ def rebinds(scope: Scope) -> None:
 
     A name something out of sight writes is left alone, and one bound again to a call on itself
     whose type isn't known has no fix: a fifth of those guesses were wrong, on the packages measured.
+    Nor has one bound again to an empty display of another class (`flag = any(xs)`, then `flag = {}`),
+    or a loop's target bound again past the loop to a value whose type isn't known: another use of
+    the name, which the loop's values say nothing of.
     """
     index: int
     o: Offence
@@ -164,20 +167,27 @@ def rebinds(scope: Scope) -> None:
             and (
                 binding.at in _converted(function)
                 or (fix.annotation in _NUMBERS and binding.at in _operated(function))
+                or _emptied(function).get(binding.at) not in {None, *_heads(fix.annotation)}
             )
             for binding in rest
         ):
             # Bound again to a call on itself, or a number by an operator with an operand, of a type
             # that isn't known: a conversion, as often as not (`factor *= other`, a `Quantity` once
-            # `other` is one). A text or a container stays one by `+=`.
+            # `other` is one). A text or a container stays one by `+=`. Or to an empty display, whose
+            # class the fix doesn't name: a checker holds it to the fix's.
             scope.offences[index] = replace(o, edit=None)
             continue
         if function is not None and any(
-            binding.value is None and binding.guess is None and _apart(function, first.at, binding.at)
+            binding.value is None
+            and binding.guess is None
+            and (
+                _apart(function, first.at, binding.at)
+                or binding.at[0] > _looped(function).get(first.at, binding.at[0])
+            )
             for binding in rest
         ):
             # Bound in one arm of an `if` to a known type, in another to one that isn't: a checker
-            # that knows the other's holds it to the first.
+            # that knows the other's holds it to the first. Or a loop's target, past the loop.
             scope.offences[index] = replace(o, edit=None)
             continue
         found: Refit | Fix | None = refit(
@@ -663,7 +673,10 @@ def _augmented(function: FunctionDef) -> frozenset[str]:
 
 @lru_cache(maxsize=1024)  # asked of each of a function's names bound again
 def _converted(function: FunctionDef) -> frozenset[tuple[int, int]]:
-    """Find where a function binds a name to a call that takes the name itself: `item = proper(item)`.
+    """Find where a function binds a name to a call on the name itself.
+
+    One that takes it (`item = proper(item)`) or is its method (`match = match.groupdict()`), alone
+    or as an operand of `or` or of a conditional expression (`code = table.get(code) or SYNTAX`).
 
     Returns:
       Where each such name is bound.
@@ -671,19 +684,97 @@ def _converted(function: FunctionDef) -> frozenset[tuple[int, int]]:
     """
     found: set[tuple[int, int]] = set()
     node: ast.AST
-    name: str
-    target: ast.Name
-    call: ast.Call
+    target: ast.expr
     for node in ast.walk(function):
-        match node:
-            case ast.Assign(targets=[ast.Name(id=name) as target], value=ast.Call() as call) if any(
-                isinstance(arg, ast.Name) and arg.id == name
-                for arg in (*call.args, *(keyword.value for keyword in call.keywords))
-            ):
-                found.add(at(target))
-            case _:
-                pass
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and _on_itself(target.id, node.value):
+                    found.add(at(target))
     return frozenset(found)
+
+
+def _on_itself(name: str, value: ast.expr) -> bool:
+    """Check whether `value` is a call on `name` (see `_converted`), or an operand of one is.
+
+    Returns:
+      Whether it is.
+
+    """
+    values: list[ast.expr]
+    body: ast.expr
+    orelse: ast.expr
+    func: ast.expr
+    args: list[ast.expr]
+    keywords: list[ast.keyword]
+    match value:
+        case ast.BoolOp(values=values):
+            return any(_on_itself(name, each) for each in values)
+        case ast.IfExp(body=body, orelse=orelse):
+            return _on_itself(name, body) or _on_itself(name, orelse)
+        case ast.Call(func=func, args=args, keywords=keywords):
+            while isinstance(func, ast.Attribute):
+                func = func.value
+            return any(
+                isinstance(each, ast.Name) and each.id == name
+                for each in (func, *args, *(keyword.value for keyword in keywords))
+            )
+        case _:
+            return False
+
+
+# The classes whose call with no arguments is an empty display.
+_EMPTY: Final = frozenset({"dict", "list", "set", "tuple"})
+
+
+@lru_cache(maxsize=1024)  # asked of each of a function's names bound again
+def _emptied(function: FunctionDef) -> Mapping[tuple[int, int], str]:
+    """Find where a function binds a name to an empty display: `{}`, `[]`, `()` or `set()`, `dict()`.
+
+    Returns:
+      Where each such name is bound, and the display's class.
+
+    """
+    found: dict[tuple[int, int], str] = {}
+    node: ast.AST
+    target: ast.expr
+    kind: str | None
+    for node in ast.walk(function):
+        if isinstance(node, ast.Assign) and (kind := _empty(node.value)) is not None:
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    found[at(target)] = kind
+    return found
+
+
+def _empty(value: ast.expr) -> str | None:
+    """Name the class of an empty display, or of a call of its class with no arguments.
+
+    Returns:
+      It, or `None` for any other value.
+
+    """
+    name: str
+    match value:
+        case ast.Dict(keys=[]):
+            return "dict"
+        case ast.List(elts=[]):
+            return "list"
+        case ast.Tuple(elts=[]):
+            return "tuple"
+        case ast.Call(func=ast.Name(id=name), args=[], keywords=[]) if name in _EMPTY:
+            return name
+        case _:
+            return None
+
+
+def _heads(annotation: str) -> frozenset[str]:
+    """Name the classes of an annotation's union's members: `dict` for `dict[str, int] | None`.
+
+    Returns:
+      Them; none, if it can't be read.
+
+    """
+    return frozenset(member.split("[", 1)[0] for member in members(annotation) or ())
 
 
 @lru_cache(maxsize=1024)  # asked of each of a function's names bound again
@@ -704,6 +795,25 @@ def _operated(function: FunctionDef) -> frozenset[tuple[int, int]]:
             case _:
                 pass
     return frozenset(found)
+
+
+@lru_cache(maxsize=1024)  # asked of each of a function's names bound again
+def _looped(function: FunctionDef) -> Mapping[tuple[int, int], int]:
+    """Find a function's loops' targets: `for name in names`, `for key, value in pairs`.
+
+    Returns:
+      Where each target name is bound, and its loop's last line.
+
+    """
+    found: dict[tuple[int, int], int] = {}
+    node: ast.AST
+    target: ast.AST
+    for node in ast.walk(function):
+        if isinstance(node, ast.For | ast.AsyncFor):
+            for target in ast.walk(node.target):
+                if isinstance(target, ast.Name):
+                    found[at(target)] = node.end_lineno or node.lineno
+    return found
 
 
 def _apart(function: FunctionDef, first: tuple[int, int], later: tuple[int, int]) -> bool:

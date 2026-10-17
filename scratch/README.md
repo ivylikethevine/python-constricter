@@ -78,6 +78,12 @@ goes under `local/scratch/`.
   sample of each corpus's unannotated functions, written into a copy by daemons that start while the
   memory holds them, and `--fix`'s fixes and basedpyright's errors on it against a plain copy's. It
   counts `# type:` comments as no annotation, and writes mypy's `module:Name` spellings as given.
+- `hint_errors.py FOLDER [--step STEP] [--corpus NAME] [--samples N]`: the new type errors a corpus
+  run's hinted fixes caused, by step, corpus, checker code and fix kind, and the distinct blamed
+  fixes by code with samples; every error as JSON lines for grouping by hand.
+- `rebound_shapes.py FOLDER`: a run's `rebound` guesses by two shapes of the later binding (a loop's
+  target bound again past the loop; a `None` filled in an `if` testing the name), each shape's
+  guesses, errors and witness verdicts: a rule's cost before writing it.
 - `rebound_census.py REPORT.json ROOT`: a tree's `rebound` guesses from a `--format=json` report,
   counted by whether an augmented assignment binds the name again later, each one listed.
 - `widen_census.py [CORPUS ...]`: what `fix-widen` writes on a corpus as docs/FIXES.md reports it

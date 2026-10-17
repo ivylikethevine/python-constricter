@@ -564,7 +564,12 @@ than the fix says, the fix is changed, made a guess, or not offered:
   untyped. A later value whose type isn't known may be anything, which makes the fix a guess, and no
   fix where it's bound in another arm of the first one's `if`, `try` or `match` (`dtype = "None"`,
   `else: dtype = self.categories.dtype`): only one arm runs, and a checker that knows the other's
-  type holds it to the first's. A class or alias the file spells two ways is one type (`CoreSchema`
+  type holds it to the first's. Nor where it's bound again to a call on itself of no known type
+  (`item = proper(item)`, `match = match.groupdict()`, `code = table.get(code) or SYNTAX`), a
+  conversion as often as not; a number by an augmented assignment with an operand of no known type
+  (`factor *= other`); an empty display of another class (`flag = any(xs)`, then `flag = {}`),
+  which a checker holds to the first's; or, for a loop's target, any value of no known type past
+  the loop: another use of the name, which the loop's values say nothing of. A class or alias the file spells two ways is one type (`CoreSchema`
   and `core_schema.CoreSchema`, after importing the name and its module; the CLI only, whose index
   says where each is defined);
 - after it's bound again, a name is what it was bound to: certain where that's a member of its
@@ -662,7 +667,10 @@ A hint is used only as an annotation the file can hold:
   `Literal[Color.RED]` is `Color`), and `LiteralString` to `str`;
 - ty's own spellings are read: a class object (`<class 'Point'>`) is `type[Point]`, a type variable
   printed with its scope (`Model@create_model`) the variable, and an intersection with a truthiness
-  (`str & ~AlwaysFalsy`) its other member; any other intersection is dropped. An unpacked tuple
+  (`str & ~AlwaysFalsy`) its other member; any other intersection is dropped. A generator's,
+  coroutine's or async generator's class as `types` has it (ty's `GeneratorType[str, None, None]`)
+  is `collections.abc`'s (`Generator[str, None, None]`), as every checker types the expression that
+  makes one. An unpacked tuple
   (`tuple[str, *tuple[str, ...]]`, Python 3.11's syntax) is kept where the project's oldest Python
   parses it: `min-python` (`--min-python`), which defaults to the lower bound of the nearest
   `pyproject.toml`'s `requires-python`. Where it's older, or not known (the plugins), it's written
@@ -676,7 +684,12 @@ A hint is used only as an annotation the file can hold:
   in a module body), a class it imports under `if TYPE_CHECKING:`, a class the checker prints bare
   that `--fix` can import (`collections.abc`'s, `Path`, `deque`, `Decimal`, `UUID`, ...: one is
   added as other fixes add theirs), or a class the hint's own edits import. Otherwise nothing says
-  what the name means, and the hint is dropped;
+  what the name means, and the hint is dropped. So is one whose name the module binds to another
+  thing than the checker prints it for: a module written bare (`import socket`, then `socket`), one
+  of those bare classes bound to the module's own class (`class Match`), a builtin given type
+  arguments it takes none of (numpy's `bool[bool]`, printed bare), a private part of a dotted name
+  (`np._NBitIntP`), or a class a function defines (`Parser.read.Dialect`), which no annotation can
+  name;
 - a generic class without its arguments is dropped (a checker prints one so when it doesn't know
   them), as is a special form alone (`type[Generic]`, `Annotated`);
 - a union (`Option | None`, `Series | bool`) is a fix only for a name its function narrows somewhere
@@ -691,8 +704,8 @@ A hint is used only as an annotation the file can hold:
   the first value's type alone (`n = values.mean()`, hinted `np.float64`, then `n = len(values)`);
 - `TypeAlias`, which a checker hints an alias's assignment as, declares a module body's alias
   written as a subscript or a union (`Json: TypeAlias = dict[str, "Json"] | str`): named as the
-  module's imports can (`typing`'s or `typing_extensions`'s), else imported from `typing`. Never a
-  bare class's alias (`Alias = Class`), which declared one loses the class's type parameters, nor a
+  module's imports can (`typing`'s or `typing_extensions`'s), else imported from `typing` unless
+  `min-python` is older than 3.10, where the import would fail. Never a bare class's alias (`Alias = Class`), which declared one loses the class's type parameters, nor a
   function's local.
 
 A hint carries the edits an editor applies to accept it: the annotation, and an import for each

@@ -6,6 +6,20 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix --unsafe-fixes` no longer guesses the type of a name bound again to a method call on
+  itself (`match = match.groupdict()`), to a call on itself behind `or` or a conditional expression
+  (`code = table.get(code) or SYNTAX`), or to an empty display of another class (`flag = any(xs)`,
+  then `store[key] = flag = {}`), when that value's type isn't known: on the 0.4.0-rc.2 mega run,
+  pint's 4 new type errors after `--unsafe-fixes` and 3 of mypy's 17 were theirs. Nor a loop's
+  target bound again past the loop to a value of no known type (mcp's `value`).
+- `--infer-with` drops a hint that names something other than what the checker meant: a module
+  written bare (`import socket`, then `socket`), a well-known class's name the module binds to its
+  own class (starlette's `Match`), a builtin given type arguments (ty's `bool[bool]`, numpy's
+  `bool`), a private part of a dotted name (`np._NBitIntP`) and a class a function defines
+  (`Parser.read.Dialect`); writes ty's `GeneratorType[...]` as `Generator[...]`; and imports
+  `TypeAlias` from `typing` only where `min-python` is 3.10 or later. On the 0.4.0-rc.2 mega run
+  these were 165 of the 454 new type errors blamed on a hint, besides 182 that litestar's
+  `typing.TypeAlias` imports set off on its Python 3.8.
 - The language-server modules (`connection`, `protocol`, `guard`, `hints`, `edits`, `remembered`)
   live in `constricter/cli/lsp/`, and the installed packages' stub readers (`atoms`, `chained`,
   `classnames`, `declared`, `installed`, `read`, `stubbed`, and `stub_names` and `stub_signatures` as

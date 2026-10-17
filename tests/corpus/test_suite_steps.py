@@ -5,7 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Final, cast
+from typing import Final, TypeAlias, cast
 
 import pytest
 
@@ -224,6 +224,7 @@ def test_a_part_stands_for_another_by_its_fixes_patch(tmp_path: Path) -> None:
     assert suite_steps.standing(job, "tests", "fix-certain", clean) is None
     # The tests after every source's fixes at once stand for each fix's where they're the released tests'.
     job.store.write("a", job.recorded, "tests-infer-union", _PASSED)
+    step: str
     for step in ("fix-certain", "fix-unsafe", "infer-ty", "infer-basedpyright", "infer-trace"):
         assert suite_steps.standing(job, "tests", step, clean) == {"implied": "infer-union", "patch": "union"}
     assert suite_steps.standing(job, "types", "infer-ty", clean) is None  # the type checks, never
@@ -308,10 +309,13 @@ def test_the_tests_gather_their_parts(tmp_path: Path, monkeypatch: pytest.Monkey
     }
 
 
+_Asked: TypeAlias = tuple[str, list[str]]  # a fix step asked for, and its extra options
+
+
 def test_the_union_fixes_with_every_source_at_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Every checker's hints in the run's order, and the trace's where the tests ran traced."""
     job: Job = _job(tmp_path)
-    asked: list[tuple[str, list[str]]] = []
+    asked: list[_Asked] = []
 
     def fix(_job: Job, step: str, extra: list[str]) -> Record:
         asked.append((step, list(extra)))
