@@ -814,6 +814,25 @@ each item sized the same way.
    model for item 6. Measure on pydantic's and django's tests: the time against the `traced` step's,
    the fixes past the trace's, the new errors. Done when measured; a corpus step only if it brings
    more fixes than the trace for no more errors. About 4 hours; coverage unchanged.
+9. **CI's tools and security workflows, the shared way.** `security.yml` runs CodeQL and the weekly
+   link check in jobs of its own, and every workflow that needs a binary (actionlint, gitleaks,
+   lychee, twice) downloads it through `actions/tool` with the URL and sha256 written in the step,
+   each a row of `check_tool_versions.local.sh`'s roster. The sibling repositories run the shared
+   `codeql.yml` and `link-check.yml` instead, and install tools through the shared `setup-tool` and
+   `setup-tools` actions from one roster beside them, `tools.txt` (name, version, archive type, URL
+   template and checksum per tool), which `check_tool_versions.sh` reads on its own; the sync
+   carries a workflow only where its actions already are, so this repository gets neither until the
+   actions do. How: take the `setup-tool` and `setup-tools` actions and `apt/lib.sh` from the sync;
+   write `tools.txt` with actionlint, gitleaks and lychee at today's pins; replace each
+   `actions/tool` step (`ci.yml`'s offline lychee, `security.yml`'s three) with `setup-tools` and
+   delete `actions/tool`; drop the three rows from the local roster, keeping uv's; take `codeql.yml`
+   (`language=python`) and `link-check.yml` from the sync and delete the `codeql` and `links` jobs
+   from `security.yml`, which keeps zizmor, actionlint, the workflow conventions, pip-audit,
+   dependency review and gitleaks; and re-read each job's `allowed-endpoints` from an audit run,
+   since the download hosts move. The ruleset needs nothing: CodeQL is a code-scanning tool there,
+   not a named check. Done when every workflow has one green run on a pull request, including a
+   weekly `link-check.yml` by hand, `tool-versions.yml` reports the same four tools from the new
+   roster, and the sync has nothing left to send. About 5 hours; coverage unchanged.
 
 ### Large: more than 8 hours
 

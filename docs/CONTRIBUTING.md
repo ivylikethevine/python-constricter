@@ -202,3 +202,11 @@ Everything else is on. Some of these may be revisited.
 | harden-runner      | `egress-policy: audit` on macOS and Windows, and in the weekly external-link check | macOS and Windows jobs need an allowlist from their audit runs first; external links can go anywhere.                 |
 | reuse              | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)            | No recent release ships a wheel for Python 3.11+, so installing it builds from source with an unpinned `poetry-core`. |
 | zizmor             | `self-repository` (`.github/zizmor.yml`)                                           | Scorecard reads the `$/` form it wants as an unpinned third-party action, so local actions stay `./`.                 |
+
+## AI-assisted contributions
+
+Generative AI is allowed here, for contributions exactly as for the maintainer's own work
+([README's AI usage](../README.md#ai-usage)). The tool is fine; the change is still yours. Tick the
+pull request template's AI disclosure when a tool wrote part of it, and only open the pull request
+once you have understood, reviewed, and can stand behind every line as if you had written it by
+hand. "The agent said so" is not an answer to a review comment.
