@@ -15,11 +15,8 @@ from typing import Final, NamedTuple
 from constricter.fix.core.signatures import (
     Constant,
 )
-from stdlib_tables.reading import (
-    ClassRef,
-    Reading,
-    substituted,
-)
+from stdlib_tables.forms import ClassRef, substituted
+from stdlib_tables.reading import Reading
 from stdlib_tables.stubs import (
     Alias,
     Binding,

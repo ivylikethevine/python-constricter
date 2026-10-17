@@ -1,12 +1,11 @@
 # SPDX-License-Identifier: MIT
 """The rules as a pylint plugin (C9101-C9112); reports the codes the level makes errors."""
 
-from typing import IO, NamedTuple, cast, final
+from typing import IO, NamedTuple, Protocol, cast, final
 
-from astroid import nodes
 from pylint.checkers import BaseRawFileChecker
 from pylint.lint import PyLinter
-from pylint.typing import Options
+from pylint.typing import MessageDefinitionTuple, Options
 
 from constricter.jsonc import as_text
 from constricter.noqa import lines, unsuppressed
@@ -59,6 +58,20 @@ SYMBOLS: dict[str, Message] = {
     LONG_TUPLE: Message("C9111", "long-tuple-annotation"),
     CAN_BE_FINAL: Message("C9112", "could-be-final"),
 }
+
+
+class _Module(Protocol):  # pylint: disable=too-few-public-methods
+    """What the checker reads of a module astroid parsed: the file behind it, and its bytes.
+
+    astroid declares no types (no `py.typed`): naming its `Module` would leave the checker's
+    signature unknown to a type checker reading this package.
+    """
+
+    file: str | None
+
+    def stream(self) -> IO[bytes] | None:
+        """Open the module's bytes, or nothing where no file backs it."""
+        ...
 
 
 @final
@@ -123,6 +136,8 @@ class ConstricterChecker(BaseRawFileChecker):
         ),
     )
 
+    msgs: dict[str, MessageDefinitionTuple]
+
     def __init__(self, linter: PyLinter) -> None:
         """Register the messages with `linter`."""
         super().__init__(linter)
@@ -138,7 +153,7 @@ class ConstricterChecker(BaseRawFileChecker):
         }
 
     @override
-    def process_module(self, node: nodes.Module) -> None:
+    def process_module(self, node: _Module) -> None:
         """Report the module's error-level offences."""
         opened: IO[bytes] | None
         if (opened := node.stream()) is None:  # no file behind the module

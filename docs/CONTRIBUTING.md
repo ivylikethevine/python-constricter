@@ -25,13 +25,14 @@ uv pip install --python local/.venv --no-deps --no-build-isolation -e .
 
 Checks (as CI runs them), on `constricter stdlib_tables tests hatch_build.py` where they take paths:
 `ruff check .` (every rule, preview included), `ruff format --check .`, `basedpyright` (all), `mypy`
-(strict), `pyrefly check`, `pylint` (every extension, and again for a warning on each module past
-800 lines, 200 short of the limit it fails one at), `flake8` (with pydoclint's `DOC` checks of a
-docstring's `Returns:`, `Yields:` and `Raises:`), `typos`, `validate-pyproject pyproject.toml`,
-`lint-imports` (the layers `pyproject.toml` states), `deptry` (the package's imports held to its
-dependencies, then the rest's to the groups'), `uv lock --check`,
+(strict), `pyrefly check`, `ty check`, `pylint` (every extension, and again for a warning on each
+module past 800 lines, 200 short of the limit it fails one at), `flake8` (with pydoclint's `DOC`
+checks of a docstring's `Returns:`, `Yields:` and `Raises:`), `typos`,
+`validate-pyproject pyproject.toml`, `lint-imports` (the layers `pyproject.toml` states), `deptry`
+(the package's imports held to its dependencies, then the rest's to the groups'), `uv lock --check`,
 `constricter --level=suffocate --all-scopes`,
-`constricter --coverage --all-scopes --fail-under=100`, `pytest --cov` (100% branch coverage; with
+`constricter --coverage --all-scopes --fail-under=100`, `basedpyright --verifytypes` on the built
+wheel (every exported symbol typed; the Build job), `pytest --cov` (100% branch coverage; with
 `-n auto --dist loadgroup`, on every CPU). Everything generated goes in `local/`, but the
 standard-library tables `--fix` reads (`constricter/fix/tables/`) and the tests'
 `stdlib_tables/partial.json`, which git ignores: a build (`hatch_build.py`), the editable install

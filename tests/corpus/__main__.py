@@ -55,7 +55,17 @@ from typing import IO, TYPE_CHECKING, Final, NamedTuple, TypeAlias, cast
 
 from constricter import __version__
 from constricter.rules import parsed
-from tests.corpus import catalog, launch, pipeline, planning, render, sizing, suite_steps, trees
+from tests.corpus import (
+    catalog,
+    launch,
+    pipeline,
+    planning,
+    render,
+    report_tables,
+    sizing,
+    suite_steps,
+    trees,
+)
 from tests.corpus.pipeline import Record
 from tests.corpus.run_config import Run, percent, read
 
@@ -624,7 +634,7 @@ def main(argv: Sequence[str]) -> int:
     shutil.rmtree(folder / "work", ignore_errors=True)  # the copies its fixes worked on
     if _RESUME not in argv:  # a resumed run's own time says nothing of the whole run's
         facts[render.MINUTES] = round((time.perf_counter() - start) / 60)
-    records: render.Records = render.gathered(run, store, [tree for tree, _ in measured if tree])
+    records: report_tables.Records = render.gathered(run, store, [tree for tree, _ in measured if tree])
     written: list[Path] = render.write(records, folder, facts)
     if _ONLY not in argv and _MINUS not in argv:  # a part of its corpora isn't what its section is of
         render.publish(records, _ROOT, facts)

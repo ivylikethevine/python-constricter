@@ -13,22 +13,9 @@ from typing import Final, NamedTuple, TypeAlias
 from constricter.fix.core.signatures import Signature
 from stdlib_tables.accepting import CONTAINERS, SCALARS
 from stdlib_tables.elements import element, entered_by_base
+from stdlib_tables.forms import ANY_STR, ClassRef, Defs, Form, Text, usable
 from stdlib_tables.overloads import Overloads
-from stdlib_tables.reading import (
-    ANY,
-    ANY_STR,
-    ATTRIBUTE,
-    AWAITED,
-    CLASSMETHOD,
-    ClassRef,
-    Defs,
-    Form,
-    Member,
-    Reading,
-    Table,
-    Text,
-    usable,
-)
+from stdlib_tables.reading import ANY, ATTRIBUTE, AWAITED, CLASSMETHOD, Member, Reading, Table
 from stdlib_tables.stubs import (
     Alias,
     Binding,

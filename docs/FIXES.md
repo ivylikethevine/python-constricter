@@ -955,27 +955,25 @@ binds too, declared on a line of its own before the statement: each name of
 call's kind (`a, b = 1, helper()` types `b` by its own value), and a loop's target over a
 `list[dict[str, Any]]` is `vague`'s. Not a chained assignment's names, nor a `:=`'s.
 
-On SQLAlchemy 2.0.54, with `--unsafe-fixes`: 175 bindings by `untyped-parameters`, 196 by
-`empty-containers`, 98 by `mixed-containers`, 184 by `vague` and 9 by `unions`, 662 together (4.5%
-of its bindings); one pass leaves a second nothing. basedpyright then reports no error in a file
-under a rule it hadn't one for, and 22 errors fewer: an `Any` written hides what a checker had
-inferred, most of all in a display (13 of them by `mixed-containers`).
-
-On pydantic 2.13.5, `--fix` with the two kinds of call marks 519 of its 3,956 bindings (13.1%), all
-by `unknown-calls`: every function of pydantic's declares its return. 194 of them are a loop's, an
-unpacking's or a `with`'s. With `--unsafe-fixes` and every kind, 773 are widened, from 187 without
-the calls' (72 of them a loop's or an unpacking's by `vague`): 81.0% of its bindings typed or
-widened, from 66.2%. A second pass adds one union, of two values that were guesses until the first
-declared what they rest on. basedpyright reports two errors fewer, which the `Any`s hide, and four
-more. Two are of one statement and its copy in `pydantic.v1` (`name = name or parts.local_part`,
-`name` a `str | None`, `parts` from a package that isn't installed): assigned an explicit `Any`, a
-name keeps its declared type, where a value the checker couldn't type at all left it a `str`. Two
-are of one loop's target (`for base in reversed(cls.__mro__):`, then
+On SQLAlchemy 2.1.4, with `--unsafe-fixes`: 177 bindings by `untyped-parameters`, 209 by
+`empty-containers`, 110 by `mixed-containers`, 272 by `vague` and 17 by `unions`, 785 together (5.1%
+of its 15,304 bindings); one pass leaves a second nothing. Beside `--fix --unsafe-fixes` alone,
+basedpyright then reports 44 errors fewer and 15 more: an `Any` written hides what a checker had
+inferred, and a name widened to `Any` that's `None` on one path is `Any | None` where it's passed
+on. The calls' kinds too mark 4,575 (29.9%), for 197 errors fewer and 15 more. On pydantic 2.14.0,
+`--fix` with the two kinds of call marks 509 of its 4,019 bindings (12.7%), all by `unknown-calls`:
+every function of pydantic's declares its return. With `--unsafe-fixes` and every kind, 785 are
+widened, from 281 without the calls' (204 of them a loop's or an unpacking's by `vague`): 81.4% of
+its bindings typed or widened, from 68.9%, and 22.4% as released. A second pass changes nothing.
+Beside `--fix --unsafe-fixes` alone, basedpyright reports nothing new without the calls' kinds; with
+them, one error fewer and four more. Two are of one `return name, email` and its copy in
+`pydantic.v1`: the names an unpacking of a call declares `Any`
+(`unquoted_name, quoted_name, value = m.groups()`) are `str | None` to the checker by the time
+they're joined and returned, where what it couldn't type at all it left a `str`. Two are of one
+loop's target (`for base in reversed(cls.__mro__):`, then
 `if not dataclasses.is_dataclass(base): continue`): declared `Any`, it's narrowed to a dataclass or
-an instance of one, where the `type` the checker inferred was narrowed to the class.
-
-Every statement a widening writes ends with `# constricter: auto`, after any comment already there
-(on its last line, if it has several; a declaration before its statement, on its own):
+an instance of one, where the `type` the checker inferred was narrowed to the class
+(`scratch/widen_census.py`).
 
 ```python
 def load(reader, count):

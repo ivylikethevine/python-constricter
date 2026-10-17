@@ -5,8 +5,9 @@ import ast
 import re
 from typing import Final
 
+from stdlib_tables.forms import ClassRef, substituted
 from stdlib_tables.overloads import Overloads
-from stdlib_tables.reading import ClassRef, readable, substituted
+from stdlib_tables.reading import readable
 from stdlib_tables.stubs import Binding, Found, Function
 from stdlib_tables.templates import TYPING
 

@@ -55,18 +55,18 @@ test = [
 # Pure Python 2 code (Twisted 12.3.0) can't be installed on 3.11+: tests/corpus/corpus_sources.py fetches it.
 corpus = [
     { include-group = "build" }, # for the setup action's editable `-e .` install
-    "django==5.2.17", # 6.x needs Python 3.12+; 5.2 is the current LTS and still supports 3.11
+    "django==5.2.18", # 6.x needs Python 3.12+; 5.2 is the current LTS and still supports 3.11
     "pandas==3.0.6", # a large, partly annotated data library: overloads, generics, TYPE_CHECKING imports
-    "pydantic==2.13.5",
+    "pydantic==2.14.0",
     "py-spy", # the corpus runner's `profile` step samples the check from outside
-    "sqlalchemy==2.0.54",
+    "sqlalchemy==2.1.4",
 ]
 # What a compiled wheel's build from the sdist needs, without build isolation
 # (`HATCH_BUILD_HOOK_ENABLE_MYPYC=1`): the backend, and the mypyc hook's `dependencies`, pinned the same.
 mypyc = [
     "hatchling>=1.27,<2",
     "hatch-mypyc==0.16.0",
-    "mypy==2.3.1",
+    "mypy==2.4.0",
     "setuptools==84.0.0",
 ]
 dev = [
@@ -89,6 +89,7 @@ dev = [
     "pyyaml", # tests/ci_local.py reads CI's workflow for its steps
     "ruff",
     "twine",
+    "ty", # a fourth type checker (see [tool.ty])
     "types-psutil",
     "typos",
     "validate-pyproject",
@@ -127,7 +128,7 @@ packages = ["constricter"]
 # Built from the sdist (`python -m build`), so nothing compiled lands beside the checkout's sources.
 [tool.hatch.build.targets.wheel.hooks.mypyc]
 enable-by-default = false
-dependencies = ["hatch-mypyc==0.16.0", "mypy==2.3.1", "setuptools==84.0.0"] # the `mypyc` group's
+dependencies = ["hatch-mypyc==0.16.0", "mypy==2.4.0", "setuptools==84.0.0"] # the `mypyc` group's
 include = ["/constricter/rules", "/constricter/fix"]
 options = { debug_level = "0" }
 
@@ -197,7 +198,7 @@ notice-rgx = "SPDX-License-Identifier: MIT"
 "tests/fix/core/test_known.py" = ["assert", "suspicious-pickle-import", "suspicious-pickle-usage"]
 # `--infer-with` starts the type checker's language server, from a fixed table of commands (and
 # asks it its version, to see it runs).
-"constricter/cli/{hints,guard,paths,protocol}.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
+"constricter/cli/{connection,guard,paths,protocol}.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The generator's modules import `constricter`'s without its `__init__`, which loads the tables.
 "stdlib_tables/__init__.py" = ["non-empty-init-module"]
 "tests/corpus/corpus_sources.py" = ["suspicious-url-open-usage"] # downloads only its pinned https URLs
@@ -346,6 +347,22 @@ follow_imports_for_stubs = true  # numpy ships `.pyi` stubs, which `follow_impor
 project-includes = ["constricter", "stdlib_tables", "tests", "hatch_build.py"]
 python-interpreter-path = "local/.venv/bin/python"
 python-version = "3.11"
+
+# A fourth checker, with the same venv and Python; a warning fails it too.
+[tool.ty.environment]
+python = "local/.venv"
+python-version = "3.11"
+
+[tool.ty.src]
+include = ["constricter", "stdlib_tables", "tests", "hatch_build.py"]
+
+[tool.ty.rules]
+# The casts narrow an `Any` basedpyright and mypy see (a module's attribute, `getattr`'s), which ty
+# infers itself.
+redundant-cast = "ignore"
+
+[tool.ty.terminal]
+error-on-warning = true
 
 [tool.basedpyright]
 typeCheckingMode = "all"

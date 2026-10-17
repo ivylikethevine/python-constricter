@@ -22,6 +22,7 @@ import sys
 import threading
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from types import FrameType
 from typing import IO, Final, cast
 
 GRACE: Final = 5.0  # seconds a server has to exit once its input ends, by default
@@ -125,5 +126,8 @@ def _read(source: IO[bytes]) -> bytes:
 
 if __name__ == "__main__":
     # Interrupted at a terminal, the whole group is: constricter shuts the server down itself.
-    _ = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    _: Callable[[int, FrameType | None], None] | int | signal.Handlers | None = signal.signal(
+        signal.SIGINT,
+        signal.SIG_IGN,
+    )
     sys.exit(main(sys.argv[1:]))

@@ -18,7 +18,7 @@ import pytest
 
 from constricter import check_source
 from constricter.cli import command as cli
-from constricter.cli import guard, hints, protocol, remembered, rounds
+from constricter.cli import connection, guard, hints, protocol, remembered, rounds
 from constricter.cli.options import Options
 from constricter.fix.core.known import Hints, Offered
 from tests.cli.sources import FAKE_SERVER
@@ -50,9 +50,9 @@ def _runs(*argv: str) -> Callable[[str], list[str]]:
 def _fake(monkeypatch: pytest.MonkeyPatch, *behaviours: str) -> None:
     """Make every checker the fake server, behaving as `behaviours` say."""
     monkeypatch.setattr(hints, "command", _runs(sys.executable, str(FAKE_SERVER), *behaviours))
-    monkeypatch.setattr(hints, "_TIMEOUT", 5.0)
+    monkeypatch.setattr(connection, "_TIMEOUT", 5.0)
     monkeypatch.setattr(guard, "GRACE", 0.5)
-    monkeypatch.setattr(hints, "_POLL", 0.05)
+    monkeypatch.setattr(connection, "_POLL", 0.05)
 
 
 def _session_hints(tmp_path: Path, text: str) -> Hints:
@@ -132,7 +132,7 @@ def test_a_failing_server_stops_the_run(
 ) -> None:
     """An error, an exit or no answer at all is an error: silently hinting nothing would mislead."""
     _fake(monkeypatch, behaviour)
-    monkeypatch.setattr(hints, "_TIMEOUT", _IMPATIENT)
+    monkeypatch.setattr(connection, "_TIMEOUT", _IMPATIENT)
     with pytest.raises(protocol.HintError, match=message):
         _ = _session_hints(tmp_path, "x = 1  # hint: int\n")
 
@@ -147,7 +147,7 @@ def test_a_file_a_restarted_server_hangs_on_again_has_no_hints(
     the restarted server answers.
     """
     _fake(monkeypatch)
-    monkeypatch.setattr(hints, "_TIMEOUT", _IMPATIENT)
+    monkeypatch.setattr(connection, "_TIMEOUT", _IMPATIENT)
     monkeypatch.setenv("FAKE_SERVER_HUNG", str(tmp_path / "hung"))
     hung: Path = tmp_path / "hung.py"
     once: Path = tmp_path / "once.py"
@@ -165,11 +165,11 @@ def test_a_file_a_restarted_server_hangs_on_again_has_no_hints(
             once: {(1, 1): "str"},
         }
         assert session.abandoned == [(_CHECKER, hung)]
-        started: hints.Connection = session.checkers[0].servers[0]
+        started: connection.Connection = session.checkers[0].servers[0]
         assert session.hints({hung: files[hung]})[hung][0].types == {}
         assert session.checkers[0].servers[0] is started  # not asked: it would have hung again
     # Nor in a later run, while the file and the checker are as they were.
-    monkeypatch.setattr(hints, "_TIMEOUT", 60.0)
+    monkeypatch.setattr(connection, "_TIMEOUT", 60.0)
     later: hints.Session
     with hints.Session([_CHECKER], tmp_path) as later:
         assert later.hints({hung: files[hung]})[hung][0].types == {}
@@ -233,7 +233,7 @@ def test_a_checker_that_hangs_on_too_many_files_stops_the_run(
 ) -> None:
     """A server that hangs on every file, each alone, is broken: the run stops."""
     _fake(monkeypatch, "silent")
-    monkeypatch.setattr(hints, "_TIMEOUT", _IMPATIENT)
+    monkeypatch.setattr(connection, "_TIMEOUT", _IMPATIENT)
     monkeypatch.setattr(hints, "_MOST_ABANDONED", 1)
     files: dict[Path, str] = {tmp_path / f"m{n}.py": "x = 1  # hint: int\n" for n in range(2)}
     session: hints.Session
@@ -271,14 +271,14 @@ def test_a_hint_without_edits_says_where_its_classes_are_defined(
 def test_a_server_that_wont_stop_is_killed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """A server ignoring `shutdown` is killed once it's had time to answer."""
     _fake(monkeypatch, "stubborn")
-    monkeypatch.setattr(hints, "_TIMEOUT", _IMPATIENT)
+    monkeypatch.setattr(connection, "_TIMEOUT", _IMPATIENT)
     assert _session_hints(tmp_path, "x = 1  # hint: int\n").types == {(1, 1): "int"}
 
 
 def test_a_stopped_server_is_shut_down_quietly(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """A server stopped for a restart that failed is still the session's: shutting it down is no error."""
     _fake(monkeypatch)
-    server: hints.Connection = hints.Connection(hints.command(_CHECKER), tmp_path)
+    server: connection.Connection = connection.Connection(hints.command(_CHECKER), tmp_path)
     server.close(graceful=False)
     server.close()
 
@@ -314,7 +314,7 @@ def test_a_server_that_closes_its_input_is_an_error(monkeypatch: pytest.MonkeyPa
     session: hints.Session
     with hints.Session([_CHECKER], tmp_path) as session:
         _ = session.hints({tmp_path / "one.py": "x = 1\n"})
-        running: hints.Connection = session.checkers[0].servers[0]
+        running: connection.Connection = session.checkers[0].servers[0]
         running.process.kill()
         _ = running.process.wait()
         with pytest.raises(protocol.HintError, match="exited"):
@@ -520,7 +520,7 @@ def test_a_file_the_checker_hung_on_is_the_commands_warning(
 ) -> None:
     """A file left without hints is named on standard error; the run goes on, its status the check's."""
     _fake(monkeypatch)
-    monkeypatch.setattr(hints, "_TIMEOUT", _IMPATIENT)
+    monkeypatch.setattr(connection, "_TIMEOUT", _IMPATIENT)
     path: Path = tmp_path / "module.py"
     _ = path.write_text("x: int = 1\n# hang\n", encoding="utf-8")
     assert cli.main(["--infer-with", _CHECKER, str(path)]) == cli.EXIT_CLEAN
@@ -627,9 +627,9 @@ def test_a_guard_that_wont_exit_is_killed(monkeypatch: pytest.MonkeyPatch, tmp_p
     session: hints.Session
     with hints.Session(["ty"], tmp_path) as session:
         _ = session.hints({tmp_path / "x.py": "x = 1\n"})
-        running: hints.Connection = session.checkers[0].servers[0]
+        running: connection.Connection = session.checkers[0].servers[0]
         monkeypatch.setattr(guard, "GRACE", 0.1)  # constricter's wait for it, as it's shut down
-        monkeypatch.setattr(hints, "_TIMEOUT", 0.2)
+        monkeypatch.setattr(connection, "_TIMEOUT", 0.2)
     assert running.process.returncode != 0
     with contextlib.suppress(ProcessLookupError):  # it may have gone already, its output broken
         os.kill(int(pid_file.read_text(encoding="utf-8")), signal.SIGTERM)
@@ -706,7 +706,7 @@ def test_a_server_reporting_progress_is_waited_for(monkeypatch: pytest.MonkeyPat
     session: hints.Session
     with hints.Session([_CHECKER], tmp_path) as session:
         _ = session.hints({path: "x = 1  # hint: int\n"})  # started: starting isn't what's timed
-        monkeypatch.setattr(hints, "_TIMEOUT", 0.5)
+        monkeypatch.setattr(connection, "_TIMEOUT", 0.5)
         assert session.hints({path: "x = 2  # hint: str\n"})[path][0].types == {(1, 1): "str"}
 
 

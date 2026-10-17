@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: MIT
 """The corpus catalog: its sets, the tiers and groups they make, and where a corpus comes from."""
 
+import tomllib
 from pathlib import Path
-from typing import Final, cast
+from typing import Final, TypeAlias, cast
 
 import pytest
 
@@ -12,6 +13,8 @@ from tests.corpus.corpus_sources import Source
 from tests.corpus.run_config import Run
 
 _GROUPS: Final = ("fast-small", "fast-large", "slow-small", "slow-large")  # by size and time
+_PIN: Final = "=="  # a `corpus` group entry pinned to one version
+_Group: TypeAlias = list[str | dict[str, str]]  # a dependency group: pins, and the groups it includes
 
 
 def test_the_catalog_expands_sets_and_refuses_a_name_it_hasnt() -> None:
@@ -81,3 +84,23 @@ def test_the_standard_library_is_cpythons_source(tmp_path: Path, monkeypatch: py
         [entry.name],
     )
     assert corpus_sources.pinned()["pip"].url.startswith(corpus_sources.FILES)
+
+
+def test_an_installed_corpus_is_the_version_the_corpus_group_pins() -> None:
+    """`pyproject.toml`'s `corpus` group and the catalog name one version of each, the suite's tag too."""
+    project: dict[str, dict[str, _Group]] = tomllib.loads(
+        (Path(__file__).parents[2] / "pyproject.toml").read_text(encoding="utf-8"),
+    )
+    pinned: dict[str, str] = dict(
+        cast("tuple[str, str]", tuple(each.split(_PIN)))
+        for each in project["dependency-groups"]["corpus"]
+        if isinstance(each, str) and _PIN in each
+    )
+    known: catalog.Catalog = catalog.load()
+    checked: dict[str, str] = {name: pin for name, pin in pinned.items() if name in known.entries}
+    assert set(checked) == {"django", "pandas", "pydantic", "sqlalchemy"}
+    assert {name: known.entries[name].version for name in checked} == checked
+    tags: dict[str, str] = {name: cast("catalog.Suite", known.entries[name].suite).tag for name in checked}
+    assert {
+        name: tag.removeprefix("rel_").removeprefix("v").replace("_", ".") for name, tag in tags.items()
+    } == checked

@@ -33,6 +33,8 @@ def f(items: list[int], flag: bool, text: str, c: C, other) -> None:
     s = "x"
     s += other
     s %= other
+    fac = 1.5
+    fac *= other
     for i in items:
         pass
     i = None
@@ -61,6 +63,7 @@ def test_a_later_binding_widens_the_first_ones_type() -> None:
         "h": ("float", True),  # a later binding's guess (a method's `return`s) makes it a guess
         "u": ("str", True),  # an unknown later value may be anything
         "s": ("str", False),  # text stays text by `+=`, `%=` and `*=`, whatever's added
+        "fac": (None, False),  # a number by an operator with an unknown operand may be anything else
         "i": ("int | None", False),  # a loop target's declaration, then `None`
         "g": ("int", False),  # written from a nested function: out of sight, left alone
     }

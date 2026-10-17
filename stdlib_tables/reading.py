@@ -6,13 +6,23 @@ class, or `AnyStr`), a function's return, a class's members in its method resolu
 """
 
 import ast
-import re
-from collections.abc import Iterable, Sequence
-from functools import cache
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.offences import MAX_LENGTH, NESTING
-from constricter.rules.annotations import depth, is_vague
+from stdlib_tables.forms import (
+    ANY_STR,
+    NONE,
+    STR,
+    ClassRef,
+    Defs,
+    Form,
+    Text,
+    any_str_overloads,
+    c3,
+    constrained,
+    literal,
+    mentions,
+    union,
+)
 from stdlib_tables.stubs import (
     Alias,
     Binding,
@@ -42,9 +52,6 @@ AWAITED: Final = "awaited"  # an `async def` method: its form is what awaiting i
 _AENTER: Final = "__aenter__"
 _BUILTINS: Final = "builtins"
 _TUPLE: Final = "tuple"
-_STR: Final = "str"
-_BYTES: Final = "bytes"
-_NONE: Final = "None"
 _NEW: Final = "__new__"
 _ENTER: Final = "__enter__"
 _GET_ITEM: Final = "__getitem__"
@@ -85,41 +92,16 @@ _LITERAL: Final = "Literal"
 _OPTIONAL: Final = "Optional"
 _UNIONS: Final = frozenset({_OPTIONAL, "Union"})
 _TYPED_DICT: Final = "TypedDict"
-_TEXT_WORDS: Final = re.compile(r"[A-Za-z_]+")
-_EITHER: Final = frozenset({"AnyStr", "Any", "object", "Incomplete"})  # a parameter taking both
-_BUFFER: Final = "buffer"  # a `bytes` overload's parameter may take any buffer
 _SEQUENCE: Final = 2  # `tuple[T, ...]`'s two parts
 _MAX_DEPTH: Final = 20  # aliases followed before giving up
 
 
-class Text(NamedTuple):
-    """An annotation spelled with builtins alone (`int`, `list[str]`, `str | None`)."""
-
-    text: str
-
-
-class ClassRef(NamedTuple):
-    """A class, by the module that defines it and its name there."""
-
-    module: str
-    name: str
-
-
-class Special(NamedTuple):
-    """`AnyStr`: whichever of `str` and `bytes` the arguments are."""
-
-
-ANY_STR: Final = Special()
-Form: TypeAlias = Text | ClassRef | Special
-_TEXTS: Final[frozenset[Form | None]] = frozenset({Text(_STR), Text(_BYTES)})
-_STR_ONLY: Final[frozenset[Form | None]] = frozenset({Text(_STR)})
 _SELF: Final = "Self"
 # `typing`'s names an annotation may use: a `LiteralString` is a `str`; `Self` is the class it's on.
 ANY: Final = "Any"  # `typing.Any`, as a function's whole return (see `Reading.returns_any`)
 _FUTURES: Final = frozenset({"Future", "Task"})  # what a coroutine isn't (see `Reading.future_bound`)
-_TYPING_FORMS: Final[dict[str, Form | None]] = {"LiteralString": Text(_STR), "AnyStr": ANY_STR, _SELF: None}
+_TYPING_FORMS: Final[dict[str, Form | None]] = {"LiteralString": Text(STR), "AnyStr": ANY_STR, _SELF: None}
 Table: TypeAlias = dict[str, str]  # each entry's annotation, or a class's dotted path, by name
-Defs: TypeAlias = Sequence[ast.FunctionDef | ast.AsyncFunctionDef]  # a function's overloads
 
 
 class Member(NamedTuple):
@@ -193,11 +175,11 @@ class Reading:
             case _ if hops > _MAX_DEPTH:
                 pass
             case ast.Constant(value=None):
-                found = Text(_NONE)
+                found = Text(NONE)
             case ast.Constant(value=str() as text):
                 found = self._forward(text, module, owner, hops)
             case ast.BinOp(left=left, op=ast.BitOr(), right=right):
-                found = _union([self.form(side, module, owner, hops + 1) for side in (left, right)])
+                found = union([self.form(side, module, owner, hops + 1) for side in (left, right)])
             case ast.Subscript(value=base, slice=index):
                 found = self._subscript(base, index, module, owner, hops)
             case ast.Name() | ast.Attribute():
@@ -233,7 +215,7 @@ class Reading:
             return owner if found.name == _SELF else _TYPING_FORMS[found.name]
         match found.binding:
             case TypeVariable(constraints=constraints):
-                return _constrained([self.form(c, found.module, owner, hops + 1) for c in constraints])
+                return constrained([self.form(c, found.module, owner, hops + 1) for c in constraints])
             case Klass():
                 return self._class(ClassRef(found.module, found.name))
             case Alias(value=value):
@@ -304,11 +286,11 @@ class Reading:
         if name in _GUARDS:
             return Text("bool")
         if name == _LITERAL:
-            return _union([_literal(arg) for arg in args])
+            return union([literal(arg) for arg in args])
         if name == _OPTIONAL:
-            parts.append(Text(_NONE))
+            parts.append(Text(NONE))
         if name in _UNIONS or (name in _WRAPPERS and len(parts) == 1):
-            return _union(parts)
+            return union(parts)
         return None
 
     def generic(self, klass: ClassRef) -> bool:
@@ -356,7 +338,7 @@ class Reading:
             lines: list[list[ClassRef] | None] = [] if bases is None else [self.mro(base) for base in bases]
             known: list[list[ClassRef]] = [line for line in lines if line is not None]
             if bases is not None and len(known) == len(lines):
-                self._mro[klass] = _c3(klass, [*known, bases])
+                self._mro[klass] = c3(klass, [*known, bases])
         return self._mro[klass]
 
     def trusted(self, klass: ClassRef) -> tuple[list[ClassRef], bool]:
@@ -482,12 +464,12 @@ class Reading:
         forms: list[Form | None] = [
             None if node.returns is None else self.form(node.returns, module, owner) for node in defs
         ]
-        if owner is None and _any_str_overloads(defs, forms):
+        if owner is None and any_str_overloads(defs, forms):
             return ANY_STR
         first: Form | None = forms[0]
         if first is None or any(form != first for form in forms):
             return None
-        return None if first == ANY_STR and not _mentions(defs, "AnyStr") else first
+        return None if first == ANY_STR and not mentions(defs, "AnyStr") else first
 
     def future_bound(self, annotation: ast.expr | None, module: str) -> bool:
         """Check whether a parameter is a type variable bounded by a future (`_FT`, a `Future[Any]`).
@@ -671,177 +653,5 @@ def readable(node: ast.FunctionDef | ast.AsyncFunctionDef, *, awaited: bool = Fa
     )
 
 
-def _union(parts: Iterable[Form | None]) -> Form | None:
-    """Join builtin annotations with `|`, each once, in order.
-
-    Returns:
-      The union, or `None` if a part isn't a builtin annotation.
-
-    """
-    texts: list[str] = []
-    part: Form | None
-    for part in parts:
-        if not isinstance(part, Text):
-            return None
-        if part.text not in texts:
-            texts.append(part.text)
-    return Text(" | ".join(texts)) if texts else None
-
-
-def _constrained(forms: list[Form | None]) -> Form | None:
-    """Read a constrained `TypeVar` whose constraints are text: `str` (`LiteralString` too), or `AnyStr`'s.
-
-    Returns:
-      `str`, `ANY_STR`, or `None` for any other constraints (or none).
-
-    """
-    kinds: frozenset[Form | None]
-    if (kinds := frozenset(forms)) == _STR_ONLY:
-        return Text(_STR)
-    return ANY_STR if kinds == _TEXTS else None
-
-
-def _literal(value: ast.expr) -> Form | None:
-    """Widen one `Literal[...]` value to its type (`"a"` to `str`, `None` to `None`).
-
-    Returns:
-      Its form, or `None` for anything but a builtin constant.
-
-    """
-    constant: bool | int | str | bytes | None
-    match value:
-        case ast.Constant(value=bool() | int() | str() | bytes() | None as constant):
-            return Text(_NONE if constant is None else type(constant).__name__)
-        case _:
-            return None
-
-
 def _is_ellipsis(node: ast.expr) -> bool:
     return isinstance(node, ast.Constant) and node.value is Ellipsis
-
-
-def _mentions(defs: Defs, word: str) -> bool:
-    """Check whether any parameter annotation of any overload names `word`.
-
-    Returns:
-      Whether one does.
-
-    """
-    return any(
-        word in _TEXT_WORDS.findall(ast.unparse(arg.annotation))
-        for node in defs
-        for arg in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
-        if arg.annotation is not None
-    )
-
-
-def _any_str_overloads(defs: Defs, forms: list[Form | None]) -> bool:
-    """Check for overloads that each take and return only `str`, or only `bytes`, with both there.
-
-    Only their required positional parameters are looked at: a call whose arguments are all `str`
-    can't match a `bytes` one, and the other way round.
-
-    Returns:
-      Whether they're such overloads.
-
-    """
-    if frozenset(forms) != _TEXTS:
-        return False
-    node: ast.FunctionDef | ast.AsyncFunctionDef
-    form: Form | None
-    for node, form in zip(defs, forms, strict=True):
-        positional: list[ast.arg] = [*node.args.posonlyargs, *node.args.args]
-        required: list[ast.arg] = positional[: len(positional) - len(node.args.defaults)]
-        if not required or not all(
-            _takes_only(arg, _BYTES if form == Text(_STR) else _STR) for arg in required
-        ):
-            return False
-    return True
-
-
-def _takes_only(arg: ast.arg, other: str) -> bool:
-    """Check that a parameter doesn't take `other` (`str` or `bytes`), by the words of its annotation.
-
-    Returns:
-      Whether it doesn't (and is annotated).
-
-    """
-    words: list[str] = [] if arg.annotation is None else _TEXT_WORDS.findall(ast.unparse(arg.annotation))
-    taking: bool = any(
-        other in word.lower() or word in _EITHER or (other == _BYTES and _BUFFER in word.lower())
-        for word in words
-    )
-    return bool(words) and not taking
-
-
-def _c3(klass: ClassRef, lines: list[list[ClassRef]]) -> list[ClassRef] | None:
-    """Merge the bases' method resolution orders (and the bases, last) by C3, as Python does.
-
-    Returns:
-      `klass`'s order, or `None` if there's none (Python would refuse the class).
-
-    """
-    merged: list[ClassRef] = [klass]
-    pending: list[list[ClassRef]] = [line for line in lines if line]
-    for _ in range(sum(len(line) for line in pending)):  # each round takes one class off
-        if not pending:
-            break
-        head: ClassRef | None = next(
-            (line[0] for line in pending if not any(line[0] in other[1:] for other in pending)),
-            None,
-        )
-        if head is None:
-            return None
-        merged.append(head)
-        pending = [rest for rest in ([c for c in line if c != head] for line in pending) if rest]
-    return merged
-
-
-def substituted(template: str, names: dict[str, str]) -> str:
-    """Replace names in a template: a class's type parameters by what a subclass passes them.
-
-    Returns:
-      The template.
-
-    """
-    return ast.unparse(_replaced(ast.parse(template, mode="eval").body, names))
-
-
-def _replaced(node: ast.expr, names: dict[str, str]) -> ast.expr:
-    """Replace names in a template's tree, in place (a template is names, subscripts, tuples, unions).
-
-    Returns:
-      The tree.
-
-    """
-    name: str
-    match node:
-        case ast.Name(id=name) if name in names:
-            return ast.parse(names[name], mode="eval").body
-        case ast.Subscript():
-            node.value, node.slice = _replaced(node.value, names), _replaced(node.slice, names)
-        case ast.Tuple():
-            node.elts = [_replaced(element, names) for element in node.elts]
-        case ast.BinOp():
-            node.left, node.right = _replaced(node.left, names), _replaced(node.right, names)
-        case _:
-            pass
-    return node
-
-
-@cache
-def usable(text: str) -> bool:
-    """Check a builtin annotation is one `--fix` may write: not vague, nested or a long tuple, not `None`.
-
-    Returns:
-      Whether it is.
-
-    """
-    expr: ast.expr = ast.parse(text, mode="eval").body
-    long: bool = any(
-        isinstance(node, ast.Subscript)
-        and isinstance(node.slice, ast.Tuple)
-        and len(node.slice.elts) > MAX_LENGTH
-        for node in ast.walk(expr)
-    )
-    return text != _NONE and not is_vague(expr) and depth(expr) < NESTING and not long
