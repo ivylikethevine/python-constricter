@@ -9,7 +9,9 @@ outputs count. None is the tree the run's other steps copy, so none waits for th
   told every fix of `fix-unsafe`, each fix's verdict kept; and `infer-trace`, a fix by their trace;
 - the parts of `tests` (`pipeline.part`): the package's own tests as released (or as an earlier
   run found them, `taken`), and after each of the run's fixes, the trace's too, each a step that
-  starts once its fix is made, unless another fix's part stands for it (`standing`); then `tests`,
+  starts once its fix is made, unless another fix's part stands for it (`standing`): first the one
+  after every source's fixes at once (`union`, a fix step of its own), which stands for them all
+  where it's the released tests', so that most suites' tests run twice, not eight times; then `tests`,
   which runs one fixed run again for each outcome with a failure new or gone, and keeps only what
   it fails both times and no released run did as the fix's (`weighed`);
 - the parts of `types`, for a suite with type checks: its own checkers' errors as released and after
@@ -42,12 +44,14 @@ from tests.corpus.pipeline import (
     TRACE,
     TRACED,
     TYPES,
+    UNION,
     Job,
     Record,
     fix,
     fixing,
     part,
     parts,
+    united,
 )
 from tests.corpus.run_config import CERTAIN, DEV, LIKELY, UNSAFE
 
@@ -58,12 +62,16 @@ _Fixes: TypeAlias = frozenset[
 _Key: TypeAlias = tuple[tuple[tuple[str, int], ...], frozenset[str]]  # an outcome, hashable (`_key`)
 _WHOLE: Final = f"{FIX}{UNSAFE}"  # the fix step that makes every guess: the tiers' fixes are among its own
 _TRACE: Final = f"{INFER}{TRACE}"  # the fix step by the traced tests, which holds the guesses' fixes (mostly)
+_UNION: Final = (
+    f"{INFER}{UNION}"  # the fix step with every source at once, whose tests may stand for each fix's
+)
 _RUN: Final = "run"  # numbered, names the checkouts a suite's tests run on (`Suite.at_once` of them)
 _SKIPPED: Final = "skipped"  # in a part's record: why it has no run
 _REFUSED: Final = "error"  # and why a fix's patch wasn't applied
 _COUNTS: Final = "counts"  # and a test run's outcome's counts, where it has one
 _SAME: Final = "same"  # a part's `patch`: the standing fix's is the same as its own
 _WITHIN: Final = "within"  # or holds its own, and its run was the released tests'
+_EVERY: Final = "union"  # or is every fix's at once, and its run was the released tests'
 _ENVIRONMENT: Final = "environment"  # in a released part's record: its checkout's (`corpus_suite.installed`)
 _PARSER: Final = "parser"  # and what read the tests' output (`corpus_suite.parser`)
 CONFIRMED: Final = "confirmed"  # in a taken record: the step whose outcome equals it (the traced tests)
@@ -167,13 +175,19 @@ def standing(job: Job, kind: str, step: str, clean: Callable[[Record], bool]) ->
     One after a fix whose patch is the same, whatever its run gave; or one after a fix whose
     patch holds this one's and whose run was the released tests' or checks' (`clean`): fewer
     annotations don't fail where more passed. A part that is itself implied stands by the one it's
-    implied by.
+    implied by. For the tests, the part after every source's fixes at once (`union`) stands for
+    each fix's where its run was the released tests': a binding two sources type has the first's
+    there, not each fix's own, the same assumption one step further.
 
     Returns:
       The part's record: the fix step whose part stands for it, and how (`patch`); `None` where
       none does.
 
     """
+    if kind == TESTS and step != _UNION and united(job.run):
+        every: Record | None = _read(job, part(TESTS, _UNION))
+        if every is not None and _COUNTS in every and clean(every):
+            return {IMPLIED: _UNION, PATCH: _EVERY}
     mine: _Fixes | None = _fixes(job, step)
     within: list[str] = []
     seen: set[str] = set()
@@ -300,6 +314,8 @@ def checkouts(job: Job, name: str) -> tuple[str, ...]:
     """
     suite: corpus_suite.Suite = cast("corpus_suite.Suite", job.tree.suite)
     tested: list[str] = parts(job.run, TESTS)
+    if name == part(TESTS, _UNION):  # after the released tests', before every other part
+        return (f"{_RUN}0",)
     if name in tested:
         return (f"{_RUN}{tested.index(name) % max(1, suite.at_once)}",)
     if name == TESTS:
@@ -643,8 +659,10 @@ def _tests_part(job: Job, name: str) -> Record:
         return {_SKIPPED: "the fix made no patch"}
     stood: Record | None
     if (
-        stood := standing(job, TESTS, step, lambda ran: _COUNTS in ran and _ran(ran) == _ran(released))
-    ) is not None:
+        step != _UNION
+        and (stood := standing(job, TESTS, step, lambda ran: _COUNTS in ran and _ran(ran) == _ran(released)))
+        is not None
+    ):
         return stood
     fixed: corpus_suite.Outcome | str = _fixed_run(job, step, "", base)
     corpus_suite.reset(base, suite)
@@ -699,10 +717,44 @@ def tests(job: Job) -> Record:
         named = told(suite, [*released, *runs.values(), *_both(*again.values())])
     record["varies"] = any(each != released[0] for each in released[1:])
     record["samples"] = {name: _outcome(each) for name, each in samples.items()}
+    if united(job.run):
+        record[UNION] = _union_run(job, released, named)
     return record | {
         "released": _outcome(released[0]),
         "fixed": _fixed((patched, first, implied), again, released, named),
     }
+
+
+def _union_run(job: Job, released: Sequence[corpus_suite.Outcome], named: frozenset[str]) -> Record:
+    """Lay the tests after every source's fixes at once out beside the released tests' (`weighed`).
+
+    Returns:
+      Its record: the run weighed, where it ran; else why it didn't (`skipped`, or the patch refused).
+
+    """
+    got: Record | None = _read(job, part(TESTS, _UNION))
+    if got is None:
+        return {_SKIPPED: "it failed"}
+    return weighed([_ran(got)], released, named) if _COUNTS in got else got
+
+
+def union(job: Job) -> Record:
+    """Fix a copy with every source at once: the guesses, each checker's hints, then the trace's.
+
+    `--fix --unsafe-fixes --infer-with` the run's checkers, in its order, and `--infer-from` the
+    traced tests' trace where the run made one. A binding more than one source types gets the
+    first's, as a user asking for every source gets it. The suite's tests after it
+    (`tests-infer-union`) stand for each fix's where they're the released tests' (`standing`).
+
+    Returns:
+      The step's record, as `pipeline.fix` keeps a fix step's.
+
+    """
+    extra: list[str] = ["--unsafe-fixes", "--infer-with", ",".join(job.run.steps.infer)]
+    trace: Record | None = _read(job, TRACED)
+    if trace is not None and _COUNTS in trace:
+        extra += ["--infer-from", str(prepared(job, TRACED) / corpus_suite.TRACE_FILE)]
+    return fix(job, _UNION, extra)
 
 
 def _reruns(
@@ -887,6 +939,9 @@ def waiting(job: Job) -> dict[str, Callable[[Job], Record]]:
         found[TRACED] = traced
     if suite is not None and job.run.steps.tests:
         found |= {name: partial(_tests_part, name=name) for name in parts(job.run, TESTS)}
+        if united(job.run):
+            found[_UNION] = union
+            found[part(TESTS, _UNION)] = partial(_tests_part, name=part(TESTS, _UNION))
         found[TESTS] = tests
     if suite is not None and suite.checks and job.run.steps.types:
         found |= {name: partial(_types_part, name=name) for name in parts(job.run, TYPES)}
@@ -899,9 +954,11 @@ def needs(job: Job) -> dict[str, frozenset[str]]:
 
     A part after a fix waits for the fix (`infer-trace`'s, for the traced tests) and for its kind's
     part as released; a tier's for the guesses', and the guesses' for the trace's, whose run may
-    stand for theirs (`standing`). The tests as released wait for the traced tests where those may
-    confirm an earlier run's record of them (`taken`). Each kind's step waits for its parts, and
-    the traced tests for `fix-unsafe`, whose fixes they hold.
+    stand for theirs (`standing`); each of the tests' for the part after every source's fixes at
+    once, which may stand for them all, and that one for its fix (`infer-union`), which waits for
+    the traced tests, whose trace it reads. The tests as released wait for the traced tests where
+    those may confirm an earlier run's record of them (`taken`). Each kind's step waits for its
+    parts, and the traced tests for `fix-unsafe`, whose fixes they hold.
 
     Returns:
       Each step's, by its name: only steps the run has.
@@ -911,18 +968,22 @@ def needs(job: Job) -> dict[str, frozenset[str]]:
     every: frozenset[str] = frozenset((*names, *fixing(job.run)))
     found: dict[str, frozenset[str]] = {TRACED: frozenset({_WHOLE})} if TRACED in names else {}
     confirmable: bool = TRACED in names and job.run.steps.tests_released and bool(earlier(job))
+    joined: str = part(TESTS, _UNION) if _UNION in names else ""
     kind: str
     for kind in (TESTS, TYPES):
         if kind not in names:
             continue
         own: list[str] = parts(job.run, kind)
-        found[kind] = frozenset(own)
+        found[kind] = frozenset(own) | ({joined} if kind == TESTS and joined else frozenset())
         found[own[0]] = frozenset({TRACED}) if kind == TESTS and confirmable else frozenset()
+        if kind == TESTS and joined:
+            found[_UNION] = frozenset({TRACED}) & every
+            found[joined] = frozenset({_UNION, own[0]})
         name: str
         for name in own[1:]:
             step: str = name.removeprefix(f"{kind}-")
             stands: str = part(kind, _WHOLE) if _implied(step) else ""
             stands = part(kind, _TRACE) if step == _WHOLE and TRACED in names else stands
             made: str = TRACED if step == _TRACE else step
-            found[name] = frozenset({made, own[0], stands}) & every
+            found[name] = frozenset({made, own[0], stands, joined if kind == TESTS else ""}) & every
     return found

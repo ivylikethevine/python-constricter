@@ -26,11 +26,15 @@ Notable changes, newest first. Each release's full notes are generated from its 
 - The corpus runner runs fewer of a suite's tests for the same answer. A part after a fix whose
   patch another fix's part already ran is that part's (`implied`, `patch: same`), and so is one
   whose patch a clean run's holds (`within`): `infer-trace`'s patch was `fix-unsafe`'s on 22 of the
-  0.3.9-rc.1 mega run's 42 suites. One fixed run per outcome with a failure new or gone runs again,
-  weighed against every released run (this run's, the traced tests', earlier runs' on the same
-  checkout), and none whose failures are the released tests' (sqlalchemy's skips move by two from
-  run to run): `differs` now says a test not named differs, `calm` whether the other counts are
-  some released run's. A `mega` run takes the tests as released from the latest earlier run on the
+  0.3.9-rc.1 mega run's 42 suites. The tests run first after every source's fixes at once
+  (`infer-union`, a fix step with every checker's hints and the trace's), and where that run is the
+  released tests' it stands for each fix's (`patch: union`): none of the 0.4.0-rc.1 mega run's 42
+  suites had a fix break a test, and the per-fix runs were 812 CPU-minutes of it
+  (`tests-union = false` runs them as before). One fixed run per outcome with a failure new or gone
+  runs again, weighed against every released run (this run's, the traced tests', earlier runs' on
+  the same checkout), and none whose failures are the released tests' (sqlalchemy's skips move by
+  two from run to run): `differs` now says a test not named differs, `calm` whether the other
+  counts are some released run's. A `mega` run takes the tests as released from the latest earlier run on the
   same checkout where the traced tests' outcome equals them (`from`, `confirmed`), and the tests
   table says so. A record is taken only with the same tag, checkout environment (`environment`, a
   hash of what's installed) and parser (`parser`, a hash of what reads a run's output); `facts.toml`

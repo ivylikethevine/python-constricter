@@ -17,6 +17,13 @@ goes under `local/scratch/`.
 - `timing_trial.py [CORPUS ...] [--runs N] [--jobs N]`: a corpus's check timed as the `timing` step
   times it, by `hyperfine` and by `pyperf command`, in one process and with `--jobs`: each method's
   medians and spread, and hyperfine's instruction counts.
+- `timed_tail_trial.py [CORPUS ...] [--runs N] [--jobs N] [--cpus-each N]`: corpora timed as the
+  `timing` step times them with no warm-up, each alone and then all at once on disjoint CPU sets
+  (`taskset`): each way's runs, spread and first-run effect, and the side-by-side medians against the
+  alone ones.
+- `timing_noise.py FOLDER FOLDER`: two corpus runs' timing tables side by side, each corpus's change
+  in seconds and instructions and the medians of them: the run-to-run noise a timing change has to
+  clear.
 - `worker_start.py [ROOT ...] [--jobs N] [--runs N]`: a `--jobs` check of one-line files, mostly its
   workers' start, as `python -m constricter` and as the `constricter` script, against `--jobs=1`, by
   `hyperfine`, for each checkout given.

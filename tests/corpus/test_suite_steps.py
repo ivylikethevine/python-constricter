@@ -45,12 +45,15 @@ def test_each_part_waits_for_what_it_reads(tmp_path: Path) -> None:
     """
     job: Job = _job(tmp_path / "this")
     needs: dict[str, frozenset[str]] = suite_steps.needs(job)
+    union: str = "tests-infer-union"
     assert needs["traced"] == {"fix-unsafe"}
     assert needs["tests-released"] == frozenset()
-    assert needs["tests-fix-unsafe"] == {"fix-unsafe", "tests-released", "tests-infer-trace"}
-    assert needs["tests-fix-certain"] == {"fix-certain", "tests-released", "tests-fix-unsafe"}
-    assert needs["tests-infer-trace"] == {"traced", "tests-released"}
-    assert needs["tests-infer-ty"] == {"infer-ty", "tests-released"}
+    assert needs["infer-union"] == {"traced"}
+    assert needs[union] == {"infer-union", "tests-released"}
+    assert needs["tests-fix-unsafe"] == {"fix-unsafe", "tests-released", "tests-infer-trace", union}
+    assert needs["tests-fix-certain"] == {"fix-certain", "tests-released", "tests-fix-unsafe", union}
+    assert needs["tests-infer-trace"] == {"traced", "tests-released", union}
+    assert needs["tests-infer-ty"] == {"infer-ty", "tests-released", union}
     assert needs["types-fix-certain"] == {"fix-certain", "types-released", "types-fix-unsafe"}
     assert needs["types-fix-unsafe"] == {"fix-unsafe", "types-released", "types-infer-trace"}
     assert needs["tests"] == {
@@ -59,12 +62,23 @@ def test_each_part_waits_for_what_it_reads(tmp_path: Path) -> None:
         "tests-fix-unsafe",
         "tests-infer-ty",
         "tests-infer-trace",
+        union,
     }
     Store(tmp_path / "old").write("a", "0.3.6", "tests-released", _keyed(_PASSED))
     assert suite_steps.needs(job)["tests-released"] == {"traced"}
     untraced: Job = job._replace(run=parse({"steps": {"tests": True, "tests-released": False}}))
     assert suite_steps.needs(untraced)["tests-released"] == frozenset()
     assert suite_steps.needs(untraced)["tests-fix-unsafe"] == {"fix-unsafe", "tests-released"}
+    assert "infer-union" not in suite_steps.needs(untraced)  # no checker: the guesses' fix is every source's
+    unhinted: Job = job._replace(
+        run=parse({"steps": {"tests": True, "infer-with": ["ty"], "tests-hinted": False}}),
+    )
+    assert "infer-union" not in suite_steps.waiting(unhinted)
+    switched: Job = job._replace(
+        run=parse({"steps": {"tests": True, "infer-with": ["ty"], "tests-union": False}}),
+    )
+    assert "infer-union" not in suite_steps.waiting(switched)
+    assert suite_steps.needs(switched)["tests-infer-ty"] == {"infer-ty", "tests-released"}
 
 
 def _keyed(record: Record, environment: str = "e1") -> Record:
@@ -86,6 +100,8 @@ def test_each_part_has_a_checkout_of_its_kind(tmp_path: Path) -> None:
         "run1",
     ]
     assert suite_steps.checkouts(job, "tests") == ("run0", "run1")
+    assert suite_steps.checkouts(job, "tests-infer-union") == ("run0",)
+    assert not suite_steps.checkouts(job, "infer-union")
     assert suite_steps.checkouts(job, "traced") == ("traced",)
     assert suite_steps.checkouts(job, "types-fix-unsafe") == ("types",)
     assert not suite_steps.checkouts(job, "types")
@@ -206,6 +222,14 @@ def test_a_part_stands_for_another_by_its_fixes_patch(tmp_path: Path) -> None:
     assert suite_steps.standing(job, "types", "fix-certain", clean) is None  # no types part has run
     job.store.write("a", job.recorded, "tests-infer-trace", _FAILED)
     assert suite_steps.standing(job, "tests", "fix-certain", clean) is None
+    # The tests after every source's fixes at once stand for each fix's where they're the released tests'.
+    job.store.write("a", job.recorded, "tests-infer-union", _PASSED)
+    for step in ("fix-certain", "fix-unsafe", "infer-ty", "infer-basedpyright", "infer-trace"):
+        assert suite_steps.standing(job, "tests", step, clean) == {"implied": "infer-union", "patch": "union"}
+    assert suite_steps.standing(job, "types", "infer-ty", clean) is None  # the type checks, never
+    job.store.write("a", job.recorded, "tests-infer-union", _FAILED)
+    assert suite_steps.standing(job, "tests", "fix-certain", clean) is None
+    assert suite_steps.standing(job, "tests", "infer-ty", clean) == {"implied": "fix-unsafe", "patch": "same"}
     bare: Job = _job(tmp_path / "bare")  # a version that lists no fixes: a tier's are the guesses'
     bare.store.write("a", bare.recorded, "tests-fix-unsafe", _PASSED)
     assert suite_steps.standing(bare, "tests", "fix-certain", clean) == {
@@ -227,6 +251,7 @@ def test_the_tests_gather_their_parts(tmp_path: Path, monkeypatch: pytest.Monkey
     job: Job = _job(tmp_path)
     parts: dict[str, Record] = {
         "tests-released": _PASSED | {"tag": "1", "seconds": 3.0, "stopped": False},
+        "tests-infer-union": _FAILED,
         "tests-fix-unsafe": _PASSED,
         "tests-fix-certain": {"implied": _WHOLE},
         "tests-infer-ty": _FAILED,
@@ -264,6 +289,51 @@ def test_the_tests_gather_their_parts(tmp_path: Path, monkeypatch: pytest.Monkey
     assert fixed["fix-certain"]["implied"] == _WHOLE
     assert fixed["infer-ty"]["new"] == ["t::f"]
     assert fixed["infer-trace"] == fixed["infer-ty"] | {"implied": "infer-ty", "patch": "same"}
+    union: Record = cast("Record", gathered["union"])  # ran, differed, and isn't a row of the fixed runs
+    assert (union["same"], union["new"]) == (False, ["t::f"])
+    # Where the tests after every fix at once were the released tests', each part is theirs.
+    for name in parts:
+        if name != "tests-released":
+            job.store.write("a", job.recorded, name, {"implied": "infer-union", "patch": "union"})
+    job.store.write("a", job.recorded, "tests-infer-union", _PASSED)
+    again.clear()
+    stood: Record = suite_steps.tests(job)
+    assert not again
+    assert cast("Record", stood["union"])["same"] is True
+    assert cast("dict[str, Record]", stood["fixed"])["infer-ty"] == _PASSED | {
+        "same": True,
+        "new": [],
+        "implied": "infer-union",
+        "patch": "union",
+    }
+
+
+def test_the_union_fixes_with_every_source_at_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every checker's hints in the run's order, and the trace's where the tests ran traced."""
+    job: Job = _job(tmp_path)
+    asked: list[tuple[str, list[str]]] = []
+
+    def fix(_job: Job, step: str, extra: list[str]) -> Record:
+        asked.append((step, list(extra)))
+        return {"fixed": 1}
+
+    def prepared(_job: Job, name: str) -> Path:
+        return tmp_path / name
+
+    monkeypatch.setattr(suite_steps, "fix", fix)
+    monkeypatch.setattr(suite_steps, "prepared", prepared)
+    assert suite_steps.union(job) == {"fixed": 1}
+    job.store.write("a", job.recorded, "traced", {"error": "nothing runs its tests traced"})
+    assert suite_steps.union(job) == {"fixed": 1}
+    job.store.write("a", job.recorded, "traced", _PASSED | {"summary": "2 passed"})
+    assert suite_steps.union(job) == {"fixed": 1}
+    trace: str = str(tmp_path / "traced" / corpus_suite.TRACE_FILE)
+    assert asked == [
+        ("infer-union", ["--unsafe-fixes", "--infer-with", "ty"]),
+        ("infer-union", ["--unsafe-fixes", "--infer-with", "ty"]),
+        ("infer-union", ["--unsafe-fixes", "--infer-with", "ty", "--infer-from", trace]),
+    ]
+    assert set(suite_steps.waiting(job)) >= {"infer-union", "tests-infer-union", "tests"}
 
 
 def test_one_fixed_run_runs_again_for_each_outcome_with_a_failure_new_or_gone(

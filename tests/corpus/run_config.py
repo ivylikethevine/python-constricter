@@ -36,6 +36,8 @@
     tests-released = true            # false: the tests as released not run, their record the latest
                                      # earlier run's at the suite's tag on the same checkout; true:
                                      # run, unless the traced tests confirm it (`suite_steps.taken`)
+    tests-union = true               # false: no test run after every fix at once (`infer-union`),
+                                     # which stands for each fix's where it's the released tests'
     every-level = false              # true: a check at each level, not one the levels are read from
 
     [publish]
@@ -96,6 +98,7 @@ _KEYS: Final = {
         "tests-hinted",
         "every-level",
         "tests-released",
+        "tests-union",
     },
 }
 _RUNS_MD: Final = "runs-md"
@@ -119,6 +122,7 @@ class Steps(NamedTuple):
     tests_hinted: bool = True  # a suite's tests after each checker's hints and the trace's fix too
     every_level: bool = False  # a check at each level, not one at `suffocate` the others are read from
     tests_released: bool = True  # the tests as released run, unless the traced tests confirm an earlier run's
+    tests_union: bool = True  # the tests once after every fix at once, standing for each fix's where released
 
 
 class Publish(NamedTuple):
@@ -230,6 +234,7 @@ def parse(data: _Table) -> Run:
             bool(steps.get("tests-hinted", default.steps.tests_hinted)),
             bool(steps.get("every-level", default.steps.every_level)),
             bool(steps.get("tests-released", default.steps.tests_released)),
+            bool(steps.get("tests-union", default.steps.tests_union)),
         ),
         cast("int", run.get("at-once", default.at_once)),
         Publish(

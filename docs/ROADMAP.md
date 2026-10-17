@@ -715,20 +715,31 @@ each item sized the same way.
    tests after waits of 50 minutes and sqlalchemy's 9-minute tests starting at 138; and the 47 timed
    checks took the last 11 minutes alone with 1 to 3 CPUs busy (10 step-minutes). The suites' tests
    are the tail now, and the order they start in the lever: the longest (mypy's, sqlalchemy's,
-   pandas's, dask's, optuna's) waited for the fixes and checkers before them. Done when a mega run
-   uses 85% of its CPU seconds, and one with no earlier run under its output takes within a tenth of
-   one sized by its own. About 2 hours beside the runs; coverage unchanged.
+   pandas's, dask's, optuna's) waited for the fixes and checkers before them. The mega run of
+   0.4.0-rc.1, the first with them, took 134 minutes on 16CPU/60GB (replayed at 126) and used 77.5%
+   of its CPU seconds: 83.3% over the 123 minutes before its timed checks, with 12 to 15 CPUs busy
+   throughout and mypy's, dask's and optuna's suites all ending in the last minute of them; the 47
+   timed checks took the last 10.5 minutes with 1.5 CPUs busy. Its steps' CPU seconds over every CPU
+   are 113 minutes, and no schedule of them takes under 123: the scheduling is within 10% of its
+   floor, and the tail is what's left of the 85%. Done when a mega run uses 85% of its CPU seconds,
+   and one with no earlier run under its output takes within a tenth of one sized by its own. About
+   2 hours beside the runs; coverage unchanged.
 
 2. **The timed tail.** The 47 timed checks ran alone over the 0.3.9-rc.1 mega run's last 11 minutes
    with 1.4 of 16 CPUs busy, 2.49 idle CPU-hours, the largest idle hold of any step kind; pandas's
-   (136s) and the standard library's (117s) are 41% of it. With `timing = 1`, drop hyperfine's
-   `--warmup 1` (the `check` step warmed the installed-modules cache; it doubles each check), and run
-   two or three timed corpora at once on disjoint CPU sets (`taskset`, `jobs + 1` CPUs each). Between
-   two runs at the same commit the single-sample seconds differed by a median 0.13% in one process
-   and 0.59% with every CPU, instructions by 0.09%: the published table compares seconds across runs,
-   so measure the noise beside other work before keeping it. Done when the tail is under 5 minutes
-   with the timing table's run-to-run noise unchanged. About 2 hours beside the runs; coverage
-   unchanged.
+   (136s) and the standard library's (117s) are 41% of it, and 0.4.0-rc.1's tail was the same 10.5
+   minutes. Between two runs at the same commit the single-sample seconds differed by a median 0.13%
+   in one process and 0.59% with every CPU, instructions by 0.09%; between the two mega runs, a
+   version bump apart with the tail alone each time, by a median 0.9% in one process and 1.2% with
+   jobs, up to 4%, and instructions by 1% too (`scratch/timing_noise.py`; some corpora moved tag).
+   Measured on django, sqlalchemy and twisted, 5 runs a way (`scratch/timed_tail_trial.py`): with no
+   warm-up the first run is within 0.8% of the rest, so hyperfine's `--warmup 1` is dropped, which
+   halves each timed check; three corpora at once on disjoint 5-CPU sets run 4 to 5% slower in one
+   process and 10 to 17% with jobs, with the spread up from under 1% to 2 to 10%, so the timed checks
+   stay one at a time. The instructions didn't move side by side (0.04 to 0.15%): the table could
+   compare them across runs instead of seconds, which would free the tail to run beside other steps.
+   Done when a mega run's tail is under 5 minutes with the timing table's run-to-run noise unchanged;
+   not yet run. About 1 hour; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -882,8 +893,16 @@ each item sized the same way.
     parts run as today. The fixes conflict on a few bindings in 37 of 42 suites (1 to 30; pandas 464,
     mypy 73, xarray 71): a priority (unsafe's annotation, then the trace's, then the checkers in a
     fixed order), or the fallback. The same assumption the tiers' implication makes: fewer
-    annotations don't fail where more passed. Done when a mega run's tests table reads the same with
-    the parts marked implied and the run is 25 minutes shorter. About 5 hours; coverage unchanged.
+    annotations don't fail where more passed. Done, not yet run: the union is a fix step of its own
+    (`infer-union`: `--fix --unsafe-fixes --infer-with` every checker `--infer-from` the trace, so
+    the priority is constricter's own, the guesses, then the checkers in the run's order, then the
+    trace), and its tests' part runs before every fix's, which stand on it where it was the
+    released tests' (`patch: union`) and run as before where it wasn't. On the 0.4.0-rc.1 mega run
+    no fix broke a test on any of the 42 suites, whose 178 fixed runs took 812 CPU-minutes; the
+    union step costs about a checker's `infer-*` step a suite (their three took 170 CPU-minutes over
+    the suites, 288 over every corpus), which caching the first round's hints would mostly save.
+    Done when a mega run's tests table reads the same with the parts marked implied and the run is
+    25 minutes shorter. About 5 hours; coverage unchanged.
 11. **First-round hints cached across runs.** The `infer-*` steps used 290 CPU-minutes and 114
     step-minutes of the 0.3.9-rc.1 mega run (stripe's basedpyright 22.6 minutes, the standard
     library's 21.4 at 12.3 GB), and their memory, not the CPUs, kept the early steps waiting
