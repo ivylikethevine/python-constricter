@@ -776,7 +776,10 @@ each item sized the same way.
      guess either; the last withdraws 25 guesses on the rc.2 run's sources at hand
      (`scratch/rebound_shapes.py`), one blamed for an error. Left as it is: mcp's `name`, a copy of a
      `str | None` parameter filled in `if not name:` by a value the checker sees as `Any` and narrows
-     to the declared type; withdrawing that shape would take 23 guesses for that one error.
+     to the declared type; withdrawing that shape would take 23 guesses for that one error. A run of
+     `tests/corpus/runs/errors.toml` after them had none of pint's or mypy's left, and mcp's 3 others
+     were a display widened by a value narrowed where it's added (`headers[key] = self.session_id`
+     in `if self.session_id:`); done since: no fix, 4 of mcp's guesses withdrawn, pydantic's none.
    - A type from a package the suite's own checker can't follow (`etree.Element`, of `lxml`): 14 of
      mypy's. Its environment's; listed, not fixed.
    - A `None`, then only an `Index`, by an unannotated function's `return`s: declared, an argument

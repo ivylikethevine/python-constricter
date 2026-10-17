@@ -23,6 +23,7 @@ from constricter.fix.values import fills as filling
 from constricter.fix.values import unchecked as misused
 from constricter.fix.values.doubts import contains_inner, narrowing, spelled_self
 from constricter.fix.values.inference import RETURNED
+from constricter.fix.values.narrowed import narrowed_at
 from constricter.offences import (
     CAN_BE_FINAL,
     EMPTY_CONTAINERS,
@@ -217,7 +218,8 @@ def extended(scope: Scope) -> None:
     A display is typed by its elements, as a type checker types it; what's added later may be more.
     Each added value's type joins the display's: numbers as the widest of them (`int` and `float`,
     a `float`), any others as their union, a guess (`displays.JOINED`); an addition whose type isn't
-    known leaves the name no fix. Not where a nested scope sees it, out of this function's sight.
+    known, or one a test around it narrows (see `_narrowed_addition`), leaves the name no fix. Not
+    where a nested scope sees it, out of this function's sight.
     """
     index: int
     o: Offence
@@ -237,13 +239,36 @@ def extended(scope: Scope) -> None:
         rows: list[list[Inference | None]] = [
             filling.added(fill, parts[0], scope.settings.known, scope.inferred.types) for fill in additions
         ]
-        if any(part is None for row in rows for part in row):
+        if any(part is None for row in rows for part in row) or any(
+            _narrowed_addition(scope, fill, row) for fill, row in zip(additions, rows, strict=True)
+        ):
             scope.offences[index] = replace(o, edit=None)
             continue
         scope.offences[index] = replace(
             o,
             edit=_widened(scope, o.name, fix, parts, cast("list[list[Inference]]", rows)),
         )
+
+
+def _narrowed_addition(scope: Scope, fill: filling.Fill, row: list[Inference | None]) -> bool:
+    """Check whether an addition is a read a test around it narrows: `d[k] = self.x` in `if self.x:`.
+
+    A checker adds the narrowed type (`str`, of a `str | None`), not the declared one `row` has.
+
+    Returns:
+      Whether its key or value is.
+
+    """
+    added: list[ast.expr] = [part for part in (fill.key, fill.value) if part is not None]
+    return not fill.spread and any(
+        narrowed_at(
+            scope.settings.facts.narrowed,
+            part,
+            part.lineno,
+            union=inferred is not None and len(members(inferred.annotation) or ()) > 1,
+        )
+        for part, inferred in zip(added, row, strict=False)
+    )
 
 
 def _widened(

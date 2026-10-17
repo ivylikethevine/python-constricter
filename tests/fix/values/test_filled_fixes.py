@@ -361,3 +361,37 @@ def test_a_display_added_to_later_takes_what_is_added() -> None:
         "many": (None, False),  # more types than a union written for them
         "seen": ("list[int]", False),  # a nested scope adds to it, out of sight: as its display
     }
+
+
+def test_a_display_added_a_value_narrowed_there_has_no_fix() -> None:
+    """`d["id"] = self.sid` in `if self.sid:` adds a `str`, not the `str | None` it's declared."""
+    source: str = """
+    class S:
+        def __init__(self, sid: str | None) -> None:
+            self.sid = sid
+
+        def send(self, sid: str | None, text: str) -> None:
+            attribute = {"a": "b"}
+            if self.sid:
+                attribute["id"] = self.sid
+            name = {"a": "b"}
+            if sid is not None:
+                name["id"] = sid
+            keyed = {"a": 1}
+            if sid:
+                keyed[sid] = 2
+            plain = ["a"]
+            if text:
+                plain.append(text)
+            outside = {"a": "b"}
+            outside["id"] = sid
+            print(attribute, name, keyed, plain, outside)
+    """
+    found: list[Offence] = check_source(textwrap.dedent(source))
+    assert {o.name: (o.fix, o.unsafe) for o in found if o.code == UNANNOTATED} == {
+        "attribute": (None, False),
+        "name": (None, False),
+        "keyed": (None, False),
+        "plain": ("list[str]", False),  # a truth test narrows only a union
+        "outside": ("dict[str, str | None]", True),
+    }

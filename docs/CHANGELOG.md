@@ -14,6 +14,10 @@ Notable changes, newest first. Each release's full notes are generated from its 
   target bound again past the loop to a value of no known type (mcp's `value`). A loop's target
   taken from a guessed container (`for k in d`, then `for k, v in d.items()`) keeps the guess's
   type, as a second pass sees it once the container is declared.
+- `--fix` no longer widens a display by a value a test around the addition narrows
+  (`headers[key] = self.session_id` in `if self.session_id:`): a checker adds the narrowed `str`,
+  not the declared `str | None`, so the display has no fix. mcp's 3 new type errors after
+  `--unsafe-fixes` beside its `name` were these.
 - `--infer-with` drops a hint that names something other than what the checker meant: a module
   written bare (`import socket`, then `socket`), a well-known class's name the module binds to its
   own class (starlette's `Match`), a builtin given type arguments (ty's `bool[bool]`, numpy's

@@ -126,7 +126,9 @@ machine they ran on. Run super and mega before a release, outside a sandbox. `su
 the tests as released are the latest earlier run's at the suite's tag on the same checkout
 (`tests-released = false`), and nothing is traced. `mega.toml` takes them too, where the traced
 tests' outcome equals that record's (`from`, `confirmed` in it). A record is taken only with the
-same tag, checkout environment and parser version, which it and `facts.toml` keep.
+same tag, checkout environment and parser version, which it and `facts.toml` keep. `errors.toml`
+asks only what the type-error goals are judged by: each fix's errors by the suite's own checks, on
+the seven corpora those goals name.
 
 Run files name their corpora by `tests/corpus/corpora.toml`'s sets, which may name other sets. The
 tiers hold each other: `original`, the seven corpora a release records; `super`, those and every
