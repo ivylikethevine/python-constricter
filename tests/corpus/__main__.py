@@ -730,15 +730,15 @@ def relabelled(run: Run, argv: Sequence[str], earlier: Record) -> Run:
       SystemExit: `--label` names another, which would measure every corpus again beside it.
 
     """
-    label: object
-    if (label := earlier.get("label")) is None:
+    label: str | None = cast("str | None", earlier.get("label"))  # `_toml` writes it as a string
+    if label is None:
         return run
     if _LABEL in argv and run.label != label:
         message: str = (
             f"{_RESUME} carries on the run labelled {label!r}, not {run.label!r}: leave out {_LABEL}"
         )
         raise SystemExit(message)
-    return run._replace(label=str(label))
+    return run._replace(label=label)
 
 
 def carried(facts: Record, earlier: Record, last: datetime | None) -> Record:
@@ -755,11 +755,11 @@ def carried(facts: Record, earlier: Record, last: datetime | None) -> Record:
     if not earlier:
         return facts | {_RUNNING: now}
     before: float = float(cast("float", earlier.get(render.MINUTES, 0)))
-    stopped: object = earlier.get(_RUNNING)
+    stopped: str | None = cast("str | None", earlier.get(_RUNNING))
     if stopped is None and render.MINUTES not in earlier:  # no minutes: its one execution was stopped
-        stopped = earlier.get(_STARTED)
+        stopped = cast("str | None", earlier.get(_STARTED))
     if stopped is not None and last is not None:
-        before += max(0.0, (last - datetime.fromisoformat(str(stopped))).total_seconds() / 60)
+        before += max(0.0, (last - datetime.fromisoformat(stopped)).total_seconds() / 60)
     return facts | {_STARTED: earlier.get(_STARTED, now), render.MINUTES: round(before), _RUNNING: now}
 
 
