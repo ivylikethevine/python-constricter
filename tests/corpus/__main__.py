@@ -730,8 +730,8 @@ def relabelled(run: Run, argv: Sequence[str], earlier: Record) -> Run:
       SystemExit: `--label` names another, which would measure every corpus again beside it.
 
     """
-    label: str | None = cast("str | None", earlier.get("label"))  # `_toml` writes it as a string
-    if label is None:
+    label: str | None
+    if (label := cast("str | None", earlier.get("label"))) is None:  # `_toml` writes it as a string
         return run
     if _LABEL in argv and run.label != label:
         message: str = (
