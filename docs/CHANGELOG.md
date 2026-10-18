@@ -42,6 +42,10 @@ Notable changes, newest first. Each release's full notes are generated from its 
   starting the checkers while nothing it rests on has changed: the checker's build, the files asked
   about, the workspace's settings files and the installed distributions. `--infer-fresh` asks the
   checkers again.
+- The corpus runner's `--resume` carries a run on under the label it started with, refusing a
+  `--label` that names another, and keeps its start; the published section's time is the sum of its
+  executions', a stopped one's to its last step. A corpus that can't be cloned or installed is said
+  in the run's output and `runner.log` as it fails, not only in its last lines.
 - The corpus runner sizes an unmeasured suite part by its kind's largest measured part, not by the
   whole step's record, and an unmeasured `infer-union` by its checkers' steps together.
 - The language-server modules (`connection`, `protocol`, `guard`, `hints`, `edits`, `remembered`)

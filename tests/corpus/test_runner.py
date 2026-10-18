@@ -14,7 +14,7 @@ import pytest
 
 from constricter import Level
 from tests.corpus import __main__ as runner
-from tests.corpus import catalog, corpus_suite, pipeline, sizing, suite_steps
+from tests.corpus import catalog, corpus_suite, pipeline, sizing, suite_steps, trees
 from tests.corpus.pipeline import Record, Store
 from tests.corpus.recorded import SHARE, USED
 from tests.corpus.run_config import CERTAIN, CSV, DEV, LIKELY, Run, Steps, parse
@@ -184,6 +184,36 @@ def test_a_steps_record_says_when_it_started_and_how_long_it_waited(tmp_path: Pa
     }
     said: str = (tmp_path / "runner.log").read_text(encoding="utf-8")
     assert said.endswith(": tests: 60s, 30 CPU seconds, 2.0 GB (given 4 CPUs, 8.0 GB; waited 12s)\n")
+
+
+def test_a_corpus_that_cant_be_had_is_said_as_it_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """In the run's output and its log at once, not only in its last lines; the run goes on without it."""
+    run: Run = parse({})
+    store: Store = Store(tmp_path)
+    plan: sizing.Plan = sizing.Plan(run, 8, 16 * sizing.GIB, {})
+    running: runner.Running = runner.Running(
+        run,
+        store,
+        plan,
+        sizing.Slots(8, 16),
+        None,
+        {},
+        threading.Semaphore(),
+    )
+    failure: str = "pandas: uv sync failed:\nFileNotFoundError: meson-python-native-file.ini"
+
+    def found(_entry: catalog.Entry, **_options: bool) -> Tree:
+        raise RuntimeError(failure)
+
+    monkeypatch.setattr(trees, "found", found)
+    why: str = f"pandas: not found: {failure}"
+    assert running.measured(catalog.load().entry("pandas")) == (None, [why])
+    assert capsys.readouterr().err == f"{why}\n"
+    assert (tmp_path / "runner.log").read_text(encoding="utf-8").endswith(f" {why}\n")
 
 
 def _waited(slots: sizing.Slots) -> bool:
@@ -476,6 +506,49 @@ def test_each_execution_has_a_folder_named_by_its_label_and_time() -> None:
     run: Run = parse({"run": {"label": "0.3.6-rc.1", "output": "data"}})
     started: datetime = datetime(2026, 10, 9, 10, 52, tzinfo=UTC)
     assert run.folder(started) == Path("data/0.3.6-rc.1-10-09-2026-1052")
+
+
+def test_a_resume_carries_on_under_its_runs_label(tmp_path: Path) -> None:
+    """Its folder's, whatever the run file says; a `--label` naming another stops it."""
+    run: Run = parse({"run": {"label": "mega"}})
+    resume: list[str] = ["mega.toml", "--resume", str(tmp_path)]
+    assert runner.relabelled(run, resume, {}) == run
+    earlier: Record = {"label": "0.4.0-rc.3", "started": "2026-10-18T10:10:35-07:00"}
+    facts: str = 'label = "0.4.0-rc.3"\nstarted = "2026-10-18T10:10:35-07:00"\n'
+    _ = (tmp_path / "facts.toml").write_text(facts, encoding="utf-8")
+    assert runner.resumed_facts(resume) == earlier
+    labelled: Run = run._replace(label="0.4.0-rc.3")
+    assert runner.relabelled(run, resume, earlier) == labelled
+    assert runner.relabelled(labelled, [*resume, "--label", "0.4.0-rc.3"], earlier) == labelled
+    with pytest.raises(SystemExit, match=r"not 'mega': leave out --label"):
+        _ = runner.relabelled(run, [*resume, "--label", "mega"], earlier)
+
+
+def test_a_resume_keeps_its_runs_start_and_adds_its_minutes() -> None:
+    """One that ended adds nothing more; one that was stopped, from its start to its last step's end."""
+    first: str = "2026-10-18T10:10:00-07:00"
+    second: str = "2026-10-18T11:48:00-07:00"
+    third: str = "2026-10-18T12:30:00-07:00"
+    new: Record = runner.carried({"label": "x", "started": first}, {}, None)
+    assert new == {"label": "x", "started": first, "running": first}
+    done: Record = runner.finished(new, 74.4)
+    assert done == {"label": "x", "started": first, "minutes": 74}
+    again: Record = runner.carried({"label": "x", "started": second}, done, datetime.fromisoformat(third))
+    assert again == {"label": "x", "started": first, "minutes": 74, "running": second}
+    assert runner.finished(again, 30.0) == {"label": "x", "started": first, "minutes": 104}
+    stopped: datetime = datetime.fromisoformat("2026-10-18T12:00:00-07:00")
+    assert runner.carried({"started": third}, again, stopped) == {
+        "started": first,
+        "minutes": 86,
+        "running": third,
+    }
+    untimed: Record = {"started": first}
+    last: datetime = datetime.fromisoformat(second)
+    assert runner.carried({"started": second}, untimed, last) == {
+        "started": first,
+        "minutes": 98,
+        "running": second,
+    }
 
 
 def test_a_fix_is_certain_likely_or_a_guess() -> None:

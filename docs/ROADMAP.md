@@ -383,9 +383,10 @@
   count the rest, saw 1 and 0.1 to 0.2. An unmeasured traced step is sized by its suite's `tests`
   step; a step that wants all the memory runs alone, and one that held over 8 GB beside others is
   noted. The timed checks hold every CPU, and run last, one at a time. A suite's tests of one port
-  run one suite at a time, and its tests are stopped after `suite-seconds`. A stopped run resumes,
-  and a run exits non-zero on anything a fix broke or a step that failed, whose traceback its log
-  keeps. Every corpus's steps wait for the machine alone (`at-once` bounds the corpora cloned and
+  run one suite at a time, and its tests are stopped after `suite-seconds`. A stopped run resumes
+  under its own label, keeping its start and adding each execution's minutes, and a run exits
+  non-zero on anything a fix broke or a step that failed, whose traceback its log keeps. Every
+  corpus's steps wait for the machine alone (`at-once` bounds the corpora cloned and
   installed side by side): the step with the most seconds still behind it first, its own and its
   suite's steps' after it, and what's free kept for one that waited five minutes. A running step's
   hold follows what it's using: an unmeasured one gives back what it isn't a minute in, and any one
@@ -744,7 +745,10 @@ each item sized the same way.
    stay one at a time. The instructions didn't move side by side (0.04 to 0.15%): the table could
    compare them across runs instead of seconds, which would free the tail to run beside other steps.
    Done when a mega run's tail is under 5 minutes with the timing table's run-to-run noise unchanged:
-   the 0.4.0-rc.2 mega run's took 5.3 minutes, from 10.5. About 1 hour; coverage unchanged.
+   the 0.4.0-rc.2 mega run's took 5.3 minutes, from 10.5, and the 0.4.0-rc.3 run's 5.6: 4.4 for 46
+   corpora back to back, and pandas's 71s in a resume of its own. Those two runs are a code change
+   apart, their instructions a median 7.6% apart in one process (`scratch/timing_noise.py`), so the
+   noise wants two runs at one commit. About 1 hour; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 

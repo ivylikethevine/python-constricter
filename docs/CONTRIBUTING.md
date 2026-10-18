@@ -105,8 +105,8 @@ the network, once.
 
 Each execution writes a folder of its own under `local/corpus-runs/`, named by the run's label and
 the time: the run file, a record for each corpus, version and step, and `report.json`, `report.md`
-and `tables/*.csv` made from them. `--resume FOLDER` carries on a stopped run, `--only NAME` keeps
-one to a corpus or set, and `--minus NAME` leaves out a corpus's, a set's or a run file's corpora
+and `tables/*.csv` made from them. `--resume FOLDER` carries on a stopped run under its label, its
+time the sum of its executions', `--only NAME` keeps one to a corpus or set, and `--minus NAME` leaves out a corpus's, a set's or a run file's corpora
 (`super.toml --minus original` measures only what `super` adds). Neither publishes. Each step is a
 process of its own, started once the CPUs it's expected to keep busy and the memory it's expected to
 hold are free: what it took in the last run under the same output, which its record keeps
