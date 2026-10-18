@@ -102,6 +102,3 @@ _site/
 # Pythons have.
 constricter/fix/tables/
 stdlib_tables/partial.json
-
-# The version the build writes from the git tag (pyproject.toml, [tool.hatch.build.hooks.vcs]).
-/constricter/_version.py
