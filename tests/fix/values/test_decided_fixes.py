@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: MIT
 """`--fix` for builtins and operators their operands' types decide: `min`, `sum`, `next`, `dict`, `-n`."""
 
+import textwrap
+
 import pytest
 
 from constricter import Offence, check_source
@@ -207,3 +209,103 @@ def test_a_loop_over_a_generator_expression_or_iter_takes_its_elements() -> None
         ("name", "str"),
         ("line", None),
     ]
+
+
+def test_sum_of_another_class_and_filter_are_typed_by_the_elements() -> None:
+    """`sum` of a class's instances: `T | int` with no start (`0`, for none), `T` with a start of `T`.
+
+    `filter` yields what it's given, less `None` for a `None` predicate; not where the predicate may
+    narrow (a `TypeGuard` function, `callable`, a callable of no known kind). Not a `sum` of text, of
+    a union, of a fixed tuple from `()`, or from a start of another type.
+    """
+    source: str = """
+    from collections.abc import Callable
+    from datetime import timedelta
+    from fractions import Fraction
+    from typing import TypeGuard
+
+
+    def is_str(x: object) -> TypeGuard[str]:
+        return isinstance(x, str)
+
+
+    def keep(x: object) -> bool:
+        return bool(x)
+
+
+    def loose(x):
+        return x
+
+
+    def blank(x: str):
+        return x == ""
+
+
+    def f(
+        names: list[str],
+        maybe: list[str | None],
+        spans: list[timedelta],
+        rows: list[list[int]],
+        parts: list[tuple[int, ...]],
+        pairs: list[tuple[int, str]],
+        either: list[int | timedelta],
+        objs: list[object],
+        pred: Callable[[str], bool],
+        nones: list[None],
+        other,
+    ) -> None:
+        a = filter(None, maybe)
+        b = filter(str.isdigit, names)
+        c = filter(lambda n: n, names)
+        d = filter(keep, names)
+        e = filter(bool, range(3))
+        g = filter(is_str, objs)
+        h = filter(callable, objs)
+        i = filter(pred, names)
+        j = filter(None, other)
+        k = filter(names)
+        m = filter(loose, names)
+        z = filter(blank, names)
+        for n in filter(None, maybe):
+            pass
+        o = sum(spans)
+        p = sum(spans, timedelta())
+        q = sum(rows, [])
+        r = sum(parts, ())
+        s = sum(pairs, ())
+        t = sum(Fraction(1, x) for x in range(3))
+        u = sum(spans, 0.5)
+        v = sum(either)
+        w = sum(rows, ())
+        y = filter(None, nones)
+        x = filter(other(), names)
+    """
+    found: dict[str, tuple[str | None, bool]] = {
+        o.name: (o.fix, o.unsafe) for o in check_source(textwrap.dedent(source))
+    }
+    assert found == {
+        "a": ("filter[str]", False),
+        "b": ("filter[str]", False),
+        "c": ("filter[str]", False),
+        "d": ("filter[str]", False),
+        "e": ("filter[int]", False),
+        "g": (None, False),
+        "h": (None, False),
+        "i": (None, False),
+        "j": (None, False),
+        "k": (None, False),
+        "m": (None, False),  # nothing says what `loose` returns
+        "n": ("str", False),
+        "o": ("timedelta | int", False),
+        "p": ("timedelta", False),
+        "q": ("list[int]", False),
+        "r": ("tuple[int, ...]", False),
+        "s": (None, False),
+        "t": ("Fraction | int", False),
+        "u": (None, False),
+        "v": (None, False),
+        "w": (None, False),
+        "y": (None, False),
+        "x": (None, False),
+        "z": ("filter[str]", False),
+    }

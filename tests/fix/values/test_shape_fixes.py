@@ -455,12 +455,15 @@ def test_a_builtin_iterator_bound_to_a_name_is_typed_by_what_it_yields() -> None
         "p": ("tuple[str, int]", False),
         "r": (None, False),  # not a keyword it takes
     }
-    # At a module's top level an annotation is evaluated: no Python can subscript `zip` there.
-    module: str = "NAMES = ['a']\nSIZES = [1]\na = zip(NAMES, SIZES)\nb = enumerate(NAMES)\n"
+    # At a module's top level an annotation is evaluated: no Python can subscript `zip` or `filter` there.
+    module: str = (
+        "NAMES = ['a']\nSIZES = [1]\na = zip(NAMES, SIZES)\nb = enumerate(NAMES)\nc = filter(None, NAMES)\n"
+    )
     found: list[Offence] = check_source(module, checks=Checks(all_scopes=True))
     assert {o.name: o.fix for o in found if len(o.name) == 1} == {
         "a": '"zip[tuple[str, int]]"',
         "b": "enumerate[str]",
+        "c": '"filter[str]"',
     }
 
 
@@ -496,3 +499,61 @@ def test_a_paths_open_gives_a_file_by_its_mode() -> None:
         "h": ("io.BufferedWriter", False),
         "i": ("int", False),
     }
+
+
+def test_getattr_by_a_literal_name_is_the_attributes_type() -> None:
+    """`getattr(obj, "name")` is typed as `obj.name`; with a default, `| None` or joined with its type.
+
+    Not an `X | None` read with no `None` default (narrowed first, as the read itself is), a default
+    of no known type or one no plain union joins, a name `obj.name` can't spell, or an attribute
+    nothing types. An attribute typed by its assignments is a guess here as there.
+    """
+    source: str = """
+    import socket
+
+
+    class Conn:
+        timeout: float
+        name: str | None
+
+        def __init__(self, n) -> None:
+            self.n = n
+            self.port = 80
+
+
+    def f(conn: Conn, sock: socket.socket, maybe: Conn | None, q) -> None:
+        a = getattr(conn, "timeout")
+        b = getattr(conn, "timeout", None)
+        c = getattr(conn, "timeout", 1.5)
+        d = getattr(conn, "timeout", "x")
+        e = getattr(conn, "timeout", q)
+        f = getattr(conn, "timeout", [1])
+        g = getattr(conn, "name")
+        h = getattr(conn, "name", None)
+        i = getattr(sock, "family", None)
+        j = getattr(maybe, "timeout", None)
+        k = getattr(conn, "port")
+        m = getattr(conn, "n")
+        n = getattr(conn, "class")
+        o = getattr(conn, "__x")
+        p = getattr(q, "timeout")
+    """
+    assert _fixed(source) == {
+        "a": ("float", False),
+        "b": ("float | None", False),
+        "c": ("float", False),
+        "d": ("float | str", False),
+        "e": (None, False),
+        "f": (None, False),
+        "g": (None, False),
+        "h": ("str | None", False),
+        "i": ("socket.AddressFamily | None", False),
+        "j": ("float | None", False),
+        "k": ("int", True),
+        "m": (None, False),
+        "n": (None, False),
+        "o": (None, False),
+        "p": (None, False),
+    }
+    shadowed: str = "def f(conn: str, getattr) -> None:\n    a = getattr(conn, 'upper')\n"
+    assert _fixed(shadowed) == {"a": (None, False)}

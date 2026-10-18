@@ -28,6 +28,11 @@ _REALS: Final = _INTEGERS | {_FLOAT}
 _KEY: Final = "key"  # `min`'s and `max`'s keyword that only orders
 _DEFAULT: Final = "default"  # theirs for an empty iterable
 _START: Final = "start"  # `sum`'s
+# What `sum` doesn't add as another class's instances: the builtin numbers (see `_sum`), the text
+# Types it refuses, and `None`.
+_LIST: Final = "list"
+_TUPLE: Final = "tuple"
+_UNSUMMED: Final = _REALS | {"str", "bytes", "None"}
 _PAIR: Final = 2  # `divmod`'s arguments, and the most `round` and `next` take
 _ANY_LENGTH: Final = "..."  # a `tuple[T, ...]`'s second part
 _ENUMERATE: Final = "enumerate"
@@ -130,6 +135,9 @@ def _divmod(call: _Call) -> Inference | None:
 def _sum(call: _Call) -> Inference | None:
     """Type `sum(xs)` of builtin numbers, with a start of them or none: an `int`, or a `float`.
 
+    Of another one type `T`: with no start, a `T | int` (the `0` it starts from, for no elements);
+    with a start of `T`, or an empty display of `T`'s builtin class (`sum(lists, [])`), a `T`.
+
     Returns:
       The inference, or `None`.
 
@@ -137,9 +145,34 @@ def _sum(call: _Call) -> Inference | None:
     starts: list[ast.expr] = [*call.args[1:], *call.keywords.values()]
     if not call.args or len(starts) > 1 or call.keywords.keys() - {_START}:
         return None
-    parts: list[Inference | None] = [call.loop(call.args[0]), *(call.infer(start) for start in starts)]
+    element: Inference | None = call.loop(call.args[0])
+    parts: list[Inference | None] = [element, *(call.infer(start) for start in starts)]
     found: list[Inference] = [part for part in parts if part is not None and part.annotation in _REALS]
-    return _made(call, _wider(found), *found) if len(found) == len(parts) else None
+    if len(found) == len(parts):
+        return _made(call, _wider(found), *found)
+    if element is None or element.annotation in _UNSUMMED or len(members(element.annotation) or ()) != 1:
+        return None
+    if not starts:
+        return _made(call, f"{element.annotation} | {_INT}", element)
+    start: Inference | None = parts[1]
+    same: bool = start is not None and start.annotation == element.annotation
+    emptied: bool = _empty_of(starts[0], element.annotation)
+    return _made(call, element.annotation, element) if same or emptied else None
+
+
+def _empty_of(start: ast.expr, annotation: str) -> bool:
+    """Check whether `start` is an empty `list` or `tuple` display, and `annotation` that builtin's type.
+
+    A `tuple` of any length (`tuple[T, ...]`): a fixed one's sum is longer than it.
+
+    Returns:
+      Whether it is: adding it to one changes nothing.
+
+    """
+    head: str = annotation.partition("[")[0]
+    return (isinstance(start, ast.List) and not start.elts and head == _LIST) or (
+        isinstance(start, ast.Tuple) and not start.elts and head == _TUPLE and annotation.endswith(", ...]")
+    )
 
 
 def _extreme(call: _Call) -> Inference | None:
@@ -280,10 +313,10 @@ _FIXED: Final = {
 
 
 def _iterating(call: _Call) -> Inference | None:
-    """Type `enumerate(xs)`, `zip(xs, ys)`, `map(f, xs)` or `reversed(xs)`: the iterator, of what it yields.
+    """Type `enumerate(xs)`, `zip(xs, ys)`, `map(f, xs)`, `filter(f, xs)` or `reversed(xs)`: the iterator.
 
-    As a loop over it is typed (`call.loop`): `zip[tuple[str, int]]`, `map[str]`; `enumerate[T]` by
-    the `T` it counts.
+    Of what it yields, as a loop over it is typed (`call.loop`): `zip[tuple[str, int]]`, `map[str]`,
+    `filter[str]`; `enumerate[T]` by the `T` it counts.
 
     Returns:
       The inference, or `None` where a loop's target has none, or `zip` takes more than typeshed
@@ -327,7 +360,7 @@ def _iter(call: _Call) -> Inference | None:
 
 _CALLS: Final[Mapping[str, _Rule]] = {
     "abs": _abs,
-    **dict.fromkeys(("enumerate", "map", "reversed", "zip"), _iterating),
+    **dict.fromkeys(("enumerate", "filter", "map", "reversed", "zip"), _iterating),
     "dict": _dict,
     "dict.fromkeys": _fromkeys,
     "divmod": _divmod,

@@ -1039,10 +1039,19 @@ each item sized the same way.
          more on Django, where most `top`s have no type.
    - [x] **`iter(xs)` bound to a name**: an `Iterator` of what a loop over `xs` binds, imported
          where the module can name it. 2 more on Django.
-   - [ ] **`max`, `min` and `sum`** of what isn't a builtin number, and `filter`.
+   - [x] **`max`, `min` and `sum`** of what isn't a builtin number, and `filter`: `min` and `max`
+         typed any elements already; `sum` of a class's instances is a `T | int` (`T` from a
+         start of it), `filter(f, xs)` a `filter[T]` where `f` can't narrow. Of the standard
+         library's bindings of the four with no fix, most take values of no known type
+         (`min(count, 8192)`, a parameter); 6 more fixes there.
    - [ ] **A generic class's operator** (`Counter[str] + Counter[str]`), a reflected method's
          (`2 * span`), and a checked file's class under a library one.
-   - [ ] **A loop over the rest of `itertools`**, and a tuple added to something.
+   - [ ] **A loop over the rest of `itertools`**, and a tuple added to something. Done already
+         but `chain.from_iterable` (14 bindings on the standard library, pandas, pydantic and
+         sqlalchemy), a generic classmethod the tables don't hold; `zip_longest` with no
+         `fillvalue` and `starmap` of a generic function are typeshed's `Any`. The tables need it,
+         as they need a reflected method (`__rmul__`, for `2 * span`) and a generic class's
+         operator's right operand bound (`Counter[_S]`): each a change to `stdlib_tables`.
 
    Done when each of those is a fix. About 9 hours left, for about 0.3% (some 800 fixes, of the
    1,050 those reach).
@@ -1119,8 +1128,14 @@ Gaps the census exposes in what `--fix` infers, smallest first.
 1. **`getattr` by a literal name.** 576 of the 1,268 `getattr(...)` bindings with no fix on the
    seven corpora name the attribute as a literal, 521 of them with a default: on a receiver whose
    type is known that's `obj.name`'s type, with a default `T | D`; today an `Any`, or an `Any | T`
-   (`fix/values/shapes.py`). Done when `getattr(self.conn, "timeout", None)` is typed as
-   `self.conn.timeout` is. About 3 hours; coverage up to 0.2%.
+   (`fix/values/shapes.py`). Done, not yet run: a literal name that `obj.name` could spell is typed
+   as that read is, at any `vague` (`| None` by a `None` default, joined with a default of another
+   plain type), its guesses the read's; not an `X | None` read with no `None` default, which a check
+   narrows. On pydantic no fix more: its 44 are dunders on receivers of no known type
+   (`__module__`, `__set_name__`), or attributes the receiver's class doesn't declare, which is why
+   `getattr` is used; the other corpora's count is a run's. Done when
+   `getattr(self.conn, "timeout", None)` is typed as `self.conn.timeout` is. About 3 hours; coverage
+   up to 0.2%, likely far less.
 2. **An assignment's `# type:` comment as its fix.** With `type-comments` off, `x = v  # type: T` is
    LVA001 and its fix is inferred from `v`, the author's `T` ignored (`rules/binding.py` reads the
    comment only to decide whether the name is annotated); a loop's comment (LVA003) is already the
@@ -1131,9 +1146,14 @@ Gaps the census exposes in what `--fix` infers, smallest first.
 3. **`pytest.importorskip("mod")` as an import.** 272 bindings on the seven corpora are its `Any`,
    and what's read of them (`pa.array(...)` in pandas's tests) has no fix either. The name is the
    module the literal names: known as `import mod as name` is for what's read of it, the binding
-   itself left (an annotation would hide the module from a checker). Done when
-   `pa = pytest.importorskip("pyarrow")`, then `arr = pa.array(...)`, types `arr`. About 3 hours;
-   coverage unmeasured.
+   itself left (an annotation would hide the module from a checker). Done, not yet run: the index
+   takes the name as the module where every binding of it in the file is that call, and an import
+   a fix adds from it goes under `if TYPE_CHECKING:`. Nothing more on pydantic or pandas's
+   `tests/io` in all scopes: the packages pandas skips for (pyarrow, scipy, matplotlib, lxml,
+   numba) aren't in the corpora's environment, and sqlalchemy's reads were typed through the
+   file's own `TYPE_CHECKING` import already. Its reach is a run's, on corpora whose environment has
+   what they skip for. Done when `pa = pytest.importorskip("pyarrow")`, then
+   `arr = pa.array(...)`, types `arr`. About 3 hours; coverage unmeasured.
 4. **`defaultdict` and `Counter` through `filled`.** 229 `collections.defaultdict(...)` calls have
    no fix on the 47 corpora ([Done](#--fix) states the limitation, with no item): `filled` types an
    empty container by what the function adds to it, so `defaultdict(list)` is a

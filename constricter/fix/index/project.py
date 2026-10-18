@@ -578,8 +578,27 @@ def _followed(modules: Mapping[str, Module], origin: Origin, hops: int) -> Origi
     module: Module | None = modules.get(origin[0])
     if module is None or origin[1] is None or not hops:
         return origin
-    onward: Origin | None = module.names.get(origin[1]) or module.guarded.get(origin[1])
+    onward: Origin | None = (
+        module.names.get(origin[1]) or module.guarded.get(origin[1]) or _starred(modules, module, origin[1])
+    )
     return _followed(modules, onward, hops - 1) if onward and onward[0] != module.name else origin
+
+
+def _starred(modules: Mapping[str, Module], module: Module, name: str) -> Origin | None:
+    """Find which module `module` takes `name` from by importing everything from it (`from .main import *`).
+
+    The last that binds it, as the imports run; a name with a leading underscore no such import takes.
+
+    Returns:
+      The name there, or `None`.
+
+    """
+    star: str
+    for star in reversed(module.stars):
+        other: Module | None = modules.get(star)
+        if other is not None and not name.startswith("_") and name in exported(other):
+            return star, name
+    return None
 
 
 def _named(

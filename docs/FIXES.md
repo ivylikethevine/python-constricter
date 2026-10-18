@@ -30,8 +30,11 @@ the value decides it, for a plain `name = value` in a function or module body:
   `# type:` signature comment (`# type: () -> List[str]`) (not a generic, async or redefined one,
   and not a return of `None`, `Any` or one that uses a `TypeVar`), in the same module or, with the
   CLI, in another file it's checking: `from pkg.util import f`, `import pkg.util as u` or
-  `from pkg import util` then `u.f()`, relative imports and re-exports all work. A name in the type
-  the file doesn't import is imported for type checking alone (see below). A decorated function
+  `from pkg import util` then `u.f()`, relative imports and re-exports all work, a package's star
+  imports too (`from .main import *`, under `if TYPE_CHECKING:` as well), and
+  `m = pytest.importorskip("pkg.util")` as `import pkg.util as m`, in a function too, where every
+  binding of `m` in the file is that. A name in the type the
+  file doesn't import is imported for type checking alone (see below). A decorated function
   counts (a method too) only under decorators that give it back: the standard library's
   (`functools.cache`, `lru_cache`, `wraps(...)`, `abc.abstractmethod`, `typing.final`, `override`,
   `deprecated(...)`), and a function whose own signature says so, taking `F` and returning `F`, or
@@ -54,14 +57,19 @@ the value decides it, for a plain `name = value` in a function or module body:
   `type[C]` for an `x` of one type `C` (not a union's, nor `None`'s), as `x.__class__` is (not a
   class's own, its metaclass), and a class's `__name__`, `__qualname__` and `__module__` read of
   either are `str`s, whatever `x` is (`type(x).__name__`, `self.__class__.__name__`);
-- `enumerate(xs)`, `zip(xs, ys)`, `map(f, xs)` and `reversed(xs)` bound to a name, by what a loop
-  over each binds: `enumerate[str]`, `zip[tuple[str, int]]`, `map[int]`, `reversed[str]` (`zip` of
-  up to five iterables, as typeshed's overloads go). At module level, where an annotation is
-  evaluated, `zip`'s, `map`'s and `reversed`'s are quoted: no Python subscripts them at run time.
+- `enumerate(xs)`, `zip(xs, ys)`, `map(f, xs)`, `filter(f, xs)` and `reversed(xs)` bound to a
+  name, by what a loop over each binds: `enumerate[str]`, `zip[tuple[str, int]]`, `map[int]`,
+  `filter[str]`, `reversed[str]` (`zip` of up to five iterables, as typeshed's overloads go;
+  `filter(None, xs)` less `None`; not a `filter` whose predicate may narrow, a function declared to
+  return a `TypeGuard` or `TypeIs`, `callable` or a callable of no known kind). At module level,
+  where an annotation is evaluated, `zip`'s, `map`'s, `filter`'s and `reversed`'s are quoted: no
+  Python subscripts them at run time.
   `iter(xs)` is an `Iterator` of the same (`Iterator[str]`), imported from `collections.abc` where
   the module doesn't name it, and left alone where the name is something else's;
 - a builtin its arguments decide, as typeshed has it: `abs(n)`, `round(x)` (an `int`; with digits,
-  `x`'s type), `divmod(n, 2)` (a `tuple[int, int]`) and `sum(xs)` of builtin numbers; `min` and
+  `x`'s type), `divmod(n, 2)` (a `tuple[int, int]`) and `sum(xs)` of builtin numbers, or of another
+  class's instances `T`: a `T | int` (its `0` for no elements), a `T` from a start of `T` or an
+  empty `list` or `tuple` (`sum(rows, [])`); `min` and
   `max` of several values of one type (of an `int` and a `float`, a `float`), or of something's
   elements (`max(names)`, `key=` or not; with `default=`, a value of that type, or `None` for
   `T | None`); `next(it)` of what yields a known type (`next(iter(names))`,
@@ -375,11 +383,11 @@ a loop over an `itertools.chain[int]` or a `collections.deque[int]` an `int`, ov
 `tarfile.TarFile` a `tarfile.TarInfo`, over `os.walk(top)` a `str` and two `list[str]`s where `top`
 is a `str` or a `pathlib` path (`bytes`, where it's a `bytes`); what's built from one too
 (`list(file)`, a comprehension). A loop over an `X | None` binds what one over the `X` does (`None`
-has no elements), and one over a name holding an `enumerate[T]`, `zip[T]`, `map[T]` or `reversed[T]`
-what that yields. `enumerate` and `zip` type each part of the target on its own:
+has no elements), and one over a name holding an `enumerate[T]`, `zip[T]`, `map[T]`, `filter[T]` or
+`reversed[T]` what that yields. `enumerate` and `zip` type each part of the target on its own:
 `for i, x in enumerate(xs)` declares `i: int` whatever `xs` is, and a guess about `xs` makes only
-`x`'s fix one. Keywords that don't change what they yield are allowed (`enumerate`'s `start=`,
-`zip`'s `strict=`, `sorted`'s `key=` and `reverse=`); a starred argument (`zip(*rows)`) isn't.
+`x`'s fix one. Keywords that don't change what they yield are allowed (`enumerate`'s `start=`, `zip`'s
+`strict=`, `sorted`'s `key=` and `reverse=`); a starred argument (`zip(*rows)`) isn't.
 
 An unpacking's names are typed one by one. A display of as many values gives each name its own
 value's type, as a plain assignment would (`a, b = x, 1` declares `b: int` whatever `x` is), every
@@ -451,9 +459,10 @@ docstring and its leading imports (below a shebang or coding line when it has ne
 `import io` if `BufferedReader` is a name the module binds. A type the module imports under a
 top-level `if TYPE_CHECKING:` is named by that import (quoted in a module body, as above). A
 standard-library type's import goes under `if TYPE_CHECKING:` only for a module nothing but the
-module's functions import (`import decimal` in a function's body): it may not be there to import
-when the module is. A class of a module only some platforms have, imported that way (`import pwd`,
-`import winreg`), is no fix: a type checker on another platform finds no such class.
+module's functions import (`import decimal` in a function's body), or that it imports by
+`pytest.importorskip`: it may not be there to import when the module is. A class of a module only
+some platforms have, imported that way (`import pwd`, `import winreg`), is no fix: a type checker on
+another platform finds no such class.
 
 An installed package that declares its types (a `py.typed` package, its stubs first; a stub package,
 `pkg-stubs`; a lone `mod.pyi`) is read the same way for the calls into it, and never fixed: found on
@@ -528,10 +537,13 @@ element, `typing.cast`, a callable's call and a type checker's hint. A type vagu
 still its name's, with no fix: what's read of it is typed (`fields = schema.fields()`, declared a
 `dict[str, Any]`, stays as it is, and `for name in fields` declares `name: str`), by a declared
 return (a property's too), `typing.cast` or a callable's call. To a later binding's fix and to
-LVA009 it's a value of no known type. What only a vague type describes is typed from 1, `Any`
-imported from `typing` if it must be: `getattr(obj, name)` is an `Any`, with a default of a known
-type `T` an `Any | T`; and a standard-library function declared to return `Any` alone (`json.loads`,
-`pickle.loads`, `ast.literal_eval`) an `Any`; and `object()` is an `object`.
+LVA009 it's a value of no known type. `getattr(obj, "name")` with a literal name is typed as
+`obj.name` is, at any level: with a `None` default `| None`, with a default of another plain type
+their union (`getattr(conn, "timeout", 1.5)` a `float`), and not where `obj.name` is an `X | None` a
+check would narrow and the default isn't `None`. What only a vague type describes is typed from 1,
+`Any` imported from `typing` if it must be: any other `getattr(obj, name)` is an `Any`, with a
+default of a known type `T` an `Any | T`; and a standard-library function declared to return `Any`
+alone (`json.loads`, `pickle.loads`, `ast.literal_eval`) an `Any`; and `object()` is an `object`.
 
 LVA012 (opt-in) offers `Final`: around the annotation there (`x: int = 1` becomes
 `x: Final[int] = 1`), with LVA001's type for an unannotated name (whose own fix it then replaces),

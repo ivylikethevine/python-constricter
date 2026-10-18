@@ -11,7 +11,7 @@ from typing import Final, TypeAlias, cast
 from weakref import WeakKeyDictionary
 
 from constricter.fix.core.known import Checking, Guarded, ImportPlan, Origin, Returns
-from constricter.rules.annotations import roots
+from constricter.rules.annotations import dotted, roots
 from constricter.rules.syntax import FunctionDef, Start, import_bindings
 from constricter.rules.walked import classes, of_type
 
@@ -19,6 +19,9 @@ _TYPE_CHECKING: Final = "TYPE_CHECKING"
 _QUOTES: Final = ("'", '"')  # what starts a string in an annotation: a name in one isn't a class's
 _STDLIB: Final = sys.stdlib_module_names
 _FUTURE: Final = "__future__"
+_IMPORTORSKIP: Final = "pytest.importorskip"  # a module it names may be missing
+_MODNAME: Final = "modname"  # its parameter
+_DOT: Final = "."
 _ANNOTATIONS: Final = "annotations"  # `from __future__ import annotations` postpones them all
 # Each module's names, for as long as its tree lives: the index reads them, then the check.
 _Taken: TypeAlias = tuple[frozenset[str], frozenset[str]]
@@ -357,6 +360,8 @@ def _read_inner_imports(tree: ast.Module) -> Iterator[ast.Import | ast.ImportFro
 def _lazy(tree: ast.Module, bound: dict[str, str]) -> frozenset[str]:
     """Name the top-level packages only the module's functions import (see `ImportPlan.lazy`).
 
+    And those it imports by `pytest.importorskip("mod")`, anywhere: they may be missing when it runs.
+
     Returns:
       Them.
 
@@ -371,9 +376,33 @@ def _lazy(tree: ast.Module, bound: dict[str, str]) -> frozenset[str]:
                 if isinstance(stmt, ast.Import)
                 else [stmt.module or ""] * (not stmt.level)
             )
-        )
+        ).union(_skipped(tree, bound))
         - running
     )
+
+
+def _skipped(tree: ast.Module, bound: Mapping[str, str]) -> Iterator[str]:
+    """Name the top-level packages `pytest.importorskip("mod")` imports, however the module names it.
+
+    Yields:
+      Each, once a call.
+
+    """
+    node: ast.Call
+    for node in cast("list[ast.Call]", of_type(tree, ast.Call)):
+        callee: str | None = dotted(node.func)
+        head: str
+        rest: str
+        head, _, rest = (callee or "").partition(_DOT)
+        named: list[ast.expr] = [*node.args[:1], *(k.value for k in node.keywords if k.arg == _MODNAME)]
+        if (
+            head in bound
+            and (f"{bound[head]}{_DOT}{rest}" if rest else bound[head]) == _IMPORTORSKIP
+            and len(named) == 1
+            and isinstance(named[0], ast.Constant)
+            and isinstance(named[0].value, str)
+        ):
+            yield named[0].value.partition(_DOT)[0]
 
 
 def taken_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:

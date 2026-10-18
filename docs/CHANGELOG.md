@@ -49,6 +49,25 @@ Notable changes, newest first. Each release's full notes are generated from its 
   `classnames`, `declared`, `installed`, `read`, `stubbed`, and `stub_names` and `stub_signatures` as
   `names` and `signatures`) in `constricter/fix/index/stubs/`, their tests laid out the same. Nothing
   the command or the plugins expose moved.
+- `--fix` types `filter(f, xs)` as `filter[T]` by what `xs` yields (less `None` for a `None`
+  predicate), and a loop over it, where `f` can't narrow (a lambda, a builtin but `callable`, a
+  function declaring no `TypeGuard` or `TypeIs`); and `sum(xs)` of another class's instances `T` as
+  `T | int`, or `T` with a start of `T` or an empty `list` or `tuple` (`sum(rows, [])`). On the
+  standard library's 146 files that bind such calls, 6 more fixes.
+- `--fix` takes `m = pytest.importorskip("mod")` as `import mod as m`, at a module's top or in a
+  function, where every binding of `m` in the file is that call (or `import mod`): what's read of
+  `m` is typed as after the import (`m.make()`), the binding itself left as it is. An import a fix
+  adds from a module the file `importorskip`s goes under `if TYPE_CHECKING:`, as one from a module
+  only its functions import does: the module may be missing when the file runs.
+- `--fix` follows a package's star imports, those under `if TYPE_CHECKING:` too, to the class a
+  re-export names: a function declared to return `type['BaseModel']`, written through
+  `from pydantic import BaseModel`, now types its calls in a file that imports `BaseModel` from
+  `pydantic.main` (pydantic's `__init__` imports it by `from .main import *`): 6 more fixes on
+  pydantic.
+- `--fix` types `getattr(obj, "name")` as `obj.name` is, at any `vague`: `| None` with a `None`
+  default, and joined with a default of another plain type (`getattr(conn, "timeout", "")`, a
+  `float | str`). Not where `obj.name` is an `X | None` and the default isn't `None`: a checker
+  narrows such a read where the function tests it.
 - `--fix` types a test case's `with self.assertRaises((OSError, ValueError)) as cm:` as an
   `_AssertRaisesContext[OSError | ValueError]`: a tuple of classes binds a `type[_E]`'s `_E` to
   their union where the parameter takes a tuple of them too (the tables now say which do). And the

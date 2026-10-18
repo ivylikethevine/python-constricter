@@ -22,7 +22,7 @@ from constricter.empty import Empty
 from constricter.fix.core.imports import taken_names
 from constricter.fix.core.known import Origin, Passed, Returns, Takers, pickled, unpickled
 from constricter.fix.core.signatures import AWAIT
-from constricter.fix.index.origins import guarded_origins, origins_of
+from constricter.fix.index.origins import guarded_origins, origins_of, skipped, starred
 from constricter.fix.index.params import Param, open_functions
 from constricter.fix.index.stubs.declared import Declarations, Signature, declarations, kinds, overloads
 from constricter.fix.values import classvars, entered, fills
@@ -71,6 +71,8 @@ class Module:  # pylint: disable=too-many-instance-attributes
     type_vars: frozenset[str] = frozenset()  # its module-level type variables
     # What it imports under a top-level `if` or `try` (`if TYPE_CHECKING:`), for `type_vars` alone.
     guarded: Mapping[str, Origin] = field(default_factory=dict[str, Origin])
+    # The modules it imports everything from, a top-level `if` or `try`'s too (see `origins.starred`).
+    stars: tuple[str, ...] = ()
     unannotated: frozenset[str] = frozenset()  # its functions a `return` could type (`returned`)
     # Those a `return` could type but for their decorators, with them spelled: the index may vouch
     # for them (see `decorated.passed`), and they join `unannotated`.
@@ -329,6 +331,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         parsed.keep(source, (tree, own))  # for the check to take, rather than parse it and read it again
     named: str = name or module_name(path)
     names: dict[str, Origin] = origins_of(tree, named, is_package=path.stem == _PACKAGE)
+    names.update(skipped(tree, names))  # `pa = pytest.importorskip("pyarrow")`, as `import pyarrow as pa`
     return Module(
         name=named,
         returns=own.returns,
@@ -337,6 +340,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         methods=own.order.flattened(own.methods),
         type_vars=defined_type_vars(tree),
         guarded=guarded_origins(tree, named, is_package=path.stem == _PACKAGE),
+        stars=starred(tree, named, is_package=path.stem == _PACKAGE),
         unannotated=unannotated(tree.body, passing(tree, defined_type_vars(tree))),
         decorated=held_back(tree.body),
         called=_called(tree, names),

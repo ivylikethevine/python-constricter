@@ -3,7 +3,7 @@
 
 import ast
 from collections.abc import Iterator, Mapping
-from typing import Final
+from typing import Final, cast
 
 from constricter.fix.core.known import PARAM, Known, stood
 from constricter.fix.libraries import stdlib, walks
@@ -86,8 +86,12 @@ def _deciding(value: ast.AST, known: Known, declared: Mapping[str, str]) -> Iter
             continue
         if isinstance(node, ast.Call) and (opened(node, known) or library_class(node, known)):
             continue
+        read: ast.Attribute | None = shapes.named_read(node, known) if isinstance(node, ast.Call) else None
         if isinstance(node, ast.Call) and fixed_by_callee(node, known, declared):
             waiting.append(node.func)
+        elif read is not None:
+            # Typed as the read it makes, `obj.name`: an attribute nothing declares is a guess there too.
+            waiting.extend(reversed([read, *cast("ast.Call", node).args[2:]]))
         else:
             waiting.extend(reversed(children(node)))
 
