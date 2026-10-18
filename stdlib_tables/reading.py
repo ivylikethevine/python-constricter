@@ -57,19 +57,9 @@ _ENTER: Final = "__enter__"
 _GET_ITEM: Final = "__getitem__"
 # The methods binary operators call on their left operand, read with a class's methods whose
 # arguments decide their return (not `members`: what the right operand is always matters).
-OPERATORS: Final = frozenset(
-    {
-        "__add__",
-        "__sub__",
-        "__mul__",
-        "__truediv__",
-        "__floordiv__",
-        "__mod__",
-        "__and__",
-        "__or__",
-        "__xor__",
-    },
-)
+_FORWARD: Final = ("add", "sub", "mul", "truediv", "floordiv", "mod", "and", "or", "xor")
+# And their reflected twins, called on the right operand where the left's can't take it (`2 * span`).
+OPERATORS: Final = frozenset({f"__{name}__" for name in _FORWARD} | {f"__r{name}__" for name in _FORWARD})
 _CLASS_GETITEM: Final = "__class_getitem__"
 _TYPING: Final = frozenset({"typing", "typing_extensions"})
 # Builtins spelled as themselves; `object` and `type` are vague, `function` and `ellipsis` internal.

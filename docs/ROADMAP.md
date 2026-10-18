@@ -1044,17 +1044,22 @@ each item sized the same way.
          start of it), `filter(f, xs)` a `filter[T]` where `f` can't narrow. Of the standard
          library's bindings of the four with no fix, most take values of no known type
          (`min(count, 8192)`, a parameter); 6 more fixes there.
-   - [ ] **A generic class's operator** (`Counter[str] + Counter[str]`), a reflected method's
-         (`2 * span`), and a checked file's class under a library one.
-   - [ ] **A loop over the rest of `itertools`**, and a tuple added to something. Done already
-         but `chain.from_iterable` (14 bindings on the standard library, pandas, pydantic and
-         sqlalchemy), a generic classmethod the tables don't hold; `zip_longest` with no
-         `fillvalue` and `starmap` of a generic function are typeshed's `Any`. The tables need it,
-         as they need a reflected method (`__rmul__`, for `2 * span`) and a generic class's
-         operator's right operand bound (`Counter[_S]`): each a change to `stdlib_tables`.
+   - [x] **A generic class's operator** (`Counter[str] + Counter[str]`), a reflected method's
+         (`2 * span`), and a checked file's class under a library one: the tables hold the
+         reflected methods; a generic operand binds the operand's template by its type arguments;
+         a module's class under a library one takes that one's operators where it binds neither.
+         Left alone: a template of the class's base (`OrderedDict | OrderedDict`, by `dict`'s),
+         which the tables can't tell takes it, and a module's class under a generic library one
+         (`class Queue(deque[int])`), which no fix names yet (Large 5).
+   - [x] **A loop over the rest of `itertools`**, and a tuple added to something:
+         `chain.from_iterable` binds its `_S` by its argument's elements' elements (the tables'
+         `ei`), and a generic class's classmethods are held (`OrderedDict.fromkeys`);
+         `zip_longest` with no `fillvalue` and `starmap` of a generic function stay typeshed's
+         `Any`.
 
-   Done when each of those is a fix. About 9 hours left, for about 0.3% (some 800 fixes, of the
-   1,050 those reach).
+   Done when each of those is a fix: all are, not yet run on the corpora, where the reach of the
+   last two is small (some tens of bindings). For about 0.3% (some 800 fixes, of the 1,050 those
+   reach).
 
 4. **Narrowed reads.** A read of an `X | None`, or of a union the function tests, has no fix or only
    a guess: a checker narrows it where `--fix` doesn't follow the test

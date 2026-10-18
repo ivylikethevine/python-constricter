@@ -49,6 +49,16 @@ Notable changes, newest first. Each release's full notes are generated from its 
   `classnames`, `declared`, `installed`, `read`, `stubbed`, and `stub_names` and `stub_signatures` as
   `names` and `signatures`) in `constricter/fix/index/stubs/`, their tests laid out the same. Nothing
   the command or the plugins expose moved.
+- `--fix` types a builtin number's operator with a standard-library class's instance by that
+  class's reflected method (`2 * span`, a `timedelta`; `n * Decimal(...)`, a `Decimal`), and a
+  generic standard-library class's own classmethods by their arguments
+  (`OrderedDict.fromkeys(names, 0)`, an `OrderedDict[str, int]`): the standard-library tables now
+  hold both. A generic class's operator binds its operand's type arguments
+  (`Counter[str] + Counter[str]`, a `Counter[str]`); a class the module defines under a
+  standard-library one takes that one's operators where it binds neither method itself
+  (`class Money(Decimal)`: `m + m` is a `Decimal`, `stamp - span` a `Stamp`); and an iterable of
+  iterables' elements' elements bind a type variable (`chain.from_iterable(rows)`, `rows` a
+  `list[list[int]]`, is a `chain[int]`).
 - `--fix` types `filter(f, xs)` as `filter[T]` by what `xs` yields (less `None` for a `None`
   predicate), and a loop over it, where `f` can't narrow (a lambda, a builtin but `callable`, a
   function declaring no `TypeGuard` or `TypeIs`); and `sum(xs)` of another class's instances `T` as

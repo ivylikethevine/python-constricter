@@ -193,7 +193,9 @@ the value decides it, for a plain `name = value` in a function or module body:
   read the same way, from its `__new__` or `__init__`: `collections.deque(names)` with
   `names: list[str]` is a `collections.deque[str]`, `itertools.product(a, b)` an
   `itertools.product[tuple[str, int]]`, `array.array("i")` an `array.array[int]`, `weakref.ref(obj)`
-  a `weakref.ReferenceType[Foo]`. Only when that's certain: every signature that may be the one (not
+  a `weakref.ReferenceType[Foo]`; and its own classmethods (`OrderedDict.fromkeys(names, 0)`, an
+  `OrderedDict[str, int]`; `itertools.chain.from_iterable(rows)` a `chain[int]`, by the elements of
+  `rows`' elements). Only when that's certain: every signature that may be the one (not
   certainly refusing the arguments, up to the first that certainly takes them) gives the same type,
   on every platform and version, with every type variable bound (`collections.deque()` isn't typed).
   An argument binds a type variable by its type: a builtin scalar (`str`, `bytes`, `int`, a literal,
@@ -351,7 +353,13 @@ the value decides it, for a plain `name = value` in a function or module body:
   method (`__add__`, `__sub__`, ...) in typeshed that takes the right operand, as a type checker
   picks it: `when - start`, two `datetime`s, is a `timedelta`, `when - span` a `datetime`,
   `price * 2` a `Decimal` (not where the right operand's class is under the left's, or is a checked
-  file's or an installed package's, whose reflected method may answer); a list, set or dict
+  file's or an installed package's, whose reflected method may answer), and a builtin number's with
+  a standard-library class's instance by that one's reflected method (`2 * span`, a `timedelta`). A
+  generic class's instance is matched by its type arguments (`Counter[str] + Counter[str]`, a
+  `Counter[str]`; not where an earlier signature takes a base's, `dict[_KT, _VT]`, which may take
+  it), and a class the module defines under a standard-library one as that one, where neither it
+  nor a class between binds the method or its reflected twin, its `Self` the module's class
+  (`class Stamp(datetime)`: `stamp - span` a `Stamp`); a list, set or dict
   comprehension whose elements are known; `sorted` (with `key=` and `reverse=` or not), `list`,
   `set`, `frozenset` or `tuple` of something whose elements are (a generator expression's too:
   `list(str(i) for i in ns)`); and `await` of a call to one of the module's `async def`s, another

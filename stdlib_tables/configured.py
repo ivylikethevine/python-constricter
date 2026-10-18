@@ -378,10 +378,19 @@ def _aliased(reader: _Reader, value: "ast.expr", module: str) -> ClassRef | None
 
 
 def _enter_constructor(tables: Tables, reader: _Reader, path: str, klass: ClassRef) -> None:
-    """Enter a generic class's constructor, under a path naming it (see `Overloads.constructor`)."""
+    """Enter a generic class's constructor, under a path naming it (see `Overloads.constructor`).
+
+    And a generic class's own classmethods, under that path and their names (see
+    `Overloads.class_methods`).
+    """
     signatures: Signatures | None
     if (signatures := reader.overloads.constructor(klass)) is not None:
         tables.overloads[path] = [signatures]
+    if not reader.overloads.type_parameters(klass):  # a builtin's alias (`getint = int`)
+        return
+    name: str
+    for name, signatures in reader.overloads.class_methods(klass).items():
+        tables.overloads[f"{path}.{name}"] = [signatures]
 
 
 def _function(tables: Tables, reader: _Reader, path: str, module: str, defs: Defs) -> None:

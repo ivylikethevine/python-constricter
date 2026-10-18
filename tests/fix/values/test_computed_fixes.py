@@ -180,8 +180,8 @@ def test_an_operator_is_typed_by_its_left_operands_library_method() -> None:
         "q": ("Fraction", False),  # a `bool`, where an `int` is taken
         "r": (None, False),
         "s": (None, False),
-        "t": (None, False),  # a class of the module's: its own `__rsub__` may answer
-        "u": (None, False),  # a generic class's operand
+        "t": ("timedelta", False),  # a class of the module's binding neither method: `datetime`'s
+        "u": ("Counter[str]", False),  # a generic class's, by its type arguments
         "v": (None, False),
         "w": (None, False),
         "y": ("float", False),
@@ -222,3 +222,165 @@ def test_a_comprehension_over_a_guess_is_a_guess() -> None:
         ("box", "Box", True),
         ("x_", "list[int]", True),
     ]
+
+
+def test_a_builtin_number_left_of_a_library_class_takes_its_reflected_method() -> None:
+    """`2 * span` is a `timedelta`: an `int`'s `__mul__` takes numbers alone, so `__rmul__` answers.
+
+    Not where the right one's reflected method takes no such number (`3 - span`), and not a class
+    under the number's own (an `IntFlag`), whose reflected method Python asks first.
+    """
+    source: str = (
+        "import enum\n"
+        "from datetime import timedelta\n"
+        "from decimal import Decimal\n"
+        "from fractions import Fraction\n"
+        "class Bits(enum.IntFlag):\n"
+        "    A = 1\n"
+        "def f(span: timedelta, d: Decimal, fr: Fraction, n: int, x: float, bits: Bits) -> None:\n"
+        "    a = 2 * span\n"
+        "    b = n * d\n"
+        "    c = 1 + fr\n"
+        "    e = x * fr\n"
+        "    g = 3 - span\n"
+        "    h = n + span\n"
+        "    i = 2 | bits\n"
+    )
+    fixed: dict[str, tuple[str | None, bool]] = {
+        o.name: (o.fix, o.unsafe) for o in check_source(source) if o.code == LOCAL
+    }
+    assert fixed == {
+        "a": ("timedelta", False),
+        "b": ("Decimal", False),
+        "c": ("Fraction", False),
+        "e": ("float", False),
+        "g": (None, False),
+        "h": (None, False),
+        "i": (None, False),
+    }
+
+
+def test_a_generic_library_class_method_is_typed_by_its_arguments() -> None:
+    """`OrderedDict.fromkeys(names, 0)` binds its type parameters as a constructor's call does."""
+    source: str = (
+        "import collections\n"
+        "def f(names: list[str]) -> None:\n"
+        "    a = collections.OrderedDict.fromkeys(names, 0)\n"
+        "    b = collections.ChainMap.fromkeys(names, 1.5)\n"
+        "    c = collections.OrderedDict.fromkeys(names)\n"
+    )
+    fixed: dict[str, str | None] = {o.name: o.fix for o in check_source(source) if o.code == LOCAL}
+    assert fixed == {
+        "a": "collections.OrderedDict[str, int]",
+        "b": "collections.ChainMap[str, float]",
+        "c": None,  # each value `Any | None`
+    }
+
+
+def test_a_generic_library_class_operator_binds_its_operands_type_arguments() -> None:
+    """`Counter[str] + Counter[str]` is a `Counter[str]`; a `deque[int]`'s `Self`, by another of its type.
+
+    A type argument the left operand's own binds must be the right one's (`Counter[str] - Counter[int]`
+    isn't typed). Not where a signature's operand is the class's base (`OrderedDict | OrderedDict`
+    takes a `dict[_KT, _VT]`), which may take it or not.
+    """
+    source: str = (
+        "from collections import Counter, OrderedDict, deque\n"
+        "def f(c: Counter[str], ci: Counter[int], d: deque[int], ds: deque[str], o: OrderedDict[str, int],\n"
+        "      n: int, odd: 'Counter[str, int]') -> None:\n"
+        "    a = c + c\n"
+        "    b = c + ci\n"
+        "    e = c - ci\n"
+        "    g = d + d\n"
+        "    h = d + ds\n"
+        "    i = d * n\n"
+        "    j = o | o\n"
+        "    k = c | c\n"
+        "    m = c + odd\n"
+    )
+    fixed: dict[str, str | None] = {o.name: o.fix for o in check_source(source) if o.code == LOCAL}
+    assert fixed == {
+        "a": "Counter[str]",
+        "b": "Counter[str | int]",
+        "e": None,
+        "g": "deque[int]",
+        "h": None,
+        "i": "deque[int]",
+        "j": None,
+        "k": "Counter[str]",
+        "m": None,  # not as many type arguments as its template
+    }
+
+
+def test_a_class_under_a_library_one_takes_its_operators() -> None:
+    """`Money(Decimal) + Money` is what `Decimal.__add__` gives, its `Self` the module's own class.
+
+    Not where the class, or one between, binds the operator or its reflected twin itself.
+    """
+    source: str = (
+        "from datetime import datetime, timedelta\n"
+        "from decimal import Decimal\n"
+        "class Money(Decimal):\n"
+        "    pass\n"
+        "class Own(Decimal):\n"
+        "    def __add__(self, other: object) -> 'Own':\n"
+        "        return self\n"
+        "class Back(Decimal):\n"
+        "    def __radd__(self, other: object) -> 'Back':\n"
+        "        return self\n"
+        "class Stamp(datetime):\n"
+        "    pass\n"
+        "def f(m: Money, o: Own, back: Back, s: Stamp, span: timedelta, d: Decimal, n: int) -> None:\n"
+        "    a = m + m\n"
+        "    b = m + n\n"
+        "    c = o + o\n"
+        "    e = s - span\n"
+        "    g = s - s\n"
+        "    h = d + m\n"
+        "    i = n * m\n"
+        "    j = d + back\n"
+        "    k = n + back\n"
+    )
+    fixed: dict[str, str | None] = {o.name: o.fix for o in check_source(source) if o.code == LOCAL}
+    assert fixed == {
+        "a": "Decimal",
+        "b": "Decimal",
+        "c": None,
+        "e": "Stamp",
+        "g": "timedelta",
+        "h": "Decimal",
+        "i": "Decimal",
+        "j": None,
+        "k": None,
+    }
+
+
+def test_an_iterable_of_iterables_binds_by_the_elements_elements() -> None:
+    """`chain.from_iterable(rows)`, `rows` a `list[list[int]]`, is a `chain[int]`.
+
+    Not where the elements aren't a container it reads (a `str`'s, an unknown value's), or the
+    outer container's elements aren't its first type argument's.
+    """
+    source: str = (
+        "import itertools\n"
+        "from itertools import chain\n"
+        "def f(names: list[str], rows: list[list[int]], sets: tuple[set[str], ...], q,\n"
+        "      table: dict[str, list[int]]) -> None:\n"
+        "    a = itertools.chain.from_iterable(rows)\n"
+        "    b = chain.from_iterable([names, names])\n"
+        "    c = chain.from_iterable(sets)\n"
+        "    g = chain.from_iterable(names)\n"
+        "    h = chain.from_iterable(q)\n"
+        "    i = chain.from_iterable(table)\n"
+        "    j = chain.from_iterable(table.values())\n"
+    )
+    fixed: dict[str, str | None] = {o.name: o.fix for o in check_source(source) if o.code == LOCAL}
+    assert fixed == {
+        "a": "chain[int]",
+        "b": "chain[str]",
+        "c": "chain[str]",
+        "g": None,
+        "h": None,
+        "i": None,  # a `dict`'s keys are `str`s
+        "j": None,
+    }
