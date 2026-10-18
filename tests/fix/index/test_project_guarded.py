@@ -756,3 +756,62 @@ def test_a_class_an_import_names_is_the_one_its_package_re_exports(tmp_path: Pat
     for _ in range(2):
         _ = cli.main(["--fix", "--unsafe-fixes", "-q", *_SELECT, str(tmp_path)])
         assert user.read_text(encoding="utf-8") == textwrap.dedent(FRAMED_FIXED)
+
+
+def test_a_class_a_package_takes_by_a_star_import_is_the_one_it_names(tmp_path: Path) -> None:
+    """`pkg.Model`, which `pkg` imports for type checking by `from .models import *`, is `pkg.models.Model`.
+
+    So a function declaring it returns one, spelled through `pkg`, types a call in a file importing it
+    from `pkg.models`. Not a name with a leading underscore, which no star import takes.
+    """
+    _ = _write(
+        tmp_path / "pkg" / "__init__.py",
+        """
+        from typing import TYPE_CHECKING
+
+        if TYPE_CHECKING:
+            from .other import *
+            from .models import *
+        """,
+    )
+    _ = _write(tmp_path / "pkg" / "other.py", "class Other:\n    pass\n")
+    _ = _write(tmp_path / "pkg" / "models.py", "class Model:\n    pass\n\n\nclass _Hidden:\n    pass\n")
+    _ = _write(
+        tmp_path / "pkg" / "utils.py",
+        """
+        from typing import TYPE_CHECKING
+
+        if TYPE_CHECKING:
+            from pkg import Model, _Hidden
+
+
+        def make() -> type['Model']:
+            from pkg.models import Model
+
+            return Model
+
+
+        def hidden() -> type['_Hidden']:
+            from pkg.models import _Hidden
+
+            return _Hidden
+        """,
+    )
+    use: Path = _write(
+        tmp_path / "pkg" / "use.py",
+        """
+        from typing import TYPE_CHECKING
+
+        from .utils import hidden, make
+
+        if TYPE_CHECKING:
+            from .models import Model, _Hidden
+
+
+        def f() -> None:
+            m = make()
+            h = hidden()
+        """,
+    )
+    catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
+    assert project.calls(catalog, use, {}) == {"make": "type[Model]"}

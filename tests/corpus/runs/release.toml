@@ -1,5 +1,5 @@
 # What a version's section of docs/RUNS.md records: the seven corpora with this checkout, checked at
-# every level and fixed, under this checkout's version (or `--label 0.4.0-rc.1`, a checkpoint).
+# every level and fixed, under `--label`: the release's version (`0.5.0`), or a checkpoint's (`0.5.0-rc.1`).
 
 [run]
 versions = ["dev"]

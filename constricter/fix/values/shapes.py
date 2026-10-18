@@ -12,12 +12,14 @@ whose type is a union of two types or more isn't taken at all.
 """
 
 import ast
+import keyword
 import re
 from collections.abc import Callable, Iterator
 from typing import Final, TypeAlias
 
 from constricter.fix.core.known import ImportPlan, Inference, Known, Partial
 from constricter.fix.libraries import stdlib
+from constricter.fix.values import displays
 from constricter.fix.values.members import keyed, may_miss, parsed, partial_method
 from constricter.rules.annotations import dotted
 from constricter.rules.flow import members
@@ -497,14 +499,11 @@ def partly(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
             return None
 
 
-def attribute_of(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
-    """Infer `getattr(obj, name)`: an `Any`; with a default of a known type `T`, an `Any | T`.
-
-    Where `vague` lets it be written (from 1), `Any` named as the module can.
+def _getattr_args(value: ast.expr, known: Known) -> list[ast.expr] | None:
+    """Find the arguments of a call to the builtin `getattr`: an object, a name and maybe a default.
 
     Returns:
-      The inference, or `None` for anything else, a module that binds `getattr` itself, or a
-      default of no known type.
+      The arguments, or `None` for any other value, or a module that binds `getattr` itself.
 
     """
     args: list[ast.expr]
@@ -512,12 +511,88 @@ def attribute_of(value: ast.expr, known: Known, infer: Infer) -> Inference | Non
         case ast.Call(func=ast.Name(id="getattr"), args=args, keywords=[]) if (
             _WITH_DEFAULT <= len(args) <= _WITH_DEFAULT + 1
             and known.is_builtin(_GETATTR)
-            and known.limits.vague > 0
             and not any(isinstance(arg, ast.Starred) for arg in args)
         ):
-            pass
+            return args
         case _:
             return None
+
+
+def named_read(value: ast.expr, known: Known) -> ast.Attribute | None:
+    """Write `getattr(obj, "name", ...)` as the read it makes, `obj.name`.
+
+    Returns:
+      The read, or `None` for any other value, or a name that isn't one `obj.name` could spell (a
+      keyword, or `"__x"`, which a class's body would mangle).
+
+    """
+    args: list[ast.expr] | None = _getattr_args(value, known)
+    obj: ast.expr
+    name: str
+    match args:
+        case [obj, ast.Constant(value=str() as name), *_] if (
+            name.isidentifier()
+            and not keyword.iskeyword(name)
+            and not (name.startswith("__") and not name.endswith("__"))
+        ):
+            return ast.copy_location(ast.Attribute(obj, name, ast.Load()), value)
+        case _:
+            return None
+
+
+def _named(value: ast.expr, args: list[ast.expr], known: Known, infer: Infer) -> Inference | None:
+    """Infer `getattr(obj, "name")` as `obj.name` is; with a `None` default, or `None`.
+
+    With a default of another known type, the union of both, where `displays.union` writes one.
+
+    Returns:
+      The inference, or `None` where the read, or a default, has no known type.
+
+    """
+    read: ast.Attribute | None = named_read(value, known)
+    found: Inference | None = None if read is None else typed(read, infer)
+    defaulted_none: bool = len(args) > _WITH_DEFAULT and is_none(args[_WITH_DEFAULT])
+    # An `X | None` read is nearly always narrowed first, as `doubts.narrowed_first` has it.
+    if found is None or (_NONE in (members(found.annotation) or ()) and not defaulted_none):
+        return None
+    reason: str = f"`getattr` of `{ast.unparse(read or value)}`, {found.reason}"
+    kinds: frozenset[str] = found.kinds | {_BUILTIN}
+    if len(args) == _WITH_DEFAULT:
+        return Inference(found.annotation, reason, kinds, found.reads)
+    default: ast.expr = args[_WITH_DEFAULT]
+    if defaulted_none:
+        union: str | None = or_none(found.annotation)
+        return None if union is None else Inference(union, f"{reason}, or `None`", kinds, found.reads)
+    other: Inference | None = infer(default)
+    joined: str | None = (
+        None
+        if other is None
+        else found.annotation
+        if other.annotation == found.annotation
+        else displays.union([found.annotation, other.annotation])
+    )
+    if other is None or joined is None:
+        return None
+    return Inference(joined, f"{reason}, or its default", kinds | other.kinds, found.reads)
+
+
+def attribute_of(value: ast.expr, known: Known, infer: Infer) -> Inference | None:
+    """Infer `getattr(obj, name)`: by a literal name, as `obj.name` is (see `_named`); else an `Any`.
+
+    The `Any` with a default of a known type `T` is an `Any | T`, where `vague` lets it be written
+    (from 1), `Any` named as the module can.
+
+    Returns:
+      The inference, or `None` for anything else, a module that binds `getattr` itself, or a
+      default of no known type.
+
+    """
+    args: list[ast.expr] | None
+    if (args := _getattr_args(value, known)) is None:
+        return None
+    found: Inference | None = _named(value, args, known, infer)
+    if found is not None or known.limits.vague <= 0:
+        return found
     plan: ImportPlan | None = known.names.plan
     spelled: str | None = None if plan is None else plan.spell(_TYPING_ANY)
     default: Inference | None = infer(args[2]) if len(args) > _WITH_DEFAULT else None

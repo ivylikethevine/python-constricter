@@ -24,7 +24,7 @@ _ELEMENTS: Final = {"str": "str", "bytes": "int", "bytearray": "int", "range": "
 # Containers whose one type parameter is their elements'.
 # And the builtin iterators', what they yield (`zip[tuple[str, int]]`); `enumerate[T]` counts its `T`s.
 _ONE_ELEMENT_TYPE: Final = frozenset(
-    {"list", "List", "set", "Set", "frozenset", "FrozenSet", "zip", "map", "reversed"},
+    {"list", "List", "set", "Set", "frozenset", "FrozenSet", "zip", "map", "filter", "reversed"},
 )
 # What yields its first type parameter, however it's named (`Iterator[T]`, `abc.Generator[T, None, None]`).
 _YIELDING: Final = frozenset({"Iterable", "Iterator", "Generator"})
@@ -47,7 +47,8 @@ ENUMERATE: Final = "enumerate"
 ZIP: Final = "zip"
 MAP: Final = "map"  # yields what its function returns, whatever it's mapped over
 ITER: Final = "iter"  # yields its one argument's elements (with a sentinel, what its callable returns)
-ITERATORS: Final = frozenset({RANGE, ENUMERATE, ZIP, MAP, ITER, *SAME_ELEMENTS})
+FILTER: Final = "filter"  # yields its second argument's elements its predicate keeps
+ITERATORS: Final = frozenset({RANGE, ENUMERATE, ZIP, MAP, ITER, FILTER, *SAME_ELEMENTS})
 # The keywords each of `ITERATORS` takes that don't change what it yields (`sorted`'s only its order).
 _ITERATOR_KEYWORDS: Final = {
     ENUMERATE: frozenset({"start"}),
@@ -272,13 +273,15 @@ def dict_parts(annotation: str) -> tuple[str, str] | None:
 
 
 def counted(name: str, args: list[ast.expr]) -> list[ast.expr]:
-    """Pick the arguments whose elements one of `ITERATORS` yields: `enumerate`'s first, others' all.
+    """Pick the arguments whose elements one of `ITERATORS` yields.
+
+    `enumerate`'s first, `filter`'s second, the others' all.
 
     Returns:
       Them.
 
     """
-    return args[:1] if name == ENUMERATE else args
+    return args[:1] if name == ENUMERATE else args[1:] if name == FILTER else args
 
 
 def _is_ellipsis(node: ast.expr) -> bool:

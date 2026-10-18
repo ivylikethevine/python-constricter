@@ -10,7 +10,7 @@ variable is bound by the argument, the type it binds. For `stdlib_tables.overloa
 
 import ast
 from collections.abc import Iterator, Sequence
-from typing import Final, NamedTuple
+from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.core.signatures import (
     Constant,
@@ -101,7 +101,7 @@ class Verdicts(NamedTuple):
     parameter that is a generic class of one type variable (`Iterable[_T]`), that variable, and which
     type argument of each builtin container in `CONTAINERS` taking it binds it (`dict`'s keys: 0);
     `returned`: for a callable returning an unbounded type variable (`Callable[..., _T]`), that
-    variable, which a function argument binds to its declared return.
+    variable, which a function argument binds to its declared return; `nested`: see below.
     """
 
     values: str
@@ -113,6 +113,14 @@ class Verdicts(NamedTuple):
     returned: str | None = None
     awaited: str | None = None  # for an awaitable, the unbounded type variable awaiting it gives
     bounded: str | None = None  # the type variable the parameter is, if a bound is all that limits it
+    # For one of a generic class of another of the variable (`Iterable[Iterable[_S]]`), `elements`
+    # Finds the inner class in each container, and this which type argument of each container that
+    # is the inner class binds it (`chain.from_iterable(rows)`, `rows` a `list[list[int]]`).
+    nested: dict[str, int] | None = None
+
+
+# A type variable, and which type argument of each builtin container binds it (see `Verdicts.elements`).
+_Elements: TypeAlias = tuple[str, dict[str, int]]
 
 
 def unbounded(atoms: Sequence[Atom], *, bounded: bool = False) -> str | None:
@@ -168,17 +176,44 @@ class Accepting(Templates):
             constants = "".join(
                 YES if yes else verdict for yes, verdict in zip(taken, constants, strict=True)
             )
+        elements: _Elements | None
+        nested: dict[str, int] | None
+        elements, nested = (
+            (self._container_elements(*of), None) if of is not None else self._nested(annotation, module)
+        )
         return Verdicts(
             values,
             constants if literals and constants != values else None,
             tuple(literals) if literals else None,
             binds or None,
             unbounded(atoms),
-            None if of is None else self._container_elements(*of),
+            elements,
             self._callable_return(annotation, module),
             self._awaited(annotation, module, 0),
             unbounded(atoms, bounded=True),
+            nested=nested,
         )
+
+    def _nested(self, annotation: ast.expr, module: str) -> tuple[_Elements | None, dict[str, int] | None]:
+        """Read an iterable of iterables' container elements (`Iterable[Iterable[_S]]`).
+
+        See `Verdicts.nested`.
+
+        Returns:
+          The outer class's (see `_container_elements`) and the inner one's indexes; `None`s for
+          any other parameter.
+
+        """
+        found: tuple[ClassRef, ClassRef, str] | None
+        if (found := self._of_two(annotation, module)) is None:
+            return None, None
+        outer: _Elements
+        indexes: dict[str, int]
+        match self._container_elements(found[0], found[2]), self._container_elements(found[1], found[2]):
+            case (str(), dict()) as outer, (_, dict() as indexes):
+                return outer, indexes
+            case _:
+                return None, None
 
     def _awaited(self, annotation: ast.expr, module: str, hops: int) -> str | None:
         """Name the unbounded type variable awaiting a parameter gives (`Coroutine[Any, Any, _T]`'s `_T`).
@@ -240,6 +275,21 @@ class Accepting(Templates):
         if found is None or not isinstance(found.binding, Klass) or name is None:
             return None
         return ClassRef(found.module, found.name), name
+
+    def _of_two(self, annotation: ast.expr, module: str) -> tuple[ClassRef, ClassRef, str] | None:
+        """Read a parameter that is a generic class of another, of one variable (`Iterable[Iterable[_S]]`).
+
+        Returns:
+          The outer class, the inner one and the variable's name; or `None`.
+
+        """
+        if not isinstance(annotation, ast.Subscript) or isinstance(annotation.slice, ast.Tuple):
+            return None
+        outer: Found | None = self.reading.ref(annotation.value, module)
+        inner: tuple[ClassRef, str] | None = self._of_one(annotation.slice, module)
+        if outer is None or not isinstance(outer.binding, Klass) or inner is None:
+            return None
+        return ClassRef(outer.module, outer.name), *inner
 
     def _scalar_element(self, scalar: str, generic: ClassRef) -> str | None:
         """Find what a builtin scalar that is a `generic` (`str`, an `Iterable[str]`) binds its variable to.

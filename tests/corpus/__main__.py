@@ -13,8 +13,10 @@ The run file (`run_config`) names the corpora (`corpora.toml`'s), the constricte
 steps and the formats. Each execution writes `<output>/<label>-<month>-<day>-<year>-<time>/`:
 
     run.toml      the run file, copied
-    facts.toml    the run as it was read, the commit, the machine, and the checkers' and parser's versions
-    runner.log    each step's end: its seconds, what it used, what it was given and how long it waited
+    facts.toml    the run as it was read, the commit, the machine, the checkers' and parser's versions,
+                  and how long its executions took
+    runner.log    each step's end: its seconds, what it used, what it was given and how long it waited;
+                  and each corpus that can't be had, as it fails
     queue.log     each minute steps wait: what's running, and why each waits (`sizing.Slots.report`)
     records/      <corpus>/<version>/<step>.json, and each fix's patch: what every output is made from
     logs/         what each step's constricter wrote to standard error
@@ -45,6 +47,7 @@ import subprocess  # asks git for the commit, and runs each step
 import sys
 import threading
 import time
+import tomllib
 from collections.abc import Callable, Generator, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
@@ -89,6 +92,9 @@ _LOOK: Final = 60.0  # and between fittings of its hold to what it's using
 _DONE: Final = True  # what an event's `wait` says once it's set
 _MACOS: Final = "darwin"
 _LOG: Final = "runner.log"  # in a run's folder
+_FACTS: Final = "facts.toml"  # and the run as it was read
+_STARTED: Final = "started"  # in its facts: when its first execution started
+_RUNNING: Final = "running"  # and when the one under way did: gone once it ends
 _QUEUE: Final = "queue.log"  # and its queue, each minute steps wait
 _SUITE_WORKERS: Final = "CORPUS_SUITE_WORKERS"  # in a step's environment: its suite's tests' processes
 _RELEASED: Final = pipeline.part(pipeline.TESTS, pipeline.RELEASED)  # a suite's tests as released
@@ -380,12 +386,15 @@ class Running(NamedTuple):
             "failed" if record is None else f"{used.cpu:.0f} CPU seconds, {used.memory / sizing.GIB:.1f} GB"
         )
         said += f" (given {given['cpus']} CPUs, {given['memory']} GB; waited {waited:.0f}s)"
-        line: str = f"{job.recorded} on {job.tree.name}: {name}: {seconds:.0f}s, {said}\n"
-        _ = sys.stderr.write(line)
+        self.said(f"{job.recorded} on {job.tree.name}: {name}: {seconds:.0f}s, {said}")
+        return record is not None
+
+    def said(self, line: str) -> None:
+        """Write a line to the run's output and, timed, to its `runner.log`."""
+        _ = sys.stderr.write(f"{line}\n")
         file: IO[str]
         with (self.store.root / _LOG).open("a", encoding="utf-8") as file:
-            _ = file.write(f"{datetime.now().astimezone():%H:%M:%S} {line}")
-        return record is not None
+            _ = file.write(f"{datetime.now().astimezone():%H:%M:%S} {line}\n")
 
     def steps(self, entry: catalog.Entry, job: pipeline.Job, names: Sequence[str]) -> list[str]:
         """Run each of `names`, the job's steps, that has no record yet, one after another.
@@ -459,14 +468,17 @@ class Running(NamedTuple):
 
         Returns:
           The corpus's tree, and the steps that failed: each has its traceback in its log, and no
-          record. No tree, and why, for a corpus that isn't to be had: the run goes on without it.
+          record. No tree, and why, for a corpus that isn't to be had: the run goes on without it,
+          and says why at once, not only in its last lines.
 
         """
         with self.finding:
             try:
                 tree: trees.Tree = trees.found(entry, install=self.run.install)
             except (OSError, RuntimeError, ValueError) as failure:  # it can't be cloned, installed or fetched
-                return None, [f"{entry.name}: not found: {str(failure)[-_SAID:]}"]
+                why: str = f"{entry.name}: not found: {str(failure)[-_SAID:]}"
+                self.said(why)
+                return None, [why]
         failed: list[str] = []
         version: str
         for version in self.run.versions:
@@ -659,14 +671,15 @@ def main(argv: Sequence[str]) -> int:
     if argv[:1] == [_STEP]:
         return _step(argv[1:])
     start: float = time.perf_counter()
-    run: Run = commanded(read(Path(argv[0])), argv)
-    facts: Record = run_facts(run, datetime.now().astimezone())
+    earlier: Record = resumed_facts(argv)
+    run: Run = relabelled(commanded(read(Path(argv[0])), argv), argv, earlier)
+    facts: Record = carried(run_facts(run, datetime.now().astimezone()), earlier, _last_written(argv))
     folder: Path = _folder(argv, run, facts)
     store: pipeline.Store = pipeline.Store(folder)
     measured: list[_Measured] = _all(run, store)
     shutil.rmtree(folder / "work", ignore_errors=True)  # the copies its fixes worked on
-    if _RESUME not in argv:  # a resumed run's own time says nothing of the whole run's
-        facts[render.MINUTES] = round((time.perf_counter() - start) / 60)
+    facts = finished(facts, (time.perf_counter() - start) / 60)
+    _ = (folder / _FACTS).write_text(_toml(facts), encoding="utf-8")
     records: report_tables.Records = render.gathered(run, store, [tree for tree, _ in measured if tree])
     written: list[Path] = render.write(records, folder, facts)
     if _ONLY not in argv and _MINUS not in argv:  # a part of its corpora isn't what its section is of
@@ -677,6 +690,88 @@ def main(argv: Sequence[str]) -> int:
     noted: list[str] = [f"note: {each}" for each in render.notes(records)]
     _ = sys.stderr.write("".join(f"{each}\n" for each in (*noted, *failed)))
     return int(bool(failed))
+
+
+def resumed_facts(argv: Sequence[str]) -> Record:
+    """Read the facts of the run `--resume` carries on.
+
+    Returns:
+      Its folder's `facts.toml`; nothing for a new run, or a folder that has none.
+
+    """
+    if _RESUME not in argv:
+        return {}
+    path: Path = Path(argv[argv.index(_RESUME) + 1]) / _FACTS
+    return tomllib.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+
+def _last_written(argv: Sequence[str]) -> datetime | None:
+    """Say when the run `--resume` carries on last wrote its `runner.log`: a step's end.
+
+    Returns:
+      The time; `None` for a new run, or one that ended no step.
+
+    """
+    if _RESUME not in argv:
+        return None
+    log: Path = Path(argv[argv.index(_RESUME) + 1]) / _LOG
+    return datetime.fromtimestamp(log.stat().st_mtime).astimezone() if log.exists() else None
+
+
+def relabelled(run: Run, argv: Sequence[str], earlier: Record) -> Run:
+    """Give a resumed run the label it was started under, whatever its run file says.
+
+    `earlier`: the facts of the run it carries on (`resumed_facts`).
+
+    Returns:
+      The run, under that label.
+
+    Raises:
+      SystemExit: `--label` names another, which would measure every corpus again beside it.
+
+    """
+    label: str | None
+    if (label := cast("str | None", earlier.get("label"))) is None:  # `_toml` writes it as a string
+        return run
+    if _LABEL in argv and run.label != label:
+        message: str = (
+            f"{_RESUME} carries on the run labelled {label!r}, not {run.label!r}: leave out {_LABEL}"
+        )
+        raise SystemExit(message)
+    return run._replace(label=label)
+
+
+def carried(facts: Record, earlier: Record, last: datetime | None) -> Record:
+    """Carry a stopped run's start and time into a resumed one's facts.
+
+    `earlier`: the stopped run's facts; `last`: when it last ended a step. Its executions' minutes
+    are those that ended (`finished`), and one that was stopped from where it started to `last`.
+
+    Returns:
+      The facts, with the first execution's start, the minutes before this one, and this one's start.
+
+    """
+    now: str = str(facts[_STARTED])
+    if not earlier:
+        return facts | {_RUNNING: now}
+    before: float = float(cast("float", earlier.get(render.MINUTES, 0)))
+    stopped: str | None = cast("str | None", earlier.get(_RUNNING))
+    if stopped is None and render.MINUTES not in earlier:  # no minutes: its one execution was stopped
+        stopped = cast("str | None", earlier.get(_STARTED))
+    if stopped is not None and last is not None:
+        before += max(0.0, (last - datetime.fromisoformat(stopped)).total_seconds() / 60)
+    return facts | {_STARTED: earlier.get(_STARTED, now), render.MINUTES: round(before), _RUNNING: now}
+
+
+def finished(facts: Record, minutes: float) -> Record:
+    """Add an execution's minutes to its run's, as it ends.
+
+    Returns:
+      The facts, with the run's minutes and none under way.
+
+    """
+    total: int = round(float(cast("float", facts.get(render.MINUTES, 0))) + minutes)
+    return {key: value for key, value in facts.items() if key != _RUNNING} | {render.MINUTES: total}
 
 
 def _folder(argv: Sequence[str], run: Run, facts: Record) -> Path:
@@ -698,7 +793,7 @@ def _folder(argv: Sequence[str], run: Run, facts: Record) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
     if not (resumed and (folder / "run.toml").exists()):
         _ = shutil.copyfile(argv[0], folder / "run.toml")
-    _ = (folder / "facts.toml").write_text(_toml(facts), encoding="utf-8")
+    _ = (folder / _FACTS).write_text(_toml(facts), encoding="utf-8")
     return folder
 
 

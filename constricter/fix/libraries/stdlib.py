@@ -52,7 +52,7 @@ OVERLOADS: Final = cast("dict[str, list[Variant]]", _table("overloads"))
 # path, spelled (and imported, if it must be) the way the module can.
 CLASSES: Final = cast("dict[str, str]", _table("classes"))
 # The builtin iterators no Python can subscript at run time.
-_UNSUBSCRIPTABLE: Final = frozenset({"zip", "map", "reversed"})
+_UNSUBSCRIPTABLE: Final = frozenset({"zip", "map", "filter", "reversed"})
 # The `pathlib` classes: each one's `/` joins another part onto it.
 _PATHS: Final = frozenset(
     f"pathlib.{name}"

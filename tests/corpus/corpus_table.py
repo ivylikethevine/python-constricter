@@ -8,8 +8,8 @@ The corpora are the pinned `corpus` dependency group's packages
 (`uv sync --group dev --group corpus`), and the sources tests/corpus/corpus_sources.py fetches:
 CPython's standard library with its tests, and pure Python 2. A version is a release from PyPI,
 installed with `uv` into `local/corpus-table/venvs/`, or `dev`, this checkout (recorded as
-`<__version__>+dev`, or `<label>+dev` with `--label`: a pseudo-version, like a release candidate,
-without bumping it). Each runs isolated (`python -I`, from `local/corpus-table/`), so neither this
+`<version>+dev`, its version without the commit, or `<label>+dev` with `--label`: a pseudo-version,
+like a release candidate). Each runs isolated (`python -I`, from `local/corpus-table/`), so neither this
 checkout nor its `pyproject.toml` leaks into a release's run, and with this Python's environment as
 its `VIRTUAL_ENV`, so a release sees the installed packages `dev` does.
 
@@ -21,8 +21,8 @@ and after each (this checkout's `--coverage`, whatever the version). Each versio
 total: each code's share of the offences, and what was fixed and guessed as a share of them. A
 corpus's runs go side by side where `CORPUS_JOBS` leaves CPUs for more than one.
 `--write` adds a section per version to docs/RUNS.md, or replaces a release's section if it's there;
-`dev` is recorded under this checkout's version, so record it right after bumping the version for a
-release (`--replace` to overwrite a section already there). Timings go to standard error, not the
+`dev` is recorded under this checkout's version, so record a release with `--label` and its version
+before tagging it (`--replace` to overwrite a section already there). Timings go to standard error, not the
 tables, so rerunning it on an unchanged tree changes nothing.
 """
 
@@ -52,6 +52,7 @@ _ROOT: Final = Path(__file__).resolve().parents[2]
 RUNS: Final = _ROOT / "docs" / "RUNS.md"
 WORK: Final = _ROOT / "local" / "corpus-table"
 DEV: Final = "dev"
+CHECKOUT: Final = __version__.partition("+")[0]  # this checkout's version, without its commit: `0.5.1.dev3`
 VERSIONS: Final = ("0.2.2", "0.2.3", DEV)
 # The `corpus` dependency group's packages, by import name (their distribution names match).
 PACKAGES: Final = (
@@ -136,7 +137,7 @@ class Measured(NamedTuple):
     """What one constricter version gave on one corpus."""
 
     corpus: Corpus
-    version: str  # constricter's, as recorded (`dev` as `<__version__>+dev`)
+    version: str  # constricter's, as recorded (`dev` as `<CHECKOUT>+dev`)
     files: int
     codes: Counter[str]  # at `suffocate`
     levels: dict[Level, tuple[int, int]]  # each level's errors and warnings
@@ -180,7 +181,7 @@ def corpora() -> list[Corpus]:
     return found + [source for source in sources if source.name != STDLIB]
 
 
-def label(version: str, name: str = __version__) -> str:
+def label(version: str, name: str = CHECKOUT) -> str:
     """Name a version as it's recorded: a release as itself, `dev` as `<name>+dev`.
 
     Returns:
@@ -444,7 +445,7 @@ def coverage(python: str, corpus: Corpus, version: str) -> tuple[Typed, Typed | 
     return typed_in(corpus.root), fixes.typed_fixed, fixes.typed_guessed
 
 
-def measure(corpus: Corpus, version: str, name: str = __version__) -> Measured:
+def measure(corpus: Corpus, version: str, name: str = CHECKOUT) -> Measured:
     """Check and fix one corpus with one version (`dev` recorded under `name`).
 
     Returns:

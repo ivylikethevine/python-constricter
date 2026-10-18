@@ -6,6 +6,8 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- The version is the release's git tag: a build between releases reports a dev version
+  (`constricter --version`: `0.5.1.dev3+g1a2b3c4`), as do the reports' `version` fields.
 - `--fix --unsafe-fixes` no longer guesses the type of a name bound again to a method call on
   itself (`match = match.groupdict()`), to a call on itself behind `or` or a conditional expression
   (`code = table.get(code) or SYNTAX`), or to an empty display of another class (`flag = any(xs)`,
@@ -40,6 +42,10 @@ Notable changes, newest first. Each release's full notes are generated from its 
   starting the checkers while nothing it rests on has changed: the checker's build, the files asked
   about, the workspace's settings files and the installed distributions. `--infer-fresh` asks the
   checkers again.
+- The corpus runner's `--resume` carries a run on under the label it started with, refusing a
+  `--label` that names another, and keeps its start; the published section's time is the sum of its
+  executions', a stopped one's to its last step. A corpus that can't be cloned or installed is said
+  in the run's output and `runner.log` as it fails, not only in its last lines.
 - The corpus runner sizes an unmeasured suite part by its kind's largest measured part, not by the
   whole step's record, and an unmeasured `infer-union` by its checkers' steps together.
 - The language-server modules (`connection`, `protocol`, `guard`, `hints`, `edits`, `remembered`)
@@ -47,6 +53,35 @@ Notable changes, newest first. Each release's full notes are generated from its 
   `classnames`, `declared`, `installed`, `read`, `stubbed`, and `stub_names` and `stub_signatures` as
   `names` and `signatures`) in `constricter/fix/index/stubs/`, their tests laid out the same. Nothing
   the command or the plugins expose moved.
+- `--fix` types a builtin number's operator with a standard-library class's instance by that
+  class's reflected method (`2 * span`, a `timedelta`; `n * Decimal(...)`, a `Decimal`), and a
+  generic standard-library class's own classmethods by their arguments
+  (`OrderedDict.fromkeys(names, 0)`, an `OrderedDict[str, int]`): the standard-library tables now
+  hold both. A generic class's operator binds its operand's type arguments
+  (`Counter[str] + Counter[str]`, a `Counter[str]`); a class the module defines under a
+  standard-library one takes that one's operators where it binds neither method itself
+  (`class Money(Decimal)`: `m + m` is a `Decimal`, `stamp - span` a `Stamp`); and an iterable of
+  iterables' elements' elements bind a type variable (`chain.from_iterable(rows)`, `rows` a
+  `list[list[int]]`, is a `chain[int]`).
+- `--fix` types `filter(f, xs)` as `filter[T]` by what `xs` yields (less `None` for a `None`
+  predicate), and a loop over it, where `f` can't narrow (a lambda, a builtin but `callable`, a
+  function declaring no `TypeGuard` or `TypeIs`); and `sum(xs)` of another class's instances `T` as
+  `T | int`, or `T` with a start of `T` or an empty `list` or `tuple` (`sum(rows, [])`). On the
+  standard library's 146 files that bind such calls, 6 more fixes.
+- `--fix` takes `m = pytest.importorskip("mod")` as `import mod as m`, at a module's top or in a
+  function, where every binding of `m` in the file is that call (or `import mod`): what's read of
+  `m` is typed as after the import (`m.make()`), the binding itself left as it is. An import a fix
+  adds from a module the file `importorskip`s goes under `if TYPE_CHECKING:`, as one from a module
+  only its functions import does: the module may be missing when the file runs.
+- `--fix` follows a package's star imports, those under `if TYPE_CHECKING:` too, to the class a
+  re-export names: a function declared to return `type['BaseModel']`, written through
+  `from pydantic import BaseModel`, now types its calls in a file that imports `BaseModel` from
+  `pydantic.main` (pydantic's `__init__` imports it by `from .main import *`): 6 more fixes on
+  pydantic.
+- `--fix` types `getattr(obj, "name")` as `obj.name` is, at any `vague`: `| None` with a `None`
+  default, and joined with a default of another plain type (`getattr(conn, "timeout", "")`, a
+  `float | str`). Not where `obj.name` is an `X | None` and the default isn't `None`: a checker
+  narrows such a read where the function tests it.
 - `--fix` types a test case's `with self.assertRaises((OSError, ValueError)) as cm:` as an
   `_AssertRaisesContext[OSError | ValueError]`: a tuple of classes binds a `type[_E]`'s `_E` to
   their union where the parameter takes a tuple of them too (the tables now say which do). And the

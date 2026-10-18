@@ -8,6 +8,8 @@ goes under `local/scratch/`.
 - `guess_report.py --from FOLDER`, a corpus run's folder with its `guesses.jsonl`: every guess the
   run made on the suites, by mechanism, with the type errors blamed on it and what its binding held
   at run time. `guess_report.py --likely` lists the sets that pass `docs/LIKELY.md`'s bars.
+- `fix_diff.py [REF]`: the fixes `--show-fixes --unsafe-fixes` lists on the installed pydantic by
+  REF's code (HEAD) and by the working tree's, and those only one side has.
 - `widen_pass.py`: what a second pass still fixes on each corpus after every `fix-widen` kind.
 - `second_pass.py [CORPUS ...] [--likely | --certain]`: what a second pass still fixes on each
   corpus after `--fix --unsafe-fixes` (or `--likely`, or neither), as CI's `ci-fix` run counts it,

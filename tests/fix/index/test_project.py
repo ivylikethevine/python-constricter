@@ -503,3 +503,108 @@ def test_a_class_a_package_exports_for_type_checking_alone_is_followed(tmp_path:
     user: Path = _write(tmp_path / "user.py", LAZY_USER)
     assert cli.main(["--fix", "-q", "--select=LVA001", str(tmp_path)]) == cli.EXIT_CLEAN
     assert user.read_text(encoding="utf-8") == textwrap.dedent(LAZY_FIXED)
+
+
+IMPL: Final = "class Thing:\n    pass\n\ndef make() -> Thing:\n    return Thing()\n"
+SKIPPING: Final = """
+import pytest
+from pytest import importorskip
+
+top = pytest.importorskip("pkg.impl")
+
+
+def test_local() -> None:
+    m = pytest.importorskip("pkg.impl")
+    a = m.make()
+    b = top.make()
+    c = importorskip(modname="pkg.impl").make()
+
+
+def test_again() -> None:
+    import pkg.impl as again
+
+    again = pytest.importorskip("pkg.impl")
+    d = again.make()
+
+
+def test_other() -> None:
+    other = pytest.importorskip("pkg.impl")
+    other = 1
+    named = pytest.importorskip("pkg.impl")
+    caught = pytest.importorskip("pkg.impl")
+    try:
+        pass
+    except ValueError as caught:
+        pass
+    e = pytest.importorskip("pkg.api").make()
+    f = pytest.importorskip(name)
+
+
+def named() -> None:
+    pass
+
+
+def test_parameter(given) -> None:
+    given = pytest.importorskip("pkg.impl")
+"""
+
+
+def test_importorskip_binds_its_module_as_an_import_does(tmp_path: Path) -> None:
+    """`m = pytest.importorskip("pkg.impl")`, then `m.make()`: typed as after `import pkg.impl as m`.
+
+    In a function or at the top, however `importorskip` is imported, with `import pkg.impl as m`
+    beside it; not a name bound otherwise anywhere, or to another module.
+    """
+    _ = _write(tmp_path / "pkg" / "__init__.py", "")
+    _ = _write(tmp_path / "pkg" / "api.py", "")
+    _ = _write(tmp_path / "pkg" / "impl.py", IMPL)
+    uses: Path = _write(tmp_path / "test_uses.py", SKIPPING)
+    catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
+    module: project.Module = catalog.modules["test_uses"]
+    assert {name: module.names[name] for name in ("top", "m", "again")} == {
+        "top": ("pkg.impl", None),
+        "m": ("pkg.impl", None),
+        "again": ("pkg.impl", None),
+    }
+    assert not {"other", "caught", "given"} & module.names.keys()
+    assert module.names["named"] == ("test_uses", "named")
+    guarded: dict[str, Guarded] = {}
+    assert project.calls(catalog, uses, guarded) == {
+        "m.make": "Thing",
+        "top.make": "Thing",
+        "again.make": "Thing",
+    }
+
+
+def test_a_type_from_a_skipped_module_is_imported_for_type_checking(tmp_path: Path) -> None:
+    """The import a fix adds from a module `importorskip` takes goes under `if TYPE_CHECKING:`.
+
+    The module may be missing when the file runs: the test is skipped then, not failed.
+    """
+    _ = _write(tmp_path / "pkg" / "__init__.py", "")
+    _ = _write(tmp_path / "pkg" / "impl.py", IMPL)
+    uses: Path = _write(
+        tmp_path / "test_uses.py",
+        """\
+        import pytest
+
+
+        def test_local() -> None:
+            m = pytest.importorskip("pkg.impl")
+            a = m.make()
+        """,
+    )
+    _ = cli.main(["--fix", "-q", "--select=LVA001", str(tmp_path)])
+    assert uses.read_text(encoding="utf-8") == textwrap.dedent(
+        """\
+        import pytest
+        from typing import TYPE_CHECKING
+        if TYPE_CHECKING:
+            from pkg.impl import Thing
+
+
+        def test_local() -> None:
+            m = pytest.importorskip("pkg.impl")
+            a: Thing = m.make()
+        """,
+    )

@@ -26,6 +26,7 @@ _SELF: Final = "Self"  # a method's own class, in a template
 _WITH_DEFAULT: Final = 2  # `os.environ.get(key, default)`'s arguments
 _TYPING_ANY: Final = "typing.Any"
 _ARITHMETIC: Final = "arithmetic"  # the fix kind
+_NUMBERS: Final = frozenset({"bool", "int", "float", "complex"})  # whose operators take these alone
 _Operator: TypeAlias = type[ast.operator]
 _Operands: TypeAlias = tuple[Inference | None, Inference | None]
 # The method each binary operator calls on its left operand (see `library_operator`).
@@ -62,7 +63,11 @@ def library_operator(op: ast.operator, sides: _Operands, known: Known) -> Infere
 
     `when - start`, two `datetime`s, is a `timedelta` (see `overloads.operated`). Where the right
     operand is a builtin's or a standard-library class's instance too: another class's reflected
-    method may be the one that answers.
+    method may be the one that answers. A builtin number's, left of a standard-library class's
+    instance (not a class under the number's own), is the right one's reflected method's
+    (`2 * span`, a `timedelta`). A class the module defines under a library one is that one's (see
+    `_as_library`), its `Self` the module's own; a generic class's instance is matched by its type
+    arguments (`Counter[str] + Counter[str]`, see `overloads.operated`).
 
     Returns:
       The inference, or `None`.
@@ -71,21 +76,62 @@ def library_operator(op: ast.operator, sides: _Operands, known: Known) -> Infere
     name: str | None = _OPERATORS.get(type(op))
     if name is None or sides[0] is None or sides[1] is None:
         return None
-    left: str | None = stdlib.operand(sides[0].annotation, known)
-    right: str | None = stdlib.operand(sides[1].annotation, known)
-    method: stdlib.Method | None = stdlib.overloaded_method(sides[0].annotation, name, known)
+    kinds: frozenset[str] = sides[0].kinds | sides[1].kinds | {_ARITHMETIC}
+    receiver: str = sides[0].annotation
+    other: str = sides[1].annotation
+    named: tuple[str, str] = (name, f"__r{name[2:]}")
+    taken: str = _as_library(receiver, named, known)
+    given: str = _as_library(other, named, known)
+    left: str | None
+    right: str | None
+    arguments: tuple[str, ...] | None
+    left, _ = _operand(taken, known)
+    right, arguments = _operand(given, known)
+    if left in _NUMBERS and right is not None and _DOT in right and not stdlib.inherits(right, left):
+        # A builtin number's own methods take builtin numbers alone: a standard-library class's
+        # Reflected method answers (`2 * span`, `timedelta.__rmul__`).
+        name, receiver, taken, left, right = named[1], other, given, right, left
+    method: stdlib.Method | None = stdlib.overloaded_method(taken, name, known)
     if left is None or right is None or method is None:
         return None
     found: Inference | None = overloads.operated(
-        stdlib.for_receiver(method, sides[0].annotation),
+        stdlib.for_receiver(method, receiver),
         (left, right),
         known,
+        arguments,
+        same=other == receiver,
     )
-    return (
-        None
-        if found is None
-        else found._replace(kinds=found.kinds | sides[0].kinds | sides[1].kinds | {_ARITHMETIC})
-    )
+    return None if found is None else found._replace(kinds=found.kinds | kinds)
+
+
+def _as_library(annotation: str, names: tuple[str, str], known: Known) -> str:
+    """Read an operand of a class the module defines as the library class it takes an operator from.
+
+    `class Money(Decimal)`: a `Decimal`, where neither it nor a class between binds the operator's
+    method or its reflected twin (`names`).
+
+    Returns:
+      That class as its subclass writes it (`deque[int]`), or `annotation` itself.
+
+    """
+    found: set[str | None] = {known.class_side.lineage.definer(annotation, name) for name in names}
+    base: str | None = found.pop() if len(found) == 1 else None
+    return annotation if base is None or base == annotation or _operand(base, known)[0] is None else base
+
+
+def _operand(annotation: str, known: Known) -> tuple[str | None, tuple[str, ...] | None]:
+    """Name an operand's type as an operator's `takes` does, a generic class's instance by its class.
+
+    Returns:
+      Its name (see `stdlib.operand`), and a generic class's instance's type arguments, as written.
+
+    """
+    tree: ast.expr = ast.parse(annotation, mode="eval").body
+    if not isinstance(tree, ast.Subscript):
+        return stdlib.operand(annotation, known), None
+    head: str | None = stdlib.operand(ast.unparse(tree.value), known)
+    parts: list[ast.expr] = tree.slice.elts if isinstance(tree.slice, ast.Tuple) else [tree.slice]
+    return head, tuple(ast.unparse(part) for part in parts)
 
 
 def library_variable(value: ast.expr, known: Known) -> Inference | None:

@@ -383,9 +383,10 @@
   count the rest, saw 1 and 0.1 to 0.2. An unmeasured traced step is sized by its suite's `tests`
   step; a step that wants all the memory runs alone, and one that held over 8 GB beside others is
   noted. The timed checks hold every CPU, and run last, one at a time. A suite's tests of one port
-  run one suite at a time, and its tests are stopped after `suite-seconds`. A stopped run resumes,
-  and a run exits non-zero on anything a fix broke or a step that failed, whose traceback its log
-  keeps. Every corpus's steps wait for the machine alone (`at-once` bounds the corpora cloned and
+  run one suite at a time, and its tests are stopped after `suite-seconds`. A stopped run resumes
+  under its own label, keeping its start and adding each execution's minutes, and a run exits
+  non-zero on anything a fix broke or a step that failed, whose traceback its log keeps. Every
+  corpus's steps wait for the machine alone (`at-once` bounds the corpora cloned and
   installed side by side): the step with the most seconds still behind it first, its own and its
   suite's steps' after it, and what's free kept for one that waited five minutes. A running step's
   hold follows what it's using: an unmeasured one gives back what it isn't a minute in, and any one
@@ -744,7 +745,10 @@ each item sized the same way.
    stay one at a time. The instructions didn't move side by side (0.04 to 0.15%): the table could
    compare them across runs instead of seconds, which would free the tail to run beside other steps.
    Done when a mega run's tail is under 5 minutes with the timing table's run-to-run noise unchanged:
-   the 0.4.0-rc.2 mega run's took 5.3 minutes, from 10.5. About 1 hour; coverage unchanged.
+   the 0.4.0-rc.2 mega run's took 5.3 minutes, from 10.5, and the 0.4.0-rc.3 run's 5.6: 4.4 for 46
+   corpora back to back, and pandas's 71s in a resume of its own. Those two runs are a code change
+   apart, their instructions a median 7.6% apart in one process (`scratch/timing_noise.py`), so the
+   noise wants two runs at one commit. About 1 hour; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -1039,13 +1043,27 @@ each item sized the same way.
          more on Django, where most `top`s have no type.
    - [x] **`iter(xs)` bound to a name**: an `Iterator` of what a loop over `xs` binds, imported
          where the module can name it. 2 more on Django.
-   - [ ] **`max`, `min` and `sum`** of what isn't a builtin number, and `filter`.
-   - [ ] **A generic class's operator** (`Counter[str] + Counter[str]`), a reflected method's
-         (`2 * span`), and a checked file's class under a library one.
-   - [ ] **A loop over the rest of `itertools`**, and a tuple added to something.
+   - [x] **`max`, `min` and `sum`** of what isn't a builtin number, and `filter`: `min` and `max`
+         typed any elements already; `sum` of a class's instances is a `T | int` (`T` from a
+         start of it), `filter(f, xs)` a `filter[T]` where `f` can't narrow. Of the standard
+         library's bindings of the four with no fix, most take values of no known type
+         (`min(count, 8192)`, a parameter); 6 more fixes there.
+   - [x] **A generic class's operator** (`Counter[str] + Counter[str]`), a reflected method's
+         (`2 * span`), and a checked file's class under a library one: the tables hold the
+         reflected methods; a generic operand binds the operand's template by its type arguments;
+         a module's class under a library one takes that one's operators where it binds neither.
+         Left alone: a template of the class's base (`OrderedDict | OrderedDict`, by `dict`'s),
+         which the tables can't tell takes it, and a module's class under a generic library one
+         (`class Queue(deque[int])`), which no fix names yet (Large 5).
+   - [x] **A loop over the rest of `itertools`**, and a tuple added to something:
+         `chain.from_iterable` binds its `_S` by its argument's elements' elements (the tables'
+         `ei`), and a generic class's classmethods are held (`OrderedDict.fromkeys`);
+         `zip_longest` with no `fillvalue` and `starmap` of a generic function stay typeshed's
+         `Any`.
 
-   Done when each of those is a fix. About 9 hours left, for about 0.3% (some 800 fixes, of the
-   1,050 those reach).
+   Done when each of those is a fix: all are, not yet run on the corpora, where the reach of the
+   last two is small (some tens of bindings). For about 0.3% (some 800 fixes, of the 1,050 those
+   reach).
 
 4. **Narrowed reads.** A read of an `X | None`, or of a union the function tests, has no fix or only
    a guess: a checker narrows it where `--fix` doesn't follow the test
@@ -1119,8 +1137,14 @@ Gaps the census exposes in what `--fix` infers, smallest first.
 1. **`getattr` by a literal name.** 576 of the 1,268 `getattr(...)` bindings with no fix on the
    seven corpora name the attribute as a literal, 521 of them with a default: on a receiver whose
    type is known that's `obj.name`'s type, with a default `T | D`; today an `Any`, or an `Any | T`
-   (`fix/values/shapes.py`). Done when `getattr(self.conn, "timeout", None)` is typed as
-   `self.conn.timeout` is. About 3 hours; coverage up to 0.2%.
+   (`fix/values/shapes.py`). Done, not yet run: a literal name that `obj.name` could spell is typed
+   as that read is, at any `vague` (`| None` by a `None` default, joined with a default of another
+   plain type), its guesses the read's; not an `X | None` read with no `None` default, which a check
+   narrows. On pydantic no fix more: its 44 are dunders on receivers of no known type
+   (`__module__`, `__set_name__`), or attributes the receiver's class doesn't declare, which is why
+   `getattr` is used; the other corpora's count is a run's. Done when
+   `getattr(self.conn, "timeout", None)` is typed as `self.conn.timeout` is. About 3 hours; coverage
+   up to 0.2%, likely far less.
 2. **An assignment's `# type:` comment as its fix.** With `type-comments` off, `x = v  # type: T` is
    LVA001 and its fix is inferred from `v`, the author's `T` ignored (`rules/binding.py` reads the
    comment only to decide whether the name is annotated); a loop's comment (LVA003) is already the
@@ -1131,9 +1155,14 @@ Gaps the census exposes in what `--fix` infers, smallest first.
 3. **`pytest.importorskip("mod")` as an import.** 272 bindings on the seven corpora are its `Any`,
    and what's read of them (`pa.array(...)` in pandas's tests) has no fix either. The name is the
    module the literal names: known as `import mod as name` is for what's read of it, the binding
-   itself left (an annotation would hide the module from a checker). Done when
-   `pa = pytest.importorskip("pyarrow")`, then `arr = pa.array(...)`, types `arr`. About 3 hours;
-   coverage unmeasured.
+   itself left (an annotation would hide the module from a checker). Done, not yet run: the index
+   takes the name as the module where every binding of it in the file is that call, and an import
+   a fix adds from it goes under `if TYPE_CHECKING:`. Nothing more on pydantic or pandas's
+   `tests/io` in all scopes: the packages pandas skips for (pyarrow, scipy, matplotlib, lxml,
+   numba) aren't in the corpora's environment, and sqlalchemy's reads were typed through the
+   file's own `TYPE_CHECKING` import already. Its reach is a run's, on corpora whose environment has
+   what they skip for. Done when `pa = pytest.importorskip("pyarrow")`, then
+   `arr = pa.array(...)`, types `arr`. About 3 hours; coverage unmeasured.
 4. **`defaultdict` and `Counter` through `filled`.** 229 `collections.defaultdict(...)` calls have
    no fix on the 47 corpora ([Done](#--fix) states the limitation, with no item): `filled` types an
    empty container by what the function adds to it, so `defaultdict(list)` is a

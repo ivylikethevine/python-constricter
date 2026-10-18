@@ -56,6 +56,7 @@ KEYWORD: Final = "k"  # keyword only
 STAR: Final = "a"  # `*args`
 STARS: Final = "w"  # `**kwargs`
 # Methods whose calls aren't an instance's plain ones: read as attributes, or on the class.
+_CLASSMETHOD: Final = "classmethod"
 _NOT_METHODS: Final = frozenset({"property", "cached_property", "classmethod", "staticmethod"})
 _SELF_TYPE: Final = "Self"
 _PROPERTIES: Final = frozenset({"property", "cached_property"})
@@ -312,6 +313,30 @@ class Overloads(Accepting):
                 signature["returns"] = self.template(_self(declared), owner.module)
         return signatures
 
+    def class_methods(self, klass: ClassRef) -> dict[str, list[Signature]]:
+        """Read a generic class's own classmethods as functions typed by their arguments.
+
+        `itertools.chain.from_iterable(rows)`: a `chain[int]`, by what binds its `_S`.
+
+        Returns:
+          Each public one's signatures (see `entry`), by its name; none it can't read.
+
+        """
+        found: dict[str, list[Signature]] = {}
+        name: str
+        binding: Binding
+        for name, binding in self.reading.body(klass).items():
+            signatures: list[Signature] | None
+            if (
+                isinstance(binding, Function)
+                and not name.startswith("_")
+                and _CLASSMETHOD in {decorator_name(d) for d in binding.defs[0].decorator_list}
+                and (signatures := self.entry(tuple(_unbound(node) for node in binding.defs), klass.module))
+                is not None
+            ):
+                found[name] = signatures
+        return found
+
     def _variable_in(self, annotation: ast.expr | None, module: str) -> bool:
         """Check whether a parameter's annotation names a type variable, which its argument may bind.
 
@@ -460,6 +485,8 @@ class Overloads(Accepting):
             found["t"] = anything
         if verdicts.elements is not None:
             found["e"], found["of"] = verdicts.elements
+        if verdicts.nested is not None:
+            found["ei"] = verdicts.nested
         if verdicts.returned is not None:
             found["r"] = verdicts.returned
         if verdicts.awaited is not None:

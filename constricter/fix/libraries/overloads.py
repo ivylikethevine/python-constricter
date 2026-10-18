@@ -75,6 +75,8 @@ _ITERATOR: Final = "collections.abc.Iterator"
 _TUPLE: Final = "tuple"
 _ANYTHING: Final = "t"  # `Accepts`' key for a parameter any argument binds
 _RETURNED: Final = "r"  # `Accepts`' key for a callable parameter a function's return binds
+_Taken: TypeAlias = tuple[str, dict[str, str]]  # whether an operand is taken, and what it binds
+_NESTED: Final = "ei"  # `Accepts`' key for an iterable of iterables' inner containers
 _AWAITED: Final = "w"  # and for an awaitable one, which what awaiting a coroutine's call gives binds
 _CALL: Final = "call"  # the fix kind of a declared return
 # The builtin containers whose type arguments bind a parameter's type variable (`Iterable[_T]`'s).
@@ -98,7 +100,8 @@ class Argument(NamedTuple):
 
     `constant`: the literal it is, if it is one (in a 1-tuple, as its value may be `None`);
     `found`: what `--fix` inferred it to be, whose kinds the call's type rests on too; `elements`:
-    for a builtin container (`list[str]`), its name and type arguments (`tuple[str, ...]`'s `str`);
+    for a builtin container (`list[str]`), its name and type arguments (`tuple[str, ...]`'s `str`),
+    and `inner`, the same of its first one (a `list[list[int]]`'s `list[int]`);
     `reads`: the names, attributes and subscripts in it, as source text; `returns`: for a function
     the module knows the declared return of (`helper`, `u.helper`), that return; `klass`: for a class
     passed as it is (`np.float64`), its name as written; `awaited`: for a coroutine's call, what
@@ -109,6 +112,7 @@ class Argument(NamedTuple):
     constant: tuple[Constant] | None = None
     found: Inference | None = None
     elements: tuple[str, tuple[str, ...]] | None = None
+    inner: tuple[str, tuple[str, ...]] | None = None  # its first type argument's, a container too
     reads: tuple[str, ...] = ()
     returns: Inference | None = None
     klass: str | None = None
@@ -228,12 +232,22 @@ def generic_member(receiver: str, name: str, call: ast.Call | None, known: Known
     )
 
 
-def operated(method: stdlib.Method, operands: tuple[str, str], known: Known) -> Inference | None:
+def operated(
+    method: stdlib.Method,
+    operands: tuple[str, str],
+    known: Known,
+    arguments: tuple[str, ...] | None = None,
+    *,
+    same: bool = False,
+) -> Inference | None:
     """Type a binary operator by its left operand's `method` (`__sub__`), for its right operand's type.
 
-    `operands`: both as `stdlib.operand` names them. The first signature whose operand takes the
-    right one answers, as a type checker picks it: the same type, a class under it, or a number
-    promoted to it (an `int` where a `float` is taken).
+    `operands`: both as `stdlib.operand` names them, a generic class's instance by its class. The
+    first signature whose operand takes the right one answers, as a type checker picks it: the same
+    type, a class under it, or a number promoted to it (an `int` where a `float` is taken).
+    `arguments`: the right operand's type arguments, where it's a generic class's instance, which
+    bind the operand's own type variables (`Counter.__add__` takes a `Counter[_S]`); `same`: whether
+    it's the left one's own type, as an operand of `Self` must be.
 
     Returns:
       The inference, or `None`: no signature certainly takes it, one before that may, the Python
@@ -246,23 +260,99 @@ def operated(method: stdlib.Method, operands: tuple[str, str], known: Known) -> 
     left, right = operands
     if left != right and stdlib.inherits(right, left):
         return None
-    found: set[str | None] = set()
-    variant: Variant
-    for variant in stdlib.method_signatures()[method.entry]:
-        returns: str | None = None
-        signature: Signature
-        for signature in variant:
-            takes: str | None
-            if (takes := signature.get("takes")) is None:
-                break
-            if any(_takes(member, left, right) for member in _members(parsed(takes))):
-                returns = signature["returns"]
-                break
-        found.add(None if returns is None else write((returns, method.types), known))
+    found: set[str | None] = {
+        _answered(
+            variant,
+            method,
+            known,
+            lambda member: _taken(member, operands, arguments, method.types, same=same),
+        )
+        for variant in stdlib.method_signatures()[method.entry]
+    }
     annotation: str | None
     if (annotation := found.pop() if len(found) == 1 else None) is None:
         return None
     return Inference(annotation, f"`{method.entry}`'s return type, for its operand", frozenset({_KIND}))
+
+
+def _answered(
+    variant: Variant,
+    method: stdlib.Method,
+    known: Known,
+    taking: Callable[[str], _Taken],
+) -> str | None:
+    """Type an operator by one variant of its method's signatures (see `operated`); `taking`, `_taken`'s.
+
+    Returns:
+      What the first signature taking the right operand returns, or `None`: a signature before it
+      can't be read, or may take it.
+
+    """
+    signature: Signature
+    for signature in variant:
+        takes: str | None
+        if (takes := signature.get("takes")) is None:
+            return None
+        taken: list[_Taken] = [taking(member) for member in _members(parsed(takes))]
+        if any(verdict == MAYBE for verdict, _ in taken):
+            return None
+        bound: dict[str, str] | None
+        if (bound := next((binds for verdict, binds in taken if verdict == YES), None)) is not None:
+            template: str | None = signature["returns"]
+            written: str | None = (
+                None if template is None else write((template, {**method.types, **bound}), known)
+            )
+            return None if written is None else _deduplicated(written)
+    return None
+
+
+def _taken(
+    member: str,
+    operands: tuple[str, str],
+    arguments: tuple[str, ...] | None,
+    types: Mapping[str, str],
+    *,
+    same: bool,
+) -> _Taken:
+    """Decide whether an operand typed `member` takes the right operand, and what that binds.
+
+    A generic class's instance (`arguments`) is taken by `Self` where it's the left one's own type,
+    and by its own class's template (`Counter[_S]`) where each type argument the left one's binds
+    (`types`) is its own, binding the others; another class's template (a base's) may take it.
+
+    Returns:
+      `YES`, `NO` or `MAYBE`, and the type variables it binds.
+
+    """
+    left: str
+    right: str
+    left, right = operands
+    if arguments is None:
+        return YES if _takes(member, left, right) else NO, {}
+    if member == SELF_TYPE:
+        return YES if same else NO, {}
+    tree: ast.expr = parsed(member)
+    # A base's (`dict[_KT, _VT]`, of an `OrderedDict`): the tables may not know it is.
+    if ast.unparse(tree.value if isinstance(tree, ast.Subscript) else tree) != right:
+        return MAYBE, {}
+    params: list[ast.expr] = (
+        []
+        if not isinstance(tree, ast.Subscript)
+        else tree.slice.elts
+        if isinstance(tree.slice, ast.Tuple)
+        else [tree.slice]
+    )
+    if len(params) != len(arguments) or not all(isinstance(param, ast.Name) for param in params):
+        return MAYBE, {}
+    bound: dict[str, str] = {}
+    name: str
+    argument: str
+    for name, argument in zip((cast("ast.Name", param).id for param in params), arguments, strict=True):
+        wanted: str | None = types.get(name, bound.get(name))
+        if wanted is not None and wanted != argument:
+            return NO, {}
+        bound[name] = argument
+    return YES, bound
 
 
 def _takes(member: str, left: str, right: str) -> bool:
@@ -274,6 +364,25 @@ def _takes(member: str, left: str, right: str) -> bool:
     """
     wanted: str = left if member == SELF_TYPE else member
     return right == wanted or right in _PROMOTED.get(wanted, ()) or stdlib.inherits(right, wanted)
+
+
+def _deduplicated(annotation: str) -> str:
+    """Write each union in an annotation with each member once (`Counter[str | str]`: `Counter[str]`).
+
+    Returns:
+      The annotation.
+
+    """
+    tree: ast.expr = ast.parse(annotation, mode="eval").body
+    node: ast.AST
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Subscript):
+            slices: list[ast.expr] = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
+            joined: list[ast.expr] = [
+                ast.parse(" | ".join(dict.fromkeys(_members(part))), mode="eval").body for part in slices
+            ]
+            node.slice = ast.Tuple(joined, ast.Load()) if isinstance(node.slice, ast.Tuple) else joined[0]
+    return ast.unparse(tree)
 
 
 def library_element(receiver: str, known: Known) -> Inference | None:
@@ -426,6 +535,7 @@ def _inferred(value: ast.expr, infer: _Infer, known: Known, klass: str | None = 
         typed if typed in _COLUMNS and typed != _LITERAL_STRING else None,
         found=found,
         elements=held,
+        inner=_elements(held[1][0], known) if held and held[1] else None,
         own=lineage.get(typed or "", ()),
         own_elements=lineage.get(held[1][0], ()) if held and held[0] in _SEQUENCES and held[1] else (),
         reads=tuple(
@@ -637,7 +747,7 @@ def _binding(accepts: Accepts | None, arg: Argument) -> tuple[str, str] | None:
     of: dict[str, int] = accepts.get("of", {})
     elements: tuple[str, tuple[str, ...]] | None = arg.elements
     if elements is not None and elements[0] in of:
-        return accepts.get("e", ""), elements[1][of[elements[0]]]
+        return _element_binding(accepts, arg, elements[1][of[elements[0]]])
     # A bounded type variable a builtin container argument binds, its bound certainly taking it.
     container: str | None = accepts.get(CONTAINER_BINDS)
     return None if container is None or elements is None or arg.text is None else (container, arg.text)
@@ -706,11 +816,44 @@ def _verdict(accepts: Accepts | None, arg: Argument) -> str:
     taken: bool = (
         (_ANYTHING in accepts and arg.text is not None)
         or (FUTURE_BINDS in accepts and arg.awaited is not None and arg.text is not None)
-        or (arg.elements is not None and arg.elements[0] in accepts.get("of", {}))
+        or (
+            arg.elements is not None
+            and arg.elements[0] in accepts.get("of", {})
+            and (_NESTED not in accepts or _nested(accepts, arg) is not None)
+        )
         or (_RETURNED in accepts and arg.returns is not None)
         or (_AWAITED in accepts and arg.awaited is not None)
     )
     return YES if taken else _container_verdict(accepts, arg)
+
+
+def _element_binding(accepts: Accepts, arg: Argument, element: str) -> tuple[str, str] | None:
+    """Bind a parameter's element type variable (`e`) by a container argument's `element`.
+
+    Of an iterable of iterables (`Iterable[Iterable[_S]]`, `ei`): by that element's own.
+
+    Returns:
+      The variable's name and type, or `None`.
+
+    """
+    if _NESTED not in accepts:
+        return accepts.get("e", ""), element
+    inner: tuple[str, tuple[str, ...]] | None = _nested(accepts, arg)
+    return None if inner is None else (accepts.get("e", ""), inner[1][accepts[_NESTED][inner[0]]])
+
+
+def _nested(accepts: Accepts, arg: Argument) -> tuple[str, tuple[str, ...]] | None:
+    """Find the container an argument's elements are, where a parameter takes an iterable of them (`ei`).
+
+    Returns:
+      Its name and type arguments, or `None` if the elements' type isn't one it takes, or the outer
+      container's type argument it reads isn't its first.
+
+    """
+    of: dict[str, int] = accepts.get("of", {})
+    inner: tuple[str, tuple[str, ...]] | None = arg.inner
+    first: bool = arg.elements is not None and of.get(arg.elements[0]) == 0
+    return inner if first and inner is not None and inner[0] in accepts.get(_NESTED, {}) else None
 
 
 def _container_verdict(accepts: Accepts, arg: Argument) -> str:

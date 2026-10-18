@@ -7,10 +7,10 @@ every one must pass, coverage stays at 100%, and the project's own code passes
 `constricter --level=suffocate --all-scopes`. Keep changes small and docs short, add tests for new
 behaviour, and note user-facing changes in [CHANGELOG.md](CHANGELOG.md).
 
-When bumping the version for a release, record it in [RUNS.md](RUNS.md): run
-`local/.venv/bin/python -m tests.corpus tests/corpus/runs/release.toml`, which appends this
-checkout's results under the new version, and commit it with the bump. Between releases,
-`--label 0.2.4-rc.1` records a checkpoint under a pseudo-version instead, without bumping it.
+The version is the git tag's: nothing in the tree names it. Before tagging a release, record it in
+[RUNS.md](RUNS.md): run `local/.venv/bin/python -m tests.corpus tests/corpus/runs/release.toml
+--label 0.5.0`, which appends this checkout's results under that version, and commit it. Between
+releases, `--label 0.5.0-rc.1` records a checkpoint under a pseudo-version.
 
 ## Development
 
@@ -105,8 +105,8 @@ the network, once.
 
 Each execution writes a folder of its own under `local/corpus-runs/`, named by the run's label and
 the time: the run file, a record for each corpus, version and step, and `report.json`, `report.md`
-and `tables/*.csv` made from them. `--resume FOLDER` carries on a stopped run, `--only NAME` keeps
-one to a corpus or set, and `--minus NAME` leaves out a corpus's, a set's or a run file's corpora
+and `tables/*.csv` made from them. `--resume FOLDER` carries on a stopped run under its label, its
+time the sum of its executions', `--only NAME` keeps one to a corpus or set, and `--minus NAME` leaves out a corpus's, a set's or a run file's corpora
 (`super.toml --minus original` measures only what `super` adds). Neither publishes. Each step is a
 process of its own, started once the CPUs it's expected to keep busy and the memory it's expected to
 hold are free: what it took in the last run under the same output, which its record keeps
@@ -195,7 +195,8 @@ gh api repos/ivylikethevine/python-constricter/rulesets --method POST --input .g
 
 To publish, add a trusted publisher on PyPI (repository `ivylikethevine/python-constricter`,
 workflow `release.yml`, environment `pypi`) and a `pypi` environment in the repo settings, then push
-a `v*` tag.
+a `v*` tag (`git tag -a v0.5.0 -m v0.5.0`, then `git push origin v0.5.0`). The build's version is the
+tag's (hatch-vcs); a build between tags is a dev version, `0.5.1.dev3+g1a2b3c4`.
 
 ## Disabled rules
 

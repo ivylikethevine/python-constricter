@@ -30,12 +30,13 @@ pylint = ["pylint>=3"]
 
 [dependency-groups]
 # Locked with hashes in uv.lock (see README, Development).
-# What an editable install needs, with no build isolation: the build backend (and what it asks for
-# an editable one), and the basedpyright whose typeshed stubs the standard-library tables are
+# What an editable install needs, with no build isolation: the build backend and its version source
+# (and what it asks for an editable one), and the basedpyright whose typeshed stubs the standard-library tables are
 # generated from (see hatch_build.py).
 build = [
     "basedpyright",
     "editables",
+    "hatch-vcs>=0.5,<1",
     "hatchling>=1.27,<2",
     "typeshed-client", # reads the stubs the tables are generated from (stdlib_tables/shed.py)
 ]
@@ -64,6 +65,7 @@ corpus = [
 # What a compiled wheel's build from the sdist needs, without build isolation
 # (`HATCH_BUILD_HOOK_ENABLE_MYPYC=1`): the backend, and the mypyc hook's `dependencies`, pinned the same.
 mypyc = [
+    "hatch-vcs>=0.5,<1",
     "hatchling>=1.27,<2",
     "hatch-mypyc==0.16.0",
     "mypy==2.4.0",
@@ -107,11 +109,22 @@ LVA = "constricter.plugins.flake8:ConstricterChecker"
 exclude = ["scratch/*"]
 
 [build-system]
-requires = ["hatchling>=1.27,<2"]
+requires = ["hatch-vcs>=0.5,<1", "hatchling>=1.27,<2"]
 build-backend = "hatchling.build"
 
+# The version is the git tag's: `v0.5.0` builds 0.5.0, a commit past it 0.5.1.devN+g<hash>. An sdist
+# carries it in PKG-INFO, and GitHub's tarball of the action in `.git_archival.txt`.
 [tool.hatch.version]
-path = "constricter/__init__.py"
+source = "vcs"
+
+# Read by `constricter.__version__`; untracked.
+[tool.hatch.build.hooks.vcs]
+version-file = "constricter/_version.py"
+template = '''# SPDX-License-Identifier: MIT
+"""The version this was built as, from its git tag (written by the build, not tracked)."""
+
+__version__ = "{version}"
+'''
 
 [tool.hatch.build]
 # Generated where they're missing or stale (hatch_build.py), not tracked. `partial.json` is the tests',

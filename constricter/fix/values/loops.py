@@ -19,6 +19,7 @@ from constricter.fix.values.members import present
 from constricter.fix.values.targets import (
     DICT_VIEWS,
     ENUMERATE,
+    FILTER,
     ITER,
     MAP,
     RANGE,
@@ -32,10 +33,16 @@ from constricter.fix.values.targets import (
     unpacked,
 )
 from constricter.offences import CONSTRUCTOR
+from constricter.rules.flow import members
 
 _GENERIC: Final = "["  # in a type's text: its arguments
 COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 _UNION: Final = re.compile(r"\||\b(?:None|Optional|Union)\b")  # an annotation with a union in it
+_NONE: Final = "None"
+# A predicate's return that narrows what it's given
+_NARROWING: Final = re.compile(r"\b(?:TypeGuard|TypeIs)\b")
+_CALLABLE: Final = "callable"  # the builtin predicate that narrows (`TypeIs[Callable[..., object]]`)
+_PREDICATE: Final = 2  # `filter`'s arguments: the predicate and the iterable
 _Comprehension: TypeAlias = ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp
 # Types a value over what a scope declared, as `constricter.fix.values.inference.inference` does.
 Infer: TypeAlias = Callable[[ast.expr, Known, Mapping[str, str]], Inference | None]
@@ -168,6 +175,8 @@ def _iterator(
         return Inference("int", "`range`, which yields `int`s", frozenset({"loop"}))
     if name == MAP:
         return _mapped(args[0], known)
+    if name == FILTER:
+        return _filtered(args, known, declared, infer)
     if name in SAME_ELEMENTS or name == ITER:
         return looped(args[0], known, declared, infer) if name != ITER or len(args) == 1 else None
     parts: list[Inference | None] = [looped(arg, known, declared, infer) for arg in counted(name, args)]
@@ -176,6 +185,63 @@ def _iterator(
         return None
     annotations: list[str] = ["int"] * (name == ENUMERATE) + [part.annotation for part in found]
     return Inference(f"tuple[{', '.join(annotations)}]", f"`{name}`'s tuples", kinds_of(*found, kind="loop"))
+
+
+def _filtered(
+    args: list[ast.expr],
+    known: Known,
+    declared: Mapping[str, str],
+    infer: Infer,
+) -> Inference | None:
+    """Infer what `filter(predicate, xs)` yields: `xs`'s elements, less `None` for a `None` predicate.
+
+    Returns:
+      The inference, or `None`: where `xs`'s elements aren't known, or the predicate may narrow them
+      (see `_keeps`).
+
+    """
+    if len(args) != _PREDICATE:
+        return None
+    found: Inference | None = looped(args[1], known, declared, infer)
+    if found is None or not (shapes.is_none(args[0]) or _keeps(args[0], known)):
+        return None
+    annotation: str = found.annotation
+    if shapes.is_none(args[0]):
+        types: frozenset[str] | None = members(annotation)
+        rest: list[str]
+        if not (rest := sorted((types or frozenset()) - {_NONE})):
+            return None
+        annotation = annotation if types == frozenset(rest) else " | ".join(rest)
+    return Inference(annotation, f"`filter`, which keeps {found.reason}", kinds_of(found, kind="loop"))
+
+
+def _keeps(predicate: ast.expr, known: Known) -> bool:
+    """Check whether `filter`'s `predicate` keeps elements as they are, narrowing none.
+
+    A `lambda`; a builtin (but `callable`), or a method of a builtin class (`str.isdigit`); or a
+    function the module or another checked file defines, declaring a return other than a
+    `TypeGuard` or `TypeIs`, or typed by its `return`s.
+
+    Returns:
+      Whether it does; not for any other callable, which may be declared to narrow.
+
+    """
+    name: str
+    match predicate:
+        case ast.Lambda():
+            return True
+        case ast.Name(id=name) if known.is_builtin(name):
+            return name != _CALLABLE
+        case ast.Attribute(value=ast.Name(id=name)) if known.is_builtin(name):
+            return True
+        case ast.Name() | ast.Attribute():
+            callee: str = ast.unparse(predicate)
+            declared: str | None = known.calls.get(callee)
+            return (
+                declared is not None and not _NARROWING.search(declared)
+            ) or callee in known.returned.calls
+        case _:
+            return False
 
 
 def _generated(

@@ -37,7 +37,9 @@ class Accepts(TypedDict, total=False):
     its name, where each binds it to its own type (a `str` literal's `str`). `t`: the type variable
     the parameter is, unbounded, so any argument binds it to its own type (`copy.copy(x)`). `e`, for
     a parameter that is a generic class of one type variable (`Iterable[_T]`): that variable, which
-    an argument of a builtin container in `of` (`list[str]`) binds to its type argument at that index.
+    an argument of a builtin container in `of` (`list[str]`) binds to its type argument at that index;
+    `ei`, for one of a generic class of another (`Iterable[Iterable[_S]]`): the container that type
+    argument must be in turn, and the index of its own that binds the variable (`list[list[int]]`).
     `r`: the type variable a callable parameter returns (`Callable[..., _T]`), which a function
     argument binds to its declared return (`functools.partial(helper, 1)`). `w`: the type variable
     an awaitable parameter gives awaited (`Coroutine[Any, Any, _T]`), which a coroutine's call binds
@@ -64,6 +66,7 @@ class Accepts(TypedDict, total=False):
     t: str
     e: str
     of: dict[str, int]
+    ei: dict[str, int]
     r: str
     w: str
     k: str
