@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 """Every local variable typed where it's first bound."""
 
+from constricter._version import __version__  # written by the build, from the git tag
 from constricter.offences import (
     COMMENT_TYPED_TARGET,
     DEFAULT_CHECKS,
@@ -25,7 +26,6 @@ from constricter.offences import (
 )
 from constricter.rules.checker import Coverage, annotation_coverage, check_source, check_tree
 
-__version__ = "0.4.0"
 __all__ = [
     "COMMENT_TYPED_TARGET",
     "DEFAULT_CHECKS",

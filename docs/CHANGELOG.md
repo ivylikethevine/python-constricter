@@ -6,6 +6,8 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- The version is the release's git tag: a build between releases reports a dev version
+  (`constricter --version`: `0.5.1.dev3+g1a2b3c4`), as do the reports' `version` fields.
 - `--fix --unsafe-fixes` no longer guesses the type of a name bound again to a method call on
   itself (`match = match.groupdict()`), to a call on itself behind `or` or a conditional expression
   (`code = table.get(code) or SYNTAX`), or to an empty display of another class (`flag = any(xs)`,

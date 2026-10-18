@@ -7,10 +7,10 @@ every one must pass, coverage stays at 100%, and the project's own code passes
 `constricter --level=suffocate --all-scopes`. Keep changes small and docs short, add tests for new
 behaviour, and note user-facing changes in [CHANGELOG.md](CHANGELOG.md).
 
-When bumping the version for a release, record it in [RUNS.md](RUNS.md): run
-`local/.venv/bin/python -m tests.corpus tests/corpus/runs/release.toml`, which appends this
-checkout's results under the new version, and commit it with the bump. Between releases,
-`--label 0.2.4-rc.1` records a checkpoint under a pseudo-version instead, without bumping it.
+The version is the git tag's: nothing in the tree names it. Before tagging a release, record it in
+[RUNS.md](RUNS.md): run `local/.venv/bin/python -m tests.corpus tests/corpus/runs/release.toml
+--label 0.5.0`, which appends this checkout's results under that version, and commit it. Between
+releases, `--label 0.5.0-rc.1` records a checkpoint under a pseudo-version.
 
 ## Development
 
@@ -195,7 +195,8 @@ gh api repos/ivylikethevine/python-constricter/rulesets --method POST --input .g
 
 To publish, add a trusted publisher on PyPI (repository `ivylikethevine/python-constricter`,
 workflow `release.yml`, environment `pypi`) and a `pypi` environment in the repo settings, then push
-a `v*` tag.
+a `v*` tag (`git tag -a v0.5.0 -m v0.5.0`, then `git push origin v0.5.0`). The build's version is the
+tag's (hatch-vcs); a build between tags is a dev version, `0.5.1.dev3+g1a2b3c4`.
 
 ## Disabled rules
 

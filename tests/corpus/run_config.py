@@ -56,6 +56,7 @@ from typing import IO, Final, NamedTuple, TypeAlias, cast
 from constricter import __version__
 
 DEV: Final = "dev"
+CHECKOUT: Final = __version__.partition("+")[0]  # this checkout's version, without its commit: `0.5.1.dev3`
 NAMED: Final = "="  # in a version: after its name, the Python that runs it
 JSON: Final = "json"
 MARKDOWN: Final = "markdown"
@@ -136,7 +137,7 @@ class Publish(NamedTuple):
 class Run(NamedTuple):
     """A run file, read."""
 
-    label: str = __version__
+    label: str = CHECKOUT
     output: Path = Path("local/corpus-runs")
     versions: tuple[str, ...] = (DEV,)
     formats: tuple[str, ...] = FORMATS
