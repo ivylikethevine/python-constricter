@@ -753,14 +753,14 @@ each item sized the same way.
    after another, each a full mypyc build: on the 0.4.1 release, about 2 minutes a wheel, 30s of it
    setup and the import test, so macOS took 8 and 15 minutes for 4 wheels and Windows 21 for 8
    (32-bit since dropped), and each Linux job 55 minutes for 4, 14 a wheel, within 4 of its
-   60-minute timeout, before Linux built with clang (to be measured on the next release). A `python`
-   matrix of cp311 to cp314 beside `os` (`CIBW_BUILD` set from it) runs the 20 wheels at once: the
-   same runner minutes, free for a public repository, and the release waits on its slowest wheel.
-   Each job's artifacts and attestation file are named by both (`compiled-<os>-<python>`), which
-   `release.yml`'s `compiled-*` patterns already take; the attestation's file name must change too,
-   or `merge-multiple` keeps one per platform. Done when a release's compiled wheels all build in
-   under 6 minutes, the same 20 wheels and attestations on PyPI and the GitHub release. About 1
-   hour; coverage unchanged.
+   60-minute timeout; with clang, 10 and 11 minutes, 2 a wheel, and Windows 10 with 32-bit dropped
+   (a run of the Build workflow by hand). A `python` matrix of cp311 to cp314 beside `os`
+   (`CIBW_BUILD` set from it) runs the 20 wheels at once: the same runner minutes, free for a public
+   repository, and the release waits on its slowest wheel. Each job's artifacts and attestation file
+   are named by both (`compiled-<os>-<python>`), which `release.yml`'s `compiled-*` patterns already
+   take; the attestation's file name must change too, or `merge-multiple` keeps one per platform.
+   Done when a release's compiled wheels all build in under 6 minutes, the same 20 wheels and
+   attestations on PyPI and the GitHub release. About 1 hour; coverage unchanged.
 4. **Ubuntu 26.04 runners.** Every Linux job runs on `ubuntu-latest`, and the release's ARM wheels
    on `ubuntu-24.04-arm`: move them to `ubuntu-26.04` and `ubuntu-26.04-arm`, named, so an image
    change is a commit rather than the label moving under a release. The newer image brings newer
