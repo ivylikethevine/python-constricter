@@ -6,6 +6,9 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- CI, Security, the build, the release and the Corpus coverage workflow run on `ubuntu-26.04`,
+  named, where `ubuntu-latest` moves under them from 2026-10-19; the ARM wheels stay on
+  `ubuntu-24.04-arm`, which has no 26.04 image yet.
 - `--infer-with` says on standard error how many of a checker's rounds it read from the hint
   store (`constricter: note: ty's hints for 1 of 2 rounds were read from the store`), and the
   corpus runner notes a step that did: its seconds then measure less of the checker.

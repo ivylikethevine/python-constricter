@@ -766,7 +766,9 @@ measure before building.
    jobs change image under a run (every Linux job carries the notice). Move them to `ubuntu-26.04`
    and `ubuntu-26.04-arm`, named, so an image change is a commit rather than the label moving under
    a release. The newer image brings newer compilers, Pythons and tools; the shared workflows move
-   with every repository's at once. Done when CI, Security, the other workflows and a release run
+   with every repository's at once. Done, not yet run: this repository's own workflows run on
+   `ubuntu-26.04` (`.github/actionlint.yaml` names the label, which actionlint 1.7.12 doesn't know);
+   the ARM wheels stay on `ubuntu-24.04-arm`, there being no 26.04 ARM image yet. Done when CI, Security, the other workflows and a release run
    (the Build workflow by hand) pass on it, harden-runner's allowlists unchanged or updated from an
    audit run. About 1 hour; coverage unchanged.
 2. **The runner's scheduling, measured.** Every corpus's steps wait for the machine alone, the one
