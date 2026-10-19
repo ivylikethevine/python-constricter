@@ -590,6 +590,27 @@ def test_a_file_the_checker_hung_on_is_the_commands_warning(
     assert capsys.readouterr().err == warning
 
 
+def test_a_round_read_from_the_store_is_the_commands_note(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A second run on the same text reads its round from the store, and says so."""
+    _fake(monkeypatch)
+    path: Path = tmp_path / "module.py"
+    _ = path.write_text("x: int = 1\n", encoding="utf-8")
+    assert cli.main(["--infer-with", _CHECKER, str(path)]) == cli.EXIT_CLEAN
+    assert not capsys.readouterr().err
+    assert cli.main(["--infer-with", _CHECKER, str(path)]) == cli.EXIT_CLEAN
+    note: str = (
+        f"constricter: note: {_CHECKER}'s hints for 1 of 1 rounds were read from the store"
+        " (`--infer-fresh` asks again)\n"
+    )
+    assert capsys.readouterr().err == note
+    assert cli.main(["--infer-with", _CHECKER, "--infer-fresh", str(path)]) == cli.EXIT_CLEAN
+    assert not capsys.readouterr().err
+
+
 def test_only_files_it_can_read_are_asked_about(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

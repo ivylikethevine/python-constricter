@@ -818,7 +818,8 @@ file asked about, the workspace's settings files (`pyproject.toml`, `pyrightconf
 ...) and the installed distributions of the environments a checker may read. A project's first round
 at the same commit then starts no server. A file of the workspace that isn't asked about isn't
 counted: one only it changed, and that a checked file imports, can leave its hints a run behind.
-`--infer-fresh` asks the checkers again.
+A run that reads a round from there says so on standard error, for each checker; `--infer-fresh`
+asks the checkers again.
 
 Each server runs behind a small guard process, which passes its input and output through and kills
 it (and anything it started: a venv's `basedpyright-langserver` starts `node`) once constricter has

@@ -89,7 +89,7 @@ def _found(source: str, checks: Checks = _ON) -> list[tuple[int, int, str, str |
     return [(o.line, o.col, o.name, o.fix, o.unsafe) for o in found if o.code == UNANNOTATED_ATTRIBUTE]
 
 
-def test_a_plain_classs_undeclared_attributes_are_reported_where_first_stored() -> None:
+def test_undeclared_attributes_of_a_plain_class_are_reported_where_first_stored() -> None:
     """Each at its first plain `self.x = value`, its fix the class's stores joined, as a guess."""
     assert _found(SOURCE) == [
         (5, 8, "self.n", "int", True),

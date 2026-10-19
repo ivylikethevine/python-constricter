@@ -748,8 +748,8 @@ measure before building.
    round kept starts no server, `--infer-fresh` asks again, and an entry unread for 14 days goes.
    The `infer-*` steps took 290 CPU-minutes of the 0.3.9-rc.1 mega run, and their memory, not the
    CPUs, kept the early steps waiting; 44 of 47 tags held between mega runs. The 0.4.0-rc.3 mega run
-   filled the store. Left: the steps' seconds then measure less of the checker, which the report
-   doesn't say yet. Done when a mega run's `infer-*` steps read their first round from the store and
+   filled the store. A run that reads a round from it says so, and the report notes the step, whose
+   seconds then measure less of the checker. Done when a mega run's `infer-*` steps read their first round from the store and
    the hints are the same. About 2 hours beside the run; coverage unchanged.
 3. **The compiled wheels, a job each.** A `python` matrix of cp311 to cp314 beside `os` in
    `build.yml` (`CIBW_BUILD` set from it) builds the 20 wheels at once, each job's artifacts and
@@ -761,7 +761,15 @@ measure before building.
 
 ### Small: under 4 hours
 
-1. **The runner's scheduling, measured.** Every corpus's steps wait for the machine alone, the one
+1. **Ubuntu 26.04 runners, first.** Every Linux job runs on `ubuntu-latest`, and the release's ARM
+   wheels on `ubuntu-24.04-arm`; GitHub moves `ubuntu-latest` to Ubuntu 26 from 2026-10-19, so
+   jobs change image under a run (every Linux job carries the notice). Move them to `ubuntu-26.04`
+   and `ubuntu-26.04-arm`, named, so an image change is a commit rather than the label moving under
+   a release. The newer image brings newer compilers, Pythons and tools; the shared workflows move
+   with every repository's at once. Done when CI, Security, the other workflows and a release run
+   (the Build workflow by hand) pass on it, harden-runner's allowlists unchanged or updated from an
+   audit run. About 1 hour; coverage unchanged.
+2. **The runner's scheduling, measured.** Every corpus's steps wait for the machine alone, the one
    with the most seconds behind it first, and a running step's hold follows what it uses
    (`tests/corpus/sizing.py`): a step that can't start holds back none after it, a suite's measured
    tests hold the CPUs they kept busy with a margin over, an unmeasured part takes its kind's
@@ -773,7 +781,7 @@ measure before building.
    105, its pandas steps resumed apart, so its share can't be read. Done when a mega run uses 85% of
    its CPU seconds, and one with no earlier run under its output takes within a tenth of one sized
    by its own. About 2 hours beside the runs; coverage unchanged.
-2. **The timed tail.** The timed checks run last, alone and one at a time: three corpora at once on
+3. **The timed tail.** The timed checks run last, alone and one at a time: three corpora at once on
    disjoint 5-CPU sets ran 4 to 5% slower in one process and 10 to 17% with jobs, their spread up
    from under 1% to 2 to 10% (`scratch/timed_tail_trial.py`), and with no warm-up the first run is
    within 0.8% of the rest, so hyperfine's `--warmup 1` is dropped. The 0.4.0-rc.2 mega run's tail
@@ -783,13 +791,6 @@ measure before building.
    mega run's tail is under 5 minutes with the timing table's run-to-run noise unchanged, read from
    two runs at one commit (`scratch/timing_noise.py`: rc.2's and rc.3's instructions, a code change
    apart, differ by a median 7.6% in one process). About 1 hour; coverage unchanged.
-3. **Ubuntu 26.04 runners.** Every Linux job runs on `ubuntu-latest`, and the release's ARM wheels
-   on `ubuntu-24.04-arm`: move them to `ubuntu-26.04` and `ubuntu-26.04-arm`, named, so an image
-   change is a commit rather than the label moving under a release. The newer image brings newer
-   compilers, Pythons and tools; the shared workflows move with every repository's at once. Done
-   when CI, Security, the other workflows and a release run (the Build workflow by hand) pass on it,
-   harden-runner's allowlists unchanged or updated from an audit run. About 1 hour; coverage
-   unchanged.
 
 ### Medium: 4 to 8 hours
 

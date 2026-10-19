@@ -48,7 +48,7 @@ _FIXES: Final = ".fixes.jsonl"  # a fix step's list of its fixes, a line each
 _Bound: TypeAlias = tuple[str, int, str]  # a fix's file, line and name
 
 
-def lines(path: Path) -> list[Record]:
+def json_lines(path: Path) -> list[Record]:
     """Read a file of JSON lines a step wrote beside its record.
 
     Returns:
@@ -89,7 +89,7 @@ class Records(NamedTuple):
         path: Path = self.store.path(tree.name, version, step, _FIXES)
         return {
             (str(fix["path"]), cast("int", fix["line"]), str(fix["name"])): str(fix["annotation"])
-            for fix in lines(path)
+            for fix in json_lines(path)
         }
 
 
@@ -467,8 +467,8 @@ def _resampled(records: Records) -> Rows:
         for version in records.versions:
             record: Record = records.of(tree, version, TESTS)
             samples: dict[str, Record] = cast("dict[str, Record]", record.get("samples", {}))
-            traced: Record | None = samples.get(TRACED)
-            if traced is not None:
+            traced: Record | None
+            if (traced := samples.get(TRACED)) is not None:
                 released: Record = cast("Record", record["released"])
                 same: bool = sorted(cast("list[str]", released.get("failed", []))) == sorted(
                     cast("list[str]", traced.get("failed", [])),

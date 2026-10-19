@@ -6,6 +6,9 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--infer-with` says on standard error how many of a checker's rounds it read from the hint
+  store (`constricter: note: ty's hints for 1 of 2 rounds were read from the store`), and the
+  corpus runner notes a step that did: its seconds then measure less of the checker.
 - `--fix --unsafe-fixes` guesses a call to a standard-library function overloaded on `str` against
   `bytes` alone whose arguments' types are unknown: the `str` signature's type (`text`), as
   `os.path.join(root, name)`'s `str`, `os.listdir(path)`'s `list[str]`. Before, the signatures'
