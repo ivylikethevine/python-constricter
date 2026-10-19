@@ -138,9 +138,9 @@ def attribute_types(
     attr: str
     for attr in stored[within(starts, node)]:
         stores[attr] = stores.get(attr, 0) + 1
-    bound: frozenset[str] = _class_bound(node)
+    bound: frozenset[str] = class_bound(node)
     held: frozenset[str] = bound.union(
-        *((*_class_bound(base), *stored[within(starts, base)]) for base in superclasses(tree, node)),
+        *((*class_bound(base), *stored[within(starts, base)]) for base in superclasses(tree, node)),
     )
     found: list[Recorded]
     for attr in sorted(_emptied(tree, node).keys() & values.keys() - bound):
@@ -185,7 +185,7 @@ def _handed(
         own: Sequence[Added] = uses.get(attr, ())
         filled: tuple[str, frozenset[str]] | None = (
             None
-            if more is None or more[0] or len(own) != _read(tree, node, attr) or attr in _class_bound(node)
+            if more is None or more[0] or len(own) != _read(tree, node, attr) or attr in class_bound(node)
             else _filled((kind, 0), [], [*own, *more[1]])
         )
         if filled is not None and _uses(tree)[2][1][within(_uses(tree)[2][0], node)].count(attr) == 0:
@@ -272,7 +272,7 @@ def _under(
             use for method in self_methods(node) for name, use in seen[1].get(id(method), ()) if name == attr
         ]
         if (
-            attr in _class_bound(node)
+            attr in class_bound(node)
             or stored[within(starts, node)].count(attr) != len(values)
             or _read(tree, node, attr) != len(uses)
         ):
@@ -462,7 +462,7 @@ def self_methods(node: ast.ClassDef) -> tuple[FunctionDef, ...]:
 
 
 @lru_cache(maxsize=1024)  # asked of the same classes once per round
-def _class_bound(node: ast.ClassDef) -> frozenset[str]:
+def class_bound(node: ast.ClassDef) -> frozenset[str]:
     """Find the names the class's own body binds: its class attributes, methods and nested classes.
 
     Returns:

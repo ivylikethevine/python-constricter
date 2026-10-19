@@ -26,7 +26,7 @@ from constricter.offences import (
     Checks,
     Offence,
 )
-from constricter.rules import late, parsed, recorded
+from constricter.rules import attributes, late, parsed, recorded
 from constricter.rules.calls import keyed, observed
 from constricter.rules.flow import Finding
 from constricter.rules.narrowing import flow_offences, module_flow
@@ -176,10 +176,28 @@ def checked_tree(
                 *redundant(tree, settings.checks.fixes),
                 *flow_offences(module_flow(tree, scopes), settings.checks.fixes),
                 *finals,
+                *_attributes(tree, checks, done),
             ],
         ),
         exported._replace(names=imports.exported_names(exported, guarded, plan.added)),
         observed(tree, scopes, settings.known, {} if outside is None else outside.callees),
+    )
+
+
+def _attributes(tree: ast.Module, checks: Checks, done: "_Round") -> list[Offence]:
+    """Report the plain classes' undeclared instance attributes (LVA013), where it's asked for.
+
+    Returns:
+      Their offences, each fixed as its method's scope offers it.
+
+    """
+    if not checks.attributes:
+        return []
+    return attributes.unannotated(
+        tree,
+        done.found,
+        done.table.assigned,
+        {id(func): scope for scope, func in done.functions},
     )
 
 
@@ -344,6 +362,12 @@ def annotation_coverage(source: str | bytes, checks: Checks = DEFAULT_CHECKS) ->
     total: int = sum(len(scope.bound()) for scope in scopes)
     untyped: int = sum(o.code in _UNTYPED for scope in scopes for o in scope.reported())
     wider: int = sum(len(scope.assignments.widened.intersection(scope.bound())) for scope in scopes)
+    if checks.attributes:  # each plain class's instance attribute, typed where an annotation declares it
+        declared: int
+        every: int
+        declared, every = attributes.counted(tree)
+        total += every
+        untyped += every - declared
     return Coverage(total - untyped - wider, total, wider)
 
 

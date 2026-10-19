@@ -23,6 +23,7 @@ from constricter.offences import (
     OPT_IN,
     REDUNDANT_TYPE,
     UNANNOTATED,
+    UNANNOTATED_ATTRIBUTE,
     UNANNOTATED_MEMBER,
     UNTYPED_TARGET,
     UNUSED_UNION_MEMBER,
@@ -57,6 +58,7 @@ SYMBOLS: dict[str, Message] = {
     UNUSED_UNION_MEMBER: Message("C9110", "unused-union-member"),
     LONG_TUPLE: Message("C9111", "long-tuple-annotation"),
     CAN_BE_FINAL: Message("C9112", "could-be-final"),
+    UNANNOTATED_ATTRIBUTE: Message("C9113", "unannotated-instance-attribute"),
 }
 
 
@@ -170,6 +172,7 @@ class ConstricterChecker(BaseRawFileChecker):
             vague=cast("int", self.linter.config.constricter_vague),
             narrower=parse_narrower(cast("str", self.linter.config.constricter_narrower)),
             final=self.linter.is_message_enabled(SYMBOLS[CAN_BE_FINAL].symbol),
+            attributes=self.linter.is_message_enabled(SYMBOLS[UNANNOTATED_ATTRIBUTE].symbol),
         )
         text: str = as_text(source)
         offences: list[Offence] = check_source(text, node.file or "<unknown>", checks)

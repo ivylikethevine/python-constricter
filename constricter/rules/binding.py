@@ -3,17 +3,17 @@
 
 `bind` is what `checker` calls for every statement: a plain `name = value` goes through the scope
 (`Scope.assign`); a loop's or an unpacking's targets are split from the value's type and declared on a
-line of their own before it; a loop typed only by its `# type:` comment (LVA003) declares that type
-instead; `with manager as name` declares `name` first; and a `match`'s captures and an augmented
-assignment are bound as they are. `walruses` binds a statement's `:=` targets, each declared before
-it too.
+line of their own before it; a statement typed only by its `# type:` comment (a loop's, LVA003, or
+any with `type-comments` off) is fixed by that type instead; `with manager as name` declares `name`
+first; and a `match`'s captures and an augmented assignment are bound as they are. `walruses` binds
+a statement's `:=` targets, each declared before it too.
 """
 
 import ast
 from collections.abc import Iterator, Mapping
 from typing import Final, TypeAlias, cast
 
-from constricter.fix.core.known import Inference, Known
+from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.libraries.opened import opened
 from constricter.fix.values import shapes
 from constricter.fix.values.doubts import bare
@@ -22,12 +22,13 @@ from constricter.fix.values.inference import inference
 from constricter.fix.values.loops import LoopPart, looped, looped_parts
 from constricter.fix.values.targets import iterated, unpacked
 from constricter.offences import COMMENT_TYPED_TARGET, UNTYPED_TARGET, VAGUE_TYPE, Edit, Fix, Offence, at
+from constricter.rules.annotations import roots
 from constricter.rules.flow import augmented, members
 from constricter.rules.scope import Scope, certain_type, guessed_type, guesses_in
 from constricter.rules.scoped import Bare, Late
-from constricter.rules.syntax import captures, comment_type, target_names, type_comment_span
+from constricter.rules.syntax import Commented, captures, comment_type, target_names, type_comment_span
 
-_COMMENT: Final = "comment"  # the fix kind of LVA003's declaration
+_COMMENT: Final = frozenset({"comment"})  # the fix kind of a `# type:` comment's annotation
 _UNPACK: Final = frozenset({"unpack"})  # the fix kind of an unpacking's split
 _TUPLE: Final = ("tuple[", "Tuple[")  # how a tuple's type starts
 _ANY: Final = ", ...]"  # and how one of any length ends
@@ -51,14 +52,10 @@ def bind(scope: Scope, stmt: ast.stmt) -> None:
     cases: list[ast.match_case]
     op: ast.operator
     match stmt:
-        case ast.Assign(targets=[ast.Name() as single], value=value, type_comment=comment):
-            scope.assign(single, scope.unannotated(comment), value)
-        case ast.Assign(targets=[ast.Tuple() | ast.List() as target], value=value):
-            _bind_unpacked(scope, stmt, target, value)
         case ast.Assign():
-            _bind_assigned(scope, stmt)
+            _bind_assignment(scope, stmt)
         case ast.With(items=items, type_comment=comment) | ast.AsyncWith(items=items, type_comment=comment):
-            _bind_with(scope, stmt, items, scope.unannotated(comment))
+            _bind_with(scope, stmt, items, comment)
         case (
             ast.For(target=target, iter=value, type_comment=None)
             | ast.AsyncFor(
@@ -85,6 +82,30 @@ def bind(scope: Scope, stmt: ast.stmt) -> None:
             scope.inferred.rebound(name, bound)
         case _:
             pass
+
+
+def _bind_assignment(scope: Scope, stmt: ast.Assign) -> None:
+    """Bind an `=` statement's names: a plain name's, an unpacking's, or a chained assignment's.
+
+    With `type-comments` off, a `# type:` comment types a plain name or an unpacking's names instead
+    of the value (see `_commented`, `_bind_commented`).
+    """
+    comment: str | None = stmt.type_comment
+    code: str | None = scope.unannotated(comment)
+    single: ast.Name
+    target: ast.expr
+    match stmt.targets:
+        case [ast.Name() as single]:
+            fix: Fix | bool = (
+                False if comment is None or code is None else _commented(scope, stmt, comment) or True
+            )
+            scope.assign(single, code, stmt.value, commented=fix)
+        case [ast.Tuple() | ast.List() as target] if comment is not None and code is not None:
+            _bind_commented(scope, stmt, target, comment, code)
+        case [ast.Tuple() | ast.List() as target]:
+            _bind_unpacked(scope, stmt, target, stmt.value)
+        case _:
+            _bind_assigned(scope, stmt)
 
 
 def walruses(scope: Scope, part: ast.AST, before: ast.stmt) -> None:
@@ -411,40 +432,104 @@ def _bind_declaration(
     scope.bind(name.id, at(name), code, fix, typed_as)
 
 
-def _bind_commented(scope: Scope, stmt: ast.For | ast.AsyncFor, target: ast.expr, comment: str) -> None:
-    """Bind a loop's target typed only by its `# type:` comment (LVA003), offering to declare it instead.
+def _bind_commented(
+    scope: Scope,
+    stmt: Commented,
+    target: ast.expr,
+    comment: str,
+    code: str = COMMENT_TYPED_TARGET,
+) -> None:
+    """Bind a target typed only by its statement's `# type:` comment, offering to declare it instead.
 
-    The comment's type (`int`, or `int, str` for a tuple target) is split over the target's names as
-    an unpacking's is; each is declared before the loop, and the comment dropped, since a type checker
-    would see the name declared twice. Only for a loop whose header is on one line, where the comment
-    is found after its iterable.
+    A loop's (LVA003), or with `type-comments` off an unpacking's or a `with`'s (`code`). The
+    comment's type (`int`, or `int, str` for a tuple target) is split over the target's names as an
+    unpacking's is; each is declared before the statement, and the comment dropped, since a type
+    checker would see the name declared twice. Only where the comment is on the statement's first
+    line (see `type_comment_span`), and names what the module can (see `_commented_fix`).
     """
-    drop: tuple[int, int] | None = type_comment_span(scope.settings.lines, stmt)
+    found: tuple[int, int, int] | None = type_comment_span(scope.settings.lines, stmt)
+    drop: tuple[int, int] | None = None if found is None or found[0] != stmt.lineno else found[1:]
     annotation: str | None = comment_type(comment) if drop is not None else None
     name: ast.Name
     part: str | None
     for name, part in unpacked(target, annotation):
         fix: Fix | None = None
-        if part is not None and drop is not None:
-            fix = scope.offer(
-                Inference(part, "its `# type:` comment", frozenset({_COMMENT})),
-                frozenset(),
-                unsafe=False,
-                edit=Edit.DECLARE,
-                span=(stmt.lineno, stmt.col_offset),
-            )
-            fix = None if fix is None else fix._replace(drop=drop)
-        scope.bind(name.id, at(name), COMMENT_TYPED_TARGET, fix)
+        if part is not None and (
+            fix := _commented_fix(scope, part, Edit.DECLARE, (stmt.lineno, stmt.col_offset))
+        ):
+            fix = fix._replace(drop=drop)
+            scope.inferred.learn(name.id, part, None, again=name.id in scope.declared)
+        scope.bind(name.id, at(name), code, fix)
 
 
-def _bind_with(scope: Scope, stmt: ast.stmt, items: list[ast.withitem], code: str | None) -> None:
+def _commented(scope: Scope, stmt: ast.Assign, comment: str) -> Fix | None:
+    """Offer a plain assignment's `# type:` comment as its annotation, the comment dropped.
+
+    From the line its value ends (the fix's `mark`, where that isn't the name's).
+
+    Returns:
+      The fix, or `None` if the comment isn't found or can't be written (see `_commented_fix`).
+
+    """
+    found: tuple[int, int, int] | None = type_comment_span(scope.settings.lines, stmt)
+    annotation: str | None = None if found is None else comment_type(comment)
+    fix: Fix | None = None if annotation is None else _commented_fix(scope, annotation)
+    if fix is None or found is None:
+        return None
+    return fix._replace(drop=found[1:], mark=0 if found[0] == stmt.lineno else found[0])
+
+
+def _commented_fix(
+    scope: Scope,
+    annotation: str,
+    edit: Edit = Edit.ANNOTATE,
+    span: tuple[int, int] = (0, 0),
+) -> Fix | None:
+    """Offer a `# type:` comment's `annotation`, certain, where every name it's written with is bound.
+
+    By the module (an import, a class, a top-level name) or a builtin: a name the module doesn't
+    bind is an error to a type checker, and at a module's top level to Python.
+
+    Returns:
+      The fix (see `Scope.offer`), or `None`.
+
+    """
+    known: Known = scope.settings.known
+    plan: ImportPlan | None = known.names.plan
+    if not all(
+        known.is_builtin(name)
+        or (plan is not None and (name in plan.defined or (name in plan.taken and name not in plan.values)))
+        for name in roots(annotation)
+    ):
+        return None
+    return scope.offer(
+        Inference(annotation, "its `# type:` comment", _COMMENT),
+        frozenset(),
+        unsafe=False,
+        edit=edit,
+        span=span,
+    )
+
+
+def _bind_with(
+    scope: Scope,
+    stmt: ast.With | ast.AsyncWith,
+    items: list[ast.withitem],
+    comment: str | None,
+) -> None:
     """Bind each `with` item's target, offering to declare `with manager as name`'s `name` first.
 
     As what the manager's `__enter__` returns (see `constricter.fix.values.entered`); the file object
     `open` gives, which is its own context manager, by its literal mode. A target that unpacks takes
     that type split over its names, as an unpacking's are (but for a vague part). An `async with`'s
-    is typed by a standard-library manager's `__aenter__` alone, and not split.
+    is typed by a standard-library manager's `__aenter__` alone, and not split. The one target of a
+    statement with a `# type:` comment, with `type-comments` off, is typed by it instead.
     """
+    code: str | None = scope.unannotated(comment)
+    targets: list[ast.expr] = [item.optional_vars for item in items if item.optional_vars is not None]
+    if comment is not None and code is not None and len(targets) == 1:
+        _bind_commented(scope, stmt, targets[0], comment, code)
+        return
     item: ast.withitem
     name: ast.Name
     target: ast.expr

@@ -288,3 +288,50 @@ def test_a_generic_class_reexported_for_type_checking_isnt_written_bare(
     _ = main.write_text(textwrap.dedent(_BOXED), encoding="utf-8", newline="\n")
     assert cli.main(["--fix", "--unsafe-fixes", "-q", str(main)]) == cli.EXIT_FOUND
     assert main.read_text(encoding="utf-8") == textwrap.dedent(_BOXED_FIXED)
+
+
+# A package a test skips without (pandas's `pyarrow`), typed by its stub package, a module of it too.
+_ARROW: Final = {
+    "arrow/__init__.py": "def array(obj):\n    return obj\n",
+    "arrow-stubs/__init__.pyi": "class Array: ...\ndef array(obj: object) -> Array: ...\n",
+    "arrow-stubs/compute.pyi": "class Expression: ...\ndef field(name: str) -> Expression: ...\n",
+}
+_SKIPPING: Final = """
+import pytest
+
+pa = pytest.importorskip("arrow")
+
+
+def test_arrays() -> None:
+    pc = pytest.importorskip("arrow.compute")
+    arr = pa.array([1])
+    e = pc.field("a")
+"""
+_SKIPPING_FIXED: Final = """
+import pytest
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from arrow import Array
+    from arrow.compute import Expression
+
+pa = pytest.importorskip("arrow")
+
+
+def test_arrays() -> None:
+    pc = pytest.importorskip("arrow.compute")
+    arr: Array = pa.array([1])
+    e: Expression = pc.field("a")
+"""
+
+
+def test_what_is_read_of_an_installed_module_importorskip_takes_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`pa = pytest.importorskip("arrow")` is `import arrow as pa`: `pa.array(...)` is typed by its stub."""
+    monkeypatch.setattr(sys, "path", [str(_site(tmp_path, _ARROW)), *sys.path])
+    main: Path = tmp_path / "project" / "test_main.py"
+    main.parent.mkdir()
+    _ = main.write_text(textwrap.dedent(_SKIPPING), encoding="utf-8", newline="\n")
+    _ = cli.main(["--fix", "-q", "--select=LVA001", str(main)])
+    assert main.read_text(encoding="utf-8") == textwrap.dedent(_SKIPPING_FIXED)

@@ -11,10 +11,12 @@ from constricter.offences import at
 from constricter.rules.walked import children as child_nodes
 from constricter.rules.walked import classes, of_type
 
-# A `# type:` comment, as a loop header writes one (LVA003).
+# A `# type:` comment, as an assignment or a loop or `with` header writes one.
 _TYPE_COMMENT: Final = re.compile(rb"#\s*type:")
 
 FunctionDef: TypeAlias = ast.FunctionDef | ast.AsyncFunctionDef
+# A statement whose `# type:` comment types the names it binds.
+Commented: TypeAlias = ast.Assign | ast.For | ast.AsyncFor | ast.With | ast.AsyncWith
 FUNCTION_DEFS: tuple[type[ast.FunctionDef], type[ast.AsyncFunctionDef]] = (
     ast.FunctionDef,
     ast.AsyncFunctionDef,
@@ -417,7 +419,7 @@ def _rest_at(node: ast.MatchMapping, name: str, lines: Sequence[str]) -> tuple[i
 
 
 def comment_type(comment: str) -> str | None:
-    """Read a loop's `# type:` comment as an annotation (`int, str` is a tuple's parts).
+    """Read a statement's `# type:` comment as an annotation (`int, str` is a tuple's parts).
 
     Returns:
       It, or `None` if it doesn't parse as one.
@@ -450,23 +452,34 @@ def declared_return(func: FunctionDef) -> ast.expr | None:
         return None
 
 
-def type_comment_span(lines: Sequence[str], stmt: ast.For | ast.AsyncFor) -> tuple[int, int] | None:
-    """Find the columns (UTF-8 bytes) of a one-line loop header's `# type:` comment, to delete it.
+def type_comment_span(lines: Sequence[str], stmt: Commented) -> tuple[int, int, int] | None:
+    """Find a statement's `# type:` comment, to delete it: its line, and the columns (UTF-8 bytes).
 
-    From the end of the header's code (or, with a comment after it, `# type: int  # noqa`, from the
+    After an assignment's value, on the line it ends, or after a one-line loop or `with` header's
+    code. From the end of that code (or, with a comment after it, `# type: int  # noqa`, from the
     `#`), up to that comment or the end of the line, so the other comment stays.
 
     Returns:
-      Them, or `None` if the header spans lines or the comment isn't found after the iterable.
+      Them, or `None` if a header spans lines or the comment isn't found after its code.
 
     """
-    if not lines or stmt.body[0].lineno == stmt.lineno or stmt.iter.end_lineno != stmt.lineno:
+    end: ast.expr
+    if isinstance(stmt, ast.Assign):
+        end = stmt.value
+    elif isinstance(stmt, ast.With | ast.AsyncWith):
+        end = stmt.items[-1].optional_vars or stmt.items[-1].context_expr
+    else:
+        end = stmt.iter
+    line: int = end.end_lineno or stmt.lineno
+    if not lines or (
+        not isinstance(stmt, ast.Assign) and (stmt.body[0].lineno == stmt.lineno or line != stmt.lineno)
+    ):
         return None
-    raw: bytes = lines[stmt.lineno - 1].encode()
+    raw: bytes = lines[line - 1].encode()
     found: re.Match[bytes] | None
-    if (found := _TYPE_COMMENT.search(raw, stmt.iter.end_col_offset or 0)) is None:
+    if (found := _TYPE_COMMENT.search(raw, end.end_col_offset or 0)) is None:
         return None
     after: int
     if (after := raw.find(b"#", found.end())) >= 0:
-        return found.start(), after
-    return len(raw[: found.start()].rstrip()), len(raw.rstrip(b"\r\n"))
+        return line, found.start(), after
+    return line, len(raw[: found.start()].rstrip()), len(raw.rstrip(b"\r\n"))

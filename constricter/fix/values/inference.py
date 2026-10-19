@@ -696,3 +696,21 @@ def joined(value: ast.AST, known: Known, declared: Mapping[str, str]) -> bool:
         return False
     found: Inference | None = _container(value, known, declared)
     return found is not None and displays.JOINED in found.kinds
+
+
+def texted(value: ast.AST, known: Known, declared: Mapping[str, str]) -> bool:
+    """Check whether `value` is a standard-library call typed as its text overload's `str` one: a guess.
+
+    See `overloads.TEXT`; its arguments' calls are walked as its parts.
+
+    Returns:
+      Whether it is, or an argument's type rests on one.
+
+    """
+    if (
+        not isinstance(value, ast.Call)
+        or stdlib.resolved(value.func, known.names.stdlib) not in stdlib.OVERLOADS
+    ):
+        return False
+    found: Inference | None = inference(value, known, declared)
+    return found is not None and overloads.TEXT in found.kinds

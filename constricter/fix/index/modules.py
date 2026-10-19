@@ -22,6 +22,7 @@ from constricter.empty import Empty
 from constricter.fix.core.imports import taken_names
 from constricter.fix.core.known import Origin, Passed, Returns, Takers, pickled, unpickled
 from constricter.fix.core.signatures import AWAIT
+from constricter.fix.index import annotated
 from constricter.fix.index.origins import guarded_origins, origins_of, skipped, starred
 from constricter.fix.index.params import Param, open_functions
 from constricter.fix.index.stubs.declared import Declarations, Signature, declarations, kinds, overloads
@@ -154,6 +155,10 @@ class Module:  # pylint: disable=too-many-instance-attributes
     kinds: Declarations | None = None
     # The attributes its classes bind to an empty container and do no more with (see `stored.untouched`).
     emptied: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
+    # A checked file's functions' parameters annotated, each name's annotations as written, and
+    # Those they leave bare (see `constricter.fix.index.consistent`).
+    annotated: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
+    bare: frozenset[str] = frozenset()
 
     @override
     def __getstate__(self) -> dict[str, object]:
@@ -215,6 +220,8 @@ class Memo:
     members: dict[tuple[str, str], frozenset[str]] = field(default_factory=dict)
     # The methods a module's classes overload, by class (see `own_methods`), by its name and folder.
     overloaded: dict[tuple[str, str], "_ByClass"] = field(default_factory=dict)
+    # Each name the checked files annotate alike, with a module's annotation of it (see `consistent`).
+    named: dict[str, tuple[str, str]] | None = None
 
 
 class Index(NamedTuple):
@@ -377,6 +384,8 @@ def read(path: Path, name: str | None = None) -> Module | None:
         managers={} if name is not None else _managers(tree),
         takers={} if name is not None else fills.takers(tree),
         emptied={} if name is not None else untouched(tree),
+        annotated={} if name is not None else annotated.annotations(tree),
+        bare=frozenset() if name is not None else annotated.bare(tree),
         kinds=None if name is not None else kinds(tree, _aliases(tree).keys() - rebound),
         unawaited=frozenset(
             stmt.name

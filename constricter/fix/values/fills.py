@@ -13,6 +13,11 @@ Anything else (passing it to another function, a nested function that sees it) l
 
 An instance attribute bound to one (`self.items = []`) is judged the same way, each read of it in its
 class's methods a use (`stored`): `constricter.fix.values.returned` types it from them all.
+
+A local `collections.Counter()` is typed by its keys (`c[k] += n`, `c[k] = n`, `c.update(xs)`), a
+`collections.defaultdict(list)` or `defaultdict(set)` by its keys and what's added to each value
+(`d[k].append(v)`), a `defaultdict(int)`, `(float)` or `(str)` by its keys, each addition
+(`d[k] += v`) one its factory's type takes.
 """
 
 import ast
@@ -20,7 +25,8 @@ from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from typing import Final, NamedTuple
 
-from constricter.fix.core.known import Inference, Known, Takers
+from constricter.fix.core.known import ImportPlan, Inference, Known, Takers
+from constricter.fix.libraries.stdlib import resolved
 from constricter.fix.values.inference import inference
 from constricter.fix.values.loops import looped
 from constricter.fix.values.shapes import displayed
@@ -52,6 +58,23 @@ _PURE: Final = frozenset(
     | {"sum", "min", "max", "zip", "iter", "bool", "str", "repr", "dict"},
 )
 _JOIN: Final = "join"
+_COUNTER: Final = "Counter"
+_DEFAULT: Final = "defaultdict"
+_INT: Final = "int"
+# A `defaultdict`'s factories `filled` takes: each value a container filled as one is, or a scalar
+# added to (`d[k] += v`) by values of the types it takes.
+_FACTORIES: Final = {
+    _LIST: frozenset[str](),
+    _SET: frozenset[str](),
+    _INT: frozenset({"bool", _INT}),
+    "float": frozenset({"bool", _INT, "float"}),
+    "str": frozenset({"str"}),
+}
+# What a `Counter`'s values take, and its methods that add the elements of their one argument.
+_COUNTS: Final = _FACTORIES[_INT]
+_COUNTED: Final = frozenset({"update", "subtract"})
+# A `Counter`'s methods that only read it.
+_COUNTER_READERS: Final = frozenset({"most_common", "elements", "total"})
 
 
 class Fill(NamedTuple):
@@ -146,6 +169,41 @@ def empty(value: ast.expr) -> str | None:
             return None
 
 
+def keyed_empty(value: ast.expr, known: Known) -> str | None:
+    """Recognise an empty `collections.Counter()`, or `defaultdict(list)` of a factory `filled` takes.
+
+    By the standard-library names in scope (see `stdlib.origins`).
+
+    Returns:
+      Its kind (`Counter`, `defaultdict(list)`), or `None` for anything else.
+
+    """
+    origin: str | None = resolved(value.func, known.names.stdlib) if isinstance(value, ast.Call) else None
+    name: str
+    match value:
+        case ast.Call(args=[], keywords=[]) if origin == f"collections.{_COUNTER}":
+            return _COUNTER
+        case ast.Call(args=[ast.Name(id=name)], keywords=[]) if (
+            name in _FACTORIES and origin == f"collections.{_DEFAULT}"
+        ):
+            return f"{_DEFAULT}({name})"
+        case _:
+            return None
+
+
+def _factory(kind: str) -> str | None:
+    """Name a `defaultdict` kind's factory: `list`, of `defaultdict(list)`.
+
+    Returns:
+      It, or `None` for another kind.
+
+    """
+    head: str
+    rest: str
+    _, head, rest = kind.partition(f"{_DEFAULT}(")
+    return rest.removesuffix(")") if head else None
+
+
 class Uses(NamedTuple):
     """A function body's names as `filled` judges them, read once for all its empty containers.
 
@@ -187,9 +245,9 @@ def filled(
     """Type an empty container `name` of `kind` from what its function's body (`found`) adds to it.
 
     Returns:
-      `list[T]`, `set[T]` or `dict[K, V]`, or `None` if a use could add something unseen (a nested
-      scope sees it, out of this function's sight), nothing is added, or what's added isn't typed
-      alike.
+      `list[T]`, `set[T]`, `dict[K, V]`, `Counter[K]` or `defaultdict[K, V]`, or `None` if a use
+      could add something unseen (a nested scope sees it, out of this function's sight), nothing is
+      added, or what's added isn't typed alike.
 
     """
     if name in found.nested:
@@ -322,14 +380,27 @@ def _use(node: ast.expr, kind: str, parents: Mapping[int, ast.AST]) -> Fill | Gi
     parent: ast.AST | None = parents.get(id(node))
     grandparent: ast.AST | None = None if parent is None else parents.get(id(parent))
     attr: str
-    keyword: str
+    value: ast.expr
     match parent:
         case ast.Attribute(attr=attr) if isinstance(grandparent, ast.Call) and grandparent.func is parent:
             return _method(attr, grandparent, kind)
+        case ast.Subscript(value=value) if value is node and kind not in _ADDERS:
+            return _keyed(parent, grandparent, kind, parents)
         case ast.Subscript(ctx=ast.Store()):
             return _stored(parent, grandparent, kind)
-        case _ if _reads(parent, grandparent):
-            return True
+        case _:
+            return _reads(parent, grandparent) or _given(node, parent, grandparent)
+
+
+def _given(node: ast.expr, parent: ast.AST | None, grandparent: ast.AST | None) -> Given | bool:
+    """Judge a use by the call it's an argument of.
+
+    Returns:
+      The pass, or `False` for a use that's none.
+
+    """
+    keyword: str
+    match parent:
         case ast.Call() if any(arg is node for arg in parent.args):
             return Given(parent, next(at for at, arg in enumerate(parent.args) if arg is node))
         case ast.keyword(arg=str() as keyword) if isinstance(grandparent, ast.Call):
@@ -382,6 +453,10 @@ def _method(attr: str, call: ast.Call, kind: str) -> Fill | bool:
       `False`.
 
     """
+    if kind not in _ADDERS:  # a `Counter`'s or `defaultdict`'s: added to through its keys
+        if kind == _COUNTER and attr in _COUNTED and not call.keywords and len(call.args) == 1:
+            return Fill(None, call.args[0], spread=True)
+        return attr in _READERS or (kind == _COUNTER and attr in _COUNTER_READERS)
     position: int | None = _ADDERS[kind].get(attr)
     if position is not None and not call.keywords and len(call.args) == position + 1:
         return Fill(call.args[0] if kind == _DICT else None, call.args[position])
@@ -407,6 +482,37 @@ def _stored(target: ast.Subscript, statement: ast.AST | None, kind: str) -> Fill
     return False
 
 
+def _keyed(
+    target: ast.Subscript,
+    statement: ast.AST | None,
+    kind: str,
+    parents: Mapping[int, ast.AST],
+) -> Fill | bool:
+    """Judge `d[k]` on a `Counter` or `defaultdict`: a use of the value at `k`.
+
+    A container value's use is judged as the container's (`d[k].append(v)`); a scalar's is read,
+    deleted, added to (`d[k] += v`, `d[k] -= v`) or bound (`d[k] = v`).
+
+    Returns:
+      What it adds, keyed by `k`; `True` for a use that adds nothing; `False` for any other.
+
+    """
+    factory: str | None = _factory(kind)
+    if factory is not None and not _FACTORIES[factory]:
+        inner: Fill | Given | bool = _use(target, factory, parents)
+        return inner._replace(key=target.slice) if isinstance(inner, Fill) else inner is True
+    addition: ast.expr
+    match statement:
+        case _ if isinstance(target.ctx, ast.Load | ast.Del):
+            return True
+        case (
+            ast.AugAssign(op=ast.Add() | ast.Sub(), value=addition) | ast.Assign(targets=[_], value=addition)
+        ):
+            return Fill(target.slice, addition)
+        case _:
+            return False
+
+
 def _typed(fills: Sequence[Fill], kind: str, known: Known, declared: Mapping[str, str]) -> Inference | None:
     """Type the container from its fills, if they agree.
 
@@ -419,13 +525,52 @@ def _typed(fills: Sequence[Fill], kind: str, known: Known, declared: Mapping[str
     if [len(row) for row in rows] != [len(row) for row in each]:
         return None
     parts: list[Inference] = [part for row in rows for part in row]
+    annotation: str | None
+    if (annotation := _alike(rows, kind) if kind in _ADDERS else _keyed_alike(rows, kind, known)) is None:
+        return None
+    reason: str = f"what the function adds to it ({len(fills)} {'fill' if len(fills) == 1 else 'fills'})"
+    return Inference(annotation, reason, frozenset({"filled"}).union(*(part.kinds for part in parts)))
+
+
+def _alike(rows: Sequence[Sequence[Inference]], kind: str) -> str | None:
+    """Annotate a `list`, `set` or `dict` by its fills' parts (`rows`), where each part agrees.
+
+    Returns:
+      The annotation, or `None` where they differ.
+
+    """
     # A `dict`'s keys, then its values; any other container's elements.
     types: list[set[str]] = [{row[at].annotation for row in rows} for at in range(len(rows[0]))]
     if any(len(found) != 1 for found in types):
         return None
-    annotation: str = f"{kind}[{', '.join(next(iter(found)) for found in types)}]"
-    reason: str = f"what the function adds to it ({len(fills)} {'fill' if len(fills) == 1 else 'fills'})"
-    return Inference(annotation, reason, frozenset({"filled"}).union(*(part.kinds for part in parts)))
+    return f"{kind}[{', '.join(next(iter(found)) for found in types)}]"
+
+
+def _keyed_alike(rows: Sequence[Sequence[Inference]], kind: str, known: Known) -> str | None:
+    """Annotate a `Counter` or `defaultdict` by its fills' parts (`rows`: a key, then what's added).
+
+    Returns:
+      `Counter[K]`, `defaultdict[K, list[V]]` or `defaultdict[K, int]`, its class as the module
+      names it; `None` where the keys differ, a container value's elements differ, or what's added
+      to a scalar isn't all of the types it takes.
+
+    """
+    keys: set[str] = {row[0].annotation for row in rows}
+    values: set[str] = {row[1].annotation for row in rows if len(row) > 1}  # a `Counter.update` has none
+    factory: str | None = _factory(kind)
+    taken: frozenset[str] = _COUNTS if factory is None else _FACTORIES[factory]  # none: a container's
+    if len(keys) != 1 or not (values <= taken if taken else len(values) == 1):
+        return None
+    plan: ImportPlan | None = known.names.plan
+    spelled: str | None = (
+        None if plan is None else plan.spell(f"collections.{_COUNTER if factory is None else _DEFAULT}")
+    )
+    if spelled is None:
+        return None
+    key: str = next(iter(keys))
+    if factory is None:
+        return f"{spelled}[{key}]"
+    return f"{spelled}[{key}, {factory if taken else f'{factory}[{next(iter(values))}]'}]"
 
 
 def added(fill: Fill, kind: str, known: Known, declared: Mapping[str, str]) -> list[Inference | None]:
@@ -437,8 +582,9 @@ def added(fill: Fill, kind: str, known: Known, declared: Mapping[str, str]) -> l
     """
     if not fill.spread:
         return [inference(part, known, declared) for part in (fill.key, fill.value) if part is not None]
-    if kind != _DICT:
-        return [looped(fill.value, known, declared, inference)]
+    if kind != _DICT:  # and a `defaultdict`'s key, of `d[k].extend(xs)`
+        keyed: list[Inference | None] = [] if fill.key is None else [inference(fill.key, known, declared)]
+        return [*keyed, looped(fill.value, known, declared, inference)]
     found: Inference | None = inference(fill.value, known, declared)
     types: tuple[str, str] | None = None if found is None else dict_parts(found.annotation)
     if found is None or types is None:

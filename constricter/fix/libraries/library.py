@@ -394,9 +394,9 @@ def library_call(
     """Infer a call to a standard-library function the tables type (see `constricter.fix.libraries.stdlib`).
 
     A fixed builtin result, whatever the arguments; the signature its arguments certainly match, for
-    one whose overloads or type variables they decide (see `constricter.fix.libraries.overloads`); and
-    `os.environ.get`'s `str | None` (`str` with a `str` default), passed positionally. `infer`
-    types an argument.
+    one whose overloads or type variables they decide (see `constricter.fix.libraries.overloads`), or
+    a text overload's `str` signature, a guess; and `os.environ.get`'s `str | None` (`str` with a
+    `str` default), passed positionally. `infer` types an argument.
 
     Returns:
       The inference, or `None` for any other call, or arguments that don't decide it.

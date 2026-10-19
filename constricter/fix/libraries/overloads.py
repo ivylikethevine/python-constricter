@@ -10,7 +10,8 @@ A type checker picks the first overload whose parameters take a call's arguments
 call only when that's certain enough: every signature that may be the one (not certainly refusing
 them, up to the first that certainly takes them; an argument whose type isn't known, or a verdict
 that depends on more than its type, leaves one open) gives the same type, in every variant. A call
-none takes is left to the type checker, which rejects it anyway.
+none takes is left to the type checker, which rejects it anyway. A function overloaded on `str`
+against `bytes` alone, its arguments' types unknown, is guessed a `str`'s (`TEXT`).
 """
 
 import ast
@@ -93,6 +94,8 @@ _Infer: TypeAlias = Callable[[ast.expr], Inference | None]
 # A signature that may be the one: its return template and its type variables' types (`None`:
 # a return `--fix` can't write).
 _Picked: TypeAlias = tuple[str, dict[str, str]] | None
+TEXT: Final = "text"  # the fix kind (and guessing mechanism) of a text overload's `str` signature
+_TAKEN_FOR: Final = ("str", "bytes", "int")  # what an untyped argument is taken for, in turn
 
 
 class Argument(NamedTuple):
@@ -150,7 +153,8 @@ def chosen(
     `name` is an entry of `OVERLOADS` (of `AWAITED_OVERLOADS`, after `AWAIT`: an `async def`'s call,
     awaited), or `method_signatures` for a `method`'s call on an instance
     (whose type binds its class's type parameters); or an installed package's function, as the
-    module calls it (`np.empty`: see `LibraryNames.installed`). `infer` types an argument.
+    module calls it (`np.empty`: see `LibraryNames.installed`). `infer` types an argument. Where an
+    `OVERLOADS` function's signatures disagree, it's guessed as `_text` does.
 
     Returns:
       The inference, its classes spelled (and imported, if they must be) as the module can; or
@@ -162,35 +166,99 @@ def chosen(
         return None
     installed: tuple[ReadSignature, ...] | None = known.names.installed.get(name)
     variants: tuple[tuple[ReadSignature, ...], ...] = _signatures(name) if installed is None else (installed,)
+    receiver: Receiver | None = None if method is None else receiver_of(method, known)
+    kinds: frozenset[str] = frozenset({_KIND if installed is None else _CALL})
+    reason: str = f"`{name}`'s return type, for its arguments"
+    annotation: str | None = _agreed(variants, read, method, receiver, known)
+    if annotation is None and method is None and name in stdlib.OVERLOADS:
+        annotation = _text(variants, read, known)
+        kinds, reason = kinds | {TEXT}, f"`{name}`'s return type, its untyped arguments taken for `str`"
+    if annotation is None:  # none, or several that disagree
+        return None
+    parts: list[Argument] = [*read.args, *read.keywords.values()]
+    return Inference(
+        annotation,
+        reason,
+        kinds.union(
+            *(part.found.kinds for part in parts if part.found is not None),
+            *(part.returns.kinds for part in parts if part.returns is not None),
+        ),
+        # What a type variable may take as its type: an argument of any type but a scalar's.
+        tuple(written for part in parts if part.type is None for written in part.reads),
+    )
+
+
+def _agreed(
+    variants: Sequence[Sequence[ReadSignature]],
+    read: Arguments,
+    method: stdlib.Method | None,
+    receiver: Receiver | None,
+    known: Known,
+) -> str | None:
+    """Type a call by every signature its arguments may match, in every variant (see `chosen`).
+
+    Returns:
+      The type they all give, written; or `None` if they disagree, or one can't be written.
+
+    """
     instance: list[str] | None = None if method is None else method.instance
     picks: list[_Picked] = [
         _receiving(picked, method)
         for variant in variants
-        for picked in _picked(
-            variant,
-            read,
-            instance,
-            None if method is None else receiver_of(method, known),
-        )
+        for picked in _picked(variant, read, instance, receiver)
     ]
     found: set[str | None] = {None if picked is None else write(picked, known) for picked in picks}
     if len(found) > 1 and None not in found:
         # Where Python versions differ only in which iterator they declare: the one all of them are.
         found = {None if picked is None else write(_iterator(picked), known) for picked in picks}
-    annotation: str | None
-    if (annotation := found.pop() if len(found) == 1 else None) is None:  # none, or several that disagree
+    return found.pop() if len(found) == 1 else None
+
+
+def _text(variants: Sequence[Sequence[ReadSignature]], read: Arguments, known: Known) -> str | None:
+    """Guess a call overloaded on `str` against `bytes` alone (`os.path.join(root, name)`): a `str`'s.
+
+    Each argument of no known type is taken for a `str`, a `bytes` and an `int` in turn; text is
+    nearly always a `str`. An `int` typed as the `str` is with `str` written `int` is a plain type
+    variable's (`copy.copy(x)`), not text's.
+
+    Returns:
+      What the `str`s give, where it and the `bytes`' are certain and differ only in `str` for
+      `bytes` (`list[str]`, `list[bytes]`); else `None`.
+
+    """
+    if not any(_untyped(arg) for arg in (*read.args, *read.keywords.values())):
         return None
-    parts: list[Argument] = [*read.args, *read.keywords.values()]
-    return Inference(
-        annotation,
-        f"`{name}`'s return type, for its arguments",
-        frozenset({_KIND if installed is None else _CALL}).union(
-            *(part.found.kinds for part in parts if part.found is not None),
-            *(part.returns.kinds for part in parts if part.returns is not None),
-        ),
-        # What a type variable may take as its type: an argument of any type but a scalar's.
-        tuple(text for part in parts if part.type is None for text in part.reads),
-    )
+    typed: list[str | None] = [
+        _agreed(
+            variants,
+            Arguments(
+                [Argument(kind) if _untyped(arg) else arg for arg in read.args],
+                {key: Argument(kind) if _untyped(arg) else arg for key, arg in read.keywords.items()},
+            ),
+            None,
+            None,
+            known,
+        )
+        for kind in _TAKEN_FOR
+    ]
+    textual: str | None
+    raw: str | None
+    number: str | None
+    textual, raw, number = typed
+    if textual is None or raw is None or textual == raw:
+        return None
+    swapped: list[str] = [substituted(textual, {"str": kind}) for kind in _TAKEN_FOR[1:]]
+    return textual if swapped[0] == raw and swapped[1] != number else None
+
+
+def _untyped(arg: Argument) -> bool:
+    """Check whether an argument's type is unknown: no literal, no class, nothing inferred.
+
+    Returns:
+      Whether it is.
+
+    """
+    return arg.type is None and arg.found is None and arg.klass is None
 
 
 def _iterator(picked: tuple[str, dict[str, str]]) -> tuple[str, dict[str, str]]:
@@ -208,28 +276,6 @@ def _iterator(picked: tuple[str, dict[str, str]]) -> tuple[str, dict[str, str]]:
             return f"{_ITERATOR}[{ast.unparse(first)}]", picked[1]
         case _:
             return picked
-
-
-def generic_member(receiver: str, name: str, call: ast.Call | None, known: Known) -> Inference | None:
-    """Type a generic standard-library class's own attribute or property, bound by the receiver's type.
-
-    `m.string` on an `re.Match[str]` is a `str`; a method (`call`) is `method_signatures`' to type.
-
-    Returns:
-      The inference, or `None` if the tables don't have it, or a type parameter it names is unbound.
-
-    """
-    found: tuple[str, str, dict[str, str]] | None = (
-        stdlib.generic_attribute(receiver, name, known) if call is None else None
-    )
-    if found is None:
-        return None
-    annotation: str | None = write((found[1], found[2]), known)
-    return (
-        None
-        if annotation is None
-        else Inference(annotation, f"`{found[0]}.{name}`'s annotation in typeshed", frozenset({_KIND}))
-    )
 
 
 def operated(
@@ -383,24 +429,6 @@ def _deduplicated(annotation: str) -> str:
             ]
             node.slice = ast.Tuple(joined, ast.Load()) if isinstance(node.slice, ast.Tuple) else joined[0]
     return ast.unparse(tree)
-
-
-def library_element(receiver: str, known: Known) -> Inference | None:
-    """Type what iterating a standard-library class's instance gives, bound by the receiver's type.
-
-    A `for` loop over an `io.TextIOWrapper` binds a `str`, over an `itertools.chain[int]` an `int`.
-
-    Returns:
-      The inference, or `None` if the tables don't have it, or a type parameter it names is unbound.
-
-    """
-    found: tuple[str, str, dict[str, str]] | None = stdlib.element(receiver, known)
-    annotation: str | None = None if found is None else write((found[1], found[2]), known)
-    return (
-        None
-        if found is None or annotation is None
-        else Inference(annotation, f"the elements of a `{found[0]}`", frozenset({_KIND}))
-    )
 
 
 def _receiving(picked: _Picked, method: stdlib.Method | None) -> _Picked:

@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Final, TypeAlias
 from constricter.fix.core.imports import added_dotted
 from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.core.signatures import AWAIT
-from constricter.fix.libraries import overloads, stdlib
+from constricter.fix.libraries import generics, stdlib
 from constricter.fix.libraries.library import library_awaited
 from constricter.fix.values.returns import METHOD_RETURNS, element_method, uniform_method
 from constricter.fix.values.targets import sole
@@ -364,7 +364,7 @@ def _library_base(receiver: str, name: str, call: ast.Call | None, known: Known)
     if owner is None or owner == receiver:
         return None
     if _GENERIC in owner:  # a generic one, given its arguments: they type its attributes
-        return None if call is not None else overloads.generic_member(owner, name, call, known)
+        return None if call is not None else generics.generic_member(owner, name, call, known)
     return stdlib.library_member(owner, name, call, known, inherited=True)
 
 
@@ -375,7 +375,7 @@ SOURCES: Final[tuple[MemberSource, ...]] = (
     _declared,
     _elements,
     stdlib.library_member,
-    overloads.generic_member,
+    generics.generic_member,
     _library_base,
 )
 

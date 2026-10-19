@@ -6,8 +6,39 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix --unsafe-fixes` guesses a call to a standard-library function overloaded on `str` against
+  `bytes` alone whose arguments' types are unknown: the `str` signature's type (`text`), as
+  `os.path.join(root, name)`'s `str`, `os.listdir(path)`'s `list[str]`. Before, the signatures'
+  disagreement left it with no fix: `os.path` has 688 such calls on the 47 corpora, `os` 246.
+- `--fix --unsafe-fixes` types what's read of an unannotated parameter whose members the function
+  reads, two or more, are all one class's: one the module defines at its top level (a base, where
+  classes inheriting from it have them too) or imports from another checked file, and not all of
+  any builtin type's or standard-library class's. `reader.name` and `reader.chunk()` take
+  `Reader`'s. Guesses (fix kind `reads`), never for a parameter the function probes with
+  `isinstance` or `hasattr`.
+- `--fix --unsafe-fixes` types a local `collections.Counter()`, or a `defaultdict` of `list`,
+  `set`, `int`, `float` or `str`, by what its function adds at its keys, as an empty `list` is by
+  its `append`s (fix kind `filled`): `counts[word] += 1` makes `counts` a `Counter[str]`,
+  `groups[name].append(size)` makes `groups` a `defaultdict[str, list[int]]`.
+- `--fix --unsafe-fixes` types a function's parameter left unannotated with no default by its
+  name, where the checked files' functions annotate a parameter of that name at least three times,
+  and always with the same type (`request: HttpRequest`): a guess, `named`.
+- With `type-comments` off, `--fix` takes an assignment's `# type:` comment as its LVA001 fix,
+  certain, and drops the comment: `x = v  # type: T` becomes `x: T = v`, and an unpacking's or a
+  `with`'s names are declared before it, as a loop's (LVA003) were. Only where `T` names builtins
+  and what the module binds; a binding whose comment can't be written has no fix, where its value's
+  type was written beside the comment, which then didn't parse with type comments. A loop's comment
+  naming what the module doesn't bind has no fix either.
+- **LVA013** (opt-in): an instance attribute a plain class's method first stores with no annotation
+  (`self.count = 0`), declared nowhere in the class. Reported only when selected by its full code
+  (`--extend-select LVA013`; pylint's `unannotated-instance-attribute`, `C9113`, off by default), an
+  error from `strict`, and counted by `--coverage` then. `--fix --unsafe-fixes` (`--likely` for a
+  value of no guess of its own) writes the `assigned` type a read of it already takes,
+  `self.count: int = 0`, or `T | None` for one stored `None` and else only a known `T`.
 - Compiled wheels are 64-bit only: 32-bit Windows installs the pure wheel, as PyPy and musllinux
   do.
+- The release builds each compiled wheel in a job of its own, a platform's and CPython's, the 20 at
+  once: it waits on the slowest wheel, where each platform's four were built in turn.
 - The version is the release's git tag: a build between releases reports a dev version
   (`constricter --version`: `0.5.1.dev3+g1a2b3c4`), as do the reports' `version` fields.
 - `--fix --unsafe-fixes` no longer guesses the type of a name bound again to a method call on
@@ -72,9 +103,10 @@ Notable changes, newest first. Each release's full notes are generated from its 
   standard library's 146 files that bind such calls, 6 more fixes.
 - `--fix` takes `m = pytest.importorskip("mod")` as `import mod as m`, at a module's top or in a
   function, where every binding of `m` in the file is that call (or `import mod`): what's read of
-  `m` is typed as after the import (`m.make()`), the binding itself left as it is. An import a fix
-  adds from a module the file `importorskip`s goes under `if TYPE_CHECKING:`, as one from a module
-  only its functions import does: the module may be missing when the file runs.
+  `m` is typed as after the import (`m.make()`, or an installed package's `pa.array(...)` by its
+  stubs), the binding itself left as it is. An import a fix adds from a module the file
+  `importorskip`s goes under `if TYPE_CHECKING:`, as one from a module only its functions import
+  does: the module may be missing when the file runs.
 - `--fix` follows a package's star imports, those under `if TYPE_CHECKING:` too, to the class a
   re-export names: a function declared to return `type['BaseModel']`, written through
   `from pydantic import BaseModel`, now types its calls in a file that imports `BaseModel` from
@@ -82,8 +114,9 @@ Notable changes, newest first. Each release's full notes are generated from its 
   pydantic.
 - `--fix` types `getattr(obj, "name")` as `obj.name` is, at any `vague`: `| None` with a `None`
   default, and joined with a default of another plain type (`getattr(conn, "timeout", "")`, a
-  `float | str`). Not where `obj.name` is an `X | None` and the default isn't `None`: a checker
-  narrows such a read where the function tests it.
+  `float | str`; with `0`, the wider of the two numbers, a `float`). Not where `obj.name` is an
+  `X | None` and the default isn't `None`: a checker narrows such a read where the function tests
+  it.
 - `--fix` types a test case's `with self.assertRaises((OSError, ValueError)) as cm:` as an
   `_AssertRaisesContext[OSError | ValueError]`: a tuple of classes binds a `type[_E]`'s `_E` to
   their union where the parameter takes a tuple of them too (the tables now say which do). And the

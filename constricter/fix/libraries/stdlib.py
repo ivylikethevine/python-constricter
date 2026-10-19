@@ -103,6 +103,31 @@ def method_signatures() -> dict[str, list[Variant]]:
 
 
 @cache
+def member_classes() -> Mapping[str, frozenset[str]]:
+    """Name the classes the tables hold with each member, their own or a public ancestor's.
+
+    Built the first time a guess by what's read of a parameter needs it (see `fix.values.reads`).
+
+    Returns:
+      Each member's classes, by its name.
+
+    """
+    own: dict[str, set[str]] = {}
+    table: _Own
+    for table in (_METHODS, _ATTRIBUTES, _METHOD_OVERLOADS, _GENERIC_ATTRIBUTES):
+        path: str
+        named: Mapping[str, str | None]
+        for path, named in table.items():
+            own.setdefault(path, set()).update(named)
+    having: dict[str, set[str]] = {}
+    for path in own.keys() | _BASES.keys():
+        name: str
+        for name in own.get(path, set()).union(*(own.get(base, ()) for base in _ancestors(path))):
+            having.setdefault(name, set()).add(path)
+    return {name: frozenset(paths) for name, paths in having.items()}
+
+
+@cache
 def _scalars() -> Mapping[str, str]:
     return cast("Mapping[str, str]", _table("scalars"))
 

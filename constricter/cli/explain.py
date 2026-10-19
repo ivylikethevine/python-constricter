@@ -14,6 +14,7 @@ from constricter.offences import (
     OPT_IN,
     REDUNDANT_TYPE,
     UNANNOTATED,
+    UNANNOTATED_ATTRIBUTE,
     UNANNOTATED_MEMBER,
     UNTYPED_TARGET,
     UNUSED_UNION_MEMBER,
@@ -82,6 +83,11 @@ _WHY: Final = {
         "A local bound exactly once, by a plain `name = value` outside any loop, and never rebound\n"
         "(not from a nested function either) could say so: `limit: Final = 10`. Off unless selected\n"
         "by its full code (`--extend-select LVA012`): most locals are bound once."
+    ),
+    UNANNOTATED_ATTRIBUTE: (
+        "An instance attribute a plain class's method first stores (`self.count = 0`), declared\n"
+        "nowhere in the class, is typed by whatever a type checker infers from that store. Annotate\n"
+        "it there: `self.count: int = 0`. Off unless selected by its full code (`--extend-select LVA013`)."
     ),
 }
 

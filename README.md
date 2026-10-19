@@ -78,6 +78,7 @@ class bodies too. Statements are read in source order, and only a name's first b
 | `LVA010` | with every value known: a union member no value is                                        | drop the member                                |
 | `LVA011` | an annotation listing a fixed-length tuple of more than `max-length` types (4 by default) | name the fields (a `NamedTuple`, a dataclass)  |
 | `LVA012` | opt-in: a local bound once, outside any loop, and never rebound                           | `name: Final = ...`                            |
+| `LVA013` | opt-in: an instance attribute a plain class's method first stores, declared nowhere in it | `self.x: T = ...`                              |
 
 Exempt: comprehensions, `except ... as`, imports, `def`/`class`, `type` aliases, parameters,
 `global`/`nonlocal`, and `_`; in module and class bodies, dunder names (`__all__`, `__slots__`) and
@@ -90,7 +91,8 @@ type checker: `T = TypeVar("T")`, a `ParamSpec`, a `TypeVarTuple`, a `NewType`, 
 A `# type:` comment (`x = 1  # type: int`, `with f() as x:  # type: T`) counts as an annotation with
 `type-comments`, or automatically in a module written to run on Python 2: one that imports
 `print_function`, `unicode_literals`, `absolute_import`, `division`, `with_statement`, `generators`
-or `nested_scopes` from `__future__`.
+or `nested_scopes` from `__future__`. Otherwise it's `LVA001`, and `--fix` writes the comment's type
+as the annotation and drops the comment.
 
 `LVA007` compares a block on its own: an `if`'s body and its `orelse`, a `try`'s body and its
 `except`s, and the like, are different blocks, since they don't both run in the same pass.
@@ -127,29 +129,36 @@ or SARIF `warning` in those formats) but exits 0; flake8 and pylint report error
 at every level, and an error only at `suffocate`: on the corpus, 45–70% of every codebase's first
 bindings qualify, so it suits a codebase that wants `Final` everywhere it can go, not a default.
 
+`LVA013` is opt-in the same way (pylint's `enable = unannotated-instance-attribute`), and an error
+from `strict`, as `LVA001` is. It reports an instance attribute a plain class's method stores
+(`self.count = 0`) that no annotation in the class declares, at its first plain `self.x = value`:
+a class the module defines once, with no keyword (a metaclass), on no base but `object` or another
+such class, since another file's base may declare the attribute itself. Dunders, stores in a
+nested function, and names the class's body or a base of the module's binds are left out.
+
 Python 3.11+, no runtime dependencies.
 
 ## Use
 
 | Tool   | Setup                                                 | Reports                         | Suppress                                         |
 | ------ | ----------------------------------------------------- | ------------------------------- | ------------------------------------------------ |
-| CLI    | `constricter [PATH...] [--level L] [--format F] [-q]` | `LVA001`–`LVA012`               | `# noqa: LVA001`                                 |
-| flake8 | install it (on by default)                            | `LVA001`–`LVA012`               | `# noqa: LVA001`                                 |
-| pylint | `load-plugins = ["constricter.plugins.pylint"]`       | `C9101`–`C9112` (symbols below) | `# noqa: LVA001` or `# pylint: disable=<symbol>` |
-| ruff   | run the CLI after ruff; set `lint.external = ["LVA"]` | `LVA001`–`LVA012`               | `# noqa: LVA001`                                 |
+| CLI    | `constricter [PATH...] [--level L] [--format F] [-q]` | `LVA001`–`LVA013`               | `# noqa: LVA001`                                 |
+| flake8 | install it (on by default)                            | `LVA001`–`LVA013`               | `# noqa: LVA001`                                 |
+| pylint | `load-plugins = ["constricter.plugins.pylint"]`       | `C9101`–`C9113` (symbols below) | `# noqa: LVA001` or `# pylint: disable=<symbol>` |
+| ruff   | run the CLI after ruff; set `lint.external = ["LVA"]` | `LVA001`–`LVA013`               | `# noqa: LVA001`                                 |
 
 pylint symbols: `unannotated-local-variable`, `untyped-for-or-match-variable`,
 `comment-typed-for-variable`, `unannotated-module-or-class-variable`, `vague-annotation`,
 `deeply-nested-annotation`, `redundant-annotation`, `narrowable-annotation`,
-`mismatched-value-type`, `unused-union-member`, `long-tuple-annotation`, `could-be-final` (off until
-enabled).
+`mismatched-value-type`, `unused-union-member`, `long-tuple-annotation`, and, off until enabled,
+`could-be-final` and `unannotated-instance-attribute`.
 
 Options:
 
 | Option           | CLI                                                                                                                                                                                                                                                                                                                        | `[tool.constricter]`                            | flake8 (CLI or config)          | pylint                            |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------------------------------- | --------------------------------- |
 | level            | `--level`                                                                                                                                                                                                                                                                                                                  | `level`                                         | `--constricter-level`           | `constricter-level`               |
-| strictest        | `--max`: `--level=suffocate` for every path, `--all-scopes`, and the opt-in `LVA012`                                                                                                                                                                                                                                       | —                                               | —                               | —                                 |
+| strictest        | `--max`: `--level=suffocate` for every path, `--all-scopes`, and the opt-in `LVA012` and `LVA013`                                                                                                                                                                                                                          | —                                               | —                               | —                                 |
 | every fix        | `--max-fix`: `--max`, `--fix --unsafe-fixes`, and `--infer-with` each of basedpyright, ty and pyrefly that's installed and runs                                                                                                                                                                                            | —                                               | —                               | —                                 |
 | type comments    | `--type-comments`                                                                                                                                                                                                                                                                                                          | `type-comments`                                 | `--constricter-type-comments`   | `constricter-type-comments = yes` |
 | all scopes       | `--all-scopes`                                                                                                                                                                                                                                                                                                             | `all-scopes`                                    | `--constricter-all-scopes`      | `constricter-all-scopes = yes`    |
