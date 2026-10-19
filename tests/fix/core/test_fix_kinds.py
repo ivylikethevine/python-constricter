@@ -146,6 +146,31 @@ def test_a_guessed_name_that_decides_nothing_makes_no_guess() -> None:
     }
 
 
+def test_a_text_guess_is_its_own_mechanism() -> None:
+    """A text overload's `str` signature is `text`, and what's typed by it alone is a guess too.
+
+    `os.path.join(base, name)` is a `str` once `base` is, but without it only by the text guess.
+    """
+    source: str = textwrap.dedent(
+        """\
+        import os
+
+
+        def f(path, name) -> None:
+            base = os.path.dirname(path)
+            joined = os.path.join(base, "x")
+            other = os.path.join(base, name)
+        """,
+    )
+    assert _kinds(source) == {
+        "base": ("str", frozenset({"stdlib", "text"}), True),
+        "joined": ("str", frozenset({"copy", "stdlib"}), False),  # by its literal alone
+        "other": ("str", frozenset({"copy", "stdlib"}), True),
+    }
+    trusted: dict[str, _Found] = _kinds(source, Checks(fixes=FixPolicy(unsafe_select=frozenset({"text"}))))
+    assert not any(found[2] for found in trusted.values())
+
+
 def test_narrowing_is_its_own_mechanism() -> None:
     """LVA008's rewrite is `narrow`: a guess unless trusted, and never offered if ignored."""
     source: str = "def f() -> None:\n    total: float = 0\n    total = 1\n"

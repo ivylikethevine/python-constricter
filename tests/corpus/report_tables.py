@@ -5,8 +5,10 @@ Which go in `report.md` and which each version's section of docs/RUNS.md has (`S
 the CSV files (`TABLES`).
 """
 
+import json
 from collections import Counter
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter import Level
@@ -25,9 +27,10 @@ from tests.corpus.pipeline import (
     TRACED,
     TYPES,
     Record,
+    Store,
     fixing,
 )
-from tests.corpus.run_config import CERTAIN, LIKELY, Run
+from tests.corpus.run_config import CERTAIN, LIKELY, UNSAFE, Run
 from tests.corpus.sizing import USED
 from tests.corpus.trees import Tree
 
@@ -41,6 +44,19 @@ _SHAPE: Final = "shape"  # the census table's column for an unfixed binding's va
 
 _VERDICTS: Final = ("told", "held", "differed")  # a traced record's counts, each by tier
 _COUNTS: Final = ("untyped", "guessed", "unfixed", "unparsed")  # a census record's counts
+_FIXES: Final = ".fixes.jsonl"  # a fix step's list of its fixes, a line each
+_Bound: TypeAlias = tuple[str, int, str]  # a fix's file, line and name
+
+
+def json_lines(path: Path) -> list[Record]:
+    """Read a file of JSON lines a step wrote beside its record.
+
+    Returns:
+      Each line's record; none if the file isn't there.
+
+    """
+    text: str = path.read_text(encoding="utf-8") if path.exists() else ""
+    return [json.loads(line) for line in text.splitlines()]
 
 
 class Records(NamedTuple):
@@ -50,6 +66,7 @@ class Records(NamedTuple):
     trees: Sequence[Tree]
     versions: list[str]  # as the run records them, in its order
     found: dict[tuple[str, str, str], Record]
+    store: Store | None = None  # the run's folder, for the lists its fix steps wrote
 
     def of(self, tree: Tree, version: str, step: str) -> Record:
         """Find a step's record.
@@ -59,6 +76,21 @@ class Records(NamedTuple):
 
         """
         return self.found.get((tree.name, version, step), _NO_RECORD)
+
+    def listed(self, tree: Tree, version: str, step: str) -> dict[_Bound, str]:
+        """Read the fixes a fix step made.
+
+        Returns:
+          Each one's annotation, by its file, line and name; none without the run's folder.
+
+        """
+        if self.store is None:
+            return {}
+        path: Path = self.store.path(tree.name, version, step, _FIXES)
+        return {
+            (str(fix["path"]), cast("int", fix["line"]), str(fix["name"])): str(fix["annotation"])
+            for fix in json_lines(path)
+        }
 
 
 def typed_share(record: Record) -> Typed | None:
@@ -366,6 +398,85 @@ def _coverage(records: Records) -> Rows:
     return rows
 
 
+def _unshared(records: Records) -> Rows:
+    """Count each corpus's likely fixes the unsafe fixes leave out or write otherwise.
+
+    The fixes interact (a guess changes what another binding's inference sees), so `--unsafe-fixes`
+    isn't `--likely` with more.
+
+    Returns:
+      A row a corpus and version where they differ.
+
+    """
+    rows: Rows = [["corpus", "constricter", "likely", "absent from unsafe", "annotated otherwise"]]
+    tree: Tree
+    for tree in records.trees:
+        version: str
+        for version in records.versions:
+            likely: dict[_Bound, str] = records.listed(tree, version, f"{FIX}{LIKELY}")
+            unsafe: dict[_Bound, str] = records.listed(tree, version, f"{FIX}{UNSAFE}")
+            absent: int = len(likely.keys() - unsafe.keys())
+            otherwise: int = sum(unsafe[key] != likely[key] for key in likely.keys() & unsafe.keys())
+            if unsafe and (absent or otherwise):
+                rows.append([tree.name, version, len(likely), absent, otherwise])
+    return rows
+
+
+def _uncounted(records: Records) -> Rows:
+    """Find the fix steps whose bindings typed after aren't those typed before and those they fixed.
+
+    A fix that didn't make its binding typed, or a binding typed that no fix names.
+
+    Returns:
+      A row a corpus, version and fix where the counts differ.
+
+    """
+    rows: Rows = [["corpus", "constricter", "fix", "typed before", "fixed", "typed after", "short"]]
+    tree: Tree
+    for tree in records.trees:
+        version: str
+        for version in records.versions:
+            before: Typed | None = typed_share(records.of(tree, version, COVERAGE))
+            mode: str
+            short: int
+            for mode in fixing(records.run):
+                record: Record = records.of(tree, version, mode)
+                after: Typed | None = typed_share(record)
+                fixed: int | None = cast("int | None", record.get("fixed"))
+                if before is None or after is None or fixed is None:
+                    continue
+                if short := before.typed + fixed - after.typed:
+                    rows.append(
+                        [tree.name, version, mode.removeprefix(FIX), before.typed, fixed, after.typed, short],
+                    )
+    return rows
+
+
+def _resampled(records: Records) -> Rows:
+    """Set each suite's traced tests beside its released tests, a sample of its flakiness for free.
+
+    Returns:
+      A row a corpus and version whose tests were traced: both runs' counts, and whether the same
+      tests failed.
+
+    """
+    rows: Rows = [["corpus", "constricter", "released", "traced", "same failures"]]
+    tree: Tree
+    for tree in records.trees:
+        version: str
+        for version in records.versions:
+            record: Record = records.of(tree, version, TESTS)
+            samples: dict[str, Record] = cast("dict[str, Record]", record.get("samples", {}))
+            traced: Record | None
+            if (traced := samples.get(TRACED)) is not None:
+                released: Record = cast("Record", record["released"])
+                same: bool = sorted(cast("list[str]", released.get("failed", []))) == sorted(
+                    cast("list[str]", traced.get("failed", [])),
+                )
+                rows.append([tree.name, version, _summary(released), _summary(traced), same])
+    return rows
+
+
 _MOST_SETS: Final = 12  # the sets of mechanisms `report.md` lists for each fix
 Table: TypeAlias = Callable[[Records], Rows]
 # What `report.md` has under each version's tables: a note, the table, and its columns of words.
@@ -414,6 +525,27 @@ SECTIONS: Final[tuple[_Section, ...]] = (
         _steps,
         3,
     ),
+    (
+        (
+            "The likely fixes the unsafe fixes leave out or write otherwise, where there are any (the "
+            "fixes interact, so unsafe isn't likely with more):"
+        ),
+        _unshared,
+        2,
+    ),
+    (
+        (
+            "The fixes whose bindings typed after aren't those typed before and those fixed, where they "
+            "differ (a fix that didn't make its binding typed):"
+        ),
+        _uncounted,
+        3,
+    ),
+    (
+        "Each suite's traced tests beside its released tests, a sample of its flakiness:",
+        _resampled,
+        5,
+    ),
 )
 TABLES: Final[dict[str, Table]] = {
     "offences": _offences,
@@ -428,4 +560,7 @@ TABLES: Final[dict[str, Table]] = {
     "coverage": _coverage,
     "timing": _timing,
     "steps": _steps,
+    "unshared": _unshared,
+    "uncounted": _uncounted,
+    "resampled": _resampled,
 }

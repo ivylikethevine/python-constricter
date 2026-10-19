@@ -17,6 +17,7 @@ from constricter.fix.values import aliased
 from constricter.fix.values.doubts import (
     Facts,
 )
+from constricter.fix.values.reads import Members
 from constricter.offences import (
     Checks,
 )
@@ -53,13 +54,18 @@ class Seeded(NamedTuple):
     `constricter.fix.index.callers`); `fixtures`: the pytest fixtures its tests can take, each one's
     value's type (see `constricter.fix.index.fixtures`). And `module`: the names the module binds
     once, at its top level, each with its type there, which every function reads it as. `marked`:
-    what a class's `parametrize` gives each of its methods, by `id()` (see `calls.marked`).
+    what a class's `parametrize` gives each of its methods, by `id()` (see `calls.marked`). `reads`:
+    the members of each class the module defines once at its top level, or imports from another
+    checked file (see `fix.values.reads`). `named`: the type a bare parameter's name has across the
+    checked files (see `constricter.fix.index.consistent`).
     """
 
     callers: Mapping[int, Mapping[str, Passed]] = Empty()
     fixtures: Mapping[str, Passed] = Empty()
     module: Mapping[str, Passed] = Empty()
     marked: Mapping[int, Mapping[str, Passed]] = Empty()
+    reads: Mapping[str, Members] = Empty()
+    named: Mapping[str, Passed] = Empty()
 
 
 class Kind(NamedTuple):

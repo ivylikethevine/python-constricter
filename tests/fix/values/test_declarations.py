@@ -14,7 +14,7 @@ from typing import Final, TypeAlias, cast
 
 import pytest
 
-from constricter import check_source, check_tree
+from constricter import Checks, check_source, check_tree
 from constricter.cli import command as cli
 from constricter.fix.core import fixes
 from constricter.fix.core.known import Inference, Known
@@ -22,7 +22,7 @@ from constricter.fix.values.inference import inference
 from constricter.fix.values.loops import looped
 from constricter.fix.values.targets import unpacked
 from constricter.offences import COMMENT_TYPED_TARGET as COMMENT_TYPED
-from constricter.offences import Edit, Fix, Offence
+from constricter.offences import MISMATCHED_TYPE, Edit, Fix, Offence
 
 _NOTHING_KNOWN: Known = Known({}, frozenset(), {}, {})
 _TYPED: Final = ": "  # in a line that declares a name
@@ -320,6 +320,104 @@ def test_a_type_commented_loop_target_is_declared_from_its_comment(
     _ = capsys.readouterr()
     assert cli.main(["--diff", "--level=suffocate", str(path)]) == cli.EXIT_CLEAN
     assert not capsys.readouterr().out  # nothing left to fix
+
+
+def test_an_assignments_type_comment_is_its_fix(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """With `type-comments` off, LVA001's fix is the comment's type, certain, and the comment dropped.
+
+    A plain name is annotated where it's bound (from a value over several lines too, whose last line
+    holds the comment); an unpacking's or a `with`'s names are declared before it. A comment that
+    isn't an annotation, names what the module doesn't bind, or sits past a value on another line of
+    an unpacking, gives no fix: an annotation beside it wouldn't parse with type comments.
+    """
+    source: str = (
+        "from typing import IO, Dict, List, Optional\n"
+        "Pair = Dict[str, int]\n"
+        "class Later: ...\n"
+        "def f(path: str) -> None:\n"
+        "    x = g()  # type: List[str]  # noqa: E501\n"
+        "    y = {\n"
+        "        'a': 1,\n"
+        "    }  # type: Pair\n"
+        "    a, b = h()  # type: int, str\n"
+        "    with open(path) as fh:  # type: IO[str]\n"
+        "        pass\n"
+        "    w = None  # type: Optional[Later]\n"
+        "    z = g()  # type: Unknown\n"
+        "    v = 1  # type: not an annotation(\n"
+        "    c, d = (\n"
+        "        1, 'd')  # type: int, str\n"
+        "    print(x, y, a, b, fh, w, z, v, c, d)\n"
+    )
+    found: dict[str, tuple[str, str | None, bool]] = {
+        o.name: (o.code, o.fix, o.unsafe) for o in check_source(source) if o.code != MISMATCHED_TYPE
+    }
+    assert found == {
+        "x": ("LVA001", "List[str]", False),
+        "y": ("LVA001", "Pair", False),
+        "a": ("LVA001", "int", False),
+        "b": ("LVA001", "str", False),
+        "fh": ("LVA001", "IO[str]", False),
+        "w": ("LVA001", "Optional[Later]", False),
+        "z": ("LVA001", None, False),
+        "v": ("LVA001", None, False),
+        "c": ("LVA001", None, False),
+        "d": ("LVA001", None, False),
+    }
+    path: Path = tmp_path / "commented.py"
+    _ = path.write_text(source, encoding="utf-8", newline="\n")
+    assert cli.main(["--fix", "-q", str(path)]) == cli.EXIT_FOUND
+    assert path.read_text(encoding="utf-8").startswith(
+        (
+            "from typing import IO, Dict, List, Optional\n"
+            "Pair = Dict[str, int]\n"
+            "class Later: ...\n"
+            "def f(path: str) -> None:\n"
+            "    x: List[str] = g()  # noqa: E501\n"
+            "    y: Pair = {\n"
+            "        'a': 1,\n"
+            "    }\n"
+            "    a: int\n"
+            "    b: str\n"
+            "    a, b = h()\n"
+            "    fh: IO[str]\n"
+            "    with open(path) as fh:\n"
+            "        pass\n"
+            "    w: Optional[Later] = None\n"
+            "    z = g()  # type: Unknown\n"
+        ),
+    )
+    _ = capsys.readouterr()
+    _ = cli.main(["--diff", str(path)])  # `z`, `v`, `c` and `d` left as they were
+    assert not capsys.readouterr().out  # nothing left to fix
+
+
+def test_a_type_comment_counted_is_left_as_it_is() -> None:
+    """With `type-comments`, a commented binding is typed already; a `with` of two targets isn't split."""
+    source: str = "def f() -> None:\n    x = g()  # type: int\n    with a as b:  # type: int\n        pass\n"
+    assert not check_source(source, checks=Checks(type_comments=True))
+    two: str = "def f() -> None:\n    with a() as b, c() as d:  # type: int, str\n        pass\n"
+    assert [(o.name, o.fix) for o in check_source(two)] == [("b", None), ("d", None)]
+
+
+def test_a_module_bodys_type_comment_is_its_fix() -> None:
+    """In all scopes, a module's commented name is annotated by its comment, quoted where it must be."""
+    source: str = (
+        "from typing import TYPE_CHECKING, List\n"
+        "if TYPE_CHECKING:\n"
+        "    from decimal import Decimal\n"
+        "NAMES = []  # type: List[str]\n"
+        "TOTAL = None  # type: Decimal\n"
+    )
+    offences: list[Offence] = check_source(source, checks=Checks(all_scopes=True))
+    assert {o.name: o.fix for o in offences} == {"NAMES": "List[str]", "TOTAL": '"Decimal"'}
+
+
+def test_a_type_comment_missing_from_the_lines_is_no_fix() -> None:
+    """An assignment whose comment the lines checked don't hold gets no fix."""
+    tree: ast.Module = ast.parse("def f() -> None:\n    x = g()  # type: int\n", type_comments=True)
+    lines: list[str] = ["def f() -> None:", "    x = g()"]
+    assert [(o.name, o.edit) for o in check_tree(tree, lines=lines)] == [("x", None)]
 
 
 def test_a_declaration_keeps_the_files_line_endings() -> None:

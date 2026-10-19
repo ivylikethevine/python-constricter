@@ -16,6 +16,7 @@ from tests.corpus.trees import Tree
 
 _Nested: TypeAlias = dict[str, dict[str, dict[str, Record]]]  # corpus, version, step
 _Rows: TypeAlias = list[list[str]]  # a CSV table, read back
+_Named: TypeAlias = list[tuple[str, str]]  # a fix step's fixes, by name and annotation
 _WARNING: Final = "a warning\n"
 _CRLF: Final = b"\r\n"  # a line's end that git keeps as LF
 _PUBLISHED: Final = "\n## constricter rc\n"  # in RUNS.md: `dev` under the run's label
@@ -388,6 +389,59 @@ def test_each_judged_fix_is_listed_with_what_blames_it_and_bears_it_out(tmp_path
         ("src/pkg/b.py", True, 1, [0, 0, 0], None),
     ]
     assert render.write(render.gathered(run, store, [tree]), tmp_path, {})[1] == tmp_path / "guesses.jsonl"
+
+
+def test_what_the_records_hold_beside_the_tables_is_tabled_where_it_differs(tmp_path: Path) -> None:
+    """Likely fixes unsafe leaves out, a fix that typed nothing, and the traced tests beside the released."""
+    store: Store
+    tree: Tree
+    store, tree = _recorded(tmp_path)
+    listed: dict[str, _Named] = {
+        "fix-likely": [("x", "int"), ("y", "str"), ("z", "int")],
+        "fix-unsafe": [("x", "int"), ("y", "bytes")],
+    }
+    step: str
+    named: _Named
+    for step, named in listed.items():
+        fixes: list[Record] = [
+            {"path": "a.py", "line": 1, "name": name, "annotation": annotation} for name, annotation in named
+        ]
+        _ = store.path(tree.name, "rc+dev", step, ".fixes.jsonl").write_text(
+            "".join(f"{json.dumps(fix)}\n" for fix in fixes),
+            encoding="utf-8",
+        )
+    store.write(tree.name, "rc+dev", "fix-certain", _fixed(2, {"certain": 2}) | {"typed": [5, 10]})
+    traced: Record = {"counts": {"passed": 8, "failed": 1}, "failed": [_FAILED]}
+    store.write(tree.name, "rc+dev", pipeline.TESTS, _TESTED | {"samples": {pipeline.TRACED: traced}})
+    records: report_tables.Records = render.gathered(parse({"run": {"label": "rc"}}), store, [tree])
+    assert report_tables.TABLES["unshared"](records)[1:] == [["standard library", "rc+dev", 3, 1, 1]]
+    assert report_tables.TABLES["uncounted"](records)[1:] == [
+        ["standard library", "rc+dev", "certain", 4, 2, 5, 1],
+    ]
+    assert report_tables.TABLES["resampled"](records)[1:] == [
+        ["standard library", "rc+dev", "9 passed, 1 skipped", "1 failed, 8 passed", False],
+    ]
+    assert report_tables.TABLES["unshared"](
+        report_tables.Records(records.run, records.trees, records.versions, records.found),
+    ) == [
+        ["corpus", "constricter", "likely", "absent from unsafe", "annotated otherwise"],
+    ]
+
+
+def test_a_hinted_step_whose_rounds_came_from_the_store_is_noted(tmp_path: Path) -> None:
+    """Its seconds measure less of the checker, and the run's notes say so."""
+    store: Store
+    tree: Tree
+    store, tree = _recorded(tmp_path)
+    kept: Record = _fixed(5, {"certain": 2, "likely": 1, "guess": 2}) | {"stored": {"ty": [1, 2]}}
+    store.write(tree.name, "rc+dev", "infer-ty", kept)
+    run: Run = parse({"run": {"label": "rc"}, "steps": {"infer-with": ["ty"]}})
+    assert render.notes(render.gathered(run, store, [tree]))[1:] == [
+        (
+            "standard library, rc+dev, infer-ty: ty's hints for 1 of 2 rounds came from the store,"
+            " so its seconds measure less of the checker"
+        ),
+    ]
 
 
 def test_a_run_publishes_a_section_a_version(tmp_path: Path) -> None:

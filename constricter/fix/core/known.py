@@ -599,6 +599,8 @@ class Outside:  # pylint: disable=too-many-instance-attributes
     tuples: Mapping[str, str] = field(default_factory=dict[str, str])
     # The pytest fixtures its tests can take: each one's value's type (see `constricter.fix.index.fixtures`).
     fixtures: Mapping[str, Passed] = field(default_factory=dict[str, Passed])
+    # The types its bare parameters' names have across them (see `constricter.fix.index.consistent`).
+    named: Mapping[str, Passed] = field(default_factory=dict[str, Passed])
     # Its classes' bases other checked files define: where each one's own end (see `Lineage.beyond`).
     beyond: Mapping[str, Beyond] = field(default_factory=dict[str, Beyond])
     # What awaiting a call of each `async def` it imports from them gives, as it spells the call.
@@ -690,6 +692,7 @@ class Outside:  # pylint: disable=too-many-instance-attributes
             ),
             tuples=free_of(self.tuples, clashing),
             fixtures={name: typed for name, typed in self.fixtures.items() if not roots(typed[0]) & clashing},
+            named={name: typed for name, typed in self.named.items() if not roots(typed[0]) & clashing},
             beyond=self.beyond,
             awaits=free_of(self.awaits, clashing),
             values=self.values,

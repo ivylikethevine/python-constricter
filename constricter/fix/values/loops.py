@@ -13,7 +13,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Final, TypeAlias, cast
 
 from constricter.fix.core.known import Inference, Known, kinds_of
-from constricter.fix.libraries import overloads, walks
+from constricter.fix.libraries import generics, walks
 from constricter.fix.values import called, shapes
 from constricter.fix.values.members import present
 from constricter.fix.values.targets import (
@@ -152,7 +152,7 @@ def looped(iterable: ast.expr, known: Known, declared: Mapping[str, str], infer:
             # Of an `X | None`, the `X`'s: `None` has none. A builtin container's or an
             # `Iterable[T]`'s, else a standard-library class's own.
             held: str = rebased(present(found.annotation, ""), "__iter__", known)
-            element: Inference | None = overloads.library_element(held, known)
+            element: Inference | None = generics.library_element(held, known)
             return element_type(held, f"the elements of {found.reason}", kinds) or (
                 None if element is None else element._replace(kinds=kinds | element.kinds)
             )

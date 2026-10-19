@@ -28,8 +28,9 @@ from constricter.fix.core.known import (
     Passed,
     Seeds,
 )
-from constricter.fix.index import callers, fixtures
+from constricter.fix.index import annotated, callers, fixtures
 from constricter.fix.libraries import stdlib
+from constricter.fix.values import reads
 from constricter.fix.values.guesses import guessing
 from constricter.fix.values.inference import inference, scalar
 from constricter.rules.annotations import dotted
@@ -46,6 +47,7 @@ _TEST: Final = "test"  # how pytest's test functions' names start
 _NONE: Final = "None"  # says nothing of what the parameter's other callers pass, nor what it's for
 _DEFINED: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)  # what binds a name, inside
 _REQUEST: Final = "request"  # the parameter pytest gives a fixture its request by
+_DOT: Final = "."  # in a class's spelling: what the module imports it through (`t.Row`)
 _PARAMS: Final = "params"  # `pytest.fixture`'s keyword: the values `request.param` takes in turn
 
 
@@ -240,19 +242,38 @@ def keyed(tree: ast.Module, typed: Seeds) -> dict[int, Mapping[str, Passed]]:
 def seed_parameters(scope: Scope, func: FunctionDef, named: Sequence[ast.arg]) -> None:
     """Type the unannotated parameters every call passes one type (see `fix.index.callers`), as guesses.
 
-    Not one the function binds again itself, whose type a guess from its callers wouldn't be after.
+    Else one whose members the function reads are one class's the module has (see `fix.values.reads`).
+    Then, of those with no default, one whose name the checked files annotate alike (see
+    `fix.index.consistent`), but a test's or a fixture's, which pytest gives by name. Not one the
+    function binds again itself, whose type a guess from outside it wouldn't be after.
     """
     seeded: Seeded = scope.settings.parameters or Seeded()
     typed: Mapping[str, Passed] = seeded.callers.get(id(func), {})
     injected: Mapping[str, Passed] = _injected(seeded, func, scope.settings.known)
     varied: Passed | None = _varied(func)
-    if not (typed or injected or varied):
+    if not (typed or injected or varied or seeded.reads or seeded.named):
         return
+    nodes: list[ast.AST] = list(own_nodes(func.body))
     rebound: set[str] = {
-        node.id
-        for node in own_nodes(func.body)
-        if isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load)
+        node.id for node in nodes if isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load)
     }
+    untyped: list[str] = [
+        arg.arg
+        for arg in named
+        if arg.annotation is None and arg.arg not in rebound and arg.arg not in scope.inferred.types
+    ]
+    # A class the function's own names shadow isn't the module's.
+    bound: set[str] = rebound | {arg.arg for arg in named}
+    read: dict[str, str] = {
+        name: owner
+        for name, owner in reads.typed(nodes, untyped, seeded.reads).items()
+        if owner.partition(_DOT)[0] not in bound
+    }
+    bare: frozenset[str] = (
+        frozenset()
+        if func.name.startswith(_TEST) or is_fixture(func)
+        else frozenset(arg.arg for arg in annotated.required(func.args))
+    )
     arg: ast.arg
     for arg in named:
         given: Passed | None = typed.get(arg.arg)
@@ -264,6 +285,10 @@ def seed_parameters(scope: Scope, func: FunctionDef, named: Sequence[ast.arg]) -
             scope.inferred.learn(arg.arg, *injected[arg.arg])
         elif given is not None and plain(given[0], scope.settings.known):
             scope.inferred.learn(arg.arg, given[0], frozenset({callers.KIND}) | given[1])
+        elif arg.arg in read:
+            scope.inferred.learn(arg.arg, read[arg.arg], frozenset({reads.KIND}))
+        elif arg.arg in seeded.named and arg.arg in bare:
+            scope.inferred.learn(arg.arg, *seeded.named[arg.arg])
 
 
 def _injected(seeded: Seeded, func: FunctionDef, known: Known) -> Mapping[str, Passed]:

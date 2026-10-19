@@ -7,7 +7,17 @@ from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING, ClassVar, Final, cast, final
 
 from constricter import __version__
-from constricter.offences import LEVELS, MAX_LENGTH, NESTING, OPT_IN, VAGUE, Checks, Level, Offence
+from constricter.offences import (
+    CAN_BE_FINAL,
+    LEVELS,
+    MAX_LENGTH,
+    NESTING,
+    UNANNOTATED_ATTRIBUTE,
+    VAGUE,
+    Checks,
+    Level,
+    Offence,
+)
 from constricter.rules.checker import check_source, check_tree
 from constricter.rules.flow import Narrower, parse_narrower
 
@@ -31,6 +41,7 @@ class ConstricterChecker:
     vague: ClassVar[int] = VAGUE
     narrower: ClassVar[tuple[Narrower, ...]] = ()
     can_be_final: ClassVar[bool] = False  # report LVA012
+    attributes: ClassVar[bool] = False  # report LVA013
 
     def __init__(self, tree: ast.Module, lines: Sequence[str]) -> None:
         """Take the file flake8 parsed, and its lines."""
@@ -102,7 +113,8 @@ class ConstricterChecker:
             *(cast("list[str] | None", getattr(options, "select", None)) or []),
             *(cast("list[str] | None", getattr(options, "extend_select", None)) or []),
         ]
-        cls.can_be_final = bool(OPT_IN & set(chosen))
+        cls.can_be_final = CAN_BE_FINAL in chosen
+        cls.attributes = UNANNOTATED_ATTRIBUTE in chosen
 
     def run(self) -> Iterator[tuple[int, int, str, type["ConstricterChecker"]]]:
         """Check the file.
@@ -121,6 +133,7 @@ class ConstricterChecker:
             vague=self.vague,
             narrower=self.narrower,
             final=self.can_be_final,
+            attributes=self.attributes,
         )
         offences: list[Offence] = (
             check_source(source, checks=checks)

@@ -24,7 +24,7 @@ from constricter.fix.core.known import (
     Partial,
 )
 from constricter.fix.libraries import stdlib
-from constricter.fix.values import callables, classvars, entered, fills, stored
+from constricter.fix.values import callables, classvars, entered, fills, reads, stored
 from constricter.fix.values.doubts import facts, says_self
 from constricter.offences import (
     STARRED_SUBSCRIPTS,
@@ -171,6 +171,8 @@ def module_settings(
             keyed(tree, {} if outside is None else outside.parameters),
             {} if outside is None else outside.fixtures,
             marked=marked(tree),
+            reads=reads.members(tree, imported, () if outside is None else outside.same),
+            named={} if outside is None else outside.named,
         ),
     )
 

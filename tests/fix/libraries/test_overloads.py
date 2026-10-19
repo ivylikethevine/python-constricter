@@ -97,7 +97,7 @@ def test_a_call_is_typed_by_the_signature_its_arguments_match() -> None:
         "a": "list[str]",
         "b": "list[bytes]",
         "c": "list[str]",
-        "d": None,  # `str` or `bytes`: unknown
+        "d": "list[str]",  # `str` or `bytes`: a guess, the `str` one (see `TEXTS`)
         "e": "re.Pattern[str]",
         "g": "re.Pattern[bytes]",  # through `import re`
         "h": "ast.Module",
@@ -110,6 +110,56 @@ def test_a_call_is_typed_by_the_signature_its_arguments_match() -> None:
         "q": "tuple[str, str]",
         "r": "str | None",
     }
+
+
+TEXTS: Final = """
+import copy
+import os
+import re
+
+
+class Foo:
+    pass
+
+
+def f(root, name, path, n, raw: bytes, obj: Foo) -> None:
+    a = os.path.join(root, name)
+    b = os.path.basename(path)
+    c = os.path.splitext(path)
+    d = re.compile(name)
+    e = os.path.join(raw, name)
+    g = copy.copy(name)
+    h = os.getenv("X", name)
+    i = os.path.join(root, 1)
+    m = re.sub(name, root, path, n)
+    j = os.path.join(obj)
+    k = os.path.join(root, "x")
+"""
+
+
+def test_a_text_overload_is_guessed_the_str_one() -> None:
+    """Arguments of no known type are taken for `str`, where `bytes` would give the same with `bytes`.
+
+    Not where they decide something else (`os.getenv`'s default), the type is a plain type
+    variable's (`copy.copy`), no signature takes the call with them `str`s, or none is untyped.
+    """
+    found: list[Offence] = check_source(textwrap.dedent(TEXTS))
+    assert {o.name: (o.fix, o.unsafe) for o in found if o.code == UNANNOTATED} == {
+        "a": ("str", True),
+        "b": ("str", True),
+        "c": ("tuple[str, str]", True),
+        "d": ("re.Pattern[str]", True),
+        "e": ("bytes", False),  # certain: only the `bytes` signature takes `raw`
+        "g": (None, False),
+        "h": (None, False),
+        "i": (None, False),
+        "j": (None, False),
+        "k": ("str", False),  # by its literal
+        "m": ("str", True),
+    }
+    kinds: dict[str, frozenset[str]] = {o.name: o.edit.kinds for o in found if o.edit is not None}
+    assert kinds["a"] == {"stdlib", "text"}
+    assert kinds["e"] == {"copy", "stdlib"}
 
 
 def test_a_generic_receiver_binds_its_class_type_parameters() -> None:

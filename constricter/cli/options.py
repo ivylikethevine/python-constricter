@@ -26,12 +26,14 @@ from constricter.cli.lsp.protocol import SERVERS, runs
 from constricter.cli.paths import STDIN, excluded
 from constricter.cli.report import Format, Result
 from constricter.offences import (
+    CAN_BE_FINAL,
     LEVELS,
     MAX_LENGTH,
     MESSAGES,
     NESTING,
     OPT_IN,
     PLAIN_BASES,
+    UNANNOTATED_ATTRIBUTE,
     VAGUE,
     Checks,
     FixPolicy,
@@ -668,7 +670,8 @@ class Options:  # pylint: disable=too-many-instance-attributes
                     (name, tuple(wider))
                     for name, wider in cast("dict[str, list[str]]", getattr(args, "narrower", {})).items()
                 ),
-                final=bool(OPT_IN & {*_select(args), *cast("list[str]", args.extend_select)}),
+                final=CAN_BE_FINAL in {*_select(args), *cast("list[str]", args.extend_select)},
+                attributes=UNANNOTATED_ATTRIBUTE in {*_select(args), *cast("list[str]", args.extend_select)},
                 fixes=FixPolicy(
                     frozenset(cast("list[str]", args.fix_select)),
                     frozenset(cast("list[str]", args.fix_ignore)),

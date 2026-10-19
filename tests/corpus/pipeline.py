@@ -88,6 +88,11 @@ SHARING: Final = frozenset({CHECK, CENSUS})  # the steps that read it: the first
 _NAME: Final = re.compile(r"'([^']+)'")  # the name an offence's message quotes
 _ERROR: Final = "error"  # an offence's severity, in `--format=json`
 _TYPED: Final = re.compile(r"^Total: (\d+)/(\d+) typed", re.MULTILINE)  # `--coverage`'s summary
+# `--infer-with`'s note of the rounds a checker's hints were read from the store for, not asked.
+_STORED: Final = re.compile(
+    r"^constricter: note: (\S+)'s hints for (\d+) of (\d+) rounds were read",
+    re.MULTILINE,
+)
 
 
 class Store(NamedTuple):
@@ -383,6 +388,17 @@ def sets(made: Sequence[_Entry]) -> dict[str, dict[str, int]]:
     return {kinds: dict(tiers) for kinds, tiers in found.items()}
 
 
+def _stored(errors: str) -> dict[str, list[int]]:
+    """Read `--infer-with`'s notes of the rounds whose hints came from the store, from a run's errors.
+
+    Returns:
+      Each checker's rounds read from the store and all its rounds, by its name.
+
+    """
+    noted: list[tuple[str, str, str]] = cast("list[tuple[str, str, str]]", _STORED.findall(errors))
+    return {name: [int(read), int(rounds)] for name, read, rounds in noted}
+
+
 def fix(job: Job, step: str, extra: Sequence[str]) -> Record:
     """Fix a copy of the corpus with `--fix` and `extra`, then ask a second pass what it would still fix.
 
@@ -415,6 +431,9 @@ def fix(job: Job, step: str, extra: Sequence[str]) -> Record:
         fixed = corpus_table.fixed_count(ran.output)
     job.store.log(job.tree.name, job.recorded, step, ran.errors)
     record["seconds"] = round(ran.seconds, 1)
+    stored: dict[str, list[int]]
+    if stored := _stored(ran.errors):
+        record["stored"] = stored  # its seconds measure less of the checker
     if fixed is not None:
         pool: ThreadPoolExecutor
         with ThreadPoolExecutor(2) as pool:  # both read the fixed copy

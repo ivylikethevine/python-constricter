@@ -65,6 +65,8 @@ class Session:
         """
         self.checkers: list[Checker] = [Checker(checker, root, servers, memory) for checker in checkers]
         self.kept: bool = kept
+        # Each checker's rounds, by its name: whether the store had each one's hints.
+        self.rounds: dict[str, list[bool]] = {checker.name: [] for checker in self.checkers}
 
     def __enter__(self) -> Self:
         """Use the servers.
@@ -102,6 +104,8 @@ class Session:
                 found[checker.name] = read[0]
                 checker.abandoned |= read[1]
         asking: list[Checker] = [checker for checker in self.checkers if checker.name not in found]
+        for checker in self.checkers:
+            self.rounds[checker.name].append(checker.name in found)
         _start(files, asking)
         work: list[tuple[Checker, _Task]] = [
             (checker, task) for checker in asking for task in checker.tasks(files)
@@ -135,6 +139,17 @@ class Session:
 
         """
         return [(checker.name, path) for checker in self.checkers for path in sorted(checker.abandoned)]
+
+    @property
+    def reused(self) -> list[tuple[str, int, int]]:
+        """List the checkers some of whose rounds' hints were read from the store, not asked for.
+
+        Returns:
+          Each one's name, the rounds read from the store and all its rounds, in the order the
+          checkers were named.
+
+        """
+        return [(name, sum(rounds), len(rounds)) for name, rounds in self.rounds.items() if any(rounds)]
 
 
 def _start(files: Mapping[Path, str], checkers: Sequence["Checker"]) -> None:

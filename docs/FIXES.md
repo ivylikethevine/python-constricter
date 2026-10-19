@@ -210,7 +210,12 @@ the value decides it, for a plain `name = value` in a function or module body:
   binding one differently leave the call alone (`itertools.chain(names, ids)`), as does unpacking
   `*args` or `**kwargs`. At module level, where an annotation is evaluated when the module runs, a
   class some supported Python can't subscript at run time is quoted
-  (`counter: "itertools.count[int]"`), unless the module has `from __future__ import annotations`;
+  (`counter: "itertools.count[int]"`), unless the module has `from __future__ import annotations`.
+  A call the signatures leave open, to a function overloaded on `str` against `bytes` alone, is a
+  guess (`text`): its arguments of no known type taken for `str`s, `os.path.join(root, name)` is a
+  `str`, `os.listdir(path)` a `list[str]`, `re.compile(pattern)` a `re.Pattern[str]`; only where
+  taking them for `bytes` gives that type with `str` written `bytes`, and for `int`s doesn't (as
+  `copy.copy(x)`'s type variable does);
 - a generic standard-library class's own attribute or property, by the receiver's type arguments:
   `m.string` on an `re.Match[str]` is a `str`, `p.pattern` on an `re.Pattern[bytes]` a `bytes`; and
   what it inherits with one type whatever they are: `f.read()` on an `io.TextIOWrapper` is a `str`
@@ -305,6 +310,15 @@ the value decides it, for a plain `name = value` in a function or module body:
   leaves a parameter to its default, can't be matched to, or unpacks its arguments for, nor a
   parameter the function binds again. The files defining such functions are checked again knowing
   those types, then the files calling them, knowing what they now return;
+- with `--unsafe-fixes`, what's computed from an unannotated parameter whose members the function
+  reads (`p.x`, `p.run()`: two names or more, no dunder) are all members of one class the module
+  defines once at its top level (what its body binds, what its methods set on `self`, and its bases'
+  there) or imports from another checked file (its typed members; the CLI only), and not all of any
+  other such class's but those inheriting from it, nor of a builtin type's or a standard-library
+  class's: `def show(reader)` reading `reader.name` and `reader.chunk()` takes `Reader`'s. A guess
+  (`reads`), since another module's class may have them too; never for a parameter the function
+  probes (`isinstance`, `hasattr`, `getattr`, `type`) or binds again, one its callers type, nor by a
+  class a name of the function shadows;
 - with `--unsafe-fixes`, what's computed from a parameter pytest gives a test (a function named
   `test...`) or a fixture. One named as a fixture: its module's own, else the one in the
   `conftest.py` of the nearest package above it, else in a `conftest.py` outside any package, the
@@ -325,6 +339,15 @@ the value decides it, for a plain `name = value` in a function or module body:
   (`fixture`), since a plugin's fixture of the name, or a `conftest.py` out of the checked files,
   may be the one pytest takes; not a parameter the test annotates or binds again, nor any for a test
   file whose name another checked file has (a module's name says nothing of where it is);
+- with `--unsafe-fixes` (the CLI only), what's computed from a function's parameter left unannotated
+  with no default, not `self` or `cls`, whose name the checked files' functions annotate a parameter
+  by at least three times, every time the same type (by what each annotation's names refer to,
+  through re-exports; not `Any` or `object`; not a local's, which `--fix` writes itself):
+  `def show(request)`, where `request: HttpRequest` is written three times and nothing else, types
+  `path = request.path` as `HttpRequest.path` is. The type is written as most of those annotations
+  spell it, imported for type checking as another file's type is. A guess (`named`), after `callers`
+  and `fixture`: nothing ties one function's `request` to another's; not a parameter the function
+  binds again, nor a test's or a fixture's, which pytest gives by name;
 - with `--unsafe-fixes`, an empty container (`[]`, `{}`, `set()`, `list()`, `dict()`) the function
   then only adds to, every addition typed alike (`append`, `insert`, `add`, `setdefault`,
   `x[k] = v`; `extend` and `update` with one argument, by its elements, or a `dict`'s keys and
@@ -336,7 +359,12 @@ the value decides it, for a plain `name = value` in a function or module body:
   (`alias = names`) unless every use of that local only reads it, but not one that only reads it
   (`x[0]`, `len(x)`, `sep.join(x)`, `x + more`, `[*x]`, `return x, n`). Not where a name added, or
   one in a display added (`rows.append((key, cmd))`), is one the function tests: it's narrowed
-  there;
+  there. A local `collections.Counter()` is a `Counter[K]` by its keys (`c[k] += 1`, `c[k] = n`;
+  `update` and `subtract`, by their argument's elements), a `defaultdict(list)` or
+  `defaultdict(set)` a `defaultdict[K, list[V]]` by what's added at each key (`d[k].append(v)`),
+  and a `defaultdict(int)`, `(float)` or `(str)` a `defaultdict[K, int]` by `d[k] += v` and
+  `d[k] = v`, each `v` one its factory's type takes (an `int`, a `float`'s); not an instance
+  attribute bound to one;
 - a value computed from such: `a if c else b` when both sides agree, and `a if c else None` as
   `T | None` (not where `c` tests `a`, which it narrows); `a or b` and `a and b` with operands of
   one type, `or` dropping a `None` before its last operand (`name or "x"` is a `str` for a
@@ -547,18 +575,33 @@ still its name's, with no fix: what's read of it is typed (`fields = schema.fiel
 return (a property's too), `typing.cast` or a callable's call. To a later binding's fix and to
 LVA009 it's a value of no known type. `getattr(obj, "name")` with a literal name is typed as
 `obj.name` is, at any level: with a `None` default `| None`, with a default of another plain type
-their union (`getattr(conn, "timeout", 1.5)` a `float`), and not where `obj.name` is an `X | None` a
-check would narrow and the default isn't `None`. What only a vague type describes is typed from 1,
-`Any` imported from `typing` if it must be: any other `getattr(obj, name)` is an `Any`, with a
-default of a known type `T` an `Any | T`; and a standard-library function declared to return `Any`
-alone (`json.loads`, `pickle.loads`, `ast.literal_eval`) an `Any`; and `object()` is an `object`.
+their union (`getattr(conn, "timeout", "")` a `float | str`), of two builtin numbers the wider
+(`getattr(conn, "timeout", 0)` a `float`), and not where `obj.name` is an `X | None` a check would
+narrow and the default isn't `None`. What only a vague type describes is typed from 1, `Any`
+imported from `typing` if it must be: any other `getattr(obj, name)` is an `Any`, with a default of
+a known type `T` an `Any | T`; and a standard-library function declared to return `Any` alone
+(`json.loads`, `pickle.loads`, `ast.literal_eval`) an `Any`; and `object()` is an `object`.
 
 LVA012 (opt-in) offers `Final`: around the annotation there (`x: int = 1` becomes
 `x: Final[int] = 1`), with LVA001's type for an unannotated name (whose own fix it then replaces),
 or bare (`x: Final = f()`) when there's none.
 
+LVA013 (opt-in) offers its attribute's type where the class's every store decides one (the
+`assigned` guess a read of `self.x` takes, a container's by what's added to it), or `T | None` where
+it's stored `None` and otherwise only a known `T` (`optional` too): `self.n = n` becomes
+`self.n: int = n`, which a type checker reads as the attribute's declaration. Always a guess, since
+another file's subclass or outside code may store it too; none where a store isn't a plain
+`self.x = value` in one of the class's methods (`self.a, self.b = ...`, `del self.a`, a nested
+function's).
+
 A loop whose target is typed only by `# type: T` (LVA003) gets `name: T` declared before it and the
 comment dropped (a type checker would see the name declared twice), when its header is on one line.
+With `type-comments` off, an assignment's comment is its LVA001 fix the same way, certain:
+`x = v  # type: T` becomes `x: T = v` (the comment found on the line the value ends), and an
+unpacking's or a `with`'s names are declared before it (`int, str` split over a tuple target). Only
+where `T` parses and names only builtins and what the module imports, defines or binds at its top
+level; any other comment leaves the name with no fix, since an annotation beside a `# type:` comment
+doesn't parse with type comments on.
 A name annotated again with the type it already has (LVA007) loses the repeat: `x: int = 2` becomes
 `x = 2` (not a bare `x: int`, and never in a class body).
 
@@ -775,7 +818,8 @@ file asked about, the workspace's settings files (`pyproject.toml`, `pyrightconf
 ...) and the installed distributions of the environments a checker may read. A project's first round
 at the same commit then starts no server. A file of the workspace that isn't asked about isn't
 counted: one only it changed, and that a checked file imports, can leave its hints a run behind.
-`--infer-fresh` asks the checkers again.
+A run that reads a round from there says so on standard error, for each checker; `--infer-fresh`
+asks the checkers again.
 
 Each server runs behind a small guard process, which passes its input and output through and kills
 it (and anything it started: a venv's `basedpyright-langserver` starts `node`) once constricter has
@@ -900,10 +944,11 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `unpack`        | an unpacking, each name by its own value, or the value's type split over them             |
 | `narrow`        | LVA008's or LVA010's narrower annotation (a guess)                                        |
 | `cast`          | `typing.cast(T, x)`: its `T`                                                              |
-| `comment`       | LVA003: the loop's own `# type:` comment, as a declaration                                |
+| `comment`       | the statement's own `# type:` comment: LVA003's loop, LVA001's with `type-comments` off   |
 | `redundant`     | LVA007: the repeated annotation, dropped                                                  |
 | `stdlib`        | the standard library's functions, classes and members, from typeshed (`uuid4`)            |
 | `open`          | `open(path, mode)`'s file object, by its literal mode (`io.TextIOWrapper`, ...)           |
+| `text`          | a function overloaded on `str` against `bytes` alone: its `str` signature's (a guess)     |
 | `final`         | LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)             |
 | `checker`       | a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)            |
 | `traced`        | what a traced run bound the name to (`--infer-from`; a guess)                             |
@@ -916,7 +961,9 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `alias`         | a module's type alias, a subscript or a union of types: `TypeAlias`                       |
 | `callable`      | a function or a bound method bound to a name, by what its call gives                      |
 | `callers`       | an unannotated parameter every call in the checked files passes one type (a guess)        |
+| `reads`         | an unannotated parameter: the one module class with every member read of it (a guess)     |
 | `fixture`       | a test's parameter, by its pytest fixture's value or its `parametrize` literals (a guess) |
+| `named`         | a bare parameter, by the one type the checked files annotate its name with (a guess)      |
 
 The wider types `fix-widen` adds are kinds too: see [below](#wider-types-fix-widen).
 

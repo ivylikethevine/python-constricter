@@ -5,10 +5,11 @@ import ast
 from collections.abc import Iterator, Mapping
 from typing import Final, cast
 
-from constricter.fix.core.known import PARAM, Known, stood
+from constricter.fix.core.known import PARAM, Inference, Known, stood
 from constricter.fix.libraries import stdlib, walks
 from constricter.fix.libraries.library import installed_method, library_class
 from constricter.fix.libraries.opened import opened, opened_path
+from constricter.fix.libraries.overloads import TEXT
 from constricter.fix.values import called, decided, displays, shapes
 from constricter.fix.values.inference import (
     CONTAINER_BUILDERS,
@@ -17,6 +18,7 @@ from constricter.fix.values.inference import (
     inferred,
     joined,
     scalar,
+    texted,
 )
 from constricter.fix.values.loops import COMPREHENSIONS, dict_view, targets_typed
 from constricter.fix.values.members import (
@@ -130,8 +132,8 @@ def guessing(
 
     Returns:
       Whether it's a guess; and if it is, its guessing mechanisms (`FIX_KINDS`): `returned` for a
-      method typed only by its `return`s, `constructor` for any other guessed call, and each guessed
-      local's own.
+      method typed only by its `return`s, `text` for a text overload's `str` signature, `constructor`
+      for any other guessed call, and each guessed local's own.
 
     """
     # One walk, for both: the comprehensions whose targets the rest may use, then each node.
@@ -150,6 +152,9 @@ def guessing(
         if joined(node, known, declared):
             unsafe, named = True, False
             found.add(displays.JOINED)
+        if texted(node, known, inside):  # with the comprehensions' targets typed
+            unsafe, named = True, False
+            found.add(TEXT)
         if _is_guess(node, known, guesses, inside):
             unsafe = True
             named = named and isinstance(node, ast.Name)
@@ -167,14 +172,16 @@ def _rests(value: ast.expr, known: Known, guesses: frozenset[str], declared: Map
     """Check whether `value`'s type rests on the guessed names in it.
 
     `os.path.join(root, "x")` is a `str` by its literal, whatever `root` is: a guessed `root` doesn't
-    make it a guess.
+    make it a guess; `os.path.join(root, name)` is a `str` without it only as the text overload's.
 
     Returns:
-      Whether it has another type, or none, with those names' types unknown.
+      Whether it has another type, none, or only a text overload's guess, with those names' types
+      unknown.
 
     """
     sure: dict[str, str] = {name: text for name, text in declared.items() if name not in guesses}
-    return inferred(value, known, sure) != inferred(value, known, declared)
+    alone: Inference | None = inference(value, known, sure)
+    return alone is None or TEXT in alone.kinds or alone.annotation != inferred(value, known, declared)
 
 
 def _receiving(receiver: ast.expr, method: str, known: Known, declared: Mapping[str, str]) -> str | None:

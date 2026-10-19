@@ -1,0 +1,24 @@
+# A change's direction, fast: every fast corpus and one slow corpus of each size, each fix tier and
+# coverage, no suite steps. Between two mega runs the fast sets gave every tier's change the right
+# sign at about twice its size; offences don't move. Not published: say which way and how far a
+# change goes, then run `super.toml` and `mega.toml` before a release. Add `infer-with` for a change
+# to the hints (`ty` the noisiest). A stopped run carries on with `--resume FOLDER`.
+
+[run]
+label = "direction"
+versions = ["dev"]
+jobs = 4
+at-once = 7
+
+[corpora]
+include = ["fast-small", "fast-large", "pydantic", "sqlalchemy"]
+
+[steps]
+check = true
+fix = ["certain", "likely", "unsafe"]
+infer-with = []
+census = false
+coverage = true
+tests = false
+types = false
+traced = false

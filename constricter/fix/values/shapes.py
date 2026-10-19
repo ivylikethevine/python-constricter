@@ -29,6 +29,7 @@ Comprehension: TypeAlias = ast.ListComp | ast.SetComp | ast.DictComp | ast.Gener
 _NONE: Final = "None"
 # The builtin classes an `isinstance` check names that say all there is of a value so checked.
 _SCALARS: Final = frozenset({"bool", "bytes", "complex", "float", "int", "str"})
+_NUMBERS: Final = ("bool", "int", "float", "complex")  # narrowest first
 _HOLDS_NONE: Final = re.compile(r"\b(?:None|Optional)\b")
 _READS: Final = (ast.Name, ast.Attribute, ast.Subscript)
 _CONDITIONAL: Final = "conditional"  # the fix kind of `a if c else b`
@@ -540,10 +541,27 @@ def named_read(value: ast.expr, known: Known) -> ast.Attribute | None:
             return None
 
 
+def _joined(first: str, second: str) -> str | None:
+    """Join two types as one: either, if they're the same or builtin numbers, else their union.
+
+    Of two builtin numbers the wider holds the other, as a type checker promotes an `int` to a
+    `float`, and ruff's PYI041 rejects their union.
+
+    Returns:
+      The type, or `None` where `displays.union` writes none.
+
+    """
+    if first == second:
+        return first
+    if first in _NUMBERS and second in _NUMBERS:
+        return max(first, second, key=_NUMBERS.index)
+    return displays.union([first, second])
+
+
 def _named(value: ast.expr, args: list[ast.expr], known: Known, infer: Infer) -> Inference | None:
     """Infer `getattr(obj, "name")` as `obj.name` is; with a `None` default, or `None`.
 
-    With a default of another known type, the union of both, where `displays.union` writes one.
+    With a default of another known type, the two joined (see `_joined`).
 
     Returns:
       The inference, or `None` where the read, or a default, has no known type.
@@ -564,13 +582,7 @@ def _named(value: ast.expr, args: list[ast.expr], known: Known, infer: Infer) ->
         union: str | None = or_none(found.annotation)
         return None if union is None else Inference(union, f"{reason}, or `None`", kinds, found.reads)
     other: Inference | None = infer(default)
-    joined: str | None = (
-        None
-        if other is None
-        else found.annotation
-        if other.annotation == found.annotation
-        else displays.union([found.annotation, other.annotation])
-    )
+    joined: str | None = None if other is None else _joined(found.annotation, other.annotation)
     if other is None or joined is None:
         return None
     return Inference(joined, f"{reason}, or its default", kinds | other.kinds, found.reads)

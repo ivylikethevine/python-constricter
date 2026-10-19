@@ -130,11 +130,15 @@ class Scope:
         code: str | None,
         value: ast.expr,
         chained: ast.stmt | None = None,
+        *,
+        commented: Fix | bool = False,
     ) -> None:
         """Bind `target` to `value` (`name = value`), offering `--fix`'s annotation for it.
 
         One of a `chained` assignment's names (`a = b = 0`), which can't be annotated where it's bound,
         is offered a declaration before it instead (`a: int`); not a `Final` one, which needs its value.
+        A `commented` one (`x = v  # type: T`) is offered its comment's fix instead, and read as that
+        type; with none (`True`), no fix: an annotation beside the comment won't parse with it.
         """
         name: str = target.id
         if aliased.factory(value, self.settings.known):  # a type: nothing to annotate it with
@@ -173,9 +177,7 @@ class Scope:
         self.assigned(name, at(target))
         if again:
             self.inferred.rebound(name, fix.annotation if fix and vague and not unsafe else certain, guess)
-        kind: str | None
-        if (kind := fills.empty(value)) is not None:
-            _ = self.assignments.empty.setdefault(name, kind)
+        self._emptied(name, value)
         if chained is not None and not again:
             _ = self.assignments.chained.setdefault(name, (chained.lineno, chained.col_offset))
         # A wider type only for a name first bound here, by a statement of its own.
@@ -183,7 +185,12 @@ class Scope:
             name,
             at(target),
             code,
-            self._offered(target, (fix, unsafe, origins), None if chained is not None or again else value),
+            self._offered(
+                target,
+                (fix, unsafe, origins),
+                None if chained or again else value,
+                commented=commented,
+            ),
         )
         if fix is not None and aliased.declares(parsed(fix.annotation)):
             self.inferred.aliases.add(name)  # `TypeAlias` isn't its value's type
@@ -194,6 +201,12 @@ class Scope:
             name,
             value if fix is None and not again and chains(value, self.settings.known) else None,
         )
+
+    def _emptied(self, name: str, value: ast.expr) -> None:
+        """Note `name` bound first to an empty container (see `fills.empty`), and its kind."""
+        kind: str | None
+        if (kind := fills.empty(value) or fills.keyed_empty(value, self.settings.known)) is not None:
+            _ = self.assignments.empty.setdefault(name, kind)
 
     def _unvalued(
         self,
@@ -542,10 +555,13 @@ class Scope:
         target: ast.Name,
         typed: tuple[Inference | None, bool, frozenset[str]],
         widen: ast.expr | None,
+        *,
+        commented: Fix | bool = False,
     ) -> Fix | None:
         """Offer `target`'s fix as `typed` has it (see `valued`), else a wider one for its value `widen`.
 
-        A wider type (see `widened.wider`) only where `fix-widen` asks for it.
+        A wider type (see `widened.wider`) only where `fix-widen` asks for it. A `commented` name's
+        fix is its comment's (see `assign`), and what's read of it has that type.
 
         Returns:
           The fix, or `None`.
@@ -553,6 +569,11 @@ class Scope:
         """
         found: Inference | None
         fix: Fix | None
+        if isinstance(commented, Fix):
+            self.inferred.learn(target.id, commented.annotation, None, again=target.id in self.declared)
+            return commented
+        if commented:
+            return None
         if typed[0] is not None and (fix := self.placed(target.id, typed[0], typed[2], unsafe=typed[1])):
             return fix
         if widen is None:

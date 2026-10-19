@@ -383,6 +383,11 @@ def _check_rounds(options: Options) -> tuple[list[Path], list[FileRun]]:
         for checker, path in session.abandoned:
             name: Path = options.input.name(path)
             _ = sys.stderr.write(f"constricter: warning: {checker} hung on {name} twice: no hints for it\n")
+        read: int
+        rounds: int
+        for checker, read, rounds in session.reused:
+            told: str = f"{checker}'s hints for {read} of {rounds} rounds were read from the store"
+            _ = sys.stderr.write(f"constricter: note: {told} (`--infer-fresh` asks again)\n")
     return names, runs
 
 

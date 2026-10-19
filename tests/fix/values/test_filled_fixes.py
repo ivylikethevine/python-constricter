@@ -395,3 +395,121 @@ def test_a_display_added_a_value_narrowed_there_has_no_fix() -> None:
         "plain": ("list[str]", False),  # a truth test narrows only a union
         "outside": ("dict[str, str | None]", True),
     }
+
+
+_KEYED: Final = """
+from collections import Counter, defaultdict
+from collections import defaultdict as dd
+
+
+def f(words: list[str], pairs: list[tuple[str, int]], other) -> None:
+    grouped = defaultdict(list)
+    for word in words:
+        grouped[word].append(len(word))
+    counted = Counter()
+    for word in words:
+        counted[word] += 1
+    updated = Counter()
+    updated.update(words)
+    updated.subtract(["a"])
+    summed = defaultdict(int)
+    for key, number in pairs:
+        summed[key] += number
+        summed[key] -= 1
+    aliased = dd(set)
+    aliased[1].add("x")
+    floats = defaultdict(float)
+    floats["a"] += 1
+    floats["b"] = 0.5
+    texts = defaultdict(str)
+    texts[1] += "x"
+    extended = defaultdict(list)
+    extended["a"].extend(words)
+    set_count = Counter()
+    set_count["a"] = 2
+    del set_count["b"]
+    halves = Counter()
+    halves["a"] += 0.5
+    mixed = defaultdict(list)
+    mixed["a"].append(1)
+    mixed["b"].append("x")
+    keys = Counter()
+    keys[1] += 1
+    keys["a"] += 1
+    passed = defaultdict(list)
+    passed["a"].append(1)
+    other(passed)
+    nested = defaultdict(dict)
+    nested["a"]["b"] = 1
+    bound = defaultdict(list)
+    held = bound["a"]
+    bound["b"].append(1)
+    given = defaultdict(list)
+    given["a"].append(1)
+    other(given["b"])
+    scaled = defaultdict(int)
+    scaled["a"] *= 2
+    unknown = Counter()
+    unknown[other] += 1
+    called = Counter()
+    called.update(words, extra=1)
+    kept = defaultdict(list)
+    kept["a"].append(1)
+    _ = kept.setdefault("b", [])
+    uncounted = defaultdict(int)
+    uncounted["a"] += 1
+    for item in extended["b"]:
+        print(item, held)
+    print(counted.most_common(1), counted["x"], len(grouped), sorted(updated), aliased.items())
+    print(updated.total(), uncounted.most_common())
+"""
+
+
+def test_a_counter_or_defaultdict_is_typed_by_what_is_added_at_its_keys() -> None:
+    """`d[k].append(v)` types a `defaultdict(list)`, `c[k] += 1` and `update` a `Counter`: a guess."""
+    found: list[Offence] = check_source(textwrap.dedent(_KEYED))
+    expected: _Fixed = {
+        "grouped": ("defaultdict[str, list[int]]", True),
+        "counted": ("Counter[str]", True),
+        "updated": ("Counter[str]", True),  # `update` and `subtract`: their argument's elements
+        "summed": ("defaultdict[str, int]", True),
+        "aliased": ("defaultdict[int, set[str]]", True),  # the module's own name for it
+        "floats": ("defaultdict[str, float]", True),  # an `int` added to a `float`
+        "texts": ("defaultdict[int, str]", True),
+        "extended": ("defaultdict[str, list[str]]", True),
+        "set_count": ("Counter[str]", True),  # bound at a key, and deleted
+        # A `float` counted (halves), elements (mixed) or keys (keys) unlike, passed on (passed),
+        # a factory `filled` doesn't take (nested), a value bound to a local (bound) or passed on
+        # (given), a scalar multiplied (scaled), an unknown key (unknown), `update` by keyword
+        # (called), a `defaultdict`'s `setdefault` (kept), or a `Counter`'s method on one (uncounted).
+        **dict.fromkeys(
+            ("halves", "mixed", "keys", "passed", "nested", "bound", "given", "scaled", "unknown"),
+            (None, False),
+        ),
+        **dict.fromkeys(("called", "kept", "uncounted"), (None, False)),
+    }
+    fixed: _Fixed = {o.name: (o.fix, o.unsafe) for o in found if o.code == UNANNOTATED}
+    assert {name: fixed[name] for name in expected} == expected
+
+
+def test_a_counter_is_named_as_the_module_imports_it() -> None:
+    """`collections.Counter[str]` after `import collections`; none where only a function imports it."""
+    source: str = """
+    import collections
+
+
+    def f(words: list[str]) -> None:
+        counted = collections.Counter()
+        counted.update(words)
+    """
+    found: list[Offence] = check_source(textwrap.dedent(source))
+    assert {o.name: o.fix for o in found} == {"counted": "collections.Counter[str]"}
+    local: str = """
+    def g(words: list[str]) -> None:
+        from collections import Counter
+
+        counted = Counter()
+        counted.update(words)
+    """
+    # A new `from collections import Counter` would bind a name the function binds.
+    assert {o.name: o.fix for o in check_source(textwrap.dedent(local))} == {"counted": None}

@@ -506,7 +506,8 @@ def test_getattr_by_a_literal_name_is_the_attributes_type() -> None:
 
     Not an `X | None` read with no `None` default (narrowed first, as the read itself is), a default
     of no known type or one no plain union joins, a name `obj.name` can't spell, or an attribute
-    nothing types. An attribute typed by its assignments is a guess here as there.
+    nothing types. An attribute typed by its assignments is a guess here as there. Of builtin
+    numbers, the wider.
     """
     source: str = """
     import socket
@@ -519,6 +520,14 @@ def test_getattr_by_a_literal_name_is_the_attributes_type() -> None:
         def __init__(self, n) -> None:
             self.n = n
             self.port = 80
+
+
+    class Client:
+        def __init__(self, conn: Conn) -> None:
+            self.conn = conn
+
+        def run(self) -> None:
+            r = getattr(self.conn, "timeout", None)
 
 
     def f(conn: Conn, sock: socket.socket, maybe: Conn | None, q) -> None:
@@ -537,6 +546,9 @@ def test_getattr_by_a_literal_name_is_the_attributes_type() -> None:
         n = getattr(conn, "class")
         o = getattr(conn, "__x")
         p = getattr(q, "timeout")
+        s = getattr(conn, "timeout", 0)
+        t = getattr(conn, "port", True)
+        u = getattr(conn, "timeout", 1j)
     """
     assert _fixed(source) == {
         "a": ("float", False),
@@ -554,6 +566,10 @@ def test_getattr_by_a_literal_name_is_the_attributes_type() -> None:
         "n": (None, False),
         "o": (None, False),
         "p": (None, False),
+        "r": ("float | None", True),
+        "s": ("float", False),
+        "t": ("int", True),
+        "u": ("complex", False),
     }
     shadowed: str = "def f(conn: str, getattr) -> None:\n    a = getattr(conn, 'upper')\n"
     assert _fixed(shadowed) == {"a": (None, False)}

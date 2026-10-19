@@ -132,6 +132,12 @@ same tag, checkout environment and parser version, which it and `facts.toml` kee
 asks only what the type-error goals are judged by: each fix's errors by the suite's own checks, on
 the seven corpora those goals name.
 
+Which run is the one: `pydantic.toml` for a change to what `--fix` infers, before and after;
+`direction.toml` for which way and how far it moves the counts (every fast corpus, pydantic and
+sqlalchemy, no suite steps), since the fast sets give each tier's change the right sign at about
+twice its size; `errors.toml` for a change to what a guess or a hint breaks; and `super.toml` and
+`mega.toml`, every step at full breadth, for a release alone.
+
 Run files name their corpora by `tests/corpus/corpora.toml`'s sets, which may name other sets. The
 tiers hold each other: `original`, the seven corpora a release records; `super`, those and every
 fast corpus; `mega`, every corpus. Every corpus is in one of `fast-small`, `fast-large`,

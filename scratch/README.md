@@ -100,3 +100,6 @@ goes under `local/scratch/`.
   (the calls' kinds alone, every kind, every kind but the calls'): the bindings each kind marks, the
   share typed or widened after, a second pass's changes, and basedpyright's errors before and after,
   by rule.
+- `pythons_suite.sh VENVS 3.11:dev 3.14t:test [-- PYTEST_ARGS]`: the test suite on other Pythons,
+  each in a venv of its own under VENVS set up as CI's setup action sets one up, one process at low
+  priority; each run's output in `VENVS/venv-VERSION.log`.
