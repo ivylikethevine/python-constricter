@@ -312,10 +312,10 @@ jobs:
       # block on Linux; macOS and Windows audit until each has an allowlist from its audit runs.
       # pypi.org: setup-python upgrades pip when it downloads an interpreter the runner image lacks
       # (3.14t).
+      # One step: an action's `pre` (where harden-runner starts its agent) ignores the step's `if:`.
       - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
-        if: runner.os == 'Linux'
         with:
-          egress-policy: block
+          egress-policy: ${{ runner.os == 'Linux' && 'block' || 'audit' }}
           allowed-endpoints: >
             github.com:443
             raw.githubusercontent.com:443
@@ -324,10 +324,6 @@ jobs:
             downloads.python.org:443
             release-assets.githubusercontent.com:443
             pypi.org:443
-      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
-        if: runner.os != 'Linux'
-        with:
-          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -362,19 +358,15 @@ jobs:
     permissions:
       contents: read
     steps:
+      # One step: an action's `pre` (where harden-runner starts its agent) ignores the step's `if:`.
       - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
-        if: runner.os == 'Linux'
         with:
-          egress-policy: block
+          egress-policy: ${{ runner.os == 'Linux' && 'block' || 'audit' }}
           allowed-endpoints: >
             github.com:443
             raw.githubusercontent.com:443
             releases.astral.sh:443
             files.pythonhosted.org:443
-      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
-        if: runner.os != 'Linux'
-        with:
-          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

@@ -78,10 +78,10 @@ jobs:
       # The hosts: the build's artifact, cibuildwheel, its manylinux images and its release
       # downloads (github.com redirects them to objects.githubusercontent.com), the hash-checked
       # build dependencies, Sigstore and the attestation.
+      # One step: an action's `pre` (where harden-runner starts its agent) ignores the step's `if:`.
       - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
-        if: runner.os == 'Linux'
         with:
-          egress-policy: block
+          egress-policy: ${{ runner.os == 'Linux' && 'block' || 'audit' }}
           allowed-endpoints: >
             github.com:443
             api.github.com:443
@@ -95,10 +95,6 @@ jobs:
             fulcio.sigstore.dev:443
             rekor.sigstore.dev:443
             *.actions.githubusercontent.com:443
-      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
-        if: runner.os != 'Linux'
-        with:
-          egress-policy: audit
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: dist
