@@ -10,6 +10,11 @@ on:
 
 permissions: {}
 
+# Never cancelled: a release waits on its run. The caller's group is its own (release-<ref>).
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     name: Build and attest
