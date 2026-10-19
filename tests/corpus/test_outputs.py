@@ -390,6 +390,43 @@ def test_each_judged_fix_is_listed_with_what_blames_it_and_bears_it_out(tmp_path
     assert render.write(render.gathered(run, store, [tree]), tmp_path, {})[1] == tmp_path / "guesses.jsonl"
 
 
+def test_what_the_records_hold_beside_the_tables_is_tabled_where_it_differs(tmp_path: Path) -> None:
+    """Likely fixes unsafe leaves out, a fix that typed nothing, and the traced tests beside the released."""
+    store: Store
+    tree: Tree
+    store, tree = _recorded(tmp_path)
+    listed: dict[str, list[tuple[str, str]]] = {
+        "fix-likely": [("x", "int"), ("y", "str"), ("z", "int")],
+        "fix-unsafe": [("x", "int"), ("y", "bytes")],
+    }
+    step: str
+    named: list[tuple[str, str]]
+    for step, named in listed.items():
+        fixes: list[Record] = [
+            {"path": "a.py", "line": 1, "name": name, "annotation": annotation} for name, annotation in named
+        ]
+        _ = store.path(tree.name, "rc+dev", step, ".fixes.jsonl").write_text(
+            "".join(f"{json.dumps(fix)}\n" for fix in fixes),
+            encoding="utf-8",
+        )
+    store.write(tree.name, "rc+dev", "fix-certain", _fixed(2, {"certain": 2}) | {"typed": [5, 10]})
+    traced: Record = {"counts": {"passed": 8, "failed": 1}, "failed": [_FAILED]}
+    store.write(tree.name, "rc+dev", pipeline.TESTS, _TESTED | {"samples": {pipeline.TRACED: traced}})
+    records: report_tables.Records = render.gathered(parse({"run": {"label": "rc"}}), store, [tree])
+    assert report_tables.TABLES["unshared"](records)[1:] == [["standard library", "rc+dev", 3, 1, 1]]
+    assert report_tables.TABLES["uncounted"](records)[1:] == [
+        ["standard library", "rc+dev", "certain", 4, 2, 5, 1],
+    ]
+    assert report_tables.TABLES["resampled"](records)[1:] == [
+        ["standard library", "rc+dev", "9 passed, 1 skipped", "8 passed, 1 failed", False],
+    ]
+    assert report_tables.TABLES["unshared"](
+        report_tables.Records(records.run, records.trees, records.versions, records.found),
+    ) == [
+        ["corpus", "constricter", "likely", "absent from unsafe", "annotated otherwise"],
+    ]
+
+
 def test_a_run_publishes_a_section_a_version(tmp_path: Path) -> None:
     """In the file its run file names, and over a section that's there only where it says to replace."""
     store: Store

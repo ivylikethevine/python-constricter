@@ -22,7 +22,7 @@ from constricter.fix.values.inference import inference
 from constricter.fix.values.loops import looped
 from constricter.fix.values.targets import unpacked
 from constricter.offences import COMMENT_TYPED_TARGET as COMMENT_TYPED
-from constricter.offences import Edit, Fix, Offence
+from constricter.offences import MISMATCHED_TYPE, Edit, Fix, Offence
 
 _NOTHING_KNOWN: Known = Known({}, frozenset(), {}, {})
 _TYPED: Final = ": "  # in a line that declares a name
@@ -350,7 +350,7 @@ def test_an_assignments_type_comment_is_its_fix(tmp_path: Path, capsys: pytest.C
         "    print(x, y, a, b, fh, w, z, v, c, d)\n"
     )
     found: dict[str, tuple[str, str | None, bool]] = {
-        o.name: (o.code, o.fix, o.unsafe) for o in check_source(source) if o.code != "LVA009"
+        o.name: (o.code, o.fix, o.unsafe) for o in check_source(source) if o.code != MISMATCHED_TYPE
     }
     assert found == {
         "x": ("LVA001", "List[str]", False),

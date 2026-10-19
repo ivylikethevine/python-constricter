@@ -6,7 +6,8 @@
 - `markdown`: `report.md`, the tables docs/RUNS.md has a section of for each version, and
   `census.md`, what `--fix` can't type and why, where the run took the census;
 - `csv`: `tables/offences.csv`, `levels.csv`, `fixes.csv`, `census.csv`, `traced.csv`, `tests.csv`,
-  `types.csv`, `type-errors.csv`, `coverage.csv`, `timing.csv` and `steps.csv`, a row a measurement.
+  `types.csv`, `type-errors.csv`, `coverage.csv`, `timing.csv`, `steps.csv`, and where they have a
+  row `unshared.csv`, `uncounted.csv` and `resampled.csv`, a row a measurement.
 
 `publish` puts the tables in docs/RUNS.md where the run file says: a section a version, or one
 section of the whole run (`section`).
@@ -42,7 +43,7 @@ from tests.corpus.pipeline import (
 )
 from tests.corpus.pipeline import part as suite_part
 from tests.corpus.pipeline import parts as suite_parts
-from tests.corpus.report_tables import SECTIONS, TABLES, Records, Rows, Table, differs, typed_share
+from tests.corpus.report_tables import SECTIONS, TABLES, Records, Rows, Table, differs, lines, typed_share
 from tests.corpus.run_config import CERTAIN, CSV, JSON, LIKELY, MARKDOWN, UNSAFE, Run
 from tests.corpus.sizing import USED
 from tests.corpus.trees import Tree
@@ -85,7 +86,7 @@ def gathered(run: Run, store: Store, trees: Sequence[Tree]) -> Records:
     for key in itertools.product([tree.name for tree in trees], versions, _every(run)):
         if (record := store.read(*key)) is not None:
             found[key] = record
-    return Records(run, trees, versions, found)
+    return Records(run, trees, versions, found, store)
 
 
 def _count(record: Record, key: str) -> int | None:
@@ -239,11 +240,6 @@ def census_report(records: Records, store: Store) -> str:
     return "\n".join(parts)
 
 
-def _lines(path: Path) -> list[Record]:
-    text: str = path.read_text(encoding="utf-8") if path.exists() else ""
-    return [json.loads(line) for line in text.splitlines()]
-
-
 def _key(path: object, about: Record) -> _Key:
     return str(path), cast("int", about["line"]), str(about["name"])
 
@@ -278,14 +274,14 @@ def guesses(records: Records, store: Store) -> list[Record]:
     for tree, version in itertools.product(records.trees, records.versions):
         fixed: Record = cast("Record", records.of(tree, version, TYPES).get("fixed", {}))
         checked: Record = cast("Record", fixed.get(step, {}))
-        judged: list[Record] = _lines(store.path(tree.name, version, TRACED, ".verdicts.jsonl"))
+        judged: list[Record] = lines(store.path(tree.name, version, TRACED, ".verdicts.jsonl"))
         if tree.base is None or not (checked or judged):
             continue
         source: str = tree.root.relative_to(tree.base).as_posix()
         errors: Counter[_Key] = _blames(checked)
         told: dict[_Key, Record] = {_key(each["path"], each): each for each in judged}
         fix: Record
-        for fix in _lines(store.path(tree.name, version, step, ".fixes.jsonl")):
+        for fix in lines(store.path(tree.name, version, step, ".fixes.jsonl")):
             key: _Key = _key(f"{source}/{fix['path']}", fix)
             verdict: Record = told.get(key, {})
             found.append(

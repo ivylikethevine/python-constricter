@@ -35,10 +35,13 @@ Notable changes, newest first. Each release's full notes are generated from its 
   error from `strict`, and counted by `--coverage` then. `--fix --unsafe-fixes` (`--likely` for a
   value of no guess of its own) writes the `assigned` type a read of it already takes,
   `self.count: int = 0`, or `T | None` for one stored `None` and else only a known `T`.
-- Compiled wheels are 64-bit only: 32-bit Windows installs the pure wheel, as PyPy and musllinux
-  do.
 - The release builds each compiled wheel in a job of its own, a platform's and CPython's, the 20 at
   once: it waits on the slowest wheel, where each platform's four were built in turn.
+
+## 0.4.2 and earlier
+
+- Compiled wheels are 64-bit only: 32-bit Windows installs the pure wheel, as PyPy and musllinux
+  do.
 - The version is the release's git tag: a build between releases reports a dev version
   (`constricter --version`: `0.5.1.dev3+g1a2b3c4`), as do the reports' `version` fields.
 - `--fix --unsafe-fixes` no longer guesses the type of a name bound again to a method call on

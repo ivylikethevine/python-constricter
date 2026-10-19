@@ -121,10 +121,8 @@ def visible(catalog: Index, path: Path, guarded: dict[str, Guarded]) -> dict[str
       Each such name's type, and what it rests on; nothing for a file `catalog` doesn't have.
 
     """
-    target: Module | None
-    if path.suffix != SUFFIX or (target := catalog.modules.get(project.module_name(path))) is None:
-        return {}
-    if target.name in catalog.repeated:  # another file's module, maybe
+    target: Module | None = catalog.modules.get(project.module_name(path)) if path.suffix == SUFFIX else None
+    if target is None or target.name in catalog.repeated:  # another file's module, maybe
         return {}
     named: Mapping[str, tuple[str, str]] = agreed(catalog)
     found: dict[str, Passed] = {}
