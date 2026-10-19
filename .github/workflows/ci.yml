@@ -373,10 +373,13 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           python-version: ${{ matrix.python }}
+      # clang on Linux, as the release's: the runner's gcc took 19 minutes over mypyc's one C file,
+      # macOS's clang 3.
       - name: Build the compiled wheel, and install it over the checkout's
         env:
           HATCH_BUILD_HOOK_ENABLE_MYPYC: "1"
         run: |
+          if [ "$RUNNER_OS" = Linux ]; then export CC=clang; fi
           python -m build --no-isolation --outdir dist
           uv pip install --python local/.venv --no-deps --reinstall dist/*.whl
       - name: The compiled modules are the ones imported

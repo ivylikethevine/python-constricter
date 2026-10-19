@@ -10,7 +10,9 @@ behaviour, and note user-facing changes in [CHANGELOG.md](CHANGELOG.md).
 The version is the git tag's: nothing in the tree names it. Before tagging a release, record it in
 [RUNS.md](RUNS.md): run `local/.venv/bin/python -m tests.corpus tests/corpus/runs/release.toml
 --label 0.5.0`, which appends this checkout's results under that version, and commit it. Between
-releases, `--label 0.5.0-rc.1` records a checkpoint under a pseudo-version.
+releases, `--label 0.5.0-rc.1` records a checkpoint under a pseudo-version. After a change to the
+release's build, run it on the branch first (`gh workflow run build.yml --ref dev`): it builds and
+attests every wheel, and publishes nothing.
 
 ## Development
 
@@ -153,13 +155,13 @@ dependency group: every dev tool doesn't have wheels for them, and the tests don
 A compiled wheel, mypyc's build of `constricter/rules` and `constricter/fix`, is built from the
 sdist, so nothing compiled lands beside the sources:
 `HATCH_BUILD_HOOK_ENABLE_MYPYC=1 python -m build --no-isolation`, with the dev group (it includes
-the `mypyc` group). CI's Compiled job builds one on Linux, macOS and Windows, on Python 3.11 and
-3.14, and runs the tests against it (`pytest --import-mode=append`, the wheel installed over the
-editable install); the release builds one for each platform and CPython (`build.yml`, by
+the `mypyc` group). CI's Compiled job builds one on Linux (with clang), macOS and Windows, on Python
+3.11 and 3.14, and runs the tests against it (`pytest --import-mode=append`, the wheel installed
+over the editable install); the release builds one for each platform and CPython (`build.yml`, by
 cibuildwheel, in the unpacked sdist, which carries the `mypyc` group's hash-checked requirements as
-`mypyc.txt`) beside the pure wheel, which PyPy, free-threaded builds and musllinux take. Compiled,
-code runs as its annotations say, not as Python would, where the two differ and no type checker says
-so:
+`mypyc.txt`) beside the pure wheel, which PyPy, free-threaded builds, musllinux and 32-bit Windows
+take. Compiled, code runs as its annotations say, not as Python would, where the two differ and no
+type checker says so:
 
 - `frozenset & d.keys()` (or `-`, `|`) is a `set`, where typeshed says `frozenset`: write
   `d.keys() & s`, or `frozenset.union` and `difference`.

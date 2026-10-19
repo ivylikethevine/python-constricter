@@ -307,14 +307,14 @@
   (`scratch/outside_size.py`), with the same fixes there and on pandas and pydantic, widened or not.
 
 - **A compiled wheel**: mypyc compiles the `rules` and `fix` packages, all 93 of their modules, as
-  they're annotated, into a wheel for each platform and CPython 3.11 to 3.14 beside the pure one
-  (`[tool.hatch.build.targets.wheel.hooks.mypyc]`, off by default; `build.yml`, by cibuildwheel),
-  with no runtime dependency. On pydantic it gives the same findings and the same `--fix` as the
-  pure build, 1.27 times as fast in one process (5.0s from 6.4s) and 1.15 times with every CPU on 8.
-  Compiled code runs as its annotations say, so where Python and typeshed differ the code is written
-  another way (CONTRIBUTING lists the kinds), and the two frozen dataclasses the workers are sent
-  pickle by their fields. The whole suite runs on it in CI (Compiled), but for the six tests that
-  patch a compiled module's globals (`interpreted`). On every corpus
+  they're annotated, into a wheel for each 64-bit platform and CPython 3.11 to 3.14 beside the pure
+  one (`[tool.hatch.build.targets.wheel.hooks.mypyc]`, off by default; `build.yml`, by
+  cibuildwheel), with no runtime dependency. On pydantic it gives the same findings and the same
+  `--fix` as the pure build, 1.27 times as fast in one process (5.0s from 6.4s) and 1.15 times with
+  every CPU on 8. Compiled code runs as its annotations say, so where Python and typeshed differ the
+  code is written another way (CONTRIBUTING lists the kinds), and the two frozen dataclasses the
+  workers are sent pickle by their fields. The whole suite runs on it in CI (Compiled), but for the
+  six tests that patch a compiled module's globals (`interpreted`). On every corpus
   (`tests/corpus/runs/compiled.toml`, the pure and the compiled wheel each beside the same packages,
   `scratch/compiled_venv.py`) the findings and the fixes are the same, the check 1.37 times as fast
   in one process and 1.26 times with 4 workers (the medians of 47 corpora, on 16CPU/60GB). A wheel
@@ -749,6 +749,25 @@ each item sized the same way.
    corpora back to back, and pandas's 71s in a resume of its own. Those two runs are a code change
    apart, their instructions a median 7.6% apart in one process (`scratch/timing_noise.py`), so the
    noise wants two runs at one commit. About 1 hour; coverage unchanged.
+3. **The compiled wheels, a job each.** `build.yml`'s Compiled job builds one platform's wheels one
+   after another, each a full mypyc build: on the 0.4.1 release, about 2 minutes a wheel, 30s of it
+   setup and the import test, so macOS took 8 and 15 minutes for 4 wheels and Windows 21 for 8
+   (32-bit since dropped), and each Linux job 55 minutes for 4, 14 a wheel, within 4 of its
+   60-minute timeout, before Linux built with clang (to be measured on the next release). A `python`
+   matrix of cp311 to cp314 beside `os` (`CIBW_BUILD` set from it) runs the 20 wheels at once: the
+   same runner minutes, free for a public repository, and the release waits on its slowest wheel.
+   Each job's artifacts and attestation file are named by both (`compiled-<os>-<python>`), which
+   `release.yml`'s `compiled-*` patterns already take; the attestation's file name must change too,
+   or `merge-multiple` keeps one per platform. Done when a release's compiled wheels all build in
+   under 6 minutes, the same 20 wheels and attestations on PyPI and the GitHub release. About 1
+   hour; coverage unchanged.
+4. **Ubuntu 26.04 runners.** Every Linux job runs on `ubuntu-latest`, and the release's ARM wheels
+   on `ubuntu-24.04-arm`: move them to `ubuntu-26.04` and `ubuntu-26.04-arm`, named, so an image
+   change is a commit rather than the label moving under a release. The newer image brings newer
+   compilers, Pythons and tools; the shared workflows move with every repository's at once. Done
+   when CI, Security, the other workflows and a release run (the Build workflow by hand) pass on it,
+   harden-runner's allowlists unchanged or updated from an audit run. About 1 hour; coverage
+   unchanged.
 
 ### Medium: 4 to 8 hours
 
