@@ -157,7 +157,8 @@ the `mypyc` group). CI's Compiled job builds one on Linux, macOS and Windows, on
 3.14, and runs the tests against it (`pytest --import-mode=append`, the wheel installed over the
 editable install); the release builds one for each platform and CPython (`build.yml`, by
 cibuildwheel, in the unpacked sdist, which carries the `mypyc` group's hash-checked requirements as
-`mypyc.txt`) beside the pure wheel, which PyPy, free-threaded builds and musllinux take. Compiled,
+`mypyc.txt`) beside the pure wheel, which PyPy, free-threaded builds, musllinux and 32-bit platforms
+take. Compiled,
 code runs as its annotations say, not as Python would, where the two differ and no type checker says
 so:
 

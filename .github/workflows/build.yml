@@ -56,11 +56,12 @@ jobs:
           if-no-files-found: error
 
   # A compiled wheel (mypyc; `[tool.hatch.build.targets.wheel.hooks.mypyc]`) for each platform and
-  # CPython 3.11 to 3.14, from the sdist above, by cibuildwheel (manylinux on Linux; musllinux takes
-  # the pure wheel). Built without isolation, from the `mypyc` dependency group, hash-checked from
-  # uv.lock as `mypyc.txt`, which the sdist carries (cibuildwheel unpacks the sdist and builds in
-  # it, so `{project}` is that directory, not this checkout); each wheel then imports its compiled
-  # modules, and is attested here.
+  # CPython 3.11 to 3.14, from the sdist above, by cibuildwheel (manylinux on Linux; musllinux and
+  # 32-bit platforms take the pure wheel, which halves the Linux and Windows builds). Built without
+  # isolation, from the `mypyc` dependency group, hash-checked from uv.lock as `mypyc.txt`, which
+  # the sdist carries (cibuildwheel unpacks the sdist and builds in it, so `{project}` is that
+  # directory, not this checkout); each wheel then imports its compiled modules, and is attested
+  # here.
   compiled:
     name: Compiled wheels (${{ matrix.os }})
     needs: build
@@ -109,7 +110,7 @@ jobs:
         env:
           CIBW_BUILD: cp311-* cp312-* cp313-* cp314-*
           CIBW_SKIP: "*-musllinux_*"
-          CIBW_ARCHS_MACOS: native
+          CIBW_ARCHS: native
           CIBW_ENVIRONMENT: HATCH_BUILD_HOOK_ENABLE_MYPYC=1
           CIBW_BUILD_FRONTEND: "build; args: --no-isolation"
           CIBW_BEFORE_BUILD: python -m pip install --require-hashes --no-deps -r {project}/mypyc.txt
