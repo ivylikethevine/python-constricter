@@ -752,14 +752,22 @@ each item sized the same way.
 3. **The compiled wheels, a job each.** `build.yml`'s Compiled job builds one platform's wheels one
    after another, each a full mypyc build: on the 0.4.1 release, about 2 minutes a wheel, 30s of it
    setup and the import test, so macOS took 8 and 15 minutes for 4 wheels and Windows 21 for 8
-   (32-bit since dropped), and the Linux jobs over 33. A `python` matrix of cp311 to cp314 beside
-   `os`, with `CIBW_BUILD: ${{ matrix.python }}-*`, runs the 20 wheels at once: the same runner
-   minutes, free for a public repository, and the release waits on its slowest wheel. Each job's
-   artifacts and attestation file are named by both (`compiled-<os>-<python>`), which
+   (32-bit since dropped), and each Linux job 55 minutes for 4, 14 a wheel, within 4 of its
+   60-minute timeout, before Linux built with clang (to be measured on the next release). A `python`
+   matrix of cp311 to cp314 beside `os` (`CIBW_BUILD` set from it) runs the 20 wheels at once: the
+   same runner minutes, free for a public repository, and the release waits on its slowest wheel.
+   Each job's artifacts and attestation file are named by both (`compiled-<os>-<python>`), which
    `release.yml`'s `compiled-*` patterns already take; the attestation's file name must change too,
    or `merge-multiple` keeps one per platform. Done when a release's compiled wheels all build in
    under 6 minutes, the same 20 wheels and attestations on PyPI and the GitHub release. About 1
    hour; coverage unchanged.
+4. **Ubuntu 26.04 runners.** Every Linux job runs on `ubuntu-latest`, and the release's ARM wheels
+   on `ubuntu-24.04-arm`: move them to `ubuntu-26.04` and `ubuntu-26.04-arm`, named, so an image
+   change is a commit rather than the label moving under a release. The newer image brings newer
+   compilers, Pythons and tools; the shared workflows move with every repository's at once. Done
+   when CI, Security, the other workflows and a release run (the Build workflow by hand) pass on it,
+   harden-runner's allowlists unchanged or updated from an audit run. About 1 hour; coverage
+   unchanged.
 
 ### Medium: 4 to 8 hours
 

@@ -51,6 +51,9 @@ goes under `local/scratch/`.
 - `mypyc_trial.py [--opt 0] [--exclude PATH ...] [-- PYTEST_ARGS]`, with `local/.venv-mypyc`: a copy
   of `constricter` compiled as the compiled wheel is, quickly (a C file a module, every CPU), and
   the tests run against it.
+- `compile_time.py [--python 3.12] [--fresh] [VARIANT ...]`: the compiled wheel's build from the
+  sdist, timed, as it is (`single`), with `multi_file` and with `parallel` C compiles; `CC=clang`
+  in the environment times clang's.
 - `run_timeline.py FOLDER [--top N] [--every MINUTES]`: a corpus run's timeline from its records:
   the share of the machine's CPU seconds used, the CPUs busy and the steps running in each bucket,
   the longest steps and how long each waited, and the corpora that ended last.

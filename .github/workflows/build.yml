@@ -2,9 +2,11 @@ name: Build
 
 # The release's build: a reusable workflow, so its attestation meets SLSA v1 Build Level 3. Verify
 # with `gh attestation verify <file> --repo ivylikethevine/python-constricter
-# --signer-workflow ivylikethevine/python-constricter/.github/workflows/build.yml`.
+# --signer-workflow ivylikethevine/python-constricter/.github/workflows/build.yml`. Run by hand on
+# a branch to try a change to it before a tag: it publishes nothing.
 on:
   workflow_call:
+  workflow_dispatch:
 
 permissions: {}
 
@@ -57,11 +59,12 @@ jobs:
 
   # A compiled wheel (mypyc; `[tool.hatch.build.targets.wheel.hooks.mypyc]`) for each platform and
   # CPython 3.11 to 3.14, from the sdist above, by cibuildwheel (manylinux on Linux; musllinux and
-  # 32-bit platforms take the pure wheel, which halves the Linux and Windows builds). Built without
-  # isolation, from the `mypyc` dependency group, hash-checked from uv.lock as `mypyc.txt`, which
-  # the sdist carries (cibuildwheel unpacks the sdist and builds in it, so `{project}` is that
-  # directory, not this checkout); each wheel then imports its compiled modules, and is attested
-  # here.
+  # 32-bit Windows take the pure wheel, which halves the Windows build). Built without isolation,
+  # from the `mypyc` dependency group, hash-checked from uv.lock as `mypyc.txt`, which the sdist
+  # carries (cibuildwheel unpacks the sdist and builds in it, so `{project}` is that directory, not
+  # this checkout); each wheel then imports its compiled modules, and is attested here. On Linux,
+  # clang compiles them, from AlmaLinux's own repository (the manylinux image's base): the image's
+  # gcc took 14 minutes a wheel over mypyc's one C file, macOS's clang 2.
   compiled:
     name: Compiled wheels (${{ matrix.os }})
     needs: build
@@ -78,7 +81,7 @@ jobs:
       # block on Linux; macOS and Windows audit until each has an allowlist from its audit runs.
       # The hosts: the build's artifact, cibuildwheel, its manylinux images and its release
       # downloads (github.com redirects them to objects.githubusercontent.com), the hash-checked
-      # build dependencies, Sigstore and the attestation.
+      # build dependencies, AlmaLinux's packages (clang), Sigstore and the attestation.
       # One step: an action's `pre` (where harden-runner starts its agent) ignores the step's `if:`.
       - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
@@ -93,6 +96,7 @@ jobs:
             cdn01.quay.io:443
             cdn02.quay.io:443
             cdn03.quay.io:443
+            repo.almalinux.org:443
             fulcio.sigstore.dev:443
             rekor.sigstore.dev:443
             *.actions.githubusercontent.com:443
@@ -112,6 +116,14 @@ jobs:
           CIBW_SKIP: "*-musllinux_*"
           CIBW_ARCHS: native
           CIBW_ENVIRONMENT: HATCH_BUILD_HOOK_ENABLE_MYPYC=1
+          CIBW_ENVIRONMENT_LINUX: HATCH_BUILD_HOOK_ENABLE_MYPYC=1 CC=clang
+          # The one host the allowlist names, in place of the repositories' mirror lists.
+          CIBW_BEFORE_ALL_LINUX: >-
+            dnf install -y --disablerepo='*' --enablerepo=baseos,appstream
+            --setopt=baseos.mirrorlist= --setopt=appstream.mirrorlist=
+            --setopt=baseos.baseurl=https://repo.almalinux.org/almalinux/8/BaseOS/$(uname -m)/os/
+            --setopt=appstream.baseurl=https://repo.almalinux.org/almalinux/8/AppStream/$(uname -m)/os/
+            clang
           CIBW_BUILD_FRONTEND: "build; args: --no-isolation"
           CIBW_BEFORE_BUILD: python -m pip install --require-hashes --no-deps -r {project}/mypyc.txt
           CIBW_TEST_COMMAND: >-

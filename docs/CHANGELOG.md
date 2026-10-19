@@ -6,8 +6,8 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
-- Compiled wheels are 64-bit only: 32-bit Windows and Linux install the pure wheel, as PyPy and
-  musllinux do.
+- Compiled wheels are 64-bit only: 32-bit Windows installs the pure wheel, as PyPy and musllinux
+  do.
 - The version is the release's git tag: a build between releases reports a dev version
   (`constricter --version`: `0.5.1.dev3+g1a2b3c4`), as do the reports' `version` fields.
 - `--fix --unsafe-fixes` no longer guesses the type of a name bound again to a method call on
