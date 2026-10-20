@@ -28,7 +28,7 @@ jobs:
   reuse:
     name: Reuse
     if: github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions:
       actions: read # find an earlier run's tested-tree artifact
@@ -68,7 +68,7 @@ jobs:
     name: Lint
     needs: reuse
     if: github.event.pull_request.draft != true && needs.reuse.outputs.tested != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -134,7 +134,7 @@ jobs:
     name: Docs
     needs: reuse
     if: github.event.pull_request.draft != true && needs.reuse.outputs.tested != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -168,7 +168,7 @@ jobs:
     name: Action
     needs: reuse
     if: github.event.pull_request.draft != true && needs.reuse.outputs.tested != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -217,7 +217,7 @@ jobs:
       matrix:
         package: [stdlib, django, sqlalchemy, pydantic, pandas, twisted, pip]
         task: [check, fix]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     permissions:
       contents: read
@@ -257,7 +257,7 @@ jobs:
       fail-fast: false
       matrix:
         package: [stdlib, django, sqlalchemy, pydantic, pandas, twisted, pip]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -297,13 +297,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-26.04, macos-latest, windows-latest]
         python: ['3.11', '3.12', '3.13', '3.14']
         group: [dev]
         include:
           # PyPy 7.3: hypothesis ships no pure-Python wheel, and none for PyPy 8's ABI (`pp80`) yet.
-          - {os: ubuntu-latest, python: pypy3.11, pypy: v7.3.x, group: test}
-          - {os: ubuntu-latest, python: 3.14t, group: test}
+          - {os: ubuntu-26.04, python: pypy3.11, pypy: v7.3.x, group: test}
+          - {os: ubuntu-26.04, python: 3.14t, group: test}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     permissions:
@@ -351,7 +351,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-26.04, macos-latest, windows-latest]
         python: ['3.11', '3.14']
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -392,7 +392,7 @@ jobs:
   build:
     name: Build
     needs: [lint, docs, test, compiled, action, corpus]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -421,7 +421,7 @@ jobs:
     name: Tested
     needs: [reuse, lint, docs, action, corpus, test, compiled, build]
     if: needs.reuse.outputs.tested != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions: {}
     steps:
