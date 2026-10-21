@@ -13,6 +13,8 @@ Notable changes, newest first. Each release's full notes are generated from its 
   ended at the same column there. On the 0.4.0-rc.3 mega run pandas's `result_kwargs = {}` took
   the `np.ndarray[...]` hinted for `update_deltas` four lines below, and `new_levels = []` an `int`.
   The hints now move past the lines the file's earlier checks added.
+- A run file's `[run] options` (`["--vague", "0"]`) go to every constricter command of the corpus
+  run, for a run at a setting other than the default.
 - The corpus runner reads a suite's failed tests from pytest's JUnit report, a file for each part
   of its tests, and keeps each test's id, outcome, seconds and skip reason beside the run's record
   (`tests-<run>.tests.jsonl`); a logged `ERROR - ...` line no longer reads as a failure, and a

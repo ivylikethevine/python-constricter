@@ -638,6 +638,7 @@ def _step(argv: Sequence[str]) -> int:
     name: str
     corpus, version, name = argv[1:4]
     run: Run = commanded(read(folder / "run.toml"), argv[4:])
+    launch.configure(run.options)
     # A suite's type checks have a checkout of their own, and run beside its tests on the other.
     tree: trees.Tree = trees.found(
         catalog.load().entry(corpus),
@@ -673,6 +674,7 @@ def main(argv: Sequence[str]) -> int:
     start: float = time.perf_counter()
     earlier: Record = resumed_facts(argv)
     run: Run = relabelled(commanded(read(Path(argv[0])), argv), argv, earlier)
+    launch.configure(run.options)
     facts: Record = carried(run_facts(run, datetime.now().astimezone()), earlier, _last_written(argv))
     folder: Path = _folder(argv, run, facts)
     store: pipeline.Store = pipeline.Store(folder)

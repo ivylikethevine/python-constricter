@@ -107,6 +107,8 @@ def python(version: str) -> str:
 def command(version: str, where: Place, options: Sequence[str], jobs: int) -> list[str]:
     """Write the command `run` runs, from `where`'s directory in `environment(where)`.
 
+    With the run's own options after `options` (see `configure`).
+
     Returns:
       Its words.
 
@@ -115,6 +117,7 @@ def command(version: str, where: Place, options: Sequence[str], jobs: int) -> li
         python(version),
         *("-I", "-W", "ignore", "-m", "constricter"),
         *options,
+        *OPTIONS,
         *(
             ("--no-gitignore",) if version == DEV else ()
         ),  # a suite's checkout is walked whole, as a release walks it
@@ -122,6 +125,14 @@ def command(version: str, where: Place, options: Sequence[str], jobs: int) -> li
         f"--jobs={jobs}",
         os.path.relpath(where.target, where.cwd),
     ]
+
+
+OPTIONS: Final[list[str]] = []  # the run's own options, given to every constricter command (see `configure`)
+
+
+def configure(options: Sequence[str]) -> None:
+    """Give every constricter command of this process's run `options`: a run file's, `--vague 0`."""
+    OPTIONS[:] = list(options)
 
 
 def environment(where: Place) -> dict[str, str]:

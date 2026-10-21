@@ -67,9 +67,8 @@ _TAKEN: Final = {
     float: (int, float),
     complex: (int, float, complex),
 }
-# `typing`'s file classes, which nothing is an instance of: a value that reads and writes is one
-# (`tempfile.NamedTemporaryFile`'s wrapper, which is no `io.IOBase`).
-_FILES: Final[frozenset[object]] = frozenset({typing.IO, typing.TextIO, typing.BinaryIO})
+# What `typing`'s file classes, which nothing is an instance of, take: a value that reads, writes
+# and closes (`tempfile.NamedTemporaryFile`'s wrapper, which is no `io.IOBase`); see `_file_class`.
 _FILE_METHODS: Final = ("read", "write", "close")
 # An in-memory file: a test's stand-in for the file a fix's annotation names (`open`'s
 # `TextIOWrapper`, `typing.IO`).
@@ -225,7 +224,7 @@ def _instance(value: object, hint: object) -> bool | None:
         return None if _stood_for(hint) is None else holds(value, _stood_for(hint))
     if typing.is_typeddict(hint):
         return isinstance(value, dict)
-    if hint in _FILES:
+    if _file_class(hint):
         return all(hasattr(value, name) for name in _FILE_METHODS)
     if not isinstance(hint, type):
         return None
@@ -256,6 +255,16 @@ def _stand_in(kind: type) -> bool:
 
     """
     return kind is types.SimpleNamespace or _testing(kind.__module__)
+
+
+def _file_class(hint: object) -> bool:
+    """Check whether `hint` is one of `typing`'s file classes: `IO`, `TextIO` or `BinaryIO`.
+
+    Returns:
+      Whether it is.
+
+    """
+    return hint is typing.IO or hint is typing.TextIO or hint is typing.BinaryIO
 
 
 def _in_memory(kind: type, hint: type) -> bool:

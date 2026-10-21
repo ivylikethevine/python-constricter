@@ -1018,8 +1018,9 @@ What to measure before building, smallest first.
 1. **A `vague = 0` run.** The runs use the default, no `Any` anywhere, which rejects `NDArray[Any]`,
    `dict[str, Any]`, `pickle.loads` and `json.loads`: `numpy` alone is 4,320 calls with no fix on
    the 47 corpora. One run at `vague = 0` says what the default costs on the scientific corpora
-   (xarray, dask, networkx, pandas). Done when the census is read at both. About an hour beside the
-   run; coverage unchanged.
+   (xarray, dask, networkx, pandas): a run file's `options = ["--vague", "0"]` gives it to every
+   constricter command of the run (2026-10-21). Done when the census is read at both. About an
+   hour beside the run; coverage unchanged.
 2. **Two checkers agreeing, likely.** `checker` is one set to LIKELY.md's bars, by checker; a hint
    basedpyright, ty and pyrefly agree on (two of them, or all three) is a set of its own, measured
    the same way, and `--likely` applies it where one checker's hint alone doesn't pass. Done when
