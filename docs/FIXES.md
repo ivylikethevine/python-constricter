@@ -738,7 +738,10 @@ A hint is used only as an annotation the file can hold:
   parses it: `min-python` (`--min-python`), which defaults to the lower bound of the nearest
   `pyproject.toml`'s `requires-python`. Where it's older, or not known (the plugins), it's written
   with `Unpack` (`tuple[str, Unpack[tuple[str, ...]]]`, a level deeper to LVA006) if the module
-  imports it from `typing` or `typing_extensions`, and dropped if it doesn't;
+  imports it from `typing` or `typing_extensions`, and dropped if it doesn't. For an operation on
+  tuples (`names + (name,)`), which basedpyright types precisely where mypy reads typeshed's
+  `tuple[str, ...]` and rejects the precise type declared, the elements beside the unpacked part
+  widen to it (`tuple[str, ...]`), or the hint is dropped where one is of another type;
 - a type variable of the module's is a fix only where the function's signature, or its class's
   bases, name it: anywhere else it's unbound;
 - anything vague (`Any`, `list[Unknown]`), not an annotation (`Module("os")`, a signature), as deep
@@ -752,14 +755,21 @@ A hint is used only as an annotation the file can hold:
   thing than the checker prints it for: a module written bare (`import socket`, then `socket`), one
   of those bare classes bound to the module's own class (`class Match`), a builtin given type
   arguments it takes none of (numpy's `bool[bool]`, printed bare), a private part of a dotted name
-  (`np._NBitIntP`), or a class a function defines (`Parser.read.Dialect`), which no annotation can
-  name;
+  (`np._NBitIntP`), a class a function defines (`Parser.read.Dialect`), which no annotation can
+  name, or a standard-library module's attribute the module hasn't at run time, as this Python
+  imports it (`sys.OptExcInfo`, typeshed's alias of `sys.exc_info()`'s return;
+  `importlib.metadata.SelectableGroups`, gone since 3.12);
 - a generic class without its arguments is dropped (a checker prints one so when it doesn't know
   them), as is a special form alone (`type[Generic]`, `Annotated`);
 - a union (`Option | None`, `Series | bool`) is a fix only for a name its function narrows somewhere
   (`if opt is None`, `if opt`, `isinstance`): untested, the code uses it as one member (`opt.cb`),
   which the union declared would make an error; a union inside the hint (`dict[str, int | bytes]`, a
-  mixed container's) is dropped anywhere, since no test of the name narrows its elements;
+  mixed container's) is dropped anywhere, since no test of the name narrows its elements. An alias
+  of a union, the module's own or another checked file's (pandas's `Scalar`, `ArrayLike`), is read
+  as the union it names, bare or inside a container (`list[Scalar]`);
+- a name its function compares with `None` (`if rec is not None`) takes `None` where the hint lacks
+  it (`rec: Record | None`): the hint is the first value's type as the checker reads it, and the
+  package's own checker may read the value as `Record | None`;
 - a `Literal` isn't widened inside a class's own arguments (`Reader[Literal["frame"]]`), which may
   be bound to the literals: the hint is dropped. A builtin's or `collections.abc`'s are;
 - a name its function returns has no fix where the function's signature says `Self`: the checker

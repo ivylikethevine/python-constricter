@@ -22,6 +22,7 @@ from constricter.fix.values.doubts import (
     is_constant,
     narrowed_first,
     narrowing,
+    none_tested,
     says_self,
     tested,
     undeclared,
@@ -433,24 +434,48 @@ class Scope:
                     return hinted.inference(typed, found)
                 continue
             if (
-                text is not None
-                and (
+                text is None
+                or (
                     typed := hinted.hinted(
                         text,
                         self.settings.known,
-                        nesting=self.settings.checks.nesting,
-                        # A module body's annotation is evaluated there: only what's bound before it will do.
-                        before=target.lineno if self.kind.function is None else None,
-                        offered=found.offered.get(where),
+                        hinted.Site(
+                            self.settings.checks.nesting,
+                            # A module body's annotation is evaluated there: only what's bound before it.
+                            target.lineno if self.kind.function is None else None,
+                            isinstance(value, ast.BinOp),
+                        ),
+                        found.offered.get(where),
                     )
                 )
+                is None
+            ):
+                continue
+            typed = self._optional(target.id, typed)
+            if (
                 # A generic class a checker prints bare has arguments it doesn't know.
-                and not bare(typed, self.settings.facts.generics)
+                not bare(typed, self.settings.facts.generics)
                 and not hinted.renames(target.id, typed, local=self.kind.function is not None)
                 and not (self._undeclared(typed) or self._misread(target.id, typed))
             ):
                 return hinted.inference(typed, found)
         return None
+
+    def _optional(self, name: str, annotation: str) -> str:
+        """Add `None` to a hint for a name this scope's function compares with `None`, if it lacks one.
+
+        The hint is the first value's type as the checker reads it; a test for `None` says the author
+        expects one (`rec = fairy.record`, hinted `Record`, then `if rec is not None`), and the
+        package's own checker may read the value as `Record | None`.
+
+        Returns:
+          The annotation, `None` added where the test says so.
+
+        """
+        function: FunctionDef | None
+        if (function := self.kind.function) is None or name not in none_tested(function):
+            return annotation
+        return annotation if _NONE in (members(annotation) or ()) else f"{annotation} | {_NONE}"
 
     def _misread(self, name: str, annotation: str) -> bool:
         """Check whether a hint is one this scope's function reads otherwise than declared.
@@ -471,7 +496,7 @@ class Scope:
             return False
         if _SELF_WORD.search(annotation) is not None and not says_self(function):
             return True
-        if len(members(annotation) or ()) > 1:
+        if len(self.inferred.members(annotation)) > 1:  # an alias of a union is one
             return name not in narrowing(function)
         return says_self(function) and any(
             isinstance(node.value, ast.Name) and node.value.id == name

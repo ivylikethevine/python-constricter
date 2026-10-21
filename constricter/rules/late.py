@@ -85,10 +85,10 @@ def optionals(scope: Scope) -> None:
     """Offer `T | None` to a name first bound to `None`, then only ever to a known `T`.
 
     Every later binding must have a type value flow is sure of (or `--fix` guessed, which makes
-    this a guess too), all the same one, not itself allowing `None`, and nothing in another scope
-    may write the name (`nonlocal`, `global`), nor read it: a function or lambda inside this one
-    reading it sees the declared `T | None`, where a type checker without it would see what the
-    name was narrowed to.
+    this a guess too), all the same one, not itself allowing `None` (but a hint widened by a test
+    for `None` to `T | None` counts as `T`), and nothing in another scope may write the name
+    (`nonlocal`, `global`), nor read it: a function or lambda inside this one reading it sees the
+    declared `T | None`, where a type checker without it would see what the name was narrowed to.
     """
     index: int
     o: Offence
@@ -112,8 +112,8 @@ def optionals(scope: Scope) -> None:
         types: set[str | None] = {binding.value or (binding.guess or (None,))[0] for binding in rest}
         if first.at != (o.line, o.col) or first.value != _NONE or len(types) != 1:
             continue
-        found: str | None = types.pop()
-        if found is None or _NONE in (members(found) or [found]):
+        found: str | None
+        if (found := _known(types.pop(), guesses, len(rest))) is None:
             continue
         origins: frozenset[str] = frozenset[str]().union(*(rests for _, rests in guesses))
         reason: str = f"`None`, then only `{found}`"
@@ -125,6 +125,26 @@ def optionals(scope: Scope) -> None:
         )
         scope.offences[index] = replace(o, edit=fix)
         scope.inferred.late[o.name] = (f"{found} | None", origins)
+
+
+def _known(found: str | None, guesses: "list[Late]", later: int) -> str | None:
+    """Read the one type `T` a name's `later` bindings have, for `optionals`.
+
+    A type allowing `None` itself is no `T`, unless every later binding's is a hint widened by a
+    test for `None` (see `Scope._optional`): then its other members are.
+
+    Returns:
+      `T`, or `None` where there's none.
+
+    """
+    if found is None:
+        return None
+    parts: frozenset[str] = members(found) or frozenset({found})
+    if _NONE not in parts:
+        return found
+    if len(guesses) != later or not all(hinted.KINDS & rests for _, rests in guesses):
+        return None
+    return " | ".join(sorted(parts - {_NONE})) or None
 
 
 def rebinds(scope: Scope) -> None:

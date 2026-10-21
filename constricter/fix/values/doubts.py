@@ -393,6 +393,27 @@ def narrowing(function: FunctionDef) -> frozenset[str]:
     )
 
 
+def none_tested(function: FunctionDef) -> frozenset[str]:
+    """List the names a function's tests compare with `None`: `x is None`, `x is not None`, `x == None`.
+
+    Returns:
+      Them.
+
+    """
+    return frozenset(
+        compared.left.id
+        for node in walk(function)
+        if isinstance(node, _TESTS)
+        for test in _tested_parts(node)
+        for compared in walk(test)
+        if isinstance(compared, ast.Compare)
+        and isinstance(compared.left, ast.Name)
+        and len(compared.comparators) == 1
+        and isinstance(compared.comparators[0], ast.Constant)
+        and compared.comparators[0].value is None
+    )
+
+
 def _narrowed(test: ast.expr) -> list[str]:
     """Find the names one test narrows, through `and`, `or` and `not`.
 

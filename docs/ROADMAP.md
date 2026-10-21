@@ -810,11 +810,34 @@ measure before building.
    later ones' where `--fix` doesn't); a hint narrower than the package's own checker reads the
    value (`message.get("more_body")`, `bool` to basedpyright and `bool | None` to mypy); the same
    name imported from elsewhere (`Image`, `ValidationError`), which only the checker's definition
-   link tells apart; and pandas's `ArrayLike` and `Manager` unions read as one member. Done when a
-   hinted run's new errors are under one for each hundred of its hints' fixes on the three corpora
-   type-checked: on rc.3, every hinted step's against the checkers' fixes past
-   `--fix --unsafe-fixes`, pandas 0.9 (169 for some 18,600), sqlalchemy 1.2 (24 for 2,100) and
-   pydantic 0.5 (3 for 570). About 6 hours; coverage down by the hints withdrawn.
+   link tells apart; and pandas's `ArrayLike` and `Manager` unions read as one member. Built, not
+   yet run (2026-10-21): an alias of a union is the union, for the narrowing rule and inside a
+   container (pandas's `Scalar` 34 of rc.3's errors, `ArrayLike` 7, `Manager` 2, `DtypeObj` 1,
+   `list[Scalar]` 2, sqlalchemy's `_ListenerFnSequenceType` 1); a standard-library module's
+   attribute the module hasn't at run time is no fix (`sys.OptExcInfo` 5,
+   `importlib.metadata.SelectableGroups` 2); a concatenation's `tuple[*tuple[str, ...], str]` is
+   written `tuple[str, ...]` (3); and a name the function compares with `None` takes `None` (`rec`
+   3). On sqlalchemy with pyrefly's hints, one process on 16CPU/60GB, the tree withdraws 15 of the
+   committed code's 3,708 fixes (the five `sys.OptExcInfo`, `clslevel`, and eight names hinted a
+   union alias they never narrow: `_KeyType`, `_InterimRowType`, `_InternalEntityType`, ...), adds
+   4 (`T | None` where the hint alone was dropped for a later `None`) and changes 5 (`rec`, `names`,
+   three more `| None`); on pydantic `--fix --unsafe-fixes` brings basedpyright no new error (613
+   before and after). Found on rc.3 and fixed in the tree: **a hint applied to the wrong name**. A file in a cycle of
+   calls is checked again within a round once the other files' returns are known, its own first
+   check's fixes written, while the round's hints were asked on the text before them: every hint
+   below an added line (a declaration, an import) sat that many lines too high, on whichever name
+   ended at the same column there (pandas's `result_kwargs: np.ndarray[...] = {}` in
+   `core/window/ewm.py`, pyrefly's hint for `update_deltas` four lines below; `new_levels: int = []`
+   in `core/indexes/multi.py`, basedpyright's). 3 of rc.3's 248 checker fixes on an empty display
+   (`scratch/misplaced_hints.py`), so about 1 in 100 checker fixes, which the type errors show as
+   assignment errors. The runner alone reproduced it (`local/runs/pandas-pyrefly.toml`, 2026-10-21:
+   the cycle's second check needs the returns the runner's environment types). The hints now move
+   past the lines the file's earlier checks added (`runs.shifted`, `schedule._Planned.hints_of`).
+   Done when a hinted run's new errors are under one
+   for each hundred of its hints' fixes on the three corpora type-checked: on rc.3, every hinted
+   step's against the checkers' fixes past `--fix --unsafe-fixes`, pandas 0.9 (169 for some
+   18,600), sqlalchemy 1.2 (24 for 2,100) and pydantic 0.5 (3 for 570). About 3 hours left, beside
+   the run; coverage down by the hints withdrawn.
 2. **The witness, past a test's own classes.** The corpora runs hold a fixed binding's value to its
    annotation as its package's traced tests bind it (`tests/corpus/witness`). A value of a class a
    test module defines tells nothing of the annotation, as a mock or a `SimpleNamespace` doesn't,
@@ -839,9 +862,18 @@ measure before building.
    parameters' types as `callers`' seeds brought more errors than fixes (see the trace's item under
    Large), so what's new is the returns, written before `--fix` as `pyrefly infer`'s signatures
    were; its sampling is also a model for the next item. Measure on pydantic's and django's tests:
-   the time against the `traced` step's, the fixes past the trace's, the new errors. Done when
-   measured; a corpus step only if it brings more fixes than the trace for no more errors. About 4
-   hours; coverage unchanged.
+   the time against the `traced` step's, the fixes past the trace's, the new errors. Tried
+   2026-10-21 (RightTyper 0.1.0 on pydantic 2.14.0's Python 3.14.7, one process on 16CPU/60GB):
+   the run itself costs 17.7s against 9.8s plain (`tests/test_docs.py` left out: its 570 doc
+   examples fail under RightTyper's `sys.monitoring` hooks), where the `traced` step took 84s on
+   rc.3 for a 21s plain run; but it wrote no signature, crashing while reading pydantic's own
+   annotations (a `ForwardRef` with no `__name__` on 3.14, patched past, then `ReprArgs`, a
+   `TYPE_CHECKING`-only name, evaluated), and its post-processing wants a process pool (no
+   `--no-use-multiprocessing` in `--help`). So the fixes and errors are unmeasured, and django
+   wasn't run (its suite under RightTyper outruns a sandboxed call's 10 minutes). Next: a package
+   whose annotations it can read (django's, which has none), or `--ignore-annotations` on pydantic
+   with the overwritten signatures reverted. Done when measured; a corpus step only if it brings
+   more fixes than the trace for no more errors. About 3 hours left; coverage unchanged.
 5. **A traced run, sampled.** The tracer follows every line of a recorded function until its
    statements have ended 20 times with nothing new: django's traced tests take ten times their
    untraced time. Record in short windows at random times, with `sys.monitoring`'s events off

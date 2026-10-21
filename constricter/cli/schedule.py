@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, NamedTuple, cast
 
 from constricter.cli import collecting
-from constricter.cli.runs import CoverageRun, FileRun
+from constricter.cli.runs import CheckRun, CoverageRun, FileRun, shifted
 from constricter.cli.workers import Again, Answering, Asked, File, Told, Workers, check_share, first_done
 from constricter.empty import Empty
 from constricter.fix.core.known import Guarded, Hints, Outside, Passed, Returns
@@ -160,7 +160,8 @@ class _Planned:
 
         """
         given: dict[int, Outside] = {
-            at: outside(self.modules, self.paths[at], self.hinted) for at in self.plan.components[component]
+            at: outside(self.modules, self.paths[at], self.hints_of(at))
+            for at in self.plan.components[component]
         }
         self.given.update(given)
         return {
@@ -168,6 +169,22 @@ class _Planned:
             for at, known in given.items()
             if at not in self.earlier.kept or _WORKER.given.get(self.paths[at]) != known
         }
+
+    def hints_of(self, at: int) -> Mapping[Path, tuple[Hints, ...]]:
+        """Find file `at`'s hints, at their places in its text as this round's fixes have left it.
+
+        A file in a cycle is checked again within the round, its earlier checks' fixes written: the
+        hints were asked on the text before them (see `runs.shifted`).
+
+        Returns:
+          What `outside` reads: the round's hints, the file's moved past the lines its checks added.
+
+        """
+        run: FileRun | None = self.runs.get(at)  # this round's checks of it, joined (see `runs.merged`)
+        path: Path = self.paths[at]
+        if not isinstance(run, CheckRun) or not run.rounds or path not in self.hinted:
+            return self.hinted
+        return {path: tuple(shifted(found, run.rounds) for found in self.hinted[path])}
 
     def record(self, component: int, found: Mapping[int, FileRun]) -> dict[str, Returns]:
         """Record what a round of the component's files found, and what its functions return.
@@ -210,7 +227,8 @@ class _Planned:
         if self.settled(component):
             return {}
         again: dict[int, Outside] = {
-            at: outside(self.modules, self.paths[at], self.hinted) for at in self.plan.components[component]
+            at: outside(self.modules, self.paths[at], self.hints_of(at))
+            for at in self.plan.components[component]
         }
         again = {at: known for at, known in again.items() if known.returned != self.given[at].returned}
         self.given.update(again)
@@ -411,7 +429,6 @@ class _Pooled:
         """
         if not files:
             return
-        hinted: Mapping[Path, tuple[Hints, ...]] = self.planned.hinted
         paths: Sequence[Path] = self.planned.paths
         kept: Mapping[int, FileRun] = self.planned.earlier.kept
         wanted: frozenset[int] = frozenset(files)
@@ -430,7 +447,9 @@ class _Pooled:
                 ]
             ):
                 if each:
-                    given: list[File] = [(paths[at], hinted.get(paths[at], ())) for at in each]
+                    given: list[File] = [
+                        (paths[at], self.planned.hints_of(at).get(paths[at], ())) for at in each
+                    ]
                     asked: Asked = (given, self.news.since(worker), how)
                     self.active[self.pool.ask(worker, check_asked, self.check, asked)] = each
         at: int

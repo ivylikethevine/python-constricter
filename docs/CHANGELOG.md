@@ -6,6 +6,21 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix --infer-with` no longer writes a hint on the wrong name. A file in a cycle of calls is
+  checked again within a round once the other files' returns are known, with its own first check's
+  fixes already written, while the round's hints were asked on the text before them: every hint
+  below an added line (a declaration, an import) sat that many lines too high, on whichever name
+  ended at the same column there. On the 0.4.0-rc.3 mega run pandas's `result_kwargs = {}` took
+  the `np.ndarray[...]` hinted for `update_deltas` four lines below, and `new_levels = []` an `int`.
+  The hints now move past the lines the file's earlier checks added.
+- `--infer-with` reads an alias of a union (pandas's `Scalar`, `ArrayLike`, `Manager`) as the union
+  it names: a fix only for a name its function narrows, and dropped inside a container
+  (`list[Scalar]`); drops a hint naming a standard-library module's attribute the module hasn't at
+  run time (`sys.OptExcInfo`, typeshed's alias; `importlib.metadata.SelectableGroups`, gone since
+  3.12); writes the precise type basedpyright gives an operation on tuples
+  (`tuple[*tuple[str, ...], str]` for `names + (name,)`) as the `tuple[str, ...]` mypy reads; and
+  adds `None` to a hint for a name the function compares with `None`. On the 0.4.0-rc.3 mega run
+  these were 59 of the 458 new type errors blamed on a hint (pandas's `Scalar` alone 34).
 - CI, Security, the build, the release and the Corpus coverage workflow run on `ubuntu-26.04`,
   named, where `ubuntu-latest` moves under them from 2026-10-19; the ARM wheels stay on
   `ubuntu-24.04-arm`, which has no 26.04 image yet.
