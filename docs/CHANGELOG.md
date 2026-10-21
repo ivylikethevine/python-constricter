@@ -13,6 +13,16 @@ Notable changes, newest first. Each release's full notes are generated from its 
   ended at the same column there. On the 0.4.0-rc.3 mega run pandas's `result_kwargs = {}` took
   the `np.ndarray[...]` hinted for `update_deltas` four lines below, and `new_levels = []` an `int`.
   The hints now move past the lines the file's earlier checks added.
+- The corpus runner reads a suite's failed tests from pytest's JUnit report, a file for each part
+  of its tests, and keeps each test's id, outcome, seconds and skip reason beside the run's record
+  (`tests-<run>.tests.jsonl`); a logged `ERROR - ...` line no longer reads as a failure, and a
+  failure's id is the same from run to run. Tests unittest runs are read from their text as before.
+- The corpus runs' witness takes any value that reads, writes and closes for `typing.IO`'s
+  classes, which nothing is an instance of; reads a `StringIO` or `BytesIO` where `io`'s or
+  `typing`'s file class is named as a test's stand-in, saying nothing of the fix; and reads a
+  package's `pytest` plugin module as a test module, whose classes stand in for the package's. 6
+  of the 223 certain fixes it saw differ on the 0.4.0-rc.3 mega run; the rest are declarations the
+  tests contradict.
 - `--infer-with` reads an alias of a union (pandas's `Scalar`, `ArrayLike`, `Manager`) as the union
   it names: a fix only for a name its function narrows, and dropped inside a container
   (`list[Scalar]`); drops a hint naming a standard-library module's attribute the module hasn't at

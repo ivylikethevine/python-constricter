@@ -150,9 +150,9 @@ def test_a_suites_parts_run_side_by_side(tmp_path: Path, monkeypatch: pytest.Mon
 
     monkeypatch.setattr(corpus_suite, "workers", workers)
     monkeypatch.setattr(corpus_suite, "_completed", completed)
-    assert corpus_suite.tested(tmp_path, suite, None).counts == {"passed": 3}
+    assert corpus_suite.tested(tmp_path, suite, None, None).counts == {"passed": 3}
     assert sorted(command[-1] for command in ran) == ["a", "b", "c"]
-    assert all(command[-3:-1] == ["-n", "1"] for command in ran)
+    assert all(command[len(catalog.PYTEST) : len(catalog.PYTEST) + 2] == ["-n", "1"] for command in ran)
 
 
 def test_a_steps_record_says_when_it_started_and_how_long_it_waited(tmp_path: Path) -> None:

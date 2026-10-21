@@ -4,6 +4,8 @@
 import collections
 import collections.abc
 import importlib
+import io
+import tempfile
 import types
 import typing
 from collections.abc import Callable
@@ -111,6 +113,32 @@ def test_a_test_modules_class_says_nothing_of_the_annotation(holds: _Holds) -> N
         stand_in: type[_Framed] = type("FakeProcess", (_Framed,), {"__module__": module})
         assert holds(stand_in(), int) is held
     assert holds(types.SimpleNamespace(), int) is None
+
+
+def test_a_packages_pytest_plugin_is_a_test_module(holds: _Holds) -> None:
+    """Its classes stand in for the package's (`pdm.pytest.Distribution`); pytest's own `_pytest` are real."""
+    stand_in: type[_Framed] = type("Distribution", (_Framed,), {"__module__": "pdm.pytest"})
+    assert holds(stand_in(), int) is None
+    real: type[_Framed] = type("TestReport", (_Framed,), {"__module__": "_pytest.reports"})
+    assert holds(real(), int) is False
+
+
+def test_typings_file_classes_take_what_reads_and_writes(holds: _Holds) -> None:
+    """Nothing is an instance of `typing.IO`: a temporary file's wrapper is one all the same."""
+    wrapped: typing.IO[str]
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8") as wrapped:
+        assert holds(wrapped, typing.IO[str]) is True
+        assert holds(wrapped, typing.TextIO) is True
+    assert holds(io.BytesIO(), typing.BinaryIO) is True
+    assert holds("text", typing.IO[str]) is False
+
+
+def test_an_in_memory_file_stands_in_for_a_file(holds: _Holds) -> None:
+    """A `StringIO` where `open`'s `TextIOWrapper` is declared is a test's stand-in, not a differing value."""
+    assert holds(io.StringIO(), io.TextIOWrapper) is None
+    assert holds(io.BytesIO(), io.BufferedReader) is None
+    assert holds(io.StringIO(), str) is False
+    assert holds(io.StringIO(), io.StringIO) is True
 
 
 def test_an_annotation_naming_a_tests_class_outside_the_tests_is_patched() -> None:

@@ -848,8 +848,16 @@ measure before building.
    109). Most are the package's own declarations its tests contradict: a numpy scalar where `int` or
    `bool` is declared (pandas's `iloc`, `_has_infs`), `None` where it isn't (sphinx's C++ parser),
    `round_trip_pickle`'s `DataFrame | Series` for any value pickled, pytest's `FSHookProxy` for a
-   `HookRelay`. Done when every certain fix that differs is such a declaration (pydantic's
-   `multiple_of: Decimal | None`, bound to an `int`). About 3 hours; coverage unchanged.
+   `HookRelay`. Read through on 2026-10-21, all 223: the witness was wrong on 6, fixed in the tree
+   (`typing.IO`'s classes, which nothing is an instance of, now take any value that reads, writes
+   and closes: optuna's `NamedTemporaryFile` wrapper, 147 of its counts; a `StringIO` or `BytesIO`
+   where `io`'s or `typing`'s file class is named is a test's stand-in, as a test's `open` or
+   `io.TextIOWrapper` gives it: dask's, black's, celery's; and a package's `pytest` plugin module
+   is a test module: pdm's `pdm.pytest.Distribution`). The other 217 are declarations the tests
+   contradict: the package's own, or typeshed's (asyncio's `Server.sockets` as `socket.socket`,
+   given `TransportSocket`; uvloop's `Server` and transports for asyncio's). Done when the next
+   mega run's certain fixes that differ are those alone. Under an hour beside the run; coverage
+   unchanged.
 3. **django's traced tests, in more than one process.** The tracer doesn't follow the processes
    `multiprocessing` starts, so django's suite is traced with `--parallel=1`: 643s on the 0.4.0-rc.3
    mega run, to 65s untraced on its workers, the longest step but three. celery's parts are traced
@@ -890,8 +898,8 @@ measure before building.
    longest chain first, `_PATIENCE`, backfilling). `scratch/schedule_solve.py` plans a finished
    run's steps the same way and proves how short any schedule of them can be: a mega run of 154
    minutes had a shortest schedule of 129 by the solver, 147 held to what the runner gave each, and
-   a proved floor of 57. Left: OR-Tools is in the `dev` group alone, not `corpus`, which CI's corpus
-   setup installs. Done when a super and a mega run each take within a tenth of the solver's
+   a proved floor of 57. OR-Tools is in the `corpus` group, which CI's corpus setup installs, and
+   `dev`. Done when a super and a mega run each take within a tenth of the solver's
    shortest schedule of their own steps. About 2 hours beside the runs; coverage unchanged.
 7. **CI's tools and security workflows, the shared way.** `security.yml` runs CodeQL and the weekly
    link check in jobs of its own, and every workflow that needs a binary (actionlint, gitleaks,
@@ -1022,8 +1030,14 @@ What to measure before building, smallest first.
    failure ids two ways between runs. pytest's `--junitxml` or `--report-log` (and unittest's
    verbose output, for django's runner) in `corpus_suite.tested` gives exact test and skip ids, skip
    reasons and per-test durations: sqlalchemy's skip-count flake by name, with no rerun, and what
-   test-level sampling or sharding would later need. Done when the records hold each run's test ids
-   and durations and the tests table is read from them. About 3 hours; coverage unchanged.
+   test-level sampling or sharding would later need. Built, not yet run (2026-10-21): each part
+   pytest runs writes a JUnit report (`--junitxml`, the `xunit1` family, whose `file` gives each
+   test's node id back), read into `records/<corpus>/<version>/tests-<run>.tests.jsonl`, a line a
+   test with its id, outcome, seconds and skip reason, and the failed tests are the reports' where
+   every part wrote one; the counts stay the summary's (the reports don't tell an unexpected pass
+   from a pass), and a suite unittest runs (django, mkdocs, twisted) is read as text still. Done
+   when a mega run's records hold them and the tests table reads sqlalchemy's skips by name. About
+   an hour left, beside the run; coverage unchanged.
 4. **Why a call has no fix.** The census classifies the shape of a value with no fix, never why the
    fix failed: a vague return, open overloads that disagree, a receiver of no type, an import it
    can't resolve, an untyped callee. A column for it, read from the check (`--format=json` gains the
