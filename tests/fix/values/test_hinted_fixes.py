@@ -188,12 +188,12 @@ def test_an_alias_of_a_union_is_a_union() -> None:
     hint: str
     source: str
     fix: str | None
-    for hint, source, fix in [
+    for hint, source, fix in (
         ("Scalar", untested, None),
         ("Scalar", tested, "Scalar"),
         ("list[Scalar]", tested, None),
         ("Point", untested, "Point"),
-    ]:
+    ):
         hints: Hints = Hints(_CHECKER, {(2, 5): hint})
         checking: dict[str, Guarded] = {name: Guarded(("t", name), None) for name in ("Scalar", "Point")}
         outside: Outside = Outside(hints=(hints,), unions=aliased, checking=checking)

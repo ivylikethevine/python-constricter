@@ -78,7 +78,8 @@ def test_a_run_file_is_read_with_defaults_for_what_it_leaves_out() -> None:
 
 
 def test_a_runs_options_go_to_every_constricter_command(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A run file's `options` (`["--vague", "0"]`) follow a step's own, once the run is configured."""
     monkeypatch.setattr(launch, "OPTIONS", [])

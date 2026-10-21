@@ -536,8 +536,10 @@ def test_a_file_checked_again_within_a_round_has_its_hints_moved(
     options: list[str] = ["--infer-with", _CHECKER, "--fix", "--unsafe-fixes", "--jobs=1", "-q"]
     assert cli.main([*options, str(tmp_path)]) == cli.EXIT_FOUND
     text: str = (tmp_path / "a.py").read_text(encoding="utf-8")
-    assert "    x: int = f()\n    m: int\n    n: str\n    m, n = pair()\n    zz = q.other()\n" in text
-    assert "    yy: int = q.make()  # hint: int\n" in text
+    fixed: str = "    x: int = f()\n    m: int\n    n: str\n    m, n = pair()\n    zz = q.other()\n"
+    hinted: str = "    yy: int = q.make()  # hint: int\n"
+    assert fixed in text
+    assert hinted in text
 
 
 def test_hints_are_guesses_only_unsafe_fixes_apply(

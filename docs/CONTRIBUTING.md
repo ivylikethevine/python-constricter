@@ -16,7 +16,7 @@ attests every wheel, and publishes nothing.
 
 ## Development
 
-With [uv](https://docs.astral.sh/uv/) installed (CI pins 0.12.24):
+With [uv](https://docs.astral.sh/uv/) installed (CI pins 0.13.0):
 
 ```bash
 export UV_PROJECT_ENVIRONMENT=local/.venv
@@ -48,13 +48,18 @@ fails until then. Python is indented with 4 spaces. An editor running Pyright or
 it extends.
 
 `local/.venv/bin/python tests/ci_local.py` runs them all at once, as CI does: it reads the Lint,
-Docs and Test jobs' steps from `.github/workflows/ci.yml` (so it can't fall behind it), fails a step
-by its exit status alone (pylint still rates a run with one finding 10.00/10), and prints each
-failing step's output in full. It also runs the tests on each other Python in the Test job's matrix
-(PyPy and free-threaded builds included), each in its own `local/.venv-<python>` that uv creates, so
-what only one interpreter breaks fails before CI. Name jobs to run only those
-(`tests/ci_local.py lint docs interpreters`), and add `--install-hook` once to run it before every
-`git push`.
+Docs and Test jobs' steps from `.github/workflows/ci.yml` and the Dependency audit (`dependencies`:
+`pip-audit` over `uv.lock`'s export), Workflow audit (`workflows`: zizmor, actionlint,
+`lint_workflows.sh`) and Secrets (`secrets`: gitleaks over the history) jobs' from
+`.github/workflows/security.yml` (so it can't fall behind either), fails a step by its exit status
+alone (pylint still rates a run with one finding 10.00/10), and prints each failing step's output in
+full. A tool CI fetches by URL (lychee, actionlint, gitleaks) is the one on `PATH`, its step skipped
+without one; zizmor runs `--offline` without a `GH_TOKEN`. It also runs the tests on each other
+Python in the Test job's matrix (PyPy and free-threaded builds included), each in its own
+`local/.venv-<python>` that uv creates, so what only one interpreter breaks fails before CI. Name
+jobs to run only those (`tests/ci_local.py lint docs interpreters`), and add `--install-hook` once to
+run it before every `git push`. Run it before every push: a draft pull request runs no CI, so what
+it misses surfaces on the next pull request into the branch, such as a sync of the shared CI files.
 
 Three things pass on Python 3.14 and fail on 3.11, CI's oldest, and no linter says so. A quoted
 alias (`Record: TypeAlias = "dict[str, object]"`) in a signature's `Record | None` is `str | None`

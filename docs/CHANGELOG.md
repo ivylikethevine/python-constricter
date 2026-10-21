@@ -6,6 +6,12 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `tests/ci_local.py` also runs the Security workflow's blocking jobs, read from `security.yml` as
+  CI's are from `ci.yml`: the dependency audit (`pip-audit` over `uv.lock`'s export), the workflow
+  audit (zizmor, actionlint, `lint_workflows.sh`) and the secrets scan. An advisory against a
+  locked dependency, or a workflow lint, now fails before a push, not on the next pull request.
+- `uv.lock` moves certifi to 2026.10.19 and virtualenv to 21.14.12, past PYSEC-2026-4320,
+  CVE-2026-113725 and CVE-2026-113722.
 - `--fix --infer-with` no longer writes a hint on the wrong name. A file in a cycle of calls is
   checked again within a round once the other files' returns are known, with its own first check's
   fixes already written, while the round's hints were asked on the text before them: every hint
