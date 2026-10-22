@@ -75,13 +75,13 @@ def _callee(callee: str, known: Known, scope: tuple[Mapping[str, str], frozenset
     root: str = callee.split(".", 1)[0]
     plan: ImportPlan | None = known.names.plan
     defined: bool = plan is not None and root in plan.defined and root not in plan.bound
-    reason: str = _OTHER
+    reason: str
     if callee in scope[1] or defined:
         reason = _UNTYPED
     elif root in known.names.stdlib or (known.is_builtin(root) and root not in scope[0]):
         reason = _LIBRARY
     elif plan is not None and root in plan.bound:
         reason = _IMPORTED
-    elif root in scope[0] or plan is None or root not in plan.defined:
+    else:
         reason = _LOCAL
     return reason

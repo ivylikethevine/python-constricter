@@ -140,6 +140,44 @@ def test_a_type_parameter_list_names_the_parameters() -> None:
     assert _found(source) == {"got": ("int", False), "result": (None, False)}
 
 
+def test_a_generic_classes_parameters_are_unknown_past_a_listed_argument_no_type_variable() -> None:
+    """`Generic[T, S]`, `S` not a type variable the module defines: its members aren't bound."""
+    source: str = """
+    from typing import Generic, TypeVar
+
+    from other import S
+
+    T = TypeVar("T")
+
+    class Pair(Generic[T, S]):
+        def first(self) -> T: ...
+
+    def f(pair: Pair[int, str]) -> None:
+        first = pair.first()
+    """
+    assert _found(source) == {"first": (None, False)}
+
+
+def test_a_member_is_looked_for_eight_generic_bases_up_at_most() -> None:
+    """Past them, it's left untyped."""
+    chain: str = "\n".join(f"class C{at}(C{at - 1}[T]): ..." for at in range(1, 10))
+    source: str = f"""
+from typing import Generic, TypeVar
+
+T = TypeVar("T")
+
+class C0(Generic[T]):
+    def get(self) -> T: ...
+
+{chain}
+
+def f(deep: C8[int], deeper: C9[int]) -> None:
+    found = deep.get()
+    lost = deeper.get()
+"""
+    assert _found(source) == {"found": ("int", False), "lost": (None, False)}
+
+
 _RESULTS: str = """
 from typing import Generic, TypeVar
 

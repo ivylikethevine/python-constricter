@@ -661,6 +661,24 @@ def test_a_read_a_test_narrows_is_what_the_test_leaves() -> None:
                 p = m
 
             q = n
+
+        def stores(self, m: Conn | None, n: int | None, k: int | None, w: str | None, xs: list[int]) -> None:
+            if m is None or n is None or k is None or w is None:
+                return
+            try:
+                pass
+            except ValueError as m:
+                pass
+            match xs:
+                case [*n]:
+                    pass
+                case k:
+                    pass
+            from os import sep as w
+            r = m
+            s = n
+            t = k
+            u = w
     """
     assert {name: fix for name, fix in _found(source).items() if len(name) == 1} == {
         "a": ("int", False),
@@ -676,4 +694,8 @@ def test_a_read_a_test_narrows_is_what_the_test_leaves() -> None:
         "o": (None, False),  # stored again further round the loop
         "p": (None, False),  # in a function inside
         "q": (None, False),  # `==`
+        "r": (None, False),  # stored by an `except`
+        "s": (None, False),  # by a pattern's star
+        "t": (None, False),  # by a pattern
+        "u": (None, False),  # by an import
     }

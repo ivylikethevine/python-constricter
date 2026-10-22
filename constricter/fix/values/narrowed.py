@@ -377,7 +377,7 @@ def _left(test: ast.expr, text: str, *, passed: bool) -> Left | None:
         case ast.BoolOp(op=joining, values=values) if passed == isinstance(joining, ast.And):
             found = _joined([_left(value, text, passed=passed) for value in values])
         case ast.Compare():
-            found = _compared(test, text, passed=passed)
+            found = _compared(test, passed=passed)
         case ast.Call(func=ast.Name(id="isinstance"), args=[left, classes]) if passed:
             found = _checked(left, classes, text)
         case _:
@@ -385,26 +385,20 @@ def _left(test: ast.expr, text: str, *, passed: bool) -> Left | None:
     return found
 
 
-def _compared(test: ast.Compare, text: str, *, passed: bool) -> Left | None:
-    """Find what a comparison leaves of a value's union (as `text`): `x is None`, `x is not None`.
+def _compared(test: ast.Compare, *, passed: bool) -> Left | None:
+    """Find what a comparison leaves of the union of the value it compares: `x is None`, `x is not None`.
 
     Returns:
       What it leaves; all of it for an ordering (`x > 2`), which narrows nothing to any checker;
       `None` for any other.
 
     """
-    left: ast.expr
     op: ast.cmpop
     found: Left | None = None
     match test:
-        case ast.Compare(
-            left=left,
-            ops=[ast.Is() | ast.IsNot() as op],
-            comparators=[ast.Constant(value=None)],
-        ):
-            if ast.unparse(left) == text:
-                kept: bool = passed == isinstance(op, ast.Is)
-                found = (frozenset({_NONE}), frozenset()) if kept else (None, frozenset({_NONE}))
+        case ast.Compare(ops=[ast.Is() | ast.IsNot() as op], comparators=[ast.Constant(value=None)]):
+            kept: bool = passed == isinstance(op, ast.Is)
+            found = (frozenset({_NONE}), frozenset()) if kept else (None, frozenset({_NONE}))
         case ast.Compare(ops=[ast.Lt() | ast.LtE() | ast.Gt() | ast.GtE()]):
             found = _ALL
         case _:
