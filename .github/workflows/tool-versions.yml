@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 name: Tool versions
 
 # Drift check over every pin: the CI tools in
@@ -37,7 +38,7 @@ jobs:
       github.event_name != 'workflow_run' ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
