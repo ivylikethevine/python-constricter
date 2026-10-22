@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Cross-module `--fix` for types the calling file doesn't import: imported under `if TYPE_CHECKING:`."""
 
 import textwrap

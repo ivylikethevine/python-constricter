@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The output formats.
 
 `full` (each offence with its source line and a caret under the name), JSON, GitHub annotations,
@@ -118,6 +117,7 @@ def test_json_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
             "kinds": ["literal"],
             "imports": [],
         },
+        "unfixed": None,
     }
     assert [(r["code"], r["severity"]) for r in results] == [
         ("LVA001", "error"),

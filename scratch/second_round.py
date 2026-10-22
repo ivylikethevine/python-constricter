@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Time a check's second round, where a file is checked again knowing its parameters, against its first.
 
   local/.venv/bin/python -m scratch.second_round                        # the standard library

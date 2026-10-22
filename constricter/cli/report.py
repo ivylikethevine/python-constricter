@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The command's output: text, JSON, GitHub workflow commands, SARIF, and statistics."""
 
 import hashlib
@@ -220,6 +219,7 @@ def _json(results: Sequence[Result]) -> Iterator[str]:
                     "kinds": sorted(r.offence.edit.kinds if r.offence.edit else ()),
                     "imports": [*r.offence.edit.imports, *r.offence.edit.guarded] if r.offence.edit else [],
                 },
+                "unfixed": r.offence.unfixed if r.offence.fix is None and r.offence.unfixed else None,
             }
             for r in results
         ],

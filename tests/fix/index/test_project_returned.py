@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Cross-module `--fix` for unannotated functions: their `return`s type their calls in other files."""
 
 import textwrap

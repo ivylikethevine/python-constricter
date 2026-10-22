@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--infer-from`: a traced run's types (`python -m constricter.trace`), as hints `--fix` guesses with."""
 
 import ast

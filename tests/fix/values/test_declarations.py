@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` beyond `name: T = value`: declarations before a loop or an unpacking, and rewrites.
 
 A loop's target (LVA002) and an unpacking's names (LVA001) are declared (`name: T`) on a line of

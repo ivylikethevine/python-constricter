@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Pytest fixtures' values, for the tests that take them as parameters.
 
 A test (or a fixture) names the fixtures it wants as its parameters, which no call passes: pytest

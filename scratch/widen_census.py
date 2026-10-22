@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Measure what `fix-widen` writes on a corpus, as docs/FIXES.md reports it, and what it costs a type checker.
 
   local/.venv/bin/python -m scratch.widen_census [CORPUS ...]

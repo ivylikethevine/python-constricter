@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for a call of another checked file's unannotated method: its `return`s' type, a guess."""
 
 import textwrap

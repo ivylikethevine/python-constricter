@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What each of a run's steps is given of the machine: its CPUs and its memory, and when it starts.
 
 Every step is a process of its own, started once the CPUs it's expected to keep busy and the memory

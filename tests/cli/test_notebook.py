@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Jupyter notebooks: code cells checked as one module, offences placed in their cells."""
 
 import json

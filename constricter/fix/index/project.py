@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Cross-module `--fix`: the functions and classes other checked files define.
 
 `index` reads every file once (see `constricter.fix.index.modules`). `calls` then gives a file the
@@ -40,6 +39,7 @@ from constricter.fix.index.modules import (
 )
 from constricter.fix.index.strings import quoted
 from constricter.rules.annotations import roots
+from constricter.rules.declarations import GenericClass
 
 __all__ = [
     "Imported",
@@ -59,6 +59,8 @@ NO_TYPE: Final = ""  # a class variable's type the file reading it can't write
 HOPS: Final = 5  # how many re-exports (`from .util import f` in an `__init__`) to follow
 _DOT: Final = "."
 _UNDERSCORE: Final = "_"
+_NO_NAMES: Final[frozenset[str]] = frozenset()  # no names left as they are (see `_respelled`)
+_SELF: Final = "Self"  # a generic class's method returning its receiver (see `GenericClass`)
 _FUNCTION: Final = "function"
 DECORATOR: Final = "decorator"  # a function that gives back the one it decorates
 CLASS: Final = "class"
@@ -85,6 +87,8 @@ class Imported(NamedTuple):
     # Its plain classes' variables typed by their values, by class (see `constricter.fix.values.classvars`).
     members: Mapping[str, Mapping[str, str]] = Empty()
     partial: Partial = Partial()  # the returns only an unpacking can use
+    # Its generic classes' type parameters and the members it takes of them (see `GenericClass`).
+    generic: Mapping[str, GenericClass] = Empty()
 
 
 def _origin(module: Module, name: str) -> Origin | None:
@@ -340,18 +344,18 @@ def _portable_call(
         return None
     declared: dict[str, Mapping[str, str]] = {_FUNCTION: defined[0].returns, PARTIAL: defined[0].partial}
     annotation: str = declared.get(kind, defined[0].returned.calls)[defined[1]]
-    respelled: str | None = _respelled(modules, target, defined[0], annotation, guarded)
+    respelled: str | None = _respelled(modules, (target, defined[0]), annotation, guarded)
     return None if respelled is None else (respelled, defined)
 
 
 def _respelled(
     modules: Mapping[str, Module],
-    target: Module,
-    defined: Module,
+    where: tuple[Module, Module],
     annotation: str,
     guarded: dict[str, Guarded] | None,
+    free: frozenset[str] = _NO_NAMES,
 ) -> str | None:
-    """Write a type from module `defined` in `target`.
+    """Write a type from module `defined` in `target` (`where`).
 
     As it is, if every name in it means the same in both; else, with `guarded` to record them in,
     each other name as `target` imports what it refers to (under any name), or by an import to add
@@ -360,13 +364,17 @@ def _respelled(
     type checker), a builtin `target` rebinds, what `defined` doesn't import at its top level (nor
     define), a checked file's generic class without its arguments, or
     in a string left inside it (an `Annotated`'s metadata) what means anything else in `target`.
+    `free`: names left as they are, a generic class's type parameters that its receiver binds.
 
     Returns:
       The type, or `None`.
 
     """
-    names: frozenset[str] = roots(annotation)
-    if _refused(modules, target, defined, annotation):
+    target: Module
+    defined: Module
+    target, defined = where
+    names: frozenset[str] = roots(annotation) - free
+    if _refused(modules, where, annotation, free):
         return None
     if all(_same(target, defined, root) for root in names):
         return annotation
@@ -406,20 +414,28 @@ def spelled_in(
       The type, or `None`.
 
     """
-    return _respelled(catalog.modules, target, defined, annotation, guarded)
+    return _respelled(catalog.modules, (target, defined), annotation, guarded)
 
 
-def _refused(modules: Mapping[str, Module], target: Module, defined: Module, annotation: str) -> bool:
-    """Check whether a type from module `defined` is one never written in `target` (see `_respelled`).
+def _refused(
+    modules: Mapping[str, Module],
+    where: tuple[Module, Module],
+    annotation: str,
+    free: frozenset[str] = _NO_NAMES,
+) -> bool:
+    """Check whether a type from `defined` is one never written in `target` (`where`, see `_respelled`).
 
     Returns:
       Whether it is.
 
     """
+    target: Module
+    defined: Module
+    target, defined = where
     return (
         any(
             is_type_var(modules, defined, root) or _is_rebound(modules, defined, root)
-            for root in roots(annotation)
+            for root in roots(annotation) - free
         )
         or _bare(modules, defined, annotation)
         # A name in a string left inside it stays as it is: no import is added for it, and it isn't renamed.
@@ -782,6 +798,56 @@ def portable(
       Each kept member's type.
 
     """
+    return _portable(modules, where, key, types, (guarded, _NO_NAMES))
+
+
+def generic_portable(
+    modules: Mapping[str, Module],
+    where: tuple[Module, tuple[Module, str]],
+    key: str,
+    klass: GenericClass,
+    guarded: dict[str, Guarded],
+) -> GenericClass:
+    """Keep the members of a generic class the file (`where[0]`) takes of something, as it can write them.
+
+    As `portable` keeps a plain class's, but its type parameters and `Self` stay as they are, for the
+    receiver to bind; its bases, another file's names, aren't followed.
+
+    Returns:
+      The class's parameters, and those members' types.
+
+    """
+    used: frozenset[str] = where[0].attributes
+    writing: tuple[dict[str, Guarded], frozenset[str]] = (guarded, frozenset(klass.params) | {_SELF})
+    tables: list[dict[str, str]] = [
+        _portable(
+            modules,
+            where,
+            key,
+            {name: typed for name, typed in table.items() if name in used},
+            writing,
+        )
+        for table in (klass.attributes, klass.methods)
+    ]
+    return GenericClass(klass.params, tables[0], tables[1], bound=klass.bound)
+
+
+def _portable(
+    modules: Mapping[str, Module],
+    where: tuple[Module, tuple[Module, str]],
+    key: str,
+    types: Mapping[str, str],
+    writing: tuple[dict[str, Guarded], frozenset[str]],
+) -> dict[str, str]:
+    """Keep the types `portable` keeps (`writing`: where to record imports, and names left as they are).
+
+    Returns:
+      Each kept member's type.
+
+    """
+    guarded: dict[str, Guarded]
+    free: frozenset[str]
+    guarded, free = writing
     target: Module
     defined: tuple[Module, str]
     target, defined = where
@@ -792,6 +858,6 @@ def portable(
         respelled: str | None
         if annotation == defined[1]:
             kept[member] = key
-        elif (respelled := _respelled(modules, target, defined[0], annotation, guarded)) is not None:
+        elif (respelled := _respelled(modules, (target, defined[0]), annotation, guarded, free)) is not None:
             kept[member] = respelled
     return kept

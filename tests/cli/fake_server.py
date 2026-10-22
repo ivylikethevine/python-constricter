@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A fake language server for `--infer-with`'s tests: it hints what a file's comments say.
 
   python tests/cli/fake_server.py [BEHAVIOUR ...]

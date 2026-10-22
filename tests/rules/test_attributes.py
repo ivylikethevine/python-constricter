@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """LVA013 (opt-in): an instance attribute first stored by a method's `self.x = value`, unannotated."""
 
 import textwrap

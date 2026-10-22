@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` types what a function reads of the names its module binds once, at its top level."""
 
 import textwrap

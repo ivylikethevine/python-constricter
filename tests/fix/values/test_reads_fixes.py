@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for what's read of an unannotated parameter whose members read are one class's of the module's."""
 
 import ast

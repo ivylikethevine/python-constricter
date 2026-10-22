@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Which of the checked files' classes are plain, settled across them all.
 
 See `constricter.fix.values.classvars`, which settles one module's.

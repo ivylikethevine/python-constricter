@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for reads of an instance attribute bound to an empty container its class's methods fill."""
 
 import textwrap

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Measure corpora as a run file says, into a folder of that run's own.
 
     local/.venv/bin/python -m tests.corpus RUN.toml                   # a new folder, named by label and time

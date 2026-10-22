@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Cross-module `--fix` for `await` of a call to another checked file's `async def`.
 
 Found through the calling file's imports and the re-exports between them (`await load(url)`,

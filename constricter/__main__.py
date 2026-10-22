@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`python -m constricter`, and the `constricter` script."""
 
 import contextlib

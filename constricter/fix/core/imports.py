@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Fixes that add an import: how a module can name a library type, and where an import goes."""
 
 import ast

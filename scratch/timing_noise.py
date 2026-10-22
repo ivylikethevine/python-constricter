@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Compare two corpus runs' timing tables, to see how far the published seconds move run to run.
 
   local/.venv/bin/python -m scratch.timing_noise local/corpus-runs/A local/corpus-runs/B

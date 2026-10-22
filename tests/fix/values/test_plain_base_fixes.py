@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for a plain class's variables: the bases a plain class may have.
 
 A builtin exception or value class, a generic or abstract class, and those `fix-plain-bases` lists,

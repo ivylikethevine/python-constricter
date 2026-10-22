@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Measure `dmypy suggest`'s signatures as a hint source for `--fix`, on a sample of each corpus.
 
   local/.venv/bin/python -m scratch.dmypy_suggest [CORPUS ...] [--sample N] [--daemons K] [--seed S]

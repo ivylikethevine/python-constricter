@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A checked file's functions defined with `@overload`, for the calls their arguments decide.
 
 Their signatures are read as an installed package's are (see `constricter.fix.index.stubs.stubbed`), but

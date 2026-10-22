@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """LVA007: a name annotated again with the type it already has, in the same straight-line block."""
 
 import ast

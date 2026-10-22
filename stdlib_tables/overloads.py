@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Standard-library functions whose return depends on their arguments: each signature, for `--fix` to pick.
 
 `Overloads.entry` reads a function's overloads (or its one signature, when a type variable or a

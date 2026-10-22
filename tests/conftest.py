@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Test collection and isolation.
 
 The fuzz tests need hypothesmith, which the `test` group leaves out; every test caches installed

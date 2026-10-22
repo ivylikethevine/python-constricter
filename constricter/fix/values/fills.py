@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for an empty container filled later: `x = []`, then only `x.append(v)`, is `list[T]`.
 
 A guess (`--unsafe-fixes`): only this function's own uses are seen, and something else could still

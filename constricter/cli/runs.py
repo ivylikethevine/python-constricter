@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What checking one file gives the CLI, in each mode."""
 
 from collections.abc import Sequence

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Check a tree with this checkout and with a compiled wheel's install: the same findings, and the time each took.
 
   local/.venv/bin/python -m scratch.compiled_compare SITE TREE [TREE ...] [--runs N] [--jobs N] [--fix]

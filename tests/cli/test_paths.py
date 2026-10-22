@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A directory in a git checkout: only what git tracks there or would is checked (`paths.python_files`)."""
 
 import shutil

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A corpus package's own suite: its checkout, its tests and its type checks, as the corpus runner runs them.
 
 Each package's source is cloned at its pinned tag into `local/corpus-suites/` (`checkout`), installed

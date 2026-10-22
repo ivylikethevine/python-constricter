@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` through a class: `@property` returns, `cls` in a classmethod, and `typing.cast`."""
 
 import json

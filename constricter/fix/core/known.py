@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What `--fix` knows: a module's declarations it infers from (`Known`), and what it infers (`Inference`)."""
 
 import ast
@@ -18,6 +17,7 @@ from constricter.fix.core.signatures import Expansion, ReadSignature
 from constricter.offences import MAX_LENGTH, VAGUE
 from constricter.overrides import override
 from constricter.rules.annotations import free_of, free_of_all, roots
+from constricter.rules.declarations import GenericClass
 
 if TYPE_CHECKING:
     from _typeshed import DataclassInstance
@@ -418,7 +418,9 @@ class Known:  # pylint: disable=too-many-instance-attributes
     `indirect`: its declared returns no plain call has (see `Indirect`).
     `class_side`: what `cls.x` and `cls.method()` give in a classmethod, where `cls` is `type[C]`
     (see `ClassSide`). `names`: how it names library functions (see `LibraryNames`). `returned`: what
-    its unannotated functions return (see `Returned`).
+    its unannotated functions return (see `Returned`). `generic`: its generic classes and other
+    checked files' it names, as it spells them, each with its type parameters and members' types,
+    which a receiver's type arguments bind (see `GenericClass`).
     """
 
     calls: Mapping[str, str]
@@ -432,6 +434,7 @@ class Known:  # pylint: disable=too-many-instance-attributes
     returned: Returned = field(default_factory=Returned)
     # The decorators that give a function back, as the module spells them (see `rules.decorators`).
     vouched: frozenset[str] = frozenset()
+    generic: Mapping[str, GenericClass] = field(default_factory=dict[str, GenericClass])
 
     def is_builtin(self, name: str) -> bool:
         """Check that `name` still means the builtin: nothing in the module binds it (a parameter, say).
@@ -572,6 +575,8 @@ class Outside:  # pylint: disable=too-many-instance-attributes
     returned: Returns = field(default_factory=Returns)
     guarded: Mapping[str, Guarded] = field(default_factory=dict[str, Guarded])
     generics: frozenset[str] = frozenset()  # other checked files' generic classes, as it spells them
+    # Those classes' type parameters and the members it takes of them (see `GenericClass`).
+    generic: Mapping[str, GenericClass] = field(default_factory=dict[str, GenericClass])
     callees: Mapping[str, Callee] = field(default_factory=dict[str, Callee])
     # See `Seeds`
     parameters: Mapping[str, Mapping[str, Passed]] = field(

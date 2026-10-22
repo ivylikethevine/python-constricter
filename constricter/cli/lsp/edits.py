@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--infer-with`: what a hint's own edits would write (see `Offered`).
 
 An editor that accepts an inlay hint applies its `textEdits`: the annotation, spelled as the file can

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A list, set, tuple or dict display's type, from its elements' types.
 
 Where a list's, set's or dict's differ, they're joined into a union (`[1, "a"]` is a

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for reads of unannotated instance attributes whose every `self.x = value` decides their type."""
 
 import textwrap

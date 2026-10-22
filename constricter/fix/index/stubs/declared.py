@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What an installed package's stub declares that a call's arguments may decide the type of.
 
 `declarations` reads, from a module's top level: each function whose arguments decide its return

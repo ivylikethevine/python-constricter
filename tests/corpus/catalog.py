@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The corpora a run can name: `corpora.toml`, read (its head says what each key is).
 
 Each corpus is an `Entry`: why it's here, its pinned sdist if it has one (`corpus_sources.Source`),

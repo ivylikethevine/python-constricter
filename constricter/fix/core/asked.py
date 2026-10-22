@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What a value was inferred to be, kept until its scope types another name.
 
 A statement's value is asked for its type, then for whether that's a guess, then as a part of the

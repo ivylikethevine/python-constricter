@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Generate `constricter/fix/tables/`, the standard-library tables `--fix` types calls from.
 
   local/.venv/bin/python -m stdlib_tables             # rewrite them

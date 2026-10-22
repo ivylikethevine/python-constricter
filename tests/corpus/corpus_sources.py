@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Fetch the corpora that can't be installed as dependencies, from pinned, hash-checked sdists.
 
   local/.venv/bin/python tests/corpus/corpus_sources.py twisted       # prints the checked directory

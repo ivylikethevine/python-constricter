@@ -1,5 +1,3 @@
-<!-- SPDX-License-Identifier: CC-BY-4.0 -->
-
 # Code of conduct
 
 How people treat each other in this project's spaces: the repository, its

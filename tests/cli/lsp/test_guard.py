@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`constricter.cli.lsp.guard`: a type checker's server, and what it started, stopped as constricter goes."""
 
 import io

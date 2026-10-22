@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Cross-module `--fix` for `with` on a call to another checked file's `@contextmanager` function.
 
 Found through the calling file's imports and the re-exports between them (`with temp_dir() as d`,

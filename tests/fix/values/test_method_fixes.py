@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` on a method call: a `list`/`set`/`dict` method, or a method of a class the module defines."""
 
 import textwrap
@@ -92,8 +91,11 @@ def test_fixes_infer_a_module_class_method_call() -> None:
     ]
 
 
-def test_a_generic_classes_methods_are_not_inferred() -> None:
-    """A generic class's method returns depend on its parameters, as does a `TypeVar` return."""
+def test_a_type_variable_return_is_not_inferred() -> None:
+    """A generic function's return depends on its arguments; a generic class's plain one doesn't.
+
+    See `test_generic_fixes` for a generic class's members that name its parameters.
+    """
     source: str = textwrap.dedent(
         """
     from typing import Generic, TypeVar
@@ -113,10 +115,10 @@ def test_a_generic_classes_methods_are_not_inferred() -> None:
       c = p.echo(1)
     """,
     )
-    assert [(o.name, o.fix) for o in check_source(source)] == [("a", None), ("c", None)]
+    assert [(o.name, o.fix) for o in check_source(source)] == [("a", "int"), ("c", None)]
     guarded: str = source.replace('T = TypeVar("T")', 'if TYPE_CHECKING:\n  T = TypeVar("T")')
     assert guarded != source  # a type variable under an `if` is one too
-    assert [(o.name, o.fix) for o in check_source(guarded)] == [("a", None), ("c", None)]
+    assert [(o.name, o.fix) for o in check_source(guarded)] == [("a", "int"), ("c", None)]
 
 
 def test_a_method_call_on_a_guessed_class_is_guessed_too() -> None:

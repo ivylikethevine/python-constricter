@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Fix a copy of each corpus as CI's `ci-fix` run does, then keep what a second pass still fixes.
 
   local/.venv/bin/python -m scratch.second_pass [CORPUS ...] [--likely | --certain]

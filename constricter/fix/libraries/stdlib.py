@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Standard-library functions and classes whose types `--fix` knows, and how a module names them.
 
 The tables are generated from typeshed's stubs into `tables/` when the package is built, one JSON

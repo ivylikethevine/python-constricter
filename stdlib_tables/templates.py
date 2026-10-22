@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Standard-library annotations spelled as the tables' templates, and generic classes' type parameters.
 
 A template names builtins as themselves, classes by their dotted paths (`re.Pattern[AnyStr]`) and

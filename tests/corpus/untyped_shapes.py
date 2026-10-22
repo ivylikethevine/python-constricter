@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What a binding's value is, for `corpus_untyped`'s census: its shape, and what it resolves to.
 
 A file's `Module` says what each of its names refers to (what it binds at its top, and imports

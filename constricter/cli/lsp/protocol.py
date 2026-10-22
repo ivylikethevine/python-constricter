@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The language server protocol's wire format, as `--infer-with`'s connections speak it (see `hints`).
 
 Each message is framed by headers and a blank line, then `Content-Length` bytes of JSON. A hint's

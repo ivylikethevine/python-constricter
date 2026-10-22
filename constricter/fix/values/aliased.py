@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for a module's type alias: `Json = dict[str, "Json"]`, declared `Json: TypeAlias`.
 
 Only a value that can be nothing but a type made of others: a subscript of what `typing` or

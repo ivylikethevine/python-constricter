@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """LVA011: a fixed-length tuple annotation listing more than `max-length` types."""
 
 import ast

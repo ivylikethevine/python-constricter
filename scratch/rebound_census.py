@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Count a tree's `rebound` guesses by what binds the name again: an augmented assignment, or not.
 
   local/.venv/bin/python -m scratch.rebound_census REPORT.json ROOT

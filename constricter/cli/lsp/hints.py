@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--infer-with`: ask a type checker's language server what type each untyped name has.
 
 Each checker's servers are started once, over standard input and output, with the project root as

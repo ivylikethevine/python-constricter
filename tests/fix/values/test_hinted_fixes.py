@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--infer-with`: which of a type checker's hints become fixes, spelled how, and what they feed."""
 
 import ast

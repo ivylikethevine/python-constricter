@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Checking files in `order.plan`'s order: each after the modules whose unannotated functions it calls.
 
 A component (files calling each other's functions) is checked once all it comes after have settled,
@@ -89,6 +88,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         ),
         guarded=guarded,
         generics=imported.generics | own.generics,
+        generic=dict(imported.generic),
         callees=callers.callees(modules, path),
         parameters=callers.own_parameters(modules, path),
         overloaded=overloaded,

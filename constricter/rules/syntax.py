@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Walking the syntax the rules read: functions and methods, nested statements, binding targets."""
 
 import ast

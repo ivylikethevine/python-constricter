@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Every local variable typed where it's first bound."""
 
 from constricter._version import __version__  # written by the build, from the git tag

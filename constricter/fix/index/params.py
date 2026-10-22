@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A module's plain top-level functions with a parameter left unannotated, and their parameters.
 
 What `constricter.fix.index.callers` matches each call's arguments to (`Param`).

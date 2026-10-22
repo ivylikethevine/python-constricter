@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for members of any value whose type is known: `self.a.b`, `f().x`, `xs[0].m()`, ..."""
 
 import textwrap

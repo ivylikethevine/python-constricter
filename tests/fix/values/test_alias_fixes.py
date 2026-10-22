@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for a module's type alias, declared `TypeAlias` where its value can only be a type."""
 
 import ast

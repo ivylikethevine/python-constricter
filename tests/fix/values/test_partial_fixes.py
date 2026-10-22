@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for an unpacked call whose declared return is a tuple with a vague part: the other parts."""
 
 import ast

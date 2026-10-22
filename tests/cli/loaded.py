@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What a `--jobs` worker has imported, asked from inside it: nothing here imports constricter."""
 
 import sys

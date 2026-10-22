@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What a module declares, for `--fix`.
 
 Its functions' and methods' return types, its classes' attributes, its type variables, and the
@@ -6,9 +5,9 @@ factories and casts it imports (see `constricter.rules.annotations` for what an 
 """
 
 import ast
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from functools import lru_cache
-from typing import Final, TypeAlias, cast
+from typing import Final, NamedTuple, TypeAlias, cast
 from weakref import WeakKeyDictionary
 
 from constricter.rules.annotations import is_vague, node_name, words
@@ -38,6 +37,24 @@ _CLASS_VAR: Final = "ClassVar"
 _TYPED_DICT: Final = "TypedDict"
 _CAST: Final = "cast"
 _UNDECORATED: Final[frozenset[str]] = frozenset()  # no decorators: a plain method
+_GENERIC_BASES: Final = frozenset({"Generic", "Protocol"})  # a base that lists a class's type parameters
+_TYPE_VAR: Final = "TypeVar"  # the node class of a plain type parameter (`ast.TypeVar`, Python 3.12+)
+
+
+class GenericClass(NamedTuple):
+    """A generic class's type parameters, in order, and its members' types, which may name them.
+
+    `attributes`: its annotated attributes and properties; `methods`: its plain methods' declared
+    returns, `Self` where one returns its receiver (see `generic_members`); `bases`: its subscripted
+    bases as written (`Base[T]`), whose members it takes; `bound`: the names its body binds, which
+    it takes from none.
+    """
+
+    params: tuple[str, ...]
+    attributes: Mapping[str, str]
+    methods: Mapping[str, str]
+    bases: tuple[str, ...] = ()
+    bound: frozenset[str] = frozenset()
 
 
 def imported_from(tree: ast.Module, modules: frozenset[str]) -> frozenset[str]:
@@ -522,6 +539,120 @@ def _generic(node: ast.ClassDef) -> bool:
     return bool(cast("object", getattr(node, "type_params", ()))) or any(  # Python 3.12+'s `class C[T]`
         isinstance(base, ast.Subscript) for base in node.bases
     )
+
+
+def generic_members(tree: ast.Module) -> dict[str, GenericClass]:
+    """Read each generic class the module defines once: its type parameters and members' types.
+
+    Its parameters are those `class C[T]` lists, or a `Generic[...]` or `Protocol[...]` base, or else
+    the type variables its subscripted bases name, in the order they first do (`class C(Base[K, V])`);
+    one listing a type variable it doesn't define as one, none. Its members are typed as
+    `classes` and `method_returns` type a plain class's, but for its own parameters: a member whose
+    type names any other type variable is left out (`def get(self, d: D) -> T | D`), as is one that
+    mentions `Self` other than bare.
+
+    Returns:
+      Each class's name, and what it declares.
+
+    """
+    type_vars: frozenset[str] = defined_type_vars(tree)
+    counts: dict[str, int] = {}
+    node: ast.ClassDef
+    for node in _class_nodes(tree):
+        counts[node.name] = counts.get(node.name, 0) + 1
+    found: dict[str, GenericClass] = {}
+    vouched: frozenset[str] = _passing(tree)
+    for node in _class_nodes(tree):
+        params: tuple[str, ...] = _params(node, type_vars) if _generic(node) else ()
+        if not params or counts[node.name] > 1:
+            continue
+        others: frozenset[str] = type_vars - frozenset(params)
+        methods: dict[str, str] = _declared_returns(node.body, others, vouched=vouched)
+        attributes: dict[str, str] = {
+            **_declared_returns(node.body, others, decorators=_PROPERTIES, vouched=vouched),
+            **_attributes(node),
+        }
+        found[node.name] = GenericClass(
+            params,
+            {name: text for name, text in attributes.items() if _typed_by(text, others)},
+            {
+                name: _SELF if _is_self(text) else text
+                for name, text in methods.items()
+                if _is_self(text) or _typed_by(text, others)
+            },
+            tuple(ast.unparse(base) for base in node.bases if isinstance(base, ast.Subscript)),
+            _binds(node.body),
+        )
+    return found
+
+
+def _binds(body: Sequence[ast.stmt]) -> frozenset[str]:
+    """Name what a class's body binds: its functions, classes and variables.
+
+    Returns:
+      The names.
+
+    """
+    targets: list[ast.expr] = [
+        target
+        for stmt in body
+        for target in (
+            stmt.targets
+            if isinstance(stmt, ast.Assign)
+            else [stmt.target]
+            if isinstance(stmt, ast.AnnAssign | ast.AugAssign)
+            else []
+        )
+    ]
+    defined: frozenset[str] = frozenset(
+        stmt.name for stmt in body if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+    )
+    return defined | {
+        node.id for target in targets for node in ast.walk(target) if isinstance(node, ast.Name)
+    }
+
+
+def _typed_by(text: str, others: frozenset[str]) -> bool:
+    """Check whether a generic class's member's type names none of `others`, nor `Self` but bare.
+
+    Returns:
+      Whether it does.
+
+    """
+    named: set[str] = set(words(text))
+    return not named & others and _SELF not in named and _CLASS_VAR not in named
+
+
+def _params(node: ast.ClassDef, type_vars: frozenset[str]) -> tuple[str, ...]:
+    """Name a generic class's type parameters, in order (see `generic_members`).
+
+    Returns:
+      Them; none where one isn't a type variable the module defines, or is a `ParamSpec` or a
+      `TypeVarTuple`.
+
+    """
+    listed: list[ast.AST]
+    if listed := list(cast("list[ast.AST]", getattr(node, "type_params", []))):  # Python 3.12+'s `class C[T]`
+        plain: bool = all(type(each).__name__ == _TYPE_VAR for each in listed)
+        return tuple(cast("str", getattr(each, "name", "")) for each in listed) if plain else ()
+    subscripted: list[ast.Subscript] = [base for base in node.bases if isinstance(base, ast.Subscript)]
+    listing: list[ast.Subscript] = [base for base in subscripted if node_name(base.value) in _GENERIC_BASES]
+    names: list[str] = []
+    base: ast.Subscript
+    for base in listing or subscripted:
+        part: ast.AST
+        for part in ast.walk(base.slice):
+            if isinstance(part, ast.Name) and part.id in type_vars and part.id not in names:
+                names.append(part.id)
+    if listing:
+        args: list[ast.expr] = [
+            arg
+            for each in listing
+            for arg in (each.slice.elts if isinstance(each.slice, ast.Tuple) else [each.slice])
+        ]
+        if not all(isinstance(arg, ast.Name) and arg.id in type_vars for arg in args):
+            return ()
+    return tuple(names)
 
 
 def _is_self(annotation: str) -> bool:

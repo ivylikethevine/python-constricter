@@ -216,6 +216,19 @@ the value decides it, for a plain `name = value` in a function or module body:
   `str`, `os.listdir(path)` a `list[str]`, `re.compile(pattern)` a `re.Pattern[str]`; only where
   taking them for `bytes` gives that type with `str` written `bytes`, and for `int`s doesn't (as
   `copy.copy(x)`'s type variable does);
+- a member of a generic class the module or another checked file defines (`class Result(Generic[T])`,
+  `class Box[T]`), its type parameters bound by the receiver's arguments: `rows.first()` on a
+  `Result[Row]` whose `first` returns `T | None` is a `Row | None`, a property or an annotated
+  attribute the same way, and a method returning `Self` the receiver's own type (`Result[Row]`).
+  Its parameters are those `class C[T]` lists, or a `Generic[...]` or `Protocol[...]` base, or the
+  type variables its subscripted bases name, in order. What it doesn't bind is its generic bases',
+  bound by its own arguments (`class Keyed(Pairs[str, V])`), and a class of the module's under one
+  given its arguments (`class Rows(Result[Row])`) has the base's, `self.first()` there a
+  `Row | None`. On the class bare (`Result`, whose parameters a checker doesn't know) only a member
+  naming none of them (`count() -> int`); nothing for a receiver of another number of arguments, a
+  member naming another type variable (`def get(self, default: D) -> T | D`), a `ParamSpec` or a
+  `TypeVarTuple`. Another checked file's class (the CLI only) as the file can write each member's
+  other names, its bases not followed. In the class's own methods, `self` is the class bare;
 - a generic standard-library class's own attribute or property, by the receiver's type arguments:
   `m.string` on an `re.Match[str]` is a `str`, `p.pattern` on an `re.Pattern[bytes]` a `bytes`; and
   what it inherits with one type whatever they are: `f.read()` on an `io.TextIOWrapper` is a `str`
@@ -682,11 +695,19 @@ than the fix says, the fix is changed, made a guess, or not offered:
   isn't offered where its function tests or stores what's read, or what that's read of (`self.conn`,
   for `self.conn.pool`), anywhere: code nearly always checks it for `None` first, and a checker then
   takes it for the `X`. Where nothing does, it has the type it's declared, a guess
-  (`conn: Connection | None = self.conn`). Nor is a bare `None` offered; nor is a read where a test
-  around it narrows it: in an `if`'s or `while`'s branch, a `match` case, or the rest of a block
-  after an `assert` or an `if` that always leaves (`return`, `raise`, ...), for a check
-  (`isinstance`, a `TypeGuard`, a `match`) whatever its type, and for a truth test or comparison
-  when it's a union. A type alias of a union (`Key = Union[int, str]`,
+  (`conn: Connection | None = self.conn`). Nor is a bare `None` offered. A name or attribute read
+  in a function where a test around it narrows its union (in an `if`'s or `while`'s branch, or the
+  rest of a block after an `assert` or an `if` one of whose branches always leaves: `return`,
+  `raise`, ...) is what the test leaves of it, certain (fix kind `tested`): after
+  `if self.conn is None: return`, `conn = self.conn` declares `conn: Connection`. `x is None` leaves
+  `None` and `x is not None` the rest, `isinstance(x, C)` the members of class `C` (or of each class
+  of a tuple), a truth test all but `None`, an ordering (`x > 2`) all; `not` turns a test round, and
+  each part of an `and` that passed (an `or` that failed) leaves its own. Not where a store of the
+  read, or of what it's read of, comes between the test and the read (or after it, in a loop inside
+  the test's region), nor in a function inside the test's. A read any other test narrows (`==`, a
+  failed `isinstance` or truth test, a `TypeGuard`, a `match` case), or where `--fix` can't read its
+  union, isn't offered, for a check whatever its type, and for a truth test or comparison when it's
+  a union. A type alias of a union (`Key = Union[int, str]`,
   `Maybe: TypeAlias = int | None`, the module's own or another checked file's, bound once at its top
   level) is narrowed as the union it names, by a test or an assignment, and one of an `X | None`
   isn't offered; a plain read of one stays certain, written as the alias;
@@ -857,6 +878,21 @@ too) on each result. With `--fix`, `--show-fixes` lists the fixes made too, afte
 `fixed 'b'` as text, and in `--format=json` an entry whose `fixed` is true. Each is on the line it
 had before any fix, whichever round of `--fix` made it.
 
+A result whose value is a call with no fix carries why in `--format=json`, as `unfixed` (`null`
+otherwise), for the corpus census to count the calls `--fix` can't type by their reason:
+
+| `unfixed`  | The call                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------ |
+| `vague`    | has a type `--fix` knows, vaguer than `vague` allows (`Any`, `dict[str, Any]`)             |
+| `declined` | has a type `--fix` knows, not offered: a type checker may see the value otherwise          |
+| `receiver` | is a method of a receiver of no known type (`param.load()`)                                |
+| `member`   | is a method its receiver's known class has no declared type for                            |
+| `untyped`  | is of a function of the module's or another checked file's that declares no return         |
+| `library`  | is of a standard-library function or builtin whose arguments don't decide its type         |
+| `imported` | is of a function or class imported from outside the checked files and the standard library |
+| `local`    | is of a local name or parameter of no known type                                           |
+| `other`    | is anything else: a call of a call, of a subscript, of a lambda                            |
+
 The type hierarchy LVA008–LVA010 compare through is the numeric tower (`bool` < `int` < `float` <
 `complex`) plus the classes a module defines, under the bases they name.
 `[tool.constricter.narrower]` (or the plugins' `narrower` option, as `B=A, int=`) replaces what
@@ -937,6 +973,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `container`     | a list, set, tuple or dict display whose elements' types agree                            |
 | `joined`        | a list, set or dict display whose elements' types differ, as their union (a guess)        |
 | `copy`          | a copy of a local whose type is known                                                     |
+| `tested`        | a read a test around it narrows (`if x is None: return`): what the test leaves of it      |
 | `subscript`     | a subscript of a container whose type is known                                            |
 | `attribute`     | an attribute of a class the module (or another checked file) defines                      |
 | `method`        | a method with a fixed or declared return type, on a value whose type is known             |
