@@ -918,14 +918,16 @@ measure before building.
    actions do. How: take the `setup-tool` and `setup-tools` actions and `apt/lib.sh` from the sync;
    write `tools.txt` with actionlint, gitleaks and lychee at today's pins; replace each
    `actions/tool` step (`ci.yml`'s offline lychee, `security.yml`'s three) with `setup-tools` and
-   delete `actions/tool`; drop the three rows from the local roster, keeping uv's; take `codeql.yml`
+   delete `actions/tool`; add `osv-scanner scan source --recursive .` to the Dependency audit job,
+   from the shared roster's osv-scanner row and with `api.osv.dev:443` allowed, so it scans every
+   lockfile as Scorecard's Vulnerabilities check does and `tests/ci_local.py` runs it before a push; drop the three rows from the local roster, keeping uv's; take `codeql.yml`
    (`language=python`) and `link-check.yml` from the sync and delete the `codeql` and `links` jobs
    from `security.yml`, which keeps zizmor, actionlint, the workflow conventions, pip-audit,
    dependency review and gitleaks; and re-read each job's `allowed-endpoints` from an audit run,
    since the download hosts move. The ruleset needs nothing: CodeQL is a code-scanning tool there,
    not a named check. Done when every workflow has one green run on a pull request, including a
-   weekly `link-check.yml` by hand, `tool-versions.yml` reports the same four tools from the new
-   roster, and the sync has nothing left to send. About 5 hours; coverage unchanged.
+   weekly `link-check.yml` by hand, `tool-versions.yml` reports the same four tools and osv-scanner
+   from the new roster, the Dependency audit runs osv-scanner, and the sync has nothing left to send. About 5 hours; coverage unchanged.
 8. **A parallel check, past its longest chain.** With every CPU the standard library checks in 12.9s
    and pandas in 11.3s: 46s and 50s in one process, 29s in two, 18s in four, 13.7s and 12.9s in
    eight, so about 10s of each doesn't shorten with more (timed before a method's lookups were kept
