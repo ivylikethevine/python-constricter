@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Measure a corpus with a constricter version, and lay the results out as docs/RUNS.md has them.
 
 The tables and the sections the corpus runner (`python -m tests.corpus`) writes: `tables`, and

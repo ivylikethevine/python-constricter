@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for `await` of a checked file's `async def`: a method's, and another file's function's."""
 
 import textwrap

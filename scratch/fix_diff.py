@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The fixes `--show-fixes --unsafe-fixes` lists on pydantic, by HEAD's code and by the working tree's.
 
   local/.venv/bin/python -m scratch.fix_diff [REF]

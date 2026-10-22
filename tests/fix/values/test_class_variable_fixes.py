@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for a plain class's variables, typed by their literal values (a guess: `member`)."""
 
 import ast

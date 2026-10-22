@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What a loop binds each time round, and the targets of comprehensions, typed as `--fix` types values.
 
 `looped` types a `for` loop's target by what its iterable yields; `looped_parts` each part of an

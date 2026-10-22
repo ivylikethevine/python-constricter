@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What `python -m constricter.trace` records: the types a run binds its functions' locals to.
 
 A `Recorder` is told each line a function of a file under its root arrives at, and notes the type

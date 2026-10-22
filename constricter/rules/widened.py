@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Wider types than a value's own, written only where `fix-widen` asks, each line marked (`MARK`).
 
 A marked annotation is `--fix`'s own: it isn't LVA005, `--coverage` counts it apart, and a later

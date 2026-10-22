@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Binary operators `--fix` types by their operands' builtin types, whose operators nothing can overload.
 
 Numbers: `/` gives a `float`; `+`, `-`, `*`, `//` and `%` a `float` if either side is one, else an

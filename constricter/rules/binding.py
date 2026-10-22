@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Binding the names a statement binds: each target typed, or declared before the statement.
 
 `bind` is what `checker` calls for every statement: a plain `name = value` goes through the scope

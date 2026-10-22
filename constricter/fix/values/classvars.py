@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for a plain class's variables: `limit = 3` in a class body, typed by its literal value.
 
 An annotation in a class body can be more than a type: a dataclass's, a `NamedTuple`'s or a model's

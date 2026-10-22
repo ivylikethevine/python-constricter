@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The corpus runner's own parts that need no corpus: its run file, and how it runs and sizes its steps."""
 
 import os

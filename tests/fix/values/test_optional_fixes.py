@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for `x = None` later rebound to one known type: `T | None`."""
 
 import textwrap

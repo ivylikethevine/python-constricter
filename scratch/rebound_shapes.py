@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Count a run's `rebound` guesses by two shapes of the later binding, to size a rule before writing it.
 
   local/.venv/bin/python -m scratch.rebound_shapes local/corpus-runs/0.4.0-rc.2-10-17-2026-0417

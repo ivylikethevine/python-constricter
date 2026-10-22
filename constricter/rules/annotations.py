@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What an annotation says (LVA005, LVA006, LVA011).
 
 An annotation's vague parts, nesting depth and longest fixed-length tuple, the names it's written

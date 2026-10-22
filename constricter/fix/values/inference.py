@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What `--fix` infers a value's type from: literals, calls, and the locals a scope already typed."""
 
 import ast

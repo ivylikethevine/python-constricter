@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Outline a module for a split: each top-level definition's lines, and the module's names it uses.
 
   local/.venv/bin/python -m scratch.module_outline PATH [PATH ...]

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """An attribute of what an installed class's method returns, read off the call: `capsys.readouterr().out`.
 
 The returned class may be one no file can name (pytest's `CaptureResult`, private to `_pytest`), so

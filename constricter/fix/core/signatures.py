@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The signatures `--fix` matches a call against: the standard library's tables', and installed packages'.
 
 What each parameter takes (`Accepts`), and a signature as the tables hold it (`Signature`) and as

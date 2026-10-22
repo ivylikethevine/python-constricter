@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Which class an instance's member comes from: its own, or the base that defines it.
 
 A class the module defines takes a member its body doesn't bind from its bases, in method

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Record the types a run binds its functions' locals to, for `--fix --infer-from` to read.
 
   python -m constricter.trace [--output FILE] [--root DIR] (-m MODULE | SCRIPT) [ARG ...]

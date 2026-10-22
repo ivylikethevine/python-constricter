@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A file's text, in the encoding Python reads it in; `-` is standard input."""
 
 import io

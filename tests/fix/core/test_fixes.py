@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Applying `--fix`'s annotations to source lines (constricter.fixes)."""
 
 from constricter.fix.core import fixes

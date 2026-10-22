@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Rebuild a corpus run's timeline from its records, and show where its CPUs sat idle.
 
   local/.venv/bin/python -m scratch.run_timeline local/corpus-runs/0.4.0-rc.3-10-18-2026-1010

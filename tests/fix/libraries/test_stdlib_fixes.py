@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for the standard library, from tables generated from typeshed, resolved through the imports."""
 
 import ast

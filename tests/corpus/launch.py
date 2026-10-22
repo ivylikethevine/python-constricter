@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The one way a run starts constricter: every step's check, fix and count goes through `run`.
 
 A version's constricter runs isolated (`python -I -m constricter`) from the place's directory, whose

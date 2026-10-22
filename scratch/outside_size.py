@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Measure what a check knows of each file from outside it (`schedule.outside`), by its pickled size.
 
   local/.venv/bin/python -m scratch.outside_size                       # the standard library

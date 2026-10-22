@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The rules as a pylint plugin (C9101-C9112); reports the codes the level makes errors."""
 
 from typing import IO, NamedTuple, Protocol, cast, final

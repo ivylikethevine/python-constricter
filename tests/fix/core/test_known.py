@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What the CLI sends its `--jobs` workers, pickled: frozen dataclasses, by their fields."""
 
 import pickle

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Where a guess, once declared, makes an error of what its function goes on to do with the name.
 
 A type checker takes a call of an unannotated function for anything, and checks nothing done with

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Types read from typeshed's standard-library stubs, as one configuration sees them (see `Reading`).
 
 What `stdlib_tables` builds its tables from: an annotation as a `Form` (a builtin annotation, a

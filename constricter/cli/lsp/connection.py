@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A running language server, and the JSON-RPC conversation with it (`Connection`), for `hints`.
 
 The files it has open, the hint requests sent and not yet answered, and what it has said.

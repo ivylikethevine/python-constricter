@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Time a corpus's check as the `timing` step does, then by `hyperfine` and `pyperf`, and compare their spreads.
 
   local/.venv/bin/python -m scratch.timing_trial                              # the standard library and pandas

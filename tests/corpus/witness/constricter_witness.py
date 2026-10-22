@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Trace a run as `constricter.trace` does, and hold each fixed binding's value to the fix's annotation.
 
   python -m constricter_witness [--output FILE] [--root DIR] (-m MODULE | SCRIPT) [ARG ...]

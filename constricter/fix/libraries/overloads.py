@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Standard-library calls whose arguments decide their type: the signatures a call may match.
 
 `tables/overloads.json` holds each such function's signatures, in order, as each platform and Python

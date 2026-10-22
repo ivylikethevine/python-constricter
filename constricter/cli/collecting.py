@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The garbage collector, as the command runs it: by hand, once per file checked.
 
 A check keeps every file's tree (see `parsed`), and allocates a great deal for each file, little of it

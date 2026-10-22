@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The corpus runner's records, and the outputs made from them: reports, tables and docs/RUNS.md."""
 
 import csv
@@ -121,6 +120,16 @@ _BINDING: Final = json.dumps(
         "source": "[]",
     },
 )
+# A call with no fix, and the check's reason; a row kept before there were reasons (`_BINDING`) has none.
+_REFUSED: Final = json.dumps(
+    {
+        **json.loads(_BINDING),
+        "line": 2,
+        "shape": "call: self.method()",
+        "source": "self.load()",
+        "unfixed": "receiver",
+    },
+)
 _CHECKED: Final[Record] = {
     "files": 2,
     "codes": {"LVA001": 5, "LVA004": 1},
@@ -186,7 +195,10 @@ def _recorded(root: Path) -> tuple[Store, Tree]:
     store.write(tree.name, "rc+dev", pipeline.COVERAGE, {"typed": [4, 10]})
     store.write(tree.name, "rc+dev", "infer-ty", _fixed(5, {"certain": 2, "likely": 1, "guess": 2}))
     store.write(tree.name, "rc+dev", pipeline.CENSUS, _COUNTED)
-    _ = store.path(tree.name, "rc+dev", pipeline.CENSUS, ".rows.jsonl").write_text(_BINDING, encoding="utf-8")
+    _ = store.path(tree.name, "rc+dev", pipeline.CENSUS, ".rows.jsonl").write_text(
+        f"{_BINDING}\n{_REFUSED}\n",
+        encoding="utf-8",
+    )
     store.write(tree.name, "rc+dev", pipeline.TESTS, _TESTED)
     store.write(tree.name, "rc+dev", pipeline.TYPES, _TYPED)
     store.write(tree.name, "rc+dev", pipeline.TRACED, _TRACED)
@@ -237,7 +249,10 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
     assert _FIXES in text
     tables: dict[str, _Rows] = {}
     path: Path
-    assert f"| assign: {_SHAPE} |     1 | 100.0% |" in written[2].read_text(encoding="utf-8")
+    assert all(
+        row in written[2].read_text(encoding="utf-8")
+        for row in (f"| assign: {_SHAPE}", "| `receiver` | 1 (100.0%) |", "| `call: self.method()` 1 |")
+    )
     for path in written[3:]:
         file: IO[str]
         with path.open(encoding="utf-8", newline="") as file:

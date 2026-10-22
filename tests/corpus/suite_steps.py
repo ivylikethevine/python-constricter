@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A run's steps on a corpus package's own suite: each starts once the fixes it reads are made.
 
 Each works on a checkout of the suite's own (`checkouts`) at its pinned tag, taken back to the tag's

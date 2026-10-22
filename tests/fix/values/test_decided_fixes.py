@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for builtins and operators their operands' types decide: `min`, `sum`, `next`, `dict`, `-n`."""
 
 import textwrap

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for `open(path, mode)` and `path.open(mode)`: the file object it gives, by its literal mode."""
 
 import ast

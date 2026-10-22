@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Baseline files: the offences a codebase already has, so only new ones are reported.
 
 An entry is a file, a code and a variable name, with how many times it occurs; line numbers aren't

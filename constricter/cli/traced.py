@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--infer-from`: the types a traced run saw (`python -m constricter.trace`), as a type checker's hints are.
 
 A trace holds, for each file by its SHA-256, the types each binding of its functions' locals held

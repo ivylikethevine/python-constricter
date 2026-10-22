@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Compare two `--show-fixes` outputs of one package fixed by two versions of the code.
 
   local/.venv/bin/python -m scratch.fixes_diff OLD.out NEW.out --strip /tmp/x/sa-old/ --strip /tmp/x/sa-new/

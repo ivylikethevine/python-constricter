@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`min-python`: the oldest Python a project runs on, from `--min-python` or its `requires-python`."""
 
 from pathlib import Path

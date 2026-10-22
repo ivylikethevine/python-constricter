@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Time the compiled wheel's build from the sdist, as the release builds it, with mypyc's options varied.
 
     python3 scratch/compile_time.py [--python 3.12] [--fresh] [VARIANT ...]

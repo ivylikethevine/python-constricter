@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for a `with` statement's target: what the context manager's `__enter__` returns."""
 
 import ast

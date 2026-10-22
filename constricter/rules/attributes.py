@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """LVA013 (opt-in): an instance attribute first stored by a method's `self.x = value`, with no annotation.
 
 Only a plain class's (see `_plain`): an attribute another file's base may declare is that file's to

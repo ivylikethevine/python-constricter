@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A run's outputs, each made from its records alone (`pipeline.Store`), so no two can disagree.
 
 - `json`: `report.json`, every record under its corpus, version and step, with the run's own facts;

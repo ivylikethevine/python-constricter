@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`vague`: how vague an annotation may be before it's LVA005, as `nesting` is LVA006's depth."""
 
 import ast

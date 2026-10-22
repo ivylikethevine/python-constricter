@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for calls to unannotated generator functions: their `yield`s decide their type."""
 
 import textwrap

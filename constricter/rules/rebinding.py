@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A first binding's fix, refitted to every value the name is bound to later, as a checker holds it to.
 
 `x = 1` then `x = None` declares `x: int | None` before the first binding (annotated there, mypy

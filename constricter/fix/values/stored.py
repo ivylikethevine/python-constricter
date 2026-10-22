@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What a class's methods store in its attributes, for `--fix` on `self.x` (see `returned.Table`).
 
 Each `self.x = value` and each read of `self.x` its methods make, as the checker saw them

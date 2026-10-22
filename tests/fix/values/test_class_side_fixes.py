@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for a classmethod or staticmethod called on its class: `Box.make()`, by its declared return."""
 
 import ast

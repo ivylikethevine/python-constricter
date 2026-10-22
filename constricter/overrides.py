@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`typing.override`, which is Python 3.12+, on 3.11 too: what type checkers see, and nothing at run time.
 
 Apart from the modules mypyc compiles, which takes the code under `if TYPE_CHECKING:` for the code

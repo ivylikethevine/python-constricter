@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The installed classes and aliases a module names, and the methods a class's lineage declares.
 
 For `constricter.fix.index.stubs.stubbed`, which reads their methods' signatures.

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The codes, their messages and levels, and the `Offence` and `Checks` types every module shares."""
 
 import ast
@@ -44,6 +43,7 @@ FIX_KINDS: dict[str, str] = {
     "container": "a list, set, tuple or dict display whose elements' types agree",
     "joined": "a list, set or dict display whose elements' types differ, as their union (a guess)",
     "copy": "a copy of a local whose type is known",
+    "tested": "a read a test around it narrows (`if x is None: return`): what the test leaves of its union",
     "subscript": "a subscript of a known container",
     "attribute": "an attribute of a class the module defines",
     "method": "a method with a fixed or declared return type, on a known local",
@@ -321,6 +321,8 @@ class Offence:
     cell: int | None = field(default=None, compare=False)
     # What the message names besides the variable: LVA008's to LVA010's type, LVA011's length.
     detail: str = field(default="", compare=False)
+    # Why a binding of a call has no fix, where it hasn't one (see `fix.values.refused.REASONS`).
+    unfixed: str = field(default="", compare=False)
 
     @property
     def fix(self) -> str | None:

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Types split over what a loop or an unpacking binds: a container's elements, a tuple's parts."""
 
 import ast

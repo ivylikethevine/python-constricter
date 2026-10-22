@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Find a corpus run's checker fixes that can't be the value's type: a hint applied to the wrong name.
 
   local/.venv/bin/python -m scratch.misplaced_hints local/corpus-runs/0.4.0-rc.3-10-18-2026-1010 pandas local/corpus-suites/pandas-v3.0.6/pandas

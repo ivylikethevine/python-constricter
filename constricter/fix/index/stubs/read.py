@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What `constricter.fix.index.stubs.stubbed` read of the installed modules, kept from file to file."""
 
 from collections.abc import Mapping

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A module's scopes, built for a check: each function's and class body's, their statements visited.
 
 What each binds and declares, in order, and which of them a check already finished.

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A run file: what `python -m tests.corpus RUN.toml` measures, with what, and how it's written.
 
     [run]

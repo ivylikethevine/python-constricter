@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The files a type checker's server hung on, remembered between runs.
 
 A server that hangs on a file costs the run its timeout twice, and a restart each time: once with

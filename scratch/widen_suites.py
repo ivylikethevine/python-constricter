@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Run each corpus package's tests as released and after `--fix --unsafe-fixes` with every `fix-widen` kind.
 
   local/.venv/bin/python -m scratch.widen_suites [SUITE ...]

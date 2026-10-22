@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A corpus on disk, one tree for every step of a run.
 
 A suite's checkout at its pinned tag, whose settings (`pyproject.toml`) and environment (`.venv`)

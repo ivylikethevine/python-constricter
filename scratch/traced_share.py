@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Time one suite's released tests untraced, then traced by `constricter.trace` alone: no witness.
 
   local/.venv/bin/python -m scratch.traced_share SUITE

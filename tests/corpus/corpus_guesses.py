@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What a suite's traced tests say of its fixes: whether each fixed binding's value was what the fix says.
 
 The tests run traced by `tests/corpus/witness/constricter_witness.py`, which is told each fix (the

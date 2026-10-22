@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Value flow: every type a name is bound to over its lifetime in a scope, against its declared type.
 
 Three rules come of it (`check_tree` reports them): a declared type every value fits a strictly

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The command's options: parsed from the command line over `[tool.constricter]`'s defaults."""
 
 import argparse

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The order a run's steps start in, planned by OR-Tools' CP-SAT from what they took before."""
 
 import importlib.util

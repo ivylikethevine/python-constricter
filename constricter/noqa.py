@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`# noqa` comments, read the same way by the CLI and the pylint plugin (flake8 reads its own)."""
 
 import io

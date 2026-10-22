@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What the index says of checked modules together: one type's several spellings, and what's checked first.
 
 The ways a file spells one class or alias another module defines (`same`), the names it imports

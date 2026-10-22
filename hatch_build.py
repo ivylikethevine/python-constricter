@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Hatchling's build hook: generate the standard-library tables where they're missing or stale.
 
 They aren't tracked (see `stdlib_tables.generate`). A build from a checkout generates them, and asks

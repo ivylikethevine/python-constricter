@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--infer-with`: the language-server conversation, and the command's rounds of fixes with hints."""
 
 import contextlib

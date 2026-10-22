@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for calls to unannotated functions whose `return`s decide their type."""
 
 import textwrap

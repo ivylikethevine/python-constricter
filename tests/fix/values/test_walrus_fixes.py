@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for `:=`: its name is declared on a line of its own before the statement."""
 
 import ast

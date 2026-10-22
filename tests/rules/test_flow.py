@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Value flow (constricter.flow): each name's values over its lifetime, against its declared type."""
 
 import ast

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Installed packages' functions whose arguments decide their type: their signatures, read for a call.
 
 The functions and methods a file calls, and the classes it passes, found through its imports;

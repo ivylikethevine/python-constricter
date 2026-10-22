@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """An annotation as the tables hold it (`Form`): builtins' text, a class, or `AnyStr`.
 
 And what's read of forms alone: a union's, a constrained type variable's, a `Literal`'s, a function's

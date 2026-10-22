@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The corpus runs' witness: a value held to the annotation a fix gave its name (`witness.holds`)."""
 
 import collections

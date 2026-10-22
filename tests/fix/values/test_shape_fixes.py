@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` on small shapes typed from their parts: unions, displays that unpack, `type(x)`, and the like."""
 
 import textwrap

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for a bare parameter by its name: the type the checked files annotate it with everywhere else."""
 
 import ast

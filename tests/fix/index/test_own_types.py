@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for a checked file's overloads decided by the checked files' own classes."""
 
 import copy
