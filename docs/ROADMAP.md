@@ -953,7 +953,13 @@ measure before building.
    not a named check. Done when every workflow has one green run on a pull request, including a
    weekly `link-check.yml` by hand, `tool-versions.yml` reports the same four tools and osv-scanner
    from the new roster, the Dependency audit runs osv-scanner, and the sync has nothing left to send. About 5 hours; coverage unchanged.
-8. **A parallel check, past its longest chain.** With every CPU the standard library checks in 12.9s
+8. **Mutation testing.** Line coverage is held at 100% (`fail_under`), so it no longer says which
+   lines run without a test checking what they do; a mutant the suite survives does. How: `mutmut`
+   over `constricter/`, its tests run without the corpus suites, in a `scratch/` script with its
+   output under `local/`; triage the survivors and write tests for those worth killing. Done when
+   a full run's survivors are each killed or recorded as equivalent. About 6 hours beside the run;
+   coverage unchanged.
+9. **A parallel check, past its longest chain.** With every CPU the standard library checks in 12.9s
    and pandas in 11.3s: 46s and 50s in one process, 29s in two, 18s in four, 13.7s and 12.9s in
    eight, so about 10s of each doesn't shorten with more (timed before a method's lookups were kept
    for a run, which took one process from 53.7s to 43.0s on the standard library and 61.8s to 53.5s
