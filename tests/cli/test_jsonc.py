@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """JSON with comments and trailing commas (constricter.jsonc)."""
 
 import json

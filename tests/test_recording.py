@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What a recorder keeps by class, and how it spells a value as an annotation would write its type."""
 
 import collections

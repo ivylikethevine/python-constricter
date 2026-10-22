@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Compile a copy of constricter with mypyc, as the compiled wheel is, and run the tests against it.
 
   local/.venv-mypyc/bin/python -m scratch.mypyc_trial [--opt 0] [--exclude PATH ...] [-- PYTEST_ARGS]

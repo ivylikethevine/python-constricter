@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The compiled wheel's mypyc hook, as `pyproject.toml` sets it."""
 
 import tomllib

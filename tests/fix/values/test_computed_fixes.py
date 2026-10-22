@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for values computed from others: conditionals, arithmetic, comprehensions, and more."""
 
 import pytest

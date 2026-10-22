@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A checked file's classes in its overloads' parameters, and where each class a calling file names is from.
 
 A parameter typed as nothing but checked files' classes (`frame: DataFrame`), or as an iterable of

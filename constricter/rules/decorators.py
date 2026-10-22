@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Decorators that give back the function they decorate, whose return still types its calls.
 
 One the standard library has (`functools.cache`, `abc.abstractmethod`, `unittest.skipIf(...)`,

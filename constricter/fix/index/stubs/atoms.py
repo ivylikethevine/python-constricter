@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What an installed package's annotations are made of, and which arguments each part takes.
 
 An annotation is read (by `constricter.fix.index.stubs.signatures`) into its union's members (`Atom`s):

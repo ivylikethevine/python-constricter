@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The kept trees' budget: sized by the machine's memory."""
 
 import os

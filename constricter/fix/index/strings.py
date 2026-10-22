@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The strings an annotation leaves inside it (an `Annotated`'s metadata), and the names in them."""
 
 import ast

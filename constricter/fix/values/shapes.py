@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Small shapes `--fix` types from their parts' types.
 
 A union the author would write (`a if c else None`, `a or b`), a container or an empty one (`a or []`),

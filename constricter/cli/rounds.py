@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A check's rounds: every file, then again each one `--fix` changed in a way a second check sees.
 
 Each round knows the index of what the files offer each other, the type checker's hints with

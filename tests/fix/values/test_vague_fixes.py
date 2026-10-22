@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` writes a type only as vague as `vague` allows: none by default."""
 
 import textwrap

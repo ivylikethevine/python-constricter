@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The standard-library class another checked file's class inherits from, out of a file's sight.
 
 A file's class under another file's (`django.test.TestCase`) can't see what that one inherits from:

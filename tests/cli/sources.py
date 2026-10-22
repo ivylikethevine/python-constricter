@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Sources the command's tests check, and writing one: shared by its test modules."""
 
 import textwrap

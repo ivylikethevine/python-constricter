@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
 # The test suite on other Pythons, each in a venv of its own under VENVS, set up as CI's setup action
 # sets one up (`uv sync --frozen --no-install-project --no-build --only-group GROUP`, then an editable
 # install with no build isolation), one process at low priority. Never touches `.venv` or `local/.venv`.

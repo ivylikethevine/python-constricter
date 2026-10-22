@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The parameters a module's functions annotate, and those they leave bare (see `consistent`).
 
 Not their locals: `--fix` annotates those, and what it wrote would count the next time round.

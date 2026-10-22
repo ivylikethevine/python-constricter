@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Time corpora as the `timing` step would with no warm-up, alone and side by side on disjoint CPU sets.
 
   local/.venv/bin/python -m scratch.timed_tail_trial                                # django, sqlalchemy, twisted

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` reads a quoted annotation as its text, and quotes a module body's fix naming what's unbound."""
 
 import ast

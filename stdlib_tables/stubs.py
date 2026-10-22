@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Typeshed's standard-library stubs, read as one platform and Python version would see them.
 
 `typeshed-client` reads each stub (`stdlib_tables.shed`): it decides the `if sys.platform == ...` and

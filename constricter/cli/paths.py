@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Which files to check: the paths given, directories walked, and what's excluded."""
 
 import os

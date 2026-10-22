@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for installed packages' calls whose overloads their arguments decide (`fix.index.stubbed`)."""
 
 import sys

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for a call of a value whose type says what calling it gives.
 
 A local, an attribute or anything else typed `Callable[..., R]` gives `R` (`handler(schema)`,

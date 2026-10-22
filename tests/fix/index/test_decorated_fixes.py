@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for calls to decorated functions: a declared return under a decorator that gives it back."""
 
 import ast

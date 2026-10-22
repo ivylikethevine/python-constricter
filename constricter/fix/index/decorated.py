@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Returns under decorators another module defines: kept where it gives the function back.
 
 A module alone vouches for the standard library's such decorators and its own (see

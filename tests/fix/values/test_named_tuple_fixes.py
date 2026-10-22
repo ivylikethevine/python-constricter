@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for what's unpacked by its parts: a named tuple's fields, and a `with` statement's target."""
 
 import ast

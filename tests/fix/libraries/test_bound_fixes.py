@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for what a bound type variable and a generic class's coroutine give, by typeshed's stubs."""
 
 import textwrap

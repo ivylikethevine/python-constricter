@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Quoted annotations: a string annotation as the expression it quotes, and a quoted part as its text."""
 
 import ast

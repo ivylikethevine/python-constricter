@@ -684,6 +684,12 @@
   build's part go, another build's part unswept for a month, and its own entries unread for a month
   or, the longest unread first, over 256 MB.
 
+- **No per-file license headers.** `REUSE.toml` licenses every file (`path = "**"`, MIT; the code
+  of conduct CC-BY-4.0, as the Contributor Covenant's text), and Scorecard's License check reads
+  only `LICENSE.md`, so no file carries a header of its own; ruff's `missing-copyright-notice` is
+  off, and `git grep` finds the identifier in `REUSE.toml` alone. The synced CI files lose theirs
+  in their source, which the sync carries.
+
 ## Next
 
 By size (smallest first) and, within each, by value: the bindings with no fix an item could reach,
@@ -701,8 +707,7 @@ measure before building.
 
 ### Built, waiting on a run
 
-1. **Six mechanisms, uncounted.** Built since the 0.4.0-rc.3 mega run, each with its tests and a fix
-   kind of its own:
+1. **Eight mechanisms, uncounted.** Built since the 0.4.0-rc.3 mega run, each with its tests:
    - **The text overload** (`text`, a guess): a standard-library function overloaded on `str`
      against `bytes` alone, with no argument's type known, takes its `str` signature's return
      (`os.path.join(root, name)` a `str`, `os.listdir(path)` a `list[str]`;
@@ -738,6 +743,25 @@ measure before building.
      `self.x`, 1,660 of them in annotated functions; the stores themselves are offences of their
      own, outside the 252,637.
 
+   - **Narrowed reads** (`tested`, certain): a name or attribute read where a test around it narrows
+     its union is what the test leaves (`if self.conn is None: return`, then `conn = self.conn` a
+     `Connection`; `isinstance`, truth tests, `not`, `and`, `or`), not past a store between the test
+     and the read (`narrowed.narrowed_to`). Of the 13,972 bindings with no fix that copy a name or an
+     attribute in a function, 424 follow a test of what they copy: `is None` (159), `isinstance`
+     (148) or its truth (117), about 0.2%; held to the packages' checkers bringing no new error.
+
+   - **The project's own generic classes** (`method` and `attribute`, certain; no kind of its own):
+     a member of a checked file's generic class, its type parameters bound by the receiver's
+     arguments (`rows.first()` on a `Result[Row]` a `Row | None`; `class C[T]`, `Generic[...]`, a
+     subscripted base), through its generic bases and under a plain class given its arguments
+     (`class Rows(Result[Row])`; `declarations.generic_members`, `members._own_generic`); another
+     file's too, its bases not followed. sqlalchemy defines 101 generic classes (their subclasses
+     included), pandas 30, pydantic 11: 75 bindings with no fix are a member of a name annotated
+     with one, parameterised (74 of them sqlalchemy's), and 246 a member of `self` in one's own
+     method (sqlalchemy 136, the standard library 77, pandas 30), about 0.1%. Left: `self` in the
+     class's own methods is the class bare, so a member naming its parameters isn't typed there
+     (it could be, written with the parameters, which the methods bind).
+
    Done when a mega run counts each kind, holds its guesses to [LIKELY.md](LIKELY.md)'s bars and the
    packages' checkers, and the corpus suites are the same after LVA013's fixes. About 2 hours beside
    the run; coverage up to 6%, likely far less.
@@ -758,6 +782,13 @@ measure before building.
    `macos-15-intel`. Done when a release's compiled wheels all build in under 6 minutes, the same 20
    wheels and attestations on PyPI and the GitHub release. Under an hour beside the release;
    coverage unchanged.
+
+4. **Why a call has no fix, counted.** `--format=json` gives a call bound with no fix the reason
+   it has none (`unfixed`: `receiver`, `member`, `untyped`, `library`, `imported`, `local`,
+   `vague`, `declined`, `other`; `fix/values/refused.py`), and the census keeps it on each row and
+   counts the calls by it (`census.md`'s "Calls with no fix, by why", the record's `reasons`). Done
+   when a mega run's `census.md` has the table: then size Large items 3 and 2 and the
+   `vague = 0` run from it. Beside the next run; coverage unchanged.
 
 ### Small: under 4 hours
 
@@ -793,12 +824,6 @@ measure before building.
    mega run's tail is under 5 minutes with the timing table's run-to-run noise unchanged, read from
    two runs at one commit (`scratch/timing_noise.py`: rc.2's and rc.3's instructions, a code change
    apart, differ by a median 7.6% in one process). About 1 hour; coverage unchanged.
-4. **The per-file SPDX headers come out.** `REUSE.toml` (`path = "**"`) and `LICENSES/MIT.txt` cover
-   every file (CONTRIBUTING's disabled-rules row on `reuse` already rests on that), and Scorecard's
-   License check reads only `LICENSE.md`, so the `SPDX-License-Identifier` comment at the top of
-   each file is redundant. Strip it from this repository's own files and stop adding it; the synced
-   CI files change in their source, which the sync carries. Done when
-   `git grep -l SPDX-License-Identifier` lists `REUSE.toml` alone. About 1 hour; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -979,26 +1004,7 @@ measure before building.
    the corpora's own type checkers find no new error after the returns alone, and `--fix` on pandas
    gains the callers' fixes the written returns make certain. About 10 hours; coverage unmeasured:
    it moves guesses to certain more than it adds fixes.
-3. **Narrowed reads.** A read of an `X | None`, or of a union the function tests, has no fix or only
-   a guess: a checker narrows it where `--fix` doesn't follow the test
-   (`if self.conn is None: return`, then `conn = self.conn`). One nothing narrows (its function
-   neither tests nor stores it, nor what it's read of) has its declared type, a guess. Of the 13,972
-   bindings with no fix that copy a name or an attribute in a function, 424 follow a test of what
-   they copy in it: `is None` (159), `isinstance` (148) or its truth (117). Follow those tests
-   through a function's branches, and offer what every path to the read agrees on. Done when
-   `conn = self.conn` after the `return` is a `Connection`. About 11 hours, for about 0.2% (some 400
-   fixes).
-4. **The project's own generic classes.** A generic class the checked files define is skipped whole:
-   its methods' returns and attributes depend on how it's parameterised (sqlalchemy's `Mapped[T]`,
-   `Select[T]`). Bind its type parameters by the receiver's arguments, as a standard-library or
-   installed generic class's are, and a module's class under a generic library one
-   (`class Queue(deque[int])`) by its base's. Counted: sqlalchemy defines 101 generic classes (their
-   subclasses included), pandas 30, pydantic 11; django, Twisted and pip none. 75 bindings with no
-   fix are a member of a name annotated with one, parameterised (74 of them sqlalchemy's), and 246 a
-   member of `self` in one's own method (sqlalchemy 136, the standard library 77, pandas 30); a
-   receiver typed by inference isn't counted. Done when `rows.first()` on a `Result[Row]` is a
-   `Row | None`. About 10 hours, for about 0.1% (some 300 fixes).
-5. **A method's `return` of an untyped value.** Of the 11,959 `self.method()` bindings with no fix,
+3. **A method's `return` of an untyped value.** Of the 11,959 `self.method()` bindings with no fix,
    5,617 call a method the class doesn't define itself, and 5,436 one whose `return` gives a value
    `--fix` can't type: a tuple (1,858), a call (1,455), a local or another name (1,396), a subscript
    or attribute (272). Only 137 return an unannotated parameter (26 nothing else), and in none of
@@ -1007,7 +1013,7 @@ measure before building.
    almost none of them. What's left is the values themselves: the tuple's parts, the call, the
    local. Done when a method returning its parameter types its calls. About 14 hours, for about 0.3%
    (some 800 guesses).
-6. **Annotations held to a run.** The corpora's witness holds each fix to the values its package's
+4. **Annotations held to a run.** The corpora's witness holds each fix to the values its package's
    tests bind (`tests/corpus/witness/constricter_witness.py`): of the certain fixes a test could
    tell of, 99.4% hold on the mega corpora's suites, and what differs is a declared type the tests
    contradict or a test's stand-in. The same check of a project's own annotations, as
@@ -1047,12 +1053,7 @@ What to measure before building, smallest first.
    from a pass), and a suite unittest runs (django, mkdocs, twisted) is read as text still. Done
    when a mega run's records hold them and the tests table reads sqlalchemy's skips by name. About
    an hour left, beside the run; coverage unchanged.
-4. **Why a call has no fix.** The census classifies the shape of a value with no fix, never why the
-   fix failed: a vague return, open overloads that disagree, a receiver of no type, an import it
-   can't resolve, an untyped callee. A column for it, read from the check (`--format=json` gains the
-   reason a call's fix was refused), so the items above are sized in one run, not from the rows by
-   hand. Done when `census.md` has the table by reason. About 4 hours; coverage unchanged.
-5. **One type at run time, no fix.** The traced suites already know what each binding held; for each
+4. **One type at run time, no fix.** The traced suites already know what each binding held; for each
    binding with no fix, whether the run saw one type is both the upper bound of any inference and a
    bug finder. A table by shape in the `traced` step: bindings with no fix, those the run bound to
    one type, and the commonest sources. Done when the table is in a run's report. About 4 hours;

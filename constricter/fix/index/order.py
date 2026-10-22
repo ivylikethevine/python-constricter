@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The order the CLI checks files in: each after those whose unannotated functions it calls.
 
 So their `return`s are known when it's checked (see `project.returned`); files calling each other's

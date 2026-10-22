@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Which argument types a standard-library parameter's annotation certainly takes or refuses.
 
 `Accepting.accepts` reads an annotation into its union's members (`Atom`s) and gives a verdict,

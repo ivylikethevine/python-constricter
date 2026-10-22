@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The rules themselves (constricter.checker): what they report and what they exempt."""
 
 import ast

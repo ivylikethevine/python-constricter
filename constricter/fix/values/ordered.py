@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The order a module's functions are checked in: each after those it calls, whose `return`s then type it."""
 
 import ast

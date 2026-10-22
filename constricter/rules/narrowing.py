@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Value flow over a module's scopes, and its findings (LVA008, LVA009, LVA010) as offences with fixes."""
 
 import ast

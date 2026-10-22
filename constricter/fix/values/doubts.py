@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Where a type checker sees a value otherwise than `--fix` infers it, and what `--fix` does then.
 
 - A copy, attribute or subscript of a union may be narrowed where it's read (`if x is not None:`,

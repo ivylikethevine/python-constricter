@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for standard-library calls whose arguments decide their type, by the signatures they match."""
 
 import textwrap

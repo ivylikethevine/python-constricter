@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix --unsafe-fixes` where a guess, once declared, makes an error of what's done with the name."""
 
 import textwrap

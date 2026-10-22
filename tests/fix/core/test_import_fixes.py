@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` that adds an import: a standard-library class, `open`'s file object, LVA012's `Final`."""
 
 import ast

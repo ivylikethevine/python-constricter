@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Move modules into a subpackage, and retarget every import and dotted mention of them.
 
   local/.venv/bin/python -m scratch.move_modules OLD.PACKAGE NEW.PACKAGE MODULE[=NEWNAME] ...
@@ -40,7 +39,7 @@ def main(argv: list[str]) -> int:
     new_dir.mkdir(exist_ok=True)
     init = new_dir / "__init__.py"
     if not init.exists():
-        init.write_text(f'# SPDX-License-Identifier: MIT\n"""{new}."""\n', encoding="utf-8")
+        init.write_text(f'"""{new}."""\n', encoding="utf-8")
         subprocess.run(["git", "add", str(init)], check=True, cwd=ROOT)
     for name, renamed in moving.items():
         source = ROOT.joinpath(*old.split(".")) / f"{name}.py"

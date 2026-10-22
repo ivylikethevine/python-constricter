@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The rules: every local variable is typed where it's first bound (see README)."""
 
 import ast

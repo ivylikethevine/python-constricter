@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Cross-module `--fix` for a name typed by another checked file's alias of a union."""
 
 import textwrap

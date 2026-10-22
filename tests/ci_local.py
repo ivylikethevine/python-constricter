@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Run CI's checks locally, read from the CI and Security workflows themselves, all at once.
 
   local/.venv/bin/python tests/ci_local.py                 # every blocking job's checks

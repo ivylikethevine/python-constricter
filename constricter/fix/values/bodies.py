@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What a function's body says of its calls: whether it's a generator, and whether it can fall off its end."""
 
 import ast

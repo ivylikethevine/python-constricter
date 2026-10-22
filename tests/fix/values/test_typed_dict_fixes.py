@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for a `TypedDict`'s key, read by a literal: `d["key"]`, `d.get("key")`."""
 
 import ast

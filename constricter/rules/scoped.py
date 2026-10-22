@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What a scope (`constricter.rules.scope.Scope`) is checked with, and what it holds as it's checked.
 
 Its module's `Settings` (and the parameters' types given from outside, `Seeded`); its `Kind` of

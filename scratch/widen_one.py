@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Fix one suite's checkout with every `fix-widen` kind, run its tests keeping their output, and keep the diff.
 
   local/.venv/bin/python -m scratch.widen_one SUITE

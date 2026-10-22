@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The tables of a run's report, each built from the run's records alone (`Records`), a row a corpus.
 
 Which go in `report.md` and which each version's section of docs/RUNS.md has (`SECTIONS`), and

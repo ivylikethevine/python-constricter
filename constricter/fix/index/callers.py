@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Unannotated parameters typed by their callers: what every call in the checked files passes each one.
 
 Once every file is checked, each module's `Observed` calls to the checked files' open functions (see

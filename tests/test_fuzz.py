@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Fuzzing: generated Python never crashes the checker, and its fixes keep the code valid."""
 
 import ast

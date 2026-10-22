@@ -6,6 +6,24 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--format=json` says why a call bound with no fix has none, as each result's `unfixed`: a
+  receiver of no known type, a function declaring no return, a standard-library or imported
+  function whose arguments don't decide its type, a type vaguer than `vague` allows, ... (listed in
+  [FIXES.md](FIXES.md)). The corpus census counts the calls with no fix by it (`census.md`'s
+  "Calls with no fix, by why", and each census record's `reasons`).
+- `--fix` types the members of the checked files' own generic classes, binding the class's type
+  parameters to the receiver's arguments: `rows.first()` on a `Result[Row]` is a `Row | None`, and
+  `self.first()` in `class Rows(Result[Row])` too. A generic class was skipped whole before, even
+  for a member naming none of its parameters (`count() -> int`), which is now typed on the class
+  bare as well.
+- `--fix` types a read the tests around it narrow by what they leave of its union (fix kind
+  `tested`, certain): after `if self.conn is None: return`, `conn = self.conn` is a `Connection`,
+  and in `if isinstance(x, int):` a copy of an `int | str` is an `int`. `is None`, `is not None`,
+  `isinstance`, truth tests, `not`, `and` and `or`, in a branch or the rest of a block after an
+  `assert` or an `if` that leaves; not past a store of the read between the test and it. Such a
+  read had no fix before.
+- No file carries a license header: `REUSE.toml` licenses them all, MIT, and the code of conduct
+  CC-BY-4.0.
 - `tests/ci_local.py` also runs the Security workflow's blocking jobs, read from `security.yml` as
   CI's are from `ci.yml`: the dependency audit (`pip-audit` over `uv.lock`'s export), the workflow
   audit (zizmor, actionlint, `lint_workflows.sh`) and the secrets scan. An advisory against a

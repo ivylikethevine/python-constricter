@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A module checked again knowing only its functions' parameters anew starts from its last check."""
 
 import ast

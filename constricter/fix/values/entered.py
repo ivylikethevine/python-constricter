@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for `with manager as name:`: what the context manager's `__enter__` returns.
 
 `name` is typed as a call to `manager.__enter__()` would be: by the standard-library tables

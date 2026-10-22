@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Source in any encoding Python reads: a PEP 263 declaration, a BOM, or UTF-8."""
 
 from pathlib import Path

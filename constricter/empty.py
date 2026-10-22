@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """An empty mapping nothing can change: a record's default, where a `{}` is a dict every record shares."""
 
 from collections.abc import Iterator, Mapping

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Which of `--fix`'s inferences are guesses (`--unsafe-fixes`), and what each rests on."""
 
 import ast

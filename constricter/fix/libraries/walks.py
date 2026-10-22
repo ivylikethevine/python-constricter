@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for `os.walk(top)`: what a loop over it binds, by `top`'s type.
 
 Its return (`Iterator[tuple[AnyStr, list[AnyStr], list[AnyStr]]]`) nests deeper than the tables hold.

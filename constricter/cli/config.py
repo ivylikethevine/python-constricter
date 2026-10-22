@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The command's defaults, from the nearest `pyproject.toml`'s `[tool.constricter]` table."""
 
 import re

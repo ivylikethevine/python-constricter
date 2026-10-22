@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The CPU seconds and the memory a process and everything under it used, read by `psutil` while it runs.
 
 A step's own count (`resource.getrusage`) has only the processes it waited for, which leaves out

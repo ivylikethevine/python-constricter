@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """An installed function's signatures, read from its stub as the standard library's tables hold theirs.
 
 A stub's overloads (see `constricter.fix.index.stubs.declared`) are resolved across the installed modules the

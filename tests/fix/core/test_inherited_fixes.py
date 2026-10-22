@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for a method a class doesn't define: the base's that does, in method resolution order."""
 
 import ast

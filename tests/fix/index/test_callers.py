@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for unannotated parameters: typed by what every call in the checked files passes, as guesses."""
 
 import textwrap

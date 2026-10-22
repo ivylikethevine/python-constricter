@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The standard-library tables as one configuration (a platform and a Python version) sees the stubs.
 
 `tables_for` walks every public module's names in that configuration and enters each where it

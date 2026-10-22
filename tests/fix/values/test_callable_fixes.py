@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for a function or a bound method bound to a name: a `Callable[..., R]`."""
 
 import textwrap

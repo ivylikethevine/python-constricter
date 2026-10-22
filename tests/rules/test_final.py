@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """LVA012 (opt-in): a local bound once and never rebound could be `Final`."""
 
 import textwrap

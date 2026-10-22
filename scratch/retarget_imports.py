@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Import names from the module they moved to, everywhere: after `scratch.split_module`.
 
   local/.venv/bin/python -m scratch.retarget_imports OLD.MODULE NEW.MODULE NAME [NAME ...]

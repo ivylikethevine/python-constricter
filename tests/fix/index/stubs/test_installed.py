@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for calls into installed packages that declare their types: stubs, `py.typed`, a lone stub."""
 
 import os

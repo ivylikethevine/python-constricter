@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Sum up a corpus run's `guesses.jsonl`: each guess mechanism's count, blamed errors and run-time record.
 
   local/.venv/bin/python -m scratch.guess_report --from FOLDER  # the tables, from a run's folder (`python -m tests.corpus`)

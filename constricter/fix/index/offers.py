@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--infer-with`: what a hint may name that the file doesn't bind where its annotations run.
 
 A hint is text, and a name in it may not be a type: basedpyright shows a value that is a module by

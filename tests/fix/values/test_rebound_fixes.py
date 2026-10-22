@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for a name later bound to another type: widened to the type every value fits, or dropped."""
 
 import textwrap

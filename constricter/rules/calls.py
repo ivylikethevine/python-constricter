@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What a module passes checked files' functions whose parameters aren't all annotated (`observed`).
 
 Each call to one is recorded with what `--fix` knows each argument's type to be where it's made: in a

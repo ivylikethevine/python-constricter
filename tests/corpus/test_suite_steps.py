@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A suite's steps: each part starts once the fixes it reads are made, on checkouts of the suite's own."""
 
 import hashlib

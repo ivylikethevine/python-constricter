@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Typeshed's stubs as `typeshed-client` reads them, bound as `stdlib_tables.stubs` holds them.
 
 `typeshed-client` decides a stub's `sys.platform` and `sys.version_info` blocks for one platform and

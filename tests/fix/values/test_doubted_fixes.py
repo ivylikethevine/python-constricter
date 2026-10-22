@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` where a type checker sees the value otherwise: narrowable unions, constants, `Self`, generics."""
 
 import textwrap
@@ -544,7 +543,11 @@ def test_an_alias_of_a_union_is_read_as_the_union() -> None:
 
 
 def test_a_read_of_an_optional_is_offered_where_nothing_narrows_it() -> None:
-    """Its declared type, a guess: not where its function tests or stores it, or what it's read of."""
+    """Its declared type, a guess: not where its function tests or stores it, or what it's read of.
+
+    Where a test around it narrows it, it's what the test leaves (see
+    `test_a_read_a_test_narrows_is_what_the_test_leaves`).
+    """
     source: str = """
     class Pool:
         size: int | None
@@ -593,9 +596,84 @@ def test_a_read_of_an_optional_is_offered_where_nothing_narrows_it() -> None:
         "a": ("Conn | None", True),
         "b": ("Conn | None", True),
         "c": ("int | None", True),
-        "d": (None, False),
+        "d": ("Conn", False),  # what the test leaves
         "e": (None, False),
         "g": (None, False),  # of what's tested
         "h": (None, False),  # tested after it too
         "i": (None, False),  # by a function inside
+    }
+
+
+def test_a_read_a_test_narrows_is_what_the_test_leaves() -> None:
+    """`is None`, `isinstance` and a truth test, in a branch or the rest of a block after one that leaves.
+
+    Not where a store between the test and the read (or after it, in a loop inside the region)
+    undoes it, nor in a function inside the test's, nor for a test it can't follow (`==`, a failed
+    `isinstance`).
+    """
+    source: str = """
+    class Conn: ...
+
+    class Holder:
+        conn: Conn | None
+
+        def branches(self, x: int | str, m: Conn | None) -> None:
+            if isinstance(x, int):
+                a = x
+            else:
+                b = x
+            if m is not None:
+                c = m
+            if m:
+                d = m
+            if not m:
+                return
+            e = m
+
+        def closed(self) -> None:
+            if self.conn is None:
+                raise ValueError
+            g = self.conn
+            self.conn = None
+
+        def held(self, m: Conn | None, n: int | None) -> None:
+            assert m is not None
+            h = m
+            if n is not None and n > 2:
+                i = n
+            if n is None or not m:
+                return
+            j = n
+
+        def rebound(self, m: Conn | None, xs: list[int]) -> None:
+            if m is None:
+                return
+            k = m
+            for _ in xs:
+                o = m
+                m = None
+
+        def inside(self, m: Conn | None, n: int | None) -> None:
+            if m is None or n == 3:
+                return
+
+            def f() -> None:
+                p = m
+
+            q = n
+    """
+    assert {name: fix for name, fix in _found(source).items() if len(name) == 1} == {
+        "a": ("int", False),
+        "b": (None, False),  # a failed `isinstance`
+        "c": ("Conn", False),
+        "d": ("Conn", False),
+        "e": ("Conn", False),
+        "g": ("Conn", False),  # stored only after the read
+        "h": ("Conn", False),
+        "i": ("int", False),  # an ordering narrows nothing
+        "j": ("int", False),
+        "k": ("Conn", False),
+        "o": (None, False),  # stored again further round the loop
+        "p": (None, False),  # in a function inside
+        "q": (None, False),  # `==`
     }

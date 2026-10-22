@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A scope's late fixes: those that need the whole scope seen, run once it's checked (see `checker`).
 
 `optionals` (`None`, then one type), `rebinds` (a fix refitted to every later value), `extended`

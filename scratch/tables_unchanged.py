@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Check that this checkout's generator writes the standard-library tables there now, byte for byte.
 
   local/.venv/bin/python -m scratch.tables_unchanged

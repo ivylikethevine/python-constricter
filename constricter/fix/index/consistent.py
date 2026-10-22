@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Names the checked files annotate alike, for the parameters that leave them bare.
 
 A parameter's name says much of what it holds (`request`, `df`): one the checked files' functions

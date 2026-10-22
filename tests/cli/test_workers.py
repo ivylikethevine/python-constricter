@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--jobs` workers (constricter.cli.workers): how each starts."""
 
 import concurrent.futures

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Parse a module once: the cross-file index and the check share its tree, in the same process.
 
 The CLI reads every file to index what it offers other files (`fix.index.project`), then checks each; both

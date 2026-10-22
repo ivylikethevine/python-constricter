@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Where each of a checked module's top-level names comes from (`Origin`), for `modules.read`.
 
 What it imports, under a top-level `if` or `try` too, and what it binds itself.

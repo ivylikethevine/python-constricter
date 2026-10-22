@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`fix-widen`'s calls of no known type, each line marked, and replaced once its type is known.
 
 Each call kind; what a loop, an unpacking or a `with` takes of one; and another checked file's

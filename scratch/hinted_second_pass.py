@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Fix a copy of a corpus as a run's `infer-<checker>` step does, then keep what a second pass still fixes.
 
   local/.venv/bin/python -m scratch.hinted_second_pass CHECKER CORPUS [CORPUS ...]

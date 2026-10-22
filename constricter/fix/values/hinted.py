@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--infer-with`: a type checker's inferred type (an inlay hint) as a fix, when the file can use it.
 
 Always a guess: a hint is the type the checker gave the value where the name is bound, so it can be

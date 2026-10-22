@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A `TypedDict`'s keys, held as a class's attributes are: each one's type, and which may be missing."""
 
 import ast

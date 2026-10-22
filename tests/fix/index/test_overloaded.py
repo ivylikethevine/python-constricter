@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for calls to a checked file's function defined with `@overload`, where the arguments decide."""
 
 import textwrap
