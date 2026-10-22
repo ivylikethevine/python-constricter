@@ -793,6 +793,12 @@ measure before building.
    mega run's tail is under 5 minutes with the timing table's run-to-run noise unchanged, read from
    two runs at one commit (`scratch/timing_noise.py`: rc.2's and rc.3's instructions, a code change
    apart, differ by a median 7.6% in one process). About 1 hour; coverage unchanged.
+4. **The per-file SPDX headers come out.** `REUSE.toml` (`path = "**"`) and `LICENSES/MIT.txt` cover
+   every file (CONTRIBUTING's disabled-rules row on `reuse` already rests on that), and Scorecard's
+   License check reads only `LICENSE.md`, so the `SPDX-License-Identifier` comment at the top of
+   each file is redundant. Strip it from this repository's own files and stop adding it; the synced
+   CI files change in their source, which the sync carries. Done when
+   `git grep -l SPDX-License-Identifier` lists `REUSE.toml` alone. About 1 hour; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
