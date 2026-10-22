@@ -210,11 +210,22 @@ def test_a_standard_library_name_the_module_lacks_is_no_fix() -> None:
 
 
 @pytest.mark.parametrize(
+    ("imports", "hint"),
+    [("import turtle", "turtle.Turtle"), ("import _thread", "_thread.LockType")],
+)
+def test_a_standard_library_module_never_imported_here_says_nothing(imports: str, hint: str) -> None:
+    """A module constricter won't import (`turtle`), or a private one, can't refute the hint: it stands."""
+    source: str = f"{imports}\n\n\ndef f(q) -> None:\n    x = q.make()\n"
+    assert _fixes(source, {"x": hint}) == [("x", hint, True)]
+
+
+@pytest.mark.parametrize(
     ("hint", "fix"),
     [
         ("tuple[*tuple[str, ...], str]", "tuple[str, ...]"),
         ("tuple[str, *tuple[str, ...]]", "tuple[str, ...]"),
         ("tuple[*tuple[str, ...], int]", None),
+        ("tuple[*tuple[int, str], str]", "tuple[*tuple[int, str], str]"),
         ("tuple[int, str]", "tuple[int, str]"),
     ],
 )
