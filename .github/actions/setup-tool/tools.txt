@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 # The pinned CI tools, one row per tool - installed by ./install.sh (through
 # ./action.yml or ../setup-tools) and drift-checked by
 # ../../scripts/check_tool_versions.sh. Both read it through ./lib.sh, so a
@@ -51,7 +50,7 @@
 # Floating by design - tools this repo deliberately does not pin, and why.
 # Each is still named here so "is this pinned?" has one place to look:
 #
-#   node   ci.yml's docs job (actions/setup-node, `node-version: "22"`)
+#   node   ci.yml's docs job (actions/setup-node, `node-version: "24"`)
 #          only runs markdownlint-cli2 and prettier, which
 #          ../../package-lock.json pins (CI_MANIFESTS)
 #   Pinned elsewhere, not floating: uv in .github/scripts/
