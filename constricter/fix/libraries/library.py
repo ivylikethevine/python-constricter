@@ -219,21 +219,38 @@ def installed_method(receiver: str, name: str, known: Known) -> stdlib.Method | 
 def _imported(base: str, known: Known) -> str:
     """Name a class `--fix` is importing (`NDArray`) as the module's imports do (`np.typing.NDArray`).
 
+    An import that runs, or one under `if TYPE_CHECKING:` it's adding for a package the module
+    imports in its functions alone, or by a call (`np = pytest.importorskip("numpy")`).
+
     Returns:
       It, as `LibraryNames.installed` has its methods (by its dotted path, where no import of the
       module's leads to it); `base` itself for any other.
 
     """
     plan: ImportPlan | None = known.names.plan
-    if plan is None or base not in plan.added:
+    qualified: str | None
+    if plan is None or (qualified := _importing(base, plan)) is None:
         return base
-    qualified: str = added_dotted(plan.added[base])
     bound: str
     origin: str
     for bound, origin in plan.bound.items():
         if qualified.startswith(f"{origin}{_DOT}"):
             return f"{bound}{qualified.removeprefix(origin)}"
     return qualified
+
+
+def _importing(base: str, plan: ImportPlan) -> str | None:
+    """Find the dotted origin of a name an import `--fix` is adding binds (see `_imported`).
+
+    Returns:
+      It, or `None` for a name no such import binds.
+
+    """
+    if base in plan.added:
+        return added_dotted(plan.added[base])
+    if base in plan.guarded and base not in plan.checking.bound:
+        return _DOT.join(part for part in plan.guarded[base].origin if part)
+    return None
 
 
 def installed_chain(

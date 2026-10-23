@@ -20,3 +20,4 @@ extend-exclude = [
 astroid = "astroid" # pylint's parser, a real package name
 ND = "ND" # numpy's `NDArray`, named in the roadmap
 certifi = "certifi" # the CA bundle package, named in the changelog
+arange = "arange" # numpy's `np.arange`, named in the changelog

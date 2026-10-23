@@ -93,11 +93,16 @@ def _added(scope: Scope, use: fills.Fill, kind: str) -> stored.Added:
 def _recorded(scope: Scope, value: ast.expr) -> stored.Recorded:
     """Record a value as its finished function's scope sees it.
 
+    A read the tests around it narrow is what they leave of its union, as a binding of it would be
+    (`self.index = index` after `if not isinstance(index, Index): raise`, an `Index`).
+
     Returns:
       Its inference (`None` for an unknown value), and what that rests on if it's a guess.
 
     """
-    found: Inference | None = inference(value, scope.settings.known, scope.inferred.types)
+    found: Inference | None
+    if (found := inference(value, scope.settings.known, scope.inferred.types)) is not None:
+        found = scope.tested_read(value, found) or found
     # What it rests on counts only for a typed value (see `returned`).
     return found, frozenset() if found is None else guesses_in(scope, [value])[1]
 

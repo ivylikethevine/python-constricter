@@ -155,6 +155,26 @@ def test_none_then_one_type_is_their_union() -> None:
     ]
 
 
+NARROWED: Final = """
+class Index: ...
+
+
+class C:
+    def __init__(self, index: Index | None = None, size: int | None = None) -> None:
+        if not isinstance(index, Index):
+            raise ValueError
+        self.index = index
+        if size is None:
+            return
+        self.size = size
+"""
+
+
+def test_a_value_the_tests_narrow_is_stored_as_they_leave_it() -> None:
+    """A parameter's union, narrowed by a test before the store: the type it leaves, as a binding's."""
+    assert _found(NARROWED) == [(8, 8, "self.index", "Index", True), (11, 8, "self.size", "int", True)]
+
+
 def test_the_fix_policy_holds() -> None:
     """`fix-ignore = assigned` drops the fix, not the offence."""
     policy: Checks = _ON._replace(fixes=FixPolicy(ignore=frozenset({"assigned"})))

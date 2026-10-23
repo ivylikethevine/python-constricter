@@ -443,7 +443,9 @@ def tested(root: Path, suite: Suite, keep: Path | None, data: Path | None) -> Ou
     if keep is not None:
         keep.parent.mkdir(parents=True, exist_ok=True)
         _ = keep.write_text("\n".join(outputs), encoding="utf-8")
-    tests: list[Test] = [test for report in sorted(reports.glob("*.xml")) for test in junit_tests(report)]
+    tests: list[Test] = [
+        test for report in sorted(reports.glob("*.xml")) for test in junit_tests(report, root)
+    ]
     if data is not None and tests:
         data.parent.mkdir(parents=True, exist_ok=True)
         _ = data.write_text("".join(json.dumps(test._asdict()) + "\n" for test in tests), encoding="utf-8")
@@ -478,11 +480,12 @@ def _commands(suite: Suite, reports: Path | None = None) -> list[list[str]]:
     ]
 
 
-def junit_tests(report: Path) -> list[Test]:
-    """Read the tests of one part's JUnit report (see `_JUNIT_FAMILY`).
+def junit_tests(report: Path, ran_in: Path | None = None) -> list[Test]:
+    """Read the tests of one part's JUnit report (see `_JUNIT_FAMILY`), run in `ran_in`.
 
     Returns:
-      Each one, in the report's order; none for a report that can't be read.
+      Each one, in the report's order, its file relative to `ran_in`; none for a report that can't
+      be read.
 
     """
     try:
@@ -491,14 +494,11 @@ def junit_tests(report: Path) -> list[Test]:
         return []
     found: list[Test] = []
     case: ET.Element
+    file: str
+    inner: str
     for case in root.iter("testcase"):
-        file: str = case.get("file", "")
-        classes: str = case.get("classname", "")
-        # The class name is the file as a module, then the test's classes: the module part is the
-        # file's, whose dots are its directories.
-        module: str = file.removesuffix(".py").replace("/", ".")
-        inner: str = classes.removeprefix(module).strip(".") if classes.startswith(module) else classes
-        parts: list[str] = [file or classes, *inner.split(".")] if inner else [file or classes]
+        file, inner = _located(case.get("file", ""), case.get("classname", ""), ran_in)
+        parts: list[str] = [file, *inner.split(".")] if inner else [file]
         child: ET.Element | None = next((each for each in case if each.tag in _OUTCOMES), None)
         outcome: str = _PASSED
         reason: str = ""
@@ -516,6 +516,46 @@ def junit_tests(report: Path) -> list[Test]:
             ),
         )
     return found
+
+
+def _located(file: str, classes: str, ran_in: Path | None) -> tuple[str, str]:
+    """Split a test's class name into its file, relative to `ran_in`, and the classes after it.
+
+    The class name is the node id's file as a module, then the test's classes, relative to pytest's
+    rootdir, which may be above the checkout (`local.corpus-suites.<checkout>.tests.test_a`). The
+    report's `file` is the test function's own path: a base class's for a method a test class
+    inherits, and kept by pytest's cached rewritten module from wherever it was compiled
+    (`../../old/checkout/tests/test_a.py`), so only its last directories are the node id's.
+
+    Returns:
+      The file, and the classes' dotted names (empty for a test at a module's top level); `file` or
+      the class name, and every class name, where neither `file` nor the checkout's files name the
+      class name's module.
+
+    """
+    if ran_in is not None:
+        base: Path
+        for base in ran_in.parents:  # the checkout's own path, where the rootdir is above it
+            above: str = f"{ran_in.relative_to(base).as_posix().replace('/', '.')}."
+            if classes.startswith(above):
+                classes = classes.removeprefix(above)
+                break
+    suffix: str = ".py" if file.endswith(".py") else ""
+    names: list[str] = file.removesuffix(suffix).split("/")
+    start: int
+    for start in range(len(names)):
+        module: str = ".".join(names[start:])
+        if classes == module or classes.startswith(f"{module}."):
+            return "/".join(names[start:]) + suffix, classes.removeprefix(module).strip(".")
+    if ran_in is None:
+        return file or classes, classes
+    dotted: list[str] = classes.split(".")
+    end: int
+    for end in range(len(dotted) - 1, 0, -1):  # an inherited method's: the longest start that's a file
+        path: str = "/".join(dotted[:end]) + ".py"
+        if (ran_in / path).is_file():
+            return path, ".".join(dotted[end:])
+    return file or classes, classes
 
 
 _SKIP_TAG: Final = "skipped"  # the report's element for a skip, an expected failure's too
@@ -560,16 +600,19 @@ def read(output: str) -> Outcome:
 
 @functools.cache
 def parser() -> str:
-    """Name the version of what reads a test run's output: `read`, `_summary`, `_added` and their patterns.
+    """Name the version of what reads a test run's outcome: its output's readers and its JUnit reports'.
 
-    A record read by another version isn't comparable with one read by this.
+    `read`, `_summary`, `_added` and their patterns; `tested`, `junit_tests` and `_located`. A record
+    read by another version isn't comparable with one read by this.
 
     Returns:
       A hash of their source.
 
     """
     patterns: tuple[re.Pattern[str], ...] = (_FAILED, _COUNTS, _SUMMARY, _PRETTY, _COLOUR, _RAN, _RAN_SUMMARY)
-    source: str = "".join(inspect.getsource(each) for each in (read, _summary, _added))
+    source: str = "".join(
+        inspect.getsource(each) for each in (read, _summary, _added, tested, junit_tests, _located)
+    )
     source += "".join(each.pattern for each in (*patterns, _UNITTEST)) + _TIMED_OUT
     return hashlib.sha256(source.encode()).hexdigest()[:12]
 
