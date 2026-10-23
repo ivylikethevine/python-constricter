@@ -326,3 +326,31 @@ def test_fix_likely_checks_again_what_reads_a_guess_another_file_wrote(
     _ = capsys.readouterr()
     assert cli.main([f"--jobs={jobs}", "--diff", "--likely", "-q", str(tmp_path)]) == cli.EXIT_CLEAN
     assert not capsys.readouterr().out
+
+
+# What `--unsafe-fixes` writes in one run: LVA013's `self.flag: bool` in `lib.py`, then `use.py`'s read.
+DECLARED_READ: Final = "    flag: bool = options.flag\n"
+
+
+@JOBS
+@pytest.mark.parametrize("jobs", ["1", "2"])
+def test_fix_unsafe_checks_again_what_reads_an_attribute_another_file_declared(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    jobs: str,
+) -> None:
+    """An attribute LVA013's guess declares in one file is read as declared by another: in the same run."""
+    _ = _write(
+        tmp_path / "lib.py",
+        "class Options:\n    def __init__(self) -> None:\n        self.flag = False\n",
+    )
+    use: Path = _write(
+        tmp_path / "use.py",
+        "from lib import Options\n\ndef f(options: Options) -> None:\n    flag = options.flag\n",
+    )
+    unsafe: list[str] = [f"--jobs={jobs}", "--unsafe-fixes", "--extend-select", "LVA013", "-q"]
+    assert cli.main([*unsafe, "--fix", str(tmp_path)]) == cli.EXIT_CLEAN
+    assert DECLARED_READ in use.read_text(encoding="utf-8")
+    _ = capsys.readouterr()
+    assert cli.main([*unsafe, "--diff", str(tmp_path)]) == cli.EXIT_CLEAN
+    assert not capsys.readouterr().out

@@ -55,6 +55,14 @@ Notable changes, newest first. Each release's full notes are generated from its 
 - `--fix` reads a class variable a generic base binds (`read1 = Read1` in `Parser(Generic[T])`)
   through `self` in a subclass given its arguments (`class XTermParser(Parser[str])`), as it does a
   plain base's. On textual, a second pass had 3 more fixes.
+- `--fix --unsafe-fixes` checks again, in the same run, what reads a guess another file declared,
+  as `--likely` does: an attribute LVA013's fix declares (`self.flag: bool = False`) types the
+  reads of it elsewhere (`flag = options.flag`). With LVA013 selected, a second pass had 228 more
+  lines of mypy's to write, 92 of pdm's and 68 of the standard library's, on 22 of the 47 corpora.
+- An attribute's stored value, and a returned one, that the tests before it narrow is typed as they
+  leave it, as a binding of it is: `self.index = index` after `if not isinstance(index,
+DatetimeIndex): raise` is a `DatetimeIndex`, not the parameter's `DatetimeIndex | None`. On
+  pandas with LVA013, `self.index`'s fix set off 5 of mypy's errors.
 - The corpus runs' witness takes any value that reads, writes and closes for `typing.IO`'s
   classes, which nothing is an instance of; reads a `StringIO` or `BytesIO` where `io`'s or
   `typing`'s file class is named as a test's stand-in, saying nothing of the fix; and reads a

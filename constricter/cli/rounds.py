@@ -42,9 +42,9 @@ def settled(
     """Check every file, then again each one `--fix` changed in a way a second check would see.
 
     Until a round changes nothing, `HINT_ROUNDS` at most: a second pass is then left nothing. With
-    `--likely` alone, the files a round changed are indexed again, and the others checked again too
-    where that changes what they know from outside: what reads a guess another file declares now is
-    certain.
+    `--likely` or `--unsafe-fixes` and no type checker's hints, the files a round changed are indexed
+    again, and the others checked again too where that changes what they know from outside: what
+    reads a guess another file declares (an attribute LVA013's declares) now knows its type.
 
     Returns:
       What each file found, a file's rounds joined.
@@ -60,7 +60,7 @@ def settled(
         session,
     )
     fixing: bool = options.mode is Mode.FIX
-    onward: bool = fixing and session is None and options.guesses is Guesses.LIKELY
+    onward: bool = fixing and session is None and options.guesses is not Guesses.NONE
     again: list[int] = [
         index
         for index, run in enumerate(runs)

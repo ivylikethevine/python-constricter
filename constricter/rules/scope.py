@@ -347,6 +347,18 @@ class Scope:
             unsafe = bool(origins)
         return fix, unsafe, origins
 
+    def tested_read(self, value: ast.expr, found: Inference) -> Inference | None:
+        """Type a read the tests around it narrow, as a binding of it would be (see `_tested`).
+
+        Returns:
+          The inference, or `None` where no test narrows it, or one narrows it otherwise.
+
+        """
+        named: Inference = found._replace(
+            annotation=self.inferred.unions.get(found.annotation, found.annotation),
+        )
+        return self._tested(value, named, value.lineno)
+
     def _tested(self, value: ast.expr, named: Inference, line: int) -> Inference | None:
         """Type a read the tests around it narrow by what they leave of its union.
 
