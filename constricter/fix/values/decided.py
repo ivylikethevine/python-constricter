@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Builtins and operators `--fix` types by their operands' types, as typeshed's `builtins.pyi` has them.
 
 `abs`, `round`, `divmod` and `sum` of builtin numbers; `min` and `max` of values of one type (or of

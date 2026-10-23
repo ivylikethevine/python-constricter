@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """One walk of a whole module, shared by every pass over all of it (importing nothing of constricter's)."""
 
 import ast

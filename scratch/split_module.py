@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Move top-level definitions out of a module into a new sibling module.
 
   local/.venv/bin/python -m scratch.split_module SOURCE NEW DOCSTRING_FILE NAME [NAME ...] [--as OLD=NEW ...] [--ignore NAME ...]

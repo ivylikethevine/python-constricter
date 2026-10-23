@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Fix levels: each `--fix` mechanism's id, `fix-select`/`fix-ignore`, and `unsafe-fix-select`."""
 
 import textwrap

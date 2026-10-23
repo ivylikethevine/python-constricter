@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix`: which values decide an annotation, and which are only guesses (`--unsafe-fixes`)."""
 
 import textwrap

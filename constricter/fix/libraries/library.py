@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Calls to the standard library `--fix` types from the tables (see `constricter.fix.libraries.stdlib`).
 
 A class, or a function returning one (`library_class`); a function with a fixed builtin result, one

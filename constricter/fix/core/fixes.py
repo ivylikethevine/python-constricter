@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix`: write the annotations offences offer, to a file's lines or a notebook cell's."""
 
 import contextlib

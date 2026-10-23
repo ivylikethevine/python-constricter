@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The tuples a file's names stand for, other checked files': a named tuple's fields, an alias's tuple.
 
 What an unpacking splits a value of one of them by (see `targets.named_tuples`), spelled as the file

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A checked file's classes' methods defined with `@overload`, for the calls their arguments decide.
 
 On a receiver typed as the class, as the calling file spells it: read and written as its functions'

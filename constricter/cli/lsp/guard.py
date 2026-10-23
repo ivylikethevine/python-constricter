@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Run a type checker's language server for `--infer-with`, so it can't outlive constricter.
 
   python .../constricter/cli/guard.py GRACE EXECUTABLE [ARGUMENT ...]

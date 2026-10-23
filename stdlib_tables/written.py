@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What the generator writes that no one configuration's reading holds.
 
 A class's members apart from its ancestors' (`inherited`), and the modules only some platforms

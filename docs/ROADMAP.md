@@ -684,6 +684,12 @@
   build's part go, another build's part unswept for a month, and its own entries unread for a month
   or, the longest unread first, over 256 MB.
 
+- **No per-file license headers.** `REUSE.toml` licenses every file (`path = "**"`, MIT; the code
+  of conduct CC-BY-4.0, as the Contributor Covenant's text), and Scorecard's License check reads
+  only `LICENSE.md`, so no file carries a header of its own; ruff's `missing-copyright-notice` is
+  off, and `git grep` finds the identifier in `REUSE.toml` alone. The synced CI files lose theirs
+  in their source, which the sync carries.
+
 ## Next
 
 By size (smallest first) and, within each, by value: the bindings with no fix an item could reach,
@@ -701,8 +707,7 @@ measure before building.
 
 ### Built, waiting on a run
 
-1. **Six mechanisms, uncounted.** Built since the 0.4.0-rc.3 mega run, each with its tests and a fix
-   kind of its own:
+1. **Eight mechanisms, uncounted.** Built since the 0.4.0-rc.3 mega run, each with its tests:
    - **The text overload** (`text`, a guess): a standard-library function overloaded on `str`
      against `bytes` alone, with no argument's type known, takes its `str` signature's return
      (`os.path.join(root, name)` a `str`, `os.listdir(path)` a `list[str]`;
@@ -738,6 +743,25 @@ measure before building.
      `self.x`, 1,660 of them in annotated functions; the stores themselves are offences of their
      own, outside the 252,637.
 
+   - **Narrowed reads** (`tested`, certain): a name or attribute read where a test around it narrows
+     its union is what the test leaves (`if self.conn is None: return`, then `conn = self.conn` a
+     `Connection`; `isinstance`, truth tests, `not`, `and`, `or`), not past a store between the test
+     and the read (`narrowed.narrowed_to`). Of the 13,972 bindings with no fix that copy a name or an
+     attribute in a function, 424 follow a test of what they copy: `is None` (159), `isinstance`
+     (148) or its truth (117), about 0.2%; held to the packages' checkers bringing no new error.
+
+   - **The project's own generic classes** (`method` and `attribute`, certain; no kind of its own):
+     a member of a checked file's generic class, its type parameters bound by the receiver's
+     arguments (`rows.first()` on a `Result[Row]` a `Row | None`; `class C[T]`, `Generic[...]`, a
+     subscripted base), through its generic bases and under a plain class given its arguments
+     (`class Rows(Result[Row])`; `declarations.generic_members`, `members._own_generic`); another
+     file's too, its bases not followed. sqlalchemy defines 101 generic classes (their subclasses
+     included), pandas 30, pydantic 11: 75 bindings with no fix are a member of a name annotated
+     with one, parameterised (74 of them sqlalchemy's), and 246 a member of `self` in one's own
+     method (sqlalchemy 136, the standard library 77, pandas 30), about 0.1%. Left: `self` in the
+     class's own methods is the class bare, so a member naming its parameters isn't typed there
+     (it could be, written with the parameters, which the methods bind).
+
    Done when a mega run counts each kind, holds its guesses to [LIKELY.md](LIKELY.md)'s bars and the
    packages' checkers, and the corpus suites are the same after LVA013's fixes. About 2 hours beside
    the run; coverage up to 6%, likely far less.
@@ -758,6 +782,13 @@ measure before building.
    `macos-15-intel`. Done when a release's compiled wheels all build in under 6 minutes, the same 20
    wheels and attestations on PyPI and the GitHub release. Under an hour beside the release;
    coverage unchanged.
+
+4. **Why a call has no fix, counted.** `--format=json` gives a call bound with no fix the reason
+   it has none (`unfixed`: `receiver`, `member`, `untyped`, `library`, `imported`, `local`,
+   `vague`, `declined`, `other`; `fix/values/refused.py`), and the census keeps it on each row and
+   counts the calls by it (`census.md`'s "Calls with no fix, by why", the record's `reasons`). Done
+   when a mega run's `census.md` has the table: then size Large items 3 and 2 and the
+   `vague = 0` run from it. Beside the next run; coverage unchanged.
 
 ### Small: under 4 hours
 
@@ -810,11 +841,34 @@ measure before building.
    later ones' where `--fix` doesn't); a hint narrower than the package's own checker reads the
    value (`message.get("more_body")`, `bool` to basedpyright and `bool | None` to mypy); the same
    name imported from elsewhere (`Image`, `ValidationError`), which only the checker's definition
-   link tells apart; and pandas's `ArrayLike` and `Manager` unions read as one member. Done when a
-   hinted run's new errors are under one for each hundred of its hints' fixes on the three corpora
-   type-checked: on rc.3, every hinted step's against the checkers' fixes past
-   `--fix --unsafe-fixes`, pandas 0.9 (169 for some 18,600), sqlalchemy 1.2 (24 for 2,100) and
-   pydantic 0.5 (3 for 570). About 6 hours; coverage down by the hints withdrawn.
+   link tells apart; and pandas's `ArrayLike` and `Manager` unions read as one member. Built, not
+   yet run (2026-10-21): an alias of a union is the union, for the narrowing rule and inside a
+   container (pandas's `Scalar` 34 of rc.3's errors, `ArrayLike` 7, `Manager` 2, `DtypeObj` 1,
+   `list[Scalar]` 2, sqlalchemy's `_ListenerFnSequenceType` 1); a standard-library module's
+   attribute the module hasn't at run time is no fix (`sys.OptExcInfo` 5,
+   `importlib.metadata.SelectableGroups` 2); a concatenation's `tuple[*tuple[str, ...], str]` is
+   written `tuple[str, ...]` (3); and a name the function compares with `None` takes `None` (`rec`
+   3). On sqlalchemy with pyrefly's hints, one process on 16CPU/60GB, the tree withdraws 15 of the
+   committed code's 3,708 fixes (the five `sys.OptExcInfo`, `clslevel`, and eight names hinted a
+   union alias they never narrow: `_KeyType`, `_InterimRowType`, `_InternalEntityType`, ...), adds
+   4 (`T | None` where the hint alone was dropped for a later `None`) and changes 5 (`rec`, `names`,
+   three more `| None`); on pydantic `--fix --unsafe-fixes` brings basedpyright no new error (613
+   before and after). Found on rc.3 and fixed in the tree: **a hint applied to the wrong name**. A file in a cycle of
+   calls is checked again within a round once the other files' returns are known, its own first
+   check's fixes written, while the round's hints were asked on the text before them: every hint
+   below an added line (a declaration, an import) sat that many lines too high, on whichever name
+   ended at the same column there (pandas's `result_kwargs: np.ndarray[...] = {}` in
+   `core/window/ewm.py`, pyrefly's hint for `update_deltas` four lines below; `new_levels: int = []`
+   in `core/indexes/multi.py`, basedpyright's). 3 of rc.3's 248 checker fixes on an empty display
+   (`scratch/misplaced_hints.py`), so about 1 in 100 checker fixes, which the type errors show as
+   assignment errors. The runner alone reproduced it (`local/runs/pandas-pyrefly.toml`, 2026-10-21:
+   the cycle's second check needs the returns the runner's environment types). The hints now move
+   past the lines the file's earlier checks added (`runs.shifted`, `schedule._Planned.hints_of`).
+   Done when a hinted run's new errors are under one
+   for each hundred of its hints' fixes on the three corpora type-checked: on rc.3, every hinted
+   step's against the checkers' fixes past `--fix --unsafe-fixes`, pandas 0.9 (169 for some
+   18,600), sqlalchemy 1.2 (24 for 2,100) and pydantic 0.5 (3 for 570). About 3 hours left, beside
+   the run; coverage down by the hints withdrawn.
 2. **The witness, past a test's own classes.** The corpora runs hold a fixed binding's value to its
    annotation as its package's traced tests bind it (`tests/corpus/witness`). A value of a class a
    test module defines tells nothing of the annotation, as a mock or a `SimpleNamespace` doesn't,
@@ -825,8 +879,16 @@ measure before building.
    109). Most are the package's own declarations its tests contradict: a numpy scalar where `int` or
    `bool` is declared (pandas's `iloc`, `_has_infs`), `None` where it isn't (sphinx's C++ parser),
    `round_trip_pickle`'s `DataFrame | Series` for any value pickled, pytest's `FSHookProxy` for a
-   `HookRelay`. Done when every certain fix that differs is such a declaration (pydantic's
-   `multiple_of: Decimal | None`, bound to an `int`). About 3 hours; coverage unchanged.
+   `HookRelay`. Read through on 2026-10-21, all 223: the witness was wrong on 6, fixed in the tree
+   (`typing.IO`'s classes, which nothing is an instance of, now take any value that reads, writes
+   and closes: optuna's `NamedTemporaryFile` wrapper, 147 of its counts; a `StringIO` or `BytesIO`
+   where `io`'s or `typing`'s file class is named is a test's stand-in, as a test's `open` or
+   `io.TextIOWrapper` gives it: dask's, black's, celery's; and a package's `pytest` plugin module
+   is a test module: pdm's `pdm.pytest.Distribution`). The other 217 are declarations the tests
+   contradict: the package's own, or typeshed's (asyncio's `Server.sockets` as `socket.socket`,
+   given `TransportSocket`; uvloop's `Server` and transports for asyncio's). Done when the next
+   mega run's certain fixes that differ are those alone. Under an hour beside the run; coverage
+   unchanged.
 3. **django's traced tests, in more than one process.** The tracer doesn't follow the processes
    `multiprocessing` starts, so django's suite is traced with `--parallel=1`: 643s on the 0.4.0-rc.3
    mega run, to 65s untraced on its workers, the longest step but three. celery's parts are traced
@@ -839,9 +901,18 @@ measure before building.
    parameters' types as `callers`' seeds brought more errors than fixes (see the trace's item under
    Large), so what's new is the returns, written before `--fix` as `pyrefly infer`'s signatures
    were; its sampling is also a model for the next item. Measure on pydantic's and django's tests:
-   the time against the `traced` step's, the fixes past the trace's, the new errors. Done when
-   measured; a corpus step only if it brings more fixes than the trace for no more errors. About 4
-   hours; coverage unchanged.
+   the time against the `traced` step's, the fixes past the trace's, the new errors. Tried
+   2026-10-21 (RightTyper 0.1.0 on pydantic 2.14.0's Python 3.14.7, one process on 16CPU/60GB):
+   the run itself costs 17.7s against 9.8s plain (`tests/test_docs.py` left out: its 570 doc
+   examples fail under RightTyper's `sys.monitoring` hooks), where the `traced` step took 84s on
+   rc.3 for a 21s plain run; but it wrote no signature, crashing while reading pydantic's own
+   annotations (a `ForwardRef` with no `__name__` on 3.14, patched past, then `ReprArgs`, a
+   `TYPE_CHECKING`-only name, evaluated), and its post-processing wants a process pool (no
+   `--no-use-multiprocessing` in `--help`). So the fixes and errors are unmeasured, and django
+   wasn't run (its suite under RightTyper outruns a sandboxed call's 10 minutes). Next: a package
+   whose annotations it can read (django's, which has none), or `--ignore-annotations` on pydantic
+   with the overwritten signatures reverted. Done when measured; a corpus step only if it brings
+   more fixes than the trace for no more errors. About 3 hours left; coverage unchanged.
 5. **A traced run, sampled.** The tracer follows every line of a recorded function until its
    statements have ended 20 times with nothing new: django's traced tests take ten times their
    untraced time. Record in short windows at random times, with `sys.monitoring`'s events off
@@ -858,8 +929,8 @@ measure before building.
    longest chain first, `_PATIENCE`, backfilling). `scratch/schedule_solve.py` plans a finished
    run's steps the same way and proves how short any schedule of them can be: a mega run of 154
    minutes had a shortest schedule of 129 by the solver, 147 held to what the runner gave each, and
-   a proved floor of 57. Left: OR-Tools is in the `dev` group alone, not `corpus`, which CI's corpus
-   setup installs. Done when a super and a mega run each take within a tenth of the solver's
+   a proved floor of 57. OR-Tools is in the `corpus` group, which CI's corpus setup installs, and
+   `dev`. Done when a super and a mega run each take within a tenth of the solver's
    shortest schedule of their own steps. About 2 hours beside the runs; coverage unchanged.
 7. **CI's tools and security workflows, the shared way.** `security.yml` runs CodeQL and the weekly
    link check in jobs of its own, and every workflow that needs a binary (actionlint, gitleaks,
@@ -872,15 +943,23 @@ measure before building.
    actions do. How: take the `setup-tool` and `setup-tools` actions and `apt/lib.sh` from the sync;
    write `tools.txt` with actionlint, gitleaks and lychee at today's pins; replace each
    `actions/tool` step (`ci.yml`'s offline lychee, `security.yml`'s three) with `setup-tools` and
-   delete `actions/tool`; drop the three rows from the local roster, keeping uv's; take `codeql.yml`
+   delete `actions/tool`; add `osv-scanner scan source --recursive .` to the Dependency audit job,
+   from the shared roster's osv-scanner row and with `api.osv.dev:443` allowed, so it scans every
+   lockfile as Scorecard's Vulnerabilities check does and `tests/ci_local.py` runs it before a push; drop the three rows from the local roster, keeping uv's; take `codeql.yml`
    (`language=python`) and `link-check.yml` from the sync and delete the `codeql` and `links` jobs
    from `security.yml`, which keeps zizmor, actionlint, the workflow conventions, pip-audit,
    dependency review and gitleaks; and re-read each job's `allowed-endpoints` from an audit run,
    since the download hosts move. The ruleset needs nothing: CodeQL is a code-scanning tool there,
    not a named check. Done when every workflow has one green run on a pull request, including a
-   weekly `link-check.yml` by hand, `tool-versions.yml` reports the same four tools from the new
-   roster, and the sync has nothing left to send. About 5 hours; coverage unchanged.
-8. **A parallel check, past its longest chain.** With every CPU the standard library checks in 12.9s
+   weekly `link-check.yml` by hand, `tool-versions.yml` reports the same four tools and osv-scanner
+   from the new roster, the Dependency audit runs osv-scanner, and the sync has nothing left to send. About 5 hours; coverage unchanged.
+8. **Mutation testing.** Line coverage is held at 100% (`fail_under`), so it no longer says which
+   lines run without a test checking what they do; a mutant the suite survives does. How: `mutmut`
+   over `constricter/`, its tests run without the corpus suites, in a `scratch/` script with its
+   output under `local/`; triage the survivors and write tests for those worth killing. Done when
+   a full run's survivors are each killed or recorded as equivalent. About 6 hours beside the run;
+   coverage unchanged.
+9. **A parallel check, past its longest chain.** With every CPU the standard library checks in 12.9s
    and pandas in 11.3s: 46s and 50s in one process, 29s in two, 18s in four, 13.7s and 12.9s in
    eight, so about 10s of each doesn't shorten with more (timed before a method's lookups were kept
    for a run, which took one process from 53.7s to 43.0s on the standard library and 61.8s to 53.5s
@@ -931,26 +1010,7 @@ measure before building.
    the corpora's own type checkers find no new error after the returns alone, and `--fix` on pandas
    gains the callers' fixes the written returns make certain. About 10 hours; coverage unmeasured:
    it moves guesses to certain more than it adds fixes.
-3. **Narrowed reads.** A read of an `X | None`, or of a union the function tests, has no fix or only
-   a guess: a checker narrows it where `--fix` doesn't follow the test
-   (`if self.conn is None: return`, then `conn = self.conn`). One nothing narrows (its function
-   neither tests nor stores it, nor what it's read of) has its declared type, a guess. Of the 13,972
-   bindings with no fix that copy a name or an attribute in a function, 424 follow a test of what
-   they copy in it: `is None` (159), `isinstance` (148) or its truth (117). Follow those tests
-   through a function's branches, and offer what every path to the read agrees on. Done when
-   `conn = self.conn` after the `return` is a `Connection`. About 11 hours, for about 0.2% (some 400
-   fixes).
-4. **The project's own generic classes.** A generic class the checked files define is skipped whole:
-   its methods' returns and attributes depend on how it's parameterised (sqlalchemy's `Mapped[T]`,
-   `Select[T]`). Bind its type parameters by the receiver's arguments, as a standard-library or
-   installed generic class's are, and a module's class under a generic library one
-   (`class Queue(deque[int])`) by its base's. Counted: sqlalchemy defines 101 generic classes (their
-   subclasses included), pandas 30, pydantic 11; django, Twisted and pip none. 75 bindings with no
-   fix are a member of a name annotated with one, parameterised (74 of them sqlalchemy's), and 246 a
-   member of `self` in one's own method (sqlalchemy 136, the standard library 77, pandas 30); a
-   receiver typed by inference isn't counted. Done when `rows.first()` on a `Result[Row]` is a
-   `Row | None`. About 10 hours, for about 0.1% (some 300 fixes).
-5. **A method's `return` of an untyped value.** Of the 11,959 `self.method()` bindings with no fix,
+3. **A method's `return` of an untyped value.** Of the 11,959 `self.method()` bindings with no fix,
    5,617 call a method the class doesn't define itself, and 5,436 one whose `return` gives a value
    `--fix` can't type: a tuple (1,858), a call (1,455), a local or another name (1,396), a subscript
    or attribute (272). Only 137 return an unannotated parameter (26 nothing else), and in none of
@@ -959,7 +1019,7 @@ measure before building.
    almost none of them. What's left is the values themselves: the tuple's parts, the call, the
    local. Done when a method returning its parameter types its calls. About 14 hours, for about 0.3%
    (some 800 guesses).
-6. **Annotations held to a run.** The corpora's witness holds each fix to the values its package's
+4. **Annotations held to a run.** The corpora's witness holds each fix to the values its package's
    tests bind (`tests/corpus/witness/constricter_witness.py`): of the certain fixes a test could
    tell of, 99.4% hold on the mega corpora's suites, and what differs is a declared type the tests
    contradict or a test's stand-in. The same check of a project's own annotations, as
@@ -978,8 +1038,9 @@ What to measure before building, smallest first.
 1. **A `vague = 0` run.** The runs use the default, no `Any` anywhere, which rejects `NDArray[Any]`,
    `dict[str, Any]`, `pickle.loads` and `json.loads`: `numpy` alone is 4,320 calls with no fix on
    the 47 corpora. One run at `vague = 0` says what the default costs on the scientific corpora
-   (xarray, dask, networkx, pandas). Done when the census is read at both. About an hour beside the
-   run; coverage unchanged.
+   (xarray, dask, networkx, pandas): a run file's `options = ["--vague", "0"]` gives it to every
+   constricter command of the run (2026-10-21). Done when the census is read at both. About an
+   hour beside the run; coverage unchanged.
 2. **Two checkers agreeing, likely.** `checker` is one set to LIKELY.md's bars, by checker; a hint
    basedpyright, ty and pyrefly agree on (two of them, or all three) is a set of its own, measured
    the same way, and `--likely` applies it where one checker's hint alone doesn't pass. Done when
@@ -990,14 +1051,15 @@ What to measure before building, smallest first.
    failure ids two ways between runs. pytest's `--junitxml` or `--report-log` (and unittest's
    verbose output, for django's runner) in `corpus_suite.tested` gives exact test and skip ids, skip
    reasons and per-test durations: sqlalchemy's skip-count flake by name, with no rerun, and what
-   test-level sampling or sharding would later need. Done when the records hold each run's test ids
-   and durations and the tests table is read from them. About 3 hours; coverage unchanged.
-4. **Why a call has no fix.** The census classifies the shape of a value with no fix, never why the
-   fix failed: a vague return, open overloads that disagree, a receiver of no type, an import it
-   can't resolve, an untyped callee. A column for it, read from the check (`--format=json` gains the
-   reason a call's fix was refused), so the items above are sized in one run, not from the rows by
-   hand. Done when `census.md` has the table by reason. About 4 hours; coverage unchanged.
-5. **One type at run time, no fix.** The traced suites already know what each binding held; for each
+   test-level sampling or sharding would later need. Built, not yet run (2026-10-21): each part
+   pytest runs writes a JUnit report (`--junitxml`, the `xunit1` family, whose `file` gives each
+   test's node id back), read into `records/<corpus>/<version>/tests-<run>.tests.jsonl`, a line a
+   test with its id, outcome, seconds and skip reason, and the failed tests are the reports' where
+   every part wrote one; the counts stay the summary's (the reports don't tell an unexpected pass
+   from a pass), and a suite unittest runs (django, mkdocs, twisted) is read as text still. Done
+   when a mega run's records hold them and the tests table reads sqlalchemy's skips by name. About
+   an hour left, beside the run; coverage unchanged.
+4. **One type at run time, no fix.** The traced suites already know what each binding held; for each
    binding with no fix, whether the run saw one type is both the upper bound of any inference and a
    bug finder. A table by shape in the `traced` step: bindings with no fix, those the run bound to
    one type, and the commonest sources. Done when the table is in a run's report. About 4 hours;

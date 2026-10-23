@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Jupyter notebooks: their code cells, joined into one module, and where each line came from."""
 
 import json

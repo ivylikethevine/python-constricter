@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What a module is checked with (`Settings`): its options, and what `--fix` knows of it.
 
 Its own tables (`Tables`) joined with what other checked files say of it (`Outside`): functions'
@@ -34,11 +33,13 @@ from constricter.rules import late, widened
 from constricter.rules.annotations import free_of, free_of_all
 from constricter.rules.calls import keyed, marked
 from constricter.rules.declarations import (
+    GenericClass,
     awaited_returns,
     casts,
     class_attributes,
     defined_type_vars,
     factories,
+    generic_members,
     self_returns,
 )
 from constricter.rules.decorators import passing
@@ -85,6 +86,11 @@ def module_settings(
     # The file's own types that mention a type variable it imports (`--fix` sees only its own).
     free: frozenset[str] = frozenset() if outside is None else outside.type_vars
     selfish: dict[str, frozenset[str]] = self_returns(tree)
+    # The generic classes it names, as it spells them: other checked files', then its own.
+    generic: dict[str, GenericClass] = {
+        **({} if outside is None else outside.generic),
+        **generic_members(tree),
+    }
     return Settings(
         checks._replace(type_comments=checks.type_comments or python2_compatible(tree)),
         lines,
@@ -106,8 +112,13 @@ def module_settings(
                 inherited.lineage(
                     tree,
                     selfish,
-                    # A base whose line the index followed is in sight too, another package's included.
-                    frozenset(bases).union(imported.methods if imported else (), beyond),
+                    # A base whose line the index followed is in sight too, another package's included,
+                    # and a generic class given its arguments (`Result[Row]`), whose members bind them.
+                    frozenset(bases).union(
+                        imported.methods if imported else (),
+                        beyond,
+                        _given(tree, generic),
+                    ),
                     beyond,
                     library,
                 ),
@@ -134,6 +145,7 @@ def module_settings(
             vouched=passing(tree, defined_type_vars(tree)).union(
                 frozenset() if outside is None else outside.vouched,
             ),
+            generic=generic,
         ),
         Hierarchy.for_module(
             tree,
@@ -174,6 +186,21 @@ def module_settings(
             reads=reads.members(tree, imported, () if outside is None else outside.same),
             named={} if outside is None else outside.named,
         ),
+    )
+
+
+def _given(tree: ast.Module, generic: Mapping[str, GenericClass]) -> frozenset[str]:
+    """Name the module's classes' bases that are a generic class given its arguments (`Result[Row]`).
+
+    Returns:
+      Each, as written.
+
+    """
+    return frozenset(
+        ast.unparse(base)
+        for node in cast("list[ast.ClassDef]", of_type(tree, ast.ClassDef))
+        for base in node.bases
+        if isinstance(base, ast.Subscript) and ast.unparse(base.value) in generic
     )
 
 

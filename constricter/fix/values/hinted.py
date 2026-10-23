@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--infer-with`: a type checker's inferred type (an inlay hint) as a fix, when the file can use it.
 
 Always a guess: a hint is the type the checker gave the value where the name is bound, so it can be
@@ -43,10 +42,14 @@ A hint with edits is judged as it shows first (`Thing[str]`), then as they'd wri
 
 import ast
 import builtins
+import importlib
+import operator
 import re
 import sys
+from collections.abc import Mapping, Sequence
 from functools import lru_cache
-from typing import Final, TypeAlias
+from types import ModuleType
+from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.core.known import Hints, ImportPlan, Inference, Known, Offered
 from constricter.fix.libraries import stdlib
@@ -131,6 +134,8 @@ _DISCARD: Final = "_"
 # Each name a hint's edits import: its statement, module and name there (see `_origins`).
 _Origins: TypeAlias = dict[str, tuple[str, str, str]]
 _STDLIB: Final = sys.stdlib_module_names | {"_typeshed"}  # and the module its stubs alone have
+# Standard-library modules never imported to ask what they bind: importing one does something.
+_UNIMPORTED: Final = frozenset({"antigravity", "this", "__hello__", "__phello__", "idlelib", "turtle"})
 _RELATIVE: Final = "."
 _DOT: Final = "."
 # How one unbound name of a hint can be written: through a guarded import, or `ImportPlan.spell`.
@@ -170,15 +175,21 @@ _TYPES: Final = "types"
 _BOTTOM: Final = frozenset({"Never", "NoReturn"})  # the type of no value: never a variable's
 
 
-def hinted(
-    text: str,
-    known: Known,
-    *,
-    nesting: int,
-    before: int | None,
-    offered: Offered | None = None,
-) -> str | None:
-    """Judge a checker's hint `text` as a fix for a binding (in a module body, on line `before`).
+class Site(NamedTuple):
+    """Where a hint's name is bound.
+
+    How deep an annotation may nest there (LVA006), on which line of a module body (`None` in a
+    function), and whether to an operation on tuples (`a + (b,)`), whose precise type mypy doesn't
+    read (see `_homogeneous`).
+    """
+
+    nesting: int
+    before: int | None = None
+    concatenated: bool = False
+
+
+def hinted(text: str, known: Known, site: Site, offered: Offered | None = None) -> str | None:
+    """Judge a checker's hint `text` as a fix for the binding at `site`.
 
     `offered`: what the hint's edits would write, judged if `text` is no fix.
 
@@ -193,7 +204,7 @@ def hinted(
     candidate: str
     for candidate in dict.fromkeys(candidates):
         annotation: str | None
-        if (annotation := _spelled(candidate, known, imports, nesting=nesting, before=before)) is not None:
+        if (annotation := _spelled(candidate, known, imports, site)) is not None:
             return annotation
     return None
 
@@ -286,14 +297,7 @@ def _heads(text: str) -> list[ast.expr]:
     return [node.value for node in ast.walk(root) if isinstance(node, ast.Subscript)]
 
 
-def _spelled(
-    text: str,
-    known: Known,
-    imports: tuple[str, ...],
-    *,
-    nesting: int,
-    before: int | None,
-) -> str | None:
+def _spelled(text: str, known: Known, imports: tuple[str, ...], site: Site) -> str | None:
     """Write a hint's `text` as an annotation the file can hold, with `imports` for its names.
 
     Returns:
@@ -306,9 +310,16 @@ def _spelled(
     except SyntaxError:
         return None
     root: ast.expr | None = _widened(parsed)
+    if root is not None and site.concatenated:
+        root = _homogeneous(root)
     if plan is not None and root is not None and not known.names.starred:
         root = _unstarred(root, plan)
-    if plan is None or root is None or not _annotation(root) or not _fits(root, nesting, known):
+    if (
+        plan is None
+        or root is None
+        or not _annotation(root, known.indirect.unions)
+        or not _fits(root, site.nesting, known)
+    ):
         return None
     origins: _Origins = _origins(imports)
     root = _abstract(root, plan, origins)
@@ -320,7 +331,7 @@ def _spelled(
         {
             node.id
             for node in ast.walk(root)
-            if isinstance(node, ast.Name) and not _usable(node.id, plan, before)
+            if isinstance(node, ast.Name) and not _usable(node.id, plan, site.before)
         },
     )
     ways: dict[str, str | None] = {name: _way(name, plan, origins, lone=name in lone) for name in names}
@@ -452,16 +463,71 @@ def _misnamed(root: ast.expr, plan: ImportPlan) -> bool:
                 name in _BUILTINS and name not in plan.defined and name not in _GENERIC_BUILTINS
             ):
                 return True
-            case ast.Attribute():
+            case ast.Attribute() if id(node) not in roots:
                 parts: list[str] = _dotted(node)
                 if parts and (
                     any(part.startswith("_") for part in parts[1:])
                     or (parts[0] not in plan.bound and any(part[:1].islower() for part in parts[1:-1]))
+                    or _unbound_attribute(parts, plan)
                 ):
                     return True
             case _:
                 pass
     return False
+
+
+def _unbound_attribute(parts: list[str], plan: ImportPlan) -> bool:
+    """Check whether a dotted name through a standard-library module names what the module hasn't.
+
+    A checker prints what its stubs have: `sys.OptExcInfo`, typeshed's alias of `sys.exc_info()`'s
+    return, which `sys` doesn't bind, or `importlib.metadata.SelectableGroups`, gone since 3.12.
+    Asked of the module as this Python has it (imported here if it isn't yet); a module that can't
+    be imported says nothing.
+
+    Returns:
+      Whether the module lacks the attribute.
+
+    """
+    origin: str | None = plan.bound.get(parts[0])
+    if origin is None or origin.partition(_DOT)[0] not in _STDLIB:
+        return False
+    found: ModuleType | None
+    names: list[str] = [*origin.split(_DOT), *parts[1:]]
+    # The longest prefix that's a module, then the rest as its attributes.
+    count: int
+    for count in range(len(names), 0, -1):
+        if (found := _module(_DOT.join(names[:count]))) is not None:
+            return not _has_attributes(found, names[count:])
+    return False
+
+
+def _module(name: str) -> ModuleType | None:
+    """Find a standard-library module by its dotted `name`: imported already, or imported here.
+
+    Returns:
+      It, or `None` if it can't be imported, or isn't one (a package's submodule it hasn't).
+
+    """
+    if name.partition(_DOT)[0] in _UNIMPORTED or any(part.startswith("_") for part in name.split(_DOT)):
+        return None
+    try:
+        return importlib.import_module(name)
+    except (ImportError, OSError, ValueError, AttributeError, RuntimeError):  # one this platform lacks
+        return None
+
+
+def _has_attributes(module: ModuleType, names: Sequence[str]) -> bool:
+    """Check whether `module` has `names`, each an attribute of the one before.
+
+    Returns:
+      Whether it does.
+
+    """
+    try:
+        _ = operator.attrgetter(_DOT.join(names))(module) if names else module
+    except AttributeError:
+        return False
+    return True
 
 
 def _origin(name: str, plan: ImportPlan, origins: _Origins) -> str | None:
@@ -611,11 +677,12 @@ def _named(name: str, way: str | None, plan: ImportPlan, origins: _Origins) -> s
     return name if plan.guard(name, (module, attribute), statement) else None
 
 
-def _annotation(root: ast.expr) -> bool:
+def _annotation(root: ast.expr, unions: Mapping[str, str]) -> bool:
     """Check that an expression is an annotation, and says something: not a bare `None`.
 
     Names, attributes, subscripts and unions, whose only constants are `None` and `...`: not a call
-    (`Module("os")`), a signature, or a string.
+    (`Module("os")`), a signature, or a string. `unions`: the module's type aliases of a union, as
+    it spells them (see `Indirect.unions`).
 
     Returns:
       Whether it is.
@@ -625,21 +692,78 @@ def _annotation(root: ast.expr) -> bool:
         all(isinstance(node, _ANNOTATION_NODES) for node in ast.walk(root))
         and all(node.value in {None, Ellipsis} for node in ast.walk(root) if isinstance(node, ast.Constant))
         and not (isinstance(root, ast.Constant) and root.value is None)
-        and not _mixes(root)
+        and not _mixes(root, unions)
     )
 
 
-def _mixes(root: ast.expr) -> bool:
+def _mixes(root: ast.expr, unions: Mapping[str, str]) -> bool:
     """Check whether an annotation has a union inside it (`dict[str, int | bytes]`): a mixed container's.
 
-    Its elements are read as one member or another, which no test of the name narrows.
+    Its elements are read as one member or another, which no test of the name narrows. An alias of
+    a union (`list[Scalar]`, pandas's `Scalar = Union[str, int, ...]`) is one too.
 
     Returns:
       Whether it does.
 
     """
     chain: set[int] = _chain(root)
-    return any(isinstance(node, ast.BinOp) and id(node) not in chain for node in ast.walk(root))
+    inner: set[int] = {
+        id(name)
+        for node in ast.walk(root)
+        if isinstance(node, ast.Subscript)
+        for name in ast.walk(node.slice)
+        if isinstance(name, ast.Name)
+    }
+    return any(
+        (isinstance(node, ast.BinOp) and id(node) not in chain)
+        or (isinstance(node, ast.Name) and id(node) in inner and node.id in unions)
+        for node in ast.walk(root)
+    )
+
+
+def _homogeneous(root: ast.expr) -> ast.expr | None:
+    """Widen a tuple with an unpacked variadic part beside other elements to the variadic tuple alone.
+
+    For a concatenation, which basedpyright types precisely (`tuple[str, ...] + (name,)` is
+    `tuple[*tuple[str, ...], str]`) where mypy reads typeshed's `tuple[str, ...]` and rejects the
+    precise type declared; a display (`(name, *names)`) every checker types precisely. Every other
+    element of the variadic part's type widens to it.
+
+    Returns:
+      The annotation; `None` where an element is of another type, which no plain tuple holds.
+
+    """
+    node: ast.AST
+    for node in ast.walk(root):
+        if not (isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Tuple)):
+            continue
+        starred: list[ast.Starred] = [part for part in node.slice.elts if isinstance(part, ast.Starred)]
+        element: ast.expr | None
+        if len(starred) != 1 or len(node.slice.elts) == 1 or (element := _variadic(starred[0].value)) is None:
+            continue
+        kept: str = ast.unparse(element)
+        if any(ast.unparse(part) != kept for part in node.slice.elts if not isinstance(part, ast.Starred)):
+            return None
+        node.slice = ast.Tuple([element, ast.Constant(Ellipsis)])
+    return root
+
+
+def _variadic(node: ast.expr) -> ast.expr | None:
+    """Read the element type of a variadic tuple, `tuple[T, ...]`.
+
+    Returns:
+      `T`, or `None` for anything else (`Ts`, a type variable tuple).
+
+    """
+    element: ast.expr
+    match node:
+        case ast.Subscript(
+            value=ast.Name(id="tuple"),
+            slice=ast.Tuple(elts=[element, ast.Constant(value=builtins.Ellipsis)]),
+        ):
+            return element
+        case _:
+            return None
 
 
 def _chain(root: ast.expr) -> set[int]:

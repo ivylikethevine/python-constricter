@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What a member of a value whose type is known gives: an attribute, a method call, a subscript.
 
 `inference` works out the receiver's type (a local, `self.index`, `f()`, `x[0]`, anything it can
@@ -8,18 +7,19 @@ makes its member a guess too, as `guesses` judges.
 """
 
 import ast
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from functools import lru_cache
-from typing import TYPE_CHECKING, Final, TypeAlias
+from typing import TYPE_CHECKING, Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.core.imports import added_dotted
 from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.core.signatures import AWAIT
-from constricter.fix.libraries import generics, stdlib
+from constricter.fix.libraries import generics, overloads, stdlib
 from constricter.fix.libraries.library import library_awaited
 from constricter.fix.values.returns import METHOD_RETURNS, element_method, uniform_method
 from constricter.fix.values.targets import sole
-from constricter.rules.annotations import dotted, node_name, roots, vague_fits
+from constricter.rules.annotations import dotted, node_name, roots, vague_fits, words
+from constricter.rules.declarations import GenericClass
 from constricter.rules.keys import key, optional
 from constricter.rules.quoted import unqualified
 
@@ -36,6 +36,8 @@ _INT: Final = "int"
 _STR: Final = "str"
 _SUBSCRIPT: Final = "subscript"  # the fix kind of a subscript
 _OPTIONAL: Final = "Optional"
+_SELF_TYPE: Final = "Self"  # a generic class's method returning its receiver (see `GenericClass`)
+_DEEPEST: Final = 8  # how many generic bases up a member is looked for
 # One way to type a member: given the receiver's type as text, the member's name, and the call
 # (`None` for an attribute), its inference, or `None` if this source doesn't know it.
 MemberSource: TypeAlias = Callable[[str, str, ast.Call | None, Known], Inference | None]
@@ -163,6 +165,8 @@ def _declared(
 
     """
     found: str | None
+    if receiver in known.generic:  # its members' types depend on its arguments (see `_own_generic`)
+        return None
     if (found := None if call is not None else known.classes.get(receiver, {}).get(name)) is not None:
         return _attribute(found, receiver, name)
     lineage: Lineage = known.class_side.lineage
@@ -368,10 +372,130 @@ def _library_base(receiver: str, name: str, call: ast.Call | None, known: Known)
     return stdlib.library_member(owner, name, call, known, inherited=True)
 
 
+def _own_generic(receiver: str, name: str, call: ast.Call | None, known: Known) -> Inference | None:
+    """Type a member of a checked file's generic class, its type parameters bound by the receiver's arguments.
+
+    `rows.first()` on a `Result[Row]` whose `first` returns `T | None` is a `Row | None`; one that
+    returns `Self`, the receiver's type. On the class bare (`Result`, its parameters unknown to a
+    checker) only a member whose type names none of them; nor one given another number of arguments.
+    One the class doesn't bind is its generic bases', bound by its own arguments (`class Sub(Base[T])`),
+    and a plain class of the module's under one (`class Rows(Result[Row])`) has the base's.
+
+    Returns:
+      Its inference, or `None`.
+
+    """
+    return _generic_member(receiver, _Asked(name, call, receiver), known)
+
+
+class _Asked(NamedTuple):
+    """A member asked of a generic class: its name, its call (`None`: an attribute), its receiver."""
+
+    name: str
+    call: ast.Call | None
+    own: str  # what `Self` is
+
+
+def _generic_member(receiver: str, asked: _Asked, known: Known, depth: int = 0) -> Inference | None:
+    """Type a member of a generic class (see `_own_generic`), up through its bases.
+
+    `depth`: how many bases up this is.
+
+    Returns:
+      Its inference, or `None`.
+
+    """
+    tree: ast.expr = parsed(receiver)
+    klass: GenericClass | None = known.generic.get(
+        ast.unparse(tree.value if isinstance(tree, ast.Subscript) else tree),
+    )
+    if klass is None:
+        owner: str | None = known.class_side.lineage.definer(receiver, asked.name)
+        above: bool = owner is not None and owner != receiver and _GENERIC in owner and depth < _DEEPEST
+        return _generic_member(owner or "", asked, known, depth + 1) if above else None
+    bound: dict[str, str] = _arguments(tree, klass.params)
+    found: str | None
+    if (found := (klass.methods if asked.call is not None else klass.attributes).get(asked.name)) is None:
+        return None if asked.name in klass.bound else _inherited(klass, bound, asked, (known, depth))
+    if frozenset(words(found)) & set(klass.params) and not bound:
+        return None
+    text: str = _deduplicated(overloads.substituted(found, {**bound, _SELF_TYPE: asked.own}))
+    if asked.call is None:
+        return _attribute(text, asked.own, asked.name)
+    return Inference(text, _declared_return(asked.own, asked.name), frozenset({_METHOD}))
+
+
+def _deduplicated(annotation: str) -> str:
+    """Write a union once each member: `T | None`, `T` bound to `int | None`, is `int | None`.
+
+    Returns:
+      It.
+
+    """
+    parts: list[str] = []
+    text: str
+    for text in (ast.unparse(node) for node in _union_members(parsed(annotation))):
+        if text not in parts:
+            parts.append(text)
+    return " | ".join(parts)
+
+
+def _union_members(node: ast.expr) -> list[ast.expr]:  # a union's members, left to right; else the type
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        return [*_union_members(node.left), *_union_members(node.right)]
+    return [node]
+
+
+def _arguments(tree: ast.expr, params: tuple[str, ...]) -> dict[str, str]:
+    """Bind a generic class's type parameters to a receiver's type arguments (`Result[Row]`'s `Row`).
+
+    Returns:
+      Each parameter's argument, as text; none for a bare receiver, or one of another number.
+
+    """
+    args: list[ast.expr] = []
+    if isinstance(tree, ast.Subscript):
+        args = tree.slice.elts if isinstance(tree.slice, ast.Tuple) else [tree.slice]
+    return (
+        dict(zip(params, [ast.unparse(arg) for arg in args], strict=True)) if len(args) == len(params) else {}
+    )
+
+
+def _inherited(
+    klass: GenericClass,
+    bound: Mapping[str, str],
+    asked: _Asked,
+    where: tuple[Known, int],
+) -> Inference | None:
+    """Type a member a generic class takes from its generic bases, bound by its own arguments (`bound`).
+
+    `where`: what's known, and how many bases up the class is.
+
+    Returns:
+      The first base's that types it, or `None`.
+
+    """
+    if where[1] >= _DEEPEST:
+        return None
+    base: str
+    for base in klass.bases:
+        # Bare where the receiver is: its parameters, unbound, are no more known than theirs.
+        above: str = (
+            overloads.substituted(base, bound)
+            if bound
+            else ast.unparse(cast("ast.Subscript", parsed(base)).value)
+        )
+        found: Inference | None
+        if (found := _generic_member(above, asked, where[0], where[1] + 1)) is not None:
+            return found
+    return None
+
+
 # Where a member's type can come from, in the order they're asked: the one place to add another.
 SOURCES: Final[tuple[MemberSource, ...]] = (
     _class_side,
     _fixed,
+    _own_generic,
     _declared,
     _elements,
     stdlib.library_member,

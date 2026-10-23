@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Each code's rationale and fix, for `constricter --explain`."""
 
 from typing import Final

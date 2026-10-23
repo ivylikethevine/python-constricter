@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Measure telling `--jobs` workers the index: its pickled size, one load of it, and each telling's cost.
 
   local/.venv/bin/python -m scratch.index_sent [CORPUS ...] [--jobs 2 4 8 16] [--runs 3]

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for an attribute a class doesn't declare: the base's that does, in method resolution order."""
 
 import ast
@@ -132,8 +131,9 @@ def test_an_inherited_attribute_is_the_base_class_one() -> None:
         "used_twin": ("Middle", False),
         # `Middle` binds `hidden` another way; a class's attribute needs a value (`label` has none).
         **dict.fromkeys(("child_hidden", "child_missing", "side_label"), (None, False)),
-        # A generic base's members depend on its arguments, and a base out of sight has its own.
-        **dict.fromkeys(("under_count", "far_limit"), (None, False)),
+        # A generic base's member that names none of its parameters (see `test_generic_fixes`).
+        "under_count": ("int", False),
+        "far_limit": (None, False),  # a base out of sight has its own
     }
 
 

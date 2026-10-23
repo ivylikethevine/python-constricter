@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Profile constricter over a large real codebase, to find its own slowest parts.
 
   local/.venv/bin/python tests/corpus/corpus_profile.py [PATH] [--top N] [--jobs N]   # the standard library

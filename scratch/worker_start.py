@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Time a `--jobs` check of one-line files, mostly its workers' start, by `python -m` and by the script.
 
   local/.venv/bin/python -m scratch.worker_start                          # this checkout

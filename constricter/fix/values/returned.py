@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for calls to unannotated functions: their own `return` statements decide their type.
 
 A function (or method) counts when it's plain (a `def` directly in the module or a class body, not

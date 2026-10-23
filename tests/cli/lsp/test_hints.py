@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--infer-with`: the language-server conversation, and the command's rounds of fixes with hints."""
 
 import contextlib
@@ -498,6 +497,48 @@ def test_fix_stops_after_its_last_round(
     assert capsys.readouterr().out.count("LVA001") == len(paths)
     for path in paths:
         assert path.read_text(encoding="utf-8").count("x: int = q()") == rounds.HINT_ROUNDS
+
+
+def test_a_file_checked_again_within_a_round_has_its_hints_moved(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A file in a cycle is checked again once the other's returns are known, its own fixes written.
+
+    The round's hints were asked on the text before those fixes: `yy`'s hint sits where `zz` is
+    once `m` and `n` are declared above, and `zz` must not take it.
+    """
+    _fake(monkeypatch)
+    first: str = """
+    from b import f
+
+
+    def pair() -> tuple[int, str]:
+        return 1, "a"
+
+
+    def g():
+        return 1
+
+
+    def run(q):
+        x = f()
+        m, n = pair()
+        zz = q.other()
+        w = 1
+        yy = q.make()  # hint: int
+        return x, m, n, zz, w, yy
+    """
+    second: str = "import a\n\n\ndef f():\n    return a.g()\n"
+    _ = (tmp_path / "a.py").write_text(textwrap.dedent(first), encoding="utf-8", newline="\n")
+    _ = (tmp_path / "b.py").write_text(second, encoding="utf-8", newline="\n")
+    options: list[str] = ["--infer-with", _CHECKER, "--fix", "--unsafe-fixes", "--jobs=1", "-q"]
+    assert cli.main([*options, str(tmp_path)]) == cli.EXIT_FOUND
+    text: str = (tmp_path / "a.py").read_text(encoding="utf-8")
+    fixed: str = "    x: int = f()\n    m: int\n    n: str\n    m, n = pair()\n    zz = q.other()\n"
+    hinted: str = "    yy: int = q.make()  # hint: int\n"
+    assert fixed in text
+    assert hinted in text
 
 
 def test_hints_are_guesses_only_unsafe_fixes_apply(

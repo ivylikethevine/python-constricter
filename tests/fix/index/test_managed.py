@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for `with` on another checked file's context manager: a `@contextmanager` function, a class."""
 
 import textwrap

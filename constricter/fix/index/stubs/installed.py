@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Installed packages' declared types, for `--fix` to type calls into them as it does checked files'.
 
 `with_installed` adds to the cross-file index the modules the checked files import from installed

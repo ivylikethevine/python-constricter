@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for a function, a bound method or a lambda bound to a name: `dump = json.dumps`, `grow = it.grow`.
 
 A `Callable[..., R]`, `R` what a call of it gives whatever it's passed: a function declaring its

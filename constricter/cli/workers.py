@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Worker processes for `--jobs`: each indexes its own share of the files, then checks it."""
 
 import contextlib

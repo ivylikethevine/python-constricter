@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`python -m constricter.trace`: the types a run binds its functions' locals to, recorded."""
 
 import hashlib

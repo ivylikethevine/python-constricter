@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The corpus runner's own parts that need no corpus: its run file, and how it runs and sizes its steps."""
 
 import os
@@ -14,7 +13,7 @@ import pytest
 
 from constricter import Level
 from tests.corpus import __main__ as runner
-from tests.corpus import catalog, corpus_suite, pipeline, sizing, suite_steps, trees
+from tests.corpus import catalog, corpus_suite, launch, pipeline, sizing, suite_steps, trees
 from tests.corpus.pipeline import Record, Store
 from tests.corpus.recorded import SHARE, USED
 from tests.corpus.run_config import CERTAIN, CSV, DEV, LIKELY, Run, Steps, parse
@@ -39,6 +38,7 @@ def test_a_run_file_is_read_with_defaults_for_what_it_leaves_out() -> None:
                 "formats": [CSV],
                 "jobs": 4,
                 "at-once": 2,
+                "options": ["--vague", "0"],
             },
             "corpora": {"include": ["pydantic"]},
             "steps": {
@@ -59,7 +59,9 @@ def test_a_run_file_is_read_with_defaults_for_what_it_leaves_out() -> None:
         ("pydantic",),
         Steps(check=False, fix=("unsafe",), coverage=False, infer=("ty",), census=False),
         at_once=2,
+        options=("--vague", "0"),
     )
+
     assert [run.recorded(version) for version in run.versions] == ["0.3.1", "0.3.6-rc.1+dev"]
     assert run.recorded(f"{_BASE}=local/base/bin/python") == _BASE
     with pytest.raises(ValueError, match=r"\[steps\] lint"):
@@ -72,6 +74,20 @@ def test_a_run_file_is_read_with_defaults_for_what_it_leaves_out() -> None:
         _ = parse({"run": {"formats": ["html"]}})
     with pytest.raises(ValueError, match="fix 'all'"):
         _ = parse({"steps": {"fix": ["all"]}})
+
+
+def test_a_runs_options_go_to_every_constricter_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A run file's `options` (`["--vague", "0"]`) follow a step's own, once the run is configured."""
+    monkeypatch.setattr(launch, "OPTIONS", [])
+    place: launch.Place = launch.Place(tmp_path, tmp_path / "pkg", None)
+    vague: list[str] = ["--vague", "0"]
+    assert vague[0] not in launch.command(DEV, place, ["--format=json"], 1)
+    launch.configure(vague)
+    words: list[str] = launch.command(DEV, place, ["--format=json"], 1)
+    assert words[words.index("--format=json") + 1 : words.index("--no-gitignore")] == vague
 
 
 def test_a_step_waits_for_the_cpus_and_the_memory_it_wants() -> None:
@@ -96,7 +112,7 @@ def test_a_step_waits_for_the_cpus_and_the_memory_it_wants() -> None:
     assert started.wait(5)
     waiting.join()
     assert (slots.free, slots.held, slots.running) == (4, 0, 0)
-    assert parse({"run": {"suite-seconds": 900, "suite-workers": 4, "cpus": 8, "memory": 12}})[-6:-1] == (
+    assert parse({"run": {"suite-seconds": 900, "suite-workers": 4, "cpus": 8, "memory": 12}})[-7:-2] == (
         900,
         4,
         8,
@@ -150,9 +166,9 @@ def test_a_suites_parts_run_side_by_side(tmp_path: Path, monkeypatch: pytest.Mon
 
     monkeypatch.setattr(corpus_suite, "workers", workers)
     monkeypatch.setattr(corpus_suite, "_completed", completed)
-    assert corpus_suite.tested(tmp_path, suite, None).counts == {"passed": 3}
+    assert corpus_suite.tested(tmp_path, suite, None, None).counts == {"passed": 3}
     assert sorted(command[-1] for command in ran) == ["a", "b", "c"]
-    assert all(command[-3:-1] == ["-n", "1"] for command in ran)
+    assert all(command[len(catalog.PYTEST) : len(catalog.PYTEST) + 2] == ["-n", "1"] for command in ran)
 
 
 def test_a_steps_record_says_when_it_started_and_how_long_it_waited(tmp_path: Path) -> None:

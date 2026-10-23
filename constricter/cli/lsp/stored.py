@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A type checker's hints for a round of files, kept between runs: asked for once while nothing changes.
 
 A file's hints rest on the whole program the checker reads, so a round's are kept whole, by what

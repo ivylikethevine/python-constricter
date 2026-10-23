@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Cross-module `--fix` for an empty container passed to another checked file's function.
 
 Found through the calling file's imports and the re-exports between them (`add(names, "a")`,

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Fix a copy of each corpus with every `fix-widen` kind and guesses, then list what a second pass still fixes.
 
   local/.venv/bin/python -m scratch.widen_pass [CORPUS ...]

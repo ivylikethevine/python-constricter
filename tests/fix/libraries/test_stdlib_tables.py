@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The standard-library tables are current: generated from the pinned stubs by this generator."""
 
 import json

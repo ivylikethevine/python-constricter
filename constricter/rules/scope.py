@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """One scope being checked: what it binds and reports, what `--fix` knows of it, and its late fixes."""
 
 import ast
@@ -22,6 +21,7 @@ from constricter.fix.values.doubts import (
     is_constant,
     narrowed_first,
     narrowing,
+    none_tested,
     says_self,
     tested,
     undeclared,
@@ -29,7 +29,8 @@ from constricter.fix.values.doubts import (
 from constricter.fix.values.guesses import guessed, guessing
 from constricter.fix.values.inference import inference, inferred
 from constricter.fix.values.members import fits, parsed
-from constricter.fix.values.narrowed import narrowed_at, read_narrowed
+from constricter.fix.values.narrowed import narrowed_at, narrowed_to, read_narrowed
+from constricter.fix.values.refused import refused
 from constricter.offences import (
     LONG_TUPLE,
     MEMBER,
@@ -69,6 +70,7 @@ FINAL_KIND: Final = "final"  # the fix kind of LVA012's `Final`
 _TYPING_FINAL: Final = "typing.Final"
 _LITERAL_DOUBT: Final = frozenset({"literal"})  # a constant's literal, which `doubts` makes a guess
 _READS: Final = (ast.Name, ast.Attribute, ast.Subscript)  # a read of a value a type checker may narrow
+TESTED: Final = "tested"  # the fix kind of a read a test around it narrows
 
 
 class Scope:
@@ -192,6 +194,8 @@ class Scope:
                 commented=commented,
             ),
         )
+        if not again and code is not None and self.offences[-1:]:
+            self.offences[-1] = self._unfixed(self.offences[-1], name, value)
         if fix is not None and aliased.declares(parsed(fix.annotation)):
             self.inferred.aliases.add(name)  # `TypeAlias` isn't its value's type
         elif fix is not None:
@@ -314,7 +318,10 @@ class Scope:
             if fix is None
             else fix._replace(annotation=self.inferred.unions.get(fix.annotation, fix.annotation))
         )
-        if named is not None and (
+        left: Inference | None
+        if (left := None if named is None else self._tested(value, named, line)) is not None:
+            fix = left
+        elif named is not None and (
             (
                 narrowed_first(value, named)
                 and not (named.annotation != _NONE and as_declared(value, function, facts.tests))
@@ -329,14 +336,46 @@ class Scope:
         origins: frozenset[str]
         unsafe, origins = guesses_in(self, [value])
         if not unsafe:
+            # A read the tests around it narrow is what they leave, whatever else tests it.
+            own: frozenset[str] = frozenset({ast.unparse(value)} if left is not None else ())
             origins = doubts(
                 value,
                 fix,
                 constant=constant,
-                narrowed=frozenset() if function is None else tested(function, facts.tests),
+                narrowed=frozenset() if function is None else tested(function, facts.tests) - own,
             )
             unsafe = bool(origins)
         return fix, unsafe, origins
+
+    def _tested(self, value: ast.expr, named: Inference, line: int) -> Inference | None:
+        """Type a read the tests around it narrow by what they leave of its union.
+
+        `conn = self.conn` after `if self.conn is None: return` is a `Conn`, of a `Conn | None`;
+        in `if isinstance(x, int):`, `y = x` is an `int`, of an `int | str`. Only a name's or an
+        attribute's read in a function (see `narrowed.narrowed_to`).
+
+        Returns:
+          The inference, or `None` where no test narrows it, or one narrows it otherwise.
+
+        """
+        function: FunctionDef | None = self.kind.function
+        if function is None or not isinstance(value, ast.Name | ast.Attribute):
+            return None
+        text: str = ast.unparse(value)
+        union: frozenset[str] = members(named.annotation) or frozenset()
+        if not union or not read_narrowed(self.settings.facts.narrowed, text, line, union=len(union) > 1):
+            return None
+        written: str = named.annotation
+        ordered: list[str] = sorted(union, key=lambda m: (written.find(m) < 0, written.find(m), m))
+        left: list[str] | None = narrowed_to(self.settings.facts.narrowed, text, line, ordered, function)
+        if left is None or len(left) == len(ordered):
+            return None
+        return Inference(
+            " | ".join(left),
+            f"{named.reason}, narrowed by the test around it",
+            named.kinds | {TESTED},
+            named.reads,
+        )
 
     def _takes_narrowed(self, value: ast.expr, fix: Inference, line: int) -> bool:
         """Check whether a fix takes its type from a read narrowed at `line`: `deepcopy(x)`, in `if x:`.
@@ -433,24 +472,48 @@ class Scope:
                     return hinted.inference(typed, found)
                 continue
             if (
-                text is not None
-                and (
+                text is None
+                or (
                     typed := hinted.hinted(
                         text,
                         self.settings.known,
-                        nesting=self.settings.checks.nesting,
-                        # A module body's annotation is evaluated there: only what's bound before it will do.
-                        before=target.lineno if self.kind.function is None else None,
-                        offered=found.offered.get(where),
+                        hinted.Site(
+                            self.settings.checks.nesting,
+                            # A module body's annotation is evaluated there: only what's bound before it.
+                            target.lineno if self.kind.function is None else None,
+                            isinstance(value, ast.BinOp),
+                        ),
+                        found.offered.get(where),
                     )
                 )
+                is None
+            ):
+                continue
+            typed = self._optional(target.id, typed)
+            if (
                 # A generic class a checker prints bare has arguments it doesn't know.
-                and not bare(typed, self.settings.facts.generics)
+                not bare(typed, self.settings.facts.generics)
                 and not hinted.renames(target.id, typed, local=self.kind.function is not None)
                 and not (self._undeclared(typed) or self._misread(target.id, typed))
             ):
                 return hinted.inference(typed, found)
         return None
+
+    def _optional(self, name: str, annotation: str) -> str:
+        """Add `None` to a hint for a name this scope's function compares with `None`, if it lacks one.
+
+        The hint is the first value's type as the checker reads it; a test for `None` says the author
+        expects one (`rec = fairy.record`, hinted `Record`, then `if rec is not None`), and the
+        package's own checker may read the value as `Record | None`.
+
+        Returns:
+          The annotation, `None` added where the test says so.
+
+        """
+        function: FunctionDef | None
+        if (function := self.kind.function) is None or name not in none_tested(function):
+            return annotation
+        return annotation if _NONE in (members(annotation) or ()) else f"{annotation} | {_NONE}"
 
     def _misread(self, name: str, annotation: str) -> bool:
         """Check whether a hint is one this scope's function reads otherwise than declared.
@@ -471,7 +534,7 @@ class Scope:
             return False
         if _SELF_WORD.search(annotation) is not None and not says_self(function):
             return True
-        if len(members(annotation) or ()) > 1:
+        if len(self.inferred.members(annotation)) > 1:  # an alias of a union is one
             return name not in narrowing(function)
         return says_self(function) and any(
             isinstance(node.value, ast.Name) and node.value.id == name
@@ -616,6 +679,18 @@ class Scope:
             if code is not None:
                 offered: bool = self.kind.fixable or (fix is not None and MEMBER in fix.kinds)
                 self.offences.append(Offence(*where, name, code, fix if offered else None))
+
+    def _unfixed(self, offence: Offence, name: str, value: ast.expr) -> Offence:
+        """Say why the offence just reported for `name`, bound to a call, has no fix (`refused`).
+
+        Returns:
+          The offence, with the reason; any other as it is.
+
+        """
+        if offence.name != name or offence.edit is not None:
+            return offence
+        why: str = refused(value, self.settings.known, self.inferred.types, self.settings.facts.untyped)
+        return replace(offence, unfixed=why) if why else offence
 
     def declare(self, name: str) -> None:
         """Bind `name` by an annotation (`name: T`, `name: T = ...`): a typed first binding."""

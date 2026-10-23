@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What iterating a class's instance gives, read from its `__iter__`: the `elements` table's entries."""
 
 import ast

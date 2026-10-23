@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A project's own type hierarchy (`narrower`), over the built-in one, for LVA008-LVA010."""
 
 import ast

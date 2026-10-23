@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--infer-with`: which of a type checker's hints become fixes, spelled how, and what they feed."""
 
 import ast
@@ -129,7 +128,7 @@ def test_a_hint_is_widened_spelled_or_dropped(hint: str, fix: str | None) -> Non
 
     def f(q) -> None:
         x = q.make()
-        if x is None:
+        if not x:
             return
     """
     assert _fixes(source, {"x": hint}) == [("x", fix, fix is not None)]
@@ -178,6 +177,77 @@ def test_a_union_is_a_fix_only_for_a_name_its_function_tests() -> None:
     assert [o.fix for o in _checked("x = find()\n", {"x": "int | None"}, Checks(all_scopes=True))] == [
         "int | None",
     ]
+
+
+def test_an_alias_of_a_union_is_a_union() -> None:
+    """A name the module binds to a union (pandas's `Scalar`) is read as it, bare or in a container."""
+    untested: str = "def f(q) -> None:\n    x = q.find()\n    x.run()\n"
+    tested: str = "def f(q) -> None:\n    x = q.find()\n    if isinstance(x, int):\n        x.run()\n"
+    aliased: dict[str, str] = {"Scalar": "int | str"}
+    hint: str
+    source: str
+    fix: str | None
+    for hint, source, fix in (
+        ("Scalar", untested, None),
+        ("Scalar", tested, "Scalar"),
+        ("list[Scalar]", tested, None),
+        ("Point", untested, "Point"),
+    ):
+        hints: Hints = Hints(_CHECKER, {(2, 5): hint})
+        checking: dict[str, Guarded] = {name: Guarded(("t", name), None) for name in ("Scalar", "Point")}
+        outside: Outside = Outside(hints=(hints,), unions=aliased, checking=checking)
+        assert [o.fix for o in check_source(source, checks=_DEFAULT, outside=outside)] == [fix], hint
+
+
+def test_a_standard_library_name_the_module_lacks_is_no_fix() -> None:
+    """A checker prints what its stubs have: `sys.OptExcInfo`, typeshed's alias, which `sys` doesn't bind."""
+    source: str = "import sys\nimport os\n\n\ndef f(q) -> None:\n    x = q.make()\n"
+    assert _fixes(source, {"x": "sys.OptExcInfo"}) == [("x", None, False)]
+    assert _fixes(source, {"x": "sys.OptExcInfo | None"}) == [("x", None, False)]
+    assert _fixes(source, {"x": "os.stat_result"}) == [("x", "os.stat_result", True)]
+    assert _fixes(source, {"x": "list[os.stat_result]"}) == [("x", "list[os.stat_result]", True)]
+
+
+@pytest.mark.parametrize(
+    ("imports", "hint"),
+    [("import turtle", "turtle.Turtle"), ("import _thread", "_thread.LockType")],
+)
+def test_a_standard_library_module_never_imported_here_says_nothing(imports: str, hint: str) -> None:
+    """A module constricter won't import (`turtle`), or a private one, can't refute the hint: it stands."""
+    source: str = f"{imports}\n\n\ndef f(q) -> None:\n    x = q.make()\n"
+    assert _fixes(source, {"x": hint}) == [("x", hint, True)]
+
+
+@pytest.mark.parametrize(
+    ("hint", "fix"),
+    [
+        ("tuple[*tuple[str, ...], str]", "tuple[str, ...]"),
+        ("tuple[str, *tuple[str, ...]]", "tuple[str, ...]"),
+        ("tuple[*tuple[str, ...], int]", None),
+        ("tuple[*tuple[int, str], str]", "tuple[*tuple[int, str], str]"),
+        ("tuple[int, str]", "tuple[int, str]"),
+    ],
+)
+def test_a_concatenated_tuples_type_is_the_variadic_tuple(hint: str, fix: str | None) -> None:
+    """A concatenation: basedpyright types it precisely, mypy reads typeshed's `tuple[str, ...]`."""
+    newer: Checks = Checks(min_python=(3, 11))
+    joined: str = "def f(q, b: str) -> None:\n    x = q.names() + (b,)\n"
+    assert [o.fix for o in _checked(joined, {"x": hint}, newer)] == [fix]
+    displayed: str = "def f(q) -> None:\n    x = q.make()\n"
+    assert [o.fix for o in _checked(displayed, {"x": hint}, newer)] == [hint]
+
+
+def test_a_name_compared_with_none_takes_none() -> None:
+    """The author expects a `None` the hinted checker doesn't see; the package's own checker may."""
+    source: str = "def f(q) -> None:\n    x = q.find()\n    if {} and x is not None:\n        x.run()\n"
+    test: str
+    for test in ("x is None", "x is not None", "x == None"):
+        tested: str = f"def f(q) -> None:\n    x = q.find()\n    if {test}:\n        return\n    x.run()\n"
+        assert _fixes(tested, {"x": "int"}) == [("x", "int | None", True)], test
+        assert _fixes(tested, {"x": "int | None"}) == [("x", "int | None", True)], test
+    assert _fixes(source.format("q"), {"x": "int"}) == [("x", "int | None", True)]
+    untested: str = "def f(q) -> None:\n    x = q.find()\n    if x:\n        x.run()\n"
+    assert _fixes(untested, {"x": "int"}) == [("x", "int", True)]
 
 
 def test_self_is_a_fix_only_where_the_signature_says_self() -> None:
@@ -461,6 +531,15 @@ def test_none_then_a_guess_is_a_guess() -> None:
     assert [(o.fix, o.unsafe, o.edit.kinds if o.edit else None) for o in offences] == [
         ("int | None", True, frozenset({"optional", "checker"})),
     ]
+    tested: str = """
+    def f(q) -> None:
+        x = None
+        if q:
+            x = q.make()
+        if x is not None:
+            x.run()
+    """
+    assert _fixes(tested, {"x": "int"}) == [("x", "int | None", True)]
 
 
 def test_a_class_body_is_never_fixed() -> None:

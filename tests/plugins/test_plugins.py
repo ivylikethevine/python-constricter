@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The flake8 and pylint plugins, run through the real tools as a project would run them."""
 
 import ast

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Cross-module `--fix` for a classmethod or staticmethod called on its class: `Row.make()`.
 
 A class another checked file defines, found through the calling file's imports and the re-exports

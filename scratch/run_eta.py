@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Project when a corpus run will end, from a finished run of the same steps.
 
   local/.venv/bin/python -m scratch.run_eta local/corpus-runs/0.3.9-rc.1-10-16-2026-1902 \\

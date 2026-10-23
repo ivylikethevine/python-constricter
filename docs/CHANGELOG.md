@@ -6,6 +6,57 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--format=json` says why a call bound with no fix has none, as each result's `unfixed`: a
+  receiver of no known type, a function declaring no return, a standard-library or imported
+  function whose arguments don't decide its type, a type vaguer than `vague` allows, ... (listed in
+  [FIXES.md](FIXES.md)). The corpus census counts the calls with no fix by it (`census.md`'s
+  "Calls with no fix, by why", and each census record's `reasons`).
+- `--fix` types the members of the checked files' own generic classes, binding the class's type
+  parameters to the receiver's arguments: `rows.first()` on a `Result[Row]` is a `Row | None`, and
+  `self.first()` in `class Rows(Result[Row])` too. A generic class was skipped whole before, even
+  for a member naming none of its parameters (`count() -> int`), which is now typed on the class
+  bare as well.
+- `--fix` types a read the tests around it narrow by what they leave of its union (fix kind
+  `tested`, certain): after `if self.conn is None: return`, `conn = self.conn` is a `Connection`,
+  and in `if isinstance(x, int):` a copy of an `int | str` is an `int`. `is None`, `is not None`,
+  `isinstance`, truth tests, `not`, `and` and `or`, in a branch or the rest of a block after an
+  `assert` or an `if` that leaves; not past a store of the read between the test and it. Such a
+  read had no fix before.
+- No file carries a license header: `REUSE.toml` licenses them all, MIT, and the code of conduct
+  CC-BY-4.0.
+- `tests/ci_local.py` also runs the Security workflow's blocking jobs, read from `security.yml` as
+  CI's are from `ci.yml`: the dependency audit (`pip-audit` over `uv.lock`'s export), the workflow
+  audit (zizmor, actionlint, `lint_workflows.sh`) and the secrets scan. An advisory against a
+  locked dependency, or a workflow lint, now fails before a push, not on the next pull request.
+- `uv.lock` moves certifi to 2026.10.19 and virtualenv to 21.14.12, past PYSEC-2026-4320,
+  CVE-2026-113725 and CVE-2026-113722.
+- `--fix --infer-with` no longer writes a hint on the wrong name. A file in a cycle of calls is
+  checked again within a round once the other files' returns are known, with its own first check's
+  fixes already written, while the round's hints were asked on the text before them: every hint
+  below an added line (a declaration, an import) sat that many lines too high, on whichever name
+  ended at the same column there. On the 0.4.0-rc.3 mega run pandas's `result_kwargs = {}` took
+  the `np.ndarray[...]` hinted for `update_deltas` four lines below, and `new_levels = []` an `int`.
+  The hints now move past the lines the file's earlier checks added.
+- A run file's `[run] options` (`["--vague", "0"]`) go to every constricter command of the corpus
+  run, for a run at a setting other than the default.
+- The corpus runner reads a suite's failed tests from pytest's JUnit report, a file for each part
+  of its tests, and keeps each test's id, outcome, seconds and skip reason beside the run's record
+  (`tests-<run>.tests.jsonl`); a logged `ERROR - ...` line no longer reads as a failure, and a
+  failure's id is the same from run to run. Tests unittest runs are read from their text as before.
+- The corpus runs' witness takes any value that reads, writes and closes for `typing.IO`'s
+  classes, which nothing is an instance of; reads a `StringIO` or `BytesIO` where `io`'s or
+  `typing`'s file class is named as a test's stand-in, saying nothing of the fix; and reads a
+  package's `pytest` plugin module as a test module, whose classes stand in for the package's. 6
+  of the 223 certain fixes it saw differ on the 0.4.0-rc.3 mega run; the rest are declarations the
+  tests contradict.
+- `--infer-with` reads an alias of a union (pandas's `Scalar`, `ArrayLike`, `Manager`) as the union
+  it names: a fix only for a name its function narrows, and dropped inside a container
+  (`list[Scalar]`); drops a hint naming a standard-library module's attribute the module hasn't at
+  run time (`sys.OptExcInfo`, typeshed's alias; `importlib.metadata.SelectableGroups`, gone since
+  3.12); writes the precise type basedpyright gives an operation on tuples
+  (`tuple[*tuple[str, ...], str]` for `names + (name,)`) as the `tuple[str, ...]` mypy reads; and
+  adds `None` to a hint for a name the function compares with `None`. On the 0.4.0-rc.3 mega run
+  these were 59 of the 458 new type errors blamed on a hint (pandas's `Scalar` alone 34).
 - CI, Security, the build, the release and the Corpus coverage workflow run on `ubuntu-26.04`,
   named, where `ubuntu-latest` moves under them from 2026-10-19; the ARM wheels stay on
   `ubuntu-24.04-arm`, which has no 26.04 image yet.

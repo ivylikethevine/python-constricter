@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What a name in a stub refers to, across the installed modules the index holds (`Resolver`).
 
 An alias, a class or a type variable, where it's declared, a class's bases in order, and what a

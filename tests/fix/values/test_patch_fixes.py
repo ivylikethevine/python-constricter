@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for what `with mock.patch(...) as name:` binds: the mock it makes."""
 
 import textwrap

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What an installed package's stub declares for its overloads: `constricter.fix.index.stubs.declared`."""
 
 import ast

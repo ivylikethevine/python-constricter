@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Cross-module `--fix`: calls to functions, and uses of classes, other checked files define."""
 
 import textwrap

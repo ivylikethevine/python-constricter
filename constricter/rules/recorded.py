@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What a finished function's scope says its `return`s, `yield`s and stores to `self`'s attributes give.
 
 Recorded for `constricter.fix.values.returned`, which types the function's calls and its class's attributes

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The `constricter` command: file discovery, `# noqa`, output and exit status."""
 
 import concurrent.futures

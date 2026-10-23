@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A run's steps, and the records they write: the only data any of its outputs is made from.
 
 Each step measures one corpus with one version, through `launch.run`, and writes one JSON record
@@ -494,6 +493,7 @@ def census(job: Job) -> Record:
         "unfixed": sum(not binding.fixed for binding in bindings),
         "unparsed": unparsed,
         "shapes": dict(Counter(binding.shape for binding in bindings if not binding.fixed).most_common()),
+        "reasons": dict(Counter(binding.unfixed for binding in bindings if binding.unfixed).most_common()),
         "seconds": round(ran.seconds, 1),
     }
 

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--infer-with`: what a hint's own edits would write, and the imports they name."""
 
 from pathlib import Path

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for a call of a value whose type says what calling it gives: a `Callable`, a `type[C]`."""
 
 import textwrap

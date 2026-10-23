@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What a run's records hold, as the runner's tests write them: shared by its test modules."""
 
 from typing import Final

@@ -1,18 +1,22 @@
-# SPDX-License-Identifier: MIT
-"""Run CI's checks locally, read from `.github/workflows/ci.yml` itself, all at once.
+"""Run CI's checks locally, read from the CI and Security workflows themselves, all at once.
 
-  local/.venv/bin/python tests/ci_local.py                 # the Lint, Docs and Test jobs' checks
+  local/.venv/bin/python tests/ci_local.py                 # every blocking job's checks
   local/.venv/bin/python tests/ci_local.py lint docs       # just these jobs
   local/.venv/bin/python tests/ci_local.py interpreters    # the tests on the Test job's other Pythons
   local/.venv/bin/python tests/ci_local.py --install-hook  # and run it before every `git push`
 
 Each job's `run:` steps are taken from the workflow, so the list can't drift from CI's, and run in
-parallel with `local/.venv/bin` first on `PATH`. A step fails by its exit status, never its output
-(pylint still rates a run with one finding 10.00/10), and every failing step's output is printed
-in full at the end; the command exits 1 if any failed. A passing step's warnings (the `::warning`
-commands it prints for the runner: a module past 800 lines) are listed after. What only makes
-sense on a runner is adapted: `npm ci` runs only when `.github/node_modules` is missing, lychee is
-the one on `PATH` (the step is skipped without it), and the Test job's `COVERAGE` is `--cov`.
+parallel with `local/.venv/bin` first on `PATH`: ci.yml's Lint, Docs and Test jobs, and
+security.yml's Dependency audit (`dependencies`), Workflow audit (`workflows`) and Secrets
+(`secrets`). A step fails by its exit status, never its output (pylint still rates a run with one
+finding 10.00/10), and every failing step's output is printed in full at the end; the command
+exits 1 if any failed. A passing step's warnings (the `::warning` commands it prints for the
+runner: a module past 800 lines) are listed after. What only makes sense on a runner is adapted:
+`npm ci` runs only when `.github/node_modules` is missing, a tool the runner fetches by URL
+(lychee, actionlint, gitleaks) is the one on `PATH` (the step is skipped without it), a step's
+`${{ ... }}` environment takes the shell's variable of the same name (`GH_TOKEN`; without one
+zizmor runs `--offline`), and the Test job's `COVERAGE` is `--cov`. The Dependency audit's steps
+pass a file on, so they run as one command.
 
 `interpreters` runs the tests on each Python in the Test job's matrix (PyPy and free-threaded builds
 included) but the one `local/.venv` has: each in its own `local/.venv-<python>`, with the dependency
@@ -38,25 +42,33 @@ from typing import Final, NamedTuple, TypeAlias, cast
 import yaml
 
 _ROOT: Final = Path(__file__).resolve().parent.parent
-_WORKFLOW: Final = _ROOT / ".github" / "workflows" / "ci.yml"
+_WORKFLOWS: Final = tuple(_ROOT / ".github" / "workflows" / name for name in ("ci.yml", "security.yml"))
 _VENV_BIN: Final = _ROOT / "local" / ".venv" / "bin"
-_JOBS: Final = ("lint", "docs", "test", "interpreters")
+_JOBS: Final = ("lint", "docs", "test", "dependencies", "workflows", "secrets", "interpreters")
 _INTERPRETERS: Final = "interpreters"  # not a workflow job: the Test job's matrix, by Python
+# Jobs whose steps build on each other (an export, then the audit of it): run as one command, named
+# by its last line, as each interpreter's is.
+_CHAINED: Final = frozenset({"dependencies", _INTERPRETERS})
 _PYPY: Final = "pypy"  # `sys.implementation.name`, the prefix of its matrix names, and its pin's key
 _RUN: Final = "run"  # a step's shell command
 _EXPRESSION: Final = "${{"  # the start of a GitHub Actions expression
 _NPM_CI: Final = "npm ci --prefix .github"
-_LYCHEE: Final = '"$RUNNER_TEMP/bin/lychee"'
+# A tool the runner fetches by URL (`./.github/actions/tool`), run from its temporary directory.
+_RUNNER_TOOL: Final = re.compile(r'"\$RUNNER_TEMP/bin/([^"/]+)"')
+_ZIZMOR: Final = "zizmor "
+# zizmor without a token: its online audits can't run, and it refuses an empty one
+_OFFLINE: Final = "--offline"
+_API_ENV: Final = "GH_TOKEN"  # the variable zizmor's online audits read
 _PYTEST: Final = "python -m pytest"
 # On every CPU here (pytest-xdist, a development dependency), the tests that start workers one at a time.
 _PARALLEL: Final = " -n auto --dist loadgroup"
-# The values a step's `${{ ... }}` environment takes here, by name (an unlisted one is empty).
+# The values a step's `${{ ... }}` environment takes here, by name (an unlisted one is the shell's, or unset).
 _LOCAL_ENV: Final = {"COVERAGE": "--cov"}
 # A warning a step prints for the runner to annotate: the file it names, and what it says.
 _WARNING: Final = re.compile(r"^::warning file=([^,]+),[^\n]*?::(.*)$", re.MULTILINE)
 _HOOK: Final = """\
 #!/bin/sh
-# Installed by tests/ci_local.py: CI's Lint, Docs and Test checks, on every Python, before every push.
+# Installed by tests/ci_local.py: CI's and Security's blocking checks, on every Python, before every push.
 exec local/.venv/bin/python tests/ci_local.py
 """
 _Yaml: TypeAlias = "str | int | bool | list[_Yaml] | dict[str, _Yaml] | None"
@@ -93,31 +105,45 @@ def steps(jobs: Sequence[str]) -> list[Step]:
         if job == _INTERPRETERS:
             found.extend(_interpreter_steps(defined))
             continue
+        commands: list[str] = []
+        chained_env: dict[str, str] = {}
         raw: _Yaml
         for raw in cast("list[_Yaml]", cast("dict[str, _Yaml]", defined[job])["steps"]):
             step: dict[str, _Yaml] = cast("dict[str, _Yaml]", raw)
             if _RUN not in step:
                 continue
             env: dict[str, str] = {
-                name: _LOCAL_ENV.get(name, "") if _EXPRESSION in str(value) else str(value)
+                name: _LOCAL_ENV.get(name, os.environ.get(name, ""))
+                if _EXPRESSION in str(value)
+                else str(value)
                 for name, value in cast("dict[str, _Yaml]", step.get("env", {})).items()
             }
-            found.append(Step(job, str(step[_RUN]).strip(), env))
+            if job in _CHAINED:
+                commands.append(str(step[_RUN]).strip())
+                chained_env.update(env)
+            else:
+                found.append(Step(job, str(step[_RUN]).strip(), env))
+        if commands:
+            found.append(Step(job, "\n".join(commands), chained_env))
     return found
 
 
 def _defined() -> dict[str, _Yaml]:
-    """Read the workflow's jobs.
+    """Read the workflows' jobs.
 
     Returns:
       Them, by id.
 
     """
-    workflow: dict[str, _Yaml] = cast(
-        "dict[str, _Yaml]",
-        yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8")),  # type: ignore[no-untyped-call]
-    )
-    return cast("dict[str, _Yaml]", workflow["jobs"])
+    jobs: dict[str, _Yaml] = {}
+    path: Path
+    for path in _WORKFLOWS:
+        workflow: dict[str, _Yaml] = cast(
+            "dict[str, _Yaml]",
+            yaml.safe_load(path.read_text(encoding="utf-8")),  # type: ignore[no-untyped-call]
+        )
+        jobs.update(cast("dict[str, _Yaml]", workflow["jobs"]))
+    return jobs
 
 
 def _this_python() -> str:
@@ -202,9 +228,12 @@ def _adapted(command: str) -> str | None:
     """
     if command == _NPM_CI:
         return None if (_ROOT / ".github" / "node_modules").is_dir() else command
-    if _LYCHEE in command:
-        lychee: str | None = shutil.which("lychee")
-        return None if lychee is None else command.replace(_LYCHEE, lychee)
+    tool: re.Match[str] | None
+    if (tool := _RUNNER_TOOL.search(command)) is not None:
+        found: str | None = shutil.which(tool.group(1))
+        return None if found is None else command.replace(tool.group(0), found)
+    if command.startswith(_ZIZMOR) and not os.environ.get(_API_ENV):
+        return command.replace(_ZIZMOR, f"{_ZIZMOR}{_OFFLINE} ", 1)
     if command.startswith(_PYTEST):
         return command.replace(_PYTEST, _PYTEST + _PARALLEL, 1)
     return command
@@ -221,7 +250,9 @@ def _run(step: Step) -> Outcome:
     command: str | None
     if (command := _adapted(step.command)) is None:
         return Outcome(step, None, "", 0.0)
+    # an empty value is unset: zizmor refuses an empty token, and `${VAR:+...}` reads both the same
     env: dict[str, str] = {**os.environ, **step.env, "PATH": f"{_VENV_BIN}{os.pathsep}{os.environ['PATH']}"}
+    env = {name: value for name, value in env.items() if value}
     done: subprocess.CompletedProcess[str] = subprocess.run(
         ["bash", "-e", "-o", "pipefail", "-c", command],  # as the runner runs a `run:` step
         cwd=_ROOT,
@@ -252,7 +283,7 @@ def run(jobs: Sequence[str]) -> int:
         for future in as_completed(futures):
             outcome: Outcome = future.result()
             lines: list[str] = outcome.step.command.splitlines()
-            label: str = f"{outcome.step.job}: {lines[-1] if outcome.step.job == _INTERPRETERS else lines[0]}"
+            label: str = f"{outcome.step.job}: {lines[-1] if outcome.step.job in _CHAINED else lines[0]}"
             if outcome.status is None:
                 _say(f"skip          {label}")
             elif outcome.status:

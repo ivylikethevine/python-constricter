@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Trace a run as `constricter.trace` does, and hold each fixed binding's value to the fix's annotation.
 
   python -m constricter_witness [--output FILE] [--root DIR] (-m MODULE | SCRIPT) [ARG ...]
@@ -15,9 +14,12 @@ instance of the class, or of one of a union's. A builtin container is held to it
 arguments too, by its first elements (`_elements`); any other subscripted class to the class alone.
 Each process writes, for each binding, how many times the value fit, didn't, and couldn't be told
 (`FIT`, `DIFFER`, `UNKNOWN`): an annotation that can't be evaluated there, a protocol no `isinstance`
-checks, a type variable with no bound, a value that's a test's mock, a `SimpleNamespace` or of a
-class a test module defines (`_stand_in`), and an annotation that names such a class: a module's
-name a test has patched (`humanize.datetime = MockDateTime`), as the annotation was evaluated. A class
+checks, a type variable with no bound, a value that's a test's mock, a `SimpleNamespace`, an
+in-memory file where `io`'s or `typing`'s file class is named (`_in_memory`) or of a class a test
+module defines (`_stand_in`; a package's `pytest` plugin module is one), and an annotation that names
+such a class: a module's name a test has patched (`humanize.datetime = MockDateTime`), as the
+annotation was evaluated. `typing`'s file classes, which nothing is an instance of, take any value
+that reads, writes and closes. A class
 made again, by a function at each call or by a module imported anew, is the annotation's class where
 its module and its qualified name are (`_redefined`).
 """
@@ -59,15 +61,18 @@ FIT: Final = 0
 DIFFER: Final = 1
 UNKNOWN: Final = 2
 _MOST: Final = 50  # how many times one binding is judged
-# What an annotation's class takes besides its own instances: a number's narrower numbers, and any
-# file object for `typing`'s, which none is an instance of.
+# What an annotation's class takes besides its own instances: a number's narrower numbers.
 _TAKEN: Final = {
     float: (int, float),
     complex: (int, float, complex),
-    typing.IO: (io.IOBase,),
-    typing.TextIO: (io.IOBase,),
-    typing.BinaryIO: (io.IOBase,),
 }
+# What `typing`'s file classes, which nothing is an instance of, take: a value that reads, writes
+# and closes (`tempfile.NamedTemporaryFile`'s wrapper, which is no `io.IOBase`); see `_file_class`.
+_FILE_METHODS: Final = ("read", "write", "close")
+# An in-memory file: a test's stand-in for the file a fix's annotation names (`open`'s
+# `TextIOWrapper`, `typing.IO`).
+_IN_MEMORY: Final = (io.StringIO, io.BytesIO)
+_FILE_MODULES: Final = frozenset({"io", "_io", "typing"})
 _UNSET: Final = object()
 _FIRST: Final = 100  # how many of an ordered container's elements are held to its annotation's arguments
 # The containers read without running anything of the value's own: these classes themselves, no subclass.
@@ -77,8 +82,9 @@ _MAPPINGS: Final = (dict, collections.defaultdict, collections.OrderedDict)
 _TUPLES: Final = (tuple,)
 _PAIR: Final = 2  # a mapping's arguments: its keys' type and its values'
 _ALIASED: Final = "__value__"  # where a `type` statement's alias keeps what it names
-# A test module's name, by any of its parts: pytest's and unittest's ways of naming them.
-_TESTS: Final = frozenset({"test", "tests", "testing", "conftest"})
+# A test module's name, by any of its parts: pytest's and unittest's ways of naming them, and a
+# package's pytest plugin (`pdm.pytest`), whose classes stand in for the package's own.
+_TESTS: Final = frozenset({"test", "tests", "testing", "conftest", "pytest"})
 _CALLABLE: Final = collections.abc.Callable
 # What makes a union: `X | Y`, and `Union[X, Y]` where that's another thing (before Python 3.14).
 _UNIONS: Final = frozenset({types.UnionType, cast("object", vars(typing)["Union"])})
@@ -217,13 +223,15 @@ def _instance(value: object, hint: object) -> bool | None:
         return None if _stood_for(hint) is None else holds(value, _stood_for(hint))
     if typing.is_typeddict(hint):
         return isinstance(value, dict)
+    if _file_class(hint):
+        return all(hasattr(value, name) for name in _FILE_METHODS)
     if not isinstance(hint, type):
         return None
     try:
         fit: bool = isinstance(value, _TAKEN.get(hint, hint)) or _redefined(type(value), hint)
     except TypeError:  # a protocol that isn't checked at run time
         return None
-    return True if fit else None if _stand_in(type(value)) else False
+    return True if fit else None if _stand_in(type(value)) or _in_memory(type(value), hint) else False
 
 
 def _redefined(kind: type, hint: type) -> bool:
@@ -246,6 +254,26 @@ def _stand_in(kind: type) -> bool:
 
     """
     return kind is types.SimpleNamespace or _testing(kind.__module__)
+
+
+def _file_class(hint: object) -> bool:
+    """Check whether `hint` is one of `typing`'s file classes: `IO`, `TextIO` or `BinaryIO`.
+
+    Returns:
+      Whether it is.
+
+    """
+    return hint is typing.IO or hint is typing.TextIO or hint is typing.BinaryIO
+
+
+def _in_memory(kind: type, hint: type) -> bool:
+    """Check whether `kind` is an in-memory file held to a file class: a test's stand-in for the file.
+
+    Returns:
+      Whether it's a `StringIO` or `BytesIO` and `hint` is `io`'s or `typing`'s.
+
+    """
+    return issubclass(kind, _IN_MEMORY) and hint.__module__ in _FILE_MODULES
 
 
 def _testing(module: str) -> bool:

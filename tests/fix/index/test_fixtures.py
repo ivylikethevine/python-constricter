@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for a test's parameters: typed by the pytest fixtures it names and `parametrize`'s literals."""
 
 import sys

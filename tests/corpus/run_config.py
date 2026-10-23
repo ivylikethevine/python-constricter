@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A run file: what `python -m tests.corpus RUN.toml` measures, with what, and how it's written.
 
     [run]
@@ -15,6 +14,7 @@
     memory = 0                       # and the gigabytes: 0 is most of what's free as the run starts
     share = 0                        # or the percent of the machine's CPUs and memory they share, and
                                      # are held to where systemd starts them (`--share`): 0, as above
+    options = ["--vague", "0"]       # given to every constricter command of the run: a run at a setting
 
     [corpora]
     include = ["original"]           # corpora or sets of `corpora.toml`, or directories
@@ -82,6 +82,7 @@ _KEYS: Final = {
         "cpus",
         "memory",
         "share",
+        "options",
     },
     "corpora": {"include", "install"},
     "publish": {"runs-md", "replace", "section"},
@@ -153,6 +154,7 @@ class Run(NamedTuple):
     memory: float = 0.0  # the gigabytes they share: 0 is most of what's free as the run starts
     share: int = 0  # the percent of the machine's CPUs and memory they share, held to it: 0, as above
     minus: tuple[str, ...] = ()  # corpora or sets left out of `include`'s (`--minus`)
+    options: tuple[str, ...] = ()  # given to every constricter command of the run (`launch.configure`)
 
     def folder(self, now: datetime) -> Path:
         """Name the folder an execution started at `now` writes.
@@ -249,6 +251,7 @@ def parse(data: _Table) -> Run:
         cast("int", run.get("cpus", default.cpus)),
         float(cast("float", run.get("memory", default.memory))),
         percent(run.get("share", default.share)),
+        options=tuple(cast("list[str]", run.get("options", default.options))),
     )
 
 

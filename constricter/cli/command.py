@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The `constricter` command (see README)."""
 
 import codecs

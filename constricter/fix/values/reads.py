@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Unannotated parameters typed by what a function reads of them: the one class with every member read.
 
 Where the members a function reads of a parameter (`p.x`, `p.m()`: two names or more, no dunder)

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The garbage collector, run by hand while the command runs."""
 
 import gc

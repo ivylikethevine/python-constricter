@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """JSON with comments (`//`, `/* */`) and trailing commas, for the files constricter reads.
 
 Comments and trailing commas become spaces (newlines kept), so every position the JSON parser reports

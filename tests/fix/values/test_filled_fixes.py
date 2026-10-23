@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for an empty container filled later in its function (a guess)."""
 
 import textwrap

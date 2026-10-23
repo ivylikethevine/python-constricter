@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The rules as a flake8 plugin (`LVA` prefix); reports the codes the level makes errors."""
 
 import argparse

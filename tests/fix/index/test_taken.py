@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for an empty container another checked file types: by its function's parameter, or its class."""
 
 import textwrap

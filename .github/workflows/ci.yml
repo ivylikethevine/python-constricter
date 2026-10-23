@@ -151,7 +151,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "22"
+          node-version: "24"
       # markdownlint-cli2 and prettier, locked in .github/package-lock.json.
       - run: npm ci --prefix .github
       - run: git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/markdownlint-cli2
@@ -267,6 +267,8 @@ jobs:
           egress-policy: block
           allowed-endpoints: >
             github.com:443
+            codeload.github.com:443
+            results-receiver.actions.githubusercontent.com:443
             pypi.org:443
             files.pythonhosted.org:443
             raw.githubusercontent.com:443

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Hold values to annotations three ways, and print where the ways differ: the witness's own, typeguard's, beartype's.
 
   PYTHONPATH=DIR local/.venv/bin/python -m scratch.witness_checkers

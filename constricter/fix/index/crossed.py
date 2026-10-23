@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What crosses into a file from the other checked files it imports, for `--fix`.
 
 `imported` gives a file the return types of the functions it imports (see `project.calls`), and
@@ -30,6 +29,7 @@ from constricter.fix.index.project import (
     Imported,
     calls,
     definition,
+    generic_portable,
     is_generic,
     portable,
     resolved,
@@ -37,6 +37,7 @@ from constricter.fix.index.project import (
     typed_calls,
 )
 from constricter.rules.annotations import roots
+from constricter.rules.declarations import GenericClass
 
 _Named: TypeAlias = tuple[Mapping[str, Origin], frozenset[str] | None]  # see `spelled_classes`
 
@@ -59,7 +60,7 @@ def imported(
       for a file `catalog` doesn't have (a notebook, standard input).
 
     """
-    taken: _Taken = _Taken({}, {}, {}, {}, set())
+    taken: _Taken = _Taken({}, {}, {}, {}, set(), {})
     guarded: dict[str, Guarded] = {} if seeded is None else dict(seeded[0])
     target: Module | None
     if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
@@ -95,6 +96,7 @@ def imported(
         frozenset(taken.generics),
         taken.members,
         Partial(found[2], {name: each for name, each in taken.partial.items() if each}),
+        taken.generic,
     )
 
 
@@ -125,6 +127,7 @@ def guarded_classes(catalog: Index, path: Path, found: Imported, guarded: Mappin
         {},
         {},
         set(),
+        {},
     )
     _take(catalog, target, (fresh, None), taken, dict(guarded))
     return Classes(taken.attributes, taken.methods)
@@ -138,6 +141,7 @@ class _Taken(NamedTuple):
     partial: dict[str, dict[str, str]]
     members: dict[str, Mapping[str, str]]
     generics: set[str]
+    generic: dict[str, GenericClass]
 
 
 def _take(catalog: Index, target: Module, named: _Named, taken: _Taken, guarded: dict[str, Guarded]) -> None:
@@ -147,6 +151,9 @@ def _take(catalog: Index, target: Module, named: _Named, taken: _Taken, guarded:
     for key, defined in spelled_classes(catalog, target, named, taken.generics):
         if defined[1] in defined[0].generics:
             taken.generics.add(key)
+        if defined[1] in defined[0].generic_members:
+            klass: GenericClass = defined[0].generic_members[defined[1]]
+            taken.generic[key] = generic_portable(catalog.modules, (target, defined), key, klass, guarded)
         if defined[1] in defined[0].plain and defined[1] in defined[0].members:
             taken.members[key] = _variables(catalog.modules, (target, defined), key, guarded)
         if _declared_members(catalog, defined).isdisjoint(target.attributes):

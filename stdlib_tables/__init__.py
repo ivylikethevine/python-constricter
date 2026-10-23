@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The generator of `constricter/fix/tables/`, from typeshed's standard-library stubs (see `generate`).
 
 `constricter`'s own `__init__` loads those tables, so unless it's imported already, the modules of it

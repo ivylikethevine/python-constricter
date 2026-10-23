@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A run's steps on a corpus package's own suite: each starts once the fixes it reads are made.
 
 Each works on a checkout of the suite's own (`checkouts`) at its pinned tag, taken back to the tag's
@@ -544,7 +543,18 @@ def _fixed_run(job: Job, step: str, kept: str, base: Path) -> corpus_suite.Outco
         base,
         cast("corpus_suite.Suite", job.tree.suite),
         job.store.logged(job.tree.name, job.recorded, TESTS).with_name(f"tests-{step}{kept}.txt"),
+        _data(job, f"{step}{kept}"),
     )
+
+
+def _data(job: Job, run: str) -> Path:
+    """Find where a test run's tests go, a line each (see `corpus_suite.Test`), beside its record.
+
+    Returns:
+      The path: `records/<corpus>/<version>/tests-<run>.tests.jsonl`.
+
+    """
+    return job.store.path(job.tree.name, job.recorded, f"{TESTS}-{run}", ".tests.jsonl")
 
 
 def _ran(record: Record) -> corpus_suite.Outcome:
@@ -646,7 +656,7 @@ def _tests_part(job: Job, name: str) -> Record:
         corpus_suite.reset(base, suite)
         start: float = time.perf_counter()
         kept: Path = job.store.logged(job.tree.name, job.recorded, TESTS).with_name("tests-released.txt")
-        ran: corpus_suite.Outcome = corpus_suite.tested(base, suite, kept)
+        ran: corpus_suite.Outcome = corpus_suite.tested(base, suite, kept, _data(job, RELEASED))
         took: float = round(time.perf_counter() - start, 1)
         keys: Record = {_ENVIRONMENT: corpus_suite.installed(base), _PARSER: corpus_suite.parser()}
         return (
@@ -890,7 +900,7 @@ def _again(job: Job, steps: Sequence[str]) -> dict[str, corpus_suite.Outcome | s
         if step != RELEASED:
             return _fixed_run(job, step, "-again", base)
         corpus_suite.reset(base, suite)
-        return corpus_suite.tested(base, suite, kept)
+        return corpus_suite.tested(base, suite, kept, _data(job, f"{RELEASED}-again"))
 
     def run(step: str) -> corpus_suite.Outcome | str:
         base: Path = free.get()

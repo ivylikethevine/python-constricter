@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`fix-widen`: wider types than a value's own, each line marked, and replaced once its type is known."""
 
 import json

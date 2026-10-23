@@ -1,5 +1,4 @@
 #!/bin/sh
-# SPDX-License-Identifier: MIT
 # Wait for a corpus run's next update mark, its end, or a new problem, whichever comes first.
 #
 #   scratch/run_tick.sh HH:MM local/runs/NAME.err local/runs/NAME.out [MAX_SECONDS]

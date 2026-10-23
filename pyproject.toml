@@ -89,14 +89,13 @@ dev = [
     "pydoclint", # docstrings' sections, held to the signatures (see [tool.pydoclint])
     "psutil", # tests/corpus/corpora_cpu.py: a step's process tree, its CPU seconds and memory
     "pytest-xdist",
-    "pyyaml", # tests/ci_local.py reads CI's workflow for its steps
+    "pyyaml", # tests/ci_local.py reads the CI and Security workflows for their steps
     "ruff",
     "twine",
     "ty", # a fourth type checker (see [tool.ty])
     "types-psutil",
     "typos",
     "validate-pyproject",
-    "zizmor",
 ]
 
 [project.scripts]
@@ -121,8 +120,7 @@ source = "vcs"
 # Read by `constricter.__version__`; untracked.
 [tool.hatch.build.hooks.vcs]
 version-file = "constricter/_version.py"
-template = '''# SPDX-License-Identifier: MIT
-"""The version this was built as, from its git tag (written by the build, not tracked)."""
+template = '''"""The version this was built as, from its git tag (written by the build, not tracked)."""
 
 __version__ = "{version}"
 '''
@@ -168,13 +166,10 @@ ignore = [
     # Conflict with the D211/D212 conventions.
     "incorrect-blank-line-before-class",
     "multi-line-summary-second-line",
+    # REUSE.toml licenses every file; no file carries a notice of its own.
+    "missing-copyright-notice",
 ]
 external = ["LVA"]
-
-[tool.ruff.lint.flake8-copyright]
-# REUSE-IgnoreStart
-notice-rgx = "SPDX-License-Identifier: MIT"
-# REUSE-IgnoreEnd
 
 [tool.ruff.lint.per-file-ignores]
 # pytest's assert.

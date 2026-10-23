@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What checking one file gives the CLI, in each mode."""
 
 from collections.abc import Sequence
@@ -6,7 +5,7 @@ from dataclasses import dataclass, field, replace
 from typing import TypeAlias, cast
 
 from constricter.cli.report import Result
-from constricter.fix.core.known import Observed, Returns
+from constricter.fix.core.known import Hints, Observed, Returns
 from constricter.offences import Offence
 from constricter.rules.checker import Coverage
 
@@ -72,6 +71,38 @@ def merged(before: FileRun, after: FileRun) -> FileRun:
         made=[*first.made, *made],
         rounds=(*first.rounds, *later.rounds),
     )
+
+
+def shifted(hints: Hints, rounds: Sequence[Added]) -> Hints:
+    """Move a file's hints down past the lines `rounds` of fixes added to it since they were asked.
+
+    A file in a cycle is checked again within a round, its first check's fixes written: a hint's
+    place is the text's as the checker saw it, before them (the inverse of `_original`).
+
+    Returns:
+      The hints, each at its place in the text as it is now.
+
+    """
+    if not rounds or not (hints.types or hints.offered):
+        return hints
+    return hints._replace(
+        types={_shifted(where, rounds): text for where, text in hints.types.items()},
+        offered={_shifted(where, rounds): offered for where, offered in hints.offered.items()},
+    )
+
+
+def _shifted(where: tuple[int, int], rounds: Sequence[Added]) -> tuple[int, int]:
+    """Find where a hint of a file (not a notebook) is after `rounds` of fixes added lines to it.
+
+    Returns:
+      Its line and column now.
+
+    """
+    line: int = where[0]
+    added: Added
+    for added in rounds:
+        line += sum(1 for cell, at in added if cell is None and at <= line)
+    return line, where[1]
 
 
 def _original(offence: Offence, rounds: Sequence[Added]) -> int:

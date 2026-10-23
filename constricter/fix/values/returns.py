@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Return types the language fixes: builtins', and `str`, `bytes`, `list`, `set` and `dict` methods'."""
 
 import ast

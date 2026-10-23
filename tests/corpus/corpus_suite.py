@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A corpus package's own suite: its checkout, its tests and its type checks, as the corpus runner runs them.
 
 Each package's source is cloned at its pinned tag into `local/corpus-suites/` (`checkout`), installed
@@ -44,6 +43,9 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import IO, Final, NamedTuple, TypeAlias, cast
 
+# pytest's own reports, not a stranger's XML.
+from xml.etree import ElementTree as ET  # ruff: ignore[suspicious-xml-etree-import]
+
 from constricter import recording
 from constricter.empty import Empty
 from constricter.offences import Tier
@@ -60,6 +62,15 @@ class Outcome(NamedTuple):
 
     counts: dict[str, int]
     failed: frozenset[str]
+
+
+class Test(NamedTuple):
+    """One test of a run, as pytest's JUnit report has it: its id, outcome, seconds, and why skipped."""
+
+    id: str  # pytest's node id: `tests/test_a.py::TestB::test_c[1]`
+    outcome: str  # `passed`, `failed`, `error`, `skipped` or `xfailed`
+    seconds: float
+    reason: str = ""  # a skipped or expected failure's
 
 
 class Complaint(NamedTuple):
@@ -94,6 +105,12 @@ _TEST_SECONDS: Final = float(os.environ.get("CORPUS_SUITE_SECONDS", "1800"))
 _STOPPED: Final = "(stopped:"
 _TIMED_OUT: Final = f"ERROR {_STOPPED} it ran too long)"  # read as a failure (see `_FAILED`)
 _GIGABYTE: Final = 2**30
+# pytest's JUnit report, a file for each part of a suite's tests: its legacy family names each test's
+# file and line, from which the test's node id is written back (see `junit_tests`).
+_JUNIT: Final = "--junitxml"
+_JUNIT_FAMILY: Final = ("-o", "junit_family=xunit1")
+_JUNIT_DIR: Final = ".venv/corpus-suite-junit"  # in a checkout: the parts' reports, written anew each run
+_XFAIL: Final = "pytest.xfail"  # the `type` of a skip that's an expected failure
 _MEMORY_SHARE: Final = 2  # the tests' workers' part of the machine's memory: a half
 SUITES: Final = catalog.load().suites(catalog.ORIGINAL)  # the seven corpora's, as `corpora.toml` has them
 # Written once every install command has succeeded: a hash of them, so changed ones are run again.
@@ -138,6 +155,7 @@ _Fixes: TypeAlias = dict[str, list[Fix]]  # those `--fix` makes, per file
 _Traceable: TypeAlias = tuple[list[list[str]], list[str]]
 TRACE_FILE: Final = ".venv/corpus-suite-trace.json"  # a checkout's tests' trace: out of its source's way
 _MODULE: Final = ("python", "-m")  # how a suite's tests start, where a module runs them
+_PYTEST: Final = (*_MODULE, "pytest")  # and where pytest does
 _TRACER: Final = ("constricter.trace", "--output", TRACE_FILE, "--root", ".")
 # In a checkout: a directory with this checkout's `constricter` alone, for a traced run's path. Not
 # this checkout's root, whose `tests` package a suite's own would then share the path with.
@@ -399,32 +417,49 @@ def _summary(output: str) -> str:
     return output.strip().rsplit("\n", 1)[-1]
 
 
-def tested(root: Path, suite: Suite, keep: Path | None) -> Outcome:
-    """Run the checkout's tests, writing their output to `keep` unless it's `None`.
+def tested(root: Path, suite: Suite, keep: Path | None, data: Path | None) -> Outcome:
+    """Run the checkout's tests, writing their output to `keep` and each test's record to `data`.
 
-    Its parts side by side, as many at once as it has workers.
+    Its parts side by side, as many at once as it has workers. Where pytest runs them, each part
+    writes a JUnit report, which says exactly which tests failed, and what `data` holds: a line a
+    test (see `Test`), unless it's `None`. The output's summary gives the counts either way.
 
     Returns:
       Their outcome.
 
     """
+    reports: Path = root / _JUNIT_DIR
+    shutil.rmtree(reports, ignore_errors=True)
+    reports.mkdir(parents=True, exist_ok=True)
 
     def run(command: list[str]) -> str:
         done: subprocess.CompletedProcess[str] = _completed(_venv(root, command), root, seconds=_TEST_SECONDS)
         return _COLOUR.sub("", done.stdout + done.stderr)
 
-    commands: list[list[str]] = _commands(suite)
+    commands: list[list[str]] = _commands(suite, reports)
     pool: ThreadPoolExecutor
     with ThreadPoolExecutor(max(1, min(workers(suite), len(commands)))) as pool:  # parts side by side
         outputs: list[str] = list(pool.map(run, commands))
     if keep is not None:
         keep.parent.mkdir(parents=True, exist_ok=True)
         _ = keep.write_text("\n".join(outputs), encoding="utf-8")
-    return _added([read(output) for output in outputs])
+    tests: list[Test] = [test for report in sorted(reports.glob("*.xml")) for test in junit_tests(report)]
+    if data is not None and tests:
+        data.parent.mkdir(parents=True, exist_ok=True)
+        _ = data.write_text("".join(json.dumps(test._asdict()) + "\n" for test in tests), encoding="utf-8")
+    outcome: Outcome = _added([read(output) for output in outputs])
+    if len(list(reports.glob("*.xml"))) != len(commands):  # a part that wrote none: read as text
+        return outcome
+    return Outcome(outcome.counts, frozenset(test.id for test in tests if test.outcome in _FAILURES))
 
 
-def _commands(suite: Suite) -> list[list[str]]:
+_FAILURES: Final = frozenset({"failed", "error"})
+
+
+def _commands(suite: Suite, reports: Path | None = None) -> list[list[str]]:
     """Write the commands that run the suite's tests: one, or one for each of its parts.
+
+    `reports`: where each part's JUnit report goes, where pytest runs the tests.
 
     Returns:
       Each one's words, its processes counted in: one each where its parts are its workers.
@@ -433,7 +468,60 @@ def _commands(suite: Suite) -> list[list[str]]:
     command: list[str] = [
         word.replace(_WORKERS, str(1 if suite.parts else workers(suite))) for word in suite.tests
     ]
-    return [[*command, *shlex.split(part)] for part in suite.parts] or [command]
+    found: list[list[str]] = [[*command, *shlex.split(part)] for part in suite.parts] or [command]
+    if reports is None or tuple(command[: len(_PYTEST)]) != _PYTEST:
+        return found
+    # The report's words before a part's: a part's are read back as its command's last.
+    return [
+        [*command, f"{_JUNIT}={reports / f'part{index}.xml'}", *_JUNIT_FAMILY, *each[len(command) :]]
+        for index, each in enumerate(found)
+    ]
+
+
+def junit_tests(report: Path) -> list[Test]:
+    """Read the tests of one part's JUnit report (see `_JUNIT_FAMILY`).
+
+    Returns:
+      Each one, in the report's order; none for a report that can't be read.
+
+    """
+    try:
+        root: ET.Element = ET.parse(report).getroot()  # ruff: ignore[suspicious-xml-element-tree-usage]
+    except (OSError, ET.ParseError):
+        return []
+    found: list[Test] = []
+    case: ET.Element
+    for case in root.iter("testcase"):
+        file: str = case.get("file", "")
+        classes: str = case.get("classname", "")
+        # The class name is the file as a module, then the test's classes: the module part is the
+        # file's, whose dots are its directories.
+        module: str = file.removesuffix(".py").replace("/", ".")
+        inner: str = classes.removeprefix(module).strip(".") if classes.startswith(module) else classes
+        parts: list[str] = [file or classes, *inner.split(".")] if inner else [file or classes]
+        child: ET.Element | None = next((each for each in case if each.tag in _OUTCOMES), None)
+        outcome: str = _PASSED
+        reason: str = ""
+        if child is not None:
+            outcome = _OUTCOMES[child.tag]
+            if child.tag == _SKIP_TAG:
+                reason = child.get("message", "") or ""
+                outcome = _XFAILED if child.get("type") == _XFAIL else outcome
+        found.append(
+            Test(
+                "::".join([*parts, case.get("name", "")]),
+                outcome,
+                float(case.get("time", "0") or 0),
+                reason,
+            ),
+        )
+    return found
+
+
+_SKIP_TAG: Final = "skipped"  # the report's element for a skip, an expected failure's too
+_OUTCOMES: Final = {"failure": "failed", "error": "error", _SKIP_TAG: "skipped"}
+_PASSED: Final = "passed"
+_XFAILED: Final = "xfailed"
 
 
 def _added(outcomes: Sequence[Outcome]) -> Outcome:

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A generic standard-library class's members, bound by the receiver's type arguments."""
 
 import ast

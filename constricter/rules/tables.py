@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A module's own tables `--fix` reads, read once for the cross-file index and the check."""
 
 import ast

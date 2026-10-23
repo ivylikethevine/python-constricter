@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What makes a type, not a value, is bound without an annotation: it isn't reported, nor counted."""
 
 import textwrap

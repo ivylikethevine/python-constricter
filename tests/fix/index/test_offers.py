@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--infer-with`: the names a hint may use are classes and aliases the index knows, no generic one bare."""
 
 import sys

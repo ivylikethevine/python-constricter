@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--show-fixes`: how each `--fix` annotation was decided (constricter.annotations.inference)."""
 
 import json

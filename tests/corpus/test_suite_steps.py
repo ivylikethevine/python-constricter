@@ -1,10 +1,10 @@
-# SPDX-License-Identifier: MIT
 """A suite's steps: each part starts once the fixes it reads are made, on checkouts of the suite's own."""
 
 import hashlib
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Final, TypeAlias, cast
 
 import pytest
@@ -276,7 +276,7 @@ def test_the_tests_gather_their_parts(tmp_path: Path, monkeypatch: pytest.Monkey
     def reset(_root: Path, _suite: Suite) -> None:
         pass
 
-    def tested(_root: Path, _suite: Suite, _keep: Path | None) -> corpus_suite.Outcome:
+    def tested(_root: Path, _suite: Suite, _keep: Path | None, _data: Path | None) -> corpus_suite.Outcome:
         return corpus_suite.Outcome({"passed": 2}, frozenset())
 
     monkeypatch.setattr(suite_steps, "prepared", prepared)
@@ -374,7 +374,7 @@ def test_one_fixed_run_runs_again_for_each_outcome_with_a_failure_new_or_gone(
         again.append(f"{step}{kept}")
         return corpus_suite.Outcome({"passed": 2}, frozenset())
 
-    def tested(_root: Path, _suite: Suite, _keep: Path | None) -> corpus_suite.Outcome:
+    def tested(_root: Path, _suite: Suite, _keep: Path | None, _data: Path | None) -> corpus_suite.Outcome:
         raise AssertionError
 
     def prepared(_job: Job, name: str) -> Path:
@@ -463,3 +463,75 @@ def test_a_pytest_failure_is_named_whole_before_its_reason() -> None:
     found: Outcome = corpus_suite.read(output)
     assert found.failed == {"tests/test_a.py::test_x[a b]", "tests/test_a.py::test_y"}
     assert found.counts == {"failed": 1, "error": 1, "passed": 2}
+
+
+_JUNIT: Final = """<?xml version="1.0" encoding="utf-8"?>
+<testsuites><testsuite name="pytest" tests="5">
+<testcase classname="tests.test_a" name="test_x[a b]" file="tests/test_a.py" line="3" time="0.25"/>
+<testcase classname="tests.test_a.TestB" name="test_y" file="tests/test_a.py" line="9" time="0.5">
+<failure message="assert 1 == 2">Traceback</failure></testcase>
+<testcase classname="tests.test_a.TestB.Inner" name="test_z" file="tests/test_a.py" line="12" time="0">
+<error message="RuntimeError">Traceback</error></testcase>
+<testcase classname="tests.sub.test_c" name="test_s" file="tests/sub/test_c.py" line="1" time="0.01">
+<skipped type="pytest.skip" message="needs a server"/></testcase>
+<testcase classname="tests.sub.test_c" name="test_f" file="tests/sub/test_c.py" line="5" time="0.02">
+<skipped type="pytest.xfail" message="known"/></testcase>
+</testsuite></testsuites>
+"""
+
+
+def test_a_junit_report_names_each_test(tmp_path: Path) -> None:
+    """Each test's node id is written back from its file and the classes after it, with its outcome."""
+    report: Path = tmp_path / "part0.xml"
+    _ = report.write_text(_JUNIT, encoding="utf-8")
+    assert corpus_suite.junit_tests(report) == [
+        corpus_suite.Test("tests/test_a.py::test_x[a b]", "passed", 0.25),
+        corpus_suite.Test("tests/test_a.py::TestB::test_y", "failed", 0.5),
+        corpus_suite.Test("tests/test_a.py::TestB::Inner::test_z", "error", 0.0),
+        corpus_suite.Test("tests/sub/test_c.py::test_s", "skipped", 0.01, "needs a server"),
+        corpus_suite.Test("tests/sub/test_c.py::test_f", "xfailed", 0.02, "known"),
+    ]
+    _ = report.write_text("<testsuites>", encoding="utf-8")
+    assert not corpus_suite.junit_tests(report)
+    assert not corpus_suite.junit_tests(tmp_path / "none.xml")
+
+
+def test_pytests_tests_are_read_from_their_junit_reports(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A part run by pytest writes one; every part's read gives the failed tests exactly, and a line a test.
+
+    A logged `ERROR - ...` line names no test then. A part that wrote none leaves the text to say,
+    and tests pytest doesn't run write none.
+    """
+    suite: Suite = Suite("", "", "", (), PYTEST)
+    data: Path = tmp_path / "records" / "tests-released.tests.jsonl"
+    text: str = (
+        "ERROR - 2026-10-13 - logged\nFAILED tests/test_a.py::test_y - x\n=== 2 failed, 3 passed in 0.1s\n"
+    )
+    written: list[bool] = [True]
+    ran: list[list[str]] = []
+
+    def completed(args: list[str], *_args: object, **_options: object) -> SimpleNamespace:
+        ran.append(args)
+        report: str = next((word for word in args if word.startswith("--junitxml=")), "").partition("=")[2]
+        if written[0] and report:
+            _ = Path(report).write_text(_JUNIT, encoding="utf-8")
+        return SimpleNamespace(stdout=text, stderr="")
+
+    monkeypatch.setattr(corpus_suite, "_completed", completed)
+    found: Outcome = corpus_suite.tested(tmp_path, suite, None, data)
+    assert ran[0][-2:] == ["-o", "junit_family=xunit1"]  # no parts: the report's words end the command
+    assert found.failed == {"tests/test_a.py::TestB::test_y", "tests/test_a.py::TestB::Inner::test_z"}
+    assert found.counts == {"failed": 2, "passed": 3}
+    lines: list[Record] = [json.loads(line) for line in data.read_text(encoding="utf-8").splitlines()]
+    assert [(line["id"], line["outcome"], line["seconds"]) for line in lines][:2] == [
+        ("tests/test_a.py::test_x[a b]", "passed", 0.25),
+        ("tests/test_a.py::TestB::test_y", "failed", 0.5),
+    ]
+    written[0] = False
+    assert corpus_suite.tested(tmp_path, suite, None, None).failed == {"tests/test_a.py::test_y"}
+    raw: Suite = Suite("", "", "", (), ("python", "-m", "unittest"))
+    assert corpus_suite.tested(tmp_path, raw, None, None).failed == {"tests/test_a.py::test_y"}
+    assert not any(word.startswith("--junitxml=") for word in ran[-1])

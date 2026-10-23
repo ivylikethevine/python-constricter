@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """An installed method's receiver, matched against the `self` its signature declares (`matches`).
 
 For `constricter.fix.libraries.overloads`, which picks such a signature only where its receiver's

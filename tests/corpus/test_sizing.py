@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The runner's sizing: what a step is given, and its queue for the machine (`sizing.Slots`)."""
 
 import math

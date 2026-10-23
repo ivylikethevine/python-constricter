@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """A library base out of sight: what a class under another checked file's class takes from the library."""
 
 import sys

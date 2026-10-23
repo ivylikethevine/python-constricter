@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """The corpus catalog: its sets, the tiers and groups they make, and where a corpus comes from."""
 
 import tomllib

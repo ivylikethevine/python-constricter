@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Where a type checker sees a value otherwise than `--fix` infers it, and what `--fix` does then.
 
 - A copy, attribute or subscript of a union may be narrowed where it's read (`if x is not None:`,
@@ -390,6 +389,27 @@ def narrowing(function: FunctionDef) -> frozenset[str]:
         if isinstance(node, _TESTS)
         for test in _tested_parts(node)
         for name in _narrowed(test)
+    )
+
+
+def none_tested(function: FunctionDef) -> frozenset[str]:
+    """List the names a function's tests compare with `None`: `x is None`, `x is not None`, `x == None`.
+
+    Returns:
+      Them.
+
+    """
+    return frozenset(
+        compared.left.id
+        for node in walk(function)
+        if isinstance(node, _TESTS)
+        for test in _tested_parts(node)
+        for compared in walk(test)
+        if isinstance(compared, ast.Compare)
+        and isinstance(compared.left, ast.Name)
+        and len(compared.comparators) == 1
+        and isinstance(compared.comparators[0], ast.Constant)
+        and compared.comparators[0].value is None
     )
 
 

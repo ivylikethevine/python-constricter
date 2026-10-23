@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """`--fix` for what's read off calls and written names: a method's return's attribute, a module's members."""
 
 import ast

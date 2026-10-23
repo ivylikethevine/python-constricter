@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """What another checked file's unannotated methods return, for the files calling them.
 
 A module's functions' `return`s type their calls in the files importing them (see

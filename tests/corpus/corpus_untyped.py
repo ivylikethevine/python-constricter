@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """Count what `--fix` still can't type in a corpus, and why: the numbers docs/ROADMAP.md quotes.
 
 The corpus runner's `census` step takes it (`python -m tests.corpus`, with `census = true`), and
@@ -15,7 +14,8 @@ from: the standard library, the corpus's own package, or a third-party one.
 `report` writes, as Markdown: each corpus's untyped bindings, those with no fix at all, and how many
 of those are in functions with no annotations; the commonest shapes with no fix in annotated
 functions, in unannotated ones, and at module level; the groups the roadmap's items are sized by;
-and calls through an import, by where it comes from. Files that don't parse as Python 3 (Twisted's
+the calls with no fix by why the check says they have none (`unfixed`); and calls through an
+import, by where it comes from. Files that don't parse as Python 3 (Twisted's
 Python 2) are left out, and counted.
 """
 
@@ -31,6 +31,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Final, NamedTuple, TextIO, TypeAlias, cast
 
+from constricter.fix.values.refused import REASONS
 from tests.corpus.corpus_table import ALL_SCOPES, WORK, Corpus
 from tests.corpus.untyped_shapes import Module, Names, binding_of, declares, names_in, origin_of, shape
 
@@ -90,6 +91,7 @@ class Binding(NamedTuple):
     dotted: str  # what a call or attribute resolves to through an import (`os.path.join`), or ""
     origin: str  # where that comes from: `stdlib`, `own package`, `third-party`, or ""
     source: str  # the value's source, cut short
+    unfixed: str = ""  # why a call has no fix, as the check says (`refused.REASONS`); "" for any other
 
 
 def _read(path: Path) -> ast.Module | None:
@@ -199,6 +201,7 @@ def _classified(file: _File, result: _Result, scopes: dict[int, tuple[str, bool,
         fix is not None,
         fix is not None and bool(fix["unsafe"]),
         *described,
+        str(result.get("unfixed") or ""),
     )
 
 
@@ -393,6 +396,29 @@ def _groups(missed: Sequence[Binding]) -> list[str]:
     return _table(["No fix, by what the value is", "All", "In annotated functions"], rows)
 
 
+def _reasons(missed: Sequence[Binding], top: int) -> list[str]:
+    """Tabulate the calls with no fix by why the check says they have none (`refused.REASONS`).
+
+    Returns:
+      The table's lines: each reason's calls, those in annotated functions, and their commonest values.
+
+    """
+    calls: list[Binding] = [b for b in missed if b.unfixed]
+    rows: list[list[str]] = []
+    reason: str
+    for reason in REASONS:
+        mine: list[Binding] = [b for b in calls if b.unfixed == reason]
+        in_annotated: int = sum(b.scope == _FUNCTION and b.annotated for b in mine)
+        values: Counter[str] = Counter(b.dotted or b.shape for b in mine)
+        common: str = ", ".join(f"`{name}` {count:,}" for name, count in _ranked(values, top))
+        rows.append([f"`{reason}`", _share(len(mine), len(calls)), f"{in_annotated:,}", common])
+    return [
+        f"{len(calls):,} calls with no fix, each with the check's reason (`--format=json`'s `unfixed`):",
+        "",
+        *_table(["Why", "Calls", "In annotated functions", "Commonest values"], rows),
+    ]
+
+
 def _origins(calls: Sequence[Binding]) -> list[str]:
     """Tabulate calls through an import by where the import comes from, and which modules.
 
@@ -464,6 +490,7 @@ def report(bindings: Sequence[Binding], corpora_seen: Sequence[str], top: int = 
         ),
         ("No fix, in a module's body", _shapes(missed, lambda b: b.scope == _MODULE, top)),
         ("No fix, by group", _groups(missed)),
+        ("Calls with no fix, by why", _reasons(missed, _TOP_MODULES)),
         ("Calls with no fix through an import, by where it comes from", _imports(missed, top)),
     ]
     return "\n".join(f"## {heading}\n\n" + "\n".join(lines) + "\n" for heading, lines in sections)

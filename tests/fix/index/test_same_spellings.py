@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 """One class or alias a file spells two ways (`Schema`, `core.Schema`) is one type to `--fix`."""
 
 import ast
