@@ -204,7 +204,8 @@ def test_the_cache_is_swept_as_its_written_to(tmp_path: Path, monkeypatch: pytes
     os.utime(entry, long_ago)
     os.utime(own / ".swept", long_ago)
     installed.swept.cache_clear()
-    _ = (site / "more.pyi").write_text("def m() -> str: ...\n", encoding="utf-8", newline="\n")
+    # Another size: a rewrite within the clock's tick keeps the mtime, and with it the entry's key.
+    _ = (site / "more.pyi").write_text("def m() -> bytes: ...\n", encoding="utf-8", newline="\n")
     assert installed.cached(site / "more.pyi", "more") is not None
     assert not entry.exists()
     # And of the rest, the longest unread until what's left fits the cap.
@@ -212,7 +213,7 @@ def test_the_cache_is_swept_as_its_written_to(tmp_path: Path, monkeypatch: pytes
     monkeypatch.setattr(installed, "_CAP", 0)
     os.utime(own / ".swept", long_ago)
     installed.swept.cache_clear()
-    _ = (site / "more.pyi").write_text("def m() -> bytes: ...\n", encoding="utf-8", newline="\n")
+    _ = (site / "more.pyi").write_text("def m() -> None: ...\n", encoding="utf-8", newline="\n")
     assert installed.cached(site / "more.pyi", "more") is not None
     assert not list(own.glob("*.pickle"))
 
