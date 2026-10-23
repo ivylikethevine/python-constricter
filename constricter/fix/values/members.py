@@ -622,7 +622,7 @@ def class_variable(receiver: str, name: str, known: Known) -> str | None:
     """Look up a plain class's variable typed by its value alone (see `constricter.fix.values.classvars`).
 
     On an instance of the class, or the class itself (`type[C]`); one of a base of the module's that
-    binds it, too.
+    binds it, too, a generic one given its arguments (`Base[int]`) included: a value names none.
 
     Returns:
       Its type, or `None` if it isn't one (a certain source is asked first, see `member`), or is
@@ -630,7 +630,7 @@ def class_variable(receiver: str, name: str, known: Known) -> str | None:
 
     """
     owner: str | None = known.class_side.lineage.definer(class_of(receiver) or receiver, name)
-    return known.class_side.variables.get(owner or "", {}).get(name) or None
+    return known.class_side.variables.get((owner or "").partition(_GENERIC)[0], {}).get(name) or None
 
 
 def subscripted(container: str, node: ast.Subscript, index: str | None) -> str | None:

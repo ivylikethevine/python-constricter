@@ -435,6 +435,13 @@ def test_a_step_is_given_what_it_took_in_the_last_run(tmp_path: Path) -> None:
     tree: Tree = Tree("celery", "1", tmp_path, tmp_path, suite=celery.suite)
     Store(tmp_path / "earlier").write("celery", "rc+dev", pipeline.TESTS, {"used": USED | {"workers": 2}})
     Store(tmp_path / "earlier").write("celery", "rc+dev", pipeline.CHECK, {})
+    # A part that read another's outcome ran no tests: it sizes nothing.
+    Store(tmp_path / "earlier").write(
+        "celery",
+        "rc+dev",
+        "tests-fix-certain",
+        {"implied": "infer-union", "used": USED | {"workers": 2}},
+    )
     before: dict[tuple[str, str], sizing.Before] = sizing.before(tmp_path, tmp_path / "this")
     assert before == {("celery", pipeline.TESTS): sizing.Before(2.5, 10.0, int(9.5 * sizing.GIB), 2)}
     assert not sizing.before(tmp_path, tmp_path / "earlier")

@@ -43,6 +43,18 @@ Notable changes, newest first. Each release's full notes are generated from its 
   of its tests, and keeps each test's id, outcome, seconds and skip reason beside the run's record
   (`tests-<run>.tests.jsonl`); a logged `ERROR - ...` line no longer reads as a failure, and a
   failure's id is the same from run to run. Tests unittest runs are read from their text as before.
+  Each id is the checkout's node id, read from the report's class name: its `file` can be a path a
+  cached test module kept from an old checkout, or an inherited test's base, and its class name
+  starts with the checkout's path where pytest's rootdir is above it. A record read the other way
+  is no longer compared with one read this way, and a part that took another's outcome no longer
+  sizes the next run's.
+- `--fix` types a method called on what a module bound by a call returns
+  (`np = pytest.importorskip("numpy")`, then `np.arange(24).reshape(4, 6)`) in one pass: the
+  receiver's class is found through the `if TYPE_CHECKING:` import `--fix` adds for it, not only
+  once that import is written. On dask, a second pass had 2 more fixes.
+- `--fix` reads a class variable a generic base binds (`read1 = Read1` in `Parser(Generic[T])`)
+  through `self` in a subclass given its arguments (`class XTermParser(Parser[str])`), as it does a
+  plain base's. On textual, a second pass had 3 more fixes.
 - The corpus runs' witness takes any value that reads, writes and closes for `typing.IO`'s
   classes, which nothing is an instance of; reads a `StringIO` or `BytesIO` where `io`'s or
   `typing`'s file class is named as a test's stand-in, saying nothing of the fix; and reads a

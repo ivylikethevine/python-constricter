@@ -476,6 +476,18 @@ _JUNIT: Final = """<?xml version="1.0" encoding="utf-8"?>
 <skipped type="pytest.skip" message="needs a server"/></testcase>
 <testcase classname="tests.sub.test_c" name="test_f" file="tests/sub/test_c.py" line="5" time="0.02">
 <skipped type="pytest.xfail" message="known"/></testcase>
+<testcase classname="tests.sub.test_c.TestD" name="test_m" file="../../old/run0/tests/sub/test_c.py"
+ time="0"/>
+</testsuite></testsuites>
+"""
+
+
+# Run where pytest's rootdir is above the checkout, and a method its class inherits (`file` the base's).
+_ABOVE: Final = """<testsuites><testsuite name="pytest" tests="2">
+<testcase classname="suites.pkg-1.2-run0.tests.test_a" name="test_x"
+ file="suites/pkg-1.2-run0/tests/test_a.py" time="0"/>
+<testcase classname="suites.pkg-1.2-run0.tests.test_api.TestImage" name="test_load"
+ file="suites/pkg-1.2-run0/tests/validators.py" time="0"/>
 </testsuite></testsuites>
 """
 
@@ -490,6 +502,17 @@ def test_a_junit_report_names_each_test(tmp_path: Path) -> None:
         corpus_suite.Test("tests/test_a.py::TestB::Inner::test_z", "error", 0.0),
         corpus_suite.Test("tests/sub/test_c.py::test_s", "skipped", 0.01, "needs a server"),
         corpus_suite.Test("tests/sub/test_c.py::test_f", "xfailed", 0.02, "known"),
+        # A file outside the checkout: the path a cached rewritten module was compiled at.
+        corpus_suite.Test("tests/sub/test_c.py::TestD::test_m", "passed", 0.0),
+    ]
+    # The class names start with the checkout's own path.
+    checkout: Path = tmp_path / "suites" / "pkg-1.2-run0"
+    (checkout / "tests").mkdir(parents=True)
+    _ = (checkout / "tests" / "test_api.py").write_text("", encoding="utf-8")
+    _ = report.write_text(_ABOVE, encoding="utf-8")
+    assert [test.id for test in corpus_suite.junit_tests(report, checkout)] == [
+        "tests/test_a.py::test_x",
+        "tests/test_api.py::TestImage::test_load",
     ]
     _ = report.write_text("<testsuites>", encoding="utf-8")
     assert not corpus_suite.junit_tests(report)

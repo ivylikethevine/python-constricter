@@ -340,6 +340,39 @@ def test_one_run_fixes_the_class_and_what_reads_it(tmp_path: Path) -> None:
         assert paths[1].read_text(encoding="utf-8") == FIXED_BASES
 
 
+GENERIC: Final = """from typing import Generic, TypeVar
+
+T = TypeVar("T")
+
+
+class Read1:
+    pass
+
+
+class Base(Generic[T]):
+    read1 = Read1
+
+
+class Sub(Base[str]):
+    def parse(self) -> None:
+        r = self.read1
+"""
+
+
+def test_a_generic_bases_variable_is_read_through_its_arguments(tmp_path: Path) -> None:
+    """`self.read1` under `Base[str]` is `Base`'s, as a plain base's is: a second pass changes nothing."""
+    path: Path = tmp_path / "parser.py"
+    _ = path.write_text(GENERIC, encoding="utf-8")
+    arguments: list[str] = ["--fix", "--unsafe-fixes", "--all-scopes", "-q", "--jobs=1", str(tmp_path)]
+    fixed: str = GENERIC.replace("read1 = Read1", "read1: type[Read1] = Read1").replace(
+        "r = self.read1",
+        "r: type[Read1] = self.read1",
+    )
+    for _ in range(2):
+        assert cli.main(arguments) == cli.EXIT_CLEAN
+        assert path.read_text(encoding="utf-8") == fixed
+
+
 def test_a_class_with_no_typed_variable_has_none() -> None:
     """A module whose classes bind nothing a value types isn't read for what they annotate."""
     assert classvars.members(ast.parse("class Empty(ValueError):\n    made = make()\n")) == {}

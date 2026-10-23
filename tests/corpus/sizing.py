@@ -66,7 +66,19 @@ from typing import Final, NamedTuple, Protocol, cast
 
 from constricter.rules import parsed
 from tests.corpus.catalog import Suite
-from tests.corpus.pipeline import INFER, PROFILE, SHARING, TESTS, TIMING, TRACED, TYPES, UNION, Record, parts
+from tests.corpus.pipeline import (
+    IMPLIED,
+    INFER,
+    PROFILE,
+    SHARING,
+    TESTS,
+    TIMING,
+    TRACED,
+    TYPES,
+    UNION,
+    Record,
+    parts,
+)
 from tests.corpus.run_config import Run
 from tests.corpus.trees import Tree
 
@@ -577,7 +589,8 @@ def before(output: Path, run: Path) -> dict[tuple[str, str], Before]:
 
     A run with this one's label, if any measured it: a probe's or a stopped run's steps under another
     label size only what none of its own has. `run`: this run's folder, whose own records say nothing
-    of a step still to run.
+    of a step still to run. A suite's part that read another's outcome (`IMPLIED`) ran no tests, and
+    may run them next time: it measured nothing.
 
     Returns:
       Each step's use, by its corpus's directory and its name.
@@ -591,9 +604,10 @@ def before(output: Path, run: Path) -> dict[tuple[str, str], Before]:
     found: dict[tuple[str, str], Before] = {}
     kept: Path
     for kept in (kept for records in earlier for kept in sorted(records.glob("*/*/*.json"))):
-        used: Record = {}
+        record: Record = {}
         with contextlib.suppress(OSError, ValueError):
-            used = cast("Record", cast("Record", json.loads(kept.read_text(encoding="utf-8"))).get(USED, {}))
+            record = cast("Record", json.loads(kept.read_text(encoding="utf-8")))
+        used: Record = {} if IMPLIED in record else cast("Record", record.get(USED, {}))
         seconds: float = cast("float", used.get("seconds", 0.0))
         cpu: float = cast("float", used.get("cpu", 0.0))
         if seconds and cpu:

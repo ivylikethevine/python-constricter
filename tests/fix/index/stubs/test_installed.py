@@ -334,3 +334,51 @@ def test_what_is_read_of_an_installed_module_importorskip_takes_is_typed(
     _ = main.write_text(textwrap.dedent(_SKIPPING), encoding="utf-8", newline="\n")
     _ = cli.main(["--fix", "-q", "--select=LVA001", str(main)])
     assert main.read_text(encoding="utf-8") == textwrap.dedent(_SKIPPING_FIXED)
+
+
+# The same package, its class generic and its method overloaded on its argument (numpy's `ndarray.reshape`).
+_CHAINED_ARROW: Final = {
+    **_ARROW,
+    "arrow-stubs/__init__.pyi": (
+        "from typing import Generic, TypeVar, overload\n"
+        "S = TypeVar('S')\n"
+        "class Array(Generic[S]):\n"
+        "    @overload\n    def reshape(self, n: int) -> Array[tuple[int]]: ...\n"
+        "    @overload\n    def reshape(self, n: tuple[int, int]) -> Array[tuple[int, int]]: ...\n"
+        "def array(obj: object) -> Array[tuple[int]]: ...\n"
+    ),
+}
+_CHAINED: Final = """
+import pytest
+
+pa = pytest.importorskip("arrow")
+
+
+def test_arrays() -> None:
+    grid = pa.array([1]).reshape((2, 3))
+"""
+_CHAINED_FIXED: Final = """
+import pytest
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from arrow import Array
+
+pa = pytest.importorskip("arrow")
+
+
+def test_arrays() -> None:
+    grid: Array[tuple[int, int]] = pa.array([1]).reshape((2, 3))
+"""
+
+
+def test_a_method_of_what_importorskips_module_returns_is_typed_in_one_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`pa.array([1]).reshape(...)`: the receiver's class is named by the import `--fix` is adding for it."""
+    monkeypatch.setattr(sys, "path", [str(_site(tmp_path, _CHAINED_ARROW)), *sys.path])
+    main: Path = tmp_path / "project" / "test_main.py"
+    main.parent.mkdir()
+    _ = main.write_text(textwrap.dedent(_CHAINED), encoding="utf-8", newline="\n")
+    _ = cli.main(["--fix", "-q", "--select=LVA001", str(main)])
+    assert main.read_text(encoding="utf-8") == textwrap.dedent(_CHAINED_FIXED)
