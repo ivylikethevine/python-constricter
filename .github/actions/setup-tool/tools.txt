@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 # The pinned CI tools, one row per tool - installed by ./install.sh (through
 # ./action.yml or ../setup-tools) and drift-checked by
 # ../../scripts/check_tool_versions.sh. Both read it through ./lib.sh, so a
@@ -51,15 +50,19 @@
 # Floating by design - tools this repo deliberately does not pin, and why.
 # Each is still named here so "is this pinned?" has one place to look:
 #
-#   node   ci.yml's docs job (actions/setup-node, `node-version: "22"`)
+#   node   ci.yml's docs job (actions/setup-node, `node-version: "24"`)
 #          only runs markdownlint-cli2 and prettier, which
 #          ../../package-lock.json pins (CI_MANIFESTS)
 #   Pinned elsewhere, not floating: uv in .github/scripts/
-#   check_tool_versions.local.sh's roster, and the Python tools (zizmor,
-#   typos, pip-audit and the rest) in uv.lock. tool-versions.yml reports
-#   every one. The four rows below are the whole roster.
+#   check_tool_versions.local.sh's roster, and the Python tools (typos,
+#   pip-audit and the rest) in uv.lock. tool-versions.yml reports every one.
+#   The five rows below are the whole roster.
 
 actionlint|1.7.12|tar.gz|https://github.com/rhysd/actionlint/releases/download/v%v/actionlint_%v_linux_amd64.tar.gz|--version|github:rhysd/actionlint||8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+# Every target installs zizmor from here, never from a Python lock: the shared
+# workflows' inline ignores hold on this version, and another can read them
+# differently (1.31.0 missed one on `on:` that 1.31.1 honours).
+zizmor|1.31.1|tar.gz|https://github.com/zizmorcore/zizmor/releases/download/v%v/zizmor-x86_64-unknown-linux-gnu.tar.gz|--version|github:zizmorcore/zizmor||d185f726bdaf92df78273217dfdd24ebcd6b0ef48cf3ce776ff5762b6e138c99
 # Tags are "lychee-v<version>"; the tag-prefix column strips that so the drift
 # check compares versions, not strings.
 lychee|0.24.2|tar.gz|https://github.com/lycheeverse/lychee/releases/download/lychee-v%v/lychee-x86_64-unknown-linux-gnu.tar.gz|--version|github:lycheeverse/lychee|lychee-v|1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
