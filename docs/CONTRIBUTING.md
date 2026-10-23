@@ -54,7 +54,8 @@ Docs and Test jobs' steps from `.github/workflows/ci.yml` and the Dependency aud
 `.github/workflows/security.yml` (so it can't fall behind either), fails a step by its exit status
 alone (pylint still rates a run with one finding 10.00/10), and prints each failing step's output in
 full. A tool CI fetches by URL (lychee, actionlint, gitleaks) is the one on `PATH`, its step skipped
-without one; zizmor runs `--offline` without a `GH_TOKEN`. It also runs the tests on each other
+without one; zizmor, which CI installs from `tools.txt`, is the one on `PATH` too, and runs
+`--offline` without a `GH_TOKEN`. It also runs the tests on each other
 Python in the Test job's matrix (PyPy and free-threaded builds included), each in its own
 `local/.venv-<python>` that uv creates, so what only one interpreter breaks fails before CI. Name
 jobs to run only those (`tests/ci_local.py lint docs interpreters`), and add `--install-hook` once to

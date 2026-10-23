@@ -61,13 +61,17 @@ jobs:
             api.github.com:443
             github.com:443
             release-assets.githubusercontent.com:443
+            results-receiver.actions.githubusercontent.com:443
             files.pythonhosted.org:443
             raw.githubusercontent.com:443
             releases.astral.sh:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      # from tools.txt (sha256-verified, cached): the version the shared workflows' ignores hold on
+      - uses: ./.github/actions/setup-tool
+        with:
+          tool: zizmor
       - run: zizmor --persona pedantic .github/
         env:
           GH_TOKEN: ${{ github.token }}

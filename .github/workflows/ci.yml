@@ -267,6 +267,8 @@ jobs:
           egress-policy: block
           allowed-endpoints: >
             github.com:443
+            codeload.github.com:443
+            results-receiver.actions.githubusercontent.com:443
             pypi.org:443
             files.pythonhosted.org:443
             raw.githubusercontent.com:443

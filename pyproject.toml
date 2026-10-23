@@ -96,7 +96,6 @@ dev = [
     "types-psutil",
     "typos",
     "validate-pyproject",
-    "zizmor",
 ]
 
 [project.scripts]
