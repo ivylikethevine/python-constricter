@@ -871,11 +871,30 @@ measure before building.
    in one process and 0.00% with jobs, and 0.00% in instructions both ways
    (`scratch/timing_noise.py`; rc.2's and rc.3's, a code change apart, 4.3% and 7.6%). Their tails
    took 6.2 minutes each: the checks got slower, not the tail (the 47 timed steps sum to 371s, from
-   rc.3's 334s: the standard library 62s to 73s, pandas 71s to 76s). Next (2026-10-23, the round
-   of speed items): profile the standard library's check in one process at rc.3's `e8f67eb1e`
-   (`local/worktrees/rc3`, its tables generated there) against the tree, once the machine is free,
-   and take back what the mechanisms since cost. Done when a mega run's tail is under 5 minutes with
+   rc.3's 334s: the standard library 62s to 73s, pandas 71s to 76s). Profiled on 2026-10-23, the
+   standard library in one process under `py-spy` on 16CPU/60GB (`scratch/profile_diff.py`): 54.3s
+   at rc.3's `e8f67eb1e`, 65.5s at `daa6fba`. Of the 11.2s, `reads.members` 2.9s (an `ast.walk` of
+   every method of every class, each check and round), the walks (`walked.children`,
+   `syntax.own_nodes`, `ast.walk`) about 5s, `classvars.members` 0.5s, `overloads._agreed` 0.8s,
+   the generic members 0.7s, and `ast.parse` 0.7s with its code unchanged (the collector, a heap
+   larger). Being taken back in three patches, `local/meanwhile/speed-*.patch`. Done when a mega run's tail is under 5 minutes with
    that noise unchanged. About 1 hour; coverage unchanged.
+
+4. **Installed stubs, as PEP 561 orders them.** `installed.search_path()` puts constricter's own
+   `sys.path` before `VIRTUAL_ENV`'s, and `locate()` stops at the first directory with the package:
+   in the corpus runs `local/.venv`'s untyped `docutils`, `pandas`, `pygments`, `yaml`, `dateutil`
+   and `six` shadow the corpus environments' `docutils-stubs`, `pygments-stubs` (sphinx),
+   `pandas-stubs` (altair, narwhals, seaborn), `yaml-stubs` and `dateutil-stubs`. sphinx's 102
+   `docutils.nodes.*` calls with no fix (`nodes.fully_normalize_name(...)`, `-> str` in the stubs)
+   are `imported`, and only its capitalised ones are typed, by the constructor guess. And `py.typed`
+   is looked for at a package's top alone, so a namespace package's (`google/auth/py.typed`) is
+   missed, and a stub package has no fall-back for a module it lacks. Read the environment's before
+   constricter's own, a `-stubs` package first wherever it is, `py.typed` in a namespace
+   subpackage, and a partial stub package's missing modules from the package. About 145 direct
+   calls and the chains they start (sphinx 491, seaborn 383 `receiver`/`member` calls; a few
+   hundred, estimated: `local/research/type-sources-2026-10-23.md`). Done when a super run and
+   sphinx, seaborn, altair and narwhals have the stubs' fixes, no new type error. About 2 hours;
+   coverage up to 0.2%.
 
 ### Medium: 4 to 8 hours
 
@@ -1000,7 +1019,23 @@ measure before building.
    differed). Left to try: an edge only where the receiver's class is known to be the other
    module's; and a file checked again from where its first check ended when what it imports returns
    anew, as it is when its parameters are typed. Done when the standard library checks in under 9s
-   with every CPU, its findings the same. About 8 hours; coverage unchanged.
+   with every CPU, its findings the same. About 8 hours; coverage unchanged. Measured 2026-10-23
+   (`scratch/order_edges.py`, the check order rebuilt as `order.plan` builds it): the method-name
+   edges make every long chain, pandas's 224 files (39% of its bytes) and the standard library's 84,
+   6 and 14 without them; keeping one only where a class the file names has the method keeps 9,155
+   of pandas's 9,182 and 13,024 of the standard library's 13,091 (`import pkg` names every class of
+   the package), and an edge by the receiver's class at check time can't keep the output the same.
+9. **Runs in stages.** A run measures every step in one sitting, which takes the machine for one
+   to two hours; a stopped run resumes in its folder (`--resume`), but runs every step left. Give
+   the runner stages it can run one at a time, at separate times, into one folder: built in (the
+   checks and fixes; the suites' tests and type checks; the traced tests; the timed checks and the
+   profile), and regrouped by a run file's `[stages]` table; `--stage NAME` runs that stage's
+   steps alone, a stage whose records are in is skipped, and the report is written from the
+   records so far, naming the stages left, and published only once every stage is in. A stage on
+   another commit or other settings than the folder's earlier stages is refused, naming both,
+   unless `--join-anyway`, and the report and its section then give each stage's commit. Done
+   when a super run made in four stages at separate times gives the report one sitting does. About
+   5 hours; coverage unchanged.
 
 ### Large: more than 8 hours
 
@@ -1093,6 +1128,25 @@ What to measure before building, smallest first.
    bug finder. A table by shape in the `traced` step: bindings with no fix, those the run bound to
    one type, and the commonest sources. Done when the table is in a run's report. About 4 hours;
    coverage unchanged.
+
+5. **What stubs would add to the corpora.** Of the 5,751 third-party `imported` calls with no fix
+   on the 0.4.3-rc.1 mega run, 822 are into a package untyped in the corpus's environment (pandas in
+   dask 297 and xarray 200, kombu 52, tlz 47, fsspec 40, scipy in networkx 39) and 978 into one not
+   installed (pyarrow in pandas 137). Install pandas-stubs, scipy-stubs, pyarrow-stubs and
+   types-PyYAML into dask's, xarray's, networkx's and pandas's environments (`corpora.toml`) and count
+   the fixes and the chains they type. Done when measured. About 1 hour beside a run; coverage
+   unchanged.
+6. **Declared types of installed packages with no `py.typed`, as guesses.** What pyright reads with
+   `useLibraryCodeForTypes`, held to the source's own annotations (mypy reads such a package as
+   `Any`): pandas/core declares 73% of its functions' returns, wheel 86%, setuptools 54%, grpc 51%.
+   About 400 of the 822 untyped direct calls, and dask's and xarray's chains (2,314 and 1,078
+   `receiver`/`member` calls, perhaps a third pandas values). A fix kind of its own, held to the
+   witness. Done when measured against item 5's baseline. About 4 hours; coverage up to 1%.
+7. **typeshed's third-party stubs, not installed.** basedpyright ships them
+   (`typeshed-fallback/stubs`, 201 sets): 18 of the top 100 PyPI packages are typed only there
+   (pyyaml, python-dateutil, six, protobuf, grpcio, jsonschema, tqdm, pytz, regex, ...). Certain where
+   the installed version matches `METADATA.toml`'s, a guess where not. About 60 to 100 calls in the
+   corpora; its reach is users' code. Done when measured. About 4 hours; coverage under 0.1%.
 
 ## Ongoing
 
