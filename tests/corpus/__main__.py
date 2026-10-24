@@ -979,7 +979,7 @@ def _all(run: Run, store: pipeline.Store, chosen: Callable[[str], bool] | None =
         threading.Semaphore(max(1, run.at_once)),
         scope,
         {},
-        planning.ranks(run, entries, plan),
+        planning.ranks(run, entries, plan, chosen),
         chosen,
     )
     pool: ThreadPoolExecutor

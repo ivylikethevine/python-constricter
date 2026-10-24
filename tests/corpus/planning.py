@@ -13,7 +13,7 @@ rules order it (`sizing`). Where OR-Tools isn't installed, nothing is planned.
 import importlib
 import importlib.util
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
 
@@ -46,11 +46,17 @@ class _Step:  # pylint: disable=too-few-public-methods
         self.after: frozenset[str] = after
 
 
-def ranks(run: Run, entries: Sequence[catalog.Entry], plan: sizing.Plan) -> dict[tuple[str, str], float]:
+def ranks(
+    run: Run,
+    entries: Sequence[catalog.Entry],
+    plan: sizing.Plan,
+    chosen: Callable[[str], bool] | None = None,
+) -> dict[tuple[str, str], float]:
     """Plan the order the run's steps start in, where OR-Tools is installed.
 
-    Only the steps the last runs measured are planned; the timed steps, which run alone at the end,
-    are not.
+    Only the steps the last runs measured are planned, and of a run in stages only the steps of the
+    stage this execution runs (`chosen`): the others start once it has ended. The timed steps, which
+    run alone at the end, are not.
 
     Returns:
       Each planned step's start, in seconds, by its corpus's name and its own; none where nothing is
@@ -59,16 +65,21 @@ def ranks(run: Run, entries: Sequence[catalog.Entry], plan: sizing.Plan) -> dict
     """
     if importlib.util.find_spec("ortools") is None:
         return {}
-    steps: list[_Step] = _measured(run, entries, plan)
+    steps: list[_Step] = _measured(run, entries, plan, chosen or _every)
     return _solved(steps, plan.cpus, plan.memory, {entry.name: entry.port for entry in entries if entry.port})
+
+
+def _every(_name: str) -> bool:
+    return True
 
 
 def _measured(
     run: Run,
     entries: Sequence[catalog.Entry],
     plan: sizing.Plan,
+    chosen: Callable[[str], bool],
 ) -> list[_Step]:
-    """List the run's steps on `entries` that an earlier run measured, each with those it waits for.
+    """List the `chosen` steps of the run on `entries` an earlier run measured, each with those it waits for.
 
     Each as `plan` sizes it: the CPUs and the memory the runner will hold for it, not what it used.
 
@@ -85,8 +96,8 @@ def _measured(
         needs: dict[str, frozenset[str]] = suite_steps.needs(job) if entry.suite is not None else {}
         name: str
         for name in names:
-            if name == _RELEASED and not run.steps.tests_released:
-                continue  # an earlier run's, most likely: not run
+            if (name == _RELEASED and not run.steps.tests_released) or not chosen(name):
+                continue  # an earlier run's, most likely, or another stage's: not run
             if (entry.name.replace(" ", "-"), name) in plan.before:
                 wanted: sizing.Wanted = plan.wanted(job.tree, name, heavy=entry.heavy)
                 found.append(_Step(entry.name, name, wanted, needs.get(name, frozenset())))

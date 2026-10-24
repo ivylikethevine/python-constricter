@@ -306,7 +306,13 @@ measure before building.
    minutes and used 76% (69,792 of 91,728 CPU seconds): its last 15 minutes ran at 8.2 and then 0.8
    CPUs, the union's steps and then the timed tail. The 0.4.3-rc.3 super run, in stages, used 52%
    (23,773 of 46,106), rc.2's 54%: its steps waited 1,141 minutes in all for memory, the hinted
-   steps of its first 15 minutes 8 to 16 minutes each. Done when a mega run uses 85% of
+   steps of its first 15 minutes 8 to 16 minutes each. Replayed on 2026-10-24 (`schedule_sim.py
+--sweep`, the rc.2 to rc.4 super runs on 16 CPUs and 29 GB, the memory rc.4's runner shared, no
+   stages): the runner's order replays rc.4 in 38.5 minutes against its 51.8 in stages (pauses left
+   out), so the stages' barriers, not the order, cost most; ordering by most CPU seconds with
+   `_PATIENCE` 600s and `_BESIDE` 60s replays the three in 87.6 minutes summed, the runner's rules
+   (300s, 300s) about 102. The rules order only the steps no run has measured, the planner the
+   rest, so they're left as they are. Done when a mega run uses 85% of
    its CPU seconds, and one with no earlier run under its output takes within a tenth of one sized
    by its own. About 2 hours beside the runs; coverage unchanged.
 4. **The runner's order, from a solver.** No library runs subprocess steps in a graph under CPUs and
@@ -322,8 +328,13 @@ measure before building.
    a proved floor of 57. On the 0.4.3-rc.1 runs (16 CPUs and 36 GB to the solver), the mega run's
    95.2 minutes against a shortest 85.2 (11.7% over; 89.3 held to what the runner gave each step,
    6.6%), and mega-fast's 56.2 against 45.6 (23%). OR-Tools is in the `corpus` group, which CI's
-   corpus setup installs, and `dev`. The 0.4.3-rc.2 to rc.4 super runs' times are still to read
-   against `scratch/schedule_solve.py`'s shortest. Done when a super and a
+   corpus setup installs, and `dev`. Read on 2026-10-24 (16 CPUs and 29 GB to the solver): the
+   rc.2 super run, in one sitting, 47.6 minutes against a shortest 47.7, its pandas `infer-union`
+   of 630s the floor; rc.3 and rc.4, in stages, 47.7 and 51.8 (its 4.5 minutes of pauses left out)
+   against 30.5 and 35.7 with no stages, and 35.4 and 45.8 held to them
+   (`schedule_solve.py --staged`): 35% and 13% over. A run in stages planned every stage's steps
+   at once, ranking a stage's own by a schedule mixing them with the later stages'; a stage plans
+   its own steps alone since (`planning.ranks`'s `chosen`); not yet run. Done when a super and a
    mega run each take within a tenth of the solver's shortest schedule of their own steps. About 2
    hours beside the runs; coverage unchanged.
 5. **Signatures from a sampled run.** RightTyper runs a package's tests
@@ -342,8 +353,21 @@ measure before building.
    `--no-use-multiprocessing` in `--help`). So the fixes and errors are unmeasured, and django
    wasn't run (its suite under RightTyper outruns a sandboxed call's 10 minutes). Next: a package
    whose annotations it can read (django's, which has none), or `--ignore-annotations` on pydantic
-   with the overwritten signatures reverted. Done when measured; a corpus step only if it brings
-   more fixes than the trace for no more errors. About 3 hours left; coverage unchanged.
+   with the overwritten signatures reverted. Measured on pydantic on 2026-10-24 (RightTyper 0.1.0,
+   its only release since 2025-06, one process on 16CPU/60GB): `--ignore-annotations` on its
+   tests (`tests/test_docs.py` and `tests/benchmarks` left out, `-W ignore::DeprecationWarning`
+   since its own type lookups warn and pydantic's tests make warnings errors) ran 12,311 tests in
+   25.9s, then crashed writing a test-local class's name (`<locals>.MyModel`; run past with that
+   part dropped, from a patched copy). Of what it wrote, the 23 parameters and 22 returns pydantic
+   left unannotated, in 16 files, were taken onto its own source (`scratch/righttyper_added.py`,
+   the imports they need under `TYPE_CHECKING`): `--fix` made 3 more certain fixes (1,192 from
+   1,191, `v1/main.py`; 2 others lost to the added imports), and `pyright pydantic` found 45 errors
+   where it found none, the sampled types narrower than the functions take (`**kwargs: None`,
+   `other: None` on `__or__`, `Self` in a metaclass). Not a corpus step on pydantic: more errors
+   than fixes. Left: django, which annotates nothing (its suite under RightTyper in the background,
+   one process), for whether the returns alone help where there are none. Done when django is
+   measured too; a corpus step only if it brings more fixes than the trace for no more errors.
+   About 2 hours left; coverage unchanged.
 6. **A check's peak, past the resumed files.** The standard library's check in one process
    (2026-10-24, 16CPU/60GB, `scratch/peak_rss.py`) peaked at 2.65 GiB: every file's tree, and its
    whole finished check (scopes, bindings, inferences: 84,624 scopes), kept for a second round that
