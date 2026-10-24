@@ -601,6 +601,11 @@
   typed before and those fixed (mypy's and sphinx's one each); and `resampled`, a suite's traced
   tests beside its released tests, a flakiness sample for free (the same failures on all but 6).
   The first two are listed only where they differ, from the fix steps' `.fixes.jsonl` and records.
+- **A traced run under twice its untraced time, unsampled**: on the 0.4.3-rc.2 super run
+  (`44c05d5`, 16CPU/60GB) pydantic's and django's traced tests took 1.04 and 1.10 times their
+  untraced (55.6s against 53.7s, 52.8s against 48.2s), pandas's, the slowest, 1.37 (135.1s against
+  98.5s). Sampling in short windows (`sys.monitoring`'s events off between them) is left for a
+  corpus whose traced tests grow past twice.
 
 ### CI, security and releases
 
@@ -834,6 +839,26 @@ measure before building.
    rerun. Done when a release's 20 wheels and attestations are on PyPI and the GitHub release. Under an hour beside the release;
    coverage unchanged.
 
+3. **Installed stubs, as PEP 561 orders them.** Built in `44c05d5`: `installed.search_path()`
+   reads the checked code's environment (`VIRTUAL_ENV`) before constricter's own, `locate()` takes
+   a `-stubs` package first in any directory, a partial one leaving a module it lacks to the
+   package, and a namespace package's typed subpackage (`google/auth/py.typed`). On the corpus runs
+   `local/.venv`'s untyped `docutils`, `pandas`, `pygments`, `yaml`, `dateutil` and `six` shadowed
+   the corpus environments' `docutils-stubs`, `pygments-stubs` (sphinx), `pandas-stubs` (altair,
+   narwhals, seaborn), `yaml-stubs` and `dateutil-stubs`: sphinx's 102 `docutils.nodes.*` calls
+   with no fix were `imported`. About 145 direct calls and the chains they start (sphinx 491,
+   seaborn 383 `receiver`/`member` calls; a few hundred, estimated:
+   `local/research/type-sources-2026-10-23.md`). Done when a super run gives sphinx, seaborn,
+   altair and narwhals the stubs' fixes, no new type error. Coverage up to 0.2%.
+4. **Runs in stages.** Built in `88e0dda`: a run's steps fall into stages run one at a time into
+   one folder (`tests/corpus/stages.py`): built in `fixes`, `traced`, `tests` and `timed`,
+   regrouped by a run file's `[stages]` table. `--stage NAME` runs that stage's steps alone, a step
+   needing a stage still to run left for it; the report is written from the records so far, naming
+   the stages left, and published once every stage is in. A stage on another commit, other
+   uncommitted changes or another run file than the folder's earlier stages is refused, naming
+   both, unless `--join-anyway`, and the report then gives each stage's commit. Done when a super
+   run made in four stages at separate times gives the report one sitting does. Coverage unchanged.
+
 ### Small: under 4 hours
 
 1. **Ubuntu 26.04 runners, first.** Every Linux job runs on `ubuntu-latest`, and the release's ARM
@@ -880,23 +905,7 @@ measure before building.
    the same offences and fixes, `scratch/equivalence.sh`): the standard library 40.6s from 50.9s,
    pandas 46.9s from 57.5s. Done when a mega run's tail is under 5 minutes with that noise
    unchanged. About 1 hour beside the run; coverage unchanged.
-
-4. **Installed stubs, as PEP 561 orders them.** `installed.search_path()` puts constricter's own
-   `sys.path` before `VIRTUAL_ENV`'s, and `locate()` stops at the first directory with the package:
-   in the corpus runs `local/.venv`'s untyped `docutils`, `pandas`, `pygments`, `yaml`, `dateutil`
-   and `six` shadow the corpus environments' `docutils-stubs`, `pygments-stubs` (sphinx),
-   `pandas-stubs` (altair, narwhals, seaborn), `yaml-stubs` and `dateutil-stubs`. sphinx's 102
-   `docutils.nodes.*` calls with no fix (`nodes.fully_normalize_name(...)`, `-> str` in the stubs)
-   are `imported`, and only its capitalised ones are typed, by the constructor guess. And `py.typed`
-   is looked for at a package's top alone, so a namespace package's (`google/auth/py.typed`) is
-   missed, and a stub package has no fall-back for a module it lacks. Read the environment's before
-   constricter's own, a `-stubs` package first wherever it is, `py.typed` in a namespace
-   subpackage, and a partial stub package's missing modules from the package. About 145 direct
-   calls and the chains they start (sphinx 491, seaborn 383 `receiver`/`member` calls; a few
-   hundred, estimated: `local/research/type-sources-2026-10-23.md`). Done when a super run and
-   sphinx, seaborn, altair and narwhals have the stubs' fixes, no new type error. About 2 hours;
-   coverage up to 0.2%.
-5. **The hinted steps' servers, sized by the memory free.** On the 0.4.3-rc.2 super run (48
+4. **The hinted steps' servers, sized by the memory free.** On the 0.4.3-rc.2 super run (48
    minutes, 54% of its CPU seconds) memory, not CPUs, kept steps waiting: each `infer-*` step held 12
    to 18 GB, almost all the checkers' servers (up to four a checker, `Server.fitting`), and pandas's
    `infer-union`, all three checkers' at once, 28.5 GB for 10.5 minutes, with 2.5 to 7 CPUs busy from
@@ -910,7 +919,7 @@ measure before building.
    sooner), which needs `Slots` to start a step with less than it wants, as a suite's tests do.
    Done when pandas's `infer-union` holds under 18 GB and a super run uses 75% of its CPU seconds,
    its hints the same. About 2 hours left beside the run; coverage unchanged.
-6. **basedpyright's heap, capped: in the tree, to measure.** Node 24's own cap was 4.2 GB whatever a
+5. **basedpyright's heap, capped: in the tree, to measure.** Node 24's own cap was 4.2 GB whatever a
    server's share (basedpyright empties its caches near it, and says so: "Emptying type cache").
    Each server's heap is now capped at nine tenths of its share of the memory
    (`NODE_OPTIONS=--max-old-space-size`, `Checker.share`), and a capped server that exits is
@@ -918,7 +927,7 @@ measure before building.
    again left without hints and not remembered. The hints on the standard library's `email` are the
    same as before. Left: what a corpus's hinted step holds and takes with the cap, against 0.4.3-rc.2
    (the standard library's 39 MB wants 5.7 GB in one server, over Node's old cap), on the next run.
-7. **A check's peak, past the resumed files.** The standard library's check in one process
+6. **A check's peak, past the resumed files.** The standard library's check in one process
    (2026-10-24, 16CPU/60GB, `scratch/peak_rss.py`) peaked at 2.65 GiB: every file's tree, and its
    whole finished check (scopes, bindings, inferences: 84,624 scopes), kept for a second round that
    resumes 242 of its 1,867 files. Both are now kept only for a module with an open function, the
@@ -997,15 +1006,7 @@ measure before building.
    whose annotations it can read (django's, which has none), or `--ignore-annotations` on pydantic
    with the overwritten signatures reverted. Done when measured; a corpus step only if it brings
    more fixes than the trace for no more errors. About 3 hours left; coverage unchanged.
-4. **A traced run, sampled: its bar met unsampled.** The tracer follows every line of a recorded
-   function until its statements have ended 20 times with nothing new; sampling would record in
-   short windows at random times, `sys.monitoring`'s events off between them. Done when pydantic's
-   and django's traced tests take under twice their untraced time, the fixes resting on the trace
-   within a hundredth of today's: on the 0.4.3-rc.2 super run (`44c05d5`, 16CPU/60GB) they took
-   1.04 and 1.10 times it (55.6s against 53.7s, 52.8s against 48.2s), and pandas's, the slowest,
-   1.37 (135.1s against 98.5s), with no sampling. Left only if a corpus's traced tests grow past
-   twice: the windows, and a container read until new types stop turning up. Coverage unchanged.
-5. **The runner's order, from a solver.** No library runs subprocess steps in a graph under CPUs and
+4. **The runner's order, from a solver.** No library runs subprocess steps in a graph under CPUs and
    memory as the runner does: Snakemake's scheduler comes nearest, choosing among its ready jobs as
    a knapsack, greedily or by PuLP's solver, but is a workflow engine whole, and Dask's and Ray's
    resources are their workers' Python tasks'. Where OR-Tools is installed, the runner plans its
@@ -1025,7 +1026,7 @@ measure before building.
    what the stub order gave sphinx and the pandas-using corpora (Small 4). Done when a super and a
    mega run each take within a tenth of the solver's shortest schedule of their own steps. About 2
    hours beside the runs; coverage unchanged.
-6. **CI's tools and security workflows, the shared way.** `security.yml` runs CodeQL and the weekly
+5. **CI's tools and security workflows, the shared way.** `security.yml` runs CodeQL and the weekly
    link check in jobs of its own, and every workflow that needs a binary (actionlint, gitleaks,
    lychee, twice) downloads it through `actions/tool` with the URL and sha256 written in the step,
    each a row of `check_tool_versions.local.sh`'s roster. The sibling repositories run the shared
@@ -1046,13 +1047,13 @@ measure before building.
    not a named check. Done when every workflow has one green run on a pull request, including a
    weekly `link-check.yml` by hand, `tool-versions.yml` reports the same four tools and osv-scanner
    from the new roster, the Dependency audit runs osv-scanner, and the sync has nothing left to send. About 5 hours; coverage unchanged.
-7. **Mutation testing.** Line coverage is held at 100% (`fail_under`), so it no longer says which
+6. **Mutation testing.** Line coverage is held at 100% (`fail_under`), so it no longer says which
    lines run without a test checking what they do; a mutant the suite survives does. How: `mutmut`
    over `constricter/`, its tests run without the corpus suites, in a `scratch/` script with its
    output under `local/`; triage the survivors and write tests for those worth killing. Done when
    a full run's survivors are each killed or recorded as equivalent. About 6 hours beside the run;
    coverage unchanged.
-8. **A parallel check, past its longest chain.** With every CPU the standard library checks in 12.9s
+7. **A parallel check, past its longest chain.** With every CPU the standard library checks in 12.9s
    and pandas in 11.3s: 46s and 50s in one process, 29s in two, 18s in four, 13.7s and 12.9s in
    eight, so about 10s of each doesn't shorten with more (timed before a method's lookups were kept
    for a run, which took one process from 53.7s to 43.0s on the standard library and 61.8s to 53.5s
@@ -1072,17 +1073,6 @@ measure before building.
    6 and 14 without them; keeping one only where a class the file names has the method keeps 9,155
    of pandas's 9,182 and 13,024 of the standard library's 13,091 (`import pkg` names every class of
    the package), and an edge by the receiver's class at check time can't keep the output the same.
-9. **Runs in stages.** A run measures every step in one sitting, which takes the machine for one
-   to two hours; a stopped run resumes in its folder (`--resume`), but runs every step left. Give
-   the runner stages it can run one at a time, at separate times, into one folder: built in (the
-   checks and fixes; the suites' tests and type checks; the traced tests; the timed checks and the
-   profile), and regrouped by a run file's `[stages]` table; `--stage NAME` runs that stage's
-   steps alone, a stage whose records are in is skipped, and the report is written from the
-   records so far, naming the stages left, and published only once every stage is in. A stage on
-   another commit or other settings than the folder's earlier stages is refused, naming both,
-   unless `--join-anyway`, and the report and its section then give each stage's commit. Done
-   when a super run made in four stages at separate times gives the report one sitting does. About
-   5 hours; coverage unchanged.
 
 ### Large: more than 8 hours
 
