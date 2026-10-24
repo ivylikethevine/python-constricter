@@ -29,7 +29,7 @@ from constricter.fix.values.doubts import (
 from constricter.fix.values.guesses import guessed, guessing
 from constricter.fix.values.inference import inference, inferred
 from constricter.fix.values.members import fits, parsed
-from constricter.fix.values.narrowed import narrowed_at, narrowed_to, read_narrowed
+from constricter.fix.values.narrowed import checked_to, narrowed_at, narrowed_to, read_narrowed
 from constricter.fix.values.refused import refused
 from constricter.offences import (
     LONG_TUPLE,
@@ -392,7 +392,9 @@ class Scope:
     def _takes_narrowed(self, value: ast.expr, fix: Inference, line: int) -> bool:
         """Check whether a fix takes its type from a read narrowed at `line`: `deepcopy(x)`, in `if x:`.
 
-        Or holds one in a display (`[x]`, `[self.x]`, there): its elements are the narrowed type's.
+        Or holds one in a display (`[x]`, `[self.x]`, there): its elements are the narrowed type's. Or
+        calls a method of one a check narrows that returns the receiver's own type (`node.copy()`,
+        a `Self`, in `if isinstance(node, Reference):`): it returns the narrowed one.
 
         Returns:
           Whether it does: the read has another type there than it's declared.
@@ -404,6 +406,23 @@ class Scope:
             for element in (value.elts if isinstance(value, ast.List | ast.Set | ast.Tuple) else ())
             if isinstance(element, _READS)
         ]
+        receiver: ast.expr | None = (
+            value.func.value
+            if isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute)
+            else None
+        )
+        to: frozenset[str] | None = (
+            checked_to(self.settings.facts.narrowed, ast.unparse(receiver), line)
+            if isinstance(receiver, _READS)
+            else None
+        )
+        typed: Inference | None = (
+            None
+            if receiver is None or to is None or to == frozenset({fix.annotation})
+            else inference(receiver, self.settings.known, types)
+        )
+        if typed is not None and typed.annotation == fix.annotation:
+            return True
         return any(
             read_narrowed(
                 self.settings.facts.narrowed,

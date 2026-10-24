@@ -24,7 +24,10 @@ first of them to start runs: each is expected to do the most either did. Unmeasu
 
 A step that wants all the memory there is, or more, runs alone. A suite's tests start once half the
 CPUs they want are free, or `_MOST_SHARE` of the machine's, and take as many more as are free then,
-with as many workers, and the memory for each (`Slots.take`). The timed steps (`timing`,
+with as many workers, and the memory for each (`Slots.take`). A step that asks the type checkers
+for hints starts with as few CPUs as hold, by their share of its memory, one server of each of its
+checkers for the corpus (`Plan._hinted`), its servers then given that share of `hints.MEMORY`
+(`--infer-memory`, `Wanted.hinted`); with all it wants, the default. The timed steps (`timing`,
 `profile`) want every CPU, so nothing runs beside the check timed: the run starts them last, one at
 a time.
 
@@ -59,10 +62,13 @@ import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from functools import partial
+from functools import cache, partial
 from pathlib import Path
 from typing import Final, NamedTuple, Protocol, cast
 
+from constricter.cli import paths
+from constricter.cli.lsp import hints
+from constricter.cli.lsp.protocol import SERVERS, Server
 from constricter.rules import parsed
 from tests.corpus.catalog import Suite
 from tests.corpus.pipeline import (
@@ -105,6 +111,11 @@ def testing(step: str) -> bool:
 
     """
     return step in {TESTS, TRACED} or step.startswith(f"{TESTS}-")
+
+
+@cache
+def _size(root: Path) -> int:  # the bytes of a tree's Python files, which its checkers' servers load
+    return sum(path.stat().st_size for path in paths.python_files([root]))
 
 
 def _kind(step: str) -> str:  # a suite step's kind: a part's, or its own
@@ -641,6 +652,17 @@ class Wanted(NamedTuple):
     least: int = 0  # the fewest CPUs it may start with, `memory` shared out among them (`Slots.take`)
     seconds: float = 0.0  # its own, as its last run took: 0 where none did
     workers: int = 0  # a suite's tests' processes, where they're more than its CPUs (`started`)
+    servers: int = 0  # a hinted step's servers' bytes with every CPU it wants: `hints.MEMORY` (`hinted`)
+
+    def hinted(self, held: int) -> int:
+        """Size the memory a hinted step's servers may use, holding `held` CPUs (`--infer-memory`).
+
+        Returns:
+          Its `servers`' bytes, as many fewer as it holds fewer CPUs; 0 where it holds all it wants,
+          or isn't hinted: its checkers' own default.
+
+        """
+        return self.servers * held // self.cpus if self.servers and held < self.cpus else 0
 
     def started(self, held: int) -> int:
         """Count the processes a suite's tests start with, holding `held` CPUs.
@@ -711,13 +733,41 @@ class Plan(NamedTuple):
         else:
             memory = (self.run.jobs or self.cpus) * _JOB_MEMORY
         seconds: float = known.seconds if known is not None else 0.0
+        least: int = self._hinted(tree, step, cpus)
         return Wanted(
             self.cpus if step in TIMED else cpus,
             memory,
             lasting,
             known is not None,
+            least=least,
             seconds=seconds,
+            servers=hints.MEMORY if least else 0,
         )
+
+    def _hinted(self, tree: Tree, step: str, cpus: int) -> int:
+        """Find the fewest of `cpus` a step asking the type checkers for hints may start with.
+
+        As few as hold, by their share of `hints.MEMORY`, one server of each of its checkers for
+        the tree's files (`Server.fitting`): fewer, and a server's heap would be capped under what
+        it holds.
+
+        Returns:
+          Them; 0 for a step that asks none.
+
+        """
+        checkers: Sequence[str] = (
+            self.run.steps.infer
+            if step == _UNION_STEP
+            else (step.removeprefix(INFER),)
+            if step.startswith(INFER)
+            else ()
+        )
+        named: list[Server]
+        if not (named := [SERVERS[each] for each in checkers if each in SERVERS]):
+            return 0
+        size: int = _size(tree.root)
+        one: int = max(server.memory + server.per_byte * size for server in named)
+        return min(cpus, max(1, math.ceil(cpus * one / hints.MEMORY)))
 
     def _testing(
         self,

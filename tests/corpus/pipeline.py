@@ -86,6 +86,9 @@ _SHARED: Final = "suffocate"  # where a job's one check at `suffocate` runs, and
 SHARING: Final = frozenset({CHECK, CENSUS})  # the steps that read it: the first to start runs it
 _NAME: Final = re.compile(r"'([^']+)'")  # the name an offence's message quotes
 _ERROR: Final = "error"  # an offence's severity, in `--format=json`
+# In a hinted step's environment: its servers' memory in GiB, where it started with fewer CPUs than it wants.
+INFER_MEMORY: Final = "CORPUS_INFER_MEMORY"
+_TRACEBACK: Final = "Traceback (most recent call last):"  # an exception that ended a run, on its errors
 _TYPED: Final = re.compile(r"^Total: (\d+)/(\d+) typed", re.MULTILINE)  # `--coverage`'s summary
 # `--infer-with`'s note of the rounds a checker's hints were read from the store for, not asked.
 _STORED: Final = re.compile(
@@ -179,18 +182,33 @@ def tier(offered: _Entry) -> str:
     return Tier.of(unsafe=bool(offered.get("unsafe")), likely=bool(offered.get("likely"))).value
 
 
-def _entries(output: str) -> list[_Entry] | None:
+def _entries(ran: launch.Ran) -> list[_Entry] | None:
     """Read `--format=json`'s output.
 
     Returns:
-      Its entries, or `None` if it isn't a list: the run crashed.
+      Its entries, or `None` if it isn't a list, or the run printed none and failed: it crashed, or
+      hasn't an option it was given.
 
     """
+    if not ran.output and ran.status:
+        return None
     try:
-        listed: _Listed = cast("_Listed", json.loads(output or "[]"))
+        listed: _Listed = cast("_Listed", json.loads(ran.output or "[]"))
     except ValueError:
         return None
     return listed if isinstance(listed, list) else None
+
+
+def _crashed(ran: launch.Ran, what: str) -> None:
+    """Fail a step whose constricter ended at an exception, its traceback on the run's errors.
+
+    Raises:
+      RuntimeError: it did.
+
+    """
+    if _TRACEBACK in ran.errors and _entries(ran) is None:
+        message: str = f"{what} crashed ({ran.status}): {ran.errors[-2000:]}"
+        raise RuntimeError(message)
 
 
 def _typed(job: Job, where: launch.Place) -> list[int] | None:
@@ -237,7 +255,7 @@ def suffocated(job: Job) -> tuple[launch.Place, launch.Ran]:
                 cast("float", had["seconds"]),
             )
         ran: launch.Ran = launch.run(job.version, where, ["--format=json", _SUFFOCATE], job.run.jobs)
-        if _entries(ran.output) is not None:
+        if _entries(ran) is not None:
             _ = kept.write_text(json.dumps(ran._asdict()), encoding="utf-8")
         return where, ran
 
@@ -283,7 +301,7 @@ def check(job: Job) -> Record:
     level: Level
     for level, ran in zip(Level, runs if every else runs * len(Level), strict=True):
         listed: list[_Entry] | None
-        if (listed := _entries(ran.output)) is None:
+        if (listed := _entries(ran)) is None:
             message: str = f"the check at {level.name.lower()} crashed ({ran.status}): {ran.errors[-2000:]}"
             raise RuntimeError(message)
         entries = listed  # the last level's are `suffocate`'s: every code
@@ -398,17 +416,33 @@ def _stored(errors: str) -> dict[str, list[int]]:
     return {name: [int(read), int(rounds)] for name, read, rounds in noted}
 
 
+def _budgeted(version: str, extra: Sequence[str]) -> list[str]:
+    """Give a hinted fix's servers the memory its step started with, where it's less than it wants.
+
+    Returns:
+      `--infer-memory` with `INFER_MEMORY`'s GiB, where the step's environment has it, `extra` asks
+      for hints and the version has the option; else nothing: its checkers' own default.
+
+    """
+    given: str = os.environ.get(INFER_MEMORY, "")
+    hinted: bool = any(each.startswith("--infer-with") for each in extra)
+    return (
+        [f"--infer-memory={given}"] if given and hinted and launch.offered(version, "--infer-memory") else []
+    )
+
+
 def fix(job: Job, step: str, extra: Sequence[str]) -> Record:
     """Fix a copy of the corpus with `--fix` and `extra`, then ask a second pass what it would still fix.
 
     Returns:
-      The step's record; its `fixed` is `None` where the fix crashed or the version hasn't the options.
+      The step's record; its `fixed` is `None` where the version hasn't the options. One whose fix
+      crashed fails (`_crashed`).
 
     """
     where: launch.Place
     valid: list[Path]
     where, valid = launch.copied(job.tree, job.work(step))
-    options: list[str] = [*extra, _SUFFOCATE]
+    options: list[str] = [*extra, *_budgeted(job.version, extra), _SUFFOCATE]
     record: Record = {"options": ["--fix", *extra], "fixed": None}
     fixed: int | None
     ran: launch.Ran
@@ -419,7 +453,9 @@ def fix(job: Job, step: str, extra: Sequence[str]) -> Record:
             ["--fix", "--show-fixes", "--format=json", *options],
             job.run.jobs,
         )
-        entries: list[_Entry] | None = _entries(ran.output)
+        job.store.log(job.tree.name, job.recorded, step, ran.errors)
+        _crashed(ran, step)  # its errors logged first
+        entries: list[_Entry] | None = _entries(ran)
         made: list[_Entry] = _listed(job, step, where, entries or [])
         fixed = None if entries is None else len(made)
         record["tiers"] = dict(Counter(tier(each) for each in made))
@@ -428,7 +464,7 @@ def fix(job: Job, step: str, extra: Sequence[str]) -> Record:
     else:
         ran = launch.run(job.version, where, ["--fix", *options], job.run.jobs)
         fixed = corpus_table.fixed_count(ran.output)
-    job.store.log(job.tree.name, job.recorded, step, ran.errors)
+        job.store.log(job.tree.name, job.recorded, step, ran.errors)
     record["seconds"] = round(ran.seconds, 1)
     stored: dict[str, list[int]]
     if stored := _stored(ran.errors):
@@ -466,14 +502,16 @@ def census(job: Job) -> Record:
 
     Returns:
       The step's record: the untyped bindings, those whose fix is a guess, those with none (and
-      their values' shapes), and those in files that don't parse, left out of the rest.
+      their values' shapes), and those in files that don't parse, left out of the rest. One whose
+      check crashed fails (`_crashed`).
 
     """
     where: launch.Place
     ran: launch.Ran
     where, ran = suffocated(job)
     job.store.log(job.tree.name, job.recorded, CENSUS, ran.errors)
-    entries: list[_Entry] = _entries(ran.output) or []
+    _crashed(ran, "the check at suffocate")
+    entries: list[_Entry] = _entries(ran) or []
     entry: _Entry
     for entry in entries:
         entry["path"] = os.path.normpath(where.cwd / str(entry["path"]))  # as the tree's root is: no `..`

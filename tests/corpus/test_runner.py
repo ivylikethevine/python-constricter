@@ -1,5 +1,6 @@
 """The corpus runner's own parts that need no corpus: its run file, and how it runs and sizes its steps."""
 
+import json
 import os
 import shutil
 import threading
@@ -11,7 +12,7 @@ from typing import Final, cast
 
 import pytest
 
-from constricter import Level
+from constricter import Level, recording
 from tests.corpus import __main__ as runner
 from tests.corpus import catalog, corpus_suite, launch, pipeline, sizing, suite_steps, trees
 from tests.corpus.pipeline import Record, Store
@@ -169,6 +170,50 @@ def test_a_suites_parts_run_side_by_side(tmp_path: Path, monkeypatch: pytest.Mon
     assert corpus_suite.tested(tmp_path, suite, None, None).counts == {"passed": 3}
     assert sorted(command[-1] for command in ran) == ["a", "b", "c"]
     assert all(command[len(catalog.PYTEST) : len(catalog.PYTEST) + 2] == ["-n", "1"] for command in ran)
+
+
+def test_a_suites_parts_are_traced_side_by_side(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each writing a trace of its own, merged into the suite's in the parts' order, then removed."""
+    suite: catalog.Suite = catalog.Suite("", "", "", (), catalog.PYTEST, parts=("a", "b", "c"))
+    both: threading.Barrier = threading.Barrier(2, timeout=5)  # two of them at once, or it breaks
+    ran: list[list[str]] = []
+
+    def workers(_suite: catalog.Suite) -> int:
+        return both.parties
+
+    def reset(_root: Path, _suite: catalog.Suite) -> None:
+        pass
+
+    def completed(args: list[str], *_args: object, **_options: object) -> SimpleNamespace:
+        ran.append(args)
+        if len(ran) <= both.parties:
+            _ = both.wait()
+        output: str = args[args.index("--output") + 1]
+        if args[-1] != suite.parts[-1]:  # a part killed before it wrote its trace
+            entry: recording.Entry = {"path": "m.py", "bindings": {"1": {"x": [args[-1]]}}}
+            trace: recording.Found = {"version": recording.VERSION, "files": {"d": entry}, "modules": {}}
+            recording.write(tmp_path / output, trace)
+        return SimpleNamespace(stdout="1 passed in 0.1s", stderr="")
+
+    monkeypatch.delenv(corpus_suite.TRACER_VARIABLE, raising=False)
+    monkeypatch.setattr(corpus_suite, "workers", workers)
+    monkeypatch.setattr(corpus_suite, "reset", reset)
+    monkeypatch.setattr(corpus_suite, "_completed", completed)
+    assert corpus_suite.traced(tmp_path, suite) == (
+        "3 passed",
+        corpus_suite.Outcome({"passed": 3}, frozenset()),
+    )
+    outputs: list[str] = sorted(command[command.index("--output") + 1] for command in ran)
+    assert len(set(outputs)) == len(suite.parts)
+    merged: recording.Found = cast(
+        "recording.Found",
+        json.loads((tmp_path / corpus_suite.TRACE_FILE).read_text(encoding="utf-8")),
+    )
+    assert merged["files"]["d"]["bindings"] == {"1": {"x": ["a", "b"]}}
+    assert sorted(path.name for path in (tmp_path / ".venv").iterdir()) == [
+        "corpus-suite-path",
+        "corpus-suite-trace.json",
+    ]
 
 
 def test_a_steps_record_says_when_it_started_and_how_long_it_waited(tmp_path: Path) -> None:
@@ -415,6 +460,64 @@ def test_a_check_at_suffocate_counts_every_level() -> None:
         "constructor": {"likely": 1},
         "copy+returned": {"guess": 1},
     }
+
+
+def test_a_fix_whose_constricter_crashed_fails_its_step(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With its traceback logged and no patch; one without an option it was given still has a record."""
+    root: Path = tmp_path / "pkg"
+    root.mkdir()
+    _ = (root / "a.py").write_text("x = 1\n", encoding="utf-8")
+    job: pipeline.Job = pipeline.Job(parse({}), Store(tmp_path / "out"), Tree("pandas", "1", root), DEV)
+    crashed: str = "Traceback (most recent call last):\n  ...\nKeyError: PosixPath('a.py')\n"
+    ran: list[launch.Ran] = [launch.Ran("", crashed, 1, 1.0)]
+
+    def faked(_version: str, _where: launch.Place, _options: list[str], _jobs: int) -> launch.Ran:
+        return ran[0]
+
+    monkeypatch.setattr(launch, "run", faked)
+    step: str = "infer-basedpyright"
+    with pytest.raises(RuntimeError, match=f"{step} crashed \\(1\\): Traceback"):
+        _ = pipeline.fix(job, step, ["--infer-with=basedpyright"])
+    assert job.store.logged("pandas", job.recorded, step).read_text(encoding="utf-8") == crashed
+    assert not job.store.path("pandas", job.recorded, step, ".patch").exists()
+    with pytest.raises(RuntimeError, match="the check at suffocate crashed"):
+        _ = pipeline.census(job)
+    ran[0] = launch.Ran("", "usage: constricter ...\nerror: unrecognized arguments\n", 2, 1.0)
+    job.store.path("pandas", job.recorded, step).parent.mkdir(parents=True)  # as the runner makes it
+    assert pipeline.fix(job, step, ["--infer-with=basedpyright"])["fixed"] is None
+
+
+def test_a_hinted_fix_started_short_gives_its_servers_its_memory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--infer-memory` from its environment, its fix and its second pass both; no other fix is given it."""
+    root: Path = tmp_path / "pkg"
+    root.mkdir()
+    _ = (root / "a.py").write_text("x = 1\n", encoding="utf-8")
+    job: pipeline.Job = pipeline.Job(parse({}), Store(tmp_path / "out"), Tree("pandas", "1", root), DEV)
+    job.store.path("pandas", job.recorded, "x").parent.mkdir(parents=True)
+    asked: list[list[str]] = []
+
+    def faked(_version: str, _where: launch.Place, options: list[str], _jobs: int) -> launch.Ran:
+        asked.append(options)
+        return launch.Ran("[]", "", 0, 1.0)
+
+    monkeypatch.setattr(launch, "run", faked)
+    monkeypatch.setenv(pipeline.INFER_MEMORY, "2.50")
+    _ = pipeline.fix(job, "infer-ty", ["--unsafe-fixes", "--infer-with=ty"])
+    memory: str = "--infer-memory=2.50"
+    assert [memory in options for options in asked] == [True, True, False]  # the fix, `--diff`, `--coverage`
+    asked.clear()
+    _ = pipeline.fix(job, "fix-unsafe", ["--unsafe-fixes"])
+    assert not any(memory in options for options in asked)
+    monkeypatch.delenv(pipeline.INFER_MEMORY)
+    asked.clear()
+    _ = pipeline.fix(job, "infer-ty", ["--unsafe-fixes", "--infer-with=ty"])
+    assert not any(memory in options for options in asked)
 
 
 def test_a_traced_run_finds_constricter_alone(tmp_path: Path) -> None:

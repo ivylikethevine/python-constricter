@@ -4,10 +4,11 @@ import math
 import threading
 import time
 from pathlib import Path
-from typing import Final
+from typing import IO, Final
 
 import pytest
 
+from constricter.cli.lsp import hints
 from tests.corpus import catalog, pipeline, sizing
 from tests.corpus.run_config import Run, parse
 from tests.corpus.trees import Tree
@@ -207,3 +208,30 @@ def test_an_unmeasured_union_takes_its_largest_checkers_memory(tmp_path: Path) -
     )
     unmeasured: sizing.Plan = plan._replace(before={})
     assert unmeasured.wanted(tree, "infer-union").memory == unmeasured.wanted(tree, "infer-ty").memory
+
+
+def test_a_hinted_step_starts_with_as_few_cpus_as_hold_one_server_of_each_checker(tmp_path: Path) -> None:
+    """Its servers then have that share of `hints.MEMORY`; with every CPU it wants, their default."""
+    file: IO[str]
+    with (tmp_path / "big.py").open("w", encoding="utf-8") as file:
+        _ = file.truncate(20 << 20)  # basedpyright's one server: 0.6 GB and 130 bytes a byte, 3.1 GiB
+    tree: Tree = Tree("dask", "1", tmp_path, tmp_path)
+    run: Run = parse({"steps": {"infer-with": ["basedpyright", "ty"]}})
+    before: dict[tuple[str, str], sizing.Before] = {
+        ("dask", "infer-basedpyright"): sizing.Before(4.0, 120.0, 10 * sizing.GIB),
+        ("dask", "infer-ty"): sizing.Before(4.0, 60.0, 4 * sizing.GIB),
+    }
+    plan: sizing.Plan = sizing.Plan(run, 16, 64 * sizing.GIB, before)
+    hinted: sizing.Wanted = plan.wanted(tree, "infer-basedpyright")
+    assert (hinted.cpus, hinted.least, hinted.servers) == (4, 2, hints.MEMORY)
+    assert (hinted.hinted(2), hinted.hinted(3), hinted.hinted(4)) == (
+        hints.MEMORY // 2,
+        hints.MEMORY * 3 // 4,
+        0,
+    )
+    assert plan.wanted(tree, "infer-ty").least == 1  # its servers share the files: 1.2 GiB for one
+    assert plan.wanted(tree, "infer-union").least == hinted.least  # its largest checker's one server
+    assert (plan.wanted(tree, "fix-unsafe").least, plan.wanted(tree, "fix-unsafe").hinted(1)) == (0, 0)
+    slots: sizing.Slots = sizing.Slots(4, 16 * sizing.GIB)
+    _ = slots.take(sizing.Wanted(2, 0))
+    assert slots.take(hinted) == hinted.least  # what's free, sooner than all it wants

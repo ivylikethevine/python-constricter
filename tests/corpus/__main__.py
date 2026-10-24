@@ -281,7 +281,8 @@ class Running(NamedTuple):
         `hold`: what it holds of the machine, fitted every `_LOOK` seconds to what it's using.
 
         In a scope of its own where `scope` says, which it reads the count of as it ends (`_step`). A
-        suite's tests take the workers its hold says (`Wanted.started`).
+        suite's tests take the workers its hold says (`Wanted.started`), and a hinted step's servers
+        the memory (`Wanted.hinted`).
 
         Returns:
           What the process and every one under it used: the most of what was read as it ran and
@@ -293,6 +294,8 @@ class Running(NamedTuple):
         command: list[str] = [*self.scope, sys.executable, "-m", "tests.corpus", _STEP, str(self.store.root)]
         scoped: dict[str, str] = {sizing.SCOPED: "1"} if self.scope else {}
         scoped |= {_SUITE_WORKERS: str(hold.wanted.workers)} if sizing.testing(name) else {}
+        servers: int = hold.wanted.servers
+        scoped |= {pipeline.INFER_MEMORY: f"{servers / sizing.GIB:.2f}"} if servers else {}
         said: list[str] = [_LABEL, self.run.label, _JOBS, str(self.run.jobs)]  # what the run's command said
         file: IO[str]
         process: subprocess.Popen[bytes]
@@ -362,7 +365,12 @@ class Running(NamedTuple):
         rank: float = (self.ranks or {}).get((entry.name, name), math.inf)
         held: int = self.slots.take(wanted, locks, f"{entry.name}/{name}", rank)
         memory: int = self.slots.share(wanted.cpus, wanted.memory, held)
-        given: sizing.Wanted = wanted._replace(cpus=held, memory=memory, workers=wanted.started(held))
+        given: sizing.Wanted = wanted._replace(
+            cpus=held,
+            memory=memory,
+            workers=wanted.started(held),
+            servers=wanted.hinted(held),
+        )
         hold: _Hold = _Hold(given, (held, memory))
         start: float = time.perf_counter()
         try:

@@ -121,6 +121,37 @@ def test_a_file_past_a_capped_servers_heap_has_no_hints(
         assert roomy.hints({heavy: files[heavy]})[heavy][0].types == {(1, 1): "int"}
 
 
+def test_a_file_an_earlier_run_hung_on_has_no_hints_from_the_start(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Left out of every server's work as it's asked, it's still answered for: with no hints."""
+    _fake(monkeypatch)
+    hung: Path = tmp_path / "hung.py"
+    files: dict[Path, str] = {tmp_path / "fine.py": "x = 1  # hint: int\n", hung: "y = 1  # hint: int\n"}
+
+    def remembered_hung(_checker: str, _command: list[str], _text: str, path: Path | None = None) -> bool:
+        return path == hung
+
+    monkeypatch.setattr(remembered, "hung", remembered_hung)
+    session: hints.Session
+    with hints.Session([_CHECKER], tmp_path, how=hints.Asking(kept=False)) as session:
+        found: dict[Path, tuple[Hints, ...]] = session.hints(files)
+        assert session.abandoned == [(_CHECKER, hung)]
+    assert {path: each.types for path, (each,) in found.items()} == {
+        tmp_path / "fine.py": {(1, 1): "int"},
+        hung: {},
+    }
+
+
+def test_a_turn_with_no_file_to_ask_about_stops_no_server(tmp_path: Path) -> None:
+    """Its checker started none: there's none to stop."""
+    session: hints.Session
+    with hints.Session([_TY, _CHECKER], tmp_path, how=hints.Asking(kept=False, in_turn=True)) as session:
+        assert session.hints({}) == {}
+        assert not [checker.name for checker in session.checkers if checker.servers]
+
+
 def _failing(monkeypatch: pytest.MonkeyPatch, *failures: protocol.HintError) -> None:
     """Have the servers' asks raise `failures`, one each, before they ask as they do."""
     ask: Callable[[connection.Connection, Mapping[Path, str]], connection.Asked] = connection.Connection.ask

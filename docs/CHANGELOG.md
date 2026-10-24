@@ -6,10 +6,22 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` offers no fix for a method returning its receiver's own type (a `Self`) called on a
+  receiver an `isinstance` narrows: `node.copy()` in `if isinstance(node, (Reference, Title)):` is
+  the narrowed classes', not the parameter's `Node`, so a list of it given where `Element`s are
+  wanted was a type error (sphinx's `toctree.py`, with `docutils-stubs`).
+- The corpus runner fails a fix or census step whose constricter ended at an exception, its
+  traceback in the step's log, where it recorded an empty fix (pandas's `infer-basedpyright` at a
+  `KeyError`). A hinted step starts with fewer CPUs than it wants once those hold one server of each
+  of its checkers, its servers given that share of the memory (`--infer-memory`); given all it
+  wants, they take their default as before.
 - `--infer-with basedpyright` caps each server's Node heap at nine tenths of its share of
   `--infer-memory` (`--max-old-space-size`; Node's own cap was 4.2 GB whatever the share): near it
   basedpyright empties its caches, and a server that exits past it is restarted and asked about its
   files one at a time, as a hung one is.
+- `--infer-with` no longer stops with a `KeyError` on a file a checker hung on in an earlier run
+  (left without hints from the start), nor, with `--infer-in-turn`, on a round with no file to ask
+  a checker about.
 - `--infer-in-turn` asks `--infer-with`'s checkers one after another, each one's servers shut down
   before the next one's start: the most memory held is the largest checker's, not their sum. The
   corpus runner's `infer-union` asks in turn, and an unmeasured one is sized by its largest
@@ -80,7 +92,8 @@ Notable changes, newest first. Each release's full notes are generated from its 
   the run forks records on and writes its trace where the run reads it as it ends:
   `multiprocessing`'s `fork` workers (Django's `runtests.py --parallel`) and a plain `os.fork()`.
   The corpus runner traces a suite run by `python -c` that way, on its workers: Django's suite,
-  traced in one process before.
+  traced in one process before. A suite's parts are traced side by side, as its tests run, each
+  writing a trace of its own merged in the parts' order: celery's 13, one after another before.
 - The corpus runner gives every suite's processes `MPLBACKEND=Agg`: a plotting test opens no window
   on the display of the machine running it.
 - A corpus run can be made in stages, each at its own time into one folder: `--stage NAME` runs

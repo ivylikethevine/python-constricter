@@ -121,13 +121,18 @@ class Session:
         asking: list[Checker] = [checker for checker in self.checkers if checker.name not in found]
         for checker in self.checkers:
             self.rounds[checker.name].append(checker.name in found)
-        found |= {checker.name: {path: {} for path in checker.abandoned & files.keys()} for checker in asking}
+        found |= {checker.name: {} for checker in asking}
         turns: list[list[Checker]] = [[checker] for checker in asking] if self.how.in_turn else [asking]
         turn: list[Checker]
         for turn in turns:
             _asked(files, turn, found)
             for checker in turn if self.how.in_turn else ():
                 checker.stop()
+        # An abandoned file has no hints: one abandoned before, or as it was asked (an earlier run's hang).
+        for checker in asking:
+            found[checker.name] = {path: {} for path in checker.abandoned & files.keys()} | found[
+                checker.name
+            ]
         for checker in asking if self.how.kept else ():
             stored.store(
                 names[checker.name],
@@ -185,9 +190,11 @@ def _start(files: Mapping[Path, str], checkers: Sequence["Checker"]) -> None:
     """
     starting: list[Checker] = []
     checker: Checker
+    wanted: int
     for checker in checkers:
-        wanted: int = checker.wanted(files)
-        checker.share(wanted)
+        # None for no files: its heap is set as its first server starts.
+        if wanted := checker.wanted(files):
+            checker.share(wanted)
         starting += [checker] * (wanted - len(checker.servers))
     if not starting:
         return
@@ -404,7 +411,8 @@ class Checker:  # pylint: disable=too-many-instance-attributes
     def stop(self) -> None:
         """Shut its servers down, at once: the next round starts others, which open each file anew."""
         pool: ThreadPoolExecutor
-        with ThreadPoolExecutor(len(self.servers)) as pool:  # one at least: it was asked
+        # None where its turn had no file to ask about (a round with none, or every one abandoned).
+        with ThreadPoolExecutor(max(1, len(self.servers))) as pool:
             _ = list(pool.map(Connection.close, self.servers))
         self.servers.clear()
         self.assigned.clear()

@@ -161,6 +161,7 @@ _MODULE: Final = (_PYTHON, "-m")  # how a suite's tests start, where a module ru
 _CODE: Final = "-c"  # and where code does
 _PYTEST: Final = (*_MODULE, "pytest")  # and where pytest does
 _TRACER: Final = ("constricter.trace", "--output", TRACE_FILE, "--root", ".")
+_PART_TRACE: Final = ".venv/corpus-suite-trace-{}.json"  # each part's, where they're traced side by side
 # In a checkout: a directory with this checkout's `constricter` alone, for a traced run's path. Not
 # this checkout's root, whose `tests` package a suite's own would then share the path with.
 _TRACER_PATH: Final = ".venv/corpus-suite-path"
@@ -675,7 +676,8 @@ def traced(root: Path, suite: Suite, keep: Path | None = None) -> tuple[str, Out
     """Run the checkout's tests as released under `python -m constricter.trace`, which writes `TRACE_FILE`.
 
     Or under the module `TRACER_VARIABLE` names, from the directory it names after `os.pathsep`.
-    Their output is written to `keep` unless it's `None`.
+    Its parts side by side, as `tested` runs them, each writing a trace of its own; merged, in the
+    parts' order. Their output is written to `keep` unless it's `None`.
 
     Returns:
       The tests' summary and their outcome, or `None` for tests that can't be traced (see
@@ -688,24 +690,37 @@ def traced(root: Path, suite: Suite, keep: Path | None = None) -> tuple[str, Out
         return None
     tracer: list[str] = os.environ.get(TRACER_VARIABLE, _TRACER[0]).split(os.pathsep)  # and its directory
     path: list[str] = [str(tracer_path(root)), *target[1], *tracer[1:]]
-    outputs: list[str] = []
-    traces: list[recording.Found] = []
-    part: list[str]
-    for part in target[0]:
-        (root / TRACE_FILE).unlink(missing_ok=True)
+    files: list[str] = (
+        [TRACE_FILE] if len(target[0]) == 1 else [_PART_TRACE.format(n) for n in range(len(target[0]))]
+    )
+    (root / TRACE_FILE).unlink(missing_ok=True)
+
+    def run(part: list[str], trace: str) -> tuple[str, recording.Found | None]:
+        (root / trace).unlink(missing_ok=True)
+        words: list[str] = [tracer[0], _TRACER[1], trace, *_TRACER[3:], *part]
         done: subprocess.CompletedProcess[str] = _completed(
-            _venv(root, [_PYTHON, *target[2], *_MODULE[1:], tracer[0], *_TRACER[1:], *part]),
+            _venv(root, [_PYTHON, *target[2], *_MODULE[1:], *words]),
             root,
             seconds=_TEST_SECONDS,
             more={"PYTHONPATH": os.pathsep.join(path)},
         )
-        outputs.append(_COLOUR.sub("", done.stdout + done.stderr))
-        if (root / TRACE_FILE).exists():
-            traces.append(
-                cast("recording.Found", json.loads((root / TRACE_FILE).read_text(encoding="utf-8"))),
-            )
-    if len(traces) > 1:  # each part wrote the trace anew
+        found: recording.Found | None = (
+            cast("recording.Found", json.loads((root / trace).read_text(encoding="utf-8")))
+            if (root / trace).exists()
+            else None
+        )
+        return _COLOUR.sub("", done.stdout + done.stderr), found
+
+    pool: ThreadPoolExecutor
+    with ThreadPoolExecutor(max(1, min(workers(suite), len(files)))) as pool:  # parts side by side
+        ran: list[tuple[str, recording.Found | None]] = list(pool.map(run, target[0], files))
+    outputs: list[str] = [output for output, _ in ran]
+    traces: list[recording.Found] = [found for _, found in ran if found is not None]
+    if len(files) > 1 and traces:  # each part wrote a trace of its own
         recording.write(root / TRACE_FILE, recording.merged(traces))
+        trace: str
+        for trace in files:
+            (root / trace).unlink(missing_ok=True)
     if keep is not None:
         keep.parent.mkdir(parents=True, exist_ok=True)
         _ = keep.write_text("\n".join(outputs), encoding="utf-8")

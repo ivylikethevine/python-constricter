@@ -79,6 +79,25 @@ def read_narrowed(found: Regions, read: str, line: int, *, union: bool) -> bool:
     return any(each.start <= line <= each.end and (each.check or union) for each in found.get(read, ()))
 
 
+def checked_to(found: Regions, read: str, line: int) -> frozenset[str] | None:
+    """Find the classes an `isinstance` that passed narrows a read (as text) to at `line`.
+
+    Returns:
+      The classes, as the test names them; `None` where no such check governs the line.
+
+    """
+    each: Region
+    for each in found.get(read, ()):
+        if (
+            each.start <= line <= each.end
+            and each.check
+            and each.left is not None
+            and each.left[0] is not None
+        ):
+            return each.left[0]
+    return None
+
+
 def narrowed_to(
     found: Regions,
     read: str,
