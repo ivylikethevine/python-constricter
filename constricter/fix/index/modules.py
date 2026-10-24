@@ -36,6 +36,7 @@ from constricter.rules.declarations import (
     GenericClass,
     awaited_returns,
     defined_type_vars,
+    descriptors,
     generic_classes,
     generic_members,
 )
@@ -89,6 +90,8 @@ class Module:  # pylint: disable=too-many-instance-attributes
     attributes: frozenset[str] = frozenset()  # every attribute it reads or calls, of anything (`x` in `a.x`)
     returned: Returns = field(default_factory=Returns)  # what they return, once it's checked
     generics: frozenset[str] = frozenset()  # its generic classes, which a type mustn't write bare
+    # Its descriptors, each with what its `__get__` gives an instance (see `declarations.descriptors`).
+    descriptors: Mapping[str, str | None] = field(default_factory=dict[str, str | None])
     # Its generic classes' type parameters and members' types (see `declarations.generic_members`).
     generic_members: Mapping[str, GenericClass] = field(default_factory=dict[str, GenericClass])
     installed: bool = False  # an installed package's, read for its types alone (see `installed`)
@@ -359,6 +362,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         decorated=held_back(tree.body),
         called=_called(tree, names),
         generics=generic_classes(tree),
+        descriptors=descriptors(tree),
         generic_members={} if name is not None else generic_members(tree),
         loose=frozenset[str]().union(*(_loose(node.body) for node in walked_classes(tree))),
         selfish=dict(own.order.selfish),

@@ -37,6 +37,13 @@ Notable changes, newest first. Each release's full notes are generated from its 
   ended at the same column there. On the 0.4.0-rc.3 mega run pandas's `result_kwargs = {}` took
   the `np.ndarray[...]` hinted for `update_deltas` four lines below, and `new_levels = []` an `int`.
   The hints now move past the lines the file's earlier checks added.
+- `python -m constricter.trace` runs code as `python -c` does (`-c CODE [ARG ...]`), and a process
+  the run forks records on and writes its trace where the run reads it as it ends:
+  `multiprocessing`'s `fork` workers (Django's `runtests.py --parallel`) and a plain `os.fork()`.
+  The corpus runner traces a suite run by `python -c` that way, on its workers: Django's suite,
+  traced in one process before.
+- The corpus runner gives every suite's processes `MPLBACKEND=Agg`: a plotting test opens no window
+  on the display of the machine running it.
 - A run file's `[run] options` (`["--vague", "0"]`) go to every constricter command of the corpus
   run, for a run at a setting other than the default.
 - The corpus runner reads a suite's failed tests from pytest's JUnit report, a file for each part
@@ -63,6 +70,18 @@ Notable changes, newest first. Each release's full notes are generated from its 
   leave it, as a binding of it is: `self.index = index` after `if not isinstance(index,
 DatetimeIndex): raise` is a `DatetimeIndex`, not the parameter's `DatetimeIndex | None`. On
   pandas with LVA013, `self.index`'s fix set off 5 of mypy's errors.
+- `--fix --unsafe-fixes` checks a file again once LVA013's fix declares an attribute in it: a
+  method of a class above it that reads the attribute (`flag = self._opts.flag`) was checked before
+  the stores were seen. On litestar with LVA013, a second pass had 3 more lines to write.
+- LVA013's fix never writes a generic class without its arguments, as a binding's fix doesn't:
+  `self._dict = util.PopulateDict(self._access_cls)` has none, where it was declared
+  `util.PopulateDict`, an error to mypy (`type-arg`) on sqlalchemy.
+- `--fix` reads a class-body attribute whose class is a descriptor (its body defines `__get__`)
+  through an instance as `__get__` returns: `impl = self.implementation`, declared
+  `implementation: Plain = Plain()`, takes `Plain.__get__`'s declared return, the class's own or
+  another checked file's. Where `__get__` is overloaded, declares no return or names a type
+  variable, there's no fix: it was typed as the descriptor class, which no checker reads it as
+  (narwhals's `_Implementation`, whose 16 overloads pick by the instance's type).
 - The corpus runs' witness takes any value that reads, writes and closes for `typing.IO`'s
   classes, which nothing is an instance of; reads a `StringIO` or `BytesIO` where `io`'s or
   `typing`'s file class is named as a test's stand-in, saying nothing of the fix; and reads a

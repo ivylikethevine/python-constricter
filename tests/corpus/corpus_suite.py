@@ -21,8 +21,9 @@ A checkout with no settings for Pyright or pyrefly is given empty ones (`_settle
 checkers' servers `--infer-with` starts read this project's, above it.
 
 The tests are traced under `python -m constricter.trace` (this checkout's, which the package's
-environment is given the path of), where pytest runs them or the suite names a script that does in
-one process (`Suite.script`: Django's `runtests.py`).
+environment is given the path of), where pytest runs them, `python -c` does (Django's `runtests.py`,
+its workers forked, each recording itself), or the suite names a script that does in one process
+(`Suite.script`).
 """
 
 import ast
@@ -151,10 +152,13 @@ _NAME: Final = re.compile(r"[A-Za-z_]\w*")
 _INSERTED: Final = "insert"  # difflib's opcode for lines only the fixed file has
 _EQUAL: Final = "equal"  # and for lines both have
 _Fixes: TypeAlias = dict[str, list[Fix]]  # those `--fix` makes, per file
-# What `constricter.trace` runs for a suite's tests, part by part, and what it needs on the path.
-_Traceable: TypeAlias = tuple[list[list[str]], list[str]]
+# What `constricter.trace` runs for a suite's tests, part by part, what it needs on the path, and
+# the interpreter's own options before it (`-Wall`).
+_Traceable: TypeAlias = tuple[list[list[str]], list[str], list[str]]
 TRACE_FILE: Final = ".venv/corpus-suite-trace.json"  # a checkout's tests' trace: out of its source's way
-_MODULE: Final = ("python", "-m")  # how a suite's tests start, where a module runs them
+_PYTHON: Final = "python"
+_MODULE: Final = (_PYTHON, "-m")  # how a suite's tests start, where a module runs them
+_CODE: Final = "-c"  # and where code does
 _PYTEST: Final = (*_MODULE, "pytest")  # and where pytest does
 _TRACER: Final = ("constricter.trace", "--output", TRACE_FILE, "--root", ".")
 # In a checkout: a directory with this checkout's `constricter` alone, for a traced run's path. Not
@@ -171,8 +175,9 @@ def _environment(cwd: Path) -> dict[str, str]:
     its packages by it); with an absolute uv cache (this project's `cache-dir` is relative, and uv
     finds this `pyproject.toml` above a checkout without its own `[tool.uv]`); and with a fixed hash
     seed (pytest-xdist's workers must collect the same tests); with a temporary directory of its
-    own; and without the user's uv settings (an `exclude-newer` there makes a suite's own lockfile
-    stale to `uv sync --locked`).
+    own; without the user's uv settings (an `exclude-newer` there makes a suite's own lockfile
+    stale to `uv sync --locked`); and with matplotlib drawing off screen (`Agg`), so a suite's
+    plotting tests open no window on the user's display.
 
     Returns:
       The environment.
@@ -190,6 +195,7 @@ def _environment(cwd: Path) -> dict[str, str]:
     _ = environment.setdefault("UV_CACHE_DIR", str(WORK.parent / ".uv-cache"))
     _ = environment.setdefault("PYTHONHASHSEED", "0")
     _ = environment.setdefault("UV_NO_CONFIG", "1")
+    environment["MPLBACKEND"] = "Agg"
     # Its own temporary files, under a short path (a suite's sockets go there): a suite's leave some
     # no one else can delete, which the next pytest run under the shared directory then trips on.
     temporary: Path = Path(tempfile.gettempdir()) / WORK.name / cwd.name
@@ -621,18 +627,25 @@ def _traceable(suite: Suite) -> _Traceable | None:
     """Find what `constricter.trace` runs for the suite's tests, and what it needs on the path.
 
     Returns:
-      The module and its arguments where pytest runs them, once for each of the suite's parts,
-      else the suite's script and its (with the script's directory); `None` where neither does.
+      The module and its arguments where pytest runs them, once for each of the suite's parts; or
+      the code `python -c` runs and its arguments, after the interpreter's options (Django's
+      `runtests.py` on its workers, forked); else the suite's script and its (with the script's
+      directory); `None` where none does.
 
     """
     commands: list[list[str]] = _commands(suite)
     if tuple(commands[0][:2]) == _MODULE:
-        return [command[1:] for command in commands], []
-    return ([list(suite.script)], [str(Path(suite.script[0]).parent)]) if suite.script else None
+        return [command[1:] for command in commands], [], []
+    first: list[str] = commands[0]
+    if first[:1] == [_PYTHON] and _CODE in first:
+        at: int = first.index(_CODE)
+        if all(word.startswith("-") for word in first[1:at]):
+            return [command[at:] for command in commands], [], first[1:at]
+    return ([list(suite.script)], [str(Path(suite.script[0]).parent)], []) if suite.script else None
 
 
 def traceable(suite: Suite) -> bool:
-    """Check whether the suite's tests can be traced: pytest runs them, or its script does.
+    """Check whether the suite's tests can be traced: pytest runs them, `python -c`, or its script.
 
     Returns:
       Whether they can.
@@ -665,8 +678,8 @@ def traced(root: Path, suite: Suite, keep: Path | None = None) -> tuple[str, Out
     Their output is written to `keep` unless it's `None`.
 
     Returns:
-      The tests' summary and their outcome, or `None` for tests neither pytest nor a script of the
-      suite's runs: there's no trace.
+      The tests' summary and their outcome, or `None` for tests that can't be traced (see
+      `traceable`): there's no trace.
 
     """
     reset(root, suite)
@@ -681,7 +694,7 @@ def traced(root: Path, suite: Suite, keep: Path | None = None) -> tuple[str, Out
     for part in target[0]:
         (root / TRACE_FILE).unlink(missing_ok=True)
         done: subprocess.CompletedProcess[str] = _completed(
-            _venv(root, [*_MODULE, tracer[0], *_TRACER[1:], *part]),
+            _venv(root, [_PYTHON, *target[2], *_MODULE[1:], tracer[0], *_TRACER[1:], *part]),
             root,
             seconds=_TEST_SECONDS,
             more={"PYTHONPATH": os.pathsep.join(path)},

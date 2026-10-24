@@ -354,3 +354,28 @@ def test_fix_unsafe_checks_again_what_reads_an_attribute_another_file_declared(
     _ = capsys.readouterr()
     assert cli.main([*unsafe, "--diff", str(tmp_path)]) == cli.EXIT_CLEAN
     assert not capsys.readouterr().out
+
+
+# A method reading an attribute LVA013 declares in a class below its own, in one file, and its fix.
+READ_ABOVE: Final = (
+    'class Handler:\n    _opts: "_Opts"\n\n    def run(self) -> None:\n        flag = self._opts.flag\n\n\n'
+    "class _Opts:\n    def __init__(self, flag: bool) -> None:\n        self.flag = flag\n"
+)
+READ_ABOVE_FIXED: Final = "        flag: bool = self._opts.flag\n"
+
+
+@JOBS
+@pytest.mark.parametrize("jobs", ["1", "2"])
+def test_fix_unsafe_checks_again_what_reads_an_attribute_its_own_file_declared(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    jobs: str,
+) -> None:
+    """A read above the class whose attribute LVA013's guess declares is typed in the same run."""
+    path: Path = _write(tmp_path / "handler.py", READ_ABOVE)
+    unsafe: list[str] = [f"--jobs={jobs}", "--unsafe-fixes", "--extend-select", "LVA013", "-q"]
+    assert cli.main([*unsafe, "--fix", str(tmp_path)]) == cli.EXIT_CLEAN
+    assert READ_ABOVE_FIXED in path.read_text(encoding="utf-8")
+    _ = capsys.readouterr()
+    assert cli.main([*unsafe, "--diff", str(tmp_path)]) == cli.EXIT_CLEAN
+    assert not capsys.readouterr().out

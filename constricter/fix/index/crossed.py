@@ -1,14 +1,15 @@
 """What crosses into a file from the other checked files it imports, for `--fix`.
 
 `imported` gives a file the return types of the functions it imports (see `project.calls`), and
-each imported class's attributes and methods' returns, its plain classes' variables, and which are
-generic, each keyed as the file spells the class (`spelled_classes`): only where every name in a
-type means the same in the file as where it was written (see `project.portable`).
+each imported class's attributes and methods' returns, its plain classes' variables, which are
+generic and which are descriptors, each keyed as the file spells the class (`spelled_classes`):
+only where every name in a type means the same in the file as where it was written (see
+`project.portable`).
 """
 
 from collections.abc import Iterator, Mapping
 from pathlib import Path
-from typing import NamedTuple, TypeAlias
+from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.core.known import Classes, Guarded, Origin, Partial, Returns
 from constricter.fix.index.modules import (
@@ -40,6 +41,7 @@ from constricter.rules.annotations import roots
 from constricter.rules.declarations import GenericClass
 
 _Named: TypeAlias = tuple[Mapping[str, Origin], frozenset[str] | None]  # see `spelled_classes`
+_GET: Final = "__get__"
 
 
 def imported(
@@ -60,7 +62,7 @@ def imported(
       for a file `catalog` doesn't have (a notebook, standard input).
 
     """
-    taken: _Taken = _Taken({}, {}, {}, {}, set(), {})
+    taken: _Taken = _Taken({}, {}, {}, {}, set(), {}, {})
     guarded: dict[str, Guarded] = {} if seeded is None else dict(seeded[0])
     target: Module | None
     if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
@@ -97,6 +99,7 @@ def imported(
         taken.members,
         Partial(found[2], {name: each for name, each in taken.partial.items() if each}),
         taken.generic,
+        taken.descriptors,
     )
 
 
@@ -128,6 +131,7 @@ def guarded_classes(catalog: Index, path: Path, found: Imported, guarded: Mappin
         {},
         set(),
         {},
+        {},
     )
     _take(catalog, target, (fresh, None), taken, dict(guarded))
     return Classes(taken.attributes, taken.methods)
@@ -142,6 +146,7 @@ class _Taken(NamedTuple):
     members: dict[str, Mapping[str, str]]
     generics: set[str]
     generic: dict[str, GenericClass]
+    descriptors: dict[str, str | None]
 
 
 def _take(catalog: Index, target: Module, named: _Named, taken: _Taken, guarded: dict[str, Guarded]) -> None:
@@ -156,6 +161,14 @@ def _take(catalog: Index, target: Module, named: _Named, taken: _Taken, guarded:
             taken.generic[key] = generic_portable(catalog.modules, (target, defined), key, klass, guarded)
         if defined[1] in defined[0].plain and defined[1] in defined[0].members:
             taken.members[key] = _variables(catalog.modules, (target, defined), key, guarded)
+        if defined[1] in defined[0].descriptors:
+            gives: str | None = defined[0].descriptors[defined[1]]
+            # What the file can't write is unread, as an overloaded `__get__` is.
+            taken.descriptors[key] = (
+                None
+                if gives is None
+                else portable(catalog.modules, (target, defined), key, {_GET: gives}, guarded).get(_GET)
+            )
         if _declared_members(catalog, defined).isdisjoint(target.attributes):
             # Most classes it can name: it takes none of their members, and asks whether it names one
             # only by what it writes (`m.Row(...)` constructs one).

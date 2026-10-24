@@ -12,6 +12,7 @@ from typing import Final, NamedTuple
 
 from constricter.fix.core.known import Inference, Returned
 from constricter.fix.values import stored
+from constricter.fix.values.doubts import bare
 from constricter.fix.values.inference import ASSIGNED
 from constricter.fix.values.shapes import or_none
 from constricter.offences import UNANNOTATED_ATTRIBUTE, Fix, Offence
@@ -59,8 +60,14 @@ def unannotated(
         target: ast.Attribute = each.first if each.plain is None else each.plain[0]
         fix: Fix | None = None
         typed: tuple[str, frozenset[str]] | None
-        if each.plain is not None and (typed := _typed(each, found, assigned)) is not None:
-            fix = scopes[each.plain[1]].offer(
+        scope: Scope
+        if (
+            each.plain is not None
+            and (typed := _typed(each, found, assigned)) is not None
+            # A generic class written without its arguments is no fix, as a binding's isn't.
+            and not bare(typed[0], (scope := scopes[each.plain[1]]).settings.facts.generics)
+        ):
+            fix = scope.offer(
                 Inference(typed[0], f"`{each.owner.name}.{each.attr}`'s assignments", typed[1]),
                 typed[1],
                 unsafe=True,

@@ -558,3 +558,32 @@ def test_pytests_tests_are_read_from_their_junit_reports(
     raw: Suite = Suite("", "", "", (), ("python", "-m", "unittest"))
     assert corpus_suite.tested(tmp_path, raw, None, None).failed == {"tests/test_a.py::test_y"}
     assert not any(word.startswith("--junitxml=") for word in ran[-1])
+
+
+def test_tests_python_c_runs_are_traced_on_their_workers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The code and its arguments under the tracer, the interpreter's own options before it.
+
+    As Django's `runtests.py` runs, its workers forked: each records itself (`constricter.trace`).
+    """
+    code: str = "import runpy; runpy.run_path('tests/runtests.py', run_name='__main__')"
+    suite: Suite = _SUITE._replace(tests=("python", "-Wall", "-c", code, "--parallel={workers}"), most=4)
+    ran: list[list[str]] = []
+
+    def reset(_root: Path, _suite: Suite) -> None:
+        pass
+
+    def completed(args: list[str], *_args: object, **_options: object) -> SimpleNamespace:
+        ran.append(args)
+        return SimpleNamespace(stdout="Ran 2 tests in 0.1s\n\nOK\n", stderr="")
+
+    monkeypatch.delenv(corpus_suite.TRACER_VARIABLE, raising=False)
+    monkeypatch.setattr(corpus_suite, "reset", reset)
+    monkeypatch.setattr(corpus_suite, "_completed", completed)
+    assert corpus_suite.traced(tmp_path, suite) is not None
+    tracer: list[str] = ["-m", "constricter.trace", "--output", corpus_suite.TRACE_FILE, "--root", "."]
+    workers: str = f"--parallel={corpus_suite.workers(suite)}"
+    assert ran == [[str(tmp_path / ".venv" / "bin" / "python"), "-Wall", *tracer, "-c", code, workers]]
+    assert not corpus_suite.traceable(_SUITE._replace(tests=("python", "runtests.py")))  # nor a script

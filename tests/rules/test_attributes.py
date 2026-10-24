@@ -175,6 +175,32 @@ def test_a_value_the_tests_narrow_is_stored_as_they_leave_it() -> None:
     assert _found(NARROWED) == [(8, 8, "self.index", "Index", True), (11, 8, "self.size", "int", True)]
 
 
+GENERIC: Final = """
+from typing import Generic, TypeVar
+
+T = TypeVar("T")
+
+
+class Box(Generic[T]):
+    def __init__(self, item: T) -> None:
+        self.item = item
+
+
+class Plain: ...
+
+
+class C:
+    def __init__(self, thing) -> None:
+        self.box = Box(thing)
+        self.plain = Plain()
+"""
+
+
+def test_a_generic_class_is_never_written_bare() -> None:
+    """A generic class's instance whose arguments aren't known has no fix, as a binding of it hasn't."""
+    assert _found(GENERIC) == [(16, 8, "self.box", None, False), (17, 8, "self.plain", "Plain", True)]
+
+
 def test_the_fix_policy_holds() -> None:
     """`fix-ignore = assigned` drops the fix, not the offence."""
     policy: Checks = _ON._replace(fixes=FixPolicy(ignore=frozenset({"assigned"})))

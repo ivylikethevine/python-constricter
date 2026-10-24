@@ -104,7 +104,9 @@ the value decides it, for a plain `name = value` in a function or module body:
   too (`Box().name`), and its fix kinds include the value's. A member of an `X | None` (or
   `Optional[X]`) is `X`'s: a checker has narrowed the value there, or reports the access
   (`m = re.match(...)`, then `m.start()` is an `int`); not one `None` has too (`__class__`), nor a
-  union of more types;
+  union of more types. A class-body attribute declared as a descriptor (a checked file's class whose
+  body defines `__get__`) is, through an instance, what its `__get__` declares it returns; none
+  where `__get__` is overloaded, declares no return or names a type variable;
 - a method a class doesn't define, called on `self` or any value typed as the class: the base's that
   defines it, in Python's method resolution order, among the module's own classes (each defined
   once, not generic) and then a class another checked file defines (the CLI only), which ends the
@@ -605,7 +607,7 @@ it's stored `None` and otherwise only a known `T` (`optional` too): `self.n = n`
 `self.n: int = n`, which a type checker reads as the attribute's declaration. Always a guess, since
 another file's subclass or outside code may store it too; none where a store isn't a plain
 `self.x = value` in one of the class's methods (`self.a, self.b = ...`, `del self.a`, a nested
-function's).
+function's), nor for a generic class without its arguments (`self.box = Box(thing)`).
 
 A loop whose target is typed only by `# type: T` (LVA003) gets `name: T` declared before it and the
 comment dropped (a type checker would see the name declared twice), when its header is on one line.

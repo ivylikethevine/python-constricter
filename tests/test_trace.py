@@ -1,5 +1,6 @@
 """`python -m constricter.trace`: the types a run binds its functions' locals to, recorded."""
 
+import atexit
 import hashlib
 import importlib.util
 import inspect
@@ -8,8 +9,10 @@ import os
 import runpy
 import subprocess  # runs a traced pytest, whose workers are processes of its own
 import sys
+import tempfile
 import threading
 from functools import partial
+from multiprocessing import util as multiprocessing_util
 from pathlib import Path
 from types import CodeType, FrameType
 from typing import TYPE_CHECKING, Final, NamedTuple, TypeAlias, cast
@@ -173,6 +176,12 @@ _Found: TypeAlias = "Mapping[str, object]"  # what a recorder writes
 _Files: TypeAlias = dict[str, dict[str, object]]  # its files' entries
 _Bindings: TypeAlias = dict[str, dict[str, list[str]]]  # each binding's spellings, by its line and name
 _Asked: TypeAlias = list[tuple[object, ...]]
+# What a forked child registers to write its trace: at its exit, after a fork, and as a finalizer.
+_Write: TypeAlias = "Callable[[Path], None]"  # a recorder's `write`
+_Adds: TypeAlias = "Callable[[recording.Recorder], None]"  # what an after-fork callback is
+_Written: TypeAlias = "tuple[_Write, Path]"
+_AfterFork: TypeAlias = "tuple[recording.Recorder, _Adds]"
+_Finalized: TypeAlias = "tuple[_Write, tuple[Path], int]"
 _Sentinel: TypeAlias = object  # `sys.monitoring.DISABLE`'s type
 _Tracing: TypeAlias = tuple[object, object]  # what traces this thread, and those `threading` starts
 
@@ -666,7 +675,7 @@ def test_python_m_runs_the_command(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert (tmp_path / _OUTPUT).is_file()
 
 
-@pytest.mark.parametrize("argv", [[], ["--output", _OUTPUT], ["-m"]])
+@pytest.mark.parametrize("argv", [[], ["--output", _OUTPUT], ["-m"], ["-c"]])
 def test_nothing_to_run_exits_2(argv: list[str], capsys: pytest.CaptureFixture[str]) -> None:
     """With neither a script nor a module."""
     with pytest.raises(SystemExit):
@@ -786,3 +795,129 @@ def test_pytest_xdists_workers_are_recorded(tmp_path: Path) -> None:
     assert _files(found)[_digest(_TESTS)]["bindings"] == {
         _line(_TESTS, "    result = value * 2"): {"result": ["bytes", "float", "int", "str"]},
     }
+
+
+# A script forking children that bind `double`'s `result`: two `multiprocessing` workers, which leave
+# by `os._exit`, and a plain child that exits through the run's own frames. The run itself binds none.
+_FORKS: Final = """
+import multiprocessing
+import os
+import sys
+
+
+def double(value):
+    result = value * 2
+    return result
+
+
+if __name__ == "__main__":
+    pool = multiprocessing.get_context("fork").Pool(2)
+    _ = pool.map(double, [1, "a"], chunksize=1)
+    pool.close()
+    pool.join()
+    child = os.fork()
+    if not child:
+        double(1.5)
+        sys.exit(0)
+    _ = os.waitpid(child, 0)
+"""
+
+
+def test_a_runs_forked_children_are_recorded(tmp_path: Path) -> None:
+    """Each records on and writes where the run reads as it ends, cleaning up none of the run's."""
+    if not hasattr(os, "fork"):
+        pytest.skip("no `fork` on Windows")
+    script: Path = tmp_path / "forks.py"
+    _ = script.write_text(_FORKS, encoding="utf-8", newline="\n")
+    environment: dict[str, str] = {
+        name: value for name, value in os.environ.items() if not name.startswith(("PYTEST_", "COV_"))
+    }
+    environment["PYTHONPATH"] = str(Path(trace.__file__).parent.parent)
+    code: str = "import runpy; runpy.run_path('forks.py', run_name='__main__')"  # as Django's suite runs
+    ran: subprocess.CompletedProcess[str] = subprocess.run(
+        [sys.executable, "-m", trace.__name__, "--output", _OUTPUT, "-c", code],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert ran.returncode == 0, ran.stdout + ran.stderr
+    found: _Found = cast("_Found", json.loads((tmp_path / _OUTPUT).read_text(encoding="utf-8")))
+    assert _files(found)[_digest(_FORKS)]["bindings"] == {
+        _line(_FORKS, "    result = value * 2"): {"result": ["float", "int", "str"]},
+    }
+
+
+def test_code_is_run_as_python_c_runs_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Its arguments after `-c`, under `__main__`, the working directory first on the path."""
+    _ = _module(tmp_path, monkeypatch)
+    code: str = "import sys, runpy; runpy.run_path('traced_module.py', run_name='__main__')"
+    exited: pytest.ExceptionInfo[SystemExit]
+    with pytest.raises(SystemExit) as exited:
+        _ = trace.main(["--output", _OUTPUT, f"--root={tmp_path}", "-c", code, "a", "b"])
+    assert exited.value.code == _STATUS
+    assert (sys.argv, sys.path[0]) == (["-c", "a", "b"], "")
+    found: _Found = cast("_Found", json.loads((tmp_path / _OUTPUT).read_text(encoding="utf-8")))
+    bindings: _Bindings = cast("_Bindings", _files(found)[_digest(_MODULE)]["bindings"])
+    assert bindings[_line(_MODULE, "    count = len(argv)")] == {"count": _ONE}
+
+
+def test_a_forked_child_writes_as_it_ends(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """At its exit; a `multiprocessing` worker by its after-fork callback's finalizer; none past the run."""
+    _ = _module(tmp_path, monkeypatch)
+    exiting: list[_Written] = []
+    after: list[_AfterFork] = []
+    finalized: list[_Finalized] = []
+
+    def exit_with(write: _Write, output: Path) -> None:
+        exiting.append((write, output))
+
+    def after_fork(held: recording.Recorder, func: _Adds) -> None:
+        after.append((held, func))
+
+    def finalize(_obj: None, write: _Write, args: tuple[Path], exitpriority: int) -> None:
+        finalized.append((write, args, exitpriority))
+
+    def child(_name: str, _kind: str) -> None:  # the run's code, as a forked child runs on in it
+        trace.forked()
+
+    monkeypatch.setattr(atexit, "register", exit_with)
+    monkeypatch.setattr(multiprocessing_util, "register_after_fork", after_fork)
+    monkeypatch.setattr(multiprocessing_util, "Finalize", finalize)
+    monkeypatch.setattr(trace, "_run", child)
+    assert trace.main(["--output", _OUTPUT, "traced_module.py"]) == 0
+    trace.forked()  # past the run: nothing
+    assert len(exiting) == len(after) == 1
+    write: _Write
+    output: Path
+    write, output = exiting[0]
+    assert output.name == f"{os.getpid()}.json"
+    held: recording.Recorder
+    func: _Adds
+    held, func = after[0]
+    func(held)
+    assert finalized == [(write, (output,), 0)]
+
+
+def test_a_forked_child_leaving_through_the_run_leaves_the_run_alone(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """It writes no trace of the run's, and the run's parts are left for the run to read."""
+    _ = _module(tmp_path, monkeypatch)
+    temporary: Path = tmp_path / "temporary"
+    temporary.mkdir()
+    real: Callable[[], int] = os.getpid
+
+    def other() -> int:
+        return real() + 1
+
+    def child(_name: str, _kind: str) -> None:
+        monkeypatch.setattr(os, "getpid", other)
+
+    monkeypatch.setattr(tempfile, "tempdir", str(temporary))
+    monkeypatch.setattr(trace, "_run", child)
+    assert trace.main(["--output", _OUTPUT, "traced_module.py"]) == 0
+    assert not (tmp_path / _OUTPUT).exists()
+    assert [path.name.startswith("constricter-trace-") for path in temporary.iterdir()] == [True]

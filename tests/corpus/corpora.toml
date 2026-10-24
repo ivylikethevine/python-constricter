@@ -86,8 +86,9 @@ sha256 = "3b48dac8fb59f62eaa67ac83c1eb12bda1b7a08406dd286e252c11a66be27f81"
 package = "Python-3.14.7/Lib"
 
 # Its `runtests.py` on SQLite, its processes forked: with `forkserver`, Python 3.14's default on
-# Linux, Django 5.2 can't clone a SQLite test database for each process. It has no type checker.
-# pylibmc needs libmemcached's headers, and its tests need a memcached server, so they skip anyway.
+# Linux, Django 5.2 can't clone a SQLite test database for each process; traced the same way, each
+# forked worker recording itself. It has no type checker. pylibmc needs libmemcached's headers, and
+# its tests need a memcached server, so they skip anyway.
 [corpus.django]
 why = "a framework with no annotations: the 5.2 LTS"
 version = "5.2.18"
@@ -101,7 +102,6 @@ tests = "!python -Wall -c \"import multiprocessing, runpy, sys; multiprocessing.
 checks = []
 most = 16
 left-out = "pylibmc"
-script = "tests/runtests.py --parallel=1"
 
 # Its nox `github-cext-greenlet` session on SQLite (every SQLite driver, its C extensions built)
 # and its `pep484` session (`mypy noxfile.py ./lib/sqlalchemy`, strict for the package).

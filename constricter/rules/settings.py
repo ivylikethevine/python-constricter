@@ -38,6 +38,7 @@ from constricter.rules.declarations import (
     casts,
     class_attributes,
     defined_type_vars,
+    descriptors,
     factories,
     generic_members,
     self_returns,
@@ -146,6 +147,7 @@ def module_settings(
                 frozenset() if outside is None else outside.vouched,
             ),
             generic=generic,
+            descriptors={**({} if outside is None else outside.descriptors), **descriptors(tree)},
         ),
         Hierarchy.for_module(
             tree,

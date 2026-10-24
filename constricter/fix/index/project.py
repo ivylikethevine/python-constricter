@@ -89,6 +89,8 @@ class Imported(NamedTuple):
     partial: Partial = Partial()  # the returns only an unpacking can use
     # Its generic classes' type parameters and the members it takes of them (see `GenericClass`).
     generic: Mapping[str, GenericClass] = Empty()
+    # Its descriptors, each with what an instance's attribute of it gives (see `Module.descriptors`).
+    descriptors: Mapping[str, str | None] = Empty()
 
 
 def _origin(module: Module, name: str) -> Origin | None:

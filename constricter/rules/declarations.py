@@ -39,6 +39,7 @@ _CAST: Final = "cast"
 _UNDECORATED: Final[frozenset[str]] = frozenset()  # no decorators: a plain method
 _GENERIC_BASES: Final = frozenset({"Generic", "Protocol"})  # a base that lists a class's type parameters
 _TYPE_VAR: Final = "TypeVar"  # the node class of a plain type parameter (`ast.TypeVar`, Python 3.12+)
+_GET: Final = "__get__"  # a descriptor's: what an instance's attribute of it gives
 
 
 class GenericClass(NamedTuple):
@@ -527,6 +528,32 @@ def generic_classes(tree: ast.Module) -> frozenset[str]:
 
     """
     return frozenset(node.name for node in _class_nodes(tree) if _generic(node))
+
+
+def descriptors(tree: ast.Module) -> dict[str, str | None]:
+    """Find the module's descriptors: the classes defined once whose bodies define `__get__`.
+
+    An attribute a class body annotates with one is read through an instance as `__get__` returns.
+
+    Returns:
+      Each one's name, and that return where a plain `__get__` declares it (see `_declared_returns`),
+      not as `Self`; `None` where it's overloaded, undeclared, vague or names a type variable.
+
+    """
+    counts: dict[str, int] = {}
+    node: ast.ClassDef
+    for node in _class_nodes(tree):
+        counts[node.name] = counts.get(node.name, 0) + 1
+    type_vars: frozenset[str] = defined_type_vars(tree)
+    found: dict[str, str | None] = {}
+    for node in _class_nodes(tree):
+        if counts[node.name] == 1 and any(
+            isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef) and stmt.name == _GET
+            for stmt in node.body
+        ):
+            returned: str | None = _declared_returns(node.body, type_vars).get(_GET)
+            found[node.name] = None if returned is None or _is_self(returned) else returned
+    return found
 
 
 def _generic(node: ast.ClassDef) -> bool:
