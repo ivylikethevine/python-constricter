@@ -1,12 +1,16 @@
-"""The kept trees' budget: sized by the machine's memory."""
+"""The kept trees: their budget, sized by the machine's memory, and which a check keeps again."""
 
 import os
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 import pytest
 
-from constricter.rules import parsed
+from constricter.rules import checker, parsed
+from constricter.rules.tables import module_tables
+
+if TYPE_CHECKING:
+    import ast
 
 _GB: Final = 1 << 30
 _PAGE: Final = 4096
@@ -74,3 +78,25 @@ def test_memory_isnt_known_where_sysconf_fails(
 
     monkeypatch.setattr(os, "sysconf", sysconf, raising=False)
     assert parsed.memory() is None
+
+
+@pytest.mark.parametrize(
+    ("source", "again"),
+    [
+        ("def f(x):\n    return x\n", True),  # an open function: its callers may type `x`
+        ("def f(x: int) -> int:\n    return x\n", False),
+        ("x = 1\n", False),
+    ],
+)
+def test_a_tree_is_kept_again_only_where_a_second_check_resumes_its_first(
+    source: str,
+    again: bool,  # ruff: ignore[boolean-type-hint-positional-argument]  # a parameter pytest fills in
+) -> None:
+    """Only callers typing an open function's parameters resume a check; any other is parsed again."""
+    parsed.budget(1)
+    tree: ast.Module = parsed.parse(source)
+    parsed.keep(source, (tree, module_tables(tree)))
+    _ = checker.checked_source(source)
+    kept: parsed.Kept | None = parsed.take(source)
+    assert (kept is not None) is again
+    assert kept is None or kept[0] is tree

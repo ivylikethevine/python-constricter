@@ -45,6 +45,11 @@
     replace = false                  # over a section that's already there
     section = "Super corpora"        # or one section of that heading: every table of the run's last version
 
+    [stages]                         # what `--stage NAME` runs: its steps, by name or `fnmatch` pattern
+    fixes = ["check", "fix-*", "infer-*", "census", "coverage"]   # with none, `stages.BUILT_IN`'s
+    suites = ["traced", "infer-union", "tests", "tests-*", "types", "types-*"]
+    timed = ["timing", "profile"]
+
 A key this doesn't know is an error, not ignored: a misspelt step would otherwise measure nothing.
 """
 
@@ -54,6 +59,7 @@ from pathlib import Path
 from typing import IO, Final, NamedTuple, TypeAlias, cast
 
 from constricter import __version__
+from tests.corpus.stages import BUILT_IN, Stages
 
 DEV: Final = "dev"
 CHECKOUT: Final = __version__.partition("+")[0]  # this checkout's version, without its commit: `0.5.1.dev3`
@@ -104,6 +110,7 @@ _KEYS: Final = {
     },
 }
 _RUNS_MD: Final = "runs-md"
+_STAGES: Final = "stages"  # the table regrouping the steps
 _STAMP: Final = "%m-%d-%Y-%H%M"  # a run's folder: its label, then the month, day, year and time it started
 _Table: TypeAlias = dict[str, object]
 
@@ -155,6 +162,7 @@ class Run(NamedTuple):
     share: int = 0  # the percent of the machine's CPUs and memory they share, held to it: 0, as above
     minus: tuple[str, ...] = ()  # corpora or sets left out of `include`'s (`--minus`)
     options: tuple[str, ...] = ()  # given to every constricter command of the run (`launch.configure`)
+    stages: Stages = BUILT_IN  # what `--stage` runs of it (see `stages`)
 
     def folder(self, now: datetime) -> Path:
         """Name the folder an execution started at `now` writes.
@@ -208,6 +216,8 @@ def parse(data: _Table) -> Run:
     """
     section: str
     for section in data:
+        if section == _STAGES:  # its keys are the stages' own names
+            continue
         unknown: set[str] = set(cast("_Table", data[section])) - _KEYS.get(section, set())
         if section not in _KEYS or unknown:
             message: str = f"unknown in the run file: [{section}] {', '.join(sorted(unknown))}".rstrip()
@@ -252,7 +262,37 @@ def parse(data: _Table) -> Run:
         float(cast("float", run.get("memory", default.memory))),
         percent(run.get("share", default.share)),
         options=tuple(cast("list[str]", run.get("options", default.options))),
+        stages=_staged(cast("_Table", data.get(_STAGES, {}))),
     )
+
+
+def _staged(table: _Table) -> Stages:
+    """Read a run file's `[stages]`: each stage's steps, by name or pattern.
+
+    Returns:
+      Them, in the file's order; `stages.BUILT_IN` where it has none. A stage that isn't a list of
+      step names raises `ValueError` (`_patterns`).
+
+    """
+    if not table:
+        return BUILT_IN
+    return tuple((name, _patterns(name, given)) for name, given in table.items())
+
+
+def _patterns(name: str, given: object) -> tuple[str, ...]:
+    """Read stage `name`'s steps, by name or pattern.
+
+    Returns:
+      Them.
+
+    Raises:
+      ValueError: They aren't a list of step names.
+
+    """
+    if not isinstance(given, list) or not all(isinstance(each, str) for each in cast("list[object]", given)):
+        message: str = f"the stage {name!r} isn't a list of step names"
+        raise ValueError(message)
+    return tuple(cast("list[str]", given))
 
 
 def percent(given: object) -> int:

@@ -6,6 +6,21 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--infer-with basedpyright` caps each server's Node heap at nine tenths of its share of
+  `--infer-memory` (`--max-old-space-size`; Node's own cap was 4.2 GB whatever the share): near it
+  basedpyright empties its caches, and a server that exits past it is restarted and asked about its
+  files one at a time, as a hung one is.
+- `--infer-in-turn` asks `--infer-with`'s checkers one after another, each one's servers shut down
+  before the next one's start: the most memory held is the largest checker's, not their sum. The
+  corpus runner's `infer-union` asks in turn, and an unmeasured one is sized by its largest
+  checker's step.
+- A check holds less memory: a file's tree and finished check are kept for a second round only where
+  its callers may type an open function's parameters, the one second check that resumes the first;
+  any other is parsed again. A module's own node no longer keeps its tree alive for good. On the
+  standard library in one process, 2.65 GiB at the peak to 2.03, at 41.2s for 40.5.
+- `uv.lock` moves filelock to 4.2.1 and setuptools to 84.1.0 (the `mypyc` group and the compiled
+  build's hook), past CVE-2026-112907, CVE-2026-112913, CVE-2026-112940 and GHSA-xmj3-9gf7-h52w,
+  each excepted from a week's age (`[tool.uv] exclude-newer-package`) until it's that old.
 - `--fix` finds an installed package's types as PEP 561 orders them: the checked code's environment
   (`VIRTUAL_ENV`) before constricter's own, a stub package (`pkg-stubs`) first wherever it is, a
   partial one leaving a module it lacks to the package, and a namespace package's typed
@@ -68,6 +83,13 @@ Notable changes, newest first. Each release's full notes are generated from its 
   traced in one process before.
 - The corpus runner gives every suite's processes `MPLBACKEND=Agg`: a plotting test opens no window
   on the display of the machine running it.
+- A corpus run can be made in stages, each at its own time into one folder: `--stage NAME` runs
+  that stage's steps alone (built in: `fixes`, `traced`, `tests`, `timed`; a run file's `[stages]`
+  regroups them by step name or pattern), and `--resume FOLDER --stage NAME` the next. A step
+  whose needs are a stage still to run is left for it; the report names the stages left, and the
+  run is published once every stage is in. A stage on another commit, other uncommitted changes or
+  another run file than the folder's is refused unless `--join-anyway`, and the report gives each
+  stage's commit.
 - A run file's `[run] options` (`["--vague", "0"]`) go to every constricter command of the corpus
   run, for a run at a setting other than the default.
 - The corpus runner reads a suite's failed tests from pytest's JUnit report, a file for each part

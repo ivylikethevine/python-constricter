@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Final, TypeAlias, cast
 
 from constricter.offences import Tier
-from tests.corpus import corpus_guesses, corpus_suite
+from tests.corpus import corpus_guesses, corpus_suite, launch
 from tests.corpus.pipeline import (
     FIX,
     FROM,
@@ -751,16 +751,17 @@ def _union_run(job: Job, released: Sequence[corpus_suite.Outcome], named: frozen
 def union(job: Job) -> Record:
     """Fix a copy with every source at once: the guesses, each checker's hints, then the trace's.
 
-    `--fix --unsafe-fixes --infer-with` the run's checkers, in its order, and `--infer-from` the
-    traced tests' trace where the run made one. A binding more than one source types gets the
-    first's, as a user asking for every source gets it. The suite's tests after it
-    (`tests-infer-union`) stand for each fix's where they're the released tests' (`standing`).
+    `--fix --unsafe-fixes --infer-with` the run's checkers in its order, in turn where the version can
+    (`--infer-in-turn`), and `--infer-from` the traced tests' trace where the run made one. A binding
+    more than one source types gets the first's, as a user asking for every source gets it. The
+    suite's tests after it (`tests-infer-union`) stand for each fix's where they're the released tests'.
 
     Returns:
       The step's record, as `pipeline.fix` keeps a fix step's.
 
     """
     extra: list[str] = ["--unsafe-fixes", "--infer-with", ",".join(job.run.steps.infer)]
+    extra += launch.offered(job.version, "--infer-in-turn")  # one checker's servers at a time
     trace: Record | None = _read(job, TRACED)
     if trace is not None and _COUNTS in trace:
         extra += ["--infer-from", str(prepared(job, TRACED) / corpus_suite.TRACE_FILE)]

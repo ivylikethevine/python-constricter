@@ -334,10 +334,11 @@ def test_the_union_fixes_with_every_source_at_once(tmp_path: Path, monkeypatch: 
     job.store.write("a", job.recorded, "traced", _PASSED | {"summary": "2 passed"})
     assert suite_steps.union(job) == {"fixed": 1}
     trace: str = str(tmp_path / "traced" / corpus_suite.TRACE_FILE)
+    turn: Final = "--infer-in-turn"  # one checker's servers at a time
     assert asked == [
-        (_UNION, ["--unsafe-fixes", "--infer-with", "ty"]),
-        (_UNION, ["--unsafe-fixes", "--infer-with", "ty"]),
-        (_UNION, ["--unsafe-fixes", "--infer-with", "ty", "--infer-from", trace]),
+        (_UNION, ["--unsafe-fixes", "--infer-with", "ty", turn]),
+        (_UNION, ["--unsafe-fixes", "--infer-with", "ty", turn]),
+        (_UNION, ["--unsafe-fixes", "--infer-with", "ty", turn, "--infer-from", trace]),
     ]
     assert set(suite_steps.waiting(job)) >= {_UNION, "tests-infer-union", "tests"}
 

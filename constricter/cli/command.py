@@ -35,6 +35,8 @@ from constricter.rules import parsed
 from constricter.rules.checker import Checked, Coverage, annotation_coverage, checked_source
 
 if TYPE_CHECKING:  # slow to import, and only needed for `--infer-with`
+    from types import ModuleType
+
     from constricter.cli.lsp import hints
 
 EXIT_CLEAN: Final = 0
@@ -369,12 +371,17 @@ def _check_rounds(options: Options) -> tuple[list[Path], list[FileRun]]:
         return names, settled(paths, check, options, None)
     session: hints.Session
     # Imported only for `--infer-with`: it's slow to import, for every run's start.
-    with cast("type[hints.Session]", importlib.import_module("constricter.cli.lsp.hints").Session)(
+    hinting: ModuleType = importlib.import_module("constricter.cli.lsp.hints")
+    asking: hints.Asking = cast("type[hints.Asking]", hinting.Asking)(
+        kept=not options.infer_fresh,
+        in_turn=options.infer_in_turn,
+    )
+    with cast("type[hints.Session]", hinting.Session)(
         options.infer_with,
         Path.cwd(),
         options.jobs,
         options.infer_memory,
-        kept=not options.infer_fresh,
+        asking,
     ) as session:
         runs: list[FileRun] = settled(paths, check, options, session)
         checker: str

@@ -845,7 +845,13 @@ program it checks (about 1.2 GB for SQLAlchemy, 3.4 GB for pandas), while `ty`'s
 hold what they're asked about (pandas: 1.2 GB in one `ty` server and 2.5 GB in four, 2.8 GB and 4.2
 GB for pyrefly). `--infer-memory GB` (`infer-memory`) caps what a checker's servers use together: by
 default 8 GB, or half the memory available if that's less; set, never more than is available. One
-server a checker always gets.
+server a checker always gets. basedpyright's heap is capped at nine tenths of each server's share
+(`NODE_OPTIONS=--max-old-space-size`, never under 600 MB): near the cap it empties its caches, and
+past it exits, so it's restarted and asked about its files one at a time, as a hung one is, a file
+it exits on again left without hints (and asked about again in a later run, where a larger share
+may fit it). `--infer-in-turn` asks the checkers one after another, each one's
+servers shut down before the next one's start: the most they hold is the largest checker's, not
+their sum, for their starts again every round.
 
 A round's hints are kept in the cache (`~/.cache/constricter/hints`, two weeks from their last use)
 and read from there while nothing they rest on has changed: the checker's build, the text of every

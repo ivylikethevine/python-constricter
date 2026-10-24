@@ -112,7 +112,7 @@ def test_a_step_waits_for_the_cpus_and_the_memory_it_wants() -> None:
     assert started.wait(5)
     waiting.join()
     assert (slots.free, slots.held, slots.running) == (4, 0, 0)
-    assert parse({"run": {"suite-seconds": 900, "suite-workers": 4, "cpus": 8, "memory": 12}})[-7:-2] == (
+    assert parse({"run": {"suite-seconds": 900, "suite-workers": 4, "cpus": 8, "memory": 12}})[-8:-3] == (
         900,
         4,
         8,

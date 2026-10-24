@@ -1,18 +1,19 @@
 """`--infer-with`: ask a type checker's language server what type each untyped name has.
 
-Each checker's servers are started once, over standard input and output, with the project root as
-their workspace, and work at once (see `Session`); each file is opened with the text constricter
-read, and its inlay hints asked for over the whole file. A variable-type hint (`: int`) sits just
-after the name it types: that end is its key, as the line (from 1) and the UTF-8 byte column `ast`
-gives the name's end. What the hint says is `constricter.fix.values.hinted`'s to judge: here it's only
-text.
+Each checker's servers are started once (each round, asked in turn: see `Asking`), over standard
+input and output, with the project root as their workspace, and work at once (see `Session`); each
+file is opened with the text constricter read, and its inlay hints asked for over the whole file. A
+variable-type hint (`: int`) sits just after the name it types: that end is its key, as the line
+(from 1) and the UTF-8 byte column `ast` gives the name's end. What the hint says is
+`constricter.fix.values.hinted`'s to judge: here it's only text.
 
 A server that can't be started, exits or answers an error stops the run: the option asked for its
 types, and silently offering none would look like a checker that found nothing. One that hangs is
 restarted and asked about each of its unanswered files alone; a file it hangs on again gets no hints
 (`Session.abandoned`, which the command reports), and a checker that hangs on more than
-`_MOST_ABANDONED` files stops the run. A round of files whose hints are kept from an earlier run,
-nothing they rest on changed since, is read from the store instead (see `stored`).
+`_MOST_ABANDONED` files stops the run. A Node server whose heap is capped (`Checker.share`) and
+exits is taken for one past its cap, as one that hung. A round of files whose hints are kept from an
+earlier run, nothing they rest on changed since, is read from the store instead (see `stored`).
 """
 
 import contextlib
@@ -23,11 +24,11 @@ from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
-from typing import Final, Self, TypeAlias
+from typing import Final, NamedTuple, Self, TypeAlias
 
 from constricter.cli.lsp import protocol, remembered, stored
 from constricter.cli.lsp.connection import Connection, FileHints, Found, Sent
-from constricter.cli.lsp.protocol import SERVERS, HintError, HungError, Server
+from constricter.cli.lsp.protocol import SERVERS, ExitedError, HintError, HungError, Server
 from constricter.fix.core.known import Hints
 
 _Task: TypeAlias = Callable[[], Found]  # one server's work: the hints of each file it's asked about
@@ -38,6 +39,22 @@ MEMORY: Final = 8 << 30  # the most a checker's servers use together, by default
 _MEMINFO: Final = Path("/proc/meminfo")
 _FILES_PER_SERVER: Final = 32  # fewer files than this each don't pay for another server's start
 _MOST_ABANDONED: Final = 3  # files a checker may hang on twice before the run stops
+_NODE_OPTIONS: Final = "NODE_OPTIONS"  # where a Node server's heap is capped (`Checker.share`)
+_HEAP: Final = 9  # tenths of a Node server's share of the memory its heap may take
+_WHOLE: Final = 10
+
+
+class Asking(NamedTuple):
+    """How a session asks its checkers.
+
+    With `kept`, a round's hints are read from the store where it has them, and kept there where it
+    doesn't. With `in_turn`, a round asks one checker after another, each one's servers shut down
+    before the next one's start: the most memory held is the largest checker's, not their sum, for
+    their starts every round.
+    """
+
+    kept: bool = True
+    in_turn: bool = False
 
 
 class Session:
@@ -54,16 +71,15 @@ class Session:
         root: Path,
         servers: int = 1,
         memory: int | None = None,
-        *,
-        kept: bool = True,
+        how: Asking | None = None,
     ) -> None:
         """Get ready to start `checkers`' servers, with `root` as their workspace.
 
-        Each checker gets up to `servers`, within `memory` bytes (see `Checker`). With `kept`, a round's
-        hints are read from the store where it has them, and kept there where it doesn't.
+        Each checker gets up to `servers`, within `memory` bytes (see `Checker`), and is asked `how`
+        says (by default, every round's hints kept, all checkers at once).
         """
         self.checkers: list[Checker] = [Checker(checker, root, servers, memory) for checker in checkers]
-        self.kept: bool = kept
+        self.how: Asking = how or Asking()
         # Each checker's rounds, by its name: whether the store had each one's hints.
         self.rounds: dict[str, list[bool]] = {checker.name: [] for checker in self.checkers}
 
@@ -96,7 +112,7 @@ class Session:
         names: dict[str, str] = {}
         found: dict[str, Found] = {}
         checker: Checker
-        for checker in self.checkers if self.kept else ():
+        for checker in self.checkers if self.how.kept else ():
             names[checker.name] = stored.key(checker.name, checker.command, checker.root, files)
             read: tuple[Found, frozenset[Path]] | None
             if (read := stored.load(names[checker.name], checker.root, files)) is not None:
@@ -105,19 +121,14 @@ class Session:
         asking: list[Checker] = [checker for checker in self.checkers if checker.name not in found]
         for checker in self.checkers:
             self.rounds[checker.name].append(checker.name in found)
-        _start(files, asking)
-        work: list[tuple[Checker, _Task]] = [
-            (checker, task) for checker in asking for task in checker.tasks(files)
-        ]
         found |= {checker.name: {path: {} for path in checker.abandoned & files.keys()} for checker in asking}
-        if work:
-            pool: ThreadPoolExecutor
-            with ThreadPoolExecutor(len(work)) as pool:
-                futures: list[Future[Found]] = [pool.submit(task) for _, task in work]
-                future: Future[Found]
-                for (checker, _), future in zip(work, futures, strict=True):
-                    found[checker.name].update(future.result())
-        for checker in asking if self.kept else ():
+        turns: list[list[Checker]] = [[checker] for checker in asking] if self.how.in_turn else [asking]
+        turn: list[Checker]
+        for turn in turns:
+            _asked(files, turn, found)
+            for checker in turn if self.how.in_turn else ():
+                checker.stop()
+        for checker in asking if self.how.kept else ():
             stored.store(
                 names[checker.name],
                 checker.root,
@@ -151,23 +162,42 @@ class Session:
         return [(name, sum(rounds), len(rounds)) for name, rounds in self.rounds.items() if any(rounds)]
 
 
+def _asked(files: Mapping[Path, str], checkers: Sequence["Checker"], found: dict[str, Found]) -> None:
+    """Ask `checkers` about `files` at once, each over its servers (started as needed), into `found`."""
+    _start(files, checkers)
+    work: list[tuple[Checker, _Task]] = [
+        (checker, task) for checker in checkers for task in checker.tasks(files)
+    ]
+    if work:
+        pool: ThreadPoolExecutor
+        with ThreadPoolExecutor(len(work)) as pool:
+            futures: list[Future[Found]] = [pool.submit(task) for _, task in work]
+            checker: Checker
+            future: Future[Found]
+            for (checker, _), future in zip(work, futures, strict=True):
+                found[checker.name].update(future.result())
+
+
 def _start(files: Mapping[Path, str], checkers: Sequence["Checker"]) -> None:
     """Start the servers `checkers` need for `files` that aren't running yet, all at once.
 
     Raises `HintError` if one can't be started; those that could be are shut down with the session.
     """
-    starting: list[Checker] = [
-        checker for checker in checkers for _ in range(checker.wanted(files) - len(checker.servers))
-    ]
+    starting: list[Checker] = []
+    checker: Checker
+    for checker in checkers:
+        wanted: int = checker.wanted(files)
+        checker.share(wanted)
+        starting += [checker] * (wanted - len(checker.servers))
     if not starting:
         return
     pool: ThreadPoolExecutor
     with ThreadPoolExecutor(len(starting)) as pool:
         futures: list[Future[Connection]] = [
-            pool.submit(Connection, checker.command, checker.root) for checker in starting
+            pool.submit(Connection, checker.command, checker.root, checker.environment)
+            for checker in starting
         ]
     failures: list[HintError] = []
-    checker: Checker
     future: Future[Connection]
     for checker, future in zip(starting, futures, strict=True):
         try:
@@ -192,7 +222,7 @@ def _hints(checker: str, found: FileHints) -> Hints:
     )
 
 
-class Checker:
+class Checker:  # pylint: disable=too-many-instance-attributes
     """One checker's servers, and which of them has each file.
 
     It has as many as its files need (one per `_FILES_PER_SERVER`), up to the command's `--jobs`, the
@@ -217,6 +247,19 @@ class Checker:
         self.servers: list[Connection] = []
         self.assigned: dict[Path, int] = {}  # each file's server, by its place in `servers`
         self.abandoned: set[Path] = set()  # the files a server hung on twice: never asked about again
+        self.environment: dict[str, str] | None = None  # its servers', where their heap is capped (`share`)
+
+    def share(self, servers: int) -> None:
+        """Cap each server's heap at its share of the memory, as the first starts, where they run on Node.
+
+        Of `servers`' share, a tenth is left for what isn't the heap; never under a server's own
+        (`Server.memory`). Past the cap, basedpyright empties its caches, and else exits: restarted
+        then, its files asked about alone (`_alone`).
+        """
+        if self.server.node and self.environment is None:
+            heap: int = max(self.server.memory, self.memory // servers * _HEAP // _WHOLE) >> 20
+            given: str = os.environ.get(_NODE_OPTIONS, "")
+            self.environment = {**os.environ, _NODE_OPTIONS: f"{given} --max-old-space-size={heap}".strip()}
 
     def wanted(self, files: Mapping[Path, str]) -> int:
         """Count the servers `files` want, as many as fit in memory (never fewer than it has).
@@ -271,6 +314,9 @@ class Checker:
         Returns:
           Each file's hints.
 
+        Raises:
+          HintError: The server failed as no restart gets past (see `_restartable`).
+
         """
         found: Found = {}
         pending: list[Sent] = []
@@ -278,8 +324,18 @@ class Checker:
         # Two batches in flight: the next is asked before the last's answers are read, so the server
         # always has work while they're read and the next batch is taken.
         for batch in itertools.chain([own] if own else [], iter(partial(_taken, batches), None)):
-            pending.append((batch, self.servers[index].ask(batch)))
             self.assigned.update(dict.fromkeys(batch, index))  # each file's taken once: no two write one
+            try:
+                pending.append((batch, self.servers[index].ask(batch)))
+            except HintError as failure:  # it has gone since its last answers: past its cap, say
+                if not self._restartable(failure):
+                    raise
+                unanswered: dict[Path, str] = {
+                    path: text for sent, _ in pending for path, text in sent.items()
+                }
+                pending.clear()
+                found.update(self._alone(index, unanswered | batch))
+                continue
             if len(pending) > 1:
                 found.update(self._answers(index, pending))
         if pending:
@@ -289,15 +345,21 @@ class Checker:
     def _answers(self, index: int, pending: list[Sent]) -> Found:
         """Collect the answers to the first of `pending`'s batches from server `index`, and take it off.
 
-        If the server hangs, every pending file is asked about again alone (see `_alone`).
+        If the server hangs, or exits past its heap's cap, every pending file is asked about again
+        alone (see `_alone`).
 
         Returns:
           Each file's hints: the batch's, or every pending file's.
 
+        Raises:
+          HintError: The server failed as no restart gets past (see `_restartable`).
+
         """
         try:
             found: Found = self.servers[index].answers(pending[0][1])
-        except HungError:
+        except HintError as failure:
+            if not self._restartable(failure):
+                raise
             unanswered: dict[Path, str] = {path: text for batch, _ in pending for path, text in batch.items()}
             pending.clear()
             return self._alone(index, unanswered)
@@ -305,10 +367,11 @@ class Checker:
         return found
 
     def _alone(self, index: int, files: Mapping[Path, str]) -> Found:
-        """Restart server `index`, which hung, and ask it about each of `files` alone.
+        """Restart server `index`, which hung or exited past its cap, and ask it about each of `files` alone.
 
         A file it hangs on again is abandoned, with no hints, and the server restarted for the rest:
-        one file's analysis needn't cost every other file's hints.
+        one file's analysis needn't cost every other file's hints. As is one it exits on again past
+        its cap, though not remembered (see `remembered`): a larger share may fit it.
 
         Returns:
           Each file's hints.
@@ -325,9 +388,12 @@ class Checker:
             server: Connection = self.servers[index]
             try:
                 found.update(server.answers(server.ask({path: text})))
-            except HungError as hung:
+            except HintError as hung:
+                if not self._restartable(hung):
+                    raise
                 self.abandoned.add(path)
-                remembered.remember(self.name, self.command, text, path)
+                if isinstance(hung, HungError):
+                    remembered.remember(self.name, self.command, text, path)
                 if len(self.abandoned) > _MOST_ABANDONED:
                     error: str = f"{self.name} hung on {len(self.abandoned)} file(s), each asked about alone"
                     raise HintError(error) from hung
@@ -335,10 +401,29 @@ class Checker:
                 self._restart(index)
         return found
 
+    def stop(self) -> None:
+        """Shut its servers down, at once: the next round starts others, which open each file anew."""
+        pool: ThreadPoolExecutor
+        with ThreadPoolExecutor(len(self.servers)) as pool:  # one at least: it was asked
+            _ = list(pool.map(Connection.close, self.servers))
+        self.servers.clear()
+        self.assigned.clear()
+
+    def _restartable(self, failure: HintError) -> bool:
+        """Decide whether a server's `failure` is one a restart may get past: a hang, or an exit past its cap.
+
+        Returns:
+          Whether it is; any other failure stops the run.
+
+        """
+        return isinstance(failure, HungError) or (
+            isinstance(failure, ExitedError) and self.environment is not None
+        )
+
     def _restart(self, index: int) -> None:
         """Stop server `index` and start another in its place, which opens each file it's asked about."""
         self.servers[index].close(graceful=False)
-        self.servers[index] = Connection(self.command, self.root)
+        self.servers[index] = Connection(self.command, self.root, self.environment)
 
 
 def _taken(batches: "queue.SimpleQueue[dict[Path, str]]") -> dict[Path, str] | None:

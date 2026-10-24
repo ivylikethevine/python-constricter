@@ -28,7 +28,8 @@ def _by_type(tree: ast.Module) -> dict[type[ast.AST], list[ast.AST]]:
     a generation of nodes at a time, and each class's fields looked up once.
 
     Returns:
-      Each type's nodes, in `ast.walk`'s order (all but the `Load`, `Store` and `Del` markers).
+      Each type's nodes, in `ast.walk`'s order (all but the `Load`, `Store` and `Del` markers), the
+      module's own left out: a value naming its key would keep the tree alive for good.
 
     """
     found: dict[type[ast.AST], list[ast.AST]] | None
@@ -37,7 +38,7 @@ def _by_type(tree: ast.Module) -> dict[type[ast.AST], list[ast.AST]]:
     found = _WALKS[tree] = {}
     # A generation at a time (a breadth-first queue's order): each built from the one before.
     # `None` at the bottom ends it: a generation with no children adds none to follow it.
-    generations: list[list[ast.AST] | None] = [None, [tree]]
+    generations: list[list[ast.AST] | None] = [None, children(tree)]
     generation: list[ast.AST]
     for generation in iter(generations.pop, None):
         following: list[ast.AST] = []
@@ -69,7 +70,7 @@ def of_type(tree: ast.Module, *kinds: type[ast.AST]) -> Sequence[ast.AST]:
 
     """
     table: dict[type[ast.AST], list[ast.AST]] = _by_type(tree)
-    return [node for kind in kinds for node in table.get(kind, [])]
+    return [node for kind in kinds for node in (table.get(kind, []) if kind is not ast.Module else [tree])]
 
 
 def classes(tree: ast.Module) -> Sequence[ast.ClassDef]:

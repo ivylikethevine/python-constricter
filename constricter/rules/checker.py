@@ -15,6 +15,7 @@ from constricter.fix.core.known import (
     Returned,
     Returns,
 )
+from constricter.fix.index.params import open_functions
 from constricter.fix.values import returned, stored
 from constricter.jsonc import as_text
 from constricter.offences import (
@@ -81,9 +82,11 @@ def checked_source(
     own: Tables | None
     tree, own = _parse(source, filename)
     found: Checked = checked_tree(tree, checks, lines=as_text(source).splitlines(), outside=outside, own=own)
-    if own is not None and isinstance(source, str):
-        # Kept again: a file is checked again once its callers type its parameters, or its cycle's
-        # files change what it imports. One `--fix` changed since is no longer this text.
+    if own is not None and isinstance(source, str) and _KEPT in vars(tree):
+        # Kept again with its check, which a second one resumes once callers type its parameters
+        # (see `_resumed`). A file checked again for anything else (its cycle's files, or the
+        # functions it calls, return something new) starts over, parsed again, as does one `--fix`
+        # changed since: it's no longer this text.
         parsed.keep(source, (tree, own))
     return found
 
@@ -153,8 +156,10 @@ def checked_tree(
     # A second check's scopes it didn't check again are its first's, finished then.
     finished: frozenset[int] = _kept_scopes(tree)
     done: _Round = _resumed(tree, checks, outside) or _started(tree, checks, lines, own, outside)
-    # Kept with the tree, for as long as it is: a second check may only know its parameters anew.
-    vars(tree)[_KEPT] = _Kept(outside, checks, done)
+    # Kept with the tree, for as long as it is: a second check may only know its parameters anew,
+    # which only a module with an open function's can (`callers` types no other's).
+    if open_functions(tree):
+        vars(tree)[_KEPT] = _Kept(outside, checks, done)
     settings: Settings = done.settings
     scopes: list[Scope] = done.scopes()
     # A finding's kind is the code that reports it (LVA008, LVA009, LVA010).

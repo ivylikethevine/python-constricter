@@ -166,6 +166,34 @@ def run(version: str, where: Place, options: Sequence[str], jobs: int) -> Ran:
     return Ran(done.stdout, done.stderr, done.returncode, time.perf_counter() - start)
 
 
+def offered(version: str, *options: str) -> list[str]:
+    """Keep the `options` `version`'s constricter has, as its `--help` lists them.
+
+    Returns:
+      Them: this checkout's has every one.
+
+    """
+    return [option for option in options if version == DEV or option in _helped(version)]
+
+
+@cache
+def _helped(version: str) -> frozenset[str]:
+    """Read the words of `version`'s `--help`, once.
+
+    Returns:
+      Them.
+
+    """
+    done: subprocess.CompletedProcess[str] = subprocess.run(
+        [python(version), "-I", "-m", "constricter", "--help"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    return frozenset(done.stdout.split())
+
+
 @cache
 def lists_fixes(version: str) -> bool:
     """Ask whether `version`'s `--fix --format=json` says which offences it fixed (`fixed`).

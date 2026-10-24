@@ -5,7 +5,10 @@
 #   bash scratch/equivalence.sh OUT [JOBS=0]
 #
 # Run from the checkout whose `constricter` is to be measured: `python -m` imports the working
-# directory's package first. pandas is checked in its suite's environment (`VIRTUAL_ENV`).
+# directory's package first. pandas is checked in its suite's environment (`VIRTUAL_ENV`). The
+# working directory's `pyproject.toml` is the check's config (its `min-python` changes fixes' safety),
+# so compare outputs written from one directory: a checkout elsewhere runs from here with
+# `PYTHONPATH=<checkout> env -C <here>` in place of its own directory.
 set -eu
 out=$1 jobs=${2:-0}
 root=$(pwd)

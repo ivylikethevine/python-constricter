@@ -187,8 +187,8 @@ def test_an_unmeasured_part_takes_its_kinds_largest_measured_one(tmp_path: Path)
     assert union.cpus > 1
 
 
-def test_an_unmeasured_union_takes_its_checkers_together(tmp_path: Path) -> None:
-    """Their memory together, no more than twice the largest's; the most CPUs any kept busy."""
+def test_an_unmeasured_union_takes_its_largest_checkers_memory(tmp_path: Path) -> None:
+    """Its checkers asked in turn: the largest one's memory, the most CPUs any kept busy."""
     tree: Tree = Tree("dask", "1", tmp_path, tmp_path)
     run: Run = parse({"steps": {"infer-with": ["basedpyright", "ty", "pyrefly"]}})
     checkers: dict[tuple[str, str], sizing.Before] = {
@@ -198,7 +198,7 @@ def test_an_unmeasured_union_takes_its_checkers_together(tmp_path: Path) -> None
     }
     plan: sizing.Plan = sizing.Plan(run, 16, 64 * sizing.GIB, checkers)
     measured: sizing.Plan = plan._replace(
-        before={("dask", "infer-union"): sizing.Before(4.0, 270.0, 20 * sizing.GIB)},
+        before={("dask", "infer-union"): sizing.Before(4.0, 270.0, 10 * sizing.GIB)},
     )
     union: sizing.Wanted = plan.wanted(tree, "infer-union")
     assert (union.cpus, union.memory) == (

@@ -329,6 +329,22 @@ def _shared(facts: Record) -> str:
     return f", {share}% of it" if share else ""
 
 
+def staged(facts: Record) -> str:
+    """Say what stages a run was made in, each with its commit, and which are left (`stages`).
+
+    Returns:
+      ` Made in stages: fixes on abc123def456, tests on ...; left: timed.`, or nothing for a run
+      made in one sitting.
+
+    """
+    ran: list[str]
+    if not (ran := list(cast("list[str]", facts.get("stages", [])))):
+        return ""
+    each: str = ", ".join(" on ".join(one.split(" ", 1)) for one in ran)
+    left: list[str] = list(cast("list[str]", facts.get("stages-left", [])))
+    return f" Made in stages: {each}" + (f"; left: {', '.join(left)}." if left else ".")
+
+
 def section(records: Records, facts: Record) -> str:
     """Write the whole run as one section of docs/RUNS.md: its machine, and its last version's tables.
 
@@ -344,7 +360,7 @@ def section(records: Records, facts: Record) -> str:
         f"{facts.get('python', '')}, on {facts.get('cpus', '')}CPU/{facts.get('gigabytes', '')}GB "
         f"({facts.get('system', '')}){_shared(facts)}: `--jobs={records.run.jobs}`, each "
         f"step a process of its own, started once the CPUs it's expected to keep busy and the memory "
-        f"it's expected to hold are free.{took} Timings don't compare across machines."
+        f"it's expected to hold are free.{took}{staged(facts)} Timings don't compare across machines."
     )
     rows: list[Measured] = [measured(records, tree, version) for tree in records.trees]
     broke: list[str] = [f"- {each}" for each in (*problems(records), *notes(records))]
@@ -437,7 +453,8 @@ def write(records: Records, folder: Path, facts: Record) -> list[Path]:
             _ = written[-1].write_text("".join(f"{json.dumps(each)}\n" for each in guessed), encoding="utf-8")
     if MARKDOWN in records.run.formats:
         written.append(folder / "report.md")
-        _ = written[-1].write_text(markdown(records), encoding="utf-8")
+        made: str = staged(facts).strip()
+        _ = written[-1].write_text((f"{made}\n\n" if made else "") + markdown(records), encoding="utf-8")
         counted: str
         if counted := census_report(records, Store(folder)):
             written.append(folder / "census.md")
