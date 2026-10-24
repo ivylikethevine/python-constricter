@@ -368,8 +368,10 @@ are in
 
 ## Roadmap
 
-What's done and what's next, by scope:
+What's next, by size:
 [docs/ROADMAP.md](https://github.com/ivylikethevine/python-constricter/blob/main/docs/ROADMAP.md).
+What's done, by scope:
+[docs/COMPLETED.md](https://github.com/ivylikethevine/python-constricter/blob/main/docs/COMPLETED.md).
 
 ## AI usage
 

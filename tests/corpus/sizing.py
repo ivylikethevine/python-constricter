@@ -26,8 +26,9 @@ A step that wants all the memory there is, or more, runs alone. A suite's tests 
 CPUs they want are free, or `_MOST_SHARE` of the machine's, and take as many more as are free then,
 with as many workers, and the memory for each (`Slots.take`). A step that asks the type checkers
 for hints starts with as few CPUs as hold, by their share of its memory, one server of each of its
-checkers for the corpus (`Plan._hinted`), its servers then given that share of `hints.MEMORY`
-(`--infer-memory`, `Wanted.hinted`); with all it wants, the default. The timed steps (`timing`,
+checkers for the corpus (`Plan._hinted`), its servers then given that share of `hints.MEMORY`,
+rounded up to whole servers of its largest checker, one a CPU held (`--infer-memory`,
+`Wanted.hinted`); with all it wants, the default. The timed steps (`timing`,
 `profile`) want every CPU, so nothing runs beside the check timed: the run starts them last, one at
 a time.
 
@@ -653,16 +654,21 @@ class Wanted(NamedTuple):
     seconds: float = 0.0  # its own, as its last run took: 0 where none did
     workers: int = 0  # a suite's tests' processes, where they're more than its CPUs (`started`)
     servers: int = 0  # a hinted step's servers' bytes with every CPU it wants: `hints.MEMORY` (`hinted`)
+    server: int = 0  # one of its largest checker's servers, for the corpus's files (`Plan._hinted`)
 
     def hinted(self, held: int) -> int:
         """Size the memory a hinted step's servers may use, holding `held` CPUs (`--infer-memory`).
 
         Returns:
-          Its `servers`' bytes, as many fewer as it holds fewer CPUs; 0 where it holds all it wants,
-          or isn't hinted: its checkers' own default.
+          Its `servers`' bytes, as many fewer as it holds fewer CPUs, but whole servers for each CPU
+          held, as many as all of them hold: a share between two leaves one, a CPU idle. 0 where it
+          holds all it wants, or isn't hinted: its checkers' own default.
 
         """
-        return self.servers * held // self.cpus if self.servers and held < self.cpus else 0
+        if not self.servers or held >= self.cpus:
+            return 0
+        whole: int = min(held, self.servers // self.server) * self.server if self.server else 0
+        return max(self.servers * held // self.cpus, whole)
 
     def started(self, held: int) -> int:
         """Count the processes a suite's tests start with, holding `held` CPUs.
@@ -733,7 +739,9 @@ class Plan(NamedTuple):
         else:
             memory = (self.run.jobs or self.cpus) * _JOB_MEMORY
         seconds: float = known.seconds if known is not None else 0.0
-        least: int = self._hinted(tree, step, cpus)
+        least: int
+        server: int
+        least, server = self._hinted(tree, step, cpus)
         return Wanted(
             self.cpus if step in TIMED else cpus,
             memory,
@@ -742,9 +750,10 @@ class Plan(NamedTuple):
             least=least,
             seconds=seconds,
             servers=hints.MEMORY if least else 0,
+            server=server,
         )
 
-    def _hinted(self, tree: Tree, step: str, cpus: int) -> int:
+    def _hinted(self, tree: Tree, step: str, cpus: int) -> tuple[int, int]:
         """Find the fewest of `cpus` a step asking the type checkers for hints may start with.
 
         As few as hold, by their share of `hints.MEMORY`, one server of each of its checkers for
@@ -752,7 +761,7 @@ class Plan(NamedTuple):
         it holds.
 
         Returns:
-          Them; 0 for a step that asks none.
+          Them, and the bytes of one of its largest checker's servers; 0 and 0 for one asking none.
 
         """
         checkers: Sequence[str] = (
@@ -764,10 +773,10 @@ class Plan(NamedTuple):
         )
         named: list[Server]
         if not (named := [SERVERS[each] for each in checkers if each in SERVERS]):
-            return 0
+            return 0, 0
         size: int = _size(tree.root)
         one: int = max(server.memory + server.per_byte * size for server in named)
-        return min(cpus, max(1, math.ceil(cpus * one / hints.MEMORY)))
+        return min(cpus, max(1, math.ceil(cpus * one / hints.MEMORY))), one
 
     def _testing(
         self,

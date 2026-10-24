@@ -211,10 +211,12 @@ def test_an_unmeasured_union_takes_its_largest_checkers_memory(tmp_path: Path) -
 
 
 def test_a_hinted_step_starts_with_as_few_cpus_as_hold_one_server_of_each_checker(tmp_path: Path) -> None:
-    """Its servers then have that share of `hints.MEMORY`; with every CPU it wants, their default."""
+    """Its servers then have that share of `hints.MEMORY` in whole servers; with all it wants, the default."""
     file: IO[str]
     with (tmp_path / "big.py").open("w", encoding="utf-8") as file:
-        _ = file.truncate(20 << 20)  # basedpyright's one server: 0.6 GB and 130 bytes a byte, 3.1 GiB
+        _ = file.truncate(20 << 20)
+    # basedpyright's one server: 0.6 GB and 130 bytes a byte, 3.1 GiB
+    one: int = (600 << 20) + 130 * (20 << 20)
     tree: Tree = Tree("dask", "1", tmp_path, tmp_path)
     run: Run = parse({"steps": {"infer-with": ["basedpyright", "ty"]}})
     before: dict[tuple[str, str], sizing.Before] = {
@@ -223,13 +225,11 @@ def test_a_hinted_step_starts_with_as_few_cpus_as_hold_one_server_of_each_checke
     }
     plan: sizing.Plan = sizing.Plan(run, 16, 64 * sizing.GIB, before)
     hinted: sizing.Wanted = plan.wanted(tree, "infer-basedpyright")
-    assert (hinted.cpus, hinted.least, hinted.servers) == (4, 2, hints.MEMORY)
-    assert (hinted.hinted(2), hinted.hinted(3), hinted.hinted(4)) == (
-        hints.MEMORY // 2,
-        hints.MEMORY * 3 // 4,
-        0,
-    )
+    assert (hinted.cpus, hinted.least, hinted.servers, hinted.server) == (4, 2, hints.MEMORY, one)
+    # Half of 8 GiB holds one server, a CPU left idle: the two the CPUs and the default hold, then.
+    assert (hinted.hinted(2), hinted.hinted(3), hinted.hinted(4)) == (2 * one, 2 * one, 0)
     assert plan.wanted(tree, "infer-ty").least == 1  # its servers share the files: 1.2 GiB for one
+    assert plan.wanted(tree, "infer-ty").hinted(2) == hints.MEMORY // 2  # its share, over two servers
     assert plan.wanted(tree, "infer-union").least == hinted.least  # its largest checker's one server
     assert (plan.wanted(tree, "fix-unsafe").least, plan.wanted(tree, "fix-unsafe").hinted(1)) == (0, 0)
     slots: sizing.Slots = sizing.Slots(4, 16 * sizing.GIB)

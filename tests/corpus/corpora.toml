@@ -114,7 +114,10 @@ repository = "https://github.com/sqlalchemy/sqlalchemy"
 tag = "rel_2_1_4"
 source = "lib/sqlalchemy"
 install = ["pip -e . --group tests --group tests-sqlite-asyncio --group mypy"]
-tests = "-n {workers} -m 'not memory_intensive and not mypy' --db sqlite --dbdriver sqlite --dbdriver pysqlite_numeric --dbdriver aiosqlite"
+# A file's tests on one worker in order: a `testing.combinations` case's requirement sticks to its
+# test function (`exclusions.compound.__call__`), skipping the cases after it in that process, its
+# drivers' classes in `test/dialect/test_suite.py` sharing the suite's functions.
+tests = "-n {workers} --dist loadfile -m 'not memory_intensive and not mypy' --db sqlite --dbdriver sqlite --dbdriver pysqlite_numeric --dbdriver aiosqlite"
 checks = ["mypy noxfile.py ./lib/sqlalchemy"]
 most = 16
 
