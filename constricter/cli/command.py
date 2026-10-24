@@ -489,8 +489,8 @@ def _typed(found: Coverage) -> str:
     return f"{found.typed}/{found.total} typed ({found.percent:.1f}%){wider}"
 
 
-def _run(options: Options) -> int:
-    """Check, fix, diff, count or baseline, printing what that finds.
+def _run(options: Options, *, leaving: bool) -> int:
+    """Check, fix, diff, count or baseline, printing what that finds (`leaving`: see `main`).
 
     Returns:
       The exit status.
@@ -498,7 +498,7 @@ def _run(options: Options) -> int:
     """
     names: list[Path]
     runs: list[FileRun]
-    with collecting.by_hand():
+    with collecting.by_hand(leaving=leaving):
         try:
             names, runs = _check_all(options)
         except HintError as error:
@@ -531,8 +531,11 @@ def _run(options: Options) -> int:
     return EXIT_ERROR if failed else status
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(argv: Sequence[str] | None = None, *, leaving: bool = False) -> int:
     """Run the command.
+
+    `leaving`: the process leaves once it's done (`constricter.__main__.run`), its collector as the
+    run left it (see `collecting.by_hand`).
 
     Returns:
       Its exit status.
@@ -547,5 +550,5 @@ def main(argv: Sequence[str] | None = None) -> int:
         else contextlib.nullcontext(sys.stdout) as stream,
         contextlib.redirect_stdout(stream),
     ):
-        status: int = _run(options)
+        status: int = _run(options, leaving=leaving)
     return EXIT_CLEAN if options.output.exit_zero and status == EXIT_FOUND else status

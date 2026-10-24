@@ -124,7 +124,7 @@
   file's type is.
 - **Installed packages**: calls into an installed package that declares its types (`py.typed`, a
   stub package, a lone stub module) are typed by their declared returns as a checked file's are,
-  found as the import system would on this Python's path and `VIRTUAL_ENV`'s; types are imported
+  found as PEP 561 says on `VIRTUAL_ENV`'s path and this Python's (a stub package first); types are imported
   from a public module that re-exports them. Functions whose overloads or type variables their
   arguments decide are matched as the tables' are (`constricter.fix.index.stubs.stubbed`), through the
   package's aliases, type variables and protocols, the standard-library classes it names by the
@@ -871,14 +871,15 @@ measure before building.
    in one process and 0.00% with jobs, and 0.00% in instructions both ways
    (`scratch/timing_noise.py`; rc.2's and rc.3's, a code change apart, 4.3% and 7.6%). Their tails
    took 6.2 minutes each: the checks got slower, not the tail (the 47 timed steps sum to 371s, from
-   rc.3's 334s: the standard library 62s to 73s, pandas 71s to 76s). Profiled on 2026-10-23, the
-   standard library in one process under `py-spy` on 16CPU/60GB (`scratch/profile_diff.py`): 54.3s
-   at rc.3's `e8f67eb1e`, 65.5s at `daa6fba`. Of the 11.2s, `reads.members` 2.9s (an `ast.walk` of
-   every method of every class, each check and round), the walks (`walked.children`,
-   `syntax.own_nodes`, `ast.walk`) about 5s, `classvars.members` 0.5s, `overloads._agreed` 0.8s,
-   the generic members 0.7s, and `ast.parse` 0.7s with its code unchanged (the collector, a heap
-   larger). Being taken back in three patches, `local/meanwhile/speed-*.patch`. Done when a mega run's tail is under 5 minutes with
-   that noise unchanged. About 1 hour; coverage unchanged.
+   rc.3's 334s: the standard library 62s to 73s, pandas 71s to 76s). Profiled on 2026-10-23 under
+   `py-spy`, in one process on 16CPU/60GB (`scratch/profile_diff.py`): 54.3s at rc.3's `e8f67eb1e`,
+   and the tree after it 65.5s under load but 52.4s on a quiet machine; what it added was
+   `reads.members` (an `ast.walk` of every method of every class, each check and round), a
+   function's body walked again for each parameter it might type, and `overloads._agreed`. Taken
+   back, with the hot spots past them (one-process checks, the means of 3 on a quiet 16CPU/60GB,
+   the same offences and fixes, `scratch/equivalence.sh`): the standard library 40.6s from 50.9s,
+   pandas 46.9s from 57.5s. Done when a mega run's tail is under 5 minutes with that noise
+   unchanged. About 1 hour beside the run; coverage unchanged.
 
 4. **Installed stubs, as PEP 561 orders them.** `installed.search_path()` puts constricter's own
    `sys.path` before `VIRTUAL_ENV`'s, and `locate()` stops at the first directory with the package:

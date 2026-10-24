@@ -82,6 +82,10 @@ goes under `local/scratch/`.
   `tests/corpus/runs/compiled.toml`.
 - `version_diff.py FOLDER [A B]`: two versions' findings and fixes in one run, corpus by corpus, and
   how much faster one is.
+- `order_edges.py CORPUS` (with the corpus's `VIRTUAL_ENV`): the check order's edges by a method's
+  name alone (`loose.needs`), against those only a class the file names (or a base of it in its
+  module) gives, and none: each graph's edges, largest component and longest chain, in files and
+  bytes.
 - `schedule_solve.py FOLDER... [--given] [--seconds N]`: the shortest schedule of finished runs'
   steps by OR-Tools' CP-SAT, and the least it proves any can take; `uv run --with ortools` runs it.
 - `dmypy_suggest.py [CORPUS ...] [--sample N] [--daemons K]`: `dmypy suggest`'s signatures for a

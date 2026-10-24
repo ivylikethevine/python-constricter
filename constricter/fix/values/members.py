@@ -395,10 +395,10 @@ def _own_generic(receiver: str, name: str, call: ast.Call | None, known: Known) 
     and a plain class of the module's under one (`class Rows(Result[Row])`) has the base's.
 
     Returns:
-      Its inference, or `None`.
+      Its inference, or `None`: always, where the module names no generic class.
 
     """
-    return _generic_member(receiver, _Asked(name, call, receiver), known)
+    return _generic_member(receiver, _Asked(name, call, receiver), known) if known.generic else None
 
 
 class _Asked(NamedTuple):

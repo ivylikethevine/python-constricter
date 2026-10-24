@@ -107,6 +107,8 @@ def skipped(tree: ast.Module, names: Mapping[str, Origin]) -> dict[str, Origin]:
       Each such name, mapped to the module's origin.
 
     """
+    if (_PYTEST, None) not in names.values() and (_PYTEST, _IMPORTORSKIP) not in names.values():
+        return {}  # no call can be it (see `_skipped_module`): most modules don't import pytest
     found: dict[str, set[str]] = {}
     calls: set[int] = set()
     node: ast.AST

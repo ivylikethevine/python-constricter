@@ -188,7 +188,7 @@ def _written(spelled: str, attributes: frozenset[str]) -> bool:
       Whether it can.
 
     """
-    return all(part in attributes for part in spelled.split(".")[1:])
+    return attributes.issuperset(spelled.split(".")[1:])
 
 
 def _variables(

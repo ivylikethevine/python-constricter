@@ -48,6 +48,7 @@ _CLASSMETHOD: Final = "classmethod"
 _ENUM_MODULES: Final = frozenset({"enum"})
 # The conventional name of an instance method's first parameter: typed as its class, for `--fix`.
 _SELF: Final = "self"
+_LOOPS: Final = (ast.For, ast.AsyncFor, ast.While)  # whose body runs again and again
 
 
 def bound_once(tree: ast.Module, settings: Settings) -> dict[str, Passed]:
@@ -257,9 +258,7 @@ def _visit(scope: Scope, stmt: ast.stmt, head: ast.stmt | None = None) -> None:
             and target.value.id == _SELF
         )
     # A loop's body runs again and again (not its `else`), for LVA012.
-    body: set[int] = (
-        {id(s) for s in stmt.body} if isinstance(stmt, ast.For | ast.AsyncFor | ast.While) else set()
-    )
+    body: set[int] = {id(s) for s in stmt.body} if isinstance(stmt, _LOOPS) else set()
     before: dict[str, str] | None = dict(scope.inferred.types) if isinstance(stmt, BRANCHING) else None
     # What has no known type before it, or where one of its arms ends: it may still, past it.
     untyped: set[str] = set() if before is None else scope.declared - scope.inferred.types.keys()

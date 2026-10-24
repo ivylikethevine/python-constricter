@@ -38,6 +38,7 @@ _READS: Final[dict[_Read, str]] = {
     ast.Attribute: "attribute",
     ast.Subscript: "subscript",
 }
+_READ_KINDS: Final = tuple(_READS)
 # Where a function tests a value, a type checker may narrow it (`isinstance`, `is None`, a `TypeGuard`).
 _TESTS: Final = (ast.If, ast.While, ast.Assert, ast.IfExp, ast.comprehension, ast.Match)
 _SELF: Final = "Self"
@@ -229,7 +230,7 @@ def narrowed_first(value: ast.expr, found: Inference) -> bool:
         return True
     optional: bool = _NONE in (members(found.annotation) or ())
     filtered: bool = isinstance(value, _COMPREHENSIONS) and any(g.ifs for g in value.generators)
-    return (isinstance(value, tuple(_READS)) and optional) or (filtered and _has_none(found.annotation))
+    return (isinstance(value, _READ_KINDS) and optional) or (filtered and _has_none(found.annotation))
 
 
 def as_declared(value: ast.expr, function: FunctionDef | None, found: Tests) -> bool:
@@ -242,7 +243,7 @@ def as_declared(value: ast.expr, function: FunctionDef | None, found: Tests) -> 
       Whether it has; not for a module's or a class body's read.
 
     """
-    if function is None or not isinstance(value, tuple(_READS)):
+    if function is None or not isinstance(value, _READ_KINDS):
         return False
     text: str = ast.unparse(value)
     return not any(
@@ -349,7 +350,7 @@ def tests(tree: ast.Module) -> Tests:
         for node in of_type(tree, *_TESTS)
         for test in _tested_parts(node)
         for read in walk(test)
-        if isinstance(read, ast.Name | ast.Attribute | ast.Subscript)
+        if isinstance(read, _READ_KINDS)
     )
     return Tests(tuple(start for start, _ in found), tuple(text for _, text in found))
 

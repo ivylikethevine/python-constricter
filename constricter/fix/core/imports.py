@@ -30,9 +30,8 @@ _REBOUND: Final[WeakKeyDictionary[ast.Module, _Rebound]] = WeakKeyDictionary()
 _Import: TypeAlias = ast.Import | ast.ImportFrom
 _Inner: TypeAlias = tuple[_Import, ...]
 _INNER: Final[WeakKeyDictionary[ast.Module, _Inner]] = WeakKeyDictionary()
-# The nodes that bind a name: all `_taken` needs look at.
+# The nodes that bind a name, but a `Name` (see `_stored`): all `_taken` needs look at.
 _BINDERS: Final = (
-    ast.Name,
     ast.arg,
     ast.FunctionDef,
     ast.AsyncFunctionDef,
@@ -387,6 +386,10 @@ def _skipped(tree: ast.Module, bound: Mapping[str, str]) -> Iterator[str]:
       Each, once a call.
 
     """
+    if not any(
+        origin == _IMPORTORSKIP or _IMPORTORSKIP.startswith(origin + _DOT) for origin in bound.values()
+    ):
+        return  # no name it binds leads to the function: most modules, which don't import pytest
     node: ast.Call
     for node in cast("list[ast.Call]", of_type(tree, ast.Call)):
         callee: str | None = dotted(node.func)
@@ -421,6 +424,10 @@ def taken_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
 def _read_taken_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
     names: set[str] = set()
     values: set[str] = set()
+    stored: ast.Name
+    for stored in _stored(tree, ast.Store):
+        names.add(stored.id)
+        values.add(stored.id)
     node: ast.AST
     name: str
     asname: str | None
@@ -430,12 +437,7 @@ def _read_taken_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]
                 names.add(name)
             case ast.alias(name=name, asname=asname):
                 names.add(asname or name.split(".", 1)[0])
-            case (
-                ast.Name(id=name, ctx=ast.Store())
-                | ast.arg(arg=name)
-                | ast.FunctionDef(name=name)
-                | ast.AsyncFunctionDef(name=name)
-            ):
+            case ast.arg(arg=name) | ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name):
                 names.add(name)
                 values.add(name)
             case ast.ExceptHandler(name=str() as name) | ast.MatchAs(name=str() as name):
@@ -444,6 +446,19 @@ def _read_taken_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]
             case _:
                 pass
     return frozenset(names), frozenset(values)
+
+
+def _stored(tree: ast.Module, *contexts: type[ast.expr_context]) -> Iterator[ast.Name]:
+    """Find the module's `Name`s used as `contexts` say (stored, deleted): most are read, and skipped at once.
+
+    Yields:
+      Each, in `of_type`'s order.
+
+    """
+    node: ast.Name
+    for node in cast("list[ast.Name]", of_type(tree, ast.Name)):
+        if isinstance(node.ctx, contexts):
+            yield node
 
 
 def rebound_names(tree: ast.Module) -> dict[str, list[Start]]:
@@ -464,6 +479,9 @@ def rebound_names(tree: ast.Module) -> dict[str, list[Start]]:
 
 def _read_rebound_names(tree: ast.Module) -> dict[str, list[Start]]:
     found: dict[str, list[Start]] = {}
+    stored: ast.Name
+    for stored in _stored(tree, ast.Store, ast.Del):
+        found.setdefault(stored.id, []).append((stored.lineno, stored.col_offset))
     node: ast.AST
     name: str
     asname: str | None
@@ -472,8 +490,7 @@ def _read_rebound_names(tree: ast.Module) -> dict[str, list[Start]]:
             case ast.alias(name=name, asname=asname):
                 found.setdefault(asname or name.split(".", 1)[0], []).append((node.lineno, node.col_offset))
             case (
-                ast.Name(id=name, ctx=ast.Store() | ast.Del())
-                | ast.arg(arg=name)
+                ast.arg(arg=name)
                 | ast.FunctionDef(name=name)
                 | ast.AsyncFunctionDef(name=name)
                 | ast.ClassDef(name=name)

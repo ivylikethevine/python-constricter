@@ -732,9 +732,13 @@ def _guarded(root: ast.expr, plan: ImportPlan) -> str | None:
       Its dotted origin, or `None` if its first name isn't such an import's.
 
     """
-    first: str | None = next(
-        (node.id for node in ast.walk(root) if isinstance(node, ast.Name) and node.id in plan.guarded),
-        None,
+    first: str | None = (
+        next(
+            (node.id for node in ast.walk(root) if isinstance(node, ast.Name) and node.id in plan.guarded),
+            None,
+        )
+        if plan.guarded  # most modules have none: nothing to look for
+        else None
     )
     if first is None:
         return None

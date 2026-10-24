@@ -47,6 +47,7 @@ _BOOLEAN_TESTS: Final = (ast.In, ast.NotIn, ast.Is, ast.IsNot)
 
 
 _NUMBERS: Final = (int, float, complex)
+_DISPLAYS: Final = (ast.List, ast.Set, ast.Dict)  # what `joined` asks about: a tuple's elements stay apart
 # The builtin classes whose comparisons (`==`, `<`, ...) give a real `bool` (`None`'s, by identity).
 _COMPARABLE: Final = frozenset(
     {
@@ -691,7 +692,7 @@ def joined(value: ast.AST, known: Known, declared: Mapping[str, str]) -> bool:
       Whether it is.
 
     """
-    if not isinstance(value, ast.List | ast.Set | ast.Dict):
+    if not isinstance(value, _DISPLAYS):
         return False
     found: Inference | None = _container(value, known, declared)
     return found is not None and displays.JOINED in found.kinds

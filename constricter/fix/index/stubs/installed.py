@@ -33,6 +33,7 @@ LIMIT: Final = 2000  # the most installed modules one run reads
 _HOPS: Final = 5  # re-exports followed to a type variable
 _STUBS: Final = "-stubs"
 _TYPED: Final = "py.typed"
+_PARTIAL: Final = "partial"  # in a stub package's `py.typed`: it types some of the package alone
 _PACKAGE: Final = "__init__"
 _UNDERSCORE: Final = "_"
 _VIRTUAL_ENV: Final = "VIRTUAL_ENV"
@@ -48,10 +49,10 @@ _CAP: Final = 256 << 20  # the bytes a build's entries may take: past it, the lo
 
 
 def search_path() -> tuple[Path, ...]:
-    """List the directories installed packages are found in: the interpreter's, then the active environment's.
+    """List the directories installed packages are found in: the active environment's, then the interpreter's.
 
     The environment in `VIRTUAL_ENV`, where the checked code runs, even when constricter runs in
-    another (pre-commit's, pipx's).
+    another (pre-commit's, pipx's), whose own packages mustn't shadow the code's.
 
     Returns:
       Them, the standard library's own left out.
@@ -65,7 +66,7 @@ def search_path() -> tuple[Path, ...]:
     extra += [] if active is None else [str(Path(active) / "Lib" / "site-packages")]  # Windows
     found: dict[Path, None] = {}
     entry: str
-    for entry in (*sys.path, *extra):
+    for entry in (*extra, *sys.path):
         path: Path = Path(entry or ".").resolve()
         if path.is_dir() and path not in stdlib:
             found[path] = None
@@ -331,11 +332,13 @@ def _imported(found: Iterable[Module]) -> list[str]:
 
 @lru_cache(maxsize=4096)
 def locate(name: str, search: tuple[Path, ...]) -> Path | None:
-    """Find the file an installed module `name` declares its types in, as the import system would.
+    """Find the file an installed module `name` declares its types in, as PEP 561 orders them.
 
-    In the first directory of `search` that has its package: its stub package (`pkg-stubs`) first,
-    then the package itself if it's typed (`py.typed`), a stub (`.pyi`) before its source; or a lone
-    stub module (`mod.pyi`).
+    Its stub package (`pkg-stubs`) first, in any directory of `search`; one that's partial (its
+    `py.typed` says so) leaves a module it lacks to the package. Then, in the first directory that
+    has the package, as the import system would: the package itself if it's typed (`py.typed`, or a
+    namespace package's subpackage's), a stub (`.pyi`) before its source; or a lone stub module
+    (`mod.pyi`).
 
     Returns:
       The file, or `None` if it isn't installed, or doesn't declare its types.
@@ -346,10 +349,17 @@ def locate(name: str, search: tuple[Path, ...]) -> Path | None:
     top, *rest = name.split(".")
     directory: Path
     for directory in search:
+        stubs: Path = directory / f"{top}{_STUBS}"
+        found: Path | None
+        if stubs.is_dir() and (
+            (found := _module_file(stubs.joinpath(*rest))) is not None or not _partial(stubs)
+        ):
+            return found
+    for directory in search:
         root: Path | None
         stub: bool
         here: bool
-        root, stub, here = _package(directory, top)
+        root, stub, here = _package(directory, top, tuple(rest))
         if root is not None:
             return _module_file(root.joinpath(*rest))
         if not rest and stub:
@@ -357,6 +367,18 @@ def locate(name: str, search: tuple[Path, ...]) -> Path | None:
         if here:
             return None  # installed here, untyped: an earlier directory shadows any later one
     return None
+
+
+@lru_cache(maxsize=256)
+def _partial(stubs: Path) -> bool:
+    """Check whether a stub package is partial: its `py.typed` says `partial` (PEP 561).
+
+    Returns:
+      Whether it is.
+
+    """
+    marker: Path = stubs / _TYPED
+    return marker.is_file() and _PARTIAL in marker.read_text(encoding="utf-8", errors="replace").split()
 
 
 def unseen(name: str) -> Module | None:
@@ -389,22 +411,27 @@ def _unseen(name: str, search: tuple[Path, ...]) -> Module | None:
     return None if path is None else cached(path, name)
 
 
-@lru_cache(maxsize=4096)  # asked for each of a package's modules: the same answer for them all
-def _package(directory: Path, top: str) -> tuple[Path | None, bool, bool]:
-    """Find what `directory` has of the top-level package or module `top`.
+@lru_cache(maxsize=4096)  # asked for each of a package's modules
+def _package(directory: Path, top: str, rest: tuple[str, ...]) -> tuple[Path | None, bool, bool]:
+    """Find what `directory` has of the top-level package or module `top`, for its module `rest`.
 
     Returns:
-      Where its types are declared (its stub package, else the package itself if it's typed), or
-      `None`; whether it has a lone stub module for it; and whether it's installed there at all.
+      The package, where it declares its types: a `py.typed` in it, or in the subpackage of a
+      namespace package (no `__init__`) on the way to `rest`; else `None`. Whether it has a lone stub
+      module for it. And whether it's installed there, shadowing a later directory's: not a namespace
+      package's portion, which another directory may add to.
 
     """
-    roots: list[Path] = [directory / f"{top}{_STUBS}"]
-    if (directory / top / _TYPED).is_file():
-        roots.append(directory / top)
+    package: Path = directory / top
+    namespace: bool = package.is_dir() and _module_file(package) is None
+    typed: bool = (package / _TYPED).is_file() or (
+        namespace
+        and any((package.joinpath(*rest[:end]) / _TYPED).is_file() for end in range(1, len(rest) + 1))
+    )
     return (
-        next((root for root in roots if root.is_dir()), None),
+        package if typed and package.is_dir() else None,
         (directory / f"{top}{STUB}").is_file(),
-        (directory / top).is_dir() or (directory / f"{top}{SUFFIX}").is_file(),
+        (package.is_dir() and not namespace) or (directory / f"{top}{SUFFIX}").is_file(),
     )
 
 

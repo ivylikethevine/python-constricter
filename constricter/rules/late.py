@@ -46,7 +46,7 @@ from constricter.rules.flow import Binding, Lifetime, members
 from constricter.rules.rebinding import Refit, refit
 from constricter.rules.scope import FINAL_KIND, Scope, guesses_in
 from constricter.rules.syntax import FunctionDef
-from constricter.rules.walked import children
+from constricter.rules.walked import children, walk
 
 if TYPE_CHECKING:
     from constricter.rules.scoped import Late, Plain
@@ -710,7 +710,7 @@ def _augmented(function: FunctionDef) -> frozenset[str]:
     """
     return frozenset(
         node.target.id
-        for node in ast.walk(function)
+        for node in walk(function)
         if isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name)
     )
 
@@ -729,7 +729,7 @@ def _converted(function: FunctionDef) -> frozenset[tuple[int, int]]:
     found: set[tuple[int, int]] = set()
     node: ast.AST
     target: ast.expr
-    for node in ast.walk(function):
+    for node in walk(function):
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name) and _on_itself(target.id, node.value):
@@ -790,7 +790,7 @@ def _emptied(function: FunctionDef) -> Mapping[tuple[int, int], str]:
     node: ast.AST
     target: ast.expr
     kind: str | None
-    for node in ast.walk(function):
+    for node in walk(function):
         if isinstance(node, ast.Assign) and (kind := _empty(node.value)) is not None:
             for target in node.targets:
                 if isinstance(target, ast.Name):
@@ -840,7 +840,7 @@ def _operated(function: FunctionDef) -> frozenset[tuple[int, int]]:
     node: ast.AST
     target: ast.Name
     found: set[tuple[int, int]] = set()
-    for node in ast.walk(function):
+    for node in walk(function):
         match node:
             case ast.AugAssign(target=ast.Name() as target):
                 found.add(at(target))
@@ -860,7 +860,7 @@ def _looped(function: FunctionDef) -> Mapping[tuple[int, int], int]:
     found: dict[tuple[int, int], int] = {}
     node: ast.AST
     target: ast.AST
-    for node in ast.walk(function):
+    for node in walk(function):
         if isinstance(node, ast.For | ast.AsyncFor):
             for target in ast.walk(node.target):
                 if isinstance(target, ast.Name):

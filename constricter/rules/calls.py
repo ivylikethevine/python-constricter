@@ -250,28 +250,36 @@ def seed_parameters(scope: Scope, func: FunctionDef, named: Sequence[ast.arg]) -
     typed: Mapping[str, Passed] = seeded.callers.get(id(func), {})
     injected: Mapping[str, Passed] = _injected(seeded, func, scope.settings.known)
     varied: Passed | None = _varied(func)
-    if not (typed or injected or varied or seeded.reads or seeded.named):
+    unannotated: list[str] = [arg.arg for arg in named if arg.annotation is None]
+    bare: frozenset[str] = (
+        frozenset()
+        if not seeded.named.keys() & unannotated or func.name.startswith(_TEST) or is_fixture(func)
+        else frozenset(arg.arg for arg in annotated.required(func.args))
+    )
+    reading: frozenset[str] = reads.readable(
+        seeded.reads,
+        func,
+        [name for name in unannotated if name not in scope.inferred.types],
+    )
+    # Its own nodes are walked only where a parameter may be given a type: most functions have none.
+    if not (
+        (varied is not None and any(arg.arg == _REQUEST for arg in named))
+        or reading
+        or any(
+            name in typed or name in injected or (name in bare and name in seeded.named)
+            for name in unannotated
+        )
+    ):
         return
     nodes: list[ast.AST] = list(own_nodes(func.body))
     rebound: set[str] = {
         node.id for node in nodes if isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load)
     }
-    untyped: list[str] = [
-        arg.arg
-        for arg in named
-        if arg.annotation is None and arg.arg not in rebound and arg.arg not in scope.inferred.types
-    ]
-    # A class the function's own names shadow isn't the module's.
-    bound: set[str] = rebound | {arg.arg for arg in named}
-    read: dict[str, str] = {
-        name: owner
-        for name, owner in reads.typed(nodes, untyped, seeded.reads).items()
-        if owner.partition(_DOT)[0] not in bound
-    }
-    bare: frozenset[str] = (
-        frozenset()
-        if func.name.startswith(_TEST) or is_fixture(func)
-        else frozenset(arg.arg for arg in annotated.required(func.args))
+    read: dict[str, str] = _read(
+        nodes,
+        [name for name in unannotated if name in reading and name not in rebound],
+        rebound | {arg.arg for arg in named},
+        seeded.reads,
     )
     arg: ast.arg
     for arg in named:
@@ -288,6 +296,29 @@ def seed_parameters(scope: Scope, func: FunctionDef, named: Sequence[ast.arg]) -
             scope.inferred.learn(arg.arg, read[arg.arg], frozenset({reads.KIND}))
         elif arg.arg in seeded.named and arg.arg in bare:
             scope.inferred.learn(arg.arg, *seeded.named[arg.arg])
+
+
+def _read(
+    nodes: Sequence[ast.AST],
+    untyped: Sequence[str],
+    bound: set[str],
+    owned: Mapping[str, reads.Members],
+) -> dict[str, str]:
+    """Type the parameters of `untyped` by what a function's `nodes` read of them (see `fix.values.reads`).
+
+    `owned`: the module's classes' members. A class the function's own names (`bound`) shadow isn't its.
+
+    Returns:
+      Each typed one's class, by its name; none, without looking, where there's none to type.
+
+    """
+    if not untyped:
+        return {}
+    return {
+        name: owner
+        for name, owner in reads.typed(nodes, untyped, owned).items()
+        if owner.partition(_DOT)[0] not in bound
+    }
 
 
 def _injected(seeded: Seeded, func: FunctionDef, known: Known) -> Mapping[str, Passed]:

@@ -218,7 +218,7 @@ def subclasses(module: ast.Module, node: ast.ClassDef) -> tuple[ast.ClassDef, ..
     names: set[str] = {node.name} if counts[node.name] == 1 else set()
     found: list[ast.ClassDef] = []
     each: ast.ClassDef
-    for each in sorted(classes(module), key=lambda one: (one.lineno, one.col_offset)):
+    for each in _in_order(module):
         if (
             each is not node
             and counts[each.name] == 1
@@ -229,14 +229,44 @@ def subclasses(module: ast.Module, node: ast.ClassDef) -> tuple[ast.ClassDef, ..
     return tuple(found)
 
 
-def superclasses(module: ast.Module, node: ast.ClassDef) -> list[ast.ClassDef]:
-    """Find the module's classes `node` is under, however far (see `subclasses`).
+@lru_cache(maxsize=4)  # asked of each of the module's classes
+def _in_order(module: ast.Module) -> tuple[ast.ClassDef, ...]:
+    """List the module's classes in source order, once (sorted again for each class, most of `subclasses`).
 
     Returns:
       Them.
 
     """
-    return [each for each in classes(module) if node in subclasses(module, each)]
+    return tuple(sorted(classes(module), key=lambda one: (one.lineno, one.col_offset)))
+
+
+def superclasses(module: ast.Module, node: ast.ClassDef) -> list[ast.ClassDef]:
+    """Find the module's classes `node` is under, however far (see `subclasses`).
+
+    Returns:
+      Them, in `classes`' order.
+
+    """
+    return list(_above(module).get(id(node), ()))
+
+
+@lru_cache(maxsize=4)  # asked of each of the module's classes, and each method, as it's checked
+def _above(module: ast.Module) -> dict[int, list[ast.ClassDef]]:
+    """Map each of the module's classes to those it's under (see `superclasses`), by its `id()`.
+
+    Once for the module: asking each class of every other was a check's time squared in its classes.
+
+    Returns:
+      Each one's, in `classes`' order; none for a class under none.
+
+    """
+    found: dict[int, list[ast.ClassDef]] = {}
+    each: ast.ClassDef
+    under: ast.ClassDef
+    for each in classes(module):
+        for under in subclasses(module, each):
+            found.setdefault(id(under), []).append(each)
+    return found
 
 
 def _under(
@@ -399,7 +429,7 @@ def _class_empties(module: ast.Module, node: ast.ClassDef) -> Mapping[str, str]:
 
     """
     # Its own, and those of the module's classes it's under: their fills are its own too.
-    above: list[ast.ClassDef] = [each for each in classes(module) if node in subclasses(module, each)]
+    above: list[ast.ClassDef] = superclasses(module, node)
     handed: Mapping[str, Mapping[str, str]] = _HANDED.get(module, {})
     return {
         **{attr: kind for each in (*above, node) for attr, kind in handed.get(each.name, {}).items()},
@@ -523,9 +553,7 @@ def reads_own(tree: ast.Module, func: FunctionDef, classes_of: Mapping[int, str]
     if (owner := classes_of.get(id(func))) is None:
         return False
     node: ast.ClassDef | None = owners(tree).get(id(func))
-    above: list[str] = (
-        [] if node is None else [each.name for each in classes(tree) if node in subclasses(tree, each)]
-    )
+    above: list[str] = [] if node is None else [each.name for each in superclasses(tree, node)]
     return reads(tree, func, {attr for name in (owner, *above) for attr in found.attributes.get(name, {})})
 
 

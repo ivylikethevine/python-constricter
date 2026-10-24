@@ -201,11 +201,14 @@ def _agreed(
 
     """
     instance: list[str] | None = None if method is None else method.instance
-    picks: list[_Picked] = [
-        _receiving(picked, method)
-        for variant in variants
-        for picked in _picked(variant, read, instance, receiver)
-    ]
+    # Variants mostly repeat each other's signatures: a pick is written once, as again it'd be the same.
+    picks: list[_Picked] = []
+    variant: Sequence[ReadSignature]
+    for variant in variants:
+        picked: _Picked
+        for picked in _picked(variant, read, instance, receiver):
+            if (picked := _receiving(picked, method)) not in picks:
+                picks.append(picked)
     found: set[str | None] = {None if picked is None else write(picked, known) for picked in picks}
     if len(found) > 1 and None not in found:
         # Where Python versions differ only in which iterator they declare: the one all of them are.

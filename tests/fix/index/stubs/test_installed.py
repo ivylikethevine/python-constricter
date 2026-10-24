@@ -93,14 +93,14 @@ def test_calls_into_typed_installed_packages_are_typed(
 
 
 def test_the_virtual_environment_is_searched(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """`VIRTUAL_ENV`'s site-packages (POSIX or Windows), after the interpreter's own directories."""
+    """`VIRTUAL_ENV`'s site-packages (POSIX or Windows), before the interpreter's own directories."""
     posix: Path = tmp_path / "venv" / "lib" / "python3.99" / "site-packages"
     windows: Path = tmp_path / "venv" / "Lib" / "site-packages"
     posix.mkdir(parents=True)
     windows.mkdir(parents=True)
     monkeypatch.setenv("VIRTUAL_ENV", str(tmp_path / "venv"))
     found: tuple[Path, ...] = installed.search_path()
-    assert found[-2:] == (posix.resolve(), windows.resolve())
+    assert found[:2] == (posix.resolve(), windows.resolve())
     monkeypatch.delenv("VIRTUAL_ENV")
     assert posix.resolve() not in installed.search_path()
 
@@ -113,6 +113,41 @@ def test_an_untyped_package_shadows_a_later_one(tmp_path: Path) -> None:
     assert installed.locate("mod", (first, second)) is None
     assert installed.locate("pkg.missing", (second,)) is None
     assert installed.locate("nowhere", (first,)) is None
+
+
+def test_a_stub_package_comes_first_wherever_it_is(tmp_path: Path) -> None:
+    """Before a package in an earlier directory (PEP 561); a partial one leaves a module it lacks."""
+    first: Path = _site(tmp_path / "a", {"pkg/__init__.py": "", "pkg/inner.py": "", "part/__init__.py": ""})
+    second: Path = _site(
+        tmp_path / "b",
+        {
+            "pkg-stubs/__init__.pyi": "",
+            "part-stubs/py.typed": "partial\n",
+            "part-stubs/__init__.pyi": "",
+            "part/py.typed": "",
+            "part/__init__.py": "",
+            "part/other.pyi": "",
+        },
+    )
+    search: tuple[Path, ...] = (first, second)
+    assert installed.locate("pkg", search) == second / "pkg-stubs" / "__init__.pyi"
+    assert installed.locate("pkg.inner", search) is None  # a whole stub package that lacks it
+    assert installed.locate("part", search) == second / "part-stubs" / "__init__.pyi"
+    assert installed.locate("part.other", (second,)) == second / "part" / "other.pyi"
+    assert installed.locate("part.other", search) is None  # the package, shadowed by the untyped one
+
+
+def test_a_namespace_packages_typed_subpackage_is_read(tmp_path: Path) -> None:
+    """Its `py.typed` in the subpackage; a portion with no `__init__` shadows no later directory."""
+    first: Path = _site(
+        tmp_path / "a",
+        {"space/auth/py.typed": "", "space/auth/__init__.py": "", "space/auth/x.pyi": ""},
+    )
+    second: Path = _site(tmp_path / "b", {"space/cloud/py.typed": "", "space/cloud/__init__.py": ""})
+    search: tuple[Path, ...] = (first, second)
+    assert installed.locate("space.auth.x", search) == first / "space" / "auth" / "x.pyi"
+    assert installed.locate("space.cloud", search) == second / "space" / "cloud" / "__init__.py"
+    assert installed.locate("space.other", search) is None
 
 
 @pytest.mark.interpreted

@@ -545,6 +545,7 @@ def named() -> None:
 
 def test_parameter(given) -> None:
     given = pytest.importorskip("pkg.impl")
+    called = named()
 """
 
 
@@ -565,7 +566,7 @@ def test_importorskip_binds_its_module_as_an_import_does(tmp_path: Path) -> None
         "m": ("pkg.impl", None),
         "again": ("pkg.impl", None),
     }
-    assert not {"other", "caught", "given"} & module.names.keys()
+    assert not {"other", "caught", "given", "called"} & module.names.keys()
     assert module.names["named"] == ("test_uses", "named")
     guarded: dict[str, Guarded] = {}
     assert project.calls(catalog, uses, guarded) == {

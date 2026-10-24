@@ -232,6 +232,8 @@ class Memo:
     overloaded: dict[tuple[str, str], "_ByClass"] = field(default_factory=dict)
     # Each name the checked files annotate alike, with a module's annotation of it (see `consistent`).
     named: dict[str, tuple[str, str]] | None = None
+    # The installed modules pytest defines its own fixtures in, by name (see `fixtures`).
+    pytest: tuple[str, ...] | None = None
 
 
 class Index(NamedTuple):

@@ -12,9 +12,10 @@ def run() -> None:
 
     Not by the interpreter's own exit, which frees every parsed file and the index an object at a
     time: a fifth of a check of a thousand files. What the command wrote is flushed first; nothing
-    else waits on the exit (its workers have ended, its output file is closed).
+    else waits on the exit (its workers have ended, its output file is closed). Nor is the collector
+    turned on again for it (`leaving`).
     """
-    status: int = main()
+    status: int = main(leaving=True)
     with contextlib.suppress(OSError, ValueError):  # a reader that left, a stream closed already
         _ = sys.stdout.flush()
         _ = sys.stderr.flush()

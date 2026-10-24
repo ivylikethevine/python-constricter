@@ -6,6 +6,30 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--fix` finds an installed package's types as PEP 561 orders them: the checked code's environment
+  (`VIRTUAL_ENV`) before constricter's own, a stub package (`pkg-stubs`) first wherever it is, a
+  partial one leaving a module it lacks to the package, and a namespace package's typed
+  subpackage (`google/auth/py.typed`). An untyped copy in constricter's own environment hid the
+  checked code's stubs: on the corpus runs, sphinx's `docutils-stubs` and the `pandas-stubs` of
+  altair, narwhals and seaborn.
+- A check is faster, with the same offences and fixes: the standard library's in one process in
+  40.6s from 50.9s, pandas's in 46.9s from 57.5s (the means of 3 runs, 16CPU/60GB). What changed:
+  - The members of a module's classes are worked out only where a function reads two names or more
+    of an unannotated parameter, from the module's shared walk; a function's own nodes are walked
+    only where a parameter can be given a type; a class's variables are typed only where its body
+    has a plain `name = value`; a generic class's members are looked up only where the module names
+    one; each repeated overload pick is written once.
+  - A function's body is walked once for the passes that walk it again (the last 1,024 whole walks
+    of a body's own nodes are kept, with their parents where a pass asks for them); a module's
+    classes are sorted once and each mapped once to the classes above it.
+  - What only `pytest` can give is looked for only in a module that imports it (the names
+    `pytest.importorskip` binds, the packages it may skip, pytest's own fixtures' modules, found once
+    for the index); whether a function takes an attribute its class hasn't is worked out only for
+    the classes it's asked of; an installed package's entries reading a call's return
+    (`cap.readouterr().out`) are looked up in the methods named once for the file, not scanned at
+    each assignment; and smaller passes skip what can't apply.
+  - The `constricter` command no longer turns the collector back on as it leaves, which looked
+    through everything the run left alive at once: about 3s of pandas's check.
 - `--format=json` says why a call bound with no fix has none, as each result's `unfixed`: a
   receiver of no known type, a function declaring no return, a standard-library or imported
   function whose arguments don't decide its type, a type vaguer than `vague` allows, ... (listed in

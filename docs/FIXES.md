@@ -515,10 +515,12 @@ module's functions import (`import decimal` in a function's body), or that it im
 some platforms have, imported that way (`import pwd`, `import winreg`), is no fix: a type checker on
 another platform finds no such class.
 
-An installed package that declares its types (a `py.typed` package, its stubs first; a stub package,
-`pkg-stubs`; a lone `mod.pyi`) is read the same way for the calls into it, and never fixed: found on
-this Python's path and the active virtual environment's (`VIRTUAL_ENV`), as the import system would
-(an untyped copy earlier on the path shadows a typed one later), with the modules it re-exports
+An installed package that declares its types (a `py.typed` package, its stubs first, or a namespace
+package's subpackage with one; a stub package, `pkg-stubs`; a lone `mod.pyi`) is read the same way
+for the calls into it, and never fixed: found on the active virtual environment's path
+(`VIRTUAL_ENV`), then this Python's, as PEP 561 says: a stub package first wherever it is (a
+partial one leaving a module it lacks to the package), then as the import system would (an
+untyped copy earlier on the path shadows a typed one later), with the modules it re-exports
 from, its private twin's too (`pytest`'s, from `_pytest`). `pydantic_core.to_json(x)` is a `bytes`.
 A type it names is written through a public module re-exporting it that the file imports
 (`typed.Thing`, after `import typed`), else imported from one (`from typed import Thing`, not

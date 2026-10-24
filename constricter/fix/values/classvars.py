@@ -421,6 +421,14 @@ def _read_members(tree: ast.Module) -> dict[str, dict[str, str]]:
     single: dict[str, tuple[str, ...]]
     if not (single := bases(tree)):
         return {}
+    # Only a plain `name = value` is typed (see `_typed`): a module whose classes have none needn't be read.
+    if not any(
+        isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name)
+        for node in classes(tree)
+        if node.name in single
+        for stmt in node.body
+    ):
+        return {}
     stored: dict[str, list[_Store | None]] = _stores(tree)
     origins: dict[str, str] = imported(tree)
     known: Known = library(tree)
@@ -524,10 +532,12 @@ def _stores(tree: ast.Module) -> dict[str, list[_Store | None]]:
       target, a `del`, an annotated one).
 
     """
+    # Only an attribute's own store is looked up: an unpacking's targets are in a tuple.
     assigned: dict[ast.expr, _Store] = {
         target: (None, stmt.value)
         for stmt in cast("list[ast.Assign]", of_type(tree, ast.Assign))
         for target in stmt.targets
+        if isinstance(target, ast.Attribute)
     }
     stmt: ast.AugAssign
     for stmt in cast("list[ast.AugAssign]", of_type(tree, ast.AugAssign)):

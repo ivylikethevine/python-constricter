@@ -185,16 +185,15 @@ def lacks(tree: ast.Module, function: FunctionDef, name: str, annotation: str) -
       body, and its bases', name (see `closed`), and one the function takes isn't among them.
 
     """
-    known: frozenset[str] | None = closed(tree).get(annotation)
+    known: frozenset[str] | None = closed(tree, annotation)
     return known is not None and any(
         attr and not attr.startswith(_DUNDER) and attr not in known
         for _, attr in uses(function).get(name, ())
     )
 
 
-@lru_cache(maxsize=4)  # asked of the same module's functions
-def closed(tree: ast.Module) -> Mapping[str, frozenset[str]]:
-    """Find the module's classes whose attributes are all in sight, and name them.
+def closed(tree: ast.Module, name: str) -> frozenset[str] | None:
+    """Name the attributes of the module's class `name`, if they're all in sight.
 
     A class defined once, undecorated, with no base but others such, that neither answers for
     attributes it doesn't name (`__getattr__`) nor sets them by name (`setattr`). Its attributes:
@@ -202,24 +201,39 @@ def closed(tree: ast.Module) -> Mapping[str, frozenset[str]]:
     methods store (`self.x = ...`).
 
     Returns:
-      Each such class's attributes, its bases' too.
+      Them, its bases' too; or `None` for any other class, or a name no class of the module has.
+
+    """
+    defined: Mapping[str, Sequence[ast.ClassDef]]
+    found: dict[str, frozenset[str] | None]
+    defined, found = _classes(tree)
+    if name not in found:
+        # Its `None` kept too: a class not so on its own isn't so as another's base either.
+        found[name] = _close(name, defined, found, frozenset())
+    return found[name]
+
+
+@lru_cache(maxsize=4)  # asked of the same module's functions
+def _classes(
+    tree: ast.Module,
+) -> tuple[Mapping[str, Sequence[ast.ClassDef]], dict[str, frozenset[str] | None]]:
+    """Find the module's classes by name, for `closed` to read only those it's asked of.
+
+    Returns:
+      Each name's class statements, and a record of what `closed` finds, empty so far.
 
     """
     defined: dict[str, list[ast.ClassDef]] = {}
     node: ast.ClassDef
     for node in classes(tree):
         defined.setdefault(node.name, []).append(node)
-    found: dict[str, frozenset[str]] = {}
-    name: str
-    for name in defined:
-        _ = _close(name, defined, found, frozenset())
-    return found
+    return defined, {}
 
 
 def _close(
     name: str,
     defined: Mapping[str, Sequence[ast.ClassDef]],
-    found: dict[str, frozenset[str]],
+    found: dict[str, frozenset[str] | None],
     under: frozenset[str],
 ) -> frozenset[str] | None:
     """Name the attributes of the class `name`, if they're all in sight (see `closed`), into `found`.
