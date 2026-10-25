@@ -104,9 +104,11 @@ measure before building.
    tests on a pytest-xdist worker, and finds their pickled environment when one ran first there, so
    the directive's warning it asserts never comes (the suite's own order, a `differs` entry's to
    name). Left: whether an annotation naming a type variable, and a constructor guess of a name its
-   installed module binds in branches, are no fix (each withdraws fixes); and whether `named` and
-   `reads`, too few to read against the bars, stay. Done when those are decided and a mega run
-   covers the changes since. About 1 hour; coverage up to 6%, likely far less.
+   installed module binds in branches, are no fix (each withdraws fixes). `named` and `reads` stay
+   for now, though too few to read against the bars: on the 0.4.3-rc.5 mega run (`9892f71`) 49 and
+   45 fixes over every fix step, as on rc.1. They need more data before they're kept or dropped:
+   more guesses a test tells of, from more corpora or a wider reach. Done when those are decided
+   and a mega run covers the changes since. About 1 hour; coverage up to 6%, likely far less.
 
 2. **The compiled wheels, a job each.** A `python` matrix of cp311 to cp314 beside `os` in
    `build.yml` (`CIBW_BUILD` set from it) builds the 20 wheels at once, each job's artifacts and
@@ -163,7 +165,9 @@ measure before building.
    159s on 4), xarray's 404s (115s and 164s): a short start keeps its CPUs, and its servers, for
    the whole step, and stripe's 36 minutes on one held the run's end. The run used 73% of its CPU
    seconds (rc.1 76%). Only a hinted step whose last run took 300s at most starts short since
-   (`sizing._BRIEF`); not yet run. Done when pandas's `infer-union` holds under 18 GB
+   (`sizing._BRIEF`): on the 0.4.3-rc.6 mega run (`c7f4db0`, 16CPU/60GB, 65 minutes) stripe's took 26s, dask's 66s, xarray's 63s, pandas's 246s, and
+   pandas's `infer-union` held 14.3 GB; the run used 77% of its CPU seconds. Done when pandas's
+   `infer-union` holds under 18 GB
    and a super run uses 75% of its CPU seconds, its hints the same. Coverage unchanged.
 5. **basedpyright's heap, capped: in the tree, to measure.** Node 24's own cap was 4.2 GB whatever a
    server's share (basedpyright empties its caches near it, and says so: "Emptying type cache").
@@ -246,7 +250,8 @@ measure before building.
    its 29 timed steps 210s (rc.2's 212s; the standard library 59s, pandas 65s), and rc.4's
    3.9 minutes too. Done when a mega
    run's tail is under 5 minutes with that noise unchanged (0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes): 5.4 minutes, its 47 timed
-   steps 326s, from rc.1's 6.2 and 371s). About 1 hour beside the run; coverage unchanged.
+   steps 326s, from rc.1's 6.2 and 371s; rc.6's the same, 5.4 and 327s). About 1 hour beside the run;
+   coverage unchanged.
 3. **The runner's schedule, held to the solver's shortest.** Every corpus's steps wait for the
    machine alone, the one with the most seconds behind it first, and a running step's hold follows
    what it uses (`tests/corpus/sizing.py`): a step that can't start holds back none after it, a
@@ -286,8 +291,8 @@ measure before building.
    and 13% over. A run in stages planned every stage's steps at once, ranking a stage's own by a
    schedule mixing them with the later stages'; on the 0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes), in one sitting, 81.3 minutes against a
    shortest 66.0 with 36 GB (23% over; a proved floor of 41.6), stripe's one-CPU step its last.
-   A stage plans its own steps alone since
-   (`planning.ranks`'s `chosen`); not yet run. A run's share of its CPU seconds isn't the measure
+   On the 0.4.3-rc.6 mega run (`c7f4db0`, 16CPU/60GB, 65 minutes): 64.3 against a shortest 55.6 (16% over). A stage plans its own steps alone since
+   (`planning.ranks`'s `chosen`); not yet run in stages. A run's share of its CPU seconds isn't the measure
    (85% was the target before): memory and the timed tail bound it whatever the order, and the
    0.4.0-rc.1 mega run, within a tenth of its floor, used 77.5%. Done when a super and a mega run
    each take within a tenth of the solver's shortest schedule of their own steps, and one with no
@@ -377,8 +382,10 @@ measure before building.
    lines run without a test checking what they do; a mutant the suite survives does. How: `mutmut`
    over `constricter/`, its tests run without the corpus suites, in a `scratch/` script with its
    output under `local/`; triage the survivors and write tests for those worth killing. Done when
-   a full run's survivors are each killed or recorded as equivalent. About 6 hours beside the run;
-   coverage unchanged.
+   a full run's survivors are each killed or recorded as equivalent. Written, not yet run:
+   `scratch/mutation.py` (mutmut 3.8 on a worktree of HEAD under `local/mutation/`, the unit tests
+   alone, the lines they cover, `--only` for a first pass). About 6 hours beside the run; coverage
+   unchanged.
 3. **A parallel check, past its longest chain.** With every CPU the standard library checks in 12.9s
    and pandas in 11.3s: 46s and 50s in one process, 29s in two, 18s in four, 13.7s and 12.9s in
    eight, so about 10s of each doesn't shorten with more (timed before a method's lookups were kept
@@ -433,7 +440,10 @@ measure before building.
    `-> None` where none returns a value, a parameter's by `callers` and `fixture` as the guesses
    they are; opt-in codes, as LVA012 is, since ruff's ANN reports the offences already. Done when
    the corpora's own type checkers find no new error after the returns alone, and `--fix` on pandas
-   gains the callers' fixes the written returns make certain. About 10 hours; coverage unmeasured:
+   gains the callers' fixes the written returns make certain. Built in part, not yet run: LVA014 (opt-in), a plain
+   function's or method's missing return type, its fix `-> T` before the header's `:` (`Edit.SIGNATURE`,
+   `rules/returning.py`) from `returned`'s types or `None`; the parameters (`callers`, `fixture`)
+   still to do (`local/meanwhile/signatures-plan.md` has the rest). About 10 hours; coverage unmeasured:
    it moves guesses to certain more than it adds fixes.
 3. **A method's `return` of an untyped value.** Of the 11,959 `self.method()` bindings with no fix,
    5,617 call a method the class doesn't define itself, and 5,436 one whose `return` gives a value
@@ -480,8 +490,11 @@ What to measure before building, smallest first.
    0.4.3-rc.1 mega run's records hold them (its first try took the ids from the reports' `file`,
    which pytest's cached rewritten modules keep from where a checkout was before: read from the
    class name since); its tests table still gives sqlalchemy's skips as a count, 973 (their flake's
-   cause and fix: "sqlalchemy's tests in a fixed order"). Done when the tests table reads
-   sqlalchemy's skips by name. About an hour; coverage unchanged.
+   cause and fix: "sqlalchemy's tests in a fixed order"). Built, not yet run: each fixed run's record
+   names the tests it skipped where the tests as released ran them, and those it ran they skipped
+   (`skipped anew`, `skipped no more`, from both runs' tests, `suite_steps._skips`), and the tests
+   table counts them. Done when the tests table reads sqlalchemy's skips by name. About an hour;
+   coverage unchanged.
 3. **What stubs would add to the corpora.** Of the 5,751 third-party `imported` calls with no fix
    on the 0.4.3-rc.1 mega run, 822 are into a package untyped in the corpus's environment (pandas in
    dask 297 and xarray 200, kombu 52, tlz 47, fsspec 40, scipy in networkx 39) and 978 into one not
@@ -497,8 +510,11 @@ What to measure before building, smallest first.
 5. **Two checkers agreeing, likely.** `checker` is one set to LIKELY.md's bars, by checker; a hint
    basedpyright, ty and pyrefly agree on (two of them, or all three) is a set of its own, measured
    the same way, and `--likely` applies it where one checker's hint alone doesn't pass. Done when
-   the mechanisms table counts the agreeing sets. About 3 hours; coverage unchanged (`--likely`
-   gains what passes).
+   the mechanisms table counts the agreeing sets. Built, not yet run: where a later checker's usable
+   hint gives the type the first usable one does, the fix rests on their agreement too (kind
+   `agreed`, beside `checker`; `Scope.hint`), a set of its own in the mechanisms table; not in
+   `--likely` until it passes the bars, and not what a guess rests on: `unsafe-fix-select` trusts
+   it by `checker` as before. About 3 hours; coverage unchanged (`--likely` gains what passes).
 6. **pyrefly's `stubgen` for untyped packages.** For an installed package with no types, pyrefly
    writes stubs from what it infers (experimental; `Incomplete` where it can't tell): the calls
    declared types would reach plus the returns no source declares (tlz, botocore, kombu), perhaps
@@ -513,8 +529,10 @@ What to measure before building, smallest first.
 8. **One type at run time, no fix.** The traced suites already know what each binding held; for each
    binding with no fix, whether the run saw one type is both the upper bound of any inference and a
    bug finder. A table by shape in the `traced` step: bindings with no fix, those the run bound to
-   one type, and the commonest sources. Done when the table is in a run's report. About 4 hours;
-   coverage unchanged.
+   one type, and the commonest sources. Built, not yet run: the `traced` step keeps the types the
+   trace saw each of the package's bindings hold (`traced.seen.jsonl`), and the report holds the
+   census's bindings with neither a fix nor a guess to them, by shape (`one-type.csv`). Done when the
+   table is in a run's report. About 4 hours; coverage unchanged.
 9. **Declared types of installed packages with no `py.typed`, as guesses.** What pyright reads with
    `useLibraryCodeForTypes`, held to the source's own annotations (mypy reads such a package as
    `Any`): pandas/core declares 73% of its functions' returns, wheel 86%, setuptools 54%, grpc 51%.

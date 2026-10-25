@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter import Level
+from tests.corpus import corpus_guesses, corpus_suite
 from tests.corpus.corpus_table import Typed
 from tests.corpus.pipeline import (
     CENSUS,
@@ -21,6 +22,9 @@ from tests.corpus.pipeline import (
     GUESS,
     IMPLIED,
     LOOP,
+    RELEASED,
+    ROWS,
+    TESTED,
     TESTS,
     TIMING,
     TRACED,
@@ -167,9 +171,72 @@ def _traced(records: Records) -> Rows:
     return rows
 
 
+def _one_type(records: Records) -> Rows:
+    """Hold each binding with neither a fix nor a guess to what the traced tests saw it hold, by its shape.
+
+    Those a test reached, and those it saw hold one type: what any inference could type at most,
+    and where a binding the run bound otherwise is worth a look. Read from the census's rows and the
+    traced step's (`traced.seen.jsonl`), where a run kept both.
+
+    Returns:
+      A row a shape, the most bindings first, with the commonest source of those of one type.
+
+    """
+    rows: Rows = [["corpus", "constricter", "shape", "no fix", "traced", "one type", "commonest source"]]
+    tree: Tree
+    for tree in records.trees if records.store is not None else ():
+        store: Store = cast("Store", records.store)
+        version: str
+        for version in records.versions:
+            seen: dict[_Bound, list[str]] = {
+                _bound(each): cast("list[str]", each["seen"])
+                for each in json_lines(store.path(tree.name, version, TRACED, corpus_guesses.SEEN))
+            }
+            shape: str
+            counts: list[int]
+            common: str
+            for shape, counts, common in _held(
+                json_lines(store.path(tree.name, version, CENSUS, ROWS)),
+                seen,
+            ):
+                rows.append([tree.name, version, shape, *counts, common])
+    return rows
+
+
+def _bound(each: Record) -> _Bound:
+    return str(each["path"]), cast("int", each["line"]), str(each["name"])
+
+
+def _held(census: list[Record], seen: dict[_Bound, list[str]]) -> list[tuple[str, list[int], str]]:
+    """Count, by shape, the bindings with neither a fix nor a guess, those `seen`, and those seen one type.
+
+    Returns:
+      Each shape's counts and the commonest source of those of one type, the most bindings first;
+      none where nothing was seen.
+
+    """
+    counts: dict[str, list[int]] = {}
+    sources: dict[str, Counter[str]] = {}
+    row: Record
+    for row in census if seen else ():
+        if row["fixed"] or row["unsafe"]:
+            continue
+        held: list[str] = seen.get(_bound(row), [])
+        count: list[int] = counts.setdefault(str(row["shape"]), [0, 0, 0])
+        count[0] += 1
+        count[1] += bool(held)
+        count[2] += len(held) == 1
+        if len(held) == 1:
+            sources.setdefault(str(row["shape"]), Counter())[str(row.get("source", ""))] += 1
+    return [
+        (shape, count, next((source for source, _ in sources.get(shape, Counter()).most_common(1)), ""))
+        for shape, count in sorted(counts.items(), key=lambda each: -each[1][0])
+    ]
+
+
 def _tests(records: Records) -> Rows:
     head: _Row = ["corpus", "constricter", "run", "same as released", "summary", "new failures"]
-    rows: Rows = [[*head, "gone", "named"]]
+    rows: Rows = [[*head, "gone", "named", "skipped anew", "skipped no more"]]
     tree: Tree
     for tree in records.trees:
         version: str
@@ -178,16 +245,38 @@ def _tests(records: Records) -> Rows:
             if record := records.of(tree, version, TESTS):
                 released: str = _summary(cast("Record", record["released"]))
                 whose: str = f" (from {record[FROM]})" if FROM in record else ""
-                rows.append([tree.name, version, f"released{whose}", "", released, "", "", ""])
+                rows.append([tree.name, version, f"released{whose}", "", released, "", "", "", "", ""])
                 step: str
                 ran: Record
                 for step, ran in cast("dict[str, Record]", record["fixed"]).items():
                     more: _Row = [
                         len(cast("list[str]", ran.get(key, []))) for key in ("new", "gone", "named")
                     ]
+                    more += _moved(records, tree, version, step)
                     summary: str = f"as {ran[IMPLIED]}'s (implied)" if IMPLIED in ran else _summary(ran)
                     rows.append([tree.name, version, step, not differs(record, ran), summary, *more])
     return rows
+
+
+def _moved(records: Records, tree: Tree, version: str, step: str) -> _Row:
+    """Count the tests a fixed run skipped where the tests as released ran them, and the reverse.
+
+    By name, from both runs' tests (`corpus_suite.skips`), as the run's folder holds them.
+
+    Returns:
+      The two counts; blanks where a run wrote no tests, or the folder isn't there.
+
+    """
+    store: Store | None = records.store
+    moved: tuple[list[str], list[str]] | None = (
+        None
+        if store is None
+        else corpus_suite.skips(
+            store.path(tree.name, version, f"{TESTS}-{RELEASED}", TESTED),
+            store.path(tree.name, version, f"{TESTS}-{step}", TESTED),
+        )
+    )
+    return ["", ""] if moved is None else [len(moved[0]), len(moved[1])]
 
 
 def differs(record: Record, ran: Record) -> bool:
@@ -509,6 +598,14 @@ SECTIONS: Final[tuple[_Section, ...]] = (
     ),
     (
         (
+            "The bindings with neither a fix nor a guess, by shape: those a traced test reached, and "
+            "those it saw hold one type, the most any inference could type, with the commonest source:"
+        ),
+        _one_type,
+        3,
+    ),
+    (
+        (
             "Each package's own tests, as released and after each fix: the failures every fixed run has "
             "and no released run, those gone, and the differences in tests its catalog entry names:"
         ),
@@ -553,6 +650,7 @@ TABLES: Final[dict[str, Table]] = {
     "mechanisms": _mechanisms,
     "census": _census,
     "traced": _traced,
+    "one-type": _one_type,
     "tests": _tests,
     "types": _types,
     "type-errors": _type_errors,

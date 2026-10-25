@@ -79,6 +79,7 @@ class bodies too. Statements are read in source order, and only a name's first b
 | `LVA011` | an annotation listing a fixed-length tuple of more than `max-length` types (4 by default) | name the fields (a `NamedTuple`, a dataclass)  |
 | `LVA012` | opt-in: a local bound once, outside any loop, and never rebound                           | `name: Final = ...`                            |
 | `LVA013` | opt-in: an instance attribute a plain class's method first stores, declared nowhere in it | `self.x: T = ...`                              |
+| `LVA014` | opt-in: a plain function that declares no return type                                     | `def f(...) -> T:`                             |
 
 Exempt: comprehensions, `except ... as`, imports, `def`/`class`, `type` aliases, parameters,
 `global`/`nonlocal`, and `_`; in module and class bodies, dunder names (`__all__`, `__slots__`) and
@@ -136,22 +137,27 @@ a class the module defines once, with no keyword (a metaclass), on no base but `
 such class, since another file's base may declare the attribute itself. Dunders, stores in a
 nested function, and names the class's body or a base of the module's binds are left out.
 
+`LVA014` is opt-in too (pylint's `enable = missing-return-type`), an error from `strict`. It
+reports a plain function or method (not decorated) with no return annotation, as ruff's `ANN201`
+does; its fix is what the function's own `return`s give (`-> int`, a method's a guess), or `-> None`
+for one that returns nothing, where the type names only what the module already binds.
+
 Python 3.11+, no runtime dependencies.
 
 ## Use
 
 | Tool   | Setup                                                 | Reports                         | Suppress                                         |
 | ------ | ----------------------------------------------------- | ------------------------------- | ------------------------------------------------ |
-| CLI    | `constricter [PATH...] [--level L] [--format F] [-q]` | `LVA001`–`LVA013`               | `# noqa: LVA001`                                 |
-| flake8 | install it (on by default)                            | `LVA001`–`LVA013`               | `# noqa: LVA001`                                 |
-| pylint | `load-plugins = ["constricter.plugins.pylint"]`       | `C9101`–`C9113` (symbols below) | `# noqa: LVA001` or `# pylint: disable=<symbol>` |
-| ruff   | run the CLI after ruff; set `lint.external = ["LVA"]` | `LVA001`–`LVA013`               | `# noqa: LVA001`                                 |
+| CLI    | `constricter [PATH...] [--level L] [--format F] [-q]` | `LVA001`–`LVA014`               | `# noqa: LVA001`                                 |
+| flake8 | install it (on by default)                            | `LVA001`–`LVA014`               | `# noqa: LVA001`                                 |
+| pylint | `load-plugins = ["constricter.plugins.pylint"]`       | `C9101`–`C9114` (symbols below) | `# noqa: LVA001` or `# pylint: disable=<symbol>` |
+| ruff   | run the CLI after ruff; set `lint.external = ["LVA"]` | `LVA001`–`LVA014`               | `# noqa: LVA001`                                 |
 
 pylint symbols: `unannotated-local-variable`, `untyped-for-or-match-variable`,
 `comment-typed-for-variable`, `unannotated-module-or-class-variable`, `vague-annotation`,
 `deeply-nested-annotation`, `redundant-annotation`, `narrowable-annotation`,
 `mismatched-value-type`, `unused-union-member`, `long-tuple-annotation`, and, off until enabled,
-`could-be-final` and `unannotated-instance-attribute`.
+`could-be-final`, `unannotated-instance-attribute` and `missing-return-type`.
 
 Options:
 

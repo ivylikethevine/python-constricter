@@ -498,7 +498,7 @@ def _judged(job: Job, made: dict[str, list[corpus_suite.Fix]]) -> dict[str, Coun
     """
     base: Path = prepared(job, TRACED)
     judged: corpus_guesses.Verdicts = corpus_guesses.verdicts(base)
-    seen: corpus_guesses.Seen = corpus_guesses.seen(base, corpus_suite.TRACE_FILE)
+    seen: corpus_guesses.Seen = corpus_guesses.kept(job, base, corpus_suite.TRACE_FILE)
     counts: dict[str, Counter[str]] = {"told": Counter(), "held": Counter(), "differed": Counter()}
     lines: list[str] = []
     each: corpus_suite.Fix

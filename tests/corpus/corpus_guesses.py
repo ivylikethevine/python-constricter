@@ -16,7 +16,11 @@ import json
 import os
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Final, NamedTuple, Protocol, TypeAlias, cast
+from typing import TYPE_CHECKING, Final, NamedTuple, Protocol, TypeAlias, cast
+
+if TYPE_CHECKING:
+    from tests.corpus.catalog import Suite
+    from tests.corpus.pipeline import Job
 
 _Names: TypeAlias = dict[str, tuple[str, ...]]  # a line's bindings: each name's types held
 # Each traced file's bindings: by its path in the checkout, then the line.
@@ -35,6 +39,8 @@ WITNESS_VARIABLE: Final = (
 )
 _EXPECTED: Final = ".venv/corpus-suite-expected.json"  # out of a checkout's source's way, as its trace is
 _VERDICTS: Final = ".venv/corpus-suite-verdicts"
+SEEN: Final = ".seen.jsonl"  # beside the traced step's record: the types the trace saw, a binding a line
+_TRACED: Final = "traced"  # the step (`pipeline.TRACED`)
 
 
 class Fixed(Protocol):
@@ -174,3 +180,27 @@ def held(traced: Seen, path: str, line: int, name: str) -> tuple[str, ...]:
 
     """
     return traced.get(path, {}).get(line, {}).get(name, ())
+
+
+def kept(job: "Job", root: Path, trace: str) -> Seen:
+    """Read the checkout's tests' trace (`seen`), and keep what each of the package's bindings held.
+
+    A line each (`traced.seen.jsonl`), by the path the census gives the binding, under the suite's
+    `source`: the report holds each binding with no fix to what the run saw (`report_tables`).
+
+    Returns:
+      The trace's bindings, as `seen` reads them.
+
+    """
+    found: Seen = seen(root, trace)
+    prefix: str = f"{cast('Suite', job.tree.suite).source.rstrip('/')}/"
+    lines: list[str] = [
+        json.dumps({"path": file.removeprefix(prefix), "line": line, "name": name, "seen": list(types)})
+        for file, traced in found.items()
+        if file.startswith(prefix)
+        for line, names in traced.items()
+        for name, types in names.items()
+    ]
+    written: Path = job.store.path(job.tree.name, job.recorded, _TRACED, SEEN)
+    _ = written.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
+    return found

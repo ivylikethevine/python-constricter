@@ -463,6 +463,42 @@ def tested(root: Path, suite: Suite, keep: Path | None, data: Path | None) -> Ou
 
 
 _FAILURES: Final = frozenset({"failed", "error"})
+_SKIP: Final = "skipped"  # a test's outcome, as `Test` has it
+
+
+def skips(released: Path, fixed: Path) -> tuple[list[str], list[str]] | None:
+    """Name the tests the `fixed` run skipped that the `released` one ran, and the reverse, by their tests.
+
+    Each a run's `data` (see `tested`): a count alone hides which skips moved, as sqlalchemy's do with
+    its drivers' order. Only the tests both ran.
+
+    Returns:
+      Those skipped anew and those skipped no more, the tests' ids; `None` where either run wrote none.
+
+    """
+    then: dict[str, str] | None = _outcomes(released)
+    now: dict[str, str] | None = _outcomes(fixed)
+    if then is None or now is None:
+        return None
+    both: set[str] = then.keys() & now.keys()
+    skipped: set[str] = {test for test in both if now[test] == _SKIP}
+    was: set[str] = {test for test in both if then[test] == _SKIP}
+    return sorted(skipped - was), sorted(was - skipped)
+
+
+def _outcomes(data: Path) -> dict[str, str] | None:
+    """Read a run's tests (`tested`'s `data`): each one's outcome, by its id.
+
+    Returns:
+      Them; `None` where the run wrote none.
+
+    """
+    try:
+        text: str = data.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    tests: list[dict[str, str]] = [json.loads(line) for line in text.splitlines() if line]
+    return {test["id"]: test["outcome"] for test in tests}
 
 
 def _commands(suite: Suite, reports: Path | None = None) -> list[list[str]]:

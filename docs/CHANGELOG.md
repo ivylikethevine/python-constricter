@@ -6,6 +6,15 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- LVA014 (opt-in: `--extend-select LVA014`, pylint's `missing-return-type`): a plain function or
+  method with no return annotation, as ruff's ANN201 reports it, fixed with `-> T` by what its own
+  `return`s give, or `-> None` for one that returns nothing; a method's a guess.
+- With several `--infer-with` checkers, a hint a later checker's usable hint agrees with rests on
+  their agreement too: fix kind `agreed`, beside `checker`, a set of its own for `--likely`'s bars
+  to measure (`--fix-ignore agreed` leaves it a plain `checker` fix).
+- The corpus runner's tests table names the tests a fixed run skipped where the tests as released
+  ran them, and those it ran they skipped, from both runs' JUnit reports; and a new table holds the
+  bindings with neither a fix nor a guess to the types the traced tests saw them hold, by shape.
 - `--fix` offers no fix for a method returning its receiver's own type (a `Self`) called on a
   receiver an `isinstance` narrows: `node.copy()` in `if isinstance(node, (Reference, Title)):` is
   the narrowed classes', not the parameter's `Node`, so a list of it given where `Element`s are

@@ -1,6 +1,7 @@
 """Check a tree in this process, and print its memory over time by the check's phases.
 
-  python scratch/peak_phases.py PATH [-- OPTIONS...]   (from the checkout, as `peak_rss.py`)
+  python scratch/peak_phases.py PATH [--no-index-trees] [--trace-check] [--trim] [-- OPTIONS...]
+  PYTHONMALLOC=malloc python scratch/peak_phases.py PATH --trim   (from the checkout, as `peak_rss.py`)
 
 A thread samples the process's resident memory (`/proc/self/statm`) every quarter second; the
 phases are marked where they start and end: the index (`project.index`), the index settled with the
@@ -9,6 +10,7 @@ rounds (`schedule.checked`). Prints each phase's seconds, its memory at its star
 most it held, then the run's peak (`ru_maxrss`). One process (`--jobs=1`): Linux only.
 """
 
+import ctypes
 import os
 import resource
 import sys
@@ -20,7 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path.cwd()))
 
-from constricter.cli import rounds  # noqa: E402  # from the working directory's checkout
+from constricter.cli import collecting, rounds  # noqa: E402  # from the working directory's checkout
 from constricter.cli.command import main  # noqa: E402
 from constricter.rules import parsed  # noqa: E402
 
@@ -76,6 +78,20 @@ def index(*given: object, **named: object) -> object:
         indexing[0] = False
 
 
+# `--trim`: after each file's check, glibc's `malloc_trim(0)`, which gives back the free pages
+# anywhere in its heap. With `PYTHONMALLOC=malloc` in the environment, Python's objects are there
+# too, not in pymalloc's arenas: what a freed tree leaves is then returned, not held.
+if "--trim" in args:
+    args.remove("--trim")
+    trim: Callable[[int], int] = ctypes.CDLL("libc.so.6").malloc_trim
+    swept: Callable[[], None] = collecting.sweep
+
+    def sweep() -> None:
+        swept()
+        _ = trim(0)
+
+    collecting.sweep = sweep
+
 # `--trace-check`: what the first check's rounds allocate and still hold as they end, by line.
 tracing: bool = "--trace-check" in args
 if tracing:
@@ -95,7 +111,10 @@ if tracing:
             for stat in snapshot.statistics("traceback")[:20]:
                 print(f"{stat.size / _GIB:6.3f} GiB {stat.count:9} blocks", file=sys.stderr)
                 print("\n".join(f"    {line}" for line in stat.traceback.format(limit=6)), file=sys.stderr)
-            print(f"{sum(each.size for each in snapshot.statistics('filename')) / _GIB:.3f} GiB held in all", file=sys.stderr)
+            print(
+                f"{sum(each.size for each in snapshot.statistics('filename')) / _GIB:.3f} GiB held in all",
+                file=sys.stderr,
+            )
 
     rounds.schedule.checked = traced
 

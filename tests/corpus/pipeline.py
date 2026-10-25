@@ -81,6 +81,8 @@ GUESS: Final = "guess"
 IMPLIED: Final = "implied"  # in a suite's part's record after a fix: the fix step whose part stands for it
 PATCH: Final = "patch"  # and how that fix's patch relates to its own: the same, or one that holds it
 FROM: Final = "from"  # in a record taken from an earlier run: that run's folder
+TESTED: Final = ".tests.jsonl"  # beside a suite part's record: its tests, a line each (`corpus_suite.Test`)
+ROWS: Final = ".rows.jsonl"  # beside the census's record: its bindings, a line each
 _SUFFOCATE: Final = "--level=suffocate"
 _SHARED: Final = "suffocate"  # where a job's one check at `suffocate` runs, and is kept (`suffocated`)
 SHARING: Final = frozenset({CHECK, CENSUS})  # the steps that read it: the first to start runs it
@@ -521,7 +523,7 @@ def census(job: Job) -> Record:
         corpus_table.Corpus(job.tree.name, job.tree.version, job.tree.root),
         json.dumps(entries),
     )
-    _ = job.store.path(job.tree.name, job.recorded, CENSUS, ".rows.jsonl").write_text(
+    _ = job.store.path(job.tree.name, job.recorded, CENSUS, ROWS).write_text(
         "".join(f"{json.dumps(binding._asdict())}\n" for binding in bindings),
         encoding="utf-8",
     )

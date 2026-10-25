@@ -26,7 +26,7 @@ from constricter.offences import (
     Checks,
     Offence,
 )
-from constricter.rules import attributes, late, parsed, recorded
+from constricter.rules import attributes, late, parsed, recorded, returning
 from constricter.rules.calls import keyed, observed
 from constricter.rules.flow import Finding
 from constricter.rules.narrowing import flow_offences, module_flow
@@ -181,6 +181,7 @@ def checked_tree(
                 *flow_offences(module_flow(tree, scopes), settings.checks.fixes),
                 *finals,
                 *_attributes(tree, checks, done),
+                *(returning.unannotated(tree, done.found, lines) if checks.returns else ()),
             ],
         ),
         exported._replace(names=imports.exported_names(exported, guarded, plan.added)),

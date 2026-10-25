@@ -263,7 +263,7 @@ class Scope:
             found = called[0], *guesses_in(self, [called[1]])
         hint: Inference | None
         if found is None and (hint := self.hint(target, value)) is not None:
-            found = hint, True, hint.kinds
+            found = hint, True, hinted.resting(hint)
         return found or vague
 
     def _member(
@@ -483,7 +483,8 @@ class Scope:
 
         `value`: what a plain assignment binds it to. One hinted `TypeAlias` is declared an alias,
         in a module body, where it's written as a type made of others (not a bare class's alias,
-        which declared one loses the class's type parameters).
+        which declared one loses the class's type parameters). Where a later checker's usable hint
+        gives the same type, the fix rests on their agreement too (`hinted.AGREED`), a set of its own.
 
         Returns:
           The inference (a guess), or `None`.
@@ -491,8 +492,10 @@ class Scope:
         """
         where: tuple[int, int] = (target.lineno, target.end_col_offset or 0)
         composite: bool = value is not None and self.kind.function is None and is_composite(value)
+        hints: tuple[Hints, ...] = self.settings.hints
+        place: int
         found: Hints
-        for found in self.settings.hints:
+        for place, found in enumerate(hints):
             # Not used at all where not offered: what follows from it would rest on it unseen.
             text: str | None = (
                 found.types.get(where) if self.settings.checks.fixes.allows(frozenset({found.kind})) else None
@@ -502,33 +505,51 @@ class Scope:
                 if composite and (typed := hinted.type_alias(self.settings.known, target.lineno)) is not None:
                     return hinted.inference(typed, found)
                 continue
-            if (
-                text is None
-                or (
-                    typed := hinted.hinted(
-                        text,
-                        self.settings.known,
-                        hinted.Site(
-                            self.settings.checks.nesting,
-                            # A module body's annotation is evaluated there: only what's bound before it.
-                            target.lineno if self.kind.function is None else None,
-                            isinstance(value, ast.BinOp),
-                        ),
-                        found.offered.get(where),
-                    )
-                )
-                is None
-            ):
+            if text is None or (typed := self._usable(target, value, found, text)) is None:
                 continue
-            typed = self._optional(target.id, typed)
-            if (
-                # A generic class a checker prints bare has arguments it doesn't know.
-                not bare(typed, self.settings.facts.generics)
-                and not hinted.renames(target.id, typed, local=self.kind.function is not None)
-                and not (self._undeclared(typed) or self._misread(target.id, typed))
-            ):
-                return hinted.inference(typed, found)
+            agreeing: int = 1
+            other: Hints
+            said: str | None
+            for other in hints[place + 1 :] if self._agreeable(found) else ():
+                said = other.types.get(where) if other.kind == hinted.KIND else None
+                agreeing += said is not None and self._usable(target, value, other, said) == typed
+            return hinted.inference(typed, found, agreeing)
         return None
+
+    def _agreeable(self, found: Hints) -> bool:  # a checker's hint, where its agreement is offered
+        return found.kind == hinted.KIND and self.settings.checks.fixes.allows(frozenset({hinted.AGREED}))
+
+    def _usable(self, target: ast.Name, value: ast.expr | None, found: Hints, text: str) -> str | None:
+        """Write a checker's hint `text` for `target` as the file can use it (see `hint`).
+
+        Returns:
+          The annotation, `None` added where the function tests for it; `None` where it can't be used.
+
+        """
+        where: tuple[int, int] = (target.lineno, target.end_col_offset or 0)
+        typed: str | None = hinted.hinted(
+            text,
+            self.settings.known,
+            hinted.Site(
+                self.settings.checks.nesting,
+                # A module body's annotation is evaluated there: only what's bound before it.
+                target.lineno if self.kind.function is None else None,
+                isinstance(value, ast.BinOp),
+            ),
+            found.offered.get(where),
+        )
+        if typed is None:
+            return None
+        typed = self._optional(target.id, typed)
+        if (
+            # A generic class a checker prints bare has arguments it doesn't know.
+            bare(typed, self.settings.facts.generics)
+            or hinted.renames(target.id, typed, local=self.kind.function is not None)
+            or self._undeclared(typed)
+            or self._misread(target.id, typed)
+        ):
+            return None
+        return typed
 
     def _optional(self, name: str, annotation: str) -> str:
         """Add `None` to a hint for a name this scope's function compares with `None`, if it lacks one.

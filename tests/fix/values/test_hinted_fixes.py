@@ -13,6 +13,7 @@ from constricter.fix.values.hinted import type_alias
 from constricter.offences import Edit, FixPolicy
 
 _CHECKER: Final = "basedpyright"
+_AGREED_BY_THREE: Final = "ty's inferred type, which 3 type checkers agree on"
 _DEFAULT: Final = Checks()
 _Fixes: TypeAlias = list[tuple[str, str | None, bool]]
 
@@ -885,6 +886,25 @@ def test_a_class_the_module_imports_for_type_checking_is_used_as_it_is() -> None
         ("c", None),  # a parameter's name too
     ]
     assert all(o.edit is None or not (o.edit.imports or o.edit.guarded) for o in offences)
+
+
+def test_a_hint_two_checkers_agree_on_rests_on_their_agreement() -> None:
+    """A set of its own, `checker` with `agreed`; a later checker's unusable hint or other type isn't."""
+    source: str = "def f(q) -> None:\n    x = q.make()\n    y = q.make()\n    z = q.make()\n"
+    first: Hints = Hints("ty", {(2, 5): "int", (3, 5): "int", (4, 5): "Unknown"})
+    second: Hints = Hints(_CHECKER, {(2, 5): "int", (3, 5): "str", (4, 5): "bytes"})
+    third: Hints = Hints("pyrefly", {(2, 5): "int", (3, 5): "Unknown", (4, 5): "bytes"})
+    offences: list[Offence] = check_source(source, outside=Outside(hints=(first, second, third)))
+    assert [(o.name, o.fix, sorted(o.edit.kinds) if o.edit else None) for o in offences] == [
+        ("x", "int", ["agreed", "checker"]),
+        ("y", "int", ["checker"]),
+        ("z", "bytes", ["agreed", "checker"]),
+    ]
+    assert offences[0].edit is not None
+    assert offences[0].edit.reason == _AGREED_BY_THREE
+    ignored: Checks = Checks(fixes=FixPolicy(ignore=frozenset({"agreed"})))
+    alone: list[Offence] = check_source(source, checks=ignored, outside=Outside(hints=(first, second, third)))
+    assert [sorted(o.edit.kinds) if o.edit else None for o in alone] == [["checker"]] * 3
 
 
 def test_the_first_checker_whose_hint_is_usable_wins() -> None:

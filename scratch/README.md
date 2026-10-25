@@ -89,12 +89,21 @@ goes under `local/scratch/`.
 - `schedule_solve.py FOLDER... [--given] [--seconds N] [--staged [--pauses SECONDS]]`: the shortest
   schedule of finished runs' steps by OR-Tools' CP-SAT, and the least it proves any can take;
   `--staged` holds the runner's stages one after another, as a run in stages does.
-- `peak_phases.py PATH [--no-index-trees] [--trace-check] [-- OPTIONS]`, from the checkout: a
+- `mutation.py [--children N] [--only PATTERN ...] [--keep]`: mutmut over `constricter/` on a
+  worktree of HEAD under `local/mutation/`, the unit tests run for each mutant, the survivors
+  written to `local/mutation/survivors-<date>.txt`. Hours of every CPU for a full pass; outside the
+  sandbox (its workers fork).
+- `peak_phases.py PATH [--no-index-trees] [--trace-check] [--trim] [-- OPTIONS]`, from the checkout: a
   one-process check's memory over time by phase (the index, its settling, each check round), with
-  the index keeping no trees, or what the first round still holds as it ends, by tracemalloc.
+  the index keeping no trees, what the first round still holds as it ends (tracemalloc), or, with
+  `--trim` under `PYTHONMALLOC=malloc`, glibc's `malloc_trim` after each file's check.
 - `stage_compare.py BEFORE AFTER [--stage tests] [--top N]`: one stage's steps in two runs, from
   their records: its wall time, step seconds, CPU seconds and waits, each corpus's seconds in both,
   and the steps whose seconds or waits changed most.
+- `righttyper_measure.py CHECKOUT --source PKG (--module pytest | --script PATH) [--args "..."]
+[--check "basedpyright PKG"]`: RightTyper over a suite's tests on a copy of its checkout, only the
+  signatures it adds taken (`righttyper_added.py`), then `--fix` and the check on a plain copy and
+  on that one: the fixes each got and the errors. Outside the sandbox.
 - `righttyper_added.py ORIGINAL ANNOTATED OUT`: of RightTyper's rewritten source, only the
   parameter and return annotations the original lacked, with the imports they need under
   `TYPE_CHECKING`, onto the original's text: its signatures measured without its overwrites.
