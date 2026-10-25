@@ -349,11 +349,16 @@ measure before building.
    round still reaches 2.02, with no resume kept. Of what the first round allocates, 0.74 GiB is
    still held as it ends (`--trace-check`, tracemalloc): the index's modules copied as each round
    links what its files return (`linked.with_returned`, 0.09), each file's results and source
-   text (0.10), the order's class edges (`loose.needs`, 0.06). The rest of the 1.45 GiB the round
-   adds is the allocator's: a file's tree freed among its results, allocated beside it, leaves its
-   arenas held, so a tree kept or not costs the same. Under 1.5 GB then needs a file's check done
-   where its tree can't pin what outlives it: in a worker process returning its results (as
-   `--jobs` does), or its results built after its tree is freed. About 6 hours; coverage unchanged.
+   text (0.10), the order's class edges (`loose.needs`, 0.06). The allocator isn't what holds
+   the rest: under `PYTHONMALLOC=malloc` with glibc's `malloc_trim` after each file's check
+   (`--trim`), which gives free pages back from anywhere, the peak is 2.19 GiB (2.20 untrimmed,
+   2.04 under pymalloc, 42s to 44s on a quiet 16CPU/60GB), so the memory is held, not freed. What
+   holds it: 688 of the standard library's 1,862 modules (21 of its 35 MiB of source) have an
+   open function and keep their tree and whole first check for a resume, of which 242 resume.
+   Under 1.5 GB then needs the resume kept from less than the whole check (each function's
+   scope rebuilt from its findings, the tree parsed again), or kept only for a module some
+   caller types a parameter of, known once its callers are checked. About 6 hours; coverage
+   unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -443,7 +448,10 @@ measure before building.
    gains the callers' fixes the written returns make certain. Built in part, not yet run: LVA014 (opt-in), a plain
    function's or method's missing return type, its fix `-> T` before the header's `:` (`Edit.SIGNATURE`,
    `rules/returning.py`) from `returned`'s types or `None`; the parameters (`callers`, `fixture`)
-   still to do (`local/meanwhile/signatures-plan.md` has the rest). About 10 hours; coverage unmeasured:
+   still to do (`local/meanwhile/signatures-plan.md` has the rest). On pydantic (2026-10-24,
+   `--fix --unsafe-fixes --extend-select LVA014`): 34 functions reported, 31 fixed (29 `-> None`, 2
+   `-> str`; 29 of them methods' guesses), the other 1,596 fixes the same, `pyright pydantic` 0
+   errors as without, and its 12,311 tests passing. About 10 hours; coverage unmeasured:
    it moves guesses to certain more than it adds fixes.
 3. **A method's `return` of an untyped value.** Of the 11,959 `self.method()` bindings with no fix,
    5,617 call a method the class doesn't define itself, and 5,436 one whose `return` gives a value
