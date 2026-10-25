@@ -28,7 +28,9 @@ with as many workers, and the memory for each (`Slots.take`). A step that asks t
 for hints starts with as few CPUs as hold, by their share of its memory, one server of each of its
 checkers for the corpus (`Plan._hinted`), its servers then given that share of `hints.MEMORY`,
 rounded up to whole servers of its largest checker, one a CPU held (`--infer-memory`,
-`Wanted.hinted`); with all it wants, the default. The timed steps (`timing`,
+`Wanted.hinted`); with all it wants, the default. Only one whose last run took `_BRIEF` seconds at
+most starts short: it keeps what it started with, so a long one on one CPU would hold the run's end
+(stripe's basedpyright, 36 minutes). The timed steps (`timing`,
 `profile`) want every CPU, so nothing runs beside the check timed: the run starts them last, one at
 a time.
 
@@ -126,6 +128,7 @@ def _kind(step: str) -> str:  # a suite step's kind: a part's, or its own
 _PATIENCE: Final = 300.0  # the seconds a step waits before what's free is kept for it
 _BESIDE: Final = 300.0  # but from a step expected to end within so many seconds
 _SLACK: Final = 2.0  # over what an unmeasured step holds a minute in: it may hold more later
+_BRIEF: Final = 300.0  # the most seconds a hinted step's last run took for it to start short (`Plan._hinted`)
 TIMED: Final = frozenset({TIMING, PROFILE})  # the steps nothing runs beside
 _AVAILABLE: Final = re.compile(r"^MemAvailable:\s*(\d+) kB", re.MULTILINE)
 _MEMINFO: Final = Path("/proc/meminfo")
@@ -741,7 +744,7 @@ class Plan(NamedTuple):
         seconds: float = known.seconds if known is not None else 0.0
         least: int
         server: int
-        least, server = self._hinted(tree, step, cpus)
+        least, server = self._hinted(tree, step, cpus) if seconds <= _BRIEF else (0, 0)
         return Wanted(
             self.cpus if step in TIMED else cpus,
             memory,

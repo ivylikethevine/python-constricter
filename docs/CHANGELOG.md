@@ -15,7 +15,8 @@ Notable changes, newest first. Each release's full notes are generated from its 
   `KeyError`). A hinted step starts with fewer CPUs than it wants once those hold one server of each
   of its checkers, its servers given that share of the memory, rounded up to as many whole servers
   as its CPUs and the default hold (`--infer-memory`); given all it wants, they take their default
-  as before. sqlalchemy's tests run a file's tests on one worker in order (`--dist loadfile`):
+  as before. Only one whose last run took 5 minutes at most starts short: it keeps those CPUs to
+  its end. sqlalchemy's tests run a file's tests on one worker in order (`--dist loadfile`):
   its harness carries a case's requirement onto the later cases of the same test function, so
   its skip count changed with xdist's order.
 - `--infer-with basedpyright` caps each server's Node heap at nine tenths of its share of

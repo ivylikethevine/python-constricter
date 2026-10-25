@@ -235,3 +235,9 @@ def test_a_hinted_step_starts_with_as_few_cpus_as_hold_one_server_of_each_checke
     slots: sizing.Slots = sizing.Slots(4, 16 * sizing.GIB)
     _ = slots.take(sizing.Wanted(2, 0))
     assert slots.take(hinted) == hinted.least  # what's free, sooner than all it wants
+    # One whose last run was long waits for all it wants: started short, it would keep that to its end.
+    long: sizing.Plan = plan._replace(
+        before={("dask", "infer-basedpyright"): sizing.Before(4.0, 1068.0, 5 * sizing.GIB)},
+    )
+    waits: sizing.Wanted = long.wanted(tree, "infer-basedpyright")
+    assert (waits.cpus, waits.least, waits.servers, waits.hinted(1)) == (4, 0, 0, 0)

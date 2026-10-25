@@ -357,6 +357,30 @@ What constricter does today and what was measured on the way, by scope. What's n
   in one process and 1.26 times with 4 workers (the medians of 47 corpora, on 16CPU/60GB). A wheel
   beside other packages fixes by their types too: against `dev`'s venv, which has the dev group's,
   five corpora differed (docutils's types for sphinx, click's for uvicorn).
+- **Installed stubs, as PEP 561 orders them.** Built in `44c05d5`: `installed.search_path()`
+  reads the checked code's environment (`VIRTUAL_ENV`) before constricter's own, `locate()` takes
+  a `-stubs` package first in any directory, a partial one leaving a module it lacks to the
+  package, and a namespace package's typed subpackage (`google/auth/py.typed`). On the corpus runs
+  `local/.venv`'s untyped `docutils`, `pandas`, `pygments`, `yaml`, `dateutil` and `six` shadowed
+  the corpus environments' `docutils-stubs`, `pygments-stubs` (sphinx), `pandas-stubs` (altair,
+  narwhals, seaborn), `yaml-stubs` and `dateutil-stubs`: sphinx's 102 `docutils.nodes.*` calls
+  with no fix were `imported`. About 145 direct calls and the chains they start (sphinx 491,
+  seaborn 383 `receiver`/`member` calls; a few hundred, estimated:
+  `local/research/type-sources-2026-10-23.md`). On the 0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes), against rc.1's (`264d149`):
+  certain fixes sphinx 3,228 from 3,128, seaborn 650 from 639, altair 378 and narwhals 980 from
+  982, no new type error (narwhals's certain tier 19 from 23): the chains estimated didn't come.
+  Done when a super run gives sphinx, seaborn,
+  altair and narwhals the stubs' fixes, no new type error. Coverage up to 0.2%. The 0.4.3-rc.2
+  super run already ran on `44c05d5`: sphinx's certain fixes 3,128 to 3,230 (+102) against the
+  0.4.3-rc.1 mega run (`264d149`), unsafe 3,949 to 4,130, rc.3 the same again; seaborn, altair and
+  narwhals are mega corpora, so not yet measured. One new type error in every tier:
+  `sub_node_copy = node.copy()` (`sphinx/environment/adapters/toctree.py:552`) is fixed `Node`,
+  the parameter's declared type, where the stubs' `copy() -> Self` meets a receiver an `isinstance`
+  narrowed to `nodes.reference | nodes.title`, and mypy then rejects `[sub_node_copy]` as a
+  `list[Element]`. A method returning its receiver's type on a receiver an `isinstance` narrows is
+  no fix since (`Scope._takes_narrowed`, `narrowed.checked_to`): on the 0.4.3-rc.4 super run
+  (`46bdc27`) no patch types `sub_node_copy`, and sphinx has one type error fewer in every tier
+  than rc.3 (certain 4 from 5, basedpyright 8 from 9), its certain fixes 3,228.
 
 ## Command and output
 
@@ -607,6 +631,41 @@ What constricter does today and what was measured on the way, by scope. What's n
   untraced (55.6s against 53.7s, 52.8s against 48.2s), pandas's, the slowest, 1.37 (135.1s against
   98.5s). Sampling in short windows (`sys.monitoring`'s events off between them) is left for a
   corpus whose traced tests grow past twice.
+- **A suite's traced tests, in more than one process.** django's are traced on its workers: a
+  process the traced run forks records on and writes its trace as it ends (`trace.forked`), and a
+  suite run by `python -c` is traced by its own command (`corpus_suite._traceable`). On the
+  0.4.3-rc.2 super run (`44c05d5`, 16CPU/60GB) django's `traced` step took 65.1s, from 643s on the
+  0.4.0-rc.3 mega run, its tests 52.8s against 48.2s untraced, 482 fixes resting on the trace.
+  celery's 13 parts are now traced side by side too, as its tests run (`corpus_suite.traced`), each
+  writing a trace of its own, merged in the parts' order. On the 0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes) celery's `traced` took 85s, from
+  163s and 182s on rc.1's two, its released tests 59s there. Done when a mega run's celery `traced`
+  step takes about its `tests` step's time, the fixes resting on the trace the same. Coverage
+  unchanged.
+- **sqlalchemy's tests in a fixed order.** A part stands for another only where its counts equal
+  the released tests' exactly (`_tests_part`, `standing`). On the 0.4.3-rc.4 super run (`46bdc27`)
+  sqlalchemy's traced tests skipped 971, so rc.3's released record (975) wasn't confirmed and the
+  released tests ran again (973), and `infer-union`'s skipped 975, two of `ReturningTest`'s
+  `test_imv_returning_datatypes[...LargeBinary1/2]` skipped where they passed: so it stood for
+  none, and six fixed trees ran the suite apart, 83 to 111s on 7 to 15 CPUs each, 6,229 CPU
+  seconds more than rc.3, on one checkout one after another, while 22 steps wanting 8 CPUs waited
+  up to 15 minutes: the `tests` stage 20.5 minutes from 12 (`scratch/stage_compare.py`). The flake
+  is sqlalchemy's test harness: a `testing.combinations` case's own requirement
+  (`uuid_data_type`) is added at call time to the compound exclusion the test function already
+  carries (`exclusions.compound.__call__` extends `fn._sa_exclusion_extend` in place), so once a
+  UUID case of `test_imv_returning_datatypes` runs, every later case in that process skips (alone,
+  its LargeBinary cases pass 8 of 8; after the UUID ones, 2 pass and 26 skip), and xdist's `load`
+  distribution changes, run to run and by worker count, which cases follow one on a worker.
+  `--dist loadscope` isn't enough: the three drivers' classes share the suite's functions, and
+  `ReturningTest` alone gave 91 passed with 2 workers and 93 with 8. sqlalchemy's tests run
+  `--dist loadfile` since (`corpora.toml`), a file's tests on one worker in order:
+  `test/dialect/test_suite.py`, the one file running the shared suite on SQLite, gave the same
+  outcome for each of its 3,259 tests with 2 workers and with 8, 2,971 passed and 288 skipped, in
+  6.3s and 6.9s; the whole suite (`test/`, 30,448 tests on 16CPU/60GB) the same outcome for each
+  test with 13 workers and with 4, 29,457 passed and 991 skipped, in 88s and 112s (the released
+  tests' 90s on 13 under `load`). On the 0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes) the released tests ran again (114s) and the union's
+  part (112s) stood for every fixed tree (`tests-fix-likely` 0s, implied). Done when a run's
+  `infer-union` part stands for sqlalchemy's
+  fixed trees again and its `tests` stage takes about rc.3's 12 minutes. Coverage unchanged.
 
 ## CI, security and releases
 
