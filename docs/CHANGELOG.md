@@ -4,7 +4,7 @@ Notable changes, newest first. Each release's full notes are generated from its 
 (grouped by `.github/release.yml`) on its
 [GitHub release](https://github.com/ivylikethevine/python-constricter/releases).
 
-## Unreleased
+## 0.4.3
 
 - LVA014 (opt-in: `--extend-select LVA014`, pylint's `missing-return-type`): a plain function or
   method with no return annotation, as ruff's ANN201 reports it, fixed with `-> T` by what its own

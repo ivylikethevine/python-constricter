@@ -522,7 +522,9 @@ What to measure before building, smallest first.
    hint gives the type the first usable one does, the fix rests on their agreement too (kind
    `agreed`, beside `checker`; `Scope.hint`), a set of its own in the mechanisms table; not in
    `--likely` until it passes the bars, and not what a guess rests on: `unsafe-fix-select` trusts
-   it by `checker` as before. About 3 hours; coverage unchanged (`--likely` gains what passes).
+   it by `checker` as before. On the 0.4.3-rc.7 mega run (`5674049`, 16CPU/60GB, 68 minutes): 14,936 of `infer-union`'s 26,589 checker
+   fixes rest on an agreement, but the mechanisms table leaves the union step out, so counts none:
+   it takes the union in next. About 3 hours; coverage unchanged (`--likely` gains what passes).
 6. **pyrefly's `stubgen` for untyped packages.** For an installed package with no types, pyrefly
    writes stubs from what it infers (experimental; `Incomplete` where it can't tell): the calls
    declared types would reach plus the returns no source declares (tlz, botocore, kombu), perhaps
@@ -540,7 +542,9 @@ What to measure before building, smallest first.
    one type, and the commonest sources. Built, not yet run: the `traced` step keeps the types the
    trace saw each of the package's bindings hold (`traced.seen.jsonl`), and the report holds the
    census's bindings with neither a fix nor a guess to them, by shape (`one-type.csv`). Done when the
-   table is in a run's report. About 4 hours; coverage unchanged.
+   table is in a run's report: on the 0.4.3-rc.7 mega run (`5674049`, 16CPU/60GB, 68 minutes), of 162,001 bindings with neither fix nor guess, the
+   traced tests reached 79,623 and saw 60,259 hold one type (`one-type.csv`, by shape). About 4
+   hours; coverage unchanged.
 9. **Declared types of installed packages with no `py.typed`, as guesses.** What pyright reads with
    `useLibraryCodeForTypes`, held to the source's own annotations (mypy reads such a package as
    `Any`): pandas/core declares 73% of its functions' returns, wheel 86%, setuptools 54%, grpc 51%.
